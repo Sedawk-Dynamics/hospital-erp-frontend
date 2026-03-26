@@ -23,7 +23,7 @@ export function Loading({ className, size = 'md', text }: LoadingProps) {
           sizeMap[size]
         )}
       />
-      {text && <p className="text-sm text-muted-foreground">{text}</p>}
+      {text && <p className="font-label text-sm text-on-surface-variant">{text}</p>}
     </div>
   );
 }

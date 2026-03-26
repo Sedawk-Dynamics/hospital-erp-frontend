@@ -1,6 +1,5 @@
 'use client';
 
-import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
 type StatusVariant = 'default' | 'success' | 'warning' | 'danger' | 'info' | 'muted';
@@ -109,12 +108,21 @@ const statusColorMap: Record<string, StatusVariant> = {
 };
 
 const variantStyles: Record<StatusVariant, string> = {
-  default: 'bg-secondary text-secondary-foreground',
-  success: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
-  warning: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
-  danger: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
-  info: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-  muted: 'bg-muted text-muted-foreground',
+  default: 'bg-surface-container-high text-on-surface-variant',
+  success: 'bg-primary/10 text-primary',
+  warning: 'bg-secondary/10 text-secondary',
+  danger: 'bg-error-container text-on-error-container',
+  info: 'bg-primary-container/10 text-primary-container',
+  muted: 'bg-surface-container-high text-on-surface-variant',
+};
+
+const dotColorMap: Record<StatusVariant, string> = {
+  default: 'bg-on-surface-variant/60',
+  success: 'bg-primary',
+  warning: 'bg-secondary',
+  danger: 'bg-error',
+  info: 'bg-primary-container',
+  muted: 'bg-on-surface-variant/50',
 };
 
 interface StatusBadgeProps {
@@ -128,14 +136,15 @@ export function StatusBadge({ status, variant, className }: StatusBadgeProps) {
   const displayText = status.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
 
   return (
-    <Badge
+    <span
       className={cn(
-        'font-medium border-0',
+        'inline-flex items-center gap-1.5 text-[10px] font-bold font-label px-2 py-0.5 rounded-full',
         variantStyles[resolvedVariant],
         className
       )}
     >
+      <span className={cn('inline-block h-1.5 w-1.5 rounded-full shrink-0', dotColorMap[resolvedVariant])} />
       {displayText}
-    </Badge>
+    </span>
   );
 }

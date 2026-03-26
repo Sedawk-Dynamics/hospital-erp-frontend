@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
-import { format, formatDistanceToNow } from 'date-fns';
+import { formatRelativeDate } from '@/lib/date-utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/shared/page-header';
@@ -59,15 +59,9 @@ export default function MessagesPage() {
     fetchMessages();
   }, [fetchMessages]);
 
-  const formatDate = (dateStr: string) => {
+  const formatMessageDate = (dateStr: string) => {
     try {
-      const date = new Date(dateStr);
-      const now = new Date();
-      const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
-      if (diffInHours < 24) {
-        return formatDistanceToNow(date, { addSuffix: true });
-      }
-      return format(date, 'MMM dd, yyyy');
+      return formatRelativeDate(dateStr);
     } catch {
       return dateStr;
     }
@@ -110,7 +104,7 @@ export default function MessagesPage() {
       sortable: true,
       render: (msg) => (
         <span className={msg.isRead ? 'text-muted-foreground' : ''}>
-          {formatDate(msg.createdAt)}
+          {formatMessageDate(msg.createdAt)}
         </span>
       ),
     },

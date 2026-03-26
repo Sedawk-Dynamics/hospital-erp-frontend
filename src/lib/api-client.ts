@@ -40,7 +40,7 @@ apiClient.interceptors.response.use(
         );
         localStorage.setItem('accessToken', data.data.accessToken);
         localStorage.setItem('refreshToken', data.data.refreshToken);
-        document.cookie = `accessToken=${data.data.accessToken}; path=/; max-age=${15 * 60}; SameSite=Lax`;
+        document.cookie = `accessToken=${data.data.accessToken}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
         originalRequest.headers.Authorization = `Bearer ${data.data.accessToken}`;
         return apiClient(originalRequest);
       } catch {
@@ -51,6 +51,32 @@ apiClient.interceptors.response.use(
         return Promise.reject(error);
       }
     }
+    // Handle subscription expired (403 with SUBSCRIPTION_EXPIRED message)
+    // Redirect to subscription expired screen — but NOT on pages where
+    // the user needs access to manage their subscription or switch hospitals.
+    if (
+      error.response?.status === 403 &&
+      error.response?.data?.message === 'SUBSCRIPTION_EXPIRED' &&
+      typeof window !== 'undefined'
+    ) {
+      const path = window.location.pathname;
+      const allowedPaths = [
+        '/subscription-expired',
+        '/super-admin',
+        '/login',
+        '/register',
+        '/select-hospital',
+        '/manage-subscription',
+        '/my-account',
+        '/contact',
+      ];
+      const isAllowed = allowedPaths.some((p) => path.startsWith(p));
+      if (!isAllowed) {
+        window.location.href = '/subscription-expired';
+        return Promise.reject(error);
+      }
+    }
+
     return Promise.reject(error);
   }
 );

@@ -1,13 +1,13 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { Building2, UserCog, Wrench, Layout } from 'lucide-react';
+import { Building2, UserCog, Wrench, Layout, ChevronRight } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 interface SettingsGroup {
   title: string;
   icon: LucideIcon;
-  items: { label: string; href: string }[];
+  items: { label: string; href: string; comingSoon?: boolean }[];
 }
 
 const settingsGroups: SettingsGroup[] = [
@@ -15,14 +15,15 @@ const settingsGroups: SettingsGroup[] = [
     title: 'Clinic Configuration',
     icon: Building2,
     items: [
-      { label: 'Hospital', href: '#' },
-      { label: 'Referral', href: '#' },
-      { label: 'Corporate', href: '#' },
-      { label: 'Room', href: '#' },
-      { label: 'Insurance', href: '#' },
-      { label: 'MRD', href: '#' },
-      { label: 'Membership', href: '#' },
-      { label: 'Telemedicine', href: '#' },
+      { label: 'Hospital', href: '/hospital/settings/hospital-info' },
+      { label: 'Bank Account', href: '/hospital/settings/bank-account' },
+      { label: 'Referral', href: '#', comingSoon: true },
+      { label: 'Corporate', href: '#', comingSoon: true },
+      { label: 'Room', href: '/hospital/settings/rooms' },
+      { label: 'Insurance', href: '/hospital/settings/insurance' },
+      { label: 'MRD', href: '#', comingSoon: true },
+      { label: 'Membership', href: '#', comingSoon: true },
+      { label: 'Telemedicine', href: '#', comingSoon: true },
     ],
   },
   {
@@ -36,16 +37,16 @@ const settingsGroups: SettingsGroup[] = [
     title: 'Service Configuration',
     icon: Wrench,
     items: [
-      { label: 'Service Master Configuration', href: '#' },
+      { label: 'Service Master Configuration', href: '/hospital/settings/services' },
     ],
   },
   {
     title: 'Layouts / Templates',
     icon: Layout,
     items: [
-      { label: 'Layout', href: '#' },
-      { label: 'Template', href: '#' },
-      { label: 'Card Layout Configuration', href: '#' },
+      { label: 'Layout', href: '#', comingSoon: true },
+      { label: 'Template', href: '#', comingSoon: true },
+      { label: 'Card Layout Configuration', href: '#', comingSoon: true },
     ],
   },
 ];
@@ -54,28 +55,42 @@ export default function SettingsPage() {
   const router = useRouter();
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-xl font-bold text-foreground">Settings</h1>
+    <div className="space-y-6 animate-fade-in-up">
+      <h1 className="font-headline text-xl font-bold">Settings</h1>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {settingsGroups.map((group) => {
           const Icon = group.icon;
           return (
-            <div key={group.title} className="rounded-lg border bg-card">
-              <div className="flex items-center gap-2 border-b px-4 py-3">
+            <div key={group.title} className="bg-surface-container-lowest rounded-xl shadow-sanctuary">
+              <div className="flex items-center gap-2 border-b border-surface-container px-4 py-3">
                 <Icon className="h-5 w-5 text-primary" />
-                <h3 className="font-semibold text-foreground">{group.title}</h3>
+                <h3 className="font-headline text-lg font-bold">{group.title}</h3>
               </div>
               <div className="p-2">
-                {group.items.map((item) => (
-                  <button
-                    key={item.label}
-                    onClick={() => item.href !== '#' && router.push(item.href)}
-                    className="w-full rounded-md px-3 py-2 text-left text-sm text-foreground hover:bg-muted transition-colors"
-                  >
-                    {item.label}
-                  </button>
-                ))}
+                {group.items.map((item) => {
+                  const isNavigable = item.href !== '#';
+                  return (
+                    <button
+                      key={item.label}
+                      onClick={() => isNavigable && router.push(item.href)}
+                      disabled={!isNavigable}
+                      className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left font-label text-sm hover:bg-surface-container-low transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <span>
+                        {item.label}
+                        {item.comingSoon && (
+                          <span className="ml-2 font-label text-[10px] text-on-surface-variant">
+                            (coming soon)
+                          </span>
+                        )}
+                      </span>
+                      {isNavigable && (
+                        <ChevronRight className="h-4 w-4 text-on-surface-variant" />
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           );

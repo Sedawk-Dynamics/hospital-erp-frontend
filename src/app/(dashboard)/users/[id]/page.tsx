@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { format } from 'date-fns';
+import { formatDate } from '@/lib/date-utils';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -94,7 +94,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
                 <div>
                   <p className="text-xs text-muted-foreground">Joined</p>
                   <p className="text-sm font-medium">
-                    {(() => { try { return user.createdAt ? format(new Date(user.createdAt), 'MMMM dd, yyyy') : '—'; } catch { return user.createdAt || '—'; } })()}
+                    {(() => { try { return user.createdAt ? formatDate(user.createdAt) : '—'; } catch { return user.createdAt || '—'; } })()}
                   </p>
                 </div>
               </div>

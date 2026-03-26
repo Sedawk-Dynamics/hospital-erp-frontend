@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { format } from 'date-fns';
+import { formatDate } from '@/lib/date-utils';
 import { toast } from 'sonner';
 import {
   Card,
@@ -88,7 +88,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
               <p className="text-xs text-muted-foreground">Date of Birth</p>
               <p className="text-sm font-medium">
                 {(() => {
-                  try { return format(new Date(patient.dateOfBirth), 'MMMM dd, yyyy'); }
+                  try { return formatDate(patient.dateOfBirth); }
                   catch { return patient.dateOfBirth; }
                 })()}
               </p>
@@ -165,7 +165,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                   <p className="text-xs text-muted-foreground">Registered On</p>
                   <p className="text-sm font-medium">
                     {(() => {
-                      try { return format(new Date(patient.createdAt), 'MMMM dd, yyyy'); }
+                      try { return formatDate(patient.createdAt); }
                       catch { return patient.createdAt; }
                     })()}
                   </p>
@@ -174,7 +174,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                   <p className="text-xs text-muted-foreground">Last Updated</p>
                   <p className="text-sm font-medium">
                     {(() => {
-                      try { return format(new Date(patient.updatedAt), 'MMMM dd, yyyy'); }
+                      try { return formatDate(patient.updatedAt); }
                       catch { return patient.updatedAt; }
                     })()}
                   </p>

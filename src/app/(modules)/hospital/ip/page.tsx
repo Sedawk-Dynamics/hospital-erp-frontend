@@ -9,38 +9,40 @@ import { OccupancyTab } from '@/components/hospital/ip/occupancy-tab';
 
 export default function IPHomePage() {
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-bold text-foreground">IP Home</h1>
+    <div className="space-y-4 animate-fade-in-up">
+      <h1 className="font-headline text-xl font-bold">IP Home</h1>
 
-      <Tabs defaultValue="in-patient">
-        <TabsList variant="line">
-          <TabsTrigger value="in-patient">In Patient List</TabsTrigger>
-          <TabsTrigger value="reservation">Reservation</TabsTrigger>
-          <TabsTrigger value="bed-availability">Bed Availability</TabsTrigger>
-          <TabsTrigger value="estimation">Estimation</TabsTrigger>
-          <TabsTrigger value="occupancy">Occupancy</TabsTrigger>
-        </TabsList>
+      <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-6">
+        <Tabs defaultValue="in-patient">
+          <TabsList variant="line">
+            <TabsTrigger value="in-patient">In Patient List</TabsTrigger>
+            <TabsTrigger value="reservation">Reservation</TabsTrigger>
+            <TabsTrigger value="bed-availability">Bed Availability</TabsTrigger>
+            <TabsTrigger value="estimation">Estimation</TabsTrigger>
+            <TabsTrigger value="occupancy">Occupancy</TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="in-patient" className="pt-4">
-          <InPatientList />
-        </TabsContent>
+          <TabsContent value="in-patient" className="pt-4">
+            <InPatientList />
+          </TabsContent>
 
-        <TabsContent value="reservation" className="pt-4">
-          <ReservationTab />
-        </TabsContent>
+          <TabsContent value="reservation" className="pt-4">
+            <ReservationTab />
+          </TabsContent>
 
-        <TabsContent value="bed-availability" className="pt-4">
-          <BedAvailability />
-        </TabsContent>
+          <TabsContent value="bed-availability" className="pt-4">
+            <BedAvailability />
+          </TabsContent>
 
-        <TabsContent value="estimation" className="pt-4">
-          <EstimationTab />
-        </TabsContent>
+          <TabsContent value="estimation" className="pt-4">
+            <EstimationTab />
+          </TabsContent>
 
-        <TabsContent value="occupancy" className="pt-4">
-          <OccupancyTab />
-        </TabsContent>
-      </Tabs>
+          <TabsContent value="occupancy" className="pt-4">
+            <OccupancyTab />
+          </TabsContent>
+        </Tabs>
+      </div>
     </div>
   );
 }

@@ -3,11 +3,9 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/stores/auth-store';
 import { useSidebarStore } from '@/stores/sidebar-store';
-import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import {
-  ChevronLeft,
   LayoutDashboard,
   Building2,
   Users,
@@ -16,112 +14,130 @@ import {
   LifeBuoy,
   BarChart3,
   Settings,
-  Shield,
+  ShieldCheck,
+  PanelLeftClose,
+  PanelLeft,
+  Percent,
+  CalendarCheck,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
   { href: '/super-admin', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/super-admin/demo-requests', label: 'Demo Requests', icon: CalendarCheck },
   { href: '/super-admin/hospitals', label: 'Hospitals', icon: Building2 },
   { href: '/super-admin/users', label: 'Users', icon: Users },
   { href: '/super-admin/subscriptions', label: 'Subscriptions', icon: CreditCard },
+  { href: '/super-admin/commission', label: 'Commission', icon: Percent },
   { href: '/super-admin/features', label: 'Features', icon: ToggleLeft },
   { href: '/super-admin/support', label: 'Support Tickets', icon: LifeBuoy },
   { href: '/super-admin/reports', label: 'Reports', icon: BarChart3 },
   { href: '/super-admin/settings', label: 'Settings', icon: Settings },
 ];
 
-function SidebarContent({ collapsed = false }: { collapsed?: boolean }) {
+export function SuperAdminSidebar() {
   const pathname = usePathname();
-  const { close } = useSidebarStore();
+  const { user } = useAuthStore();
+  const { isPinned, togglePin } = useSidebarStore();
+
+  const initials = user
+    ? `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}`.toUpperCase()
+    : 'SA';
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div
-        className={cn(
-          'flex items-center gap-2 px-4 h-16 border-b border-sidebar-border shrink-0 bg-primary text-primary-foreground',
-          collapsed && 'justify-center px-2'
-        )}
-      >
-        <Shield className="h-6 w-6 shrink-0" />
-        {!collapsed && (
-          <span className="font-bold text-base truncate">Platform Admin</span>
-        )}
+    <aside
+      className={cn(
+        'fixed left-0 top-0 h-full z-50 flex flex-col py-8 bg-slate-50 transition-all duration-300 ease-in-out border-r-0 shadow-[24px_0_40px_-4px_rgba(0,0,0,0.05)]',
+        isPinned ? 'w-64' : 'w-20 hover:w-64 group'
+      )}
+    >
+      {/* Logo / Brand */}
+      <div className="mb-8 flex items-center justify-between px-6 w-full overflow-hidden">
+        <div className="flex items-center min-w-0">
+          <div className="min-w-[40px] h-10 w-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
+            <ShieldCheck className="h-5 w-5 text-primary" />
+          </div>
+          <div
+            className={cn(
+              'ml-4 whitespace-nowrap transition-opacity duration-300',
+              isPinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+            )}
+          >
+            <h2 className="text-primary font-bold text-xl tracking-tighter">Platform</h2>
+            <p className="text-xs text-slate-400 font-medium">Super Admin</p>
+          </div>
+        </div>
+        {/* Pin / Unpin button — visible when expanded */}
+        <button
+          onClick={togglePin}
+          title={isPinned ? 'Collapse sidebar' : 'Keep sidebar open'}
+          className={cn(
+            'shrink-0 p-1.5 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-primary transition-all duration-200',
+            isPinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          )}
+        >
+          {isPinned ? (
+            <PanelLeftClose className="h-4 w-4" />
+          ) : (
+            <PanelLeft className="h-4 w-4" />
+          )}
+        </button>
       </div>
 
-      {/* Nav items */}
-      <nav className="flex-1 overflow-y-auto py-4 px-2">
-        <ul className="space-y-1">
-          {NAV_ITEMS.map((item) => {
-            const isActive =
-              item.href === '/super-admin'
-                ? pathname === '/super-admin'
-                : pathname.startsWith(item.href);
-            const Icon = item.icon;
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  onClick={() => close()}
-                  title={collapsed ? item.label : undefined}
-                  className={cn(
-                    'flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors',
-                    'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-                    isActive
-                      ? 'bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
-                      : 'text-sidebar-foreground',
-                    collapsed && 'justify-center px-2'
-                  )}
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  {!collapsed && <span className="truncate">{item.label}</span>}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+      {/* Navigation */}
+      <nav className="flex-1 w-full space-y-0.5 overflow-y-auto sanctuary-scrollbar">
+        {NAV_ITEMS.map((item) => {
+          const isActive =
+            item.href === '/super-admin'
+              ? pathname === '/super-admin'
+              : pathname.startsWith(item.href);
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                'relative flex items-center px-6 py-4 w-full transition-all duration-200',
+                isActive
+                  ? 'bg-surface-container-lowest text-primary rounded-l-xl rounded-r-none sidebar-branch'
+                  : 'text-slate-400 hover:text-primary hover:bg-primary/5'
+              )}
+            >
+              <Icon
+                className="min-w-[24px] h-5 w-5 shrink-0"
+                style={isActive ? { strokeWidth: 2.5 } : undefined}
+              />
+              <span
+                className={cn(
+                  'ml-4 font-sans text-sm font-medium tracking-wide whitespace-nowrap transition-opacity duration-300',
+                  isPinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                )}
+              >
+                {item.label}
+              </span>
+            </Link>
+          );
+        })}
       </nav>
-    </div>
-  );
-}
 
-export function SuperAdminSidebar() {
-  const { isOpen, isCollapsed, close, toggleCollapse } = useSidebarStore();
-
-  return (
-    <>
-      {/* Desktop Sidebar */}
-      <aside
-        className={cn(
-          'hidden lg:flex flex-col h-screen bg-sidebar border-r border-sidebar-border transition-all duration-300 relative',
-          isCollapsed ? 'w-[68px]' : 'w-60'
-        )}
-      >
-        <SidebarContent collapsed={isCollapsed} />
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggleCollapse}
-          className="absolute -right-3 top-20 z-10 h-6 w-6 rounded-full border bg-background shadow-sm hover:bg-accent"
-        >
-          <ChevronLeft
+      {/* User profile at bottom */}
+      <div className="mt-auto px-6 w-full">
+        <div className="flex items-center w-full">
+          <div className="min-w-[40px] w-10 h-10 rounded-xl bg-secondary-container flex items-center justify-center text-on-secondary-container font-bold text-sm shrink-0">
+            {initials}
+          </div>
+          <div
             className={cn(
-              'h-3.5 w-3.5 transition-transform',
-              isCollapsed && 'rotate-180'
+              'ml-4 whitespace-nowrap transition-opacity duration-300',
+              isPinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
             )}
-          />
-        </Button>
-      </aside>
-
-      {/* Mobile Sidebar */}
-      <Sheet open={isOpen} onOpenChange={(open) => !open && close()}>
-        <SheetContent side="left" className="w-72 p-0">
-          <SheetHeader className="sr-only">
-            <SheetTitle>Platform Admin Navigation</SheetTitle>
-          </SheetHeader>
-          <SidebarContent />
-        </SheetContent>
-      </Sheet>
-    </>
+          >
+            <p className="text-xs font-bold text-on-surface">
+              {user ? `${user.firstName} ${user.lastName}` : 'Super Admin'}
+            </p>
+            <p className="text-[10px] text-slate-400">Platform Admin</p>
+          </div>
+        </div>
+      </div>
+    </aside>
   );
 }

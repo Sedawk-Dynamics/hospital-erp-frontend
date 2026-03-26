@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Filter, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { formatDate } from '@/lib/date-utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -102,7 +102,7 @@ export default function AdmissionsPage() {
       sortable: true,
       render: (admission) => {
         try {
-          return format(new Date(admission.admissionDate), 'MMM dd, yyyy');
+          return formatDate(admission.admissionDate);
         } catch {
           return admission.admissionDate;
         }

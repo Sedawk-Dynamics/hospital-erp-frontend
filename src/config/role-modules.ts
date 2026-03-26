@@ -1,4 +1,5 @@
 import type { ModuleKey } from '@/stores/module-store';
+import { MODULE_REGISTRY } from '@/config/modules';
 
 /**
  * Maps user role slugs to allowed modules.
@@ -131,37 +132,28 @@ export function getModulesForRole(roleSlug?: string): ModuleKey[] {
 }
 
 /**
- * Check if a role should auto-route (skip module selection).
- * Returns the auto-route path, or null if module selection is needed.
+ * Get the auto-route path for a role.
+ * Always returns the first permitted module's base route (no module selection step).
+ * Returns null only for roles with no modules (e.g. patient).
  */
 export function getAutoRouteForRole(roleSlug?: string): string | null {
-  if (!roleSlug) return null;
+  if (!roleSlug) return MODULE_REGISTRY['hospital'].baseRoute;
 
-  const modules = getModulesForRole(roleSlug);
+  const normalized = roleSlug.toLowerCase().replace(/[\s-]+/g, '_');
 
   // Super admin has its own dedicated panel
-  const normalized = roleSlug.toLowerCase().replace(/[\s-]+/g, '_');
   if (normalized === 'super_admin') {
     return '/super-admin';
   }
 
-  // If the role maps to exactly one module, auto-route to it
-  if (modules.length === 1) {
-    const moduleKey = modules[0];
-    // Return base route for the module
-    const routes: Record<string, string> = {
-      doctor: '/doctor',
-      hospital: '/hospital',
-      laboratory: '/laboratory',
-      radiology: '/radiology',
-      pharmacy: '/pharmacy',
-      ot: '/ot',
-      counsellor: '/counsellor',
-      daycare: '/daycare',
-      ward: '/ward',
-    };
-    return routes[moduleKey] || null;
+  // Patient has its own portal
+  if (normalized === 'patient') {
+    return '/patient-portal';
   }
 
-  return null;
+  const modules = getModulesForRole(roleSlug);
+  if (modules.length === 0) return null;
+
+  // Always route to first permitted module
+  return MODULE_REGISTRY[modules[0]].baseRoute;
 }

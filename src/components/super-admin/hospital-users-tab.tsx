@@ -31,6 +31,7 @@ import {
   type TenantRole,
 } from '@/hooks/use-super-admin';
 import { apiPut } from '@/lib/api';
+import { formatDate } from '@/lib/date-utils';
 import { useQueryClient } from '@tanstack/react-query';
 
 interface HospitalUsersTabProps {
@@ -165,14 +166,14 @@ export function HospitalUsersTab({ tenantId }: HospitalUsersTabProps) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h2 className="font-semibold text-foreground">Users</h2>
+          <h2 className="font-headline text-lg font-bold text-on-surface">Users</h2>
           {stats && (
-            <Badge variant="secondary">
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-secondary/10 text-secondary">
               {stats.activeCount} / {stats.maxUsers ?? '∞'} users
-            </Badge>
+            </span>
           )}
         </div>
-        <Button size="sm" onClick={handleCreate}>
+        <Button className="bg-primary text-white font-label font-bold text-sm px-6 py-2.5 rounded-xl hover:shadow-lg transition-shadow" size="sm" onClick={handleCreate}>
           <Plus className="mr-1.5 h-4 w-4" />
           Add User
         </Button>
@@ -181,7 +182,7 @@ export function HospitalUsersTab({ tenantId }: HospitalUsersTabProps) {
       {/* Filters */}
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant/60" />
           <Input
             placeholder="Search users..."
             value={search}
@@ -189,7 +190,7 @@ export function HospitalUsersTab({ tenantId }: HospitalUsersTabProps) {
               setSearch(e.target.value);
               setPage(1);
             }}
-            className="pl-9 h-8"
+            className="bg-surface-container-low border-none rounded-xl pl-12 pr-6 py-2.5 font-label text-sm focus:ring-2 focus:ring-primary/20 transition-all outline-none placeholder:text-on-surface-variant/60"
           />
         </div>
 
@@ -234,25 +235,25 @@ export function HospitalUsersTab({ tenantId }: HospitalUsersTabProps) {
       </div>
 
       {/* Table */}
-      <div className="rounded-lg border bg-card overflow-hidden">
+      <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b bg-muted/50">
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">User</th>
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Phone</th>
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Roles</th>
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Status</th>
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">2FA</th>
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Created</th>
-                <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Actions</th>
+              <tr className="border-b border-surface-container">
+                <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">User</th>
+                <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Phone</th>
+                <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Roles</th>
+                <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Status</th>
+                <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">2FA</th>
+                <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Created</th>
+                <th className="px-4 pb-4 pt-5 text-right font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Actions</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-surface-container/50">
               {isLoading ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center">
-                    <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                    <div className="flex items-center justify-center gap-2 font-label text-on-surface-variant">
                       <span className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                       Loading...
                     </div>
@@ -260,45 +261,45 @@ export function HospitalUsersTab({ tenantId }: HospitalUsersTabProps) {
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-muted-foreground">
+                  <td colSpan={7} className="py-12 text-center font-label text-on-surface-variant">
                     No users found
                   </td>
                 </tr>
               ) : (
                 users.map((user) => (
-                  <tr key={user.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                  <tr key={user.id} className="group hover:bg-surface-container-low transition-colors">
                     <td className="px-4 py-2.5">
                       <div>
-                        <p className="font-medium text-foreground">
+                        <p className="font-label text-sm font-bold text-on-surface">
                           {user.firstName} {user.lastName}
                         </p>
-                        <p className="text-xs text-muted-foreground">{user.email}</p>
+                        <p className="font-label text-[10px] text-on-surface-variant">{user.email}</p>
                       </div>
                     </td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{user.phone || '-'}</td>
+                    <td className="px-4 py-2.5 font-label text-sm text-on-surface-variant">{user.phone || '-'}</td>
                     <td className="px-4 py-2.5">
                       <div className="flex flex-wrap gap-1">
                         {user.userRoles?.map((ur) => (
-                          <Badge key={ur.role.id} variant="secondary" className="text-xs capitalize">
+                          <span key={ur.role.id} className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-secondary/10 text-secondary capitalize">
                             {ur.role.name.replace(/_/g, ' ')}
-                          </Badge>
+                          </span>
                         ))}
                       </div>
                     </td>
                     <td className="px-4 py-2.5">
-                      <Badge variant={user.isActive ? 'default' : 'destructive'}>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${user.isActive ? 'bg-primary/10 text-primary' : 'bg-surface-container-high text-on-surface-variant'}`}>
                         {user.isActive ? 'Active' : 'Inactive'}
-                      </Badge>
+                      </span>
                     </td>
                     <td className="px-4 py-2.5">
                       {user.is2faEnabled ? (
                         <Shield className="h-4 w-4 text-primary" />
                       ) : (
-                        <span className="text-muted-foreground">-</span>
+                        <span className="text-on-surface-variant">-</span>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-muted-foreground">
-                      {new Date(user.createdAt).toLocaleDateString()}
+                    <td className="px-4 py-2.5 font-label text-[10px] text-on-surface-variant">
+                      {formatDate(user.createdAt)}
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <DropdownMenu>
@@ -344,8 +345,8 @@ export function HospitalUsersTab({ tenantId }: HospitalUsersTabProps) {
         </div>
 
         {meta && meta.totalPages > 1 && (
-          <div className="flex items-center justify-between border-t px-4 py-3">
-            <span className="text-sm text-muted-foreground">
+          <div className="flex items-center justify-between border-t border-surface-container px-4 py-3">
+            <span className="font-label text-xs text-on-surface-variant">
               Showing {users.length} of {meta.total} users
             </span>
             <div className="flex gap-2">

@@ -19,8 +19,10 @@ export function getRefreshToken(): string | null {
 export function setTokens(accessToken: string, refreshToken: string): void {
   localStorage.setItem('accessToken', accessToken);
   localStorage.setItem('refreshToken', refreshToken);
-  // Also set a cookie so Next.js middleware (server-side) can check auth
-  document.cookie = `accessToken=${accessToken}; path=/; max-age=${15 * 60}; SameSite=Lax`;
+  // Cookie for Next.js middleware auth check — TTL matches refresh token (7 days)
+  // so the middleware doesn't redirect to /login while the session is still valid.
+  // Actual auth security is enforced by the backend JWT verification, not this cookie.
+  document.cookie = `accessToken=${accessToken}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
 }
 
 export function clearTokens(): void {

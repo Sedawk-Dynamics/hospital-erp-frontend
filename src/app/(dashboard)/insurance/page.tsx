@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Filter } from 'lucide-react';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { formatDate } from '@/lib/date-utils';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PageHeader } from '@/components/shared/page-header';
@@ -126,7 +126,7 @@ export default function InsurancePage() {
       sortable: true,
       render: (claim) => {
         try {
-          return format(new Date(claim.createdAt), 'MMM dd, yyyy');
+          return formatDate(claim.createdAt);
         } catch {
           return '-';
         }

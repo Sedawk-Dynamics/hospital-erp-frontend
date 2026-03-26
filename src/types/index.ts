@@ -22,15 +22,78 @@ export interface LoginResponse {
   accessToken: string;
   refreshToken: string;
   user: User;
+  onboardingStatus?: 'needs_plan' | 'needs_hospital' | 'has_hospitals' | 'active';
+}
+
+export interface SwitchHospitalResponse {
+  accessToken: string;
+  refreshToken: string;
+  user: User;
+  tenant: Tenant;
 }
 
 export interface RegisterData {
-  tenantSlug: string;
+  tenantSlug?: string;
   firstName: string;
   lastName: string;
   email: string;
-  phone: string;
+  phone?: string;
   password: string;
+}
+
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  description: string | null;
+  priceMonthly: number | null;
+  priceYearly: number | null;
+  maxUsers: number | null;
+  maxHospitals: number | null;
+  features: Record<string, boolean> | null;
+  isActive: boolean;
+}
+
+export interface OnboardingStatus {
+  status: 'needs_plan' | 'needs_hospital' | 'has_hospitals';
+  tenants?: { id: string; name: string; slug: string }[];
+}
+
+// --- Hospital Creation ---
+export interface CreateHospitalData {
+  name: string;
+  slug?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  licenseNumber?: string;
+}
+
+export interface MyHospital {
+  id: string;
+  name: string;
+  slug: string;
+  hospitalCode: string | null;
+  logoUrl: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  phone: string | null;
+  email: string | null;
+  website: string | null;
+  licenseNumber: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  userSubscription?: {
+    id: string;
+    status: string;
+    plan?: { name: string };
+  } | null;
 }
 
 // --- Tenant ---
@@ -38,8 +101,12 @@ export interface Tenant {
   id: string;
   name: string;
   slug: string;
+  hospitalCode?: string | null;
   logo?: string;
   address?: string;
+  city?: string;
+  state?: string;
+  country?: string;
   phone?: string;
   email?: string;
   isActive: boolean;
@@ -143,6 +210,7 @@ export interface DoctorProfile {
   availableDays: string[];
   availableSlots: { start: string; end: string }[];
   departmentId?: string;
+  department?: { id: string; name: string };
   isAvailable: boolean;
   createdAt: string;
   updatedAt: string;
@@ -158,10 +226,12 @@ export interface Appointment {
   appointmentDate: string;
   startTime: string;
   endTime: string;
-  type: 'consultation' | 'follow_up' | 'emergency' | 'procedure';
-  status: 'scheduled' | 'checked_in' | 'in_progress' | 'completed' | 'cancelled' | 'no_show';
+  type: 'consultation' | 'follow_up' | 'emergency' | 'procedure' | 'telemedicine';
+  status: 'booked' | 'confirmed' | 'checked_in' | 'in_consultation' | 'completed' | 'cancelled' | 'no_show';
   reason?: string;
   notes?: string;
+  priority?: 'normal' | 'urgent' | 'emergency';
+  queueTokens?: Array<{ id: string; tokenNumber: number; status: string }>;
   tenantId: string;
   createdAt: string;
   updatedAt: string;
@@ -240,7 +310,9 @@ export interface LabOrder {
   doctor: DoctorProfile;
   tests: LabTest[];
   priority: 'routine' | 'urgent' | 'stat';
-  status: 'pending' | 'sample_collected' | 'in_progress' | 'completed' | 'cancelled';
+  status: 'ordered' | 'pending' | 'sample_collected' | 'in_progress' | 'completed' | 'cancelled';
+  isThirdParty?: boolean;
+  thirdPartyLabName?: string;
   notes?: string;
   clinicalNotes?: string;
   tenantId: string;
@@ -396,4 +468,40 @@ export interface Bill {
   tenantId: string;
   createdAt: string;
   updatedAt: string;
+}
+
+// --- Patient Hospital Connections ---
+export interface HospitalConnection {
+  id: string;
+  tenantId: string;
+  status: 'pending' | 'approved' | 'rejected';
+  patientId: string | null;
+  requestMessage?: string;
+  rejectionReason?: string;
+  createdAt: string;
+  tenant: {
+    id: string;
+    name: string;
+    slug: string;
+    hospitalCode: string | null;
+    logoUrl: string | null;
+    city: string | null;
+    state: string | null;
+    address: string | null;
+  };
+}
+
+export interface LookupHospital {
+  id: string;
+  name: string;
+  slug: string;
+  hospitalCode: string | null;
+  logoUrl: string | null;
+  city: string | null;
+  state: string | null;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  allowDirectPatientConnection: boolean;
+  connectionStatus: 'none' | 'pending' | 'approved' | 'rejected';
 }

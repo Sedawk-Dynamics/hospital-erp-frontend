@@ -1,19 +1,19 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { format } from 'date-fns';
+import { toInputDateStr } from '@/lib/date-utils';
 import { Search, CalendarIcon } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { AppointmentStatsRow } from '@/components/hospital/appointment-stats-row';
 import { PatientTagFilter } from '@/components/hospital/patient-tag-filter';
-import { StatusProgression } from '@/components/hospital/status-progression';
 import { PatientCategoryIndicators } from '@/components/doctor/patient-category-indicators';
 import { DoctorActionButtons } from '@/components/doctor/doctor-action-buttons';
-import { useOPAppointments, useAppointmentStats } from '@/hooks/use-hospital';
+import { useDoctorAppointments, useDoctorAppointmentStats, useUpdateAppointmentStatus } from '@/hooks/use-doctor';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 import type { Appointment } from '@/types';
 import {
   DropdownMenu,
@@ -21,13 +21,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Eye, Edit, XCircle, MoreVertical } from 'lucide-react';
+import { Eye, Edit, XCircle, MoreVertical, CheckCircle, LogIn, Stethoscope, UserCheck } from 'lucide-react';
 
+// Backend statuses: booked, confirmed, checked_in, in_consultation, completed, cancelled, no_show
 const statusFilterMap: Record<string, string | undefined> = {
   all: undefined,
-  booked: 'scheduled',
+  booked: 'booked',
   arrived: 'checked_in',
-  withDoctor: 'in_progress',
+  withDoctor: 'in_consultation',
   completed: 'completed',
   cancelled: 'cancelled',
   ipAppointments: undefined,
@@ -40,28 +41,47 @@ const categoryColors: Record<string, string> = {
   procedure: 'bg-amber-500',
 };
 
+// Status transitions the doctor can perform
+const DOCTOR_TRANSITIONS: Record<string, { label: string; to: string; icon: typeof CheckCircle; color?: string }[]> = {
+  booked: [
+    { label: 'Confirm', to: 'confirmed', icon: CheckCircle },
+    { label: 'Cancel', to: 'cancelled', icon: XCircle, color: 'text-destructive' },
+  ],
+  confirmed: [
+    { label: 'Check In', to: 'checked_in', icon: LogIn },
+    { label: 'Cancel', to: 'cancelled', icon: XCircle, color: 'text-destructive' },
+  ],
+  checked_in: [
+    { label: 'Start Consultation', to: 'in_consultation', icon: Stethoscope },
+    { label: 'Cancel', to: 'cancelled', icon: XCircle, color: 'text-destructive' },
+  ],
+  in_consultation: [
+    { label: 'Complete', to: 'completed', icon: UserCheck },
+  ],
+};
+
 export default function DoctorHomePage() {
   const { user } = useAuthStore();
   const [searchQuery, setSearchQuery] = useState('');
-  const [fromDate, setFromDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [toDate, setToDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [fromDate, setFromDate] = useState(toInputDateStr());
+  const [toDate, setToDate] = useState(toInputDateStr());
   const [activeStatFilter, setActiveStatFilter] = useState('all');
   const [activeTag, setActiveTag] = useState('all');
   const [page, setPage] = useState(1);
 
   const statusFilter = statusFilterMap[activeStatFilter];
 
-  // Doctor sees only their own appointments
-  const { data: appointmentsData, isLoading } = useOPAppointments({
+  // Doctor sees only their own appointments — pass doctorUserId so backend resolves DoctorProfile
+  const { data: appointmentsData, isLoading } = useDoctorAppointments({
     page,
     limit: 30,
     date: fromDate,
-    doctorId: user?.id,
+    doctorUserId: user?.id,
     status: statusFilter,
     search: searchQuery || undefined,
   });
 
-  const { data: stats, isLoading: statsLoading } = useAppointmentStats(fromDate);
+  const { data: doctorStats, isLoading: statsLoading } = useDoctorAppointmentStats(user?.id, fromDate);
 
   const appointments = appointmentsData?.data ?? [];
 
@@ -76,16 +96,16 @@ export default function DoctorHomePage() {
   }, []);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 animate-fade-in-up">
       {/* Header with action buttons */}
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-foreground">Doctor Appointments</h1>
+        <h1 className="font-headline text-xl font-bold">Doctor Appointments</h1>
       </div>
 
       <DoctorActionButtons />
 
       {/* Patient categories + Stats row */}
-      <div className="flex items-center gap-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
         <div className="flex items-center gap-3">
           <Avatar className="h-12 w-12">
             <AvatarFallback className="bg-primary/10 text-primary">
@@ -93,15 +113,15 @@ export default function DoctorHomePage() {
             </AvatarFallback>
           </Avatar>
           <PatientCategoryIndicators
-            newPatients={0}
-            reviewPatients={0}
-            oldPatients={0}
+            newPatients={doctorStats?.newPatients ?? 0}
+            reviewPatients={doctorStats?.reviewPatients ?? 0}
+            oldPatients={doctorStats?.oldPatients ?? 0}
           />
         </div>
 
         <div className="flex-1">
           <AppointmentStatsRow
-            stats={stats}
+            stats={doctorStats}
             activeFilter={activeStatFilter}
             onFilterChange={handleStatFilter}
             isLoading={statsLoading}
@@ -121,7 +141,7 @@ export default function DoctorHomePage() {
               type="date"
               value={fromDate}
               onChange={(e) => { setFromDate(e.target.value); setPage(1); }}
-              className="pl-8 h-8 text-xs w-[140px]"
+              className="pl-8 h-8 text-xs w-full sm:w-[140px]"
             />
           </div>
           <span className="text-xs text-muted-foreground">To Date:</span>
@@ -131,13 +151,13 @@ export default function DoctorHomePage() {
               type="date"
               value={toDate}
               onChange={(e) => setToDate(e.target.value)}
-              className="pl-8 h-8 text-xs w-[140px]"
+              className="pl-8 h-8 text-xs w-full sm:w-[140px]"
             />
           </div>
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Search"
+              placeholder="Search patient..."
               value={searchQuery}
               onChange={(e) => handleSearchChange(e.target.value)}
               className="pl-8 h-8 text-xs w-[160px]"
@@ -159,7 +179,37 @@ export default function DoctorHomePage() {
   );
 }
 
-// Doctor-specific appointment table matching eMedHub screenshot
+// ── Helpers ──────────────────────────────────────────
+
+function formatTimeFromISO(t: string | null | undefined): string {
+  if (!t) return '-';
+  try {
+    const d = new Date(t);
+    if (isNaN(d.getTime())) {
+      // Try HH:MM format
+      const [h, m] = t.split(':').map(Number);
+      if (isNaN(h)) return t;
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${ampm}`;
+    }
+    return d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
+  } catch {
+    return t;
+  }
+}
+
+const statusLabels: Record<string, { label: string; bg: string; text: string }> = {
+  booked: { label: 'Booked', bg: 'bg-blue-100', text: 'text-blue-700' },
+  confirmed: { label: 'Confirmed', bg: 'bg-cyan-100', text: 'text-cyan-700' },
+  checked_in: { label: 'Checked In', bg: 'bg-amber-100', text: 'text-amber-700' },
+  in_consultation: { label: 'In Consultation', bg: 'bg-purple-100', text: 'text-purple-700' },
+  completed: { label: 'Completed', bg: 'bg-green-100', text: 'text-green-700' },
+  cancelled: { label: 'Cancelled', bg: 'bg-red-100', text: 'text-red-700' },
+  no_show: { label: 'No Show', bg: 'bg-gray-100', text: 'text-gray-700' },
+};
+
+// ── Doctor-specific appointment table ──────────────────
+
 function DoctorAppointmentTable({
   appointments,
   isLoading,
@@ -175,9 +225,25 @@ function DoctorAppointmentTable({
   total: number;
   onPageChange: (page: number) => void;
 }) {
+  const statusMutation = useUpdateAppointmentStatus();
+
+  const handleStatusChange = (id: string, newStatus: string) => {
+    statusMutation.mutate(
+      { id, status: newStatus },
+      {
+        onSuccess: () => {
+          toast.success(`Appointment ${newStatus.replace('_', ' ')} successfully`);
+        },
+        onError: (err: any) => {
+          toast.error(err?.response?.data?.message || `Failed to update status`);
+        },
+      },
+    );
+  };
+
   if (isLoading) {
     return (
-      <div className="rounded-lg border bg-card">
+      <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary">
         <div className="p-8 text-center">
           <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           <p className="mt-2 text-sm text-muted-foreground">Loading appointments...</p>
@@ -188,7 +254,7 @@ function DoctorAppointmentTable({
 
   if (appointments.length === 0) {
     return (
-      <div className="rounded-lg border bg-card">
+      <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary">
         <div className="p-8 text-center text-muted-foreground">
           No appointments found for the selected date.
         </div>
@@ -197,18 +263,17 @@ function DoctorAppointmentTable({
   }
 
   return (
-    <div className="rounded-lg border bg-card overflow-hidden">
+    <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b bg-muted/50">
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Patient Details</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Appointment Details</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Arriving / Waiting Time</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Payment Status</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Purpose of Visit</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
-              <th className="px-4 py-3 text-center font-medium text-muted-foreground">Action</th>
+            <tr className="border-b border-surface-container">
+              <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Patient Details</th>
+              <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Appointment Details</th>
+              <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Time</th>
+              <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Purpose of Visit</th>
+              <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Status</th>
+              <th className="px-4 pb-4 pt-5 text-center font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Action</th>
             </tr>
           </thead>
           <tbody>
@@ -217,9 +282,12 @@ function DoctorAppointmentTable({
               const initials = patient
                 ? `${patient.firstName?.[0] || ''}${patient.lastName?.[0] || ''}`.toUpperCase()
                 : '?';
+              const transitions = DOCTOR_TRANSITIONS[apt.status] ?? [];
+              const st = statusLabels[apt.status] ?? statusLabels.booked;
+              const PrimaryIcon = transitions.length > 0 ? transitions[0].icon : null;
 
               return (
-                <tr key={apt.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                <tr key={apt.id} className="group hover:bg-surface-container-low transition-colors">
                   {/* Patient Details */}
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
@@ -232,13 +300,13 @@ function DoctorAppointmentTable({
                         <div
                           className={cn(
                             'absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card',
-                            categoryColors[apt.type] || 'bg-gray-400'
+                            (apt.type && categoryColors[apt.type]) || 'bg-gray-400'
                           )}
-                          title={apt.type}
+                          title={apt.type ?? 'general'}
                         />
                       </div>
                       <div>
-                        <p className="font-semibold text-foreground">
+                        <p className="font-semibold text-foreground truncate max-w-[200px]">
                           {patient ? `${patient.firstName} ${patient.lastName}`.toUpperCase() : 'Unknown'}
                           {' '}
                           <span className="font-normal text-muted-foreground">
@@ -257,73 +325,97 @@ function DoctorAppointmentTable({
                   {/* Appointment Details */}
                   <td className="px-4 py-3">
                     <div>
-                      <p className="font-medium text-foreground">
-                        Token: {apt.id?.slice(-4) || '-'}
+                      <p className="font-medium text-foreground capitalize">
+                        {apt.type?.replace('_', ' ') || 'General'}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Consultant: {apt.doctor
-                          ? `Dr ${apt.doctor.user?.firstName || ''}`
-                          : '-'}
+                        {apt.doctor?.department?.name || apt.doctor?.specialization || '-'}
                       </p>
                     </div>
                   </td>
 
-                  {/* Arriving / Waiting Time */}
+                  {/* Time */}
                   <td className="px-4 py-3">
                     <div>
-                      <p className="text-sm text-foreground">
-                        {apt.startTime ? `Arrived: ${apt.startTime}` : '-'}
+                      <p className="text-sm font-medium text-foreground">
+                        {formatTimeFromISO(apt.startTime)}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Booked: {apt.startTime || '-'}
+                        {apt.endTime ? `to ${formatTimeFromISO(apt.endTime)}` : ''}
                       </p>
-                    </div>
-                  </td>
-
-                  {/* Payment Status */}
-                  <td className="px-4 py-3">
-                    <div className="space-y-0.5 text-xs">
-                      <p className="text-muted-foreground">Bill: -</p>
-                      <p className="text-green-600 font-medium">Paid: -</p>
-                      <p className="text-red-600">Balance: -</p>
                     </div>
                   </td>
 
                   {/* Purpose of Visit */}
                   <td className="px-4 py-3">
-                    <p className="text-sm font-medium text-foreground uppercase">
-                      {apt.reason || apt.type?.replace('_', ' ') || 'CONSULTATION'}
+                    <p className="text-sm text-foreground truncate max-w-[180px]">
+                      {apt.reason || '-'}
                     </p>
                   </td>
 
-                  {/* Status Progression */}
+                  {/* Status */}
                   <td className="px-4 py-3">
-                    <StatusProgression status={apt.status} />
+                    <span className={cn(
+                      'text-[10px] font-bold px-2 py-0.5 rounded-full',
+                      st.bg, st.text,
+                    )}>
+                      {st.label}
+                    </span>
                   </td>
 
                   {/* Actions */}
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-center gap-1">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" title="Edit">
-                        <Edit className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" title="View">
-                        <Eye className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" title="Cancel">
-                        <XCircle className="h-3.5 w-3.5" />
-                      </Button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          render={<Button variant="ghost" size="icon" className="h-7 w-7" />}
+                      {/* Quick action: primary transition */}
+                      {transitions.length > 0 && transitions[0].to !== 'cancelled' && PrimaryIcon && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className={cn('h-7 text-xs gap-1', transitions[0].color)}
+                          onClick={() => handleStatusChange(apt.id, transitions[0].to)}
+                          disabled={statusMutation.isPending}
+                          title={transitions[0].label}
                         >
-                          <MoreVertical className="h-3.5 w-3.5" />
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem>View Details</DropdownMenuItem>
-                          <DropdownMenuItem>Print</DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                          <PrimaryIcon className="h-3.5 w-3.5" />
+                          {transitions[0].label}
+                        </Button>
+                      )}
+
+                      {/* More actions dropdown */}
+                      {transitions.length > 0 && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={<Button variant="ghost" size="icon" className="h-7 w-7" />}
+                          >
+                            <MoreVertical className="h-3.5 w-3.5" />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {transitions.map((t) => {
+                              const TIcon = t.icon;
+                              return (
+                                <DropdownMenuItem
+                                  key={t.to}
+                                  onClick={() => handleStatusChange(apt.id, t.to)}
+                                  className={t.color}
+                                >
+                                  <TIcon className="mr-2 h-4 w-4" />
+                                  {t.label}
+                                </DropdownMenuItem>
+                              );
+                            })}
+                            <DropdownMenuItem>
+                              <Eye className="mr-2 h-4 w-4" />
+                              View Details
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+
+                      {transitions.length === 0 && (
+                        <Button variant="ghost" size="icon" className="h-7 w-7" title="View">
+                          <Eye className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </td>
                 </tr>

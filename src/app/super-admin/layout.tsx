@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { SuperAdminSidebar } from '@/components/layout/super-admin-sidebar';
 import { SuperAdminHeader } from '@/components/layout/super-admin-header';
 import { useAuthStore } from '@/stores/auth-store';
+import { useSidebarStore } from '@/stores/sidebar-store';
 
 export default function SuperAdminLayout({
   children,
@@ -13,12 +14,12 @@ export default function SuperAdminLayout({
 }) {
   const router = useRouter();
   const { hydrate, _hydrated, isAuthenticated, user, fetchMe } = useAuthStore();
+  const { isPinned } = useSidebarStore();
 
   useEffect(() => {
     hydrate();
   }, [hydrate]);
 
-  // Refresh user data from backend to get latest role
   useEffect(() => {
     if (_hydrated && user && !user.role) {
       fetchMe();
@@ -31,16 +32,15 @@ export default function SuperAdminLayout({
       router.push('/login');
       return;
     }
-    // Guard: only super_admin can access this layout
     const roleSlug = user?.role?.slug || user?.roles?.[0];
     if (roleSlug !== 'super_admin') {
-      router.push('/select-clinic');
+      router.push('/select-hospital');
     }
   }, [_hydrated, isAuthenticated, user, router]);
 
   if (!_hydrated) {
     return (
-      <div className="flex h-screen items-center justify-center">
+      <div className="flex h-screen items-center justify-center bg-background">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
       </div>
     );
@@ -52,12 +52,14 @@ export default function SuperAdminLayout({
   }
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="min-h-screen bg-background">
       <SuperAdminSidebar />
-      <div className="flex flex-1 flex-col overflow-hidden transition-all duration-300">
+      <div className={`flex flex-col min-h-screen transition-all duration-300 ${isPinned ? 'ml-64' : 'ml-20'}`}>
         <SuperAdminHeader />
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-          {children}
+        <main className="flex-1 overflow-y-auto p-8 pt-4 sanctuary-scrollbar">
+          <div className="animate-fade-in-up">
+            {children}
+          </div>
         </main>
       </div>
     </div>

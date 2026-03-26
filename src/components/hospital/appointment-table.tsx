@@ -23,10 +23,10 @@ interface AppointmentTableProps {
 }
 
 const categoryColors: Record<string, string> = {
-  consultation: 'bg-red-500',
-  follow_up: 'bg-blue-500',
-  emergency: 'bg-purple-500',
-  procedure: 'bg-amber-500',
+  consultation: 'bg-error',
+  follow_up: 'bg-primary',
+  emergency: 'bg-tertiary',
+  procedure: 'bg-secondary',
 };
 
 export function AppointmentTable({
@@ -39,10 +39,10 @@ export function AppointmentTable({
 }: AppointmentTableProps) {
   if (isLoading) {
     return (
-      <div className="rounded-lg border bg-card">
+      <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary">
         <div className="p-8 text-center">
           <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <p className="mt-2 text-sm text-muted-foreground">Loading appointments...</p>
+          <p className="mt-2 font-label text-sm text-on-surface-variant">Loading appointments...</p>
         </div>
       </div>
     );
@@ -50,8 +50,8 @@ export function AppointmentTable({
 
   if (appointments.length === 0) {
     return (
-      <div className="rounded-lg border bg-card">
-        <div className="p-8 text-center text-muted-foreground">
+      <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary">
+        <div className="p-8 text-center text-on-surface-variant font-label">
           No appointments found.
         </div>
       </div>
@@ -59,21 +59,21 @@ export function AppointmentTable({
   }
 
   return (
-    <div className="rounded-lg border bg-card overflow-hidden">
+    <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-left">
           <thead>
-            <tr className="border-b bg-muted/50">
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Patient Details</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Appointment Details</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Time</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Payment Status</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Purpose</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
-              <th className="px-4 py-3 text-center font-medium text-muted-foreground">Action</th>
+            <tr className="text-on-surface-variant font-label text-[10px] uppercase tracking-widest border-b border-surface-container">
+              <th className="px-4 pb-4 pt-5 font-semibold">Patient Details</th>
+              <th className="px-4 pb-4 pt-5 font-semibold">Appointment Details</th>
+              <th className="px-4 pb-4 pt-5 font-semibold">Time</th>
+              <th className="px-4 pb-4 pt-5 font-semibold">Payment Status</th>
+              <th className="px-4 pb-4 pt-5 font-semibold">Purpose</th>
+              <th className="px-4 pb-4 pt-5 font-semibold">Status</th>
+              <th className="px-4 pb-4 pt-5 font-semibold text-center">Action</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-surface-container/50">
             {appointments.map((apt) => {
               const patient = apt.patient;
               const initials = patient
@@ -81,29 +81,29 @@ export function AppointmentTable({
                 : '?';
 
               return (
-                <tr key={apt.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                <tr key={apt.id} className="group hover:bg-surface-container-low transition-colors">
                   {/* Patient Details */}
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-4">
                     <div className="flex items-center gap-3">
                       <div className="relative">
-                        <Avatar className="h-9 w-9">
-                          <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                        <Avatar className="h-10 w-10 rounded-xl">
+                          <AvatarFallback className="text-xs bg-primary/10 text-primary rounded-xl">
                             {initials}
                           </AvatarFallback>
                         </Avatar>
                         <div
                           className={cn(
-                            'absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card',
-                            categoryColors[apt.type] || 'bg-gray-400'
+                            'absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-surface-container-lowest',
+                            (apt.type && categoryColors[apt.type]) || 'bg-outline'
                           )}
                           title={apt.type}
                         />
                       </div>
                       <div>
-                        <p className="font-medium text-foreground">
+                        <p className="font-label text-sm font-bold">
                           {patient ? `${patient.firstName} ${patient.lastName}` : 'Unknown'}
                         </p>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-2 font-label text-[10px] text-on-surface-variant">
                           <span>{patient?.mrn || '-'}</span>
                           <span>|</span>
                           <span>{patient?.phone || '-'}</span>
@@ -113,52 +113,49 @@ export function AppointmentTable({
                   </td>
 
                   {/* Appointment Details */}
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-4">
                     <div>
-                      <p className="font-medium text-foreground">
+                      <p className="font-label text-sm font-bold">
                         {apt.doctor
                           ? `Dr. ${apt.doctor.user?.firstName || ''} ${apt.doctor.user?.lastName || ''}`
                           : '-'}
                       </p>
-                      <p className="text-xs text-muted-foreground capitalize">{apt.type.replace('_', ' ')}</p>
+                      <p className="font-label text-[10px] text-on-surface-variant capitalize">{apt.type?.replace('_', ' ') || 'General'}</p>
                     </div>
                   </td>
 
                   {/* Time */}
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-4">
                     <div>
-                      <p className="font-medium text-foreground">{apt.startTime || '-'}</p>
-                      <p className="text-xs text-muted-foreground">{apt.endTime ? `to ${apt.endTime}` : ''}</p>
+                      <p className="font-label text-sm font-bold">{apt.startTime || '-'}</p>
+                      <p className="font-label text-[10px] text-on-surface-variant">{apt.endTime ? `to ${apt.endTime}` : ''}</p>
                     </div>
                   </td>
 
                   {/* Payment Status */}
-                  <td className="px-4 py-3">
-                    <span className={cn(
-                      'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-                      'bg-amber-100 text-amber-800'
-                    )}>
+                  <td className="px-4 py-4">
+                    <span className="text-[10px] font-bold px-2 py-0.5 bg-secondary/10 text-secondary rounded-full">
                       Pending
                     </span>
                   </td>
 
                   {/* Purpose */}
-                  <td className="px-4 py-3">
-                    <p className="text-sm text-foreground truncate max-w-[150px]">
+                  <td className="px-4 py-4">
+                    <p className="font-label text-sm truncate max-w-[150px]">
                       {apt.reason || '-'}
                     </p>
                   </td>
 
                   {/* Status Progression */}
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-4">
                     <StatusProgression status={apt.status} />
                   </td>
 
                   {/* Actions */}
-                  <td className="px-4 py-3 text-center">
+                  <td className="px-4 py-4 text-center">
                     <DropdownMenu>
                       <DropdownMenuTrigger
-                        render={<Button variant="ghost" size="icon" className="h-8 w-8" />}
+                        render={<Button variant="ghost" size="icon" className="h-8 w-8 text-outline hover:text-primary transition-colors" />}
                       >
                         <MoreHorizontal className="h-4 w-4" />
                       </DropdownMenuTrigger>
@@ -179,8 +176,8 @@ export function AppointmentTable({
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between border-t px-4 py-3">
-          <p className="text-sm text-muted-foreground">
+        <div className="flex items-center justify-between border-t border-surface-container px-4 py-3">
+          <p className="font-label text-xs text-on-surface-variant">
             Showing page {page} of {totalPages} ({total} total)
           </p>
           <div className="flex gap-1">

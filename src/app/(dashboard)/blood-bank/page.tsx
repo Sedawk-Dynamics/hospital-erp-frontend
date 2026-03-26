@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Filter } from 'lucide-react';
 import { toast } from 'sonner';
-import { format, differenceInDays } from 'date-fns';
+import { differenceInDays } from 'date-fns';
+import { formatDate } from '@/lib/date-utils';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PageHeader } from '@/components/shared/page-header';
@@ -38,14 +39,14 @@ const bloodStatusVariant: Record<string, 'warning' | 'info' | 'success' | 'dange
 };
 
 const bloodGroupColors: Record<string, string> = {
-  'A+': 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
-  'A-': 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
-  'B+': 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-  'B-': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
-  'AB+': 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
-  'AB-': 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
-  'O+': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
-  'O-': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+  'A+': 'bg-red-100 text-red-800',
+  'A-': 'bg-red-100 text-red-700',
+  'B+': 'bg-blue-100 text-blue-800',
+  'B-': 'bg-blue-100 text-blue-700',
+  'AB+': 'bg-purple-100 text-purple-800',
+  'AB-': 'bg-purple-100 text-purple-700',
+  'O+': 'bg-emerald-100 text-emerald-800',
+  'O-': 'bg-emerald-100 text-emerald-700',
 };
 
 const componentTypeLabels: Record<string, string> = {
@@ -99,16 +100,16 @@ export default function BloodBankPage() {
       const expiry = new Date(expiryDate);
       const today = new Date();
       const daysUntilExpiry = differenceInDays(expiry, today);
-      const formatted = format(expiry, 'MMM dd, yyyy');
+      const formatted = formatDate(expiry);
 
       if (daysUntilExpiry < 0) {
-        return <span className="text-red-600 dark:text-red-400 font-medium">{formatted} (Expired)</span>;
+        return <span className="text-red-600 font-medium">{formatted} (Expired)</span>;
       }
       if (daysUntilExpiry <= 3) {
-        return <span className="text-red-600 dark:text-red-400 font-medium">{formatted} ({daysUntilExpiry}d left)</span>;
+        return <span className="text-red-600 font-medium">{formatted} ({daysUntilExpiry}d left)</span>;
       }
       if (daysUntilExpiry <= 7) {
-        return <span className="text-amber-600 dark:text-amber-400 font-medium">{formatted} ({daysUntilExpiry}d left)</span>;
+        return <span className="text-amber-600 font-medium">{formatted} ({daysUntilExpiry}d left)</span>;
       }
       return <span>{formatted}</span>;
     } catch {
@@ -146,7 +147,7 @@ export default function BloodBankPage() {
       sortable: true,
       render: (item) => {
         try {
-          return format(new Date(item.collectionDate), 'MMM dd, yyyy');
+          return formatDate(item.collectionDate);
         } catch {
           return item.collectionDate;
         }

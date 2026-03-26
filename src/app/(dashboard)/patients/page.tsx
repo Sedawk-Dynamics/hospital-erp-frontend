@@ -11,7 +11,7 @@ import { StatusBadge } from '@/components/shared/status-badge';
 import { useDebounce } from '@/hooks/use-debounce';
 import apiClient from '@/lib/api-client';
 import type { Patient } from '@/types';
-import { format } from 'date-fns';
+import { formatDate } from '@/lib/date-utils';
 
 export default function PatientsPage() {
   const router = useRouter();
@@ -77,7 +77,7 @@ export default function PatientsPage() {
       label: 'Date of Birth',
       render: (patient) => {
         try {
-          return format(new Date(patient.dateOfBirth), 'MMM dd, yyyy');
+          return formatDate(patient.dateOfBirth);
         } catch {
           return patient.dateOfBirth || '-';
         }

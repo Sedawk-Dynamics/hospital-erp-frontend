@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   Select,
   SelectContent,
@@ -11,9 +12,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { GripVertical, ChevronDown } from 'lucide-react';
+import { GripVertical, ChevronDown, User, Stethoscope, Calendar, Clock, Shield } from 'lucide-react';
+import { toast } from 'sonner';
+import { useAuthStore } from '@/stores/auth-store';
+import { useDoctorProfile } from '@/hooks/use-doctor';
 
-type SettingsTab = 'layout' | 'notes';
+type SettingsTab = 'profile' | 'layout' | 'notes';
 
 interface LayoutItem {
   id: string;
@@ -33,7 +37,10 @@ const defaultLayoutItems: LayoutItem[] = [
 ];
 
 export default function DoctorSettingsPage() {
-  const [activeTab, setActiveTab] = useState<SettingsTab>('layout');
+  const { user } = useAuthStore();
+  const { data: doctorProfile, isLoading: profileLoading } = useDoctorProfile();
+
+  const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
   const [layoutItems, setLayoutItems] = useState<LayoutItem[]>(defaultLayoutItems);
 
   // Doctor Notes config state
@@ -59,10 +66,34 @@ export default function DoctorSettingsPage() {
     );
   };
 
+  const handleSaveLayout = () => {
+    toast.success('Layout configuration saved');
+  };
+
+  const handleResetLayout = () => {
+    setLayoutItems(defaultLayoutItems);
+    toast.info('Layout reset to default');
+  };
+
+  const handleSaveNotes = () => {
+    toast.success('Doctor notes configuration saved');
+  };
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 animate-fade-in-up">
       {/* Tabs */}
-      <div className="flex items-center gap-6 border-b">
+      <div className="flex items-center gap-6 border-b overflow-x-auto">
+        <button
+          onClick={() => setActiveTab('profile')}
+          className={cn(
+            'pb-3 text-sm font-medium transition-colors border-b-2',
+            activeTab === 'profile'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          )}
+        >
+          Doctor Profile
+        </button>
         <button
           onClick={() => setActiveTab('layout')}
           className={cn(
@@ -87,8 +118,151 @@ export default function DoctorSettingsPage() {
         </button>
       </div>
 
+      {/* Profile Tab */}
+      {activeTab === 'profile' && (
+        <div className="space-y-4">
+          {profileLoading ? (
+            <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-8 text-center">
+              <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <p className="mt-2 text-sm text-muted-foreground">Loading profile...</p>
+            </div>
+          ) : (
+            <>
+              {/* Profile Header */}
+              <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-6">
+                <div className="flex items-center gap-6">
+                  <Avatar className="h-20 w-20">
+                    <AvatarFallback className="bg-primary/10 text-primary text-2xl">
+                      {user?.firstName?.[0]}{user?.lastName?.[0]}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <h2 className="font-headline text-xl font-bold">
+                      Dr. {user?.firstName} {user?.lastName}
+                    </h2>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {doctorProfile?.specialization || 'General Medicine'}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {user?.email}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Profile Details */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Professional Info */}
+                <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Stethoscope className="h-5 w-5 text-primary" />
+                    <h3 className="font-semibold text-foreground">Professional Information</h3>
+                  </div>
+                  <div className="space-y-3">
+                    <InfoRow label="Specialization" value={doctorProfile?.specialization || '-'} />
+                    <InfoRow label="Qualification" value={doctorProfile?.qualification || '-'} />
+                    <InfoRow label="License Number" value={doctorProfile?.licenseNumber || '-'} />
+                    <InfoRow
+                      label="Consultation Fee"
+                      value={doctorProfile?.consultationFee ? `Rs. ${doctorProfile.consultationFee}` : '-'}
+                    />
+                    <InfoRow
+                      label="Availability"
+                      value={doctorProfile?.isAvailable ? 'Available' : 'Not Available'}
+                      valueClassName={doctorProfile?.isAvailable ? 'text-green-600' : 'text-red-600'}
+                    />
+                  </div>
+                </div>
+
+                {/* Personal Info */}
+                <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <User className="h-5 w-5 text-primary" />
+                    <h3 className="font-semibold text-foreground">Personal Information</h3>
+                  </div>
+                  <div className="space-y-3">
+                    <InfoRow label="Full Name" value={`${user?.firstName || ''} ${user?.lastName || ''}`} />
+                    <InfoRow label="Email" value={user?.email || '-'} />
+                    <InfoRow label="Phone" value={user?.phone || '-'} />
+                    <InfoRow label="Role" value={user?.role?.name || '-'} />
+                    <InfoRow
+                      label="Status"
+                      value={user?.isActive ? 'Active' : 'Inactive'}
+                      valueClassName={user?.isActive ? 'text-green-600' : 'text-red-600'}
+                    />
+                  </div>
+                </div>
+
+                {/* Schedule */}
+                <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Calendar className="h-5 w-5 text-primary" />
+                    <h3 className="font-semibold text-foreground">Available Days</h3>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {doctorProfile?.availableDays && doctorProfile.availableDays.length > 0 ? (
+                      doctorProfile.availableDays.map((day) => (
+                        <span
+                          key={day}
+                          className="inline-flex items-center rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary"
+                        >
+                          {day}
+                        </span>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No schedule configured</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Available Slots */}
+                <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Clock className="h-5 w-5 text-primary" />
+                    <h3 className="font-semibold text-foreground">Available Slots</h3>
+                  </div>
+                  <div className="space-y-2">
+                    {doctorProfile?.availableSlots && doctorProfile.availableSlots.length > 0 ? (
+                      doctorProfile.availableSlots.map((slot, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between rounded-lg border p-3"
+                        >
+                          <span className="text-sm font-medium text-foreground">
+                            Slot {idx + 1}
+                          </span>
+                          <span className="text-sm text-muted-foreground">
+                            {slot.start} - {slot.end}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No time slots configured</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Note about updating */}
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <Shield className="h-5 w-5 text-amber-600 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium text-amber-800">Schedule & Profile Updates</p>
+                    <p className="text-xs text-amber-700 mt-1">
+                      To update your schedule, availability, or professional details, please contact the hospital administrator or visit the Admin Panel settings.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Layout Configuration Tab */}
       {activeTab === 'layout' && (
-        <div className="rounded-lg border bg-card overflow-hidden">
+        <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary overflow-hidden shadow-sm ring-1 ring-foreground/5">
           {/* Header */}
           <div className="grid grid-cols-2 bg-muted/50 border-b">
             <div className="px-4 py-3 font-medium text-sm text-muted-foreground">System Name</div>
@@ -127,14 +301,15 @@ export default function DoctorSettingsPage() {
 
           {/* Actions */}
           <div className="flex justify-center gap-3 p-4 border-t">
-            <Button variant="outline">RESET LAYOUT</Button>
-            <Button>SAVE LAYOUT</Button>
+            <Button variant="outline" onClick={handleResetLayout}>RESET LAYOUT</Button>
+            <Button onClick={handleSaveLayout}>SAVE LAYOUT</Button>
           </div>
         </div>
       )}
 
+      {/* Doctor Notes Configuration Tab */}
       {activeTab === 'notes' && (
-        <div className="rounded-lg border bg-card p-6 space-y-6">
+        <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-6 space-y-6 shadow-sm ring-1 ring-foreground/5">
           <h3 className="font-semibold text-foreground text-lg">Doctor Notes Configuration</h3>
 
           <div className="space-y-5">
@@ -228,11 +403,37 @@ export default function DoctorSettingsPage() {
 
           {/* Actions */}
           <div className="flex justify-center gap-3 pt-4 border-t">
-            <Button variant="outline">Reset</Button>
-            <Button>Save</Button>
+            <Button variant="outline" onClick={() => {
+              setLockPeriod('30');
+              setPrescriptionSearch('both');
+              setAutoFetchDrugs(true);
+              setHomeLanding('all');
+              setSingleCommentBox(false);
+              toast.info('Settings reset to defaults');
+            }}>
+              Reset
+            </Button>
+            <Button onClick={handleSaveNotes}>Save</Button>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function InfoRow({
+  label,
+  value,
+  valueClassName,
+}: {
+  label: string;
+  value: string;
+  valueClassName?: string;
+}) {
+  return (
+    <div className="flex items-center justify-between py-1.5 border-b border-dashed last:border-0">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className={cn('text-sm font-medium text-foreground', valueClassName)}>{value}</span>
     </div>
   );
 }

@@ -1,16 +1,25 @@
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import Script from 'next/script';
+import { Manrope, Inter } from 'next/font/google';
 import './globals.css';
 import { Providers } from '@/components/layout/providers';
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
+const manrope = Manrope({
+  variable: '--font-sans',
   subsets: ['latin'],
+  weight: ['300', '400', '500', '600', '700', '800'],
 });
 
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
+const manropeHeadline = Manrope({
+  variable: '--font-headline',
   subsets: ['latin'],
+  weight: ['400', '500', '600', '700', '800'],
+});
+
+const inter = Inter({
+  variable: '--font-label',
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
 });
 
 export const metadata: Metadata = {
@@ -24,9 +33,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en">
+      <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
       <body
-        className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
+        className={`${manrope.variable} ${manropeHeadline.variable} ${inter.variable} font-sans antialiased`}
       >
         <Providers>{children}</Providers>
       </body>

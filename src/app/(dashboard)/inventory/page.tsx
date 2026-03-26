@@ -144,9 +144,9 @@ export default function InventoryPage() {
         <span
           className={
             item.currentStock <= 0
-              ? 'text-red-600 font-semibold dark:text-red-400'
+              ? 'text-red-600 font-semibold'
               : item.currentStock <= item.reorderLevel
-                ? 'text-red-600 font-semibold dark:text-red-400'
+                ? 'text-red-600 font-semibold'
                 : ''
           }
         >

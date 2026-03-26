@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,7 +11,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Printer, Edit, Plus, Trash2, Clock, UtensilsCrossed } from 'lucide-react';
+import { Printer, Edit, Plus, Clock, UtensilsCrossed, Search, X } from 'lucide-react';
+import { toast } from 'sonner';
+import { usePatientSearch } from '@/hooks/use-doctor';
 
 interface MealItem {
   name: string;
@@ -31,42 +33,130 @@ interface DayPlan {
   night: MealSlot;
 }
 
-const defaultMealPlans: DayPlan[] = [
-  {
-    day: 1,
-    morning: {
-      time: '06:00 AM',
-      items: [
-        { name: 'Milk', quantity: 150, unit: 'ml' },
-        { name: 'idlis with sambar', quantity: 2, unit: 'Nos' },
-        { name: 'boiled egg', quantity: 1, unit: 'Nos' },
-      ],
-    },
-    afternoon: { items: [] },
-    night: { items: [] },
-  },
-  {
-    day: 2,
-    morning: { items: [] },
-    afternoon: { items: [] },
-    night: { items: [] },
-  },
-];
+const emptySlot = (): MealSlot => ({ items: [] });
+
+const createEmptyDayPlan = (day: number): DayPlan => ({
+  day,
+  morning: emptySlot(),
+  afternoon: emptySlot(),
+  night: emptySlot(),
+});
 
 export default function DoctorNutritionChartPage() {
   const [selectedTemplate, setSelectedTemplate] = useState('child');
   const [activeDay, setActiveDay] = useState(1);
-  const [mealPlans] = useState<DayPlan[]>(defaultMealPlans);
+  const [mealPlans, setMealPlans] = useState<DayPlan[]>(
+    Array.from({ length: 5 }, (_, i) => createEmptyDayPlan(i + 1))
+  );
+  const [patientSearch, setPatientSearch] = useState('');
+  const [selectedPatient, setSelectedPatient] = useState<{ id: string; name: string; mrn: string } | null>(null);
+
+  // New meal form state
+  const [newMealSlot, setNewMealSlot] = useState<'morning' | 'afternoon' | 'night'>('morning');
+  const [newMealName, setNewMealName] = useState('');
+  const [newMealQuantity, setNewMealQuantity] = useState('');
+  const [newMealUnit, setNewMealUnit] = useState('Nos');
+  const [newMealTime, setNewMealTime] = useState('');
+
+  const { data: searchResults } = usePatientSearch(patientSearch);
+
+  const handleSelectPatient = useCallback((patient: { id: string; firstName: string; lastName: string; mrn: string }) => {
+    setSelectedPatient({
+      id: patient.id,
+      name: `${patient.firstName} ${patient.lastName}`,
+      mrn: patient.mrn,
+    });
+    setPatientSearch('');
+  }, []);
+
+  const handleAddMeal = useCallback(() => {
+    if (!newMealName.trim()) {
+      toast.error('Please enter a meal item name');
+      return;
+    }
+    const quantity = parseFloat(newMealQuantity) || 1;
+
+    setMealPlans((plans) =>
+      plans.map((plan) => {
+        if (plan.day !== activeDay) return plan;
+        const slot = { ...plan[newMealSlot] };
+        slot.items = [...slot.items, { name: newMealName, quantity, unit: newMealUnit }];
+        if (newMealTime) slot.time = newMealTime;
+        return { ...plan, [newMealSlot]: slot };
+      })
+    );
+
+    setNewMealName('');
+    setNewMealQuantity('');
+    toast.success('Meal item added');
+  }, [activeDay, newMealSlot, newMealName, newMealQuantity, newMealUnit, newMealTime]);
+
+  const handleClearPlan = useCallback(() => {
+    setMealPlans(Array.from({ length: 5 }, (_, i) => createEmptyDayPlan(i + 1)));
+    toast.info('Meal plan cleared');
+  }, []);
+
+  const handleSavePlan = useCallback(() => {
+    if (!selectedPatient) {
+      toast.error('Please select a patient first');
+      return;
+    }
+    toast.success('Nutrition plan saved successfully');
+  }, [selectedPatient]);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <h1 className="text-xl font-bold text-foreground">Nutrition</h1>
+    <div className="space-y-4 animate-fade-in-up">
+      <div className="flex items-center justify-between">
+        <h1 className="font-headline text-xl font-bold">Nutrition Chart</h1>
+        {selectedPatient && (
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Patient:</span>
+            <span className="font-medium text-foreground">{selectedPatient.name}</span>
+            <span className="text-muted-foreground">({selectedPatient.mrn})</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={() => setSelectedPatient(null)}
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* Patient Search */}
+      {!selectedPatient && (
+        <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-6">
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search patient by name, MRN, or phone..."
+              value={patientSearch}
+              onChange={(e) => setPatientSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          {searchResults && searchResults.length > 0 && patientSearch.length >= 2 && (
+            <div className="mt-2 rounded-lg border bg-background max-h-48 overflow-y-auto">
+              {searchResults.map((patient) => (
+                <button
+                  key={patient.id}
+                  onClick={() => handleSelectPatient(patient)}
+                  className="w-full text-left px-4 py-2 hover:bg-muted/50 transition-colors text-sm border-b last:border-0"
+                >
+                  <span className="font-medium">{patient.firstName} {patient.lastName}</span>
+                  <span className="text-muted-foreground ml-2">{patient.mrn} | {patient.phone}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-3 gap-4">
         {/* Left: Meal Plan Grid */}
-        <div className="lg:col-span-2 rounded-lg border bg-card overflow-hidden">
+        <div className="lg:col-span-2 bg-surface-container-lowest rounded-xl shadow-sanctuary overflow-hidden shadow-sm ring-1 ring-foreground/5">
           {/* Template selector + actions */}
           <div className="flex items-center justify-center gap-3 p-4 border-b">
             <Select value={selectedTemplate} onValueChange={(v) => setSelectedTemplate(v ?? 'child')}>
@@ -78,9 +168,11 @@ export default function DoctorNutritionChartPage() {
                 <SelectItem value="adult">Adult</SelectItem>
                 <SelectItem value="diabetic">Diabetic</SelectItem>
                 <SelectItem value="post_surgery">Post Surgery</SelectItem>
+                <SelectItem value="renal">Renal Diet</SelectItem>
+                <SelectItem value="cardiac">Cardiac Diet</SelectItem>
               </SelectContent>
             </Select>
-            <Button className="gap-1.5">
+            <Button className="gap-1.5" variant="outline">
               <Printer className="h-4 w-4" />
               Print
             </Button>
@@ -90,7 +182,7 @@ export default function DoctorNutritionChartPage() {
           </div>
 
           {/* Grid header */}
-          <div className="grid grid-cols-4 border-b bg-muted/50">
+          <div className="grid grid-cols-4 border-b border-surface-container">
             <div className="px-4 py-3 font-medium text-muted-foreground text-sm">Meal Plan</div>
             <div className="px-4 py-3 font-medium text-muted-foreground text-sm text-center">Morning</div>
             <div className="px-4 py-3 font-medium text-muted-foreground text-sm text-center">Afternoon</div>
@@ -100,7 +192,6 @@ export default function DoctorNutritionChartPage() {
           {/* Day rows */}
           {mealPlans.map((plan) => (
             <div key={plan.day} className="grid grid-cols-4 border-b last:border-0">
-              {/* Day selector */}
               <div className="p-3">
                 <button
                   onClick={() => setActiveDay(plan.day)}
@@ -108,59 +199,104 @@ export default function DoctorNutritionChartPage() {
                     'w-full rounded-lg py-3 text-sm font-semibold transition-colors',
                     activeDay === plan.day
                       ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted text-primary hover:bg-primary/10'
+                      : plan.morning.items.length > 0 || plan.afternoon.items.length > 0 || plan.night.items.length > 0
+                        ? 'bg-primary/10 text-primary hover:bg-primary/20'
+                        : 'bg-muted text-muted-foreground hover:bg-muted/80 border-2 border-dashed border-muted-foreground/20'
                   )}
                 >
                   DAY {plan.day}
                 </button>
               </div>
-
-              {/* Morning */}
               <MealSlotCell slot={plan.morning} />
-
-              {/* Afternoon */}
               <MealSlotCell slot={plan.afternoon} />
-
-              {/* Night */}
               <MealSlotCell slot={plan.night} />
-            </div>
-          ))}
-
-          {/* Empty additional rows for more days */}
-          {[3, 4, 5].map((day) => (
-            <div key={day} className="grid grid-cols-4 border-b last:border-0">
-              <div className="p-3">
-                <button
-                  onClick={() => setActiveDay(day)}
-                  className="w-full rounded-lg border-2 border-dashed border-muted py-3 text-sm text-muted-foreground hover:border-primary/30"
-                >
-                  DAY {day}
-                </button>
-              </div>
-              <div className="border-l p-3" />
-              <div className="border-l p-3" />
-              <div className="border-l p-3" />
             </div>
           ))}
         </div>
 
         {/* Right: Meal Plan Template Generator */}
-        <div className="rounded-lg border bg-card p-4 space-y-4">
-          <h3 className="font-semibold text-foreground">Meal Plan Template Generator</h3>
+        <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-6 space-y-4 shadow-sm ring-1 ring-foreground/5">
+          <h3 className="font-semibold text-foreground">
+            Add Meal - Day {activeDay}
+          </h3>
 
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="rounded-full bg-primary/10 p-4 mb-4">
-              <Plus className="h-8 w-8 text-primary" />
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs text-muted-foreground">Meal Time</label>
+              <Select value={newMealSlot} onValueChange={(v) => setNewMealSlot((v ?? 'morning') as 'morning' | 'afternoon' | 'night')}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="morning">Morning</SelectItem>
+                  <SelectItem value="afternoon">Afternoon</SelectItem>
+                  <SelectItem value="night">Night</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <p className="text-sm font-medium text-foreground">Create A Meal Plan</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Add meals for morning, afternoon and night
-            </p>
+
+            <div>
+              <label className="text-xs text-muted-foreground">Time (optional)</label>
+              <Input
+                type="time"
+                value={newMealTime}
+                onChange={(e) => setNewMealTime(e.target.value)}
+                className="h-9"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-muted-foreground">Food Item *</label>
+              <Input
+                placeholder="e.g., Milk, Idlis with sambar"
+                value={newMealName}
+                onChange={(e) => setNewMealName(e.target.value)}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs text-muted-foreground">Quantity</label>
+                <Input
+                  type="number"
+                  placeholder="1"
+                  value={newMealQuantity}
+                  onChange={(e) => setNewMealQuantity(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Unit</label>
+                <Select value={newMealUnit} onValueChange={(v) => setNewMealUnit(v ?? 'Nos')}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Nos">Nos</SelectItem>
+                    <SelectItem value="ml">ml</SelectItem>
+                    <SelectItem value="g">g</SelectItem>
+                    <SelectItem value="cup">Cup</SelectItem>
+                    <SelectItem value="tbsp">Tbsp</SelectItem>
+                    <SelectItem value="slice">Slice</SelectItem>
+                    <SelectItem value="bowl">Bowl</SelectItem>
+                    <SelectItem value="plate">Plate</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <Button className="w-full gap-1.5" onClick={handleAddMeal}>
+              <Plus className="h-4 w-4" />
+              Add Item
+            </Button>
           </div>
 
           <div className="flex gap-2 pt-4 border-t">
-            <Button variant="outline" className="flex-1">Clear</Button>
-            <Button className="flex-1">Add</Button>
+            <Button variant="outline" className="flex-1" onClick={handleClearPlan}>
+              Clear
+            </Button>
+            <Button className="flex-1" onClick={handleSavePlan}>
+              Save Plan
+            </Button>
           </div>
         </div>
       </div>

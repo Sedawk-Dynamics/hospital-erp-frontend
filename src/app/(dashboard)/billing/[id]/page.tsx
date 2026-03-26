@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { format } from 'date-fns';
+import { formatDate } from '@/lib/date-utils';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -52,7 +52,7 @@ export default function BillDetailPage({ params }: { params: Promise<{ id: strin
     <div className="space-y-6">
       <PageHeader
         title={`Bill ${bill.billNumber}`}
-        description={`Created ${(() => { try { return format(new Date(bill.createdAt), 'MMMM dd, yyyy'); } catch { return ''; } })()}`}
+        description={`Created ${(() => { try { return formatDate(bill.createdAt); } catch { return ''; } })()}`}
         action={
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => router.back()} className="gap-2">
@@ -199,7 +199,7 @@ export default function BillDetailPage({ params }: { params: Promise<{ id: strin
                       <div>
                         <p className="text-sm font-medium capitalize">{payment.method?.replace(/_/g, ' ')}</p>
                         <p className="text-xs text-muted-foreground">
-                          {(() => { try { return format(new Date(payment.createdAt), 'MMM dd, yyyy'); } catch { return ''; } })()}
+                          {(() => { try { return formatDate(payment.createdAt); } catch { return ''; } })()}
                         </p>
                       </div>
                       <div className="text-right">

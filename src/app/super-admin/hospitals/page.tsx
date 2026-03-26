@@ -18,8 +18,10 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { DataTable, type Column } from '@/components/shared/data-table';
-import { useTenants, useCreateTenant, useDeactivateTenant, type Tenant } from '@/hooks/use-super-admin';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
+import { useTenants, useCreateTenant, useDeactivateTenant, useActivateTenant, useHardDeleteTenant, type Tenant } from '@/hooks/use-super-admin';
 import { useDebounce } from '@/hooks/use-debounce';
+import { formatDate } from '@/lib/date-utils';
 
 export default function HospitalsPage() {
   const router = useRouter();
@@ -36,6 +38,10 @@ export default function HospitalsPage() {
 
   const createTenant = useCreateTenant();
   const deactivateTenant = useDeactivateTenant();
+  const activateTenant = useActivateTenant();
+  const hardDeleteTenant = useHardDeleteTenant();
+
+  const [deleteTarget, setDeleteTarget] = useState<Tenant | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -84,40 +90,40 @@ export default function HospitalsPage() {
           className="cursor-pointer"
           onClick={() => router.push(`/super-admin/hospitals/${item.id}`)}
         >
-          <p className="font-medium text-primary hover:underline">{item.name}</p>
-          <p className="text-xs text-muted-foreground">{item.slug}</p>
+          <p className="font-label text-sm font-bold text-primary hover:underline">{item.name}</p>
+          <p className="font-label text-[10px] text-on-surface-variant">{item.slug}</p>
         </div>
       ),
     },
     {
       key: 'email',
       label: 'Email',
-      render: (item) => item.email || '-',
+      render: (item) => <span className="font-label text-sm">{item.email || '-'}</span>,
     },
     {
       key: 'phone',
       label: 'Phone',
-      render: (item) => item.phone || '-',
+      render: (item) => <span className="font-label text-sm">{item.phone || '-'}</span>,
     },
     {
       key: 'users',
       label: 'Users',
-      render: (item) => item._count?.users ?? 0,
+      render: (item) => <span className="font-label text-sm font-bold">{item._count?.users ?? 0}</span>,
     },
     {
       key: 'isActive',
       label: 'Status',
       render: (item) => (
-        <Badge variant={item.isActive ? 'default' : 'destructive'}>
+        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${item.isActive ? 'bg-primary/10 text-primary' : 'bg-error-container text-on-error-container'}`}>
           {item.isActive ? 'Active' : 'Inactive'}
-        </Badge>
+        </span>
       ),
     },
     {
       key: 'createdAt',
       label: 'Onboarded',
       sortable: true,
-      render: (item) => new Date(item.createdAt).toLocaleDateString(),
+      render: (item) => <span className="font-label text-sm">{formatDate(item.createdAt)}</span>,
     },
     {
       key: 'actions',
@@ -132,7 +138,7 @@ export default function HospitalsPage() {
             <Eye className="mr-1.5 h-3.5 w-3.5" />
             View
           </Button>
-          {item.isActive && (
+          {item.isActive ? (
             <Button
               variant="outline"
               size="sm"
@@ -141,7 +147,30 @@ export default function HospitalsPage() {
             >
               Deactivate
             </Button>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                try {
+                  await activateTenant.mutateAsync(item.id);
+                  toast.success(`${item.name} has been activated`);
+                } catch {
+                  toast.error('Failed to activate hospital');
+                }
+              }}
+              disabled={activateTenant.isPending}
+            >
+              Activate
+            </Button>
           )}
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => setDeleteTarget(item)}
+          >
+            Delete
+          </Button>
         </div>
       ),
     },
@@ -151,29 +180,28 @@ export default function HospitalsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-foreground">Hospitals</h1>
-          <p className="text-sm text-muted-foreground">Manage tenant hospitals on the platform</p>
+          <h1 className="font-headline text-xl font-bold">Hospitals</h1>
+          <p className="font-label text-sm text-on-surface-variant">Manage tenant hospitals on the platform</p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Hospital
-            </Button>
+          <DialogTrigger render={<Button className="bg-primary text-white font-label font-bold text-sm px-6 py-2.5 rounded-xl hover:shadow-lg transition-shadow" />}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Hospital
           </DialogTrigger>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="sm:max-w-lg">
             <DialogHeader>
-              <DialogTitle>Add New Hospital</DialogTitle>
-              <DialogDescription>
+              <DialogTitle className="font-headline text-lg font-bold">Add New Hospital</DialogTitle>
+              <DialogDescription className="font-label text-sm text-on-surface-variant">
                 Onboard a new hospital to the platform.
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Name *</Label>
+                  <Label htmlFor="name" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">Name *</Label>
                   <Input
                     id="name"
+                    className="bg-surface-container-low border-none rounded-xl px-4 py-2.5 w-full font-label text-sm focus:ring-2 focus:ring-primary/20 transition-all outline-none"
                     value={formData.name}
                     onChange={(e) => setFormData((p) => ({
                       ...p,
@@ -184,9 +212,10 @@ export default function HospitalsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="slug">Slug *</Label>
+                  <Label htmlFor="slug" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">Slug *</Label>
                   <Input
                     id="slug"
+                    className="bg-surface-container-low border-none rounded-xl px-4 py-2.5 w-full font-label text-sm focus:ring-2 focus:ring-primary/20 transition-all outline-none"
                     value={formData.slug}
                     onChange={(e) => setFormData((p) => ({ ...p, slug: e.target.value }))}
                     placeholder="city-general"
@@ -195,19 +224,21 @@ export default function HospitalsPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="email" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">Email</Label>
                   <Input
                     id="email"
                     type="email"
+                    className="bg-surface-container-low border-none rounded-xl px-4 py-2.5 w-full font-label text-sm focus:ring-2 focus:ring-primary/20 transition-all outline-none"
                     value={formData.email}
                     onChange={(e) => setFormData((p) => ({ ...p, email: e.target.value }))}
                     placeholder="admin@hospital.com"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="phone">Phone</Label>
+                  <Label htmlFor="phone" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">Phone</Label>
                   <Input
                     id="phone"
+                    className="bg-surface-container-low border-none rounded-xl px-4 py-2.5 w-full font-label text-sm focus:ring-2 focus:ring-primary/20 transition-all outline-none"
                     value={formData.phone}
                     onChange={(e) => setFormData((p) => ({ ...p, phone: e.target.value }))}
                     placeholder="+1 234 567 8900"
@@ -215,9 +246,10 @@ export default function HospitalsPage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="address">Address</Label>
+                <Label htmlFor="address" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">Address</Label>
                 <Input
                   id="address"
+                  className="bg-surface-container-low border-none rounded-xl px-4 py-2.5 w-full font-label text-sm focus:ring-2 focus:ring-primary/20 transition-all outline-none"
                   value={formData.address}
                   onChange={(e) => setFormData((p) => ({ ...p, address: e.target.value }))}
                   placeholder="123 Medical Ave"
@@ -225,25 +257,28 @@ export default function HospitalsPage() {
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="city">City</Label>
+                  <Label htmlFor="city" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">City</Label>
                   <Input
                     id="city"
+                    className="bg-surface-container-low border-none rounded-xl px-4 py-2.5 w-full font-label text-sm focus:ring-2 focus:ring-primary/20 transition-all outline-none"
                     value={formData.city}
                     onChange={(e) => setFormData((p) => ({ ...p, city: e.target.value }))}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="state">State</Label>
+                  <Label htmlFor="state" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">State</Label>
                   <Input
                     id="state"
+                    className="bg-surface-container-low border-none rounded-xl px-4 py-2.5 w-full font-label text-sm focus:ring-2 focus:ring-primary/20 transition-all outline-none"
                     value={formData.state}
                     onChange={(e) => setFormData((p) => ({ ...p, state: e.target.value }))}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="country">Country</Label>
+                  <Label htmlFor="country" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">Country</Label>
                   <Input
                     id="country"
+                    className="bg-surface-container-low border-none rounded-xl px-4 py-2.5 w-full font-label text-sm focus:ring-2 focus:ring-primary/20 transition-all outline-none"
                     value={formData.country}
                     onChange={(e) => setFormData((p) => ({ ...p, country: e.target.value }))}
                   />
@@ -252,7 +287,7 @@ export default function HospitalsPage() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-              <Button onClick={handleCreate} disabled={createTenant.isPending}>
+              <Button className="bg-primary text-white font-label font-bold text-sm px-6 py-2.5 rounded-xl hover:shadow-lg transition-shadow" onClick={handleCreate} disabled={createTenant.isPending}>
                 {createTenant.isPending ? 'Creating...' : 'Create Hospital'}
               </Button>
             </DialogFooter>
@@ -271,6 +306,27 @@ export default function HospitalsPage() {
         total={data?.meta?.total ?? 0}
         onPageChange={setPage}
         emptyMessage="No hospitals found."
+      />
+
+      {/* Delete confirmation dialog */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title="Permanently Delete Hospital"
+        description={`This will permanently delete "${deleteTarget?.name}" and ALL its data including users, patients, appointments, bills, and more. This action cannot be undone.`}
+        confirmText={deleteTarget?.name}
+        confirmLabel="Delete Forever"
+        isLoading={hardDeleteTenant.isPending}
+        onConfirm={async () => {
+          if (!deleteTarget) return;
+          try {
+            await hardDeleteTenant.mutateAsync(deleteTarget.id);
+            toast.success(`${deleteTarget.name} has been permanently deleted`);
+            setDeleteTarget(null);
+          } catch {
+            toast.error('Failed to delete hospital');
+          }
+        }}
       />
     </div>
   );

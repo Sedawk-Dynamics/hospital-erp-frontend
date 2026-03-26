@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { formatDateTime } from '@/lib/date-utils';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/shared/page-header';
 import { DataTable, Column } from '@/components/shared/data-table';
@@ -91,7 +91,7 @@ export default function PaymentsPage() {
       sortable: true,
       render: (payment) => {
         try {
-          return format(new Date(payment.createdAt), 'MMM dd, yyyy HH:mm');
+          return formatDateTime(payment.createdAt);
         } catch {
           return '-';
         }

@@ -2,12 +2,19 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Activity, LogOut } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { HeartPulse, LogOut, CreditCard, User } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useAuthStore } from '@/stores/auth-store';
 import { useClinicStore } from '@/stores/clinic-store';
-import { useModuleStore } from '@/stores/module-store';
 import { formatRoleName } from '@/lib/utils';
 
 export default function SelectionLayout({
@@ -18,15 +25,12 @@ export default function SelectionLayout({
   const router = useRouter();
   const { user, hydrate: hydrateAuth, _hydrated: authHydrated, logout, fetchMe } = useAuthStore();
   const { hydrate: hydrateClinic } = useClinicStore();
-  const { hydrate: hydrateModule } = useModuleStore();
 
   useEffect(() => {
     hydrateAuth();
     hydrateClinic();
-    hydrateModule();
-  }, [hydrateAuth, hydrateClinic, hydrateModule]);
+  }, [hydrateAuth, hydrateClinic]);
 
-  // Refresh user data from backend to get latest role & tenant
   useEffect(() => {
     if (authHydrated && user && !user.role) {
       fetchMe();
@@ -35,7 +39,7 @@ export default function SelectionLayout({
 
   if (!authHydrated) {
     return (
-      <div className="flex h-screen items-center justify-center">
+      <div className="flex h-screen items-center justify-center bg-background">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
       </div>
     );
@@ -52,38 +56,66 @@ export default function SelectionLayout({
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Teal header bar */}
-      <header className="sticky top-0 z-30 flex h-16 items-center justify-between bg-primary px-6 text-primary-foreground shadow-sm">
-        <div className="flex items-center gap-2">
-          <Activity className="h-6 w-6" />
-          <span className="text-lg font-bold">
+      {/* Header — matches code.html top bar */}
+      <header className="sticky top-0 z-30 flex h-20 items-center justify-between bg-background/80 backdrop-blur-xl px-8">
+        <div className="flex items-center gap-3">
+          <div className="min-w-[40px] h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+            <HeartPulse className="h-5 w-5 text-primary" />
+          </div>
+          <h1 className="font-headline font-bold text-xl text-primary tracking-tight">
             {process.env.NEXT_PUBLIC_APP_NAME || 'Hospital ERP'}
-          </span>
+          </h1>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
+          <div className="h-8 w-[1px] bg-outline-variant/30 hidden sm:block" />
           <div className="text-right text-sm hidden sm:block">
-            <p className="font-medium">{user ? `${user.firstName} ${user.lastName}` : 'User'}</p>
-            <p className="text-xs opacity-80">{user?.role?.name ? formatRoleName(user.role.name) : ''}</p>
+            <p className="font-label text-xs font-semibold text-on-surface">{user ? `${user.firstName} ${user.lastName}` : 'User'}</p>
+            <p className="font-label text-[10px] text-on-surface-variant capitalize">{user?.role?.name ? formatRoleName(user.role.name) : ''}</p>
           </div>
-          <Avatar className="h-8 w-8">
-            <AvatarFallback className="bg-white/20 text-primary-foreground text-sm">
-              {initials}
-            </AvatarFallback>
-          </Avatar>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="text-primary-foreground hover:bg-white/10"
-            onClick={handleLogout}
-          >
-            <LogOut className="h-5 w-5" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger className="relative focus:outline-none">
+              <div className="w-10 h-10 rounded-xl bg-secondary-container flex items-center justify-center text-on-secondary-container font-bold text-sm">
+                {initials}
+              </div>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-56" align="end">
+              <DropdownMenuGroup>
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-headline font-semibold leading-none">
+                      {user ? `${user.firstName} ${user.lastName}` : 'User'}
+                    </p>
+                    <p className="text-xs font-label leading-none text-on-surface-variant">
+                      {user?.email || ''}
+                    </p>
+                  </div>
+                </DropdownMenuLabel>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem onClick={() => router.push('/my-account')}>
+                  <User className="mr-2 h-4 w-4" />
+                  <span>My Account</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => router.push('/manage-subscription')}>
+                  <CreditCard className="mr-2 h-4 w-4" />
+                  <span>Subscription & Billing</span>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>Sign out</span>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
-      {/* Main content — centered */}
-      <main className="flex-1 px-4 py-8 lg:px-8">
+      <main className="relative z-10 flex-1 px-8 py-6">
         {children}
       </main>
     </div>

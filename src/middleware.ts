@@ -5,9 +5,12 @@ const publicPaths = ['/login', '/register', '/forgot-password'];
 
 const protectedPrefixes = [
   '/dashboard',
-  '/select-clinic',
+  '/select-hospital',
   '/select-module',
   '/super-admin',
+  '/subscription-expired',
+  '/manage-subscription',
+  '/my-account',
   '/hospital',
   '/laboratory',
   '/radiology',
@@ -17,6 +20,7 @@ const protectedPrefixes = [
   '/daycare',
   '/ward',
   '/doctor',
+  '/my-hospitals',
 ];
 
 export function middleware(request: NextRequest) {
@@ -25,9 +29,9 @@ export function middleware(request: NextRequest) {
 
   const isPublicPath = publicPaths.some((path) => pathname.startsWith(path));
 
-  // Authenticated user on public path → send to clinic selection
+  // Authenticated user on public auth path → send to hospital selection
   if (isPublicPath && accessToken) {
-    return NextResponse.redirect(new URL('/select-clinic', request.url));
+    return NextResponse.redirect(new URL('/select-hospital', request.url));
   }
 
   // Unauthenticated user on protected path → send to login
@@ -44,7 +48,7 @@ export function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     '/dashboard/:path*',
-    '/select-clinic',
+    '/select-hospital',
     '/select-module',
     '/super-admin/:path*',
     '/hospital/:path*',
@@ -56,6 +60,10 @@ export const config = {
     '/daycare/:path*',
     '/ward/:path*',
     '/doctor/:path*',
+    '/my-hospitals',
+    '/subscription-expired',
+    '/manage-subscription',
+    '/my-account',
     '/login',
     '/register',
     '/forgot-password',

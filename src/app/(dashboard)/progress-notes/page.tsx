@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { formatDate } from '@/lib/date-utils';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/shared/page-header';
 import { DataTable, Column } from '@/components/shared/data-table';
@@ -118,7 +118,7 @@ export default function ProgressNotesPage() {
       sortable: true,
       render: (note) => {
         try {
-          return format(new Date(note.createdAt), 'MMM dd, yyyy');
+          return formatDate(note.createdAt);
         } catch {
           return note.createdAt;
         }

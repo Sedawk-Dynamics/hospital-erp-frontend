@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Filter } from 'lucide-react';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { formatDate } from '@/lib/date-utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -32,14 +32,14 @@ interface ImagingRequest {
 }
 
 const modalityColors: Record<string, string> = {
-  xray: 'bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-400',
-  ct: 'bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400',
-  mri: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400',
-  ultrasound: 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-400',
-  mammography: 'bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-400',
-  fluoroscopy: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
-  pet: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
-  dexa: 'bg-lime-100 text-lime-800 dark:bg-lime-900/30 dark:text-lime-400',
+  xray: 'bg-sky-100 text-sky-800',
+  ct: 'bg-violet-100 text-violet-800',
+  mri: 'bg-indigo-100 text-indigo-800',
+  ultrasound: 'bg-teal-100 text-teal-800',
+  mammography: 'bg-pink-100 text-pink-800',
+  fluoroscopy: 'bg-orange-100 text-orange-800',
+  pet: 'bg-amber-100 text-amber-800',
+  dexa: 'bg-lime-100 text-lime-800',
 };
 
 export default function ImagingPage() {
@@ -130,7 +130,7 @@ export default function ImagingPage() {
       sortable: true,
       render: (req) => {
         try {
-          return format(new Date(req.createdAt), 'MMM dd, yyyy');
+          return formatDate(req.createdAt);
         } catch {
           return req.createdAt;
         }

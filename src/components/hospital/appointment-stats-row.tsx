@@ -6,24 +6,25 @@ import type { AppointmentStats } from '@/hooks/use-hospital';
 interface StatCardProps {
   label: string;
   count: number;
-  color: string;
+  borderColor: string;
+  iconColor: string;
   isActive: boolean;
   onClick: () => void;
 }
 
-function StatCard({ label, count, color, isActive, onClick }: StatCardProps) {
+function StatCard({ label, count, borderColor, iconColor, isActive, onClick }: StatCardProps) {
   return (
     <button
       onClick={onClick}
       className={cn(
-        'flex flex-col items-center rounded-lg border-2 px-4 py-3 min-w-[100px] transition-all',
+        'flex flex-col items-center bg-surface-container-lowest rounded-xl px-4 py-3 min-w-[100px] shadow-sanctuary transition-all duration-200 hover:-translate-y-0.5 border-l-4',
         isActive
-          ? 'border-primary bg-primary/5 shadow-sm'
-          : 'border-transparent bg-card hover:border-border'
+          ? 'border-primary ring-2 ring-primary/20'
+          : borderColor
       )}
     >
-      <span className={cn('text-2xl font-bold', color)}>{count}</span>
-      <span className="text-xs text-muted-foreground mt-1 whitespace-nowrap">{label}</span>
+      <span className={cn('font-headline text-2xl font-extrabold tabular-nums', iconColor)}>{count}</span>
+      <span className="font-label text-[10px] text-on-surface-variant uppercase tracking-widest mt-1 whitespace-nowrap">{label}</span>
     </button>
   );
 }
@@ -36,13 +37,13 @@ interface AppointmentStatsRowProps {
 }
 
 const statItems = [
-  { key: 'all', label: 'All', color: 'text-foreground' },
-  { key: 'booked', label: 'Booked', color: 'text-blue-600' },
-  { key: 'ipAppointments', label: 'IP Appt', color: 'text-purple-600' },
-  { key: 'arrived', label: 'Arrived', color: 'text-amber-600' },
-  { key: 'withDoctor', label: 'With Doctor', color: 'text-teal-600' },
-  { key: 'completed', label: 'Completed', color: 'text-green-600' },
-  { key: 'cancelled', label: 'Cancelled', color: 'text-red-600' },
+  { key: 'all', label: 'All', color: 'text-on-surface', border: 'border-primary' },
+  { key: 'booked', label: 'Booked', color: 'text-primary', border: 'border-primary' },
+  { key: 'ipAppointments', label: 'IP Appt', color: 'text-tertiary', border: 'border-tertiary' },
+  { key: 'arrived', label: 'Arrived', color: 'text-secondary', border: 'border-secondary' },
+  { key: 'withDoctor', label: 'With Doctor', color: 'text-primary-container', border: 'border-primary-container' },
+  { key: 'completed', label: 'Completed', color: 'text-primary', border: 'border-primary' },
+  { key: 'cancelled', label: 'Cancelled', color: 'text-error', border: 'border-error' },
 ] as const;
 
 export function AppointmentStatsRow({
@@ -53,14 +54,14 @@ export function AppointmentStatsRow({
 }: AppointmentStatsRowProps) {
   if (isLoading) {
     return (
-      <div className="flex gap-2 overflow-x-auto pb-2">
+      <div className="flex gap-3 overflow-x-auto pb-2">
         {statItems.map((item) => (
           <div
             key={item.key}
-            className="flex flex-col items-center rounded-lg border-2 border-transparent bg-card px-4 py-3 min-w-[100px]"
+            className="flex flex-col items-center bg-surface-container-lowest rounded-xl px-4 py-3 min-w-[100px] shadow-sanctuary border-l-4 border-surface-container"
           >
-            <div className="h-8 w-8 animate-pulse rounded bg-muted" />
-            <div className="h-3 w-12 mt-1 animate-pulse rounded bg-muted" />
+            <div className="h-8 w-8 animate-shimmer rounded" />
+            <div className="h-3 w-12 mt-1 animate-shimmer rounded" />
           </div>
         ))}
       </div>
@@ -68,13 +69,14 @@ export function AppointmentStatsRow({
   }
 
   return (
-    <div className="flex gap-2 overflow-x-auto pb-2">
+    <div className="flex gap-3 overflow-x-auto pb-2">
       {statItems.map((item) => (
         <StatCard
           key={item.key}
           label={item.label}
           count={stats?.[item.key] ?? 0}
-          color={item.color}
+          iconColor={item.color}
+          borderColor={item.border}
           isActive={activeFilter === item.key}
           onClick={() => onFilterChange(item.key)}
         />

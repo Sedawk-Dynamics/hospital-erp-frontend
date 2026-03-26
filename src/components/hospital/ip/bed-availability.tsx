@@ -51,19 +51,19 @@ export function BedAvailability() {
         {legendItems.map((item) => (
           <div key={item.label} className="flex items-center gap-2">
             <div className={cn('h-4 w-4 rounded', item.bg)} />
-            <span className="text-sm text-muted-foreground">{item.label}</span>
+            <span className="font-label text-sm text-on-surface-variant">{item.label}</span>
           </div>
         ))}
       </div>
 
       {wardNames.length === 0 ? (
-        <div className="py-8 text-center text-muted-foreground">
+        <div className="py-8 text-center font-label text-on-surface-variant">
           No beds configured. Add beds in Settings.
         </div>
       ) : (
         wardNames.map((wardName) => (
-          <div key={wardName} className="rounded-lg border bg-card p-4">
-            <h3 className="mb-3 font-semibold text-foreground">{wardName}</h3>
+          <div key={wardName} className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-6">
+            <h3 className="mb-3 font-headline text-xl font-bold">{wardName}</h3>
             <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10">
               {bedsByWard[wardName].map((bed) => {
                 const colors = statusColors[bed.status] || statusColors.available;
@@ -72,7 +72,7 @@ export function BedAvailability() {
                     key={bed.id}
                     title={`${bed.bedNumber} - ${colors.label}${bed.currentPatient ? ` (${bed.currentPatient.firstName} ${bed.currentPatient.lastName})` : ''}`}
                     className={cn(
-                      'flex flex-col items-center justify-center rounded-md p-2 text-white text-xs font-medium min-h-[56px]',
+                      'flex flex-col items-center justify-center rounded-xl p-2 text-white text-xs font-bold min-h-[56px]',
                       colors.bg
                     )}
                   >

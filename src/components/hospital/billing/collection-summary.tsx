@@ -34,9 +34,9 @@ export function CollectionSummaryCard({ summary, isLoading }: CollectionSummaryC
     return (
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {collectionItems.map((item) => (
-          <div key={item.key} className="rounded-lg border bg-card p-4">
-            <div className="h-4 w-16 animate-pulse rounded bg-muted" />
-            <div className="mt-2 h-6 w-20 animate-pulse rounded bg-muted" />
+          <div key={item.key} className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4">
+            <div className="h-4 w-16 animate-shimmer rounded" />
+            <div className="mt-2 h-6 w-20 animate-shimmer rounded" />
           </div>
         ))}
       </div>
@@ -47,20 +47,20 @@ export function CollectionSummaryCard({ summary, isLoading }: CollectionSummaryC
     <div className="space-y-4">
       {/* Collection stats */}
       <div>
-        <h3 className="mb-2 text-sm font-semibold text-muted-foreground uppercase tracking-wider">Collection</h3>
+        <h3 className="mb-2 font-label text-xs text-on-surface-variant uppercase tracking-widest">Collection</h3>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {collectionItems.map((item) => {
             const Icon = item.icon;
             const value = summary?.[item.key] ?? 0;
             return (
-              <div key={item.key} className="rounded-lg border bg-card p-4">
+              <div key={item.key} className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4">
                 <div className="flex items-center gap-2">
                   <div className={cn('flex h-8 w-8 items-center justify-center rounded-full', item.color)}>
                     <Icon className="h-4 w-4" />
                   </div>
-                  <span className="text-xs text-muted-foreground">{item.label}</span>
+                  <span className="font-label text-xs text-on-surface-variant uppercase tracking-widest">{item.label}</span>
                 </div>
-                <p className="mt-2 text-lg font-bold text-foreground">{formatAmount(value)}</p>
+                <p className="mt-2 text-lg font-label font-bold">{formatAmount(value)}</p>
               </div>
             );
           })}
@@ -70,7 +70,7 @@ export function CollectionSummaryCard({ summary, isLoading }: CollectionSummaryC
       {/* Bill stats */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Bills</h3>
+          <h3 className="font-label text-xs text-on-surface-variant uppercase tracking-widest">Bills</h3>
           <Button variant="outline" size="sm">
             <Download className="mr-1 h-4 w-4" />
             Day End Report
@@ -80,9 +80,9 @@ export function CollectionSummaryCard({ summary, isLoading }: CollectionSummaryC
           {billItems.map((item) => {
             const value = summary?.[item.key] ?? 0;
             return (
-              <div key={item.key} className="rounded-lg border bg-card p-4">
-                <p className="text-xs text-muted-foreground">{item.label}</p>
-                <p className={cn('mt-1 text-lg font-bold', item.color)}>{formatAmount(value)}</p>
+              <div key={item.key} className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4">
+                <p className="font-label text-xs text-on-surface-variant uppercase tracking-widest">{item.label}</p>
+                <p className={cn('mt-1 text-lg font-label font-bold', item.color)}>{formatAmount(value)}</p>
               </div>
             );
           })}

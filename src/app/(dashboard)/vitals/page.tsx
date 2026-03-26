@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Filter, HeartPulse } from 'lucide-react';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { formatDateTime } from '@/lib/date-utils';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PageHeader } from '@/components/shared/page-header';
@@ -100,7 +100,7 @@ export default function VitalsPage() {
       sortable: true,
       render: (vital) => {
         try {
-          return format(new Date(vital.createdAt), 'MMM dd, yyyy HH:mm');
+          return formatDateTime(vital.createdAt);
         } catch {
           return vital.createdAt;
         }

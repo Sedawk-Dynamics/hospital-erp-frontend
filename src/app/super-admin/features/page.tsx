@@ -56,8 +56,8 @@ export default function FeaturesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-foreground">Feature Management</h1>
-        <p className="text-sm text-muted-foreground">Enable or disable features per hospital</p>
+        <h1 className="font-headline text-xl font-bold">Feature Management</h1>
+        <p className="font-label text-sm text-on-surface-variant">Enable or disable features per hospital</p>
       </div>
 
       <div className="max-w-sm">
@@ -74,27 +74,27 @@ export default function FeaturesPage() {
       </div>
 
       {selectedTenantId && (
-        <div className="rounded-lg border bg-card divide-y">
+        <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary divide-y divide-surface-container/50">
           {detailLoading ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">Loading features...</div>
+            <div className="p-8 text-center font-label text-sm text-on-surface-variant">Loading features...</div>
           ) : (
             FEATURE_KEYS.map((feature) => {
               const enabled = isFeatureEnabled(feature.key);
               return (
                 <div key={feature.key} className="flex items-center justify-between px-4 py-3">
                   <div>
-                    <p className="text-sm font-medium text-foreground">{feature.label}</p>
-                    <p className="text-xs text-muted-foreground">{feature.key}</p>
+                    <p className="font-label text-sm font-bold text-on-surface">{feature.label}</p>
+                    <p className="font-label text-[10px] text-on-surface-variant">{feature.key}</p>
                   </div>
                   <div className="flex items-center gap-3">
-                    <Badge variant={enabled ? 'default' : 'outline'}>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${enabled ? 'bg-primary/10 text-primary' : 'bg-surface-container-high text-on-surface-variant'}`}>
                       {enabled ? 'Enabled' : 'Disabled'}
-                    </Badge>
+                    </span>
                     <button
                       onClick={() => handleToggle(feature.key, enabled)}
                       disabled={updateFeature.isPending}
                       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        enabled ? 'bg-primary' : 'bg-muted'
+                        enabled ? 'bg-primary' : 'bg-surface-container'
                       }`}
                     >
                       <span
@@ -112,7 +112,7 @@ export default function FeaturesPage() {
       )}
 
       {!selectedTenantId && (
-        <div className="rounded-lg border bg-card p-8 text-center text-sm text-muted-foreground">
+        <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-8 text-center font-label text-sm text-on-surface-variant">
           Select a hospital to manage its features
         </div>
       )}

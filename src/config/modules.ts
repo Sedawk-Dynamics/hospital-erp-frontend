@@ -180,3 +180,16 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
 };
 
 export const MODULE_KEYS = Object.keys(MODULE_REGISTRY) as ModuleKey[];
+
+/**
+ * Derive the active ModuleKey from a pathname.
+ * E.g. "/hospital/billing" → "hospital", "/doctor/ip" → "doctor"
+ * Returns null if the pathname doesn't match any module.
+ */
+export function getModuleFromPathname(pathname: string): ModuleKey | null {
+  const segment = pathname.split('/').filter(Boolean)[0];
+  if (segment && segment in MODULE_REGISTRY) {
+    return segment as ModuleKey;
+  }
+  return null;
+}

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { formatDate } from '@/lib/date-utils';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/shared/page-header';
 import { DataTable, Column } from '@/components/shared/data-table';
@@ -93,7 +93,7 @@ export default function BillingPage() {
       label: 'Date',
       render: (bill) => {
         try {
-          return format(new Date(bill.createdAt), 'MMM dd, yyyy');
+          return formatDate(bill.createdAt);
         } catch {
           return '-';
         }

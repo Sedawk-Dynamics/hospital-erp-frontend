@@ -13,23 +13,24 @@ import {
 } from '@/components/ui/select';
 import { DataTable, type Column } from '@/components/shared/data-table';
 import { useSupportTickets, useUpdateTicket, type SupportTicket } from '@/hooks/use-super-admin';
+import { formatDate } from '@/lib/date-utils';
 
 const STATUS_OPTIONS = ['all', 'open', 'in_progress', 'resolved', 'escalated', 'closed'];
 const PRIORITY_OPTIONS = ['all', 'low', 'medium', 'high', 'critical'];
 
 const statusColors: Record<string, string> = {
-  open: 'bg-yellow-50 text-yellow-700 border-yellow-200',
-  in_progress: 'bg-blue-50 text-blue-700 border-blue-200',
-  resolved: 'bg-green-50 text-green-700 border-green-200',
-  escalated: 'bg-red-50 text-red-700 border-red-200',
-  closed: 'bg-gray-50 text-gray-700 border-gray-200',
+  open: 'bg-secondary/10 text-secondary',
+  in_progress: 'bg-primary/10 text-primary',
+  resolved: 'bg-primary/10 text-primary',
+  escalated: 'bg-error-container text-on-error-container',
+  closed: 'bg-surface-container-high text-on-surface-variant',
 };
 
 const priorityColors: Record<string, string> = {
-  low: 'bg-gray-50 text-gray-700',
-  medium: 'bg-blue-50 text-blue-700',
-  high: 'bg-orange-50 text-orange-700',
-  critical: 'bg-red-50 text-red-700',
+  low: 'bg-surface-container-high text-on-surface-variant',
+  medium: 'bg-primary/10 text-primary',
+  high: 'bg-secondary/10 text-secondary',
+  critical: 'bg-error-container text-on-error-container',
 };
 
 export default function SupportPage() {
@@ -61,9 +62,9 @@ export default function SupportPage() {
       label: 'Subject',
       render: (item) => (
         <div>
-          <p className="font-medium text-sm">{item.subject}</p>
+          <p className="font-label text-sm font-bold text-on-surface">{item.subject}</p>
           {item.description && (
-            <p className="text-xs text-muted-foreground line-clamp-1">{item.description}</p>
+            <p className="font-label text-[10px] text-on-surface-variant line-clamp-1">{item.description}</p>
           )}
         </div>
       ),
@@ -72,7 +73,7 @@ export default function SupportPage() {
       key: 'priority',
       label: 'Priority',
       render: (item) => (
-        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${priorityColors[item.priority] || ''}`}>
+        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${priorityColors[item.priority] || ''}`}>
           {item.priority}
         </span>
       ),
@@ -81,16 +82,20 @@ export default function SupportPage() {
       key: 'status',
       label: 'Status',
       render: (item) => (
-        <Badge className={statusColors[item.status] || ''} variant="outline">
+        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusColors[item.status] || ''}`}>
           {item.status.replace('_', ' ')}
-        </Badge>
+        </span>
       ),
     },
     {
       key: 'createdAt',
       label: 'Created',
       sortable: true,
-      render: (item) => new Date(item.createdAt).toLocaleDateString(),
+      render: (item) => (
+        <span className="font-label text-sm text-on-surface">
+          {formatDate(item.createdAt)}
+        </span>
+      ),
     },
     {
       key: 'actions',
@@ -119,12 +124,12 @@ export default function SupportPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-foreground">Support Tickets</h1>
-        <p className="text-sm text-muted-foreground">Manage support requests from hospitals</p>
+        <h1 className="font-headline text-xl font-bold">Support Tickets</h1>
+        <p className="font-label text-sm text-on-surface-variant">Manage support requests from hospitals</p>
       </div>
 
       {/* Filters */}
-      <div className="flex gap-4">
+      <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4 flex gap-4">
         <div className="w-40">
           <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v ?? 'all'); setPage(1); }}>
             <SelectTrigger>

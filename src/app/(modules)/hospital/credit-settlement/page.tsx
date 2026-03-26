@@ -7,26 +7,28 @@ import type { CreditSettlement } from '@/types';
 
 export default function CreditSettlementPage() {
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-bold text-foreground">Credit Settlement</h1>
+    <div className="space-y-4 animate-fade-in-up">
+      <h1 className="font-headline text-xl font-bold">Credit Settlement</h1>
 
-      <Tabs defaultValue="insurance">
-        <TabsList variant="line">
-          <TabsTrigger value="insurance">Insurance Provider</TabsTrigger>
-          <TabsTrigger value="corporate">Corporate Provider</TabsTrigger>
-          <TabsTrigger value="patient">Patient Provider</TabsTrigger>
-        </TabsList>
+      <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-6">
+        <Tabs defaultValue="insurance">
+          <TabsList variant="line">
+            <TabsTrigger value="insurance">Insurance Provider</TabsTrigger>
+            <TabsTrigger value="corporate">Corporate Provider</TabsTrigger>
+            <TabsTrigger value="patient">Patient Provider</TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="insurance" className="pt-4">
-          <ProviderTab type="insurance" />
-        </TabsContent>
-        <TabsContent value="corporate" className="pt-4">
-          <ProviderTab type="corporate" />
-        </TabsContent>
-        <TabsContent value="patient" className="pt-4">
-          <ProviderTab type="patient" />
-        </TabsContent>
-      </Tabs>
+          <TabsContent value="insurance" className="pt-4">
+            <ProviderTab type="insurance" />
+          </TabsContent>
+          <TabsContent value="corporate" className="pt-4">
+            <ProviderTab type="corporate" />
+          </TabsContent>
+          <TabsContent value="patient" className="pt-4">
+            <ProviderTab type="patient" />
+          </TabsContent>
+        </Tabs>
+      </div>
     </div>
   );
 }
@@ -57,39 +59,39 @@ function ProviderTab({ type }: { type: string }) {
   return (
     <div className="space-y-4">
       {/* Summary stats */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-lg border bg-card p-4">
-          <p className="text-xs text-muted-foreground">Total Count</p>
+      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4 border-l-4 border-l-primary">
+          <p className="font-label text-xs text-on-surface-variant uppercase tracking-widest">Total Count</p>
           <p className="mt-1 text-xl font-bold">{items.length}</p>
         </div>
-        <div className="rounded-lg border bg-card p-4">
-          <p className="text-xs text-muted-foreground">Total Claim</p>
-          <p className="mt-1 text-xl font-bold text-foreground">{formatAmount(totalClaim)}</p>
+        <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4 border-l-4 border-l-secondary">
+          <p className="font-label text-xs text-on-surface-variant uppercase tracking-widest">Total Claim</p>
+          <p className="mt-1 text-xl font-bold">{formatAmount(totalClaim)}</p>
         </div>
-        <div className="rounded-lg border bg-card p-4">
-          <p className="text-xs text-muted-foreground">Total Received</p>
+        <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4 border-l-4 border-l-primary">
+          <p className="font-label text-xs text-on-surface-variant uppercase tracking-widest">Total Received</p>
           <p className="mt-1 text-xl font-bold text-green-600">{formatAmount(totalReceived)}</p>
         </div>
-        <div className="rounded-lg border bg-card p-4">
-          <p className="text-xs text-muted-foreground">Total Outstanding</p>
+        <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4 border-l-4 border-l-error">
+          <p className="font-label text-xs text-on-surface-variant uppercase tracking-widest">Total Outstanding</p>
           <p className="mt-1 text-xl font-bold text-red-600">{formatAmount(totalOutstanding)}</p>
         </div>
       </div>
 
       {/* Table */}
-      <div className="rounded-lg border bg-card overflow-hidden">
+      <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full">
             <thead>
-              <tr className="border-b bg-muted/50">
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground capitalize">{type} Provider</th>
-                <th className="px-4 py-3 text-center font-medium text-muted-foreground">No. of Admissions</th>
-                <th className="px-4 py-3 text-right font-medium text-muted-foreground">Claim Amount</th>
-                <th className="px-4 py-3 text-right font-medium text-muted-foreground">Received Amount</th>
-                <th className="px-4 py-3 text-right font-medium text-muted-foreground">Outstanding</th>
+              <tr className="border-b border-surface-container">
+                <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest capitalize">{type} Provider</th>
+                <th className="px-4 pb-4 pt-5 text-center font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">No. of Admissions</th>
+                <th className="px-4 pb-4 pt-5 text-right font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Claim Amount</th>
+                <th className="px-4 pb-4 pt-5 text-right font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Received Amount</th>
+                <th className="px-4 pb-4 pt-5 text-right font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Outstanding</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-surface-container/50">
               {isLoading ? (
                 <tr>
                   <td colSpan={5} className="px-4 py-8 text-center">
@@ -98,16 +100,16 @@ function ProviderTab({ type }: { type: string }) {
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No records found.</td>
+                  <td colSpan={5} className="px-4 py-8 text-center font-label text-on-surface-variant">No records found.</td>
                 </tr>
               ) : (
                 items.map((item) => (
-                  <tr key={item.id} className="border-b last:border-0 hover:bg-muted/30">
-                    <td className="px-4 py-3 font-medium">{item.providerName}</td>
-                    <td className="px-4 py-3 text-center">{item.totalAdmissions}</td>
-                    <td className="px-4 py-3 text-right">{formatAmount(item.claimAmount)}</td>
-                    <td className="px-4 py-3 text-right text-green-600">{formatAmount(item.receivedAmount)}</td>
-                    <td className="px-4 py-3 text-right text-red-600 font-medium">{formatAmount(item.outstandingAmount)}</td>
+                  <tr key={item.id} className="group hover:bg-surface-container-low transition-colors">
+                    <td className="px-4 py-3 font-label text-sm font-bold">{item.providerName}</td>
+                    <td className="px-4 py-3 text-center font-label text-sm">{item.totalAdmissions}</td>
+                    <td className="px-4 py-3 text-right font-label text-sm">{formatAmount(item.claimAmount)}</td>
+                    <td className="px-4 py-3 text-right text-green-600 font-label text-sm">{formatAmount(item.receivedAmount)}</td>
+                    <td className="px-4 py-3 text-right text-red-600 font-label text-sm font-bold">{formatAmount(item.outstandingAmount)}</td>
                   </tr>
                 ))
               )}

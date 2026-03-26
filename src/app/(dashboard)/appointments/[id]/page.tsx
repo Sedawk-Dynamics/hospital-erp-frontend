@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { format } from 'date-fns';
+import { formatDate, formatDateLong } from '@/lib/date-utils';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -59,7 +59,7 @@ export default function AppointmentDetailPage({ params }: { params: Promise<{ id
     <div className="space-y-6">
       <PageHeader
         title="Appointment Details"
-        description={`Appointment on ${(() => { try { return format(new Date(appointment.appointmentDate), 'MMMM dd, yyyy'); } catch { return appointment.appointmentDate; } })()}`}
+        description={`Appointment on ${(() => { try { return formatDate(appointment.appointmentDate); } catch { return appointment.appointmentDate; } })()}`}
         action={
           <Button variant="outline" onClick={() => router.back()} className="gap-2">
             <ArrowLeft className="h-4 w-4" />
@@ -84,7 +84,7 @@ export default function AppointmentDetailPage({ params }: { params: Promise<{ id
                 <div>
                   <p className="text-xs text-muted-foreground">Date</p>
                   <p className="text-sm font-medium">
-                    {(() => { try { return format(new Date(appointment.appointmentDate), 'EEEE, MMMM dd, yyyy'); } catch { return appointment.appointmentDate; } })()}
+                    {(() => { try { return formatDateLong(appointment.appointmentDate); } catch { return appointment.appointmentDate; } })()}
                   </p>
                 </div>
               </div>
@@ -149,8 +149,18 @@ export default function AppointmentDetailPage({ params }: { params: Promise<{ id
             <CardTitle>Actions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {appointment.status === 'scheduled' && (
+            {(appointment.status === 'booked' || appointment.status === 'confirmed') && (
               <>
+                {appointment.status === 'booked' && (
+                  <Button
+                    className="w-full gap-2"
+                    onClick={() => updateStatus('confirmed')}
+                    disabled={isUpdating}
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    Confirm
+                  </Button>
+                )}
                 <Button
                   className="w-full gap-2"
                   onClick={() => updateStatus('checked_in')}
@@ -173,14 +183,14 @@ export default function AppointmentDetailPage({ params }: { params: Promise<{ id
             {appointment.status === 'checked_in' && (
               <Button
                 className="w-full gap-2"
-                onClick={() => updateStatus('in_progress')}
+                onClick={() => updateStatus('in_consultation')}
                 disabled={isUpdating}
               >
                 <PlayCircle className="h-4 w-4" />
                 Start Consultation
               </Button>
             )}
-            {appointment.status === 'in_progress' && (
+            {appointment.status === 'in_consultation' && (
               <Button
                 className="w-full gap-2"
                 onClick={() => updateStatus('completed')}

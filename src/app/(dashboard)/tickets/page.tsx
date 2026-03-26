@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Filter } from 'lucide-react';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { formatDate } from '@/lib/date-utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -31,9 +31,9 @@ interface SupportTicket {
 }
 
 const categoryColors: Record<string, string> = {
-  technical: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
-  billing: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
-  clinical: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
+  technical: 'bg-purple-100 text-purple-800',
+  billing: 'bg-emerald-100 text-emerald-800',
+  clinical: 'bg-blue-100 text-blue-800',
   general: 'bg-secondary text-secondary-foreground',
 };
 
@@ -117,7 +117,7 @@ export default function TicketsPage() {
       label: 'Created',
       render: (ticket) => {
         try {
-          return format(new Date(ticket.createdAt), 'MMM dd, yyyy');
+          return formatDate(ticket.createdAt);
         } catch {
           return '-';
         }

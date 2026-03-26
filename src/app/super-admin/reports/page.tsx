@@ -25,71 +25,82 @@ export default function ReportsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-foreground">Reports</h1>
-        <p className="text-sm text-muted-foreground">Platform analytics and reporting</p>
+        <h1 className="font-headline text-xl font-bold">Reports</h1>
+        <p className="font-label text-sm text-on-surface-variant">Platform analytics and reporting</p>
       </div>
 
       {/* Tenant Summary */}
-      <div className="rounded-lg border bg-card">
-        <div className="border-b px-4 py-3">
-          <h2 className="font-semibold text-foreground flex items-center gap-2">
-            <Building2 className="h-4 w-4" /> Tenant Summary
+      <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-6">
+        <div className="pb-4 mb-4 border-b border-surface-container">
+          <h2 className="font-headline text-lg font-bold text-on-surface flex items-center gap-2">
+            <div className="p-2 rounded-lg bg-primary/10 text-primary">
+              <Building2 className="h-4 w-4" />
+            </div>
+            Tenant Summary
           </h2>
         </div>
-        <div className="grid grid-cols-3 divide-x">
-          <div className="p-4 text-center">
-            <p className="text-2xl font-bold text-foreground">{isLoading ? '-' : tenants.length}</p>
-            <p className="text-xs text-muted-foreground">Total Hospitals</p>
+        <div className="grid grid-cols-3 gap-4">
+          <div className="bg-surface-container-lowest p-6 rounded-xl shadow-sanctuary border-l-4 border-primary text-center">
+            <p className="font-headline text-3xl font-extrabold text-on-surface">{isLoading ? '-' : tenants.length}</p>
+            <p className="font-label text-xs text-on-surface-variant uppercase tracking-widest">Total Hospitals</p>
           </div>
-          <div className="p-4 text-center">
-            <p className="text-2xl font-bold text-green-600">{isLoading ? '-' : activeTenants}</p>
-            <p className="text-xs text-muted-foreground">Active</p>
+          <div className="bg-surface-container-lowest p-6 rounded-xl shadow-sanctuary border-l-4 border-primary text-center">
+            <p className="font-headline text-3xl font-extrabold text-green-600">{isLoading ? '-' : activeTenants}</p>
+            <p className="font-label text-xs text-on-surface-variant uppercase tracking-widest">Active</p>
           </div>
-          <div className="p-4 text-center">
-            <p className="text-2xl font-bold text-red-600">{isLoading ? '-' : inactiveTenants}</p>
-            <p className="text-xs text-muted-foreground">Inactive</p>
+          <div className="bg-surface-container-lowest p-6 rounded-xl shadow-sanctuary border-l-4 border-primary text-center">
+            <p className="font-headline text-3xl font-extrabold text-red-600">{isLoading ? '-' : inactiveTenants}</p>
+            <p className="font-label text-xs text-on-surface-variant uppercase tracking-widest">Inactive</p>
           </div>
         </div>
       </div>
 
       {/* User Summary */}
-      <div className="rounded-lg border bg-card">
-        <div className="border-b px-4 py-3">
-          <h2 className="font-semibold text-foreground flex items-center gap-2">
-            <Users className="h-4 w-4" /> User Summary
+      <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-6">
+        <div className="pb-4 mb-4 border-b border-surface-container">
+          <h2 className="font-headline text-lg font-bold text-on-surface flex items-center gap-2">
+            <div className="p-2 rounded-lg bg-primary/10 text-primary">
+              <Users className="h-4 w-4" />
+            </div>
+            User Summary
           </h2>
         </div>
-        <div className="p-4">
-          <p className="text-2xl font-bold text-foreground">{isLoading ? '-' : totalUsers}</p>
-          <p className="text-xs text-muted-foreground">Total users across all hospitals</p>
+        <div className="mb-4">
+          <p className="font-headline text-3xl font-extrabold text-on-surface">{isLoading ? '-' : totalUsers}</p>
+          <p className="font-label text-xs text-on-surface-variant uppercase tracking-widest">Total users across all hospitals</p>
         </div>
         {!isLoading && tenants.length > 0 && (
-          <div className="border-t divide-y">
-            {tenants
-              .sort((a, b) => (b._count?.users ?? 0) - (a._count?.users ?? 0))
-              .slice(0, 10)
-              .map((t) => (
-                <div key={t.id} className="flex justify-between px-4 py-2 text-sm">
-                  <span className="text-foreground">{t.name}</span>
-                  <span className="text-muted-foreground">{t._count?.users ?? 0} users</span>
-                </div>
-              ))}
+          <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary overflow-hidden">
+            <div className="divide-y divide-surface-container/50">
+              {tenants
+                .sort((a, b) => (b._count?.users ?? 0) - (a._count?.users ?? 0))
+                .slice(0, 10)
+                .map((t) => (
+                  <div key={t.id} className="group hover:bg-surface-container-low transition-colors flex justify-between px-4 py-2">
+                    <span className="font-label text-sm font-bold text-on-surface">{t.name}</span>
+                    <span className="font-label text-[10px] text-on-surface-variant">{t._count?.users ?? 0} users</span>
+                  </div>
+                ))}
+            </div>
           </div>
         )}
       </div>
 
       {/* Ticket Summary */}
-      <div className="rounded-lg border bg-card">
-        <div className="border-b px-4 py-3">
-          <h2 className="font-semibold text-foreground flex items-center gap-2">
-            <LifeBuoy className="h-4 w-4" /> Support Tickets Summary
+      <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-6">
+        <div className="pb-4 mb-4 border-b border-surface-container">
+          <h2 className="font-headline text-lg font-bold text-on-surface flex items-center gap-2">
+            <div className="p-2 rounded-lg bg-primary/10 text-primary">
+              <LifeBuoy className="h-4 w-4" />
+            </div>
+            Support Tickets Summary
           </h2>
         </div>
-        <div className="grid grid-cols-4 divide-x">
+        <div className="grid grid-cols-4 gap-4">
           {Object.entries(ticketsByStatus).map(([status, count]) => (
-            <div key={status} className="p-4 text-center">
-              <p className="text-2xl font-bold text-foreground">{isLoading ? '-' : count}</p>
-              <p className="text-xs text-muted-foreground capitalize">{status.replace('_', ' ')}</p>
+            <div key={status} className="bg-surface-container-lowest p-6 rounded-xl shadow-sanctuary border-l-4 border-primary text-center">
+              <p className="font-headline text-3xl font-extrabold text-on-surface">{isLoading ? '-' : count}</p>
+              <p className="font-label text-xs text-on-surface-variant uppercase tracking-widest capitalize">{status.replace('_', ' ')}</p>
             </div>
           ))}
         </div>

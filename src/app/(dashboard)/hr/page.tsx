@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Filter } from 'lucide-react';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { formatDate } from '@/lib/date-utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -127,7 +127,7 @@ export default function HRPage() {
       sortable: true,
       render: (member) => {
         try {
-          return format(new Date(member.joinDate), 'MMM dd, yyyy');
+          return formatDate(member.joinDate);
         } catch {
           return member.joinDate || '-';
         }

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import apiClient from '@/lib/api-client';
 import { setTokens, clearTokens, getAccessToken, getRefreshToken } from '@/lib/api';
-import type { User, RegisterData } from '@/types';
+import type { User, RegisterData, SwitchHospitalResponse } from '@/types';
 
 // ============================================================
 // Hydrate persisted user from localStorage on store creation
@@ -35,9 +35,11 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   _hydrated: boolean;
+  onboardingStatus: string | null;
 
   hydrate: () => void;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<string | undefined>;
+  switchHospital: (tenantId: string) => Promise<SwitchHospitalResponse>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
   refreshToken: () => Promise<void>;
@@ -52,6 +54,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isAuthenticated: false,
   isLoading: true,
   _hydrated: false,
+  onboardingStatus: null,
 
   // Call once from a client-side useEffect to load persisted user
   hydrate: () => {
@@ -73,14 +76,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         email,
         password,
       });
-      const { accessToken, refreshToken, user } = data.data;
+      const { accessToken, refreshToken, user, onboardingStatus } = data.data;
       setTokens(accessToken, refreshToken);
       persistUser(user);
-      set({ user, isAuthenticated: true, isLoading: false });
+      set({ user, isAuthenticated: true, isLoading: false, onboardingStatus: onboardingStatus || null });
+      return onboardingStatus as string | undefined;
     } catch (error) {
       set({ isLoading: false });
       throw error;
     }
+  },
+
+  switchHospital: async (tenantId: string) => {
+    const { data } = await apiClient.post(`/hospitals/switch/${tenantId}`);
+    const result = data.data as SwitchHospitalResponse;
+    setTokens(result.accessToken, result.refreshToken);
+    persistUser(result.user);
+    set({ user: result.user, isAuthenticated: true });
+    return result;
   },
 
   register: async (data: RegisterData) => {

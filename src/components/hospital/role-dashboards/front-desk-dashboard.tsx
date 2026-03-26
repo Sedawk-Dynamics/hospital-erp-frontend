@@ -1,0 +1,269 @@
+'use client';
+
+import { useState, useCallback } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiGet, apiPatch } from '@/lib/api';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  CalendarCheck, UserPlus, Search, Users, CheckCircle2,
+  Clock, CircleCheck, LogIn, Footprints,
+} from 'lucide-react';
+import { toInputDateStr } from '@/lib/date-utils';
+import { toast } from 'sonner';
+
+interface QueueAppointment {
+  id: string;
+  tokenNumber?: number;
+  patient: { firstName: string; lastName: string; mrn: string; phone?: string };
+  doctor?: { user?: { firstName: string; lastName: string } };
+  appointmentTime: string;
+  status: string;
+  type?: string;
+}
+
+interface AppointmentStats {
+  total: number;
+  checkedIn: number;
+  waiting: number;
+  completed: number;
+}
+
+export function FrontDeskDashboard() {
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const today = toInputDateStr();
+  const queryClient = useQueryClient();
+
+  const { data: queueData, isLoading: queueLoading } = useQuery({
+    queryKey: ['front-desk', 'queue', today, search, page],
+    queryFn: async () => {
+      const params: Record<string, unknown> = { date: today, page, limit: 20 };
+      if (search) params.search = search;
+      const response = await apiGet<QueueAppointment[]>('/appointments', { params });
+      return { data: response.data, meta: response.meta };
+    },
+  });
+
+  const { data: statsData, isLoading: statsLoading } = useQuery({
+    queryKey: ['front-desk', 'stats', today],
+    queryFn: async () => {
+      const response = await apiGet<AppointmentStats>('/appointments/queue', {
+        params: { date: today },
+      });
+      return response.data;
+    },
+  });
+
+  const checkInMutation = useMutation({
+    mutationFn: async (appointmentId: string) => {
+      await apiPatch(`/appointments/${appointmentId}/status`, { status: 'checked_in' });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['front-desk'] });
+      toast.success('Patient checked in successfully');
+    },
+    onError: () => {
+      toast.error('Failed to check in patient');
+    },
+  });
+
+  const appointments = queueData?.data ?? [];
+  const computedStats = statsData ?? { total: 0, checkedIn: 0, waiting: 0, completed: 0 };
+
+  const handleSearchChange = useCallback((value: string) => {
+    setSearch(value);
+    setPage(1);
+  }, []);
+
+  const stats = [
+    { label: "Today's Appointments", value: computedStats.total, icon: CalendarCheck },
+    { label: 'Checked In', value: computedStats.checkedIn, icon: LogIn },
+    { label: 'Waiting', value: computedStats.waiting, icon: Clock },
+    { label: 'Completed', value: computedStats.completed, icon: CircleCheck },
+  ];
+
+  const quickActions = [
+    { label: 'Register Patient', icon: UserPlus, href: '/hospital/walkin' },
+    { label: 'Book Appointment', icon: CalendarCheck, href: '/hospital/appointments/new' },
+    { label: 'Walk-In', icon: Footprints, href: '/hospital/walkin' },
+  ];
+
+  return (
+    <div className="space-y-6 animate-fade-in-up">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="font-headline text-xl font-bold">Front Desk</h1>
+          <p className="font-label text-[10px] text-on-surface-variant mt-0.5">
+            Manage appointments, registrations, and patient check-ins
+          </p>
+        </div>
+      </div>
+
+      {/* Stats Row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {stats.map((stat) => (
+          <div
+            key={stat.label}
+            className="bg-surface-container-lowest p-6 rounded-xl shadow-[24px_0_40px_-4px_rgba(0,0,0,0.05)] border-l-4 border-primary transition-all duration-150 hover:-translate-y-0.5"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                <stat.icon className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="font-headline text-3xl font-extrabold">
+                  {statsLoading ? (
+                    <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                  ) : (
+                    stat.value
+                  )}
+                </p>
+                <p className="font-label text-xs text-on-surface-variant uppercase tracking-widest">{stat.label}</p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Quick Actions */}
+      <div className="flex flex-wrap gap-3">
+        {quickActions.map((action) => (
+          <Button key={action.label} variant="outline" className="gap-2">
+            <action.icon className="h-4 w-4" />
+            {action.label}
+          </Button>
+        ))}
+      </div>
+
+      {/* Search */}
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant" />
+        <Input
+          placeholder="Search by name, phone, MRN..."
+          value={search}
+          onChange={(e) => handleSearchChange(e.target.value)}
+          className="pl-9"
+        />
+      </div>
+
+      {/* Appointment Queue Table */}
+      <div className="bg-surface-container-lowest rounded-xl shadow-[24px_0_40px_-4px_rgba(0,0,0,0.05)] overflow-hidden">
+        <div className="px-4 py-3 border-b border-surface-container">
+          <h2 className="font-headline text-lg font-bold flex items-center gap-2">
+            <div className="p-2 rounded-lg bg-primary/10 text-primary">
+              <Users className="h-4 w-4" />
+            </div>
+            Today&apos;s Appointment Queue
+          </h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="text-on-surface-variant font-label text-[10px] uppercase tracking-widest border-b border-surface-container">
+                <th className="px-4 pb-4 pt-5 text-left font-semibold">Token</th>
+                <th className="px-4 pb-4 pt-5 text-left font-semibold">Patient</th>
+                <th className="px-4 pb-4 pt-5 text-left font-semibold">Phone</th>
+                <th className="px-4 pb-4 pt-5 text-left font-semibold">Doctor</th>
+                <th className="px-4 pb-4 pt-5 text-left font-semibold">Time</th>
+                <th className="px-4 pb-4 pt-5 text-left font-semibold">Status</th>
+                <th className="px-4 pb-4 pt-5 text-center font-semibold">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-surface-container/50">
+              {queueLoading ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center">
+                    <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                  </td>
+                </tr>
+              ) : appointments.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center font-label text-on-surface-variant">
+                    No appointments found for today.
+                  </td>
+                </tr>
+              ) : (
+                appointments.map((appt) => (
+                  <tr key={appt.id} className="group hover:bg-surface-container-low transition-colors">
+                    <td className="px-4 py-3 font-label text-sm font-bold">
+                      {appt.tokenNumber ? `#${appt.tokenNumber}` : '-'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div>
+                        <p className="font-label text-sm font-bold">{appt.patient.firstName} {appt.patient.lastName}</p>
+                        <p className="font-label text-[10px] text-on-surface-variant">{appt.patient.mrn}</p>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 font-label text-[10px] text-on-surface-variant">{appt.patient.phone || '-'}</td>
+                    <td className="px-4 py-3 font-label text-sm">
+                      {appt.doctor?.user
+                        ? `Dr. ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
+                        : '-'}
+                    </td>
+                    <td className="px-4 py-3 font-label text-[10px] text-on-surface-variant">
+                      {new Date(appt.appointmentTime).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={cn(
+                          'text-[10px] font-bold px-2 py-0.5 rounded-full capitalize',
+                          (appt.status === 'booked' || appt.status === 'confirmed') && 'bg-secondary/10 text-secondary',
+                          appt.status === 'checked_in' && 'bg-primary/10 text-primary',
+                          appt.status === 'in_consultation' && 'bg-primary/10 text-primary',
+                          appt.status === 'completed' && 'bg-primary/10 text-primary',
+                          appt.status === 'cancelled' && 'bg-error-container text-on-error-container',
+                        )}
+                      >
+                        {appt.status?.replace(/_/g, ' ')}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {(appt.status === 'booked' || appt.status === 'confirmed') && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5 text-xs"
+                          disabled={checkInMutation.isPending}
+                          onClick={() => checkInMutation.mutate(appt.id)}
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          Check In
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {(queueData?.meta?.totalPages ?? 1) > 1 && (
+          <div className="flex items-center justify-between border-t border-surface-container px-4 py-3">
+            <p className="font-label text-[10px] text-on-surface-variant">
+              Page {page} of {queueData?.meta?.totalPages}
+            </p>
+            <div className="flex gap-1">
+              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= (queueData?.meta?.totalPages ?? 1)}
+                onClick={() => setPage(page + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

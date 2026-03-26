@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Filter, Clock } from 'lucide-react';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { formatDate } from '@/lib/date-utils';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PageHeader } from '@/components/shared/page-header';
@@ -99,7 +99,7 @@ export default function AttendancePage() {
       sortable: true,
       render: (rec) => {
         try {
-          return format(new Date(rec.date), 'MMM dd, yyyy');
+          return formatDate(rec.date);
         } catch {
           return rec.date;
         }

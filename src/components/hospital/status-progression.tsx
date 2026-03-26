@@ -1,20 +1,22 @@
 'use client';
 
-import { ClipboardCheck, UserCheck, Stethoscope, CheckCircle2 } from 'lucide-react';
+import { ClipboardCheck, UserCheck, Stethoscope, CheckCircle2, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const steps = [
-  { key: 'scheduled', icon: ClipboardCheck, label: 'Registered' },
+  { key: 'booked', icon: ClipboardCheck, label: 'Booked' },
+  { key: 'confirmed', icon: ShieldCheck, label: 'Confirmed' },
   { key: 'checked_in', icon: UserCheck, label: 'Arrived' },
-  { key: 'in_progress', icon: Stethoscope, label: 'With Doctor' },
+  { key: 'in_consultation', icon: Stethoscope, label: 'With Doctor' },
   { key: 'completed', icon: CheckCircle2, label: 'Completed' },
 ] as const;
 
 const statusOrder: Record<string, number> = {
-  scheduled: 0,
-  checked_in: 1,
-  in_progress: 2,
-  completed: 3,
+  booked: 0,
+  confirmed: 1,
+  checked_in: 2,
+  in_consultation: 3,
+  completed: 4,
   cancelled: -1,
   no_show: -1,
 };
@@ -28,7 +30,7 @@ export function StatusProgression({ status }: StatusProgressionProps) {
 
   if (status === 'cancelled') {
     return (
-      <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800">
+      <span className="inline-flex items-center rounded-full bg-error-container px-2.5 py-0.5 text-[10px] font-bold text-on-error-container">
         Cancelled
       </span>
     );
@@ -36,7 +38,7 @@ export function StatusProgression({ status }: StatusProgressionProps) {
 
   if (status === 'no_show') {
     return (
-      <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800">
+      <span className="inline-flex items-center rounded-full bg-surface-container-high px-2.5 py-0.5 text-[10px] font-bold text-on-surface-variant">
         No Show
       </span>
     );
@@ -54,8 +56,8 @@ export function StatusProgression({ status }: StatusProgressionProps) {
               className={cn(
                 'flex h-6 w-6 items-center justify-center rounded-full transition-colors',
                 isCompleted
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground'
+                  ? 'bg-primary text-white'
+                  : 'bg-surface-container-high text-on-surface-variant'
               )}
             >
               <Icon className="h-3.5 w-3.5" />
@@ -64,7 +66,7 @@ export function StatusProgression({ status }: StatusProgressionProps) {
               <div
                 className={cn(
                   'h-0.5 w-3',
-                  index < currentStep ? 'bg-primary' : 'bg-muted'
+                  index < currentStep ? 'bg-primary' : 'bg-surface-container'
                 )}
               />
             )}

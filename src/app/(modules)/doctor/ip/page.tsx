@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { format } from 'date-fns';
-import { Search, CalendarIcon, Printer } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { formatDate, toInputDateStr } from '@/lib/date-utils';
+import { Search, CalendarIcon, Eye, FileText, FlaskConical, MoreVertical } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -13,71 +13,111 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+import { useAuthStore } from '@/stores/auth-store';
+import { useDoctorAdmissions, useDischargePatient, useCreateProgressNote } from '@/hooks/use-doctor';
 
 const ipStatItems = [
   { key: 'all', label: 'All', color: 'text-foreground' },
-  { key: 'inIP', label: 'In IP', color: 'text-blue-600' },
-  { key: 'admission', label: 'Admission', color: 'text-green-600' },
-  { key: 'discharge', label: 'Discharge', color: 'text-amber-600' },
-  { key: 'cancelled', label: 'Cancelled', color: 'text-red-600' },
-];
-
-// Mock data for the IP list matching eMedHub screenshot
-const mockIPPatients = [
-  {
-    id: '1',
-    name: 'VALENTEENA',
-    age: '24Y',
-    gender: 'F',
-    mrn: 'KEH000329',
-    phone: '9999999999',
-    admissionDate: '10-03-2026',
-    ipNumber: 'KEH/2025-2026/IP/00024',
-    complaints: 'Fracture',
-    medicoLegal: 'No',
-    consultant: 'Dr Teena',
-    tag: 'ACCIDENT AND EMERGENCY',
-    bedInfo: '3/3/DAY CARE/WEST BLOCK',
-  },
-  {
-    id: '2',
-    name: 'JINCY P P',
-    age: '25Y',
-    gender: 'F',
-    mrn: 'KEH000353',
-    phone: '5555555555',
-    admissionDate: '24-02-2026',
-    ipNumber: 'KEH/2025-2026/IP/00018',
-    complaints: 'SUPRACONDYLAR FRACTURE-CORRECTED FO...',
-    medicoLegal: 'No',
-    consultant: 'Dr Teena',
-    tag: '-',
-    bedInfo: '12/100/OPT/SOUTH BLOCK',
-  },
+  { key: 'admitted', label: 'In IP', color: 'text-blue-600' },
+  { key: 'discharged', label: 'Discharge', color: 'text-amber-600' },
+  { key: 'transferred', label: 'Transferred', color: 'text-green-600' },
+  { key: 'absconded', label: 'Absconded', color: 'text-red-600' },
 ];
 
 export default function DoctorIPHomePage() {
-  const [activeFilter, setActiveFilter] = useState('inIP');
+  const { user } = useAuthStore();
+  const [activeFilter, setActiveFilter] = useState('admitted');
   const [selectedWard, setSelectedWard] = useState('all');
-  const [selectedBlock, setSelectedBlock] = useState('all');
-  const [selectedFloor, setSelectedFloor] = useState('all');
-  const [fromDate, setFromDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [toDate, setToDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [fromDate, setFromDate] = useState(toInputDateStr());
+  const [toDate, setToDate] = useState(toInputDateStr());
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [noteDialogOpen, setNoteDialogOpen] = useState(false);
+  const [selectedPatientId, setSelectedPatientId] = useState('');
+  const [selectedAdmissionId, setSelectedAdmissionId] = useState('');
+  const [noteContent, setNoteContent] = useState('');
 
+  const statusFilter = activeFilter === 'all' ? undefined : activeFilter;
+
+  const { data: admissionsData, isLoading } = useDoctorAdmissions({
+    page,
+    limit: 10,
+    doctorId: user?.id,
+    status: statusFilter,
+    search: search || undefined,
+    date: fromDate,
+    wardId: selectedWard !== 'all' ? selectedWard : undefined,
+  });
+
+  const dischargeMutation = useDischargePatient();
+  const createNoteMutation = useCreateProgressNote();
+
+  const admissions = admissionsData?.data ?? [];
+  const meta = admissionsData?.meta;
+
+  // Compute stats from current data
   const stats = {
-    all: 0,
-    inIP: 2,
-    admission: 0,
-    discharge: 0,
-    cancelled: 0,
+    all: meta?.total ?? admissions.length,
+    admitted: admissions.filter((a) => a.status === 'admitted').length,
+    discharged: admissions.filter((a) => a.status === 'discharged').length,
+    transferred: admissions.filter((a) => a.status === 'transferred').length,
+    absconded: admissions.filter((a) => a.status === 'absconded').length,
   };
 
+  const handleDischarge = useCallback(async (id: string) => {
+    try {
+      await dischargeMutation.mutateAsync({ id });
+      toast.success('Patient discharged successfully');
+    } catch {
+      toast.error('Failed to discharge patient');
+    }
+  }, [dischargeMutation]);
+
+  const handleAddNote = useCallback((patientId: string, admissionId: string) => {
+    setSelectedPatientId(patientId);
+    setSelectedAdmissionId(admissionId);
+    setNoteContent('');
+    setNoteDialogOpen(true);
+  }, []);
+
+  const handleSubmitNote = useCallback(async () => {
+    if (!noteContent.trim()) {
+      toast.error('Please enter note content');
+      return;
+    }
+    try {
+      await createNoteMutation.mutateAsync({
+        patientId: selectedPatientId,
+        admissionId: selectedAdmissionId,
+        content: noteContent,
+        noteType: 'progress',
+      });
+      toast.success('Progress note added successfully');
+      setNoteDialogOpen(false);
+    } catch {
+      toast.error('Failed to add progress note');
+    }
+  }, [noteContent, selectedPatientId, selectedAdmissionId, createNoteMutation]);
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 animate-fade-in-up">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-foreground">Appointment</h1>
+        <h1 className="font-headline text-xl font-bold">IP Home</h1>
         <div className="flex items-center gap-2">
           <Select value="today" onValueChange={() => {}}>
             <SelectTrigger className="w-[120px] h-8 text-xs">
@@ -93,34 +133,39 @@ export default function DoctorIPHomePage() {
       </div>
 
       {/* Filters row */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between bg-surface-container-lowest rounded-xl shadow-sanctuary p-6">
         <div className="flex items-center gap-3">
-          <Select value={selectedWard} onValueChange={(v) => setSelectedWard(v ?? 'all')}>
+          <Select value={selectedWard} onValueChange={(v) => { setSelectedWard(v ?? 'all'); setPage(1); }}>
             <SelectTrigger className="w-[160px]">
               <SelectValue placeholder="Select Ward" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Select Ward</SelectItem>
+              <SelectItem value="all">All Wards</SelectItem>
             </SelectContent>
           </Select>
 
-          <Select value={selectedBlock} onValueChange={(v) => setSelectedBlock(v ?? 'all')}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue placeholder="Select Block" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Select Block</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select value={selectedFloor} onValueChange={(v) => setSelectedFloor(v ?? 'all')}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue placeholder="Select Floor" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Select Floor</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">From:</span>
+            <div className="relative">
+              <CalendarIcon className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="date"
+                value={fromDate}
+                onChange={(e) => { setFromDate(e.target.value); setPage(1); }}
+                className="pl-8 h-8 text-xs w-full sm:w-[140px]"
+              />
+            </div>
+            <span className="text-xs text-muted-foreground">To:</span>
+            <div className="relative">
+              <CalendarIcon className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                className="pl-8 h-8 text-xs w-full sm:w-[140px]"
+              />
+            </div>
+          </div>
         </div>
 
         {/* Stats */}
@@ -128,9 +173,9 @@ export default function DoctorIPHomePage() {
           {ipStatItems.map((item) => (
             <button
               key={item.key}
-              onClick={() => setActiveFilter(item.key)}
+              onClick={() => { setActiveFilter(item.key); setPage(1); }}
               className={cn(
-                'flex flex-col items-center rounded-lg border-2 px-3 py-2 min-w-[80px] transition-all',
+                'flex flex-col items-center rounded-lg border-2 px-3 py-2 min-w-[80px] shadow-sm hover:shadow-md transition-all duration-200',
                 activeFilter === item.key
                   ? 'border-primary bg-primary/5'
                   : 'border-transparent bg-card hover:border-border'
@@ -145,90 +190,185 @@ export default function DoctorIPHomePage() {
         </div>
       </div>
 
-      {/* IP Home tab */}
-      <div className="flex items-center gap-2 border-b pb-2">
-        <span className="text-sm font-medium text-primary border-b-2 border-primary pb-2 px-2">
-          IP Home
-        </span>
-      </div>
-
-      {/* Date range + search */}
+      {/* Search */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span>From Date:</span>
-          <span className="font-semibold text-foreground">{format(new Date(fromDate), 'dd-MM-yyyy')}</span>
+          <span className="font-semibold text-foreground">{formatDate(fromDate)}</span>
           <span className="ml-2">To Date:</span>
-          <span className="font-semibold text-foreground">{format(new Date(toDate), 'dd-MM-yyyy')}</span>
+          <span className="font-semibold text-foreground">{formatDate(toDate)}</span>
         </div>
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search"
+            placeholder="Search patient..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-8 h-8 text-xs w-[160px]"
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            className="pl-8 h-8 text-xs w-[200px]"
           />
         </div>
       </div>
 
       {/* Table */}
-      <div className="rounded-lg border bg-card overflow-hidden">
+      <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary overflow-hidden shadow-sm ring-1 ring-foreground/5">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b bg-muted/50">
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Patient Details</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">IP Records</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Consultant/Tag</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Bed/Room/Ward/Block</th>
+              <tr className="border-b border-surface-container">
+                <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Patient Details</th>
+                <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">IP Records</th>
+                <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Diagnosis</th>
+                <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Bed/Ward</th>
+                <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Status</th>
+                <th className="px-4 pb-4 pt-5 text-center font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Action</th>
               </tr>
             </thead>
             <tbody>
-              {mockIPPatients.map((patient) => (
-                <tr key={patient.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-9 w-9">
-                        <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                          {patient.name[0]}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-semibold text-foreground">
-                          {patient.name} {patient.age}/{patient.gender}
-                        </p>
-                        <div className="text-xs text-muted-foreground">
-                          {patient.mrn} | {patient.phone}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          Admission Date&Time: {patient.admissionDate} | ...
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div>
-                      <p className="font-medium text-primary text-xs">IP :{patient.ipNumber}</p>
-                      <p className="text-xs text-muted-foreground">Complaints :{patient.complaints}</p>
-                      <p className="text-xs text-muted-foreground">Medico-Legal :{patient.medicoLegal}</p>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div>
-                      <p className="font-medium text-foreground">{patient.consultant}</p>
-                      {patient.tag !== '-' && (
-                        <p className="text-xs font-medium text-green-600">Tag : {patient.tag}</p>
-                      )}
-                      {patient.tag === '-' && (
-                        <p className="text-xs text-muted-foreground">Tag : -</p>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-foreground">{patient.bedInfo}</p>
+              {isLoading ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-12 text-center">
+                    <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    <p className="mt-2 text-sm text-muted-foreground">Loading admissions...</p>
                   </td>
                 </tr>
-              ))}
+              ) : admissions.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-12 text-center font-label text-on-surface-variant">
+                    No admitted patients found.
+                  </td>
+                </tr>
+              ) : (
+                admissions.map((admission) => {
+                  const patient = admission.patient;
+                  const patientName = patient
+                    ? `${patient.firstName} ${patient.lastName}`.toUpperCase()
+                    : 'Unknown';
+                  const initials = patient
+                    ? `${patient.firstName?.[0] || ''}${patient.lastName?.[0] || ''}`.toUpperCase()
+                    : '?';
+
+                  return (
+                    <tr key={admission.id} className="group hover:bg-surface-container-low transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-9 w-9">
+                            <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                              {initials}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-semibold text-foreground">
+                              {patientName}
+                              {patient?.gender && (
+                                <span className="font-normal text-muted-foreground ml-1">
+                                  {patient.gender === 'female' ? 'F' : patient.gender === 'male' ? 'M' : ''}
+                                </span>
+                              )}
+                            </p>
+                            <div className="text-xs text-muted-foreground">
+                              {patient?.mrn || patient?.uhid || '-'} | {patient?.phone || '-'}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Admitted: {formatDate(admission.admissionDate)}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div>
+                          <p className="font-medium text-primary text-xs">
+                            IP: {admission.ipNumber || admission.id?.slice(-8)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Complaints: {admission.complaints || admission.notes || '-'}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Medico-Legal: {admission.medicoLegal || 'No'}
+                          </p>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-sm text-foreground">{admission.diagnosis || '-'}</p>
+                        {admission.procedure && (
+                          <p className="text-xs text-muted-foreground">Proc: {admission.procedure}</p>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div>
+                          <p className="font-medium text-foreground">
+                            {admission.bed?.bedNumber || '-'} / {admission.ward?.name || '-'}
+                          </p>
+                          {admission.doctor?.user && (
+                            <p className="text-xs text-muted-foreground">
+                              Dr {admission.doctor.user.firstName} {admission.doctor.user.lastName}
+                            </p>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={cn(
+                          'text-[10px] font-bold px-2 py-0.5 rounded-full',
+                          admission.status === 'admitted' && 'bg-blue-100 text-blue-800',
+                          admission.status === 'discharged' && 'bg-green-100 text-green-800',
+                          admission.status === 'transferred' && 'bg-amber-100 text-amber-800',
+                          admission.status === 'absconded' && 'bg-red-100 text-red-800',
+                        )}>
+                          {admission.status.charAt(0).toUpperCase() + admission.status.slice(1)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            title="View Details"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            title="Add Notes"
+                            onClick={() => handleAddNote(admission.patientId, admission.id)}
+                          >
+                            <FileText className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            title="Order Tests"
+                          >
+                            <FlaskConical className="h-3.5 w-3.5" />
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger
+                              render={<Button variant="ghost" size="icon" className="h-7 w-7" />}
+                            >
+                              <MoreVertical className="h-3.5 w-3.5" />
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem>View Full Record</DropdownMenuItem>
+                              <DropdownMenuItem>Add Prescription</DropdownMenuItem>
+                              <DropdownMenuItem>Record Vitals</DropdownMenuItem>
+                              {admission.status === 'admitted' && (
+                                <DropdownMenuItem
+                                  className="text-destructive"
+                                  onClick={() => handleDischarge(admission.id)}
+                                >
+                                  Discharge Patient
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
@@ -240,12 +380,64 @@ export default function DoctorIPHomePage() {
             <span className="font-medium">10</span>
           </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>1–{mockIPPatients.length} of {mockIPPatients.length}</span>
-            <Button variant="ghost" size="icon" className="h-7 w-7" disabled>‹</Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7" disabled>›</Button>
+            <span>
+              {admissions.length > 0
+                ? `${(page - 1) * 10 + 1}-${(page - 1) * 10 + admissions.length} of ${meta?.total ?? admissions.length}`
+                : '0-0 of 0'}
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              disabled={page <= 1}
+              onClick={() => setPage(page - 1)}
+            >
+              &#8249;
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              disabled={page >= (meta?.totalPages ?? 1)}
+              onClick={() => setPage(page + 1)}
+            >
+              &#8250;
+            </Button>
           </div>
         </div>
       </div>
+
+      {/* Add Note Dialog */}
+      <Dialog open={noteDialogOpen} onOpenChange={setNoteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Progress Note</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <label className="text-sm font-medium text-foreground">Note</label>
+              <Textarea
+                placeholder="Enter progress note..."
+                value={noteContent}
+                onChange={(e) => setNoteContent(e.target.value)}
+                rows={6}
+                className="mt-1.5"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setNoteDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSubmitNote}
+                disabled={createNoteMutation.isPending}
+              >
+                {createNoteMutation.isPending ? 'Saving...' : 'Save Note'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

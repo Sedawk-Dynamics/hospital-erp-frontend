@@ -6,7 +6,7 @@ import { ModuleSidebar } from '@/components/layout/module-sidebar';
 import { ModuleHeader } from '@/components/layout/module-header';
 import { useAuthStore } from '@/stores/auth-store';
 import { useClinicStore } from '@/stores/clinic-store';
-import { useModuleStore } from '@/stores/module-store';
+import { useSidebarStore } from '@/stores/sidebar-store';
 
 export default function ModulesLayout({
   children,
@@ -16,53 +16,53 @@ export default function ModulesLayout({
   const router = useRouter();
   const { hydrate: hydrateAuth, _hydrated: authHydrated, isAuthenticated, user, fetchMe } = useAuthStore();
   const { hydrate: hydrateClinic, selectedClinic, _hydrated: clinicHydrated } = useClinicStore();
-  const { hydrate: hydrateModule, activeModule, _hydrated: moduleHydrated } = useModuleStore();
+  const isPinned = useSidebarStore((s) => s.isPinned);
 
   useEffect(() => {
     hydrateAuth();
     hydrateClinic();
-    hydrateModule();
-  }, [hydrateAuth, hydrateClinic, hydrateModule]);
+  }, [hydrateAuth, hydrateClinic]);
 
-  // Refresh user data from backend to get latest role & tenant
   useEffect(() => {
     if (authHydrated && user && !user.role) {
       fetchMe();
     }
   }, [authHydrated, user, fetchMe]);
 
-  const allHydrated = authHydrated && clinicHydrated && moduleHydrated;
+  const allHydrated = authHydrated && clinicHydrated;
 
   useEffect(() => {
     if (!allHydrated) return;
     if (!isAuthenticated) {
       router.push('/login');
     } else if (!selectedClinic) {
-      router.push('/select-clinic');
-    } else if (!activeModule) {
-      router.push('/select-module');
+      router.push('/select-hospital');
     }
-  }, [allHydrated, isAuthenticated, selectedClinic, activeModule, router]);
+  }, [allHydrated, isAuthenticated, selectedClinic, router]);
 
   if (!allHydrated) {
     return (
-      <div className="flex h-screen items-center justify-center">
+      <div className="flex h-screen items-center justify-center bg-background">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
       </div>
     );
   }
 
-  if (!isAuthenticated || !selectedClinic || !activeModule) {
+  if (!isAuthenticated || !selectedClinic) {
     return null;
   }
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="min-h-screen bg-background">
       <ModuleSidebar />
-      <div className="flex flex-1 flex-col overflow-hidden transition-all duration-300">
+
+      {/* Main content — offset by sidebar width: ml-20 (collapsed) or ml-64 (pinned) */}
+      <div className={`transition-all duration-300 ${isPinned ? 'lg:ml-64' : 'lg:ml-20'}`}>
         <ModuleHeader />
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-          {children}
+        <main className="p-8 pt-4 sanctuary-scrollbar">
+          <div className="animate-fade-in-up">
+            {children}
+          </div>
         </main>
       </div>
     </div>

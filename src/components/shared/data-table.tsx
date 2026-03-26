@@ -10,7 +10,6 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowUpDown, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -71,18 +70,18 @@ export function DataTable<T extends Record<string, unknown>>({
       {/* Search */}
       {onSearch && (
         <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-outline" />
+          <input
             placeholder={searchPlaceholder}
             value={searchQuery}
             onChange={(e) => handleSearch(e.target.value)}
-            className="pl-9"
+            className="bg-surface-container-low border-none rounded-xl pl-12 pr-6 py-2.5 w-full font-label text-sm focus:ring-2 focus:ring-primary/20 transition-all outline-none placeholder:text-on-surface-variant/60"
           />
         </div>
       )}
 
       {/* Table */}
-      <div className="rounded-md border bg-card">
+      <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>
@@ -93,7 +92,7 @@ export function DataTable<T extends Record<string, unknown>>({
                 >
                   {column.sortable ? (
                     <button
-                      className="flex items-center gap-1 hover:text-foreground transition-colors -ml-1 px-1"
+                      className="flex items-center gap-1 hover:text-on-surface transition-colors -ml-1 px-1"
                       onClick={() => handleSort(column.key)}
                     >
                       {column.label}
@@ -108,17 +107,20 @@ export function DataTable<T extends Record<string, unknown>>({
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow>
-                <TableCell colSpan={columns.length} className="h-32 text-center">
-                  <div className="flex items-center justify-center">
-                    <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                    <span className="ml-2 text-sm text-muted-foreground">Loading...</span>
-                  </div>
-                </TableCell>
-              </TableRow>
+              <>
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <TableRow key={i}>
+                    {columns.map((col) => (
+                      <TableCell key={col.key}>
+                        <div className="h-4 rounded animate-shimmer" />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </>
             ) : data.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-32 text-center text-muted-foreground">
+                <TableCell colSpan={columns.length} className="h-32 text-center font-label text-on-surface-variant">
                   {emptyMessage}
                 </TableCell>
               </TableRow>
@@ -141,9 +143,10 @@ export function DataTable<T extends Record<string, unknown>>({
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Page {page} of {totalPages} ({total} total records)
+        <div className="flex items-center justify-between bg-surface-container-lowest rounded-xl shadow-sanctuary p-3">
+          <p className="font-label text-xs text-on-surface-variant">
+            Page <span className="font-bold">{page}</span> of{' '}
+            <span className="font-bold">{totalPages}</span> ({total} records)
           </p>
           <div className="flex items-center gap-1">
             <Button

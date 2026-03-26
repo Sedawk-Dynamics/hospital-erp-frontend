@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Filter, Play, Eye, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { formatDateTime } from '@/lib/date-utils';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PageHeader } from '@/components/shared/page-header';
@@ -31,17 +31,17 @@ interface SavedReport {
 }
 
 const categoryVariantMap: Record<string, string> = {
-  financial: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
-  clinical: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-  operational: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
-  hr: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
-  inventory: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
+  financial: 'bg-emerald-100 text-emerald-800',
+  clinical: 'bg-blue-100 text-blue-800',
+  operational: 'bg-amber-100 text-amber-800',
+  hr: 'bg-purple-100 text-purple-800',
+  inventory: 'bg-orange-100 text-orange-800',
 };
 
 const typeVariantMap: Record<string, string> = {
-  table: 'bg-slate-100 text-slate-800 dark:bg-slate-900/30 dark:text-slate-400',
-  chart: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400',
-  summary: 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-400',
+  table: 'bg-slate-100 text-slate-800',
+  chart: 'bg-indigo-100 text-indigo-800',
+  summary: 'bg-teal-100 text-teal-800',
 };
 
 export default function ReportsPage() {
@@ -141,7 +141,7 @@ export default function ReportsPage() {
       render: (report) => {
         if (!report.lastGeneratedAt) return <span className="text-muted-foreground">Never</span>;
         try {
-          return format(new Date(report.lastGeneratedAt), 'MMM dd, yyyy HH:mm');
+          return formatDateTime(report.lastGeneratedAt);
         } catch {
           return <span className="text-muted-foreground">Never</span>;
         }
