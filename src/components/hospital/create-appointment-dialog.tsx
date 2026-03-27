@@ -6,7 +6,7 @@ import { z } from 'zod/v4';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toInputDateStr } from '@/lib/date-utils';
 import { toast } from 'sonner';
-import { Search, Loader2, UserRound } from 'lucide-react';
+import { Search, Loader2, UserRound, Clock } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -29,7 +29,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-import { usePatientSearch, useDoctorsList, hospitalKeys } from '@/hooks/use-hospital';
+import { usePatientSearch, useDoctorsList, useAvailableSlots, hospitalKeys } from '@/hooks/use-hospital';
 import { apiPost } from '@/lib/api';
 import type { Patient, Appointment } from '@/types';
 
@@ -42,9 +42,11 @@ const appointmentSchema = z.object({
   doctorId: z.string().min(1, 'Doctor is required'),
   appointmentDate: z.string().min(1, 'Date is required'),
   startTime: z.string().min(1, 'Time is required'),
+  endTime: z.string().min(1, 'End time is required'),
   type: z.enum(['consultation', 'follow_up', 'procedure']),
   priority: z.enum(['normal', 'urgent', 'emergency']),
   notes: z.string().optional(),
+  reason: z.string().optional(),
 });
 
 type AppointmentFormData = z.infer<typeof appointmentSchema>;
@@ -87,6 +89,7 @@ export function CreateAppointmentDialog({
     handleSubmit,
     control,
     setValue,
+    watch,
     reset,
     formState: { errors, isSubmitting },
   } = useForm<AppointmentFormData>({
@@ -96,11 +99,25 @@ export function CreateAppointmentDialog({
       doctorId: '',
       appointmentDate: toInputDateStr(),
       startTime: '',
+      endTime: '',
       type: 'consultation',
       priority: 'normal',
       notes: '',
+      reason: '',
     },
   });
+
+  const watchedDoctorId = watch('doctorId');
+  const watchedDate = watch('appointmentDate');
+  const watchedStartTime = watch('startTime');
+
+  // Fetch available slots when doctor and date are selected
+  const {
+    data: slotsData,
+    isLoading: slotsLoading,
+  } = useAvailableSlots(watchedDoctorId, watchedDate);
+
+  const slots = slotsData?.slots ?? [];
 
   // Reset form when dialog closes
   useEffect(() => {
@@ -111,6 +128,12 @@ export function CreateAppointmentDialog({
       setShowPatientDropdown(false);
     }
   }, [open, reset]);
+
+  // Clear selected slot when doctor or date changes
+  useEffect(() => {
+    setValue('startTime', '', { shouldValidate: false });
+    setValue('endTime', '', { shouldValidate: false });
+  }, [watchedDoctorId, watchedDate, setValue]);
 
   const handleSelectPatient = useCallback(
     (patient: Patient) => {
@@ -132,6 +155,14 @@ export function CreateAppointmentDialog({
     [setValue]
   );
 
+  const handleSlotSelect = useCallback(
+    (startTime: string, endTime: string) => {
+      setValue('startTime', startTime, { shouldValidate: true });
+      setValue('endTime', endTime, { shouldValidate: true });
+    },
+    [setValue]
+  );
+
   const onSubmit = async (data: AppointmentFormData) => {
     try {
       await apiPost<Appointment>('/appointments', {
@@ -139,9 +170,11 @@ export function CreateAppointmentDialog({
         doctorId: data.doctorId,
         appointmentDate: data.appointmentDate,
         startTime: data.startTime,
+        endTime: data.endTime,
         type: data.type,
         priority: data.priority,
         notes: data.notes || undefined,
+        reason: data.reason || undefined,
       });
 
       // Invalidate appointment queries
@@ -156,6 +189,8 @@ export function CreateAppointmentDialog({
       toast.error(message);
     }
   };
+
+  const hasDoctorAndDate = !!watchedDoctorId && !!watchedDate;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -263,32 +298,86 @@ export function CreateAppointmentDialog({
             )}
           </div>
 
-          {/* Date and Time */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="appointment-date">Date *</Label>
-              <Input
-                id="appointment-date"
-                type="date"
-                {...register('appointmentDate')}
-              />
-              {errors.appointmentDate && (
-                <p className="text-xs text-destructive">
-                  {errors.appointmentDate.message}
+          {/* Date */}
+          <div className="space-y-1.5">
+            <Label htmlFor="appointment-date">Date *</Label>
+            <Input
+              id="appointment-date"
+              type="date"
+              {...register('appointmentDate')}
+            />
+            {errors.appointmentDate && (
+              <p className="text-xs text-destructive">
+                {errors.appointmentDate.message}
+              </p>
+            )}
+          </div>
+
+          {/* Available Slots */}
+          <div className="space-y-1.5">
+            <Label className="flex items-center gap-1.5">
+              <Clock className="h-3.5 w-3.5" />
+              Time Slot *
+            </Label>
+
+            {!hasDoctorAndDate && (
+              <p className="text-sm text-muted-foreground">
+                Select a doctor and date to view available slots.
+              </p>
+            )}
+
+            {hasDoctorAndDate && slotsLoading && (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <span className="ml-2 text-sm text-muted-foreground">
+                  Loading available slots...
+                </span>
+              </div>
+            )}
+
+            {hasDoctorAndDate && !slotsLoading && slots.length === 0 && (
+              <div className="rounded-md border border-dashed p-4 text-center">
+                <p className="text-sm text-muted-foreground">
+                  No slots available for this doctor on the selected date.
                 </p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="appointment-time">Time *</Label>
-              <Input
-                id="appointment-time"
-                type="time"
-                {...register('startTime')}
-              />
-              {errors.startTime && (
-                <p className="text-xs text-destructive">{errors.startTime.message}</p>
-              )}
-            </div>
+              </div>
+            )}
+
+            {hasDoctorAndDate && !slotsLoading && slots.length > 0 && (
+              <div className="max-h-48 overflow-y-auto rounded-md border p-2">
+                <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
+                  {slots.map((slot) => {
+                    const isSelected = watchedStartTime === slot.startTime;
+                    return (
+                      <Button
+                        key={slot.startTime}
+                        type="button"
+                        variant={isSelected ? 'default' : 'outline'}
+                        size="sm"
+                        disabled={!slot.available}
+                        className={
+                          !slot.available
+                            ? 'opacity-50 cursor-not-allowed text-muted-foreground'
+                            : isSelected
+                              ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                              : 'hover:bg-primary/10 hover:text-primary hover:border-primary'
+                        }
+                        onClick={() => handleSlotSelect(slot.startTime, slot.endTime)}
+                      >
+                        {slot.startTime}
+                      </Button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {errors.startTime && (
+              <p className="text-xs text-destructive">{errors.startTime.message}</p>
+            )}
+            {errors.endTime && (
+              <p className="text-xs text-destructive">{errors.endTime.message}</p>
+            )}
           </div>
 
           {/* Type and Priority */}
@@ -337,6 +426,16 @@ export function CreateAppointmentDialog({
                 )}
               />
             </div>
+          </div>
+
+          {/* Reason */}
+          <div className="space-y-1.5">
+            <Label htmlFor="appointment-reason">Reason</Label>
+            <Input
+              id="appointment-reason"
+              placeholder="Reason for visit..."
+              {...register('reason')}
+            />
           </div>
 
           {/* Notes */}

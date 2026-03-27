@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPost, apiPatch } from '@/lib/api';
-import type { Appointment, Patient, DoctorProfile, Bill, Payment, CollectionSummary, CreditSettlement } from '@/types';
+import { apiGet, apiPost, apiPatch, apiPut } from '@/lib/api';
+import type { Appointment, Patient, DoctorProfile, QueueToken, Bill, Payment, CollectionSummary, CreditSettlement } from '@/types';
 
 // ============================================================
 // Query Keys
@@ -12,8 +12,14 @@ export const hospitalKeys = {
   appointmentStats: (date?: string) =>
     ['hospital', 'appointment-stats', date] as const,
   doctors: ['hospital', 'doctors'] as const,
+  doctorSlots: (doctorId: string, date: string) =>
+    ['hospital', 'doctor-slots', doctorId, date] as const,
+  doctorQueue: (doctorId: string, date: string) =>
+    ['hospital', 'doctor-queue', doctorId, date] as const,
   patientSearch: (query: string) =>
     ['hospital', 'patient-search', query] as const,
+  patient: (id: string) =>
+    ['hospital', 'patient', id] as const,
   bills: (params?: Record<string, unknown>) =>
     ['hospital', 'bills', params] as const,
   bill: (id: string) =>
@@ -24,6 +30,8 @@ export const hospitalKeys = {
     ['hospital', 'collection-summary', params] as const,
   creditSettlements: (params?: Record<string, unknown>) =>
     ['hospital', 'credit-settlements', params] as const,
+  walkInAppointments: (params?: Record<string, unknown>) =>
+    ['hospital', 'walkin-appointments', params] as const,
 };
 
 // ============================================================
@@ -125,6 +133,73 @@ export function usePatientSearch(query: string) {
       return response.data ?? null;
     },
     enabled: query.length >= 2,
+  });
+}
+
+// ============================================================
+// Slot & Queue Query Hooks
+// ============================================================
+
+export interface AvailableSlot {
+  startTime: string;
+  endTime: string;
+  available: boolean;
+}
+
+export interface AvailableSlotsResponse {
+  date: string;
+  doctorId: string;
+  slots: AvailableSlot[];
+}
+
+export function useAvailableSlots(doctorId: string, date: string) {
+  return useQuery({
+    queryKey: hospitalKeys.doctorSlots(doctorId, date),
+    queryFn: async () => {
+      const response = await apiGet<AvailableSlotsResponse>(
+        `/appointments/doctors/${doctorId}/slots`,
+        { params: { date } }
+      );
+      return response.data ?? null;
+    },
+    enabled: !!doctorId && !!date,
+  });
+}
+
+export interface QueueTokenResponse {
+  id: string;
+  tenantId: string;
+  appointmentId: string;
+  doctorId: string;
+  patientId: string;
+  tokenNumber: string;
+  queueDate: string;
+  status: string;
+  patient?: { id: string; mrn: string; firstName: string; lastName: string };
+}
+
+export function useDoctorQueue(doctorId: string, date: string) {
+  return useQuery({
+    queryKey: hospitalKeys.doctorQueue(doctorId, date),
+    queryFn: async () => {
+      const response = await apiGet<QueueTokenResponse[]>(
+        `/appointments/queue/doctor/${doctorId}`,
+        { params: { date } }
+      );
+      return response.data ?? [];
+    },
+    enabled: !!doctorId && !!date,
+  });
+}
+
+export function usePatient(id: string) {
+  return useQuery({
+    queryKey: hospitalKeys.patient(id),
+    queryFn: async () => {
+      const response = await apiGet<Patient>(`/patients/${id}`);
+      return response.data ?? null;
+    },
+    enabled: !!id,
   });
 }
 
@@ -255,6 +330,37 @@ export function useCancelAppointment() {
   });
 }
 
+export function useGenerateQueueToken() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (appointmentId: string) => {
+      const response = await apiPost<QueueTokenResponse>(`/appointments/${appointmentId}/queue`);
+      return response.data ?? null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'doctor-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'op-appointments'] });
+    },
+  });
+}
+
+export function useRescheduleAppointment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: { appointmentDate: string; startTime: string; endTime: string } }) => {
+      const response = await apiPatch<Appointment>(`/appointments/${id}/status`, {
+        status: 'booked',
+        ...data,
+      });
+      return response.data ?? null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'op-appointments'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'appointment-stats'] });
+    },
+  });
+}
+
 // ============================================================
 // Patient Mutations
 // ============================================================
@@ -262,12 +368,53 @@ export function useCancelAppointment() {
 export function useCreatePatient() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: { firstName: string; lastName: string; dateOfBirth: string; gender: string; phone: string; email?: string; bloodGroup?: string; address?: string; city?: string; state?: string; zipCode?: string }) => {
+    mutationFn: async (data: Record<string, unknown>) => {
       const response = await apiPost<Patient>('/patients', data);
       return response.data ?? null;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['hospital', 'patient-search'] });
+    },
+  });
+}
+
+export function useUpdatePatient() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Record<string, unknown> }) => {
+      const response = await apiPut<Patient>(`/patients/${id}`, data);
+      return response.data ?? null;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'patient-search'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'patient', variables.id] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'op-appointments'] });
+    },
+  });
+}
+
+export function useAddEmergencyContact() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ patientId, data }: { patientId: string; data: { name: string; relationship: string; phone: string; email?: string; isPrimary?: boolean } }) => {
+      const response = await apiPost(`/patients/${patientId}/emergency-contacts`, data);
+      return response.data ?? null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'patient'] });
+    },
+  });
+}
+
+export function useUploadPatientDocument() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ patientId, data }: { patientId: string; data: { title: string; type: string; fileUrl: string; fileName: string; mimeType?: string } }) => {
+      const response = await apiPost(`/patients/${patientId}/documents`, data);
+      return response.data ?? null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'patient'] });
     },
   });
 }
