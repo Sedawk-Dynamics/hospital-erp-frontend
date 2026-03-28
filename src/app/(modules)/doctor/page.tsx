@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { toInputDateStr } from '@/lib/date-utils';
-import { Search, CalendarIcon } from 'lucide-react';
+import { Search, CalendarIcon, Users, Clock, BedDouble, FlaskConical, Scissors } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -10,7 +10,8 @@ import { AppointmentStatsRow } from '@/components/hospital/appointment-stats-row
 import { PatientTagFilter } from '@/components/hospital/patient-tag-filter';
 import { PatientCategoryIndicators } from '@/components/doctor/patient-category-indicators';
 import { DoctorActionButtons } from '@/components/doctor/doctor-action-buttons';
-import { useDoctorAppointments, useDoctorAppointmentStats, useUpdateAppointmentStatus } from '@/hooks/use-doctor';
+import { PatientConsultationView } from '@/components/doctor/patient-consultation-view';
+import { useDoctorAppointments, useDoctorAppointmentStats, useUpdateAppointmentStatus, useLabOrders, useDoctorOTRequests } from '@/hooks/use-doctor';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -60,6 +61,42 @@ const DOCTOR_TRANSITIONS: Record<string, { label: string; to: string; icon: type
   ],
 };
 
+// ── Quick Stat Card ──────────────────────────────────────
+
+function QuickStatCard({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: number; color: string }) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl bg-surface-container-lowest p-3 shadow-sanctuary">
+      <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${color}`}>{icon}</div>
+      <div>
+        <p className="font-headline text-lg font-bold">{value}</p>
+        <p className="font-label text-[10px] text-on-surface-variant">{label}</p>
+      </div>
+    </div>
+  );
+}
+
+// ── Alerts Panel ─────────────────────────────────────────
+
+function AlertsPanel({ pendingLabCount, pendingOTCount }: { pendingLabCount: number; pendingOTCount: number }) {
+  if (pendingLabCount === 0 && pendingOTCount === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-2">
+      {pendingLabCount > 0 && (
+        <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-1.5 text-xs font-medium text-amber-700">
+          <FlaskConical className="h-3.5 w-3.5" />
+          {pendingLabCount} pending lab results
+        </div>
+      )}
+      {pendingOTCount > 0 && (
+        <div className="flex items-center gap-2 rounded-lg bg-purple-50 border border-purple-200 px-3 py-1.5 text-xs font-medium text-purple-700">
+          <Scissors className="h-3.5 w-3.5" />
+          {pendingOTCount} OT approvals pending
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function DoctorHomePage() {
   const { user } = useAuthStore();
   const [searchQuery, setSearchQuery] = useState('');
@@ -68,6 +105,7 @@ export default function DoctorHomePage() {
   const [activeStatFilter, setActiveStatFilter] = useState('all');
   const [activeTag, setActiveTag] = useState('all');
   const [page, setPage] = useState(1);
+  const [consultPatientId, setConsultPatientId] = useState<string | null>(null);
 
   const statusFilter = statusFilterMap[activeStatFilter];
 
@@ -82,6 +120,13 @@ export default function DoctorHomePage() {
   });
 
   const { data: doctorStats, isLoading: statsLoading } = useDoctorAppointmentStats(user?.id, fromDate);
+
+  // Alerts data
+  const { data: labOrdersData } = useLabOrders({ status: 'ordered', limit: 5 });
+  const { data: otRequestsData } = useDoctorOTRequests({ status: 'pending', limit: 5 });
+
+  const pendingLabCount = labOrdersData?.meta?.total ?? labOrdersData?.data?.length ?? 0;
+  const pendingOTCount = otRequestsData?.meta?.total ?? otRequestsData?.data?.length ?? 0;
 
   const appointments = appointmentsData?.data ?? [];
 
@@ -103,6 +148,17 @@ export default function DoctorHomePage() {
       </div>
 
       <DoctorActionButtons />
+
+      {/* Quick Stats Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <QuickStatCard icon={<Users className="h-4 w-4" />} label="Total Patients" value={doctorStats?.all ?? 0} color="bg-indigo-50 text-indigo-600" />
+        <QuickStatCard icon={<CheckCircle className="h-4 w-4" />} label="Completed" value={doctorStats?.completed ?? 0} color="bg-green-50 text-green-600" />
+        <QuickStatCard icon={<Clock className="h-4 w-4" />} label="Pending" value={(doctorStats?.booked ?? 0) + (doctorStats?.arrived ?? 0)} color="bg-amber-50 text-amber-600" />
+        <QuickStatCard icon={<BedDouble className="h-4 w-4" />} label="IP Referrals" value={doctorStats?.ipAppointments ?? 0} color="bg-blue-50 text-blue-600" />
+      </div>
+
+      {/* Alerts Panel */}
+      <AlertsPanel pendingLabCount={pendingLabCount} pendingOTCount={pendingOTCount} />
 
       {/* Patient categories + Stats row */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
@@ -174,6 +230,14 @@ export default function DoctorHomePage() {
         totalPages={appointmentsData?.meta?.totalPages ?? 1}
         total={appointmentsData?.meta?.total ?? 0}
         onPageChange={setPage}
+        onViewDetails={(patientId) => setConsultPatientId(patientId)}
+      />
+
+      {/* Patient Consultation View Sheet */}
+      <PatientConsultationView
+        open={!!consultPatientId}
+        onOpenChange={(o) => { if (!o) setConsultPatientId(null); }}
+        patientId={consultPatientId}
       />
     </div>
   );
@@ -217,6 +281,7 @@ function DoctorAppointmentTable({
   totalPages,
   total,
   onPageChange,
+  onViewDetails,
 }: {
   appointments: Appointment[];
   isLoading: boolean;
@@ -224,6 +289,7 @@ function DoctorAppointmentTable({
   totalPages: number;
   total: number;
   onPageChange: (page: number) => void;
+  onViewDetails: (patientId: string) => void;
 }) {
   const statusMutation = useUpdateAppointmentStatus();
 
@@ -403,7 +469,7 @@ function DoctorAppointmentTable({
                                 </DropdownMenuItem>
                               );
                             })}
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => apt.patientId && onViewDetails(apt.patientId)}>
                               <Eye className="mr-2 h-4 w-4" />
                               View Details
                             </DropdownMenuItem>
@@ -412,7 +478,13 @@ function DoctorAppointmentTable({
                       )}
 
                       {transitions.length === 0 && (
-                        <Button variant="ghost" size="icon" className="h-7 w-7" title="View">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          title="View"
+                          onClick={() => apt.patientId && onViewDetails(apt.patientId)}
+                        >
                           <Eye className="h-3.5 w-3.5" />
                         </Button>
                       )}

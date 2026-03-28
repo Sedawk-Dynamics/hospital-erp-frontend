@@ -18,13 +18,16 @@ export interface ProgressNote {
   visitId?: string;
   admissionId?: string;
   noteType?: string;
+  content?: string;
+  // Frontend convenience fields (parsed from content)
   subjective?: string;
   objective?: string;
   assessment?: string;
   plan?: string;
-  content?: string;
-  isSigned: boolean;
-  signedAt?: string;
+  // Backend fields
+  pinToDischargeSummary?: boolean;
+  status?: 'active' | 'finalized';
+  isAutoFilled?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -62,15 +65,22 @@ export interface Vital {
   id: string;
   patientId: string;
   patient?: Pick<Patient, 'id' | 'mrn' | 'firstName' | 'lastName'>;
+  visitId?: string;
   temperature?: number;
   bloodPressureSystolic?: number;
   bloodPressureDiastolic?: number;
+  // Backend field: pulseRate — aliased as heartRate for frontend convenience
+  pulseRate?: number;
   heartRate?: number;
   respiratoryRate?: number;
   oxygenSaturation?: number;
+  // Backend fields: weightKg, heightCm
+  weightKg?: number;
+  heightCm?: number;
   weight?: number;
   height?: number;
   bmi?: number;
+  bloodSugar?: number;
   notes?: string;
   recordedBy?: string;
   createdAt: string;
@@ -83,8 +93,13 @@ export interface Diagnosis {
   patient?: Pick<Patient, 'id' | 'mrn' | 'firstName' | 'lastName'>;
   doctorId?: string;
   visitId?: string;
+  // Backend fields
+  icdCode?: string;
+  diagnosisName?: string;
+  diagnosisType?: 'primary' | 'secondary' | 'differential';
+  // Frontend aliases
   code?: string;
-  description: string;
+  description?: string;
   type?: 'primary' | 'secondary' | 'differential';
   status?: string;
   notes?: string;
@@ -356,8 +371,11 @@ export function useDoctorAdmissions(params?: DoctorAdmissionsParams) {
 export function useDischargePatient() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...data }: { id: string; dischargeNotes?: string; dischargeSummary?: string }) => {
-      const response = await apiPatch(`/clinical/admissions/${id}/discharge`, data);
+    mutationFn: async ({ id, notes, dischargeDate }: { id: string; notes?: string; dischargeDate?: string }) => {
+      const response = await apiPatch(`/clinical/admissions/${id}/discharge`, {
+        notes,
+        dischargeDate: dischargeDate || new Date().toISOString(),
+      });
       return response.data;
     },
     onSuccess: () => {
@@ -393,16 +411,18 @@ export function useCreateProgressNote() {
   return useMutation({
     mutationFn: async (data: {
       patientId: string;
-      visitId?: string;
-      admissionId?: string;
+      visitId: string;
       noteType?: string;
-      subjective?: string;
-      objective?: string;
-      assessment?: string;
-      plan?: string;
-      content?: string;
+      content: string;
+      pinToDischargeSummary?: boolean;
     }) => {
-      const response = await apiPost<ProgressNote>('/progress-notes', data);
+      const response = await apiPost<ProgressNote>('/progress-notes', {
+        patientId: data.patientId,
+        visitId: data.visitId,
+        noteType: data.noteType,
+        content: data.content,
+        pinToDischargeSummary: data.pinToDischargeSummary ?? false,
+      });
       return response.data;
     },
     onSuccess: () => {
@@ -451,11 +471,28 @@ export function useCreatePrescription() {
   return useMutation({
     mutationFn: async (data: {
       patientId: string;
-      visitId?: string;
+      doctorId: string;
+      visitId: string;
+      prescriptionType?: 'op' | 'ip';
       items: PrescriptionItem[];
       notes?: string;
     }) => {
-      const response = await apiPost<Prescription>('/prescriptions', data);
+      const response = await apiPost<Prescription>('/prescriptions', {
+        patientId: data.patientId,
+        doctorId: data.doctorId,
+        visitId: data.visitId,
+        prescriptionType: data.prescriptionType ?? 'op',
+        notes: data.notes,
+        items: data.items.map((item) => ({
+          drugName: item.drugName,
+          dosage: item.dosage,
+          frequency: item.frequency,
+          duration: item.duration,
+          route: item.route ?? 'oral',
+          instructions: item.instructions,
+          quantity: item.quantity,
+        })),
+      });
       return response.data;
     },
     onSuccess: () => {
@@ -484,6 +521,7 @@ export function useRecordVitals() {
   return useMutation({
     mutationFn: async (data: {
       patientId: string;
+      visitId: string;
       temperature?: number;
       bloodPressureSystolic?: number;
       bloodPressureDiastolic?: number;
@@ -492,9 +530,24 @@ export function useRecordVitals() {
       oxygenSaturation?: number;
       weight?: number;
       height?: number;
+      bloodSugar?: number;
       notes?: string;
     }) => {
-      const response = await apiPost<Vital>('/clinical/vitals', data);
+      // Map frontend field names to backend field names
+      const response = await apiPost<Vital>('/clinical/vitals', {
+        patientId: data.patientId,
+        visitId: data.visitId,
+        temperature: data.temperature,
+        bloodPressureSystolic: data.bloodPressureSystolic,
+        bloodPressureDiastolic: data.bloodPressureDiastolic,
+        pulseRate: data.heartRate,
+        respiratoryRate: data.respiratoryRate,
+        oxygenSaturation: data.oxygenSaturation,
+        weightKg: data.weight,
+        heightCm: data.height,
+        bloodSugar: data.bloodSugar,
+        notes: data.notes,
+      });
       return response.data;
     },
     onSuccess: (_data, variables) => {
@@ -523,13 +576,21 @@ export function useAddDiagnosis() {
   return useMutation({
     mutationFn: async (data: {
       patientId: string;
-      visitId?: string;
+      visitId: string;
       code?: string;
       description: string;
       type?: 'primary' | 'secondary' | 'differential';
       notes?: string;
     }) => {
-      const response = await apiPost<Diagnosis>('/clinical/diagnoses', data);
+      // Map frontend field names to backend field names
+      const response = await apiPost<Diagnosis>('/clinical/diagnoses', {
+        patientId: data.patientId,
+        visitId: data.visitId,
+        icdCode: data.code,
+        diagnosisName: data.description,
+        diagnosisType: data.type ?? 'primary',
+        notes: data.notes,
+      });
       return response.data;
     },
     onSuccess: (_data, variables) => {
@@ -589,7 +650,7 @@ export function usePatientSearch(query: string) {
     queryKey: doctorKeys.patients.search(query),
     queryFn: async () => {
       const response = await apiGet<Patient[]>('/patients/search', {
-        params: { query, limit: 20 },
+        params: { search: query, limit: 20 },
       });
       return response.data;
     },

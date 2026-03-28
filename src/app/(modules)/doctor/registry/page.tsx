@@ -421,7 +421,7 @@ function PatientProfileDialog({
                           <div className="flex items-center justify-between mb-2">
                             <span className="font-medium text-foreground">
                               {n.noteType || 'Progress Note'}
-                              {n.isSigned && <span className="ml-2 text-green-600 text-xs">(Signed)</span>}
+                              {n.status === 'finalized' && <span className="ml-2 text-green-600 text-xs">(Signed)</span>}
                             </span>
                             <span className="text-xs text-muted-foreground">
                               {formatDateTime(n.createdAt)}

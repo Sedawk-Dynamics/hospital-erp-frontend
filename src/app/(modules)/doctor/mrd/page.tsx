@@ -563,7 +563,7 @@ function MedicalRecordDialog({
                           <div className="flex items-center justify-between mb-1">
                             <span className="font-medium">
                               {n.noteType || 'Progress Note'}
-                              {n.isSigned && <span className="text-green-600 text-xs ml-2">(Signed)</span>}
+                              {n.status === 'finalized' && <span className="text-green-600 text-xs ml-2">(Signed)</span>}
                             </span>
                             <span className="text-xs text-muted-foreground">
                               {formatDateTime(n.createdAt)}

@@ -30,6 +30,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
 import { useDoctorAdmissions, useDischargePatient, useCreateProgressNote } from '@/hooks/use-doctor';
+import { apiPost } from '@/lib/api';
 
 const ipStatItems = [
   { key: 'all', label: 'All', color: 'text-foreground' },
@@ -101,18 +102,35 @@ export default function DoctorIPHomePage() {
       return;
     }
     try {
+      // Create or reuse a visit for this IP patient
+      let visitId: string | undefined;
+      try {
+        const visitResp = await apiPost<{ id: string }>('/clinical/visits', {
+          patientId: selectedPatientId,
+          doctorId: user?.id,
+          visitType: 'ip',
+          visitDate: new Date().toISOString(),
+        });
+        visitId = visitResp.data?.id;
+      } catch {
+        // Visit may already exist — try to find it
+      }
+      if (!visitId) {
+        toast.error('Could not create visit for this patient');
+        return;
+      }
       await createNoteMutation.mutateAsync({
         patientId: selectedPatientId,
-        admissionId: selectedAdmissionId,
+        visitId,
         content: noteContent,
-        noteType: 'progress',
+        noteType: 'general',
       });
       toast.success('Progress note added successfully');
       setNoteDialogOpen(false);
     } catch {
       toast.error('Failed to add progress note');
     }
-  }, [noteContent, selectedPatientId, selectedAdmissionId, createNoteMutation]);
+  }, [noteContent, selectedPatientId, user?.id, createNoteMutation]);
 
   return (
     <div className="space-y-4 animate-fade-in-up">
