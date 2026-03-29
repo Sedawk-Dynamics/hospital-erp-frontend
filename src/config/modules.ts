@@ -26,6 +26,8 @@ import {
   FileBarChart,
   FolderArchive,
   HeartPulse,
+  ClipboardPlus,
+  FileCheck,
   type LucideIcon,
 } from 'lucide-react';
 import type { ModuleKey } from '@/stores/module-store';
@@ -170,6 +172,8 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
     sidebarItems: [
       { label: 'Home', href: '/doctor', icon: Home },
       { label: 'IP Home', href: '/doctor/ip', icon: BedDouble },
+      { label: 'Prescriptions', href: '/doctor/prescriptions', icon: ClipboardPlus },
+      { label: 'Discharge Summary', href: '/doctor/discharge-summary', icon: FileCheck },
       { label: 'Nutrition Chart', href: '/doctor/nutrition-chart', icon: UtensilsCrossed },
       { label: 'Registry', href: '/doctor/registry', icon: FileBarChart },
       { label: 'MRD', href: '/doctor/mrd', icon: FolderArchive },

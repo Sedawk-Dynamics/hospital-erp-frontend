@@ -187,6 +187,7 @@ export const doctorKeys = {
   prescriptions: {
     all: ['doctor', 'prescriptions'] as const,
     list: (params?: Record<string, unknown>) => ['doctor', 'prescriptions', 'list', params] as const,
+    detail: (id: string) => ['doctor', 'prescriptions', 'detail', id] as const,
   },
   vitals: {
     all: ['doctor', 'vitals'] as const,
@@ -200,6 +201,10 @@ export const doctorKeys = {
     all: ['doctor', 'lab-orders'] as const,
     list: (params?: Record<string, unknown>) => ['doctor', 'lab-orders', 'list', params] as const,
   },
+  imagingRequests: {
+    all: ['doctor', 'imaging-requests'] as const,
+    list: (params?: Record<string, unknown>) => ['doctor', 'imaging-requests', 'list', params] as const,
+  },
   patients: {
     all: ['doctor', 'patients'] as const,
     search: (query: string) => ['doctor', 'patients', 'search', query] as const,
@@ -208,6 +213,18 @@ export const doctorKeys = {
   otRequests: {
     all: ['doctor', 'ot-requests'] as const,
     list: (params?: Record<string, unknown>) => ['doctor', 'ot-requests', 'list', params] as const,
+  },
+  dischargeSummary: {
+    all: ['doctor', 'discharge-summary'] as const,
+    byAdmission: (admissionId: string) => ['doctor', 'discharge-summary', 'admission', admissionId] as const,
+    detail: (id: string) => ['doctor', 'discharge-summary', 'detail', id] as const,
+  },
+  formulary: {
+    search: (query: string) => ['doctor', 'formulary', 'search', query] as const,
+  },
+  tickets: {
+    all: ['doctor', 'tickets'] as const,
+    list: (params?: Record<string, unknown>) => ['doctor', 'tickets', 'list', params] as const,
   },
   profile: ['doctor', 'profile'] as const,
 };
@@ -823,6 +840,393 @@ export function useCreateMRDRequest() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['doctor', 'mrd'] });
+    },
+  });
+}
+
+// ============================================================
+// Formulary Search & Allergy Check Hooks
+// ============================================================
+
+export interface FormularyDrug {
+  id: string;
+  drugName: string;
+  genericName?: string;
+  dosageForm?: string;
+  strength?: string;
+  manufacturer?: string;
+  price?: number;
+}
+
+export function useFormularySearch(search: string) {
+  return useQuery({
+    queryKey: doctorKeys.formulary.search(search),
+    queryFn: async () => {
+      const response = await apiGet<FormularyDrug[]>('/prescriptions/formulary-search', {
+        params: { search },
+      });
+      return response.data;
+    },
+    enabled: search.length >= 2,
+  });
+}
+
+export interface AllergyCheckResult {
+  hasAllergy: boolean;
+  matchedAllergies: Array<{
+    id: string;
+    allergen: string;
+    reaction?: string;
+    severity: string;
+  }>;
+  drug?: {
+    drugName: string;
+    genericName?: string;
+    contraindications?: string;
+  };
+}
+
+export function useAllergyCheck(patientId: string, drugName: string) {
+  return useQuery({
+    queryKey: ['doctor', 'allergy-check', patientId, drugName],
+    queryFn: async () => {
+      const response = await apiGet<AllergyCheckResult>('/prescriptions/allergy-check', {
+        params: { patientId, drugName },
+      });
+      return response.data;
+    },
+    enabled: !!patientId && !!drugName && drugName.length >= 2,
+  });
+}
+
+// ============================================================
+// Prescription Detail Hook
+// ============================================================
+
+export function usePrescriptionDetail(id: string) {
+  return useQuery({
+    queryKey: doctorKeys.prescriptions.detail(id),
+    queryFn: async () => {
+      const response = await apiGet<Prescription>(`/prescriptions/${id}`);
+      return response.data;
+    },
+    enabled: !!id,
+  });
+}
+
+export function useUpdatePrescription() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...data }: { id: string; status?: string; notes?: string }) => {
+      const response = await apiPatch<Prescription>(`/prescriptions/${id}`, data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: doctorKeys.prescriptions.all });
+    },
+  });
+}
+
+export function useCancelPrescription() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiPatch<Prescription>(`/prescriptions/${id}/cancel`);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: doctorKeys.prescriptions.all });
+    },
+  });
+}
+
+// ============================================================
+// Imaging Request Hooks
+// ============================================================
+
+export interface ImagingRequest {
+  id: string;
+  patientId: string;
+  patient?: Pick<Patient, 'id' | 'mrn' | 'firstName' | 'lastName'>;
+  visitId?: string;
+  orderedBy?: string;
+  orderedByUser?: { id: string; firstName: string; lastName: string };
+  imagingType: string;
+  bodyPart?: string;
+  clinicalIndication?: string;
+  urgency?: string;
+  status: string;
+  notes?: string;
+  scheduledDate?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ImagingRequestParams {
+  page?: number;
+  limit?: number;
+  patientId?: string;
+  status?: string;
+  search?: string;
+}
+
+export function useImagingRequests(params?: ImagingRequestParams) {
+  return useQuery({
+    queryKey: doctorKeys.imagingRequests.list(params as Record<string, unknown>),
+    queryFn: async () => {
+      const response = await apiGet<ImagingRequest[]>('/imaging/requests', { params });
+      return { data: response.data, meta: response.meta as PaginationMeta };
+    },
+  });
+}
+
+export function useCreateImagingRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      patientId: string;
+      visitId: string;
+      imagingType: string;
+      bodyPart?: string;
+      clinicalIndication?: string;
+      urgency?: string;
+      notes?: string;
+    }) => {
+      const response = await apiPost<ImagingRequest>('/imaging/requests', data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: doctorKeys.imagingRequests.all });
+    },
+  });
+}
+
+// ============================================================
+// Discharge Summary Hooks
+// ============================================================
+
+export interface DischargeSummary {
+  id: string;
+  admissionId: string;
+  visitId: string;
+  patientId: string;
+  doctorId: string;
+  admissionDate?: string;
+  dischargeDate?: string;
+  diagnosesSummary?: string;
+  proceduresSummary?: string;
+  labResultsSummary?: string;
+  medicationReconciliation?: string;
+  dischargeInstructions?: string;
+  followUpDate?: string;
+  followUpInstructions?: string;
+  status: 'draft' | 'finalized' | 'published';
+  signedBy?: string;
+  signedAt?: string;
+  eSignatureUrl?: string;
+  pdfUrl?: string;
+  patient?: Pick<Patient, 'id' | 'mrn' | 'firstName' | 'lastName' | 'phone' | 'gender' | 'dateOfBirth'>;
+  doctor?: {
+    id: string;
+    user?: { firstName: string; lastName: string };
+    specialization?: string;
+    department?: { name: string };
+  };
+  admission?: {
+    id: string;
+    admissionDate: string;
+    dischargeDate?: string;
+    admissionReason?: string;
+    ward?: { name: string };
+    bed?: { bedNumber: string };
+  };
+  signer?: { id: string; firstName: string; lastName: string };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function useGenerateDischargeSummary(admissionId: string) {
+  return useQuery({
+    queryKey: doctorKeys.dischargeSummary.byAdmission(admissionId),
+    queryFn: async () => {
+      const response = await apiGet<DischargeSummary>('/mrd/discharge-summary/generate', {
+        params: { admissionId },
+      });
+      return response.data;
+    },
+    enabled: !!admissionId,
+  });
+}
+
+export function useDischargeSummaryDetail(id: string) {
+  return useQuery({
+    queryKey: doctorKeys.dischargeSummary.detail(id),
+    queryFn: async () => {
+      const response = await apiGet<DischargeSummary>(`/mrd/discharge-summary/${id}`);
+      return response.data;
+    },
+    enabled: !!id,
+  });
+}
+
+export function useUpdateDischargeSummary() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...data }: {
+      id: string;
+      diagnosesSummary?: string;
+      proceduresSummary?: string;
+      labResultsSummary?: string;
+      medicationReconciliation?: string;
+      dischargeInstructions?: string;
+      followUpDate?: string;
+      followUpInstructions?: string;
+    }) => {
+      const response = await apiPatch<DischargeSummary>(`/mrd/discharge-summary/${id}`, data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: doctorKeys.dischargeSummary.all });
+    },
+  });
+}
+
+export function useSignDischargeSummary() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiPost<DischargeSummary>(`/mrd/discharge-summary/${id}/sign`);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: doctorKeys.dischargeSummary.all });
+    },
+  });
+}
+
+export function usePublishDischargeSummary() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiPost<DischargeSummary>(`/mrd/discharge-summary/${id}/publish`);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: doctorKeys.dischargeSummary.all });
+    },
+  });
+}
+
+// ============================================================
+// Clinical OT Request Hooks (new endpoints)
+// ============================================================
+
+export interface ClinicalOTRequest {
+  id: string;
+  patientId: string;
+  patient?: Pick<Patient, 'id' | 'mrn' | 'firstName' | 'lastName'>;
+  visitId: string;
+  doctorId: string;
+  doctor?: { id: string; user?: { firstName: string; lastName: string } };
+  procedureName: string;
+  procedureDetails?: string;
+  urgency: 'elective' | 'urgent' | 'emergency';
+  preferredDate?: string;
+  preferredTime?: string;
+  scheduledDate?: string;
+  scheduledTime?: string;
+  durationMinutes?: number;
+  requiredEquipment?: string[];
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function useClinicalOTRequests(params?: { page?: number; limit?: number; status?: string; doctorId?: string }) {
+  return useQuery({
+    queryKey: ['doctor', 'clinical-ot-requests', params],
+    queryFn: async () => {
+      const response = await apiGet<ClinicalOTRequest[]>('/clinical/ot-requests', { params });
+      return { data: response.data, meta: response.meta as PaginationMeta };
+    },
+  });
+}
+
+export function useCreateClinicalOTRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      patientId: string;
+      visitId: string;
+      doctorId: string;
+      procedureName: string;
+      procedureDetails?: string;
+      urgency?: string;
+      preferredDate?: string;
+      preferredTime?: string;
+      durationMinutes?: number;
+      requiredEquipment?: string[];
+    }) => {
+      const response = await apiPost<ClinicalOTRequest>('/clinical/ot-requests', data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['doctor', 'clinical-ot-requests'] });
+    },
+  });
+}
+
+// ============================================================
+// Ticket Hooks
+// ============================================================
+
+export interface Ticket {
+  id: string;
+  ticketNumber: string;
+  raisedBy: string;
+  raiser?: { id: string; firstName: string; lastName: string };
+  assignedTo?: string;
+  assignee?: { id: string; firstName: string; lastName: string };
+  ticketType: string;
+  subject: string;
+  description?: string;
+  priority: string;
+  status: string;
+  patientId?: string;
+  patient?: Pick<Patient, 'id' | 'mrn' | 'firstName' | 'lastName'>;
+  departmentId?: string;
+  department?: { id: string; name: string };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function useTickets(params?: { page?: number; limit?: number; status?: string; ticketType?: string }) {
+  return useQuery({
+    queryKey: doctorKeys.tickets.list(params as Record<string, unknown>),
+    queryFn: async () => {
+      const response = await apiGet<Ticket[]>('/communication/tickets', { params });
+      return { data: response.data, meta: response.meta as PaginationMeta };
+    },
+  });
+}
+
+export function useCreateTicket() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      ticketType: string;
+      subject: string;
+      description?: string;
+      priority?: string;
+      patientId?: string;
+      departmentId?: string;
+      assignedTo?: string;
+    }) => {
+      const response = await apiPost<Ticket>('/communication/tickets', data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: doctorKeys.tickets.all });
     },
   });
 }

@@ -1,0 +1,202 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useCreateImagingRequest } from '@/hooks/use-doctor';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { toast } from 'sonner';
+import { ScanLine, Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+interface ImagingRequestDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  patientId: string;
+  visitId: string;
+}
+
+type Urgency = 'routine' | 'urgent' | 'stat';
+
+const imagingTypes = [
+  { value: 'x_ray', label: 'X-Ray' },
+  { value: 'mri', label: 'MRI' },
+  { value: 'ct_scan', label: 'CT Scan' },
+  { value: 'ultrasound', label: 'Ultrasound' },
+  { value: 'ecg', label: 'ECG' },
+  { value: 'echo', label: 'Echo' },
+];
+
+const urgencyOptions: { value: Urgency; label: string; color: string; activeBg: string }[] = [
+  { value: 'routine', label: 'Routine', color: 'text-foreground', activeBg: 'bg-primary text-white' },
+  { value: 'urgent', label: 'Urgent', color: 'text-amber-700', activeBg: 'bg-amber-500 text-white' },
+  { value: 'stat', label: 'STAT', color: 'text-red-700', activeBg: 'bg-red-500 text-white' },
+];
+
+export function ImagingRequestDialog({ open, onOpenChange, patientId, visitId }: ImagingRequestDialogProps) {
+  const [imagingType, setImagingType] = useState('');
+  const [bodyPart, setBodyPart] = useState('');
+  const [clinicalIndication, setClinicalIndication] = useState('');
+  const [urgency, setUrgency] = useState<Urgency>('routine');
+  const [notes, setNotes] = useState('');
+
+  const createImagingRequest = useCreateImagingRequest();
+
+  const handleSubmit = async () => {
+    if (!imagingType) {
+      toast.error('Please select an imaging type');
+      return;
+    }
+
+    try {
+      await createImagingRequest.mutateAsync({
+        patientId,
+        visitId,
+        imagingType,
+        bodyPart: bodyPart.trim() || undefined,
+        clinicalIndication: clinicalIndication.trim() || undefined,
+        urgency,
+        notes: notes.trim() || undefined,
+      });
+      toast.success('Imaging request created successfully');
+      handleReset();
+      onOpenChange(false);
+    } catch {
+      toast.error('Failed to create imaging request');
+    }
+  };
+
+  const handleReset = () => {
+    setImagingType('');
+    setBodyPart('');
+    setClinicalIndication('');
+    setUrgency('routine');
+    setNotes('');
+  };
+
+  // Reset form when dialog closes
+  useEffect(() => {
+    if (!open) handleReset();
+  }, [open]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ScanLine className="h-5 w-5 text-primary" />
+            Request Imaging
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 pt-2">
+          {/* Imaging Type */}
+          <div>
+            <Label className="text-sm font-medium">Imaging Type</Label>
+            <Select value={imagingType} onValueChange={(v) => setImagingType(v ?? '')}>
+              <SelectTrigger className="mt-1.5">
+                <SelectValue placeholder="Select imaging type" />
+              </SelectTrigger>
+              <SelectContent>
+                {imagingTypes.map((type) => (
+                  <SelectItem key={type.value} value={type.value}>
+                    {type.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Body Part */}
+          <div>
+            <Label className="text-sm font-medium">Body Part / Region</Label>
+            <Input
+              placeholder="e.g., Chest, Left Knee, Abdomen..."
+              value={bodyPart}
+              onChange={(e) => setBodyPart(e.target.value)}
+              className="mt-1.5 text-sm"
+            />
+          </div>
+
+          {/* Clinical Indication */}
+          <div>
+            <Label className="text-sm font-medium">Clinical Indication</Label>
+            <Textarea
+              placeholder="Reason for imaging, symptoms, suspected condition..."
+              value={clinicalIndication}
+              onChange={(e) => setClinicalIndication(e.target.value)}
+              rows={3}
+              className="mt-1.5 text-sm"
+            />
+          </div>
+
+          {/* Urgency */}
+          <div>
+            <Label className="text-sm font-medium">Urgency</Label>
+            <div className="mt-1.5 flex gap-2">
+              {urgencyOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setUrgency(opt.value)}
+                  className={cn(
+                    'rounded-lg px-4 py-1.5 text-sm font-medium border transition-all duration-200',
+                    urgency === opt.value
+                      ? opt.activeBg + ' border-transparent shadow-sm'
+                      : 'bg-card border-border hover:border-primary/40 ' + opt.color
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <Label className="text-sm font-medium">Notes</Label>
+            <Textarea
+              placeholder="Additional instructions or notes..."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              className="mt-1.5 text-sm"
+            />
+          </div>
+
+          {/* Footer */}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={createImagingRequest.isPending || !imagingType}
+              className="gap-1.5"
+            >
+              {createImagingRequest.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Requesting...
+                </>
+              ) : (
+                <>
+                  <ScanLine className="h-3.5 w-3.5" />
+                  Request Imaging
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
