@@ -25,6 +25,7 @@ export const ALL_MODULES: ModuleKey[] = [
   'daycare',
   'ward',
   'doctor',
+  'nurse',
 ];
 
 // Standard admin modules (for admin — hospital subscription owner)
@@ -74,8 +75,8 @@ const ROLE_MODULE_MAP: Record<string, ModuleKey[]> = {
   pharmacy_technician: ['pharmacy'],
   pharmacy_admin: ['pharmacy'],
 
-  // Nursing staff → hospital + ward
-  nurse: ['hospital', 'ward'],
+  // Nursing staff → dedicated nurse module
+  nurse: ['nurse'],
 
   // Front desk → hospital (OP/IP, billing, appointments)
   front_desk: ['hospital'],
