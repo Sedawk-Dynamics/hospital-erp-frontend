@@ -256,6 +256,7 @@ export function FrontDeskDashboard() {
                       <span
                         className={cn(
                           'text-[10px] font-bold px-2 py-0.5 rounded-full capitalize',
+                          appt.status === 'pending_payment' && 'bg-amber-100 text-amber-800',
                           (appt.status === 'booked' || appt.status === 'confirmed') && 'bg-secondary/10 text-secondary',
                           appt.status === 'checked_in' && 'bg-primary/10 text-primary',
                           appt.status === 'in_consultation' && 'bg-primary/10 text-primary',

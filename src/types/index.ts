@@ -247,7 +247,7 @@ export interface Appointment {
   consultationType?: string;
   priority?: 'normal' | 'urgent' | 'emergency';
   appointmentType?: 'scheduled' | 'walk_in';
-  status: 'booked' | 'confirmed' | 'checked_in' | 'in_consultation' | 'completed' | 'cancelled' | 'no_show';
+  status: 'pending_payment' | 'booked' | 'confirmed' | 'checked_in' | 'in_consultation' | 'completed' | 'cancelled' | 'no_show';
   reason?: string;
   notes?: string;
   queueTokens?: Array<{ id: string; tokenNumber: number; status: string }>;

@@ -15,6 +15,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
+import { toInputDateStr, formatTime24, getCurrentISTTime, isToday } from '@/lib/date-utils';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -140,9 +141,7 @@ export default function BookAppointmentPage() {
   const doctors = doctorsRaw ?? [];
 
   // Available slots
-  const dateStr = selectedDate
-    ? `${selectedDate.getFullYear()}-${(selectedDate.getMonth() + 1).toString().padStart(2, '0')}-${selectedDate.getDate().toString().padStart(2, '0')}`
-    : '';
+  const dateStr = selectedDate ? toInputDateStr(selectedDate) : '';
 
   const { data: slotsRaw, isLoading: loadingSlots } = useQuery({
     queryKey: ['patient', 'slots', selectedDoctor?.id, dateStr, selectedHospital?.id],
@@ -156,7 +155,14 @@ export default function BookAppointmentPage() {
     enabled: !!selectedDoctor && !!selectedDate && !!selectedHospital && step === 'datetime',
   });
 
-  const slots = slotsRaw?.slots ?? [];
+  // Show all slots but mark past/booked status
+  const allSlots = slotsRaw?.slots ?? [];
+  const currentTime = getCurrentISTTime();
+  const isTodaySelected = dateStr ? isToday(dateStr) : false;
+  const slots = allSlots.map((slot) => ({
+    ...slot,
+    isPast: isTodaySelected && slot.startTime < currentTime,
+  }));
   const slotsMessage = slotsRaw?.message;
 
   // Payment info for selected hospital
@@ -275,12 +281,7 @@ export default function BookAppointmentPage() {
 
   // ── Helpers ────────────────────────────────────────────
 
-  const formatTime = (t: string) => {
-    const [h, m] = t.split(':').map(Number);
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    const hour = h % 12 || 12;
-    return `${hour}:${m.toString().padStart(2, '0')} ${ampm}`;
-  };
+  const formatTime = (t: string) => formatTime24(t) || t;
 
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
@@ -667,22 +668,31 @@ export default function BookAppointmentPage() {
                 <p className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-4 text-center">No slots available</p>
               ) : (
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
-                  {slots.map((slot) => (
-                    <button
-                      key={slot.startTime}
-                      disabled={!slot.available}
-                      onClick={() => setSelectedSlot(slot)}
-                      className={cn(
-                        'rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
-                        !slot.available && 'opacity-40 cursor-not-allowed line-through bg-muted',
-                        slot.available && selectedSlot?.startTime === slot.startTime
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : slot.available && 'hover:border-primary hover:bg-primary/5',
-                      )}
-                    >
-                      {formatTime(slot.startTime)}
-                    </button>
-                  ))}
+                  {slots.map((slot) => {
+                    const isDisabled = !slot.available || slot.isPast;
+                    return (
+                      <button
+                        key={slot.startTime}
+                        disabled={isDisabled}
+                        onClick={() => setSelectedSlot(slot)}
+                        className={cn(
+                          'rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
+                          !slot.available && 'opacity-60 cursor-not-allowed bg-red-50 text-red-400 border-red-200 line-through dark:bg-red-950/20 dark:text-red-400/60 dark:border-red-900/30',
+                          slot.available && slot.isPast && 'opacity-40 cursor-not-allowed text-muted-foreground',
+                          slot.available && !slot.isPast && selectedSlot?.startTime === slot.startTime
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : slot.available && !slot.isPast && 'hover:border-primary hover:bg-primary/5',
+                        )}
+                      >
+                        <span className="flex flex-col items-center leading-tight">
+                          <span>{formatTime(slot.startTime)}</span>
+                          {!slot.available && (
+                            <span className="text-[9px] font-bold no-underline" style={{ textDecoration: 'none' }}>Booked</span>
+                          )}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -815,13 +825,13 @@ export default function BookAppointmentPage() {
       {/* ── Step 5: Payment ── */}
       {step === 'payment' && selectedDoctor && selectedHospital && (
         <div className="space-y-5">
-          {/* Booking success banner */}
-          <div className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3">
-            <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
+          {/* Payment required banner */}
+          <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <CreditCard className="h-5 w-5 text-amber-600 flex-shrink-0" />
             <div>
-              <p className="text-sm font-semibold text-green-800">Appointment Booked!</p>
-              <p className="text-xs text-green-700">
-                Your appointment with Dr. {selectedDoctor.firstName} {selectedDoctor.lastName} has been confirmed.
+              <p className="text-sm font-semibold text-amber-800">Payment Required</p>
+              <p className="text-xs text-amber-700">
+                Complete payment to confirm your appointment with Dr. {selectedDoctor.firstName} {selectedDoctor.lastName}. Leaving without payment will cancel the booking.
               </p>
             </div>
           </div>

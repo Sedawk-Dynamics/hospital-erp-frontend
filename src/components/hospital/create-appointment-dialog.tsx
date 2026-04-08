@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { z } from 'zod/v4';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { toInputDateStr } from '@/lib/date-utils';
+import { toInputDateStr, getCurrentISTTime, isToday } from '@/lib/date-utils';
 import { toast } from 'sonner';
 import { Search, Loader2, UserRound, Clock } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -29,7 +29,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-import { usePatientSearch, useDoctorsList, useAvailableSlots, hospitalKeys } from '@/hooks/use-hospital';
+import { usePatientSearch, useDoctorsList, useAvailableSlots } from '@/hooks/use-hospital';
 import { apiPost } from '@/lib/api';
 import type { Patient, Appointment } from '@/types';
 
@@ -117,7 +117,14 @@ export function CreateAppointmentDialog({
     isLoading: slotsLoading,
   } = useAvailableSlots(watchedDoctorId, watchedDate);
 
-  const slots = slotsData?.slots ?? [];
+  // Show all slots but mark past/booked status
+  const allSlots = slotsData?.slots ?? [];
+  const currentTime = getCurrentISTTime();
+  const isTodaySelected = isToday(watchedDate);
+  const slots = allSlots.map((slot) => ({
+    ...slot,
+    isPast: isTodaySelected && slot.startTime < currentTime,
+  }));
 
   // Reset form when dialog closes
   useEffect(() => {
@@ -304,6 +311,7 @@ export function CreateAppointmentDialog({
             <Input
               id="appointment-date"
               type="date"
+              min={toInputDateStr()}
               {...register('appointmentDate')}
             />
             {errors.appointmentDate && (
@@ -348,23 +356,31 @@ export function CreateAppointmentDialog({
                 <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
                   {slots.map((slot) => {
                     const isSelected = watchedStartTime === slot.startTime;
+                    const isDisabled = !slot.available || slot.isPast;
                     return (
                       <Button
                         key={slot.startTime}
                         type="button"
                         variant={isSelected ? 'default' : 'outline'}
                         size="sm"
-                        disabled={!slot.available}
+                        disabled={isDisabled}
                         className={
                           !slot.available
-                            ? 'opacity-50 cursor-not-allowed text-muted-foreground'
-                            : isSelected
-                              ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                              : 'hover:bg-primary/10 hover:text-primary hover:border-primary'
+                            ? 'opacity-60 cursor-not-allowed bg-red-50 text-red-400 border-red-200 line-through dark:bg-red-950/20 dark:text-red-400/60 dark:border-red-900/30'
+                            : slot.isPast
+                              ? 'opacity-40 cursor-not-allowed text-muted-foreground'
+                              : isSelected
+                                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                                : 'hover:bg-primary/10 hover:text-primary hover:border-primary'
                         }
                         onClick={() => handleSlotSelect(slot.startTime, slot.endTime)}
                       >
-                        {slot.startTime}
+                        <span className="flex flex-col items-center leading-tight">
+                          <span>{slot.startTime}</span>
+                          {!slot.available && (
+                            <span className="text-[9px] font-bold">Booked</span>
+                          )}
+                        </span>
                       </Button>
                     );
                   })}

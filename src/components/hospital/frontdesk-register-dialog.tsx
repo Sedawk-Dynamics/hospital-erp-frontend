@@ -6,7 +6,7 @@ import { z } from 'zod/v4';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { toInputDateStr, formatDate } from '@/lib/date-utils';
+import { toInputDateStr, formatDate, getCurrentISTTime, isToday } from '@/lib/date-utils';
 import {
   UserPlus, Search, Loader2, UserRound, Clock, CalendarCheck,
   CreditCard, Banknote, Smartphone, Building2, ChevronRight,
@@ -191,7 +191,14 @@ export function FrontDeskRegisterDialog({
     [doctorsRaw]
   );
 
-  const slots = slotsData?.slots ?? [];
+  // Show all slots but mark past/booked status
+  const allSlots = slotsData?.slots ?? [];
+  const currentTime = getCurrentISTTime();
+  const isTodaySelected = isToday(appointmentDate);
+  const slots = allSlots.map((slot) => ({
+    ...slot,
+    isPast: isTodaySelected && slot.startTime < currentTime,
+  }));
   const selectedDoctor = doctors.find((d) => d.id === selectedDoctorId);
 
   // Patient form
@@ -754,23 +761,31 @@ export function FrontDeskRegisterDialog({
                   <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-5">
                     {slots.map((slot) => {
                       const isSelected = selectedSlot?.start === slot.startTime;
+                      const isDisabled = !slot.available || slot.isPast;
                       return (
                         <Button
                           key={slot.startTime}
                           type="button"
                           variant={isSelected ? 'default' : 'outline'}
                           size="sm"
-                          disabled={!slot.available}
+                          disabled={isDisabled}
                           className={
                             !slot.available
-                              ? 'opacity-50 cursor-not-allowed text-muted-foreground'
-                              : isSelected
-                                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                                : 'hover:bg-primary/10 hover:text-primary hover:border-primary'
+                              ? 'opacity-60 cursor-not-allowed bg-red-50 text-red-400 border-red-200 line-through dark:bg-red-950/20 dark:text-red-400/60 dark:border-red-900/30'
+                              : slot.isPast
+                                ? 'opacity-40 cursor-not-allowed text-muted-foreground'
+                                : isSelected
+                                  ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                                  : 'hover:bg-primary/10 hover:text-primary hover:border-primary'
                           }
                           onClick={() => setSelectedSlot({ start: slot.startTime, end: slot.endTime })}
                         >
-                          {slot.startTime}
+                          <span className="flex flex-col items-center leading-tight">
+                            <span>{slot.startTime}</span>
+                            {!slot.available && (
+                              <span className="text-[9px] font-bold">Booked</span>
+                            )}
+                          </span>
                         </Button>
                       );
                     })}
