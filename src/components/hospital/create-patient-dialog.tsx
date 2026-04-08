@@ -228,8 +228,12 @@ export function CreatePatientDialog({
       onOpenChange(false);
       onSuccess?.(patient);
     },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to register patient');
+    onError: (error: any) => {
+      const msg =
+        error?.response?.data?.message ||
+        error?.message ||
+        'Failed to register patient';
+      toast.error(msg);
     },
   });
 

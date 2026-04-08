@@ -115,8 +115,8 @@ export function useDoctorsList() {
   return useQuery({
     queryKey: hospitalKeys.doctors,
     queryFn: async () => {
-      const response = await apiGet<DoctorProfile[]>('/users', {
-        params: { role: 'doctor', limit: 100 },
+      const response = await apiGet<DoctorProfile[]>('/appointments/doctors', {
+        params: { limit: 100 },
       });
       return response.data ?? null;
     },

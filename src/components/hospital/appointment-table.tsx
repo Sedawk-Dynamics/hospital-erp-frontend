@@ -38,6 +38,38 @@ interface AppointmentTableProps {
   onPageChange: (page: number) => void;
 }
 
+/** Parse Prisma @db.Time() ISO string or HH:MM to readable 12-hour format */
+function formatTime(value: string | undefined | null): string {
+  if (!value) return '-';
+  let h: number, m: number;
+  if (value.includes('T')) {
+    // ISO: "1970-01-01T09:00:00.000Z"
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return value;
+    h = d.getUTCHours();
+    m = d.getUTCMinutes();
+  } else if (/^\d{2}:\d{2}/.test(value)) {
+    // HH:MM or HH:MM:SS
+    [h, m] = value.split(':').map(Number);
+  } else {
+    return value;
+  }
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const hour = h % 12 || 12;
+  return `${hour}:${m.toString().padStart(2, '0')} ${ampm}`;
+}
+
+/** Format appointmentDate (ISO date like "2026-04-07T00:00:00.000Z") to dd/MM/yyyy */
+function formatAppointmentDate(value: string | undefined | null): string {
+  if (!value) return '-';
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return '-';
+  const day = d.getDate().toString().padStart(2, '0');
+  const month = (d.getMonth() + 1).toString().padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
 const categoryColors: Record<string, string> = {
   consultation: 'bg-error',
   follow_up: 'bg-primary',
@@ -115,7 +147,7 @@ export function AppointmentTable({
               <tr className="text-on-surface-variant font-label text-[10px] uppercase tracking-widest border-b border-surface-container">
                 <th className="px-4 pb-4 pt-5 font-semibold">Patient Details</th>
                 <th className="px-4 pb-4 pt-5 font-semibold">Appointment Details</th>
-                <th className="px-4 pb-4 pt-5 font-semibold">Time</th>
+                <th className="px-4 pb-4 pt-5 font-semibold">Date & Time</th>
                 <th className="px-4 pb-4 pt-5 font-semibold">Payment Status</th>
                 <th className="px-4 pb-4 pt-5 font-semibold">Purpose</th>
                 <th className="px-4 pb-4 pt-5 font-semibold">Status</th>
@@ -177,19 +209,39 @@ export function AppointmentTable({
                       </div>
                     </td>
 
-                    {/* Time */}
+                    {/* Date & Time */}
                     <td className="px-4 py-4">
                       <div>
-                        <p className="font-label text-sm font-bold">{apt.startTime || '-'}</p>
-                        <p className="font-label text-[10px] text-on-surface-variant">{apt.endTime ? `to ${apt.endTime}` : ''}</p>
+                        <p className="font-label text-[10px] text-on-surface-variant">{formatAppointmentDate(apt.appointmentDate)}</p>
+                        <p className="font-label text-sm font-bold">{formatTime(apt.startTime)} - {formatTime(apt.endTime)}</p>
                       </div>
                     </td>
 
                     {/* Payment Status */}
                     <td className="px-4 py-4">
-                      <span className="text-[10px] font-bold px-2 py-0.5 bg-secondary/10 text-secondary rounded-full">
-                        Pending
-                      </span>
+                      {apt.paymentInfo ? (
+                        <div>
+                          <span className={cn(
+                            'text-[10px] font-bold px-2 py-0.5 rounded-full inline-block',
+                            apt.paymentInfo.paymentStatus === 'paid_online' && 'bg-green-100 text-green-700',
+                            apt.paymentInfo.paymentStatus === 'pay_at_frontdesk' && 'bg-amber-100 text-amber-700',
+                            apt.paymentInfo.paymentStatus === 'pending' && 'bg-blue-100 text-blue-700',
+                          )}>
+                            {apt.paymentInfo.paymentStatus === 'paid_online' && 'Paid Online'}
+                            {apt.paymentInfo.paymentStatus === 'pay_at_frontdesk' && 'Pay at Desk'}
+                            {apt.paymentInfo.paymentStatus === 'pending' && 'Payment Pending'}
+                          </span>
+                          {apt.paymentInfo.balanceDue > 0 && (
+                            <p className="text-[10px] text-on-surface-variant mt-0.5 font-label">
+                              &#8377;{apt.paymentInfo.balanceDue.toLocaleString('en-IN')} due
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-[10px] font-bold px-2 py-0.5 bg-muted text-muted-foreground rounded-full">
+                          No Billing
+                        </span>
+                      )}
                     </td>
 
                     {/* Purpose */}

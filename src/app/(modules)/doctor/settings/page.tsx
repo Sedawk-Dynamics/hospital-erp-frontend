@@ -16,8 +16,9 @@ import { GripVertical, ChevronDown, User, Stethoscope, Calendar, Clock, Shield }
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
 import { useDoctorProfile } from '@/hooks/use-doctor';
+import { DoctorScheduleManager } from '@/components/shared/doctor-schedule-manager';
 
-type SettingsTab = 'profile' | 'layout' | 'notes';
+type SettingsTab = 'profile' | 'schedule' | 'layout' | 'notes';
 
 interface LayoutItem {
   id: string;
@@ -93,6 +94,17 @@ export default function DoctorSettingsPage() {
           )}
         >
           Doctor Profile
+        </button>
+        <button
+          onClick={() => setActiveTab('schedule')}
+          className={cn(
+            'pb-3 text-sm font-medium transition-colors border-b-2',
+            activeTab === 'schedule'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          )}
+        >
+          Schedule
         </button>
         <button
           onClick={() => setActiveTab('layout')}
@@ -193,69 +205,32 @@ export default function DoctorSettingsPage() {
                   </div>
                 </div>
 
-                {/* Schedule */}
-                <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-6">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Calendar className="h-5 w-5 text-primary" />
-                    <h3 className="font-semibold text-foreground">Available Days</h3>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {doctorProfile?.availableDays && doctorProfile.availableDays.length > 0 ? (
-                      doctorProfile.availableDays.map((day) => (
-                        <span
-                          key={day}
-                          className="inline-flex items-center rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary"
-                        >
-                          {day}
-                        </span>
-                      ))
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No schedule configured</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Available Slots */}
-                <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-6">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Clock className="h-5 w-5 text-primary" />
-                    <h3 className="font-semibold text-foreground">Available Slots</h3>
-                  </div>
-                  <div className="space-y-2">
-                    {doctorProfile?.availableSlots && doctorProfile.availableSlots.length > 0 ? (
-                      doctorProfile.availableSlots.map((slot, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-center justify-between rounded-lg border p-3"
-                        >
-                          <span className="text-sm font-medium text-foreground">
-                            Slot {idx + 1}
-                          </span>
-                          <span className="text-sm text-muted-foreground">
-                            {slot.start} - {slot.end}
-                          </span>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No time slots configured</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Note about updating */}
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 shadow-sm">
-                <div className="flex items-start gap-3">
-                  <Shield className="h-5 w-5 text-amber-600 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-amber-800">Schedule & Profile Updates</p>
-                    <p className="text-xs text-amber-700 mt-1">
-                      To update your schedule, availability, or professional details, please contact the hospital administrator or visit the Admin Panel settings.
-                    </p>
-                  </div>
-                </div>
               </div>
             </>
+          )}
+        </div>
+      )}
+
+      {/* Schedule Tab */}
+      {activeTab === 'schedule' && (
+        <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-5">
+          {doctorProfile?.id ? (
+            <DoctorScheduleManager
+              doctorId={doctorProfile.id}
+              doctorName={`Dr. ${user?.firstName} ${user?.lastName}`}
+            />
+          ) : profileLoading ? (
+            <div className="flex justify-center py-12">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <Calendar className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+              <p className="text-sm font-medium">No doctor profile found</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Contact your hospital administrator to set up your profile.
+              </p>
+            </div>
           )}
         </div>
       )}

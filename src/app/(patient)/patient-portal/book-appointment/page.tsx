@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import {
   Calendar as CalendarIcon, Clock, User, Building2, Search,
   ChevronLeft, ChevronRight, Stethoscope, MapPin, Phone, Mail,
-  CheckCircle2,
+  CheckCircle2, CreditCard, Banknote, Shield, Loader2,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost } from '@/lib/api';
@@ -13,6 +13,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Calendar } from '@/components/ui/calendar';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+import { useAuthStore } from '@/stores/auth-store';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -53,13 +55,27 @@ interface TimeSlot {
   available: boolean;
 }
 
-type BookingStep = 'hospital' | 'doctor' | 'datetime' | 'confirm';
+interface PaymentInfo {
+  onlinePaymentAvailable: boolean;
+}
+
+interface PaymentOrderResponse {
+  orderId: string;
+  amount: number;
+  currency: string;
+  keyId: string;
+  paymentId: string;
+  billId: string;
+}
+
+type BookingStep = 'hospital' | 'doctor' | 'datetime' | 'confirm' | 'payment';
 
 // ── Component ──────────────────────────────────────────────
 
 export default function BookAppointmentPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { user } = useAuthStore();
 
   // Step state
   const [step, setStep] = useState<BookingStep>('hospital');
@@ -75,6 +91,11 @@ export default function BookAppointmentPage() {
   const [hospitalSearch, setHospitalSearch] = useState('');
   const [hospitalSearchQuery, setHospitalSearchQuery] = useState('');
   const [hospitalPage, setHospitalPage] = useState(1);
+
+  // Payment state
+  const [bookedAppointmentId, setBookedAppointmentId] = useState<string | null>(null);
+  const [paymentComplete, setPaymentComplete] = useState(false);
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
 
   // ── Data Queries ───────────────────────────────────────
 
@@ -138,11 +159,29 @@ export default function BookAppointmentPage() {
   const slots = slotsRaw?.slots ?? [];
   const slotsMessage = slotsRaw?.message;
 
+  // Payment info for selected hospital
+  const { data: paymentInfoRaw } = useQuery({
+    queryKey: ['patient', 'payment-info', selectedHospital?.id],
+    queryFn: async () => {
+      const res = await apiGet<PaymentInfo>('/patient-portal/payment-info', {
+        params: { tenantId: selectedHospital!.id },
+      });
+      return res.data;
+    },
+    enabled: !!selectedHospital,
+  });
+  const paymentInfo = paymentInfoRaw ?? { onlinePaymentAvailable: false };
+
+  // ── Derived ────────────────────────────────────────────
+  const consultationFee = selectedDoctor?.consultationFee ?? 0;
+  const hasPayment = consultationFee > 0;
+  const canPayOnline = paymentInfo.onlinePaymentAvailable;
+
   // ── Book Mutation ──────────────────────────────────────
 
   const bookMutation = useMutation({
     mutationFn: async () => {
-      return apiPost('/patient-portal/book-appointment', {
+      return apiPost<{ id: string }>('/patient-portal/book-appointment', {
         tenantId: selectedHospital!.id,
         doctorId: selectedDoctor!.id,
         appointmentDate: dateStr,
@@ -151,11 +190,73 @@ export default function BookAppointmentPage() {
         reason: reason || undefined,
       });
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
+      const appointmentId = res.data?.id;
+      setBookedAppointmentId(appointmentId ?? null);
       queryClient.invalidateQueries({ queryKey: ['patient', 'appointments'] });
-      router.push('/patient-portal/appointments');
+      // Always go to payment step — shows pay online / pay at front desk
+      setStep('payment');
     },
   });
+
+  // ── Razorpay Payment ──────────────────────────────────
+
+  const initiateOnlinePayment = useCallback(async () => {
+    if (!bookedAppointmentId) return;
+    setPaymentProcessing(true);
+
+    try {
+      // 1. Create Razorpay order
+      const orderRes = await apiPost<PaymentOrderResponse>('/patient-portal/create-payment-order', {
+        appointmentId: bookedAppointmentId,
+      });
+      const order = orderRes.data;
+      if (!order) throw new Error('Failed to create payment order');
+
+      // 2. Open Razorpay checkout
+      const options: RazorpayOptions = {
+        key: order.keyId,
+        amount: order.amount,
+        currency: order.currency,
+        name: selectedHospital?.name || 'Hospital',
+        description: `Consultation Fee – Dr. ${selectedDoctor?.firstName} ${selectedDoctor?.lastName}`,
+        order_id: order.orderId,
+        handler: async (response: RazorpayResponse) => {
+          try {
+            // 3. Verify payment
+            await apiPost('/patient-portal/verify-payment', {
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            });
+            setPaymentComplete(true);
+            setPaymentProcessing(false);
+            toast.success('Payment successful! Appointment confirmed.');
+          } catch {
+            setPaymentProcessing(false);
+            toast.error('Payment verification failed. Contact hospital for help.');
+          }
+        },
+        prefill: {
+          name: user ? `${user.firstName} ${user.lastName}` : '',
+          email: user?.email ?? '',
+          contact: user?.phone ?? '',
+        },
+        theme: { color: '#0a685a' },
+        modal: {
+          ondismiss: () => {
+            setPaymentProcessing(false);
+          },
+        },
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.open();
+    } catch (err: any) {
+      setPaymentProcessing(false);
+      toast.error(err?.response?.data?.message || 'Failed to initiate payment');
+    }
+  }, [bookedAppointmentId, selectedHospital, selectedDoctor, user]);
 
   // ── Disabled days for calendar ─────────────────────────
 
@@ -163,8 +264,12 @@ export default function BookAppointmentPage() {
     if (!selectedDoctor) return undefined;
     const available = new Set(selectedDoctor.availableDays);
     return (date: Date) => {
+      // Always disable past dates
       if (date < new Date(new Date().setHours(0, 0, 0, 0))) return true;
-      return !available.has(date.getDay());
+      // If doctor has schedule entries, only allow those days
+      if (available.size > 0) return !available.has(date.getDay());
+      // No schedule configured yet — allow all future dates
+      return false;
     };
   }, [selectedDoctor]);
 
@@ -176,6 +281,9 @@ export default function BookAppointmentPage() {
     const hour = h % 12 || 12;
     return `${hour}:${m.toString().padStart(2, '0')} ${ampm}`;
   };
+
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
 
   const goBack = () => {
     if (step === 'doctor') {
@@ -191,6 +299,7 @@ export default function BookAppointmentPage() {
     } else if (step === 'confirm') {
       setStep('datetime');
     }
+    // No back from payment step — appointment already created
   };
 
   const stepLabels: { key: BookingStep; label: string }[] = [
@@ -198,6 +307,7 @@ export default function BookAppointmentPage() {
     { key: 'doctor', label: 'Doctor' },
     { key: 'datetime', label: 'Date & Time' },
     { key: 'confirm', label: 'Confirm' },
+    { key: 'payment', label: 'Payment' },
   ];
   const stepIndex = stepLabels.findIndex((s) => s.key === step);
 
@@ -207,7 +317,7 @@ export default function BookAppointmentPage() {
     <div className="max-w-3xl mx-auto space-y-6 animate-fade-in-up">
       {/* Header */}
       <div className="flex items-center gap-3">
-        {step !== 'hospital' && (
+        {step !== 'hospital' && step !== 'payment' && (
           <button
             onClick={goBack}
             className="rounded-lg p-2 hover:bg-muted transition-colors"
@@ -222,6 +332,7 @@ export default function BookAppointmentPage() {
             {step === 'doctor' && `Booking at ${selectedHospital?.name}`}
             {step === 'datetime' && `Dr. ${selectedDoctor?.firstName} ${selectedDoctor?.lastName}`}
             {step === 'confirm' && 'Review and confirm your appointment'}
+            {step === 'payment' && 'Complete your payment'}
           </p>
         </div>
       </div>
@@ -300,14 +411,12 @@ export default function BookAppointmentPage() {
             )}
           </div>
 
-          {/* Results info */}
           {hospitalSearchQuery && (
             <p className="text-xs text-muted-foreground">
               Showing results for &quot;{hospitalSearchQuery}&quot; &mdash; {hospitalMeta.total} hospital{hospitalMeta.total !== 1 ? 's' : ''} found
             </p>
           )}
 
-          {/* Hospital list */}
           {loadingHospitals ? (
             <div className="flex justify-center py-12">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -384,30 +493,17 @@ export default function BookAppointmentPage() {
             </div>
           )}
 
-          {/* Pagination */}
           {hospitalMeta.totalPages > 1 && (
             <div className="flex items-center justify-between border-t pt-4">
               <p className="text-xs text-muted-foreground">
                 Page {hospitalMeta.page} of {hospitalMeta.totalPages} ({hospitalMeta.total} hospitals)
               </p>
               <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={hospitalPage <= 1}
-                  onClick={() => setHospitalPage((p) => p - 1)}
-                >
-                  <ChevronLeft className="h-4 w-4 mr-1" />
-                  Previous
+                <Button variant="outline" size="sm" disabled={hospitalPage <= 1} onClick={() => setHospitalPage((p) => p - 1)}>
+                  <ChevronLeft className="h-4 w-4 mr-1" /> Previous
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={hospitalPage >= hospitalMeta.totalPages}
-                  onClick={() => setHospitalPage((p) => p + 1)}
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4 ml-1" />
+                <Button variant="outline" size="sm" disabled={hospitalPage >= hospitalMeta.totalPages} onClick={() => setHospitalPage((p) => p + 1)}>
+                  Next <ChevronRight className="h-4 w-4 ml-1" />
                 </Button>
               </div>
             </div>
@@ -418,7 +514,6 @@ export default function BookAppointmentPage() {
       {/* ── Step 2: Doctor ── */}
       {step === 'doctor' && (
         <div className="space-y-4">
-          {/* Selected hospital summary */}
           {selectedHospital && (
             <div className="flex items-center gap-3 rounded-lg border bg-muted/30 px-4 py-3">
               <Building2 className="h-4 w-4 text-primary flex-shrink-0" />
@@ -440,7 +535,6 @@ export default function BookAppointmentPage() {
             </div>
           )}
 
-          {/* Search & Filter */}
           <div className="flex gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -453,7 +547,6 @@ export default function BookAppointmentPage() {
             </div>
           </div>
 
-          {/* Department pills */}
           {departments.length > 0 && (
             <div className="flex gap-2 overflow-x-auto pb-1">
               <button
@@ -480,7 +573,6 @@ export default function BookAppointmentPage() {
             </div>
           )}
 
-          {/* Doctor List */}
           {loadingDoctors ? (
             <div className="flex justify-center py-12">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -512,7 +604,7 @@ export default function BookAppointmentPage() {
                     )}
                   </div>
                   <div className="text-right flex-shrink-0 space-y-1">
-                    {doc.consultationFee != null && (
+                    {doc.consultationFee != null && doc.consultationFee > 0 && (
                       <p className="text-sm font-bold text-primary">&#8377;{doc.consultationFee}</p>
                     )}
                     {doc.experienceYears != null && (
@@ -530,7 +622,6 @@ export default function BookAppointmentPage() {
       {/* ── Step 3: Date & Time ── */}
       {step === 'datetime' && (
         <div className="space-y-5">
-          {/* Doctor summary */}
           {selectedDoctor && selectedHospital && (
             <div className="flex items-center gap-3 rounded-lg border bg-muted/30 px-4 py-3">
               <User className="h-4 w-4 text-primary flex-shrink-0" />
@@ -544,7 +635,6 @@ export default function BookAppointmentPage() {
             </div>
           )}
 
-          {/* Calendar */}
           <div className="rounded-xl border bg-card p-4">
             <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
               <CalendarIcon className="h-4 w-4 text-primary" />
@@ -561,7 +651,6 @@ export default function BookAppointmentPage() {
             </div>
           </div>
 
-          {/* Time Slots */}
           {selectedDate && (
             <div className="rounded-xl border bg-card p-4 space-y-3">
               <h3 className="text-sm font-semibold flex items-center gap-2">
@@ -599,7 +688,6 @@ export default function BookAppointmentPage() {
             </div>
           )}
 
-          {/* Continue button */}
           {selectedSlot && (
             <Button className="w-full" size="lg" onClick={() => setStep('confirm')}>
               Continue to Confirm
@@ -668,14 +756,19 @@ export default function BookAppointmentPage() {
               </div>
             </div>
 
-            {selectedDoctor.consultationFee != null && (
+            {hasPayment && (
               <>
                 <div className="border-t" />
                 <div className="flex items-start gap-3">
-                  <span className="h-5 w-5 text-center text-primary text-sm font-bold flex-shrink-0">&#8377;</span>
-                  <div>
+                  <CreditCard className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
                     <p className="text-xs text-muted-foreground">Consultation Fee</p>
-                    <p className="text-sm font-semibold">&#8377;{selectedDoctor.consultationFee}</p>
+                    <p className="text-lg font-bold text-foreground">{formatCurrency(consultationFee)}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {canPayOnline
+                        ? 'You can pay online or at the front desk'
+                        : 'Payable at the hospital front desk'}
+                    </p>
                   </div>
                 </div>
               </>
@@ -695,7 +788,6 @@ export default function BookAppointmentPage() {
             <p className="text-xs text-muted-foreground mt-1 text-right">{reason.length}/500</p>
           </div>
 
-          {/* Error */}
           {bookMutation.isError && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
               <p className="text-sm text-red-700">
@@ -704,7 +796,6 @@ export default function BookAppointmentPage() {
             </div>
           )}
 
-          {/* Book button */}
           <Button
             className="w-full"
             size="lg"
@@ -712,12 +803,155 @@ export default function BookAppointmentPage() {
             disabled={bookMutation.isPending}
           >
             {bookMutation.isPending ? (
-              <span className="h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
+              <Loader2 className="h-5 w-5 animate-spin mr-2" />
             ) : (
               <CalendarIcon className="h-5 w-5 mr-2" />
             )}
-            Confirm Booking
+            Confirm & Proceed to Payment
           </Button>
+        </div>
+      )}
+
+      {/* ── Step 5: Payment ── */}
+      {step === 'payment' && selectedDoctor && selectedHospital && (
+        <div className="space-y-5">
+          {/* Booking success banner */}
+          <div className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3">
+            <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-green-800">Appointment Booked!</p>
+              <p className="text-xs text-green-700">
+                Your appointment with Dr. {selectedDoctor.firstName} {selectedDoctor.lastName} has been confirmed.
+              </p>
+            </div>
+          </div>
+
+          {/* Payment completed state */}
+          {paymentComplete ? (
+            <div className="rounded-xl border bg-card p-8 text-center space-y-4">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 mx-auto">
+                <CheckCircle2 className="h-8 w-8 text-green-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-foreground">Payment Successful</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {formatCurrency(consultationFee)} paid for your consultation with Dr. {selectedDoctor.firstName} {selectedDoctor.lastName}
+                </p>
+              </div>
+              <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                <Shield className="h-3.5 w-3.5" />
+                Payment secured by Razorpay
+              </div>
+              <Button
+                className="w-full"
+                size="lg"
+                onClick={() => router.push('/patient-portal/appointments')}
+              >
+                View My Appointments
+              </Button>
+            </div>
+          ) : (
+            /* Payment options */
+            <div className="space-y-4">
+              {/* Fee summary */}
+              {hasPayment && (
+                <div className="rounded-xl border bg-card p-5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">Consultation Fee</p>
+                      <p className="text-xs text-muted-foreground">
+                        Dr. {selectedDoctor.firstName} {selectedDoctor.lastName} &middot; {selectedHospital.name}
+                      </p>
+                    </div>
+                    <p className="text-xl font-bold text-foreground">{formatCurrency(consultationFee)}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Payment method options */}
+              <div className="rounded-xl border bg-card p-5 space-y-4">
+                <h3 className="text-sm font-semibold text-foreground">Choose Payment Method</h3>
+
+                {/* Pay Online — only if hospital has bank connected */}
+                {canPayOnline && hasPayment && (
+                  <button
+                    onClick={initiateOnlinePayment}
+                    disabled={paymentProcessing}
+                    className="flex w-full items-center gap-4 rounded-xl border-2 border-primary bg-primary/5 p-4 text-left transition-colors hover:bg-primary/10 disabled:opacity-60 disabled:pointer-events-none"
+                  >
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 flex-shrink-0">
+                      <CreditCard className="h-6 w-6 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-foreground">Pay Online</p>
+                      <p className="text-xs text-muted-foreground">
+                        UPI, Credit/Debit Card, Net Banking
+                      </p>
+                    </div>
+                    {paymentProcessing ? (
+                      <Loader2 className="h-5 w-5 animate-spin text-primary flex-shrink-0" />
+                    ) : (
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <span className="text-sm font-bold text-primary">{formatCurrency(consultationFee)}</span>
+                        <ChevronRight className="h-4 w-4 text-primary" />
+                      </div>
+                    )}
+                  </button>
+                )}
+
+                {/* Online unavailable notice */}
+                {!canPayOnline && (
+                  <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                    <Shield className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-amber-700">
+                      Online payment is not available for this hospital. Please pay at the front desk.
+                    </p>
+                  </div>
+                )}
+
+                {/* Pay at Front Desk — always shown */}
+                <button
+                  onClick={async () => {
+                    if (bookedAppointmentId) {
+                      try {
+                        await apiPost('/patient-portal/confirm-frontdesk-payment', {
+                          appointmentId: bookedAppointmentId,
+                        });
+                      } catch {
+                        // Bill creation failed — still redirect, front desk can handle
+                      }
+                    }
+                    toast.success('Appointment booked! Please pay at the hospital front desk.');
+                    router.push('/patient-portal/appointments');
+                  }}
+                  className={cn(
+                    'flex w-full items-center gap-4 rounded-xl border p-4 text-left transition-colors hover:bg-muted/50 hover:border-primary/40',
+                    !canPayOnline && 'border-2 border-primary bg-primary/5 hover:bg-primary/10',
+                  )}
+                >
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 flex-shrink-0">
+                    <Banknote className="h-6 w-6 text-amber-700" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-foreground">Pay at Front Desk</p>
+                    <p className="text-xs text-muted-foreground">
+                      {hasPayment
+                        ? 'Cash, Card, or UPI at the hospital reception'
+                        : 'Consultation fee will be collected at the hospital'}
+                    </p>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                </button>
+              </div>
+
+              {canPayOnline && (
+                <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                  <Shield className="h-3.5 w-3.5" />
+                  Payments are secure and powered by Razorpay
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

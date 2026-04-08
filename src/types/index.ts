@@ -251,6 +251,15 @@ export interface Appointment {
   reason?: string;
   notes?: string;
   queueTokens?: Array<{ id: string; tokenNumber: number; status: string }>;
+  paymentInfo?: {
+    billId: string;
+    billNumber: string;
+    billStatus: string;
+    totalAmount: number;
+    amountPaid: number;
+    balanceDue: number;
+    paymentStatus: 'paid_online' | 'pay_at_frontdesk' | 'pending' | 'no_billing';
+  } | null;
   tenantId: string;
   createdAt: string;
   updatedAt: string;

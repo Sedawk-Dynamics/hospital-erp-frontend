@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { toInputDateStr } from '@/lib/date-utils';
 import { toast } from 'sonner';
+import { CreatePatientDialog } from '@/components/hospital/create-patient-dialog';
 
 interface QueueAppointment {
   id: string;
@@ -33,6 +34,7 @@ interface AppointmentStats {
 export function FrontDeskDashboard() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [registerOpen, setRegisterOpen] = useState(false);
   const today = toInputDateStr();
   const queryClient = useQueryClient();
 
@@ -49,10 +51,17 @@ export function FrontDeskDashboard() {
   const { data: statsData, isLoading: statsLoading } = useQuery({
     queryKey: ['front-desk', 'stats', today],
     queryFn: async () => {
-      const response = await apiGet<AppointmentStats>('/appointments/queue', {
-        params: { date: today },
-      });
-      return response.data;
+      const response = await apiGet<{
+        all: number; booked: number; arrived: number;
+        withDoctor: number; completed: number; cancelled: number;
+      }>('/appointments/stats', { params: { date: today } });
+      const s = response.data;
+      return s ? {
+        total: s.all ?? 0,
+        checkedIn: s.arrived ?? 0,
+        waiting: s.booked ?? 0,
+        completed: s.completed ?? 0,
+      } : { total: 0, checkedIn: 0, waiting: 0, completed: 0 };
     },
   });
 
@@ -82,12 +91,6 @@ export function FrontDeskDashboard() {
     { label: 'Checked In', value: computedStats.checkedIn, icon: LogIn },
     { label: 'Waiting', value: computedStats.waiting, icon: Clock },
     { label: 'Completed', value: computedStats.completed, icon: CircleCheck },
-  ];
-
-  const quickActions = [
-    { label: 'Register Patient', icon: UserPlus, href: '/hospital/walkin' },
-    { label: 'Book Appointment', icon: CalendarCheck, href: '/hospital/appointments/new' },
-    { label: 'Walk-In', icon: Footprints, href: '/hospital/walkin' },
   ];
 
   return (
@@ -129,13 +132,28 @@ export function FrontDeskDashboard() {
 
       {/* Quick Actions */}
       <div className="flex flex-wrap gap-3">
-        {quickActions.map((action) => (
-          <Button key={action.label} variant="outline" className="gap-2">
-            <action.icon className="h-4 w-4" />
-            {action.label}
-          </Button>
-        ))}
+        <Button variant="outline" className="gap-2" onClick={() => setRegisterOpen(true)}>
+          <UserPlus className="h-4 w-4" />
+          Register Patient
+        </Button>
+        <Button variant="outline" className="gap-2">
+          <CalendarCheck className="h-4 w-4" />
+          Book Appointment
+        </Button>
+        <Button variant="outline" className="gap-2">
+          <Footprints className="h-4 w-4" />
+          Walk-In
+        </Button>
       </div>
+
+      {/* Register Patient Dialog */}
+      <CreatePatientDialog
+        open={registerOpen}
+        onOpenChange={setRegisterOpen}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['front-desk'] });
+        }}
+      />
 
       {/* Search */}
       <div className="relative max-w-sm">
