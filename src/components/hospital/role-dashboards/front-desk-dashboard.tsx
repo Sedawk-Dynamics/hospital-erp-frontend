@@ -10,10 +10,18 @@ import {
   CalendarCheck, UserPlus, Search, Users, CheckCircle2,
   Clock, CircleCheck, LogIn, Footprints,
 } from 'lucide-react';
-import { toInputDateStr } from '@/lib/date-utils';
+import { toInputDateStr, formatTime24, formatDate } from '@/lib/date-utils';
 import { toast } from 'sonner';
 import { CreateAppointmentDialog } from '@/components/hospital/create-appointment-dialog';
 import { FrontDeskRegisterDialog } from '@/components/hospital/frontdesk-register-dialog';
+
+/** Normalize @db.Time() or plain "HH:mm" values into a parseable ISO string */
+function normalizeTimeValue(value: string | undefined | null): string | null {
+  if (!value) return null;
+  if (value.includes('T')) return value; // already ISO like "1970-01-01T03:30:00.000Z"
+  if (/^\d{2}:\d{2}/.test(value)) return `1970-01-01T${value}Z`;
+  return value;
+}
 
 interface QueueAppointment {
   id: string;
@@ -195,7 +203,7 @@ export function FrontDeskDashboard() {
                 <th className="px-4 pb-4 pt-5 text-left font-semibold">Patient</th>
                 <th className="px-4 pb-4 pt-5 text-left font-semibold">Phone</th>
                 <th className="px-4 pb-4 pt-5 text-left font-semibold">Doctor</th>
-                <th className="px-4 pb-4 pt-5 text-left font-semibold">Time</th>
+                <th className="px-4 pb-4 pt-5 text-left font-semibold">Date & Time</th>
                 <th className="px-4 pb-4 pt-5 text-left font-semibold">Status</th>
                 <th className="px-4 pb-4 pt-5 text-center font-semibold">Action</th>
               </tr>
@@ -235,8 +243,14 @@ export function FrontDeskDashboard() {
                         ? `Dr. ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
                         : '-'}
                     </td>
-                    <td className="px-4 py-3 font-label text-[10px] text-on-surface-variant">
-                      {appt.startTime || '-'}
+                    <td className="px-4 py-3">
+                      <p className="font-label text-sm font-medium">
+                        {formatDate(appt.appointmentDate)}
+                      </p>
+                      <p className="font-label text-[10px] text-on-surface-variant">
+                        {formatTime24(normalizeTimeValue(appt.startTime)) || '-'}
+                        {appt.endTime ? ` - ${formatTime24(normalizeTimeValue(appt.endTime))}` : ''}
+                      </p>
                     </td>
                     <td className="px-4 py-3">
                       <span
