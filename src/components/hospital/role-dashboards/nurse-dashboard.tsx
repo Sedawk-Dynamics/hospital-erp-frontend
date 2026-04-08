@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { formatDateTime } from '@/lib/date-utils';
 import { Button } from '@/components/ui/button';
 import {
   Activity, ClipboardList, Pill, ArrowRightLeft, Users,
@@ -179,12 +180,7 @@ export function NurseDashboard() {
                     </td>
                     <td className="px-4 py-3 font-label text-[10px] text-on-surface-variant">
                       {admission.lastVitalsAt
-                        ? new Date(admission.lastVitalsAt).toLocaleString([], {
-                            month: 'short',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })
+                        ? formatDateTime(admission.lastVitalsAt)
                         : '-'}
                     </td>
                   </tr>
@@ -257,12 +253,7 @@ export function NurseDashboard() {
                     <td className="px-4 py-3 font-label text-sm">{h.toNurse}</td>
                     <td className="px-4 py-3 text-center font-label text-sm font-bold">{h.patientCount}</td>
                     <td className="px-4 py-3 font-label text-[10px] text-on-surface-variant">
-                      {new Date(h.createdAt).toLocaleString([], {
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
+                      {formatDateTime(h.createdAt)}
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-secondary/10 text-secondary capitalize">

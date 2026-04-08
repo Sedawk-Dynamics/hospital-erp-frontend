@@ -13,6 +13,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { formatDateTime } from '@/lib/date-utils';
 import {
   Plus,
   Pencil,
@@ -131,23 +132,6 @@ function buildContent(sections: Record<string, string>): string {
     }
   }
   return parts.join('\n\n');
-}
-
-function formatDateTime(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString('en-IN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-      timeZone: 'Asia/Kolkata',
-    });
-  } catch {
-    return iso;
-  }
 }
 
 function truncateContent(content: string | undefined | null, maxLines = 3): string {

@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
-import { formatDate } from '@/lib/date-utils';
+import { formatDate, formatTime24, toInputDateStr } from '@/lib/date-utils';
 import type { Bill } from '@/types';
 import { cn } from '@/lib/utils';
 
@@ -196,7 +196,7 @@ function CashCounterTab() {
   const { data: payments, isLoading } = useQuery({
     queryKey: ['hospital', 'cash-counter', search],
     queryFn: async () => {
-      const today = new Date().toISOString().split('T')[0];
+      const today = toInputDateStr();
       const params: Record<string, unknown> = { limit: 50, startDate: today };
       if (search) params.search = search;
       const response = await apiGet<Array<{
@@ -287,7 +287,7 @@ function CashCounterTab() {
                   </td>
                   <td className="px-4 py-4 text-right font-label text-sm font-bold">{fmt(Number(p.amount))}</td>
                   <td className="px-4 py-4 font-label text-sm text-on-surface-variant">{p.referenceNumber || '-'}</td>
-                  <td className="px-4 py-4 font-label text-sm text-on-surface-variant">{new Date(p.paymentDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                  <td className="px-4 py-4 font-label text-sm text-on-surface-variant">{formatTime24(p.paymentDate)}</td>
                   <td className="px-4 py-4">
                     <span className={cn(
                       'text-[10px] font-bold px-2 py-0.5 rounded-full',

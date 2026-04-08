@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { formatDate } from '@/lib/date-utils';
 import {
   usePurchaseOrders,
   useCreatePurchaseOrder,
@@ -188,7 +189,7 @@ export default function LabPurchasePage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground text-xs">
-                        {po.createdAt ? new Date(po.createdAt).toLocaleDateString('en-IN') : '-'}
+                        {po.createdAt ? formatDate(po.createdAt) : '-'}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">

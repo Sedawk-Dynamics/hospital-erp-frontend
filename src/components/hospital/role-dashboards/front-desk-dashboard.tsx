@@ -12,16 +12,20 @@ import {
 } from 'lucide-react';
 import { toInputDateStr } from '@/lib/date-utils';
 import { toast } from 'sonner';
-import { CreatePatientDialog } from '@/components/hospital/create-patient-dialog';
+import { CreateAppointmentDialog } from '@/components/hospital/create-appointment-dialog';
+import { FrontDeskRegisterDialog } from '@/components/hospital/frontdesk-register-dialog';
 
 interface QueueAppointment {
   id: string;
   tokenNumber?: number;
   patient: { firstName: string; lastName: string; mrn: string; phone?: string };
   doctor?: { user?: { firstName: string; lastName: string } };
-  appointmentTime: string;
+  appointmentDate: string;
+  startTime: string;
+  endTime?: string;
   status: string;
   type?: string;
+  queueTokens?: Array<{ tokenNumber: number }>;
 }
 
 interface AppointmentStats {
@@ -35,6 +39,7 @@ export function FrontDeskDashboard() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [registerOpen, setRegisterOpen] = useState(false);
+  const [bookAppointmentOpen, setBookAppointmentOpen] = useState(false);
   const today = toInputDateStr();
   const queryClient = useQueryClient();
 
@@ -136,7 +141,7 @@ export function FrontDeskDashboard() {
           <UserPlus className="h-4 w-4" />
           Register Patient
         </Button>
-        <Button variant="outline" className="gap-2">
+        <Button variant="outline" className="gap-2" onClick={() => setBookAppointmentOpen(true)}>
           <CalendarCheck className="h-4 w-4" />
           Book Appointment
         </Button>
@@ -146,13 +151,19 @@ export function FrontDeskDashboard() {
         </Button>
       </div>
 
-      {/* Register Patient Dialog */}
-      <CreatePatientDialog
+      {/* Register Patient + Book Appointment (multi-step) */}
+      <FrontDeskRegisterDialog
         open={registerOpen}
         onOpenChange={setRegisterOpen}
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ['front-desk'] });
         }}
+      />
+
+      {/* Book Appointment for existing patients */}
+      <CreateAppointmentDialog
+        open={bookAppointmentOpen}
+        onOpenChange={setBookAppointmentOpen}
       />
 
       {/* Search */}
@@ -206,7 +217,11 @@ export function FrontDeskDashboard() {
                 appointments.map((appt) => (
                   <tr key={appt.id} className="group hover:bg-surface-container-low transition-colors">
                     <td className="px-4 py-3 font-label text-sm font-bold">
-                      {appt.tokenNumber ? `#${appt.tokenNumber}` : '-'}
+                      {appt.tokenNumber
+                        ? `#${appt.tokenNumber}`
+                        : appt.queueTokens?.[0]?.tokenNumber
+                          ? `#${appt.queueTokens[0].tokenNumber}`
+                          : '-'}
                     </td>
                     <td className="px-4 py-3">
                       <div>
@@ -221,10 +236,7 @@ export function FrontDeskDashboard() {
                         : '-'}
                     </td>
                     <td className="px-4 py-3 font-label text-[10px] text-on-surface-variant">
-                      {new Date(appt.appointmentTime).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
+                      {appt.startTime || '-'}
                     </td>
                     <td className="px-4 py-3">
                       <span

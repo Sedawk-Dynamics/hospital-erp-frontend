@@ -26,6 +26,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { usePatient, useUpdatePatient } from '@/hooks/use-hospital';
+import { formatDate, toInputDateStr } from '@/lib/date-utils';
 
 // ============================================================
 // Schema
@@ -96,21 +97,6 @@ interface PatientDetailDialogProps {
 // ============================================================
 // Helpers
 // ============================================================
-
-function formatDate(dateStr: string | undefined | null): string {
-  if (!dateStr) return '-';
-  try {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      timeZone: 'Asia/Kolkata',
-    });
-  } catch {
-    return dateStr;
-  }
-}
 
 function formatLabel(value: string | undefined | null): string {
   if (!value) return '-';
@@ -184,7 +170,7 @@ export function PatientDetailDialog({
         lastName: patient.lastName ?? '',
         gender: patient.gender ?? 'male',
         dateOfBirth: patient.dateOfBirth
-          ? new Date(patient.dateOfBirth).toISOString().split('T')[0]
+          ? toInputDateStr(new Date(patient.dateOfBirth))
           : '',
         phone: patient.phone ?? '',
         email: patient.email ?? '',
@@ -224,7 +210,7 @@ export function PatientDetailDialog({
         lastName: patient.lastName ?? '',
         gender: patient.gender ?? 'male',
         dateOfBirth: patient.dateOfBirth
-          ? new Date(patient.dateOfBirth).toISOString().split('T')[0]
+          ? toInputDateStr(new Date(patient.dateOfBirth))
           : '',
         phone: patient.phone ?? '',
         email: patient.email ?? '',

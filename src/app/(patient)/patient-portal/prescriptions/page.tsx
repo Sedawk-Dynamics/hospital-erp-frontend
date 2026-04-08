@@ -5,6 +5,7 @@ import { Pill } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { formatDate } from '@/lib/date-utils';
 import { HospitalFilter } from '../_components/hospital-filter';
 
 export default function PatientPrescriptionsPage() {
@@ -48,7 +49,7 @@ export default function PatientPrescriptionsPage() {
                   <p className="text-sm font-semibold text-foreground">
                     Dr. {rx.doctor?.user?.firstName} {rx.doctor?.user?.lastName}
                   </p>
-                  <p className="text-xs text-muted-foreground">{new Date(rx.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                  <p className="text-xs text-muted-foreground">{formatDate(rx.createdAt)}</p>
                 </div>
                 <span className={cn(
                   'inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize',

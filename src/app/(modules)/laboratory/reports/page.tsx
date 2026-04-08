@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { formatDate, formatDateTime } from '@/lib/date-utils';
 import { useLabReports, useGenerateLabReport } from '@/hooks/use-lab';
 import type { LabReport } from '@/hooks/use-lab';
 
@@ -213,12 +214,9 @@ export default function LabReportsPage() {
                         </td>
                         <td className="px-4 py-3 text-muted-foreground text-xs">
                           {report.generatedAt
-                            ? new Date(report.generatedAt).toLocaleString('en-IN', {
-                                dateStyle: 'medium',
-                                timeStyle: 'short',
-                              })
+                            ? formatDateTime(report.generatedAt)
                             : report.createdAt
-                              ? new Date(report.createdAt).toLocaleDateString('en-IN')
+                              ? formatDate(report.createdAt)
                               : '-'}
                         </td>
                         <td className="px-4 py-3">

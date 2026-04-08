@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
 import { toast } from 'sonner';
-import { formatDate } from '@/lib/date-utils';
+import { formatDate, formatTime24, toInputDateStr } from '@/lib/date-utils';
 import {
   useFormulary,
   useBatchesByDrug,
@@ -568,7 +568,7 @@ function PharmacyPOS() {
                               {item.batchNumber}
                               {item.expiryDate && (
                                 <span className="text-muted-foreground ml-1">
-                                  (Exp: {new Date(item.expiryDate).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' })})
+                                  (Exp: {formatDate(item.expiryDate)})
                                 </span>
                               )}
                             </>
@@ -614,7 +614,7 @@ function PharmacyPOS() {
                                     <div>
                                       <p className="font-medium text-foreground">{batch.batchNumber}</p>
                                       <p className="text-muted-foreground">
-                                        Exp: {new Date(batch.expiryDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}
+                                        Exp: {formatDate(batch.expiryDate)}
                                         {' \u00b7 '}Stock: {batch.availableQuantity}
                                       </p>
                                     </div>
@@ -877,7 +877,7 @@ function PharmacyCashCounterTab() {
   const { data: dispensing, isLoading } = useQuery({
     queryKey: ['pharmacy', 'cash-counter'],
     queryFn: async () => {
-      const today = new Date().toISOString().split('T')[0];
+      const today = toInputDateStr();
       const response = await apiGet<Array<{
         id: string; quantity: number; totalCost?: number; status: string; createdAt: string;
         drugBatch?: { drug?: { drugName: string }; batchNumber: string; sellingPrice?: number };
@@ -936,7 +936,7 @@ function PharmacyCashCounterTab() {
                   <td className="px-4 py-3 text-muted-foreground">{r.drugBatch?.batchNumber ?? '-'}</td>
                   <td className="px-4 py-3 text-right">{r.quantity}</td>
                   <td className="px-4 py-3 text-right font-medium">{r.totalCost != null ? fmt(Number(r.totalCost)) : '-'}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{formatTime24(r.createdAt)}</td>
                   <td className="px-4 py-3">
                     <span className={cn(
                       'text-[10px] font-bold px-2 py-0.5 rounded-full capitalize',

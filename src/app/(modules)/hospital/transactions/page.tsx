@@ -4,7 +4,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { CollectionSummaryCard } from '@/components/hospital/billing/collection-summary';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
-import { formatDate } from '@/lib/date-utils';
+import { formatDate, formatTime24, toInputDateStr } from '@/lib/date-utils';
 import type { CollectionSummary, Bill } from '@/types';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -153,7 +153,7 @@ function BillListTab({ status }: { status: string | undefined }) {
 }
 
 function DayEndTab() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = toInputDateStr();
 
   const { data: payments, isLoading } = useQuery({
     queryKey: ['hospital', 'day-end', today],
@@ -212,7 +212,7 @@ function DayEndTab() {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-headline text-lg font-bold">Day End Report</h3>
-          <p className="font-label text-[10px] text-on-surface-variant">{new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+          <p className="font-label text-[10px] text-on-surface-variant">{formatDate(new Date())}</p>
         </div>
         <Button variant="outline" size="sm">
           <Download className="mr-1.5 h-3.5 w-3.5" />
@@ -275,7 +275,7 @@ function DayEndTab() {
                     </span>
                   </td>
                   <td className="px-4 py-2.5 text-right font-label text-sm font-bold">{fmt(Number(p.amount))}</td>
-                  <td className="px-4 py-2.5 font-label text-[10px] text-on-surface-variant">{new Date(p.paymentDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                  <td className="px-4 py-2.5 font-label text-[10px] text-on-surface-variant">{formatTime24(p.paymentDate)}</td>
                   <td className="px-4 py-2.5">
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">Completed</span>
                   </td>

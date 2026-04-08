@@ -5,6 +5,7 @@ import { Calendar, Clock, User, X } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { formatDate, formatTime24 } from '@/lib/date-utils';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 
@@ -24,25 +25,6 @@ interface PatientAppointment {
   patient?: {
     tenant?: { name: string };
   };
-}
-
-function formatTimeStr(isoOrTime: string): string {
-  // Handle HH:MM string
-  if (/^\d{2}:\d{2}$/.test(isoOrTime)) {
-    const [h, m] = isoOrTime.split(':').map(Number);
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${ampm}`;
-  }
-  // Handle ISO date with time (from db.Time stored as Date)
-  try {
-    const d = new Date(isoOrTime);
-    const h = d.getUTCHours();
-    const m = d.getUTCMinutes();
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${ampm}`;
-  } catch {
-    return isoOrTime;
-  }
 }
 
 const statusStyles: Record<string, string> = {
@@ -140,13 +122,13 @@ export default function PatientAppointmentsPage() {
               <div className="text-right flex-shrink-0 space-y-1">
                 <div className="flex items-center gap-1.5 text-sm text-foreground justify-end">
                   <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                  {new Date(apt.appointmentDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                  {formatDate(apt.appointmentDate)}
                 </div>
                 {apt.startTime && (
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground justify-end">
                     <Clock className="h-3 w-3" />
-                    {formatTimeStr(apt.startTime)}
-                    {apt.endTime && ` - ${formatTimeStr(apt.endTime)}`}
+                    {formatTime24(apt.startTime)}
+                    {apt.endTime && ` - ${formatTime24(apt.endTime)}`}
                   </div>
                 )}
                 <div className="flex items-center gap-1.5 justify-end">

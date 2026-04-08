@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { toInputDateStr } from '@/lib/date-utils';
+import { toInputDateStr, formatTime24 } from '@/lib/date-utils';
 import { Search, CalendarIcon, Users, Clock, BedDouble, FlaskConical, Scissors } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -245,21 +245,14 @@ export default function DoctorHomePage() {
 
 // ── Helpers ──────────────────────────────────────────
 
+/** Normalize plain time strings (e.g. "09:00") into a parseable ISO format, then use formatTime24. */
 function formatTimeFromISO(t: string | null | undefined): string {
   if (!t) return '-';
-  try {
-    const d = new Date(t);
-    if (isNaN(d.getTime())) {
-      // Try HH:MM format
-      const [h, m] = t.split(':').map(Number);
-      if (isNaN(h)) return t;
-      const ampm = h >= 12 ? 'PM' : 'AM';
-      return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${ampm}`;
-    }
-    return d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
-  } catch {
-    return t;
-  }
+  // If it looks like a plain HH:mm or HH:mm:ss string, prefix with a date so Date can parse it
+  const normalized = /^\d{1,2}:\d{2}(:\d{2})?$/.test(t.trim())
+    ? `1970-01-01T${t.trim()}Z`
+    : t;
+  return formatTime24(normalized);
 }
 
 const statusLabels: Record<string, { label: string; bg: string; text: string }> = {

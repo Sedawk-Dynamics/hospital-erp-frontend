@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
+import { toInputDateStr } from '@/lib/date-utils';
 import {
   BarChart3, Users, BedDouble, Shield, Calendar,
   ArrowRightLeft, FileText, Download, Loader2,
@@ -264,13 +265,13 @@ const reportCategories: ReportCategory[] = [
 // ---------------------------------------------------------------------------
 
 function today(): string {
-  return new Date().toISOString().split('T')[0];
+  return toInputDateStr();
 }
 
 function thirtyDaysAgo(): string {
   const d = new Date();
   d.setDate(d.getDate() - 30);
-  return d.toISOString().split('T')[0];
+  return toInputDateStr(d);
 }
 
 /** Resolve a dot-path like "bill.patient.firstName" from an object */

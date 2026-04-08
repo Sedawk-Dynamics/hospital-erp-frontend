@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
 import type { LabOrder } from '@/types';
 import { cn } from '@/lib/utils';
+import { formatDateTime } from '@/lib/date-utils';
 
 export default function LaboratoryHomePage() {
   return (
@@ -258,7 +259,7 @@ function TechniciansTab() {
                   <td className="px-4 py-3">{s.labOrder?.patient ? `${s.labOrder.patient.firstName} ${s.labOrder.patient.lastName}` : '-'}</td>
                   <td className="px-4 py-3">{s.labOrder?.orderNumber ?? '-'}</td>
                   <td className="px-4 py-3 capitalize">{s.sampleType?.replace('_', ' ') || '-'}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{s.collectedAt ? new Date(s.collectedAt).toLocaleString() : '-'}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{s.collectedAt ? formatDateTime(s.collectedAt) : '-'}</td>
                   <td className="px-4 py-3">
                     <span className={cn(
                       'text-[10px] font-bold px-2 py-0.5 rounded-full capitalize',

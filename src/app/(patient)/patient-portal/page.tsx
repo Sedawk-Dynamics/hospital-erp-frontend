@@ -109,7 +109,7 @@ export default function PatientPortalHome() {
                       Dr. {apt.doctor?.user?.firstName} {apt.doctor?.user?.lastName}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(apt.appointmentDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      {formatDate(apt.appointmentDate)}
                       {apt.doctor?.specialization && ` \u00b7 ${apt.doctor.specialization}`}
                     </p>
                   </div>

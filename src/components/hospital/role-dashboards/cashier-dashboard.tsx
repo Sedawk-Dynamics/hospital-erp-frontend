@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost } from '@/lib/api';
-import { formatDate } from '@/lib/date-utils';
+import { formatDate, toInputDateStr } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -45,7 +45,7 @@ export function CashierDashboard() {
   const [collectAmount, setCollectAmount] = useState('');
   const [collectMethod, setCollectMethod] = useState('cash');
   const queryClient = useQueryClient();
-  const today = new Date().toISOString().split('T')[0];
+  const today = toInputDateStr();
 
   // Today's payments for collection summary
   const { data: payments, isLoading: paymentsLoading } = useQuery({

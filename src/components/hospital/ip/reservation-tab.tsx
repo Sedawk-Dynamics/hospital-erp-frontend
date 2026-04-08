@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
+import { toInputDateStr } from '@/lib/date-utils';
 import { Search, Plus, Eye, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -222,7 +223,7 @@ function CreateReservationDialog({ open, onOpenChange }: { open: boolean; onOpen
     doctorId: '',
     wardId: '',
     bedId: '',
-    reservedDate: new Date().toISOString().split('T')[0],
+    reservedDate: toInputDateStr(),
     expectedAdmission: '',
     diagnosis: '',
     speciality: '',
@@ -283,7 +284,7 @@ function CreateReservationDialog({ open, onOpenChange }: { open: boolean; onOpen
       onOpenChange(false);
       setForm({
         patientId: '', doctorId: '', wardId: '', bedId: '',
-        reservedDate: new Date().toISOString().split('T')[0],
+        reservedDate: toInputDateStr(),
         expectedAdmission: '', diagnosis: '', speciality: '', advanceAmount: 0, notes: '',
       });
     },

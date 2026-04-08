@@ -1,5 +1,6 @@
 'use client';
 
+import { toInputDateStr } from '@/lib/date-utils';
 import { Search, CalendarIcon } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -72,7 +73,7 @@ export function OPHomeToolbar({
           />
         </div>
 
-        <Button variant="outline" size="sm" onClick={() => onDateChange(new Date().toISOString().split('T')[0])}>
+        <Button variant="outline" size="sm" onClick={() => onDateChange(toInputDateStr())}>
           Today
         </Button>
       </div>

@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPatch } from '@/lib/api';
-import { formatDate } from '@/lib/date-utils';
+import { formatDate, toInputDateStr } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
@@ -69,7 +69,7 @@ export function HRDashboard() {
     queryFn: async () => {
       try {
         const response = await apiGet<AttendanceSummary>('/hr/attendance/summary', {
-          params: { date: new Date().toISOString().split('T')[0] },
+          params: { date: toInputDateStr() },
         });
         return response.data;
       } catch {

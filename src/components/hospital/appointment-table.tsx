@@ -8,6 +8,7 @@ import { CancelAppointmentDialog } from './cancel-appointment-dialog';
 import { RescheduleAppointmentDialog } from './reschedule-appointment-dialog';
 import { PatientDetailDialog } from './patient-detail-dialog';
 import { cn } from '@/lib/utils';
+import { formatDate, formatTime24 } from '@/lib/date-utils';
 import {
   Eye,
   MoreHorizontal,
@@ -38,36 +39,12 @@ interface AppointmentTableProps {
   onPageChange: (page: number) => void;
 }
 
-/** Parse Prisma @db.Time() ISO string or HH:MM to readable 12-hour format */
-function formatTime(value: string | undefined | null): string {
-  if (!value) return '-';
-  let h: number, m: number;
-  if (value.includes('T')) {
-    // ISO: "1970-01-01T09:00:00.000Z"
-    const d = new Date(value);
-    if (isNaN(d.getTime())) return value;
-    h = d.getUTCHours();
-    m = d.getUTCMinutes();
-  } else if (/^\d{2}:\d{2}/.test(value)) {
-    // HH:MM or HH:MM:SS
-    [h, m] = value.split(':').map(Number);
-  } else {
-    return value;
-  }
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  const hour = h % 12 || 12;
-  return `${hour}:${m.toString().padStart(2, '0')} ${ampm}`;
-}
-
-/** Format appointmentDate (ISO date like "2026-04-07T00:00:00.000Z") to dd/MM/yyyy */
-function formatAppointmentDate(value: string | undefined | null): string {
-  if (!value) return '-';
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return '-';
-  const day = d.getDate().toString().padStart(2, '0');
-  const month = (d.getMonth() + 1).toString().padStart(2, '0');
-  const year = d.getFullYear();
-  return `${day}/${month}/${year}`;
+/** Normalize @db.Time() values (plain "HH:mm" or "HH:mm:ss") into ISO strings that formatTime24 can parse */
+function normalizeTimeValue(value: string | undefined | null): string | null {
+  if (!value) return null;
+  if (value.includes('T')) return value; // already ISO
+  if (/^\d{2}:\d{2}/.test(value)) return `1970-01-01T${value}Z`;
+  return value;
 }
 
 const categoryColors: Record<string, string> = {
@@ -212,8 +189,8 @@ export function AppointmentTable({
                     {/* Date & Time */}
                     <td className="px-4 py-4">
                       <div>
-                        <p className="font-label text-[10px] text-on-surface-variant">{formatAppointmentDate(apt.appointmentDate)}</p>
-                        <p className="font-label text-sm font-bold">{formatTime(apt.startTime)} - {formatTime(apt.endTime)}</p>
+                        <p className="font-label text-[10px] text-on-surface-variant">{formatDate(apt.appointmentDate)}</p>
+                        <p className="font-label text-sm font-bold">{formatTime24(normalizeTimeValue(apt.startTime))} - {formatTime24(normalizeTimeValue(apt.endTime))}</p>
                       </div>
                     </td>
 

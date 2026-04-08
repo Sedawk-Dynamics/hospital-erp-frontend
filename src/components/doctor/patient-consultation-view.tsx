@@ -1,7 +1,6 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
 import {
   Loader2,
   AlertTriangle,
@@ -36,6 +35,7 @@ import {
   useProgressNotes,
 } from '@/hooks/use-doctor';
 import { apiGet } from '@/lib/api';
+import { formatDate } from '@/lib/date-utils';
 
 import type { Patient } from '@/types';
 import type {
@@ -69,14 +69,6 @@ function calculateAge(dob: string): string {
     return `${years - 1} yrs`;
   }
   return `${years} yrs`;
-}
-
-function formatDate(dateStr: string): string {
-  try {
-    return format(new Date(dateStr), 'dd/MM/yyyy');
-  } catch {
-    return dateStr;
-  }
 }
 
 function getDoctorName(doctor?: { id: string; user?: { firstName: string; lastName: string } }): string {
