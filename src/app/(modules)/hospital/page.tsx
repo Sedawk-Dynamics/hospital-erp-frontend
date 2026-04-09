@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { toInputDateStr } from '@/lib/date-utils';
 import { UserPlus, CalendarPlus } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth-store';
 import { OPHomeToolbar } from '@/components/hospital/op-home-toolbar';
 import { CreatePatientDialog } from '@/components/hospital/create-patient-dialog';
@@ -42,6 +43,25 @@ const statusFilterMap: Record<string, string | undefined> = {
   ipAppointments: undefined,
 };
 
+type ViewMode = 'today' | 'upcoming' | 'past';
+
+const VIEW_MODES: { value: ViewMode; label: string }[] = [
+  { value: 'today', label: 'Today' },
+  { value: 'upcoming', label: 'Upcoming' },
+  { value: 'past', label: 'Past Bookings' },
+];
+
+/** Add (or subtract) days from a yyyy-MM-dd string. Pure date math, no TZ drift. */
+function shiftDate(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  const yy = dt.getUTCFullYear();
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getUTCDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
+
 export default function HospitalHomePage() {
   const user = useAuthStore((s) => s.user);
   const roleSlug = user?.role?.slug?.toLowerCase().replace(/[\s-]+/g, '_');
@@ -66,19 +86,38 @@ function OPHomeDashboard() {
   const [page, setPage] = useState(1);
   const [createPatientOpen, setCreatePatientOpen] = useState(false);
   const [createAppointmentOpen, setCreateAppointmentOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('today');
 
   const statusFilter = statusFilterMap[activeStatFilter];
+
+  // Compute date params based on view mode
+  const dateParams = useMemo(() => {
+    const today = toInputDateStr();
+    if (viewMode === 'upcoming') {
+      // Everything from tomorrow onward
+      return { fromDate: shiftDate(today, 1) };
+    }
+    if (viewMode === 'past') {
+      // Everything before today
+      return { toDate: shiftDate(today, -1) };
+    }
+    // 'today' — single day picker
+    return { date: selectedDate };
+  }, [viewMode, selectedDate]);
 
   const { data: appointmentsData, isLoading: appointmentsLoading } = useOPAppointments({
     page,
     limit: 20,
-    date: selectedDate,
+    ...dateParams,
     doctorId: selectedDoctor !== 'all' ? selectedDoctor : undefined,
     status: statusFilter,
     search: searchQuery || undefined,
   });
 
-  const { data: stats, isLoading: statsLoading } = useAppointmentStats(selectedDate);
+  // Stats only make sense for the "today" view
+  const { data: stats, isLoading: statsLoading } = useAppointmentStats(
+    viewMode === 'today' ? selectedDate : undefined,
+  );
 
   const { data: doctorsRaw } = useDoctorsList();
 
@@ -94,6 +133,12 @@ function OPHomeDashboard() {
 
   const handleSearchChange = useCallback((value: string) => {
     setSearchQuery(value);
+    setPage(1);
+  }, []);
+
+  const handleViewModeChange = useCallback((mode: ViewMode) => {
+    setViewMode(mode);
+    setActiveStatFilter('all');
     setPage(1);
   }, []);
 
@@ -123,7 +168,25 @@ function OPHomeDashboard() {
         onOpenChange={setCreatePatientOpen}
       />
 
-      {/* Toolbar: Doctor filter + Search + Date */}
+      {/* View mode tabs: Today / Upcoming / Past Bookings */}
+      <div className="flex gap-2 overflow-x-auto">
+        {VIEW_MODES.map((m) => (
+          <button
+            key={m.value}
+            onClick={() => handleViewModeChange(m.value)}
+            className={cn(
+              'rounded-lg px-3 py-1.5 font-label text-xs font-semibold whitespace-nowrap transition-colors',
+              m.value === viewMode
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'bg-surface-container text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high',
+            )}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Toolbar: Doctor filter + Search + Date (date hidden outside Today view) */}
       <OPHomeToolbar
         searchQuery={searchQuery}
         onSearchChange={handleSearchChange}
@@ -132,15 +195,45 @@ function OPHomeDashboard() {
         selectedDate={selectedDate}
         onDateChange={(v) => { setSelectedDate(v); setPage(1); }}
         doctors={doctors}
+        hideDate={viewMode !== 'today'}
       />
 
-      {/* Stats row */}
-      <AppointmentStatsRow
-        stats={stats}
-        activeFilter={activeStatFilter}
-        onFilterChange={handleStatFilter}
-        isLoading={statsLoading}
-      />
+      {/* Stats row — only meaningful for Today view */}
+      {viewMode === 'today' && (
+        <AppointmentStatsRow
+          stats={stats}
+          activeFilter={activeStatFilter}
+          onFilterChange={handleStatFilter}
+          isLoading={statsLoading}
+        />
+      )}
+
+      {/* Past / Upcoming: simple status filter chips */}
+      {viewMode !== 'today' && (
+        <div className="flex gap-2 overflow-x-auto">
+          {[
+            { value: 'all', label: 'All' },
+            { value: 'booked', label: 'Booked' },
+            { value: 'arrived', label: 'Checked In' },
+            { value: 'withDoctor', label: 'In Consultation' },
+            { value: 'completed', label: 'Completed' },
+            { value: 'cancelled', label: 'Cancelled' },
+          ].map((f) => (
+            <button
+              key={f.value}
+              onClick={() => handleStatFilter(f.value)}
+              className={cn(
+                'rounded-full border px-3 py-1 text-xs font-medium transition-colors whitespace-nowrap',
+                f.value === activeStatFilter
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border bg-card text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Tag filters */}
       <PatientTagFilter activeTag={activeTag} onTagChange={setActiveTag} />

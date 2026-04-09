@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { toInputDateStr, formatTime } from '@/lib/date-utils';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -14,6 +15,7 @@ import {
   CheckCircle2,
   SkipForward,
   Plus,
+  CalendarCheck,
   Clock,
   Users,
   Stethoscope,
@@ -46,7 +48,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-import { CreatePatientDialog } from '@/components/hospital/create-patient-dialog';
+import { FrontDeskRegisterDialog } from '@/components/hospital/frontdesk-register-dialog';
+import { CreateAppointmentDialog } from '@/components/hospital/create-appointment-dialog';
 import {
   useOPAppointments,
   useAppointmentStats,
@@ -447,6 +450,7 @@ export default function WalkInPage() {
 
   // Filters
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('booked');
   const [selectedDoctor, setSelectedDoctor] = useState('all');
   const [selectedDate, setSelectedDate] = useState(toInputDateStr());
   const [page, setPage] = useState(1);
@@ -454,12 +458,14 @@ export default function WalkInPage() {
   // Dialogs
   const [createPatientOpen, setCreatePatientOpen] = useState(false);
   const [walkInDialogOpen, setWalkInDialogOpen] = useState(false);
+  const [bookAppointmentOpen, setBookAppointmentOpen] = useState(false);
 
   // Data
   const { data: appointmentsData, isLoading: appointmentsLoading } = useOPAppointments({
     page,
     limit: 50,
     date: selectedDate,
+    status: statusFilter !== 'all' ? statusFilter : undefined,
     doctorId: selectedDoctor !== 'all' ? selectedDoctor : undefined,
     search: search || undefined,
   });
@@ -522,6 +528,22 @@ export default function WalkInPage() {
     setPage(1);
   }, []);
 
+  const handleStatusFilter = useCallback((value: string) => {
+    setStatusFilter(value);
+    setPage(1);
+  }, []);
+
+  const STATUS_FILTERS = [
+    { value: 'all', label: 'All' },
+    { value: 'pending_payment', label: 'Pending Payment' },
+    { value: 'booked', label: 'Booked' },
+    { value: 'confirmed', label: 'Confirmed' },
+    { value: 'checked_in', label: 'Checked In' },
+    { value: 'in_consultation', label: 'In Consultation' },
+    { value: 'completed', label: 'Completed' },
+    { value: 'cancelled', label: 'Cancelled' },
+  ];
+
   const handleDoctorChange = useCallback((value: string | null) => {
     setSelectedDoctor(value ?? 'all');
     setPage(1);
@@ -554,6 +576,15 @@ export default function WalkInPage() {
             Register Patient
           </Button>
           <Button
+            variant="outline"
+            onClick={() => setBookAppointmentOpen(true)}
+            size="sm"
+            className="rounded-xl font-label text-sm"
+          >
+            <CalendarCheck className="h-4 w-4 mr-1.5" />
+            Book Appointment
+          </Button>
+          <Button
             onClick={() => setWalkInDialogOpen(true)}
             className="bg-primary text-white font-label font-bold text-sm px-6 py-2.5 rounded-xl hover:shadow-lg transition-shadow"
           >
@@ -564,12 +595,25 @@ export default function WalkInPage() {
       </div>
 
       {/* ── Dialogs ────────────────────────────────────────── */}
-      <CreatePatientDialog open={createPatientOpen} onOpenChange={setCreatePatientOpen} />
-      <WalkInDialog
+      <FrontDeskRegisterDialog
+        open={createPatientOpen}
+        onOpenChange={setCreatePatientOpen}
+        initialMode="new"
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['hospital'] });
+        }}
+      />
+      <FrontDeskRegisterDialog
         open={walkInDialogOpen}
         onOpenChange={setWalkInDialogOpen}
-        doctors={doctors}
-        doctorsLoading={doctorsLoading}
+        initialMode="existing"
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['hospital'] });
+        }}
+      />
+      <CreateAppointmentDialog
+        open={bookAppointmentOpen}
+        onOpenChange={setBookAppointmentOpen}
       />
 
       {/* ── Queue Stats Row ────────────────────────────────── */}
@@ -598,6 +642,24 @@ export default function WalkInPage() {
           value={queueStats.completed}
           color="bg-green-100 dark:bg-green-900/30"
         />
+      </div>
+
+      {/* ── Status Filters ───────────────────────────────── */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {STATUS_FILTERS.map((f) => (
+          <button
+            key={f.value}
+            onClick={() => handleStatusFilter(f.value)}
+            className={cn(
+              'rounded-lg px-3 py-1.5 font-label text-xs font-semibold whitespace-nowrap transition-colors',
+              f.value === statusFilter
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'bg-surface-container text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high',
+            )}
+          >
+            {f.label}
+          </button>
+        ))}
       </div>
 
       {/* ── Filters Row ────────────────────────────────────── */}
@@ -760,55 +822,29 @@ export default function WalkInPage() {
 
                       {/* Actions */}
                       <td className="px-4 py-3 text-right">
-                        {!isTerminal && (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger
-                              render={
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                                />
-                              }
-                            >
-                              <MoreHorizontal className="h-4 w-4" />
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-48">
-                              {isWaiting && (
-                                <DropdownMenuItem
-                                  onClick={() =>
-                                    handleStatusChange(apt.id, 'in_consultation')
-                                  }
-                                  className="font-label text-sm"
-                                >
-                                  <Play className="mr-2 h-4 w-4 text-blue-600" />
-                                  Start Consultation
-                                </DropdownMenuItem>
-                              )}
-                              {isInConsultation && (
-                                <DropdownMenuItem
-                                  onClick={() =>
-                                    handleStatusChange(apt.id, 'completed')
-                                  }
-                                  className="font-label text-sm"
-                                >
-                                  <CheckCircle2 className="mr-2 h-4 w-4 text-green-600" />
-                                  Complete
-                                </DropdownMenuItem>
-                              )}
-                              {(isWaiting || isInConsultation) && (
-                                <DropdownMenuItem
-                                  onClick={() =>
-                                    handleStatusChange(apt.id, 'cancelled')
-                                  }
-                                  className="font-label text-sm"
-                                >
-                                  <SkipForward className="mr-2 h-4 w-4 text-gray-500" />
-                                  Skip
-                                </DropdownMenuItem>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                        {apt.status === 'booked' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1.5 text-xs"
+                            disabled={updateStatus.isPending}
+                            onClick={() => handleStatusChange(apt.id, 'confirmed')}
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            Confirm
+                          </Button>
+                        )}
+                        {apt.status === 'confirmed' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1.5 text-xs"
+                            disabled={updateStatus.isPending}
+                            onClick={() => handleStatusChange(apt.id, 'checked_in')}
+                          >
+                            <Play className="h-3.5 w-3.5" />
+                            Check In
+                          </Button>
                         )}
                       </td>
                     </tr>

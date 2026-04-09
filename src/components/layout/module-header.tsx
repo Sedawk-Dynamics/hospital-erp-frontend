@@ -14,6 +14,7 @@ import {
 import { useSidebarStore } from '@/stores/sidebar-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { useClinicStore } from '@/stores/clinic-store';
+import { usePermissions } from '@/hooks/use-permissions';
 import { MODULE_REGISTRY, getModuleFromPathname } from '@/config/modules';
 import { useRouter, usePathname } from 'next/navigation';
 
@@ -21,6 +22,7 @@ export function ModuleHeader() {
   const { toggle } = useSidebarStore();
   const { user, logout } = useAuthStore();
   const { selectedClinic } = useClinicStore();
+  const { isAdmin } = usePermissions();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -138,10 +140,12 @@ export function ModuleHeader() {
                 <User className="mr-2 h-4 w-4" />
                 <span>My Account</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push('/manage-subscription')}>
-                <CreditCard className="mr-2 h-4 w-4" />
-                <span>Subscription & Billing</span>
-              </DropdownMenuItem>
+              {isAdmin() && (
+                <DropdownMenuItem onClick={() => router.push('/manage-subscription')}>
+                  <CreditCard className="mr-2 h-4 w-4" />
+                  <span>Subscription & Billing</span>
+                </DropdownMenuItem>
+              )}
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>

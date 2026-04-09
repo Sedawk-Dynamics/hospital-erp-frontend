@@ -45,17 +45,20 @@ interface AppointmentStats {
 
 export function FrontDeskDashboard() {
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('booked');
   const [page, setPage] = useState(1);
   const [registerOpen, setRegisterOpen] = useState(false);
+  const [walkInOpen, setWalkInOpen] = useState(false);
   const [bookAppointmentOpen, setBookAppointmentOpen] = useState(false);
   const today = toInputDateStr();
   const queryClient = useQueryClient();
 
   const { data: queueData, isLoading: queueLoading } = useQuery({
-    queryKey: ['front-desk', 'queue', today, search, page],
+    queryKey: ['front-desk', 'queue', today, search, statusFilter, page],
     queryFn: async () => {
       const params: Record<string, unknown> = { date: today, page, limit: 20 };
       if (search) params.search = search;
+      if (statusFilter !== 'all') params.status = statusFilter;
       const response = await apiGet<QueueAppointment[]>('/appointments', { params });
       return { data: response.data, meta: response.meta };
     },
@@ -75,6 +78,19 @@ export function FrontDeskDashboard() {
         waiting: s.booked ?? 0,
         completed: s.completed ?? 0,
       } : { total: 0, checkedIn: 0, waiting: 0, completed: 0 };
+    },
+  });
+
+  const confirmMutation = useMutation({
+    mutationFn: async (appointmentId: string) => {
+      await apiPatch(`/appointments/${appointmentId}/status`, { status: 'confirmed' });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['front-desk'] });
+      toast.success('Appointment confirmed');
+    },
+    onError: () => {
+      toast.error('Failed to confirm appointment');
     },
   });
 
@@ -98,6 +114,22 @@ export function FrontDeskDashboard() {
     setSearch(value);
     setPage(1);
   }, []);
+
+  const handleStatusFilter = useCallback((value: string) => {
+    setStatusFilter(value);
+    setPage(1);
+  }, []);
+
+  const STATUS_FILTERS = [
+    { value: 'all', label: 'All' },
+    { value: 'pending_payment', label: 'Pending Payment' },
+    { value: 'booked', label: 'Booked' },
+    { value: 'confirmed', label: 'Confirmed' },
+    { value: 'checked_in', label: 'Checked In' },
+    { value: 'in_consultation', label: 'In Consultation' },
+    { value: 'completed', label: 'Completed' },
+    { value: 'cancelled', label: 'Cancelled' },
+  ];
 
   const stats = [
     { label: "Today's Appointments", value: computedStats.total, icon: CalendarCheck },
@@ -153,7 +185,7 @@ export function FrontDeskDashboard() {
           <CalendarCheck className="h-4 w-4" />
           Book Appointment
         </Button>
-        <Button variant="outline" className="gap-2">
+        <Button variant="outline" className="gap-2" onClick={() => setWalkInOpen(true)}>
           <Footprints className="h-4 w-4" />
           Walk-In
         </Button>
@@ -168,21 +200,49 @@ export function FrontDeskDashboard() {
         }}
       />
 
+      {/* Walk-In: same flow but starts with existing patient search */}
+      <FrontDeskRegisterDialog
+        open={walkInOpen}
+        onOpenChange={setWalkInOpen}
+        initialMode="existing"
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['front-desk'] });
+        }}
+      />
+
       {/* Book Appointment for existing patients */}
       <CreateAppointmentDialog
         open={bookAppointmentOpen}
         onOpenChange={setBookAppointmentOpen}
       />
 
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant" />
-        <Input
-          placeholder="Search by name, phone, MRN..."
-          value={search}
-          onChange={(e) => handleSearchChange(e.target.value)}
-          className="pl-9"
-        />
+      {/* Filters + Search */}
+      <div className="space-y-3">
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {STATUS_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => handleStatusFilter(f.value)}
+              className={cn(
+                'rounded-lg px-3 py-1.5 font-label text-xs font-semibold whitespace-nowrap transition-colors',
+                f.value === statusFilter
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'bg-surface-container text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high',
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant" />
+          <Input
+            placeholder="Search by name, phone, MRN..."
+            value={search}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            className="pl-9"
+          />
+        </div>
       </div>
 
       {/* Appointment Queue Table */}
@@ -268,7 +328,19 @@ export function FrontDeskDashboard() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      {(appt.status === 'booked' || appt.status === 'confirmed') && (
+                      {appt.status === 'booked' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5 text-xs"
+                          disabled={confirmMutation.isPending}
+                          onClick={() => confirmMutation.mutate(appt.id)}
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          Confirm
+                        </Button>
+                      )}
+                      {appt.status === 'confirmed' && (
                         <Button
                           size="sm"
                           variant="outline"
@@ -276,7 +348,7 @@ export function FrontDeskDashboard() {
                           disabled={checkInMutation.isPending}
                           onClick={() => checkInMutation.mutate(appt.id)}
                         >
-                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          <LogIn className="h-3.5 w-3.5" />
                           Check In
                         </Button>
                       )}

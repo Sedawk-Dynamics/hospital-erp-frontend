@@ -54,20 +54,14 @@ const categoryColors: Record<string, string> = {
   procedure: 'bg-secondary',
 };
 
-// Valid next statuses from current status
+// Valid next statuses from current status (front-desk / hospital staff actions only)
+// Start Consultation & Complete are doctor-panel responsibilities
 const nextStatusMap: Record<string, { status: string; label: string; icon: typeof UserCheck }[]> = {
   booked: [
     { status: 'confirmed', label: 'Confirm', icon: ShieldCheck },
-    { status: 'checked_in', label: 'Check In', icon: UserCheck },
   ],
   confirmed: [
     { status: 'checked_in', label: 'Check In', icon: UserCheck },
-  ],
-  checked_in: [
-    { status: 'in_consultation', label: 'Start Consultation', icon: Stethoscope },
-  ],
-  in_consultation: [
-    { status: 'completed', label: 'Complete', icon: CheckCircle2 },
   ],
 };
 

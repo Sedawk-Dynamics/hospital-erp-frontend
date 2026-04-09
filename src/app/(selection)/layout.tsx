@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useAuthStore } from '@/stores/auth-store';
 import { useClinicStore } from '@/stores/clinic-store';
+import { usePermissions } from '@/hooks/use-permissions';
 import { formatRoleName } from '@/lib/utils';
 
 export default function SelectionLayout({
@@ -25,6 +26,7 @@ export default function SelectionLayout({
   const router = useRouter();
   const { user, hydrate: hydrateAuth, _hydrated: authHydrated, logout, fetchMe } = useAuthStore();
   const { hydrate: hydrateClinic } = useClinicStore();
+  const { isAdmin } = usePermissions();
 
   useEffect(() => {
     hydrateAuth();
@@ -98,10 +100,12 @@ export default function SelectionLayout({
                   <User className="mr-2 h-4 w-4" />
                   <span>My Account</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => router.push('/manage-subscription')}>
-                  <CreditCard className="mr-2 h-4 w-4" />
-                  <span>Subscription & Billing</span>
-                </DropdownMenuItem>
+                {isAdmin() && (
+                  <DropdownMenuItem onClick={() => router.push('/manage-subscription')}>
+                    <CreditCard className="mr-2 h-4 w-4" />
+                    <span>Subscription & Billing</span>
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>

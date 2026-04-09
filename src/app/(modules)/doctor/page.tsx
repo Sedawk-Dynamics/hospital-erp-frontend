@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { toInputDateStr, formatTime24 } from '@/lib/date-utils';
 import { Search, CalendarIcon, Users, Clock, BedDouble, FlaskConical, Scissors } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -24,16 +24,49 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Eye, Edit, XCircle, MoreVertical, CheckCircle, LogIn, Stethoscope, UserCheck } from 'lucide-react';
 
-// Backend statuses: booked, confirmed, checked_in, in_consultation, completed, cancelled, no_show
+// Status filter mapping for doctor panel
 const statusFilterMap: Record<string, string | undefined> = {
   all: undefined,
+  pending_payment: 'pending_payment',
   booked: 'booked',
-  arrived: 'checked_in',
-  withDoctor: 'in_consultation',
+  confirmed: 'confirmed',
+  checked_in: 'checked_in',
+  in_consultation: 'in_consultation',
   completed: 'completed',
   cancelled: 'cancelled',
-  ipAppointments: undefined,
+  no_show: 'no_show',
 };
+
+const DOCTOR_STATUS_FILTERS = [
+  { value: 'all', label: 'All' },
+  { value: 'pending_payment', label: 'Pending Payment' },
+  { value: 'booked', label: 'Booked' },
+  { value: 'confirmed', label: 'Confirmed' },
+  { value: 'checked_in', label: 'Checked In' },
+  { value: 'in_consultation', label: 'In Consultation' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'cancelled', label: 'Cancelled' },
+  { value: 'no_show', label: 'No Show' },
+];
+
+type ViewMode = 'today' | 'upcoming' | 'past';
+
+const DOCTOR_VIEW_MODES: { value: ViewMode; label: string }[] = [
+  { value: 'today', label: 'Today' },
+  { value: 'upcoming', label: 'Upcoming' },
+  { value: 'past', label: 'Past Bookings' },
+];
+
+/** Add (or subtract) days from a yyyy-MM-dd string. Pure date math, no TZ drift. */
+function shiftDate(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  const yy = dt.getUTCFullYear();
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getUTCDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
 
 const categoryColors: Record<string, string> = {
   consultation: 'bg-red-500',
@@ -43,18 +76,13 @@ const categoryColors: Record<string, string> = {
 };
 
 // Status transitions the doctor can perform
+// Confirm & Check In are front-desk responsibilities — doctor handles consultation onward
 const DOCTOR_TRANSITIONS: Record<string, { label: string; to: string; icon: typeof CheckCircle; color?: string }[]> = {
-  booked: [
-    { label: 'Confirm', to: 'confirmed', icon: CheckCircle },
-    { label: 'Cancel', to: 'cancelled', icon: XCircle, color: 'text-destructive' },
-  ],
   confirmed: [
-    { label: 'Check In', to: 'checked_in', icon: LogIn },
-    { label: 'Cancel', to: 'cancelled', icon: XCircle, color: 'text-destructive' },
+    { label: 'Start Consultation', to: 'in_consultation', icon: Stethoscope },
   ],
   checked_in: [
     { label: 'Start Consultation', to: 'in_consultation', icon: Stethoscope },
-    { label: 'Cancel', to: 'cancelled', icon: XCircle, color: 'text-destructive' },
   ],
   in_consultation: [
     { label: 'Complete', to: 'completed', icon: UserCheck },
@@ -102,24 +130,42 @@ export default function DoctorHomePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [fromDate, setFromDate] = useState(toInputDateStr());
   const [toDate, setToDate] = useState(toInputDateStr());
-  const [activeStatFilter, setActiveStatFilter] = useState('all');
+  const [activeStatFilter, setActiveStatFilter] = useState('booked');
   const [activeTag, setActiveTag] = useState('all');
   const [page, setPage] = useState(1);
   const [consultPatientId, setConsultPatientId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('today');
 
   const statusFilter = statusFilterMap[activeStatFilter];
+
+  // Compute date params based on view mode
+  const dateParams = useMemo(() => {
+    const today = toInputDateStr();
+    if (viewMode === 'upcoming') {
+      return { fromDate: shiftDate(today, 1) };
+    }
+    if (viewMode === 'past') {
+      return { toDate: shiftDate(today, -1) };
+    }
+    // 'today' — use the existing date input
+    return { date: fromDate };
+  }, [viewMode, fromDate]);
 
   // Doctor sees only their own appointments — pass doctorUserId so backend resolves DoctorProfile
   const { data: appointmentsData, isLoading } = useDoctorAppointments({
     page,
     limit: 30,
-    date: fromDate,
+    ...dateParams,
     doctorUserId: user?.id,
     status: statusFilter,
     search: searchQuery || undefined,
   });
 
-  const { data: doctorStats, isLoading: statsLoading } = useDoctorAppointmentStats(user?.id, fromDate);
+  // Stats only meaningful for the "today" view (single-date stats)
+  const { data: doctorStats, isLoading: statsLoading } = useDoctorAppointmentStats(
+    user?.id,
+    viewMode === 'today' ? fromDate : undefined,
+  );
 
   // Alerts data
   const { data: labOrdersData } = useLabOrders({ status: 'ordered', limit: 5 });
@@ -140,6 +186,12 @@ export default function DoctorHomePage() {
     setPage(1);
   }, []);
 
+  const handleViewModeChange = useCallback((mode: ViewMode) => {
+    setViewMode(mode);
+    setActiveStatFilter('all');
+    setPage(1);
+  }, []);
+
   return (
     <div className="space-y-4 animate-fade-in-up">
       {/* Header with action buttons */}
@@ -149,40 +201,80 @@ export default function DoctorHomePage() {
 
       <DoctorActionButtons />
 
-      {/* Quick Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <QuickStatCard icon={<Users className="h-4 w-4" />} label="Total Patients" value={doctorStats?.all ?? 0} color="bg-indigo-50 text-indigo-600" />
-        <QuickStatCard icon={<CheckCircle className="h-4 w-4" />} label="Completed" value={doctorStats?.completed ?? 0} color="bg-green-50 text-green-600" />
-        <QuickStatCard icon={<Clock className="h-4 w-4" />} label="Pending" value={(doctorStats?.booked ?? 0) + (doctorStats?.arrived ?? 0)} color="bg-amber-50 text-amber-600" />
-        <QuickStatCard icon={<BedDouble className="h-4 w-4" />} label="IP Referrals" value={doctorStats?.ipAppointments ?? 0} color="bg-blue-50 text-blue-600" />
+      {/* View mode tabs: Today / Upcoming / Past Bookings */}
+      <div className="flex gap-2 overflow-x-auto">
+        {DOCTOR_VIEW_MODES.map((m) => (
+          <button
+            key={m.value}
+            onClick={() => handleViewModeChange(m.value)}
+            className={cn(
+              'rounded-lg px-3 py-1.5 font-label text-xs font-semibold whitespace-nowrap transition-colors',
+              m.value === viewMode
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'bg-surface-container text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high',
+            )}
+          >
+            {m.label}
+          </button>
+        ))}
       </div>
+
+      {/* Quick Stats Cards — only meaningful for Today view */}
+      {viewMode === 'today' && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <QuickStatCard icon={<Users className="h-4 w-4" />} label="Total Patients" value={doctorStats?.all ?? 0} color="bg-indigo-50 text-indigo-600" />
+          <QuickStatCard icon={<CheckCircle className="h-4 w-4" />} label="Completed" value={doctorStats?.completed ?? 0} color="bg-green-50 text-green-600" />
+          <QuickStatCard icon={<Clock className="h-4 w-4" />} label="Pending" value={(doctorStats?.booked ?? 0) + (doctorStats?.arrived ?? 0)} color="bg-amber-50 text-amber-600" />
+          <QuickStatCard icon={<BedDouble className="h-4 w-4" />} label="IP Referrals" value={doctorStats?.ipAppointments ?? 0} color="bg-blue-50 text-blue-600" />
+        </div>
+      )}
 
       {/* Alerts Panel */}
       <AlertsPanel pendingLabCount={pendingLabCount} pendingOTCount={pendingOTCount} />
 
-      {/* Patient categories + Stats row */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
-        <div className="flex items-center gap-3">
-          <Avatar className="h-12 w-12">
-            <AvatarFallback className="bg-primary/10 text-primary">
-              {user?.firstName?.[0] || 'D'}
-            </AvatarFallback>
-          </Avatar>
-          <PatientCategoryIndicators
-            newPatients={doctorStats?.newPatients ?? 0}
-            reviewPatients={doctorStats?.reviewPatients ?? 0}
-            oldPatients={doctorStats?.oldPatients ?? 0}
-          />
-        </div>
+      {/* Patient categories + Stats row — only for Today view */}
+      {viewMode === 'today' && (
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
+          <div className="flex items-center gap-3">
+            <Avatar className="h-12 w-12">
+              <AvatarFallback className="bg-primary/10 text-primary">
+                {user?.firstName?.[0] || 'D'}
+              </AvatarFallback>
+            </Avatar>
+            <PatientCategoryIndicators
+              newPatients={doctorStats?.newPatients ?? 0}
+              reviewPatients={doctorStats?.reviewPatients ?? 0}
+              oldPatients={doctorStats?.oldPatients ?? 0}
+            />
+          </div>
 
-        <div className="flex-1">
-          <AppointmentStatsRow
-            stats={doctorStats}
-            activeFilter={activeStatFilter}
-            onFilterChange={handleStatFilter}
-            isLoading={statsLoading}
-          />
+          <div className="flex-1">
+            <AppointmentStatsRow
+              stats={doctorStats}
+              activeFilter={activeStatFilter}
+              onFilterChange={handleStatFilter}
+              isLoading={statsLoading}
+            />
+          </div>
         </div>
+      )}
+
+      {/* Status Filters */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {DOCTOR_STATUS_FILTERS.map((f) => (
+          <button
+            key={f.value}
+            onClick={() => handleStatFilter(f.value)}
+            className={cn(
+              'rounded-lg px-3 py-1.5 font-label text-xs font-semibold whitespace-nowrap transition-colors',
+              f.value === activeStatFilter
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'bg-surface-container text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high',
+            )}
+          >
+            {f.label}
+          </button>
+        ))}
       </div>
 
       {/* Tag filters + Date range + Search */}
@@ -190,26 +282,30 @@ export default function DoctorHomePage() {
         <PatientTagFilter activeTag={activeTag} onTagChange={setActiveTag} />
 
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">From Date:</span>
-          <div className="relative">
-            <CalendarIcon className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="date"
-              value={fromDate}
-              onChange={(e) => { setFromDate(e.target.value); setPage(1); }}
-              className="pl-8 h-8 text-xs w-full sm:w-[140px]"
-            />
-          </div>
-          <span className="text-xs text-muted-foreground">To Date:</span>
-          <div className="relative">
-            <CalendarIcon className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              className="pl-8 h-8 text-xs w-full sm:w-[140px]"
-            />
-          </div>
+          {viewMode === 'today' && (
+            <>
+              <span className="text-xs text-muted-foreground">From Date:</span>
+              <div className="relative">
+                <CalendarIcon className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => { setFromDate(e.target.value); setPage(1); }}
+                  className="pl-8 h-8 text-xs w-full sm:w-[140px]"
+                />
+              </div>
+              <span className="text-xs text-muted-foreground">To Date:</span>
+              <div className="relative">
+                <CalendarIcon className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                  className="pl-8 h-8 text-xs w-full sm:w-[140px]"
+                />
+              </div>
+            </>
+          )}
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -256,6 +352,7 @@ function formatTimeFromISO(t: string | null | undefined): string {
 }
 
 const statusLabels: Record<string, { label: string; bg: string; text: string }> = {
+  pending_payment: { label: 'Pending Payment', bg: 'bg-amber-100', text: 'text-amber-700' },
   booked: { label: 'Booked', bg: 'bg-blue-100', text: 'text-blue-700' },
   confirmed: { label: 'Confirmed', bg: 'bg-cyan-100', text: 'text-cyan-700' },
   checked_in: { label: 'Checked In', bg: 'bg-amber-100', text: 'text-amber-700' },

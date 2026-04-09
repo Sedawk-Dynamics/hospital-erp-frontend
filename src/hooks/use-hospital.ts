@@ -58,6 +58,8 @@ interface OPAppointmentsParams {
   status?: string;
   doctorId?: string;
   date?: string;
+  fromDate?: string;
+  toDate?: string;
   search?: string;
 }
 

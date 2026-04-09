@@ -139,6 +139,8 @@ interface FrontDeskRegisterDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
+  /** Pre-select patient mode: 'new' for registration, 'existing' for walk-in search */
+  initialMode?: 'new' | 'existing';
 }
 
 // ============================================================
@@ -149,6 +151,7 @@ export function FrontDeskRegisterDialog({
   open,
   onOpenChange,
   onSuccess,
+  initialMode = 'new',
 }: FrontDeskRegisterDialogProps) {
   const queryClient = useQueryClient();
 
@@ -156,7 +159,7 @@ export function FrontDeskRegisterDialog({
   const [step, setStep] = useState(0);
 
   // Patient state
-  const [mode, setMode] = useState<'new' | 'existing'>('new');
+  const [mode, setMode] = useState<'new' | 'existing'>(initialMode);
   const [patientQuery, setPatientQuery] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [showPatientDropdown, setShowPatientDropdown] = useState(false);
@@ -231,7 +234,7 @@ export function FrontDeskRegisterDialog({
   useEffect(() => {
     if (!open) {
       setStep(0);
-      setMode('new');
+      setMode(initialMode);
       setPatientQuery('');
       setSelectedPatient(null);
       setShowPatientDropdown(false);
@@ -410,7 +413,9 @@ export function FrontDeskRegisterDialog({
           </DialogTitle>
           <DialogDescription>
             {step === 0
-              ? 'Register a new patient or select an existing one'
+              ? initialMode === 'new'
+                ? 'Fill in the new patient details below'
+                : 'Register a new patient or select an existing one'
               : step === 1
                 ? 'Choose doctor, date, and time for the appointment'
                 : 'Select payment mode for the consultation'}
@@ -424,31 +429,33 @@ export function FrontDeskRegisterDialog({
         {/* ════════════════════════════════════════════════ */}
         {step === 0 && (
           <div className="space-y-4">
-            {/* Toggle: New / Existing */}
-            <div className="flex gap-2 p-1 rounded-xl bg-surface-container">
-              <button
-                type="button"
-                onClick={() => { setMode('new'); setSelectedPatient(null); setPatientQuery(''); }}
-                className={`flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all ${
-                  mode === 'new'
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'text-on-surface-variant hover:text-on-surface'
-                }`}
-              >
-                New Patient
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode('existing')}
-                className={`flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all ${
-                  mode === 'existing'
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'text-on-surface-variant hover:text-on-surface'
-                }`}
-              >
-                Existing Patient
-              </button>
-            </div>
+            {/* Toggle: New / Existing — only shown for walk-in mode */}
+            {initialMode === 'existing' && (
+              <div className="flex gap-2 p-1 rounded-xl bg-surface-container">
+                <button
+                  type="button"
+                  onClick={() => { setMode('new'); setSelectedPatient(null); setPatientQuery(''); }}
+                  className={`flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all ${
+                    mode === 'new'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  New Patient
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode('existing')}
+                  className={`flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all ${
+                    mode === 'existing'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  Existing Patient
+                </button>
+              </div>
+            )}
 
             {mode === 'existing' ? (
               <div className="space-y-3">

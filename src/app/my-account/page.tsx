@@ -10,6 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAuthStore } from '@/stores/auth-store';
+import { usePermissions } from '@/hooks/use-permissions';
 import {
   useMySubscription,
   usePaymentHistory,
@@ -26,6 +27,7 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
 export default function MyAccountPage() {
   const router = useRouter();
   const { user } = useAuthStore();
+  const { isAdmin } = usePermissions();
   const { data: subData, isLoading: subLoading } = useMySubscription();
   const { data: payments, isLoading: paymentsLoading } = usePaymentHistory();
   const { data: offeredPlans } = useOfferedPlans();
@@ -99,11 +101,13 @@ export default function MyAccountPage() {
               <Shield className="h-5 w-5 text-primary" />
               <h2 className="font-headline text-lg font-bold">Subscription</h2>
             </div>
-            <Link href="/manage-subscription">
-              <Button variant="outline" size="sm" className="gap-1.5 font-label text-xs">
-                Manage <ChevronRight className="h-3.5 w-3.5" />
-              </Button>
-            </Link>
+            {isAdmin() && (
+              <Link href="/manage-subscription">
+                <Button variant="outline" size="sm" className="gap-1.5 font-label text-xs">
+                  Manage <ChevronRight className="h-3.5 w-3.5" />
+                </Button>
+              </Link>
+            )}
           </div>
 
           {subLoading ? (
