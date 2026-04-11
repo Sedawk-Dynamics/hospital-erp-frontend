@@ -30,8 +30,9 @@ import {
 } from '@/components/ui/select';
 
 import { usePatientSearch, useDoctorsList, useAvailableSlots } from '@/hooks/use-hospital';
-import { apiPost } from '@/lib/api';
+import { apiPost, apiGet } from '@/lib/api';
 import type { Patient, Appointment } from '@/types';
+import { useQuery } from '@tanstack/react-query';
 
 // ============================================================
 // Schema
@@ -269,6 +270,7 @@ export function CreateAppointmentDialog({
             {errors.patientId && (
               <p className="text-xs text-destructive">{errors.patientId.message}</p>
             )}
+            {selectedPatient && <PatientTypeBadge patientId={selectedPatient.id} isNew={(selectedPatient as any).isNew} />}
           </div>
 
           {/* Doctor Select */}
@@ -488,5 +490,39 @@ export function CreateAppointmentDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ── Patient Type Badge ─────────────────────────────────────
+
+function PatientTypeBadge({ patientId, isNew }: { patientId: string; isNew?: boolean }) {
+  // Check if patient has any completed appointments to determine old vs new
+  const { data } = useQuery({
+    queryKey: ['patient-type-check', patientId],
+    queryFn: async () => {
+      const res = await apiGet<Appointment[]>('/appointments', {
+        params: { patientId, status: 'completed', limit: 1 },
+      });
+      const appointments = res.data ?? [];
+      if (appointments.length === 0) return 'new' as const;
+      const lastDate = new Date((appointments[0] as any).appointmentDate);
+      const days = Math.floor((Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+      return days <= 30 ? ('review' as const) : ('old' as const);
+    },
+    enabled: !!patientId,
+    staleTime: 60_000,
+  });
+
+  const type = data ?? (isNew !== false ? 'new' : 'old');
+  const config = {
+    new: { label: 'New Patient', className: 'bg-red-100 text-red-700' },
+    review: { label: 'Review Patient', className: 'bg-blue-100 text-blue-700' },
+    old: { label: 'Old Patient', className: 'bg-purple-100 text-purple-700' },
+  }[type];
+
+  return (
+    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold mt-1 ${config.className}`}>
+      {config.label}
+    </span>
   );
 }

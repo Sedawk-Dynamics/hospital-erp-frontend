@@ -288,21 +288,23 @@ export function useDoctorAppointmentStats(doctorUserId?: string, date?: string) 
       }
       const appointments = allAppointments;
 
-      // Track unique patient IDs to compute categories
-      const patientVisitTypes = new Map<string, string>();
-      for (const a of appointments) {
-        if (a.patientId && !patientVisitTypes.has(a.patientId)) {
-          patientVisitTypes.set(a.patientId, a.type || 'consultation');
-        }
-      }
-
+      // Track unique patients and categorize using visitType + patient.isNew
+      const seen = new Set<string>();
       let newPatients = 0;
       let reviewPatients = 0;
       let oldPatients = 0;
-      for (const [, type] of patientVisitTypes) {
-        if (type === 'follow_up') reviewPatients++;
-        else if (type === 'consultation') newPatients++;
-        else oldPatients++;
+      for (const a of appointments) {
+        if (!a.patientId || seen.has(a.patientId)) continue;
+        seen.add(a.patientId);
+        const visitType = (a as any).visitType as string | undefined;
+        const isNew = (a as any).patient?.isNew as boolean | undefined;
+        if (visitType === 'revisit') {
+          reviewPatients++;
+        } else if (isNew === true) {
+          newPatients++;
+        } else {
+          oldPatients++;
+        }
       }
 
       return {

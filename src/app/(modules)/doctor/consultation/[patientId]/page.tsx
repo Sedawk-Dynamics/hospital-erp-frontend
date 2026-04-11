@@ -22,13 +22,11 @@ import {
   ArrowLeft,
   Plus,
   Stethoscope,
-  NotepadText,
   Printer,
   UserRound,
   Phone,
   Calendar,
   Clock,
-  Syringe,
 } from 'lucide-react';
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -47,6 +45,7 @@ import { apiGet } from '@/lib/api';
 import { formatDate, formatTime, formatDateTimeAmPm } from '@/lib/date-utils';
 import { PatientFormSubmissionsPanel } from '@/components/forms/patient-form-submissions-panel';
 import { TriggerFormsGate } from '@/components/forms/trigger-forms-gate';
+import { ConsultationCompletionInline } from '@/components/doctor/consultation-completion';
 import { useFormSubmissions, useSystemForm } from '@/hooks/use-forms';
 import { FormRenderer } from '@/components/forms/form-renderer';
 import { TRIGGER_LABELS } from '@/types/forms';
@@ -337,7 +336,7 @@ function VisitHistoryTab({ patientId }: { patientId: string }) {
                   variant={note.status === 'finalized' ? 'default' : 'secondary'}
                   className="text-[10px]"
                 >
-                  {note.status === 'finalized' ? 'Signed' : 'Draft'}
+                  {note.status === 'finalized' ? 'Signed' : 'Active'}
                 </Badge>
               </td>
             </tr>
@@ -375,7 +374,7 @@ function PrescriptionsTab({ patientId }: { patientId: string }) {
         </thead>
         <tbody className="divide-y">
           {prescriptions.flatMap((rx) =>
-            rx.items.map((item, idx) => (
+            (rx.items ?? (rx as any).prescriptionItems ?? []).map((item: any, idx: number) => (
               <tr key={`${rx.id}-${idx}`} className="text-foreground hover:bg-muted/30 transition-colors">
                 <td className="py-2.5 pr-4 whitespace-nowrap text-xs">
                   {idx === 0 ? formatDate(rx.createdAt) : ''}
@@ -724,14 +723,6 @@ export default function PatientConsultationPage({
 
       {/* ── Action Buttons ── */}
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" className="gap-1.5">
-          <NotepadText className="h-3.5 w-3.5" />
-          Progress Note
-        </Button>
-        <Button variant="outline" size="sm" className="gap-1.5">
-          <Pill className="h-3.5 w-3.5" />
-          Write Prescription
-        </Button>
         <Button variant="outline" size="sm" className="gap-1.5">
           <FlaskConical className="h-3.5 w-3.5" />
           Order Lab
@@ -740,11 +731,16 @@ export default function PatientConsultationPage({
           <ImageIcon className="h-3.5 w-3.5" />
           Request Imaging
         </Button>
-        <Button variant="outline" size="sm" className="gap-1.5">
-          <Syringe className="h-3.5 w-3.5" />
-          Record Vitals
-        </Button>
       </div>
+
+      {/* ── Consultation Completion (Inline) — only during active consultation ── */}
+      {appointment?.status === 'in_consultation' && (
+        <ConsultationCompletionInline
+          appointment={appointment}
+          patient={patient}
+          onComplete={() => router.back()}
+        />
+      )}
 
       {/* ── Main Tabs ── */}
       <div className="rounded-xl border bg-card">

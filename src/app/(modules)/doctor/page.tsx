@@ -84,6 +84,19 @@ const categoryColors: Record<string, string> = {
   procedure: 'bg-amber-500',
 };
 
+// Patient type badge config based on visitType + patient.isNew
+function getPatientTypeBadge(apt: Appointment): { label: string; className: string } {
+  const visitType = (apt as any).visitType as string | undefined;
+  const isNew = (apt as any).patient?.isNew as boolean | undefined;
+  if (visitType === 'revisit') {
+    return { label: 'Review', className: 'bg-blue-100 text-blue-700' };
+  }
+  if (isNew === true) {
+    return { label: 'New', className: 'bg-red-100 text-red-700' };
+  }
+  return { label: 'Old', className: 'bg-purple-100 text-purple-700' };
+}
+
 // Status transitions the doctor can perform
 // Confirm & Check In are front-desk responsibilities — doctor handles consultation onward
 const DOCTOR_TRANSITIONS: Record<string, { label: string; to: string; icon: typeof CheckCircle; color?: string }[]> = {
@@ -390,13 +403,19 @@ function DoctorAppointmentTable({
   const formsTrigger = useActionFormsTrigger();
 
   const handleStatusChange = (apt: Appointment, newStatus: string) => {
+    // Intercept "completed" → navigate to consultation page instead
+    if (newStatus === 'completed') {
+      onViewDetails(apt.patientId, apt.id);
+      return;
+    }
+
     statusMutation.mutate(
       { id: apt.id, status: newStatus },
       {
         onSuccess: () => {
           toast.success(`Appointment ${newStatus.replace('_', ' ')} successfully`);
 
-          // After Start Consultation / Complete, fire any matching forms
+          // After Start Consultation, fire any matching forms
           const trigger = DOCTOR_STATUS_TO_TRIGGER[newStatus];
           if (trigger) {
             formsTrigger.fire(trigger, apt.tenantId, {
@@ -458,7 +477,11 @@ function DoctorAppointmentTable({
               const PrimaryIcon = transitions.length > 0 ? transitions[0].icon : null;
 
               return (
-                <tr key={apt.id} className="group hover:bg-surface-container-low transition-colors">
+                <tr
+                  key={apt.id}
+                  className="group hover:bg-surface-container-low transition-colors cursor-pointer"
+                  onClick={() => apt.patientId && onViewDetails(apt.patientId, apt.id)}
+                >
                   {/* Patient Details */}
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
@@ -488,6 +511,9 @@ function DoctorAppointmentTable({
                           <span>{patient?.mrn || '-'}</span>
                           <span>|</span>
                           <span>{patient?.phone || '-'}</span>
+                          <span className={cn('rounded-full px-1.5 py-0 text-[9px] font-bold', getPatientTypeBadge(apt).className)}>
+                            {getPatientTypeBadge(apt).label}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -535,7 +561,7 @@ function DoctorAppointmentTable({
                   </td>
 
                   {/* Actions */}
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-center gap-1">
                       {/* Quick action: primary transition */}
                       {transitions.length > 0 && transitions[0].to !== 'cancelled' && PrimaryIcon && (
@@ -619,7 +645,7 @@ function DoctorAppointmentTable({
         </div>
       </div>
 
-      {/* After-action forms modal — fires after Start Consultation / Complete */}
+      {/* After-action forms modal — fires after Start Consultation */}
       <IntakeFormsModal
         open={formsTrigger.isOpen}
         trigger={formsTrigger.trigger ?? 'manual'}

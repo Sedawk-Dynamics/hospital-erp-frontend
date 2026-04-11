@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { z } from 'zod/v4';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { toInputDateStr, formatDate, getCurrentISTTime, isToday } from '@/lib/date-utils';
 import {
@@ -38,7 +38,7 @@ import {
   useDoctorsList,
   useAvailableSlots,
 } from '@/hooks/use-hospital';
-import { apiPost, apiPatch } from '@/lib/api';
+import { apiPost, apiPatch, apiGet } from '@/lib/api';
 import type { Patient, Appointment, DoctorProfile } from '@/types';
 
 // ============================================================
@@ -524,8 +524,9 @@ export function FrontDeskRegisterDialog({
                   <div className="flex items-center gap-3 rounded-xl bg-primary/5 border border-primary/10 px-4 py-3">
                     <UserRound className="h-5 w-5 text-primary" />
                     <div className="min-w-0 flex-1">
-                      <p className="font-label text-sm font-bold">
+                      <p className="font-label text-sm font-bold flex items-center gap-2">
                         {selectedPatient.firstName} {selectedPatient.lastName}
+                        <PatientTypeBadgeInline patientId={selectedPatient.id} />
                       </p>
                       <p className="font-label text-[10px] text-on-surface-variant">
                         MRN: {selectedPatient.mrn} &middot; {selectedPatient.phone}
@@ -951,5 +952,39 @@ export function FrontDeskRegisterDialog({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ── Patient Type Badge (inline) ────────────────────────────
+
+function PatientTypeBadgeInline({ patientId }: { patientId: string }) {
+  const { data } = useQuery({
+    queryKey: ['patient-type-check', patientId],
+    queryFn: async () => {
+      const res = await apiGet<Array<{ appointmentDate: string }>>('/appointments', {
+        params: { patientId, status: 'completed', limit: 1 },
+      });
+      const appointments = res.data ?? [];
+      if (appointments.length === 0) return 'new' as const;
+      const lastDate = new Date(appointments[0].appointmentDate);
+      const days = Math.floor((Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+      return days <= 30 ? ('review' as const) : ('old' as const);
+    },
+    enabled: !!patientId,
+    staleTime: 60_000,
+  });
+
+  if (!data) return null;
+
+  const config = {
+    new: { label: 'New', className: 'bg-red-100 text-red-700' },
+    review: { label: 'Review', className: 'bg-blue-100 text-blue-700' },
+    old: { label: 'Old', className: 'bg-purple-100 text-purple-700' },
+  }[data];
+
+  return (
+    <span className={`inline-flex rounded-full px-1.5 py-0 text-[9px] font-bold ${config.className}`}>
+      {config.label}
+    </span>
   );
 }
