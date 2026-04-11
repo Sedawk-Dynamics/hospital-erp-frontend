@@ -20,6 +20,15 @@ import {
   ChevronDown,
   ChevronRight,
   ArrowLeft,
+  Plus,
+  Stethoscope,
+  NotepadText,
+  Printer,
+  UserRound,
+  Phone,
+  Calendar,
+  Clock,
+  Syringe,
 } from 'lucide-react';
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -35,14 +44,14 @@ import {
   useProgressNotes,
 } from '@/hooks/use-doctor';
 import { apiGet } from '@/lib/api';
-import { formatDate } from '@/lib/date-utils';
+import { formatDate, formatTime, formatDateTimeAmPm } from '@/lib/date-utils';
 import { PatientFormSubmissionsPanel } from '@/components/forms/patient-form-submissions-panel';
 import { TriggerFormsGate } from '@/components/forms/trigger-forms-gate';
 import { useFormSubmissions, useSystemForm } from '@/hooks/use-forms';
 import { FormRenderer } from '@/components/forms/form-renderer';
 import { TRIGGER_LABELS } from '@/types/forms';
 
-import type { Patient } from '@/types';
+import type { Patient, Appointment } from '@/types';
 import type { FormSubmission } from '@/types/forms';
 import type {
   Vital,
@@ -52,39 +61,113 @@ import type {
 } from '@/hooks/use-doctor';
 
 // ============================================================
-// Patient Demographics
+// Helpers
 // ============================================================
 
-function PatientDemographics({ patient }: { patient: Patient }) {
-  const age = patient.dateOfBirth
-    ? Math.floor(
-        (Date.now() - new Date(patient.dateOfBirth).getTime()) /
-          (365.25 * 24 * 60 * 60 * 1000),
-      )
-    : null;
+function calculateAge(dob: string): string {
+  const birth = new Date(dob);
+  const now = new Date();
+  let years = now.getFullYear() - birth.getFullYear();
+  const monthDiff = now.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birth.getDate())) {
+    years--;
+  }
+  return `${years}Y`;
+}
+
+function getDoctorName(doctor?: { id: string; user?: { firstName: string; lastName: string } }): string {
+  if (!doctor?.user) return '—';
+  return `Dr. ${doctor.user.firstName} ${doctor.user.lastName}`;
+}
+
+const STATUS_STYLES: Record<string, { label: string; className: string }> = {
+  pending_payment: { label: 'Pending Payment', className: 'bg-orange-100 text-orange-700' },
+  booked: { label: 'Booked', className: 'bg-blue-100 text-blue-700' },
+  confirmed: { label: 'Confirmed', className: 'bg-cyan-100 text-cyan-700' },
+  checked_in: { label: 'Checked In', className: 'bg-amber-100 text-amber-700' },
+  in_consultation: { label: 'In Consultation', className: 'bg-purple-100 text-purple-700' },
+  completed: { label: 'Completed', className: 'bg-emerald-100 text-emerald-700' },
+  cancelled: { label: 'Cancelled', className: 'bg-red-100 text-red-700' },
+  no_show: { label: 'No Show', className: 'bg-gray-100 text-gray-700' },
+};
+
+// ============================================================
+// Patient Header Banner
+// ============================================================
+
+function PatientBanner({
+  patient,
+  appointment,
+}: {
+  patient: Patient;
+  appointment?: Appointment | null;
+}) {
+  const age = patient.dateOfBirth ? calculateAge(patient.dateOfBirth) : null;
+  const status = appointment?.status ? STATUS_STYLES[appointment.status] : null;
 
   return (
-    <div className="flex items-start gap-4">
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary font-headline text-lg font-bold shrink-0">
+    <div className="flex items-center gap-4 flex-wrap">
+      {/* Avatar */}
+      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary font-headline text-sm font-bold shrink-0">
         {patient.firstName?.[0]}
         {patient.lastName?.[0]}
       </div>
-      <div className="flex-1 min-w-0 space-y-1">
-        <h2 className="font-headline text-lg font-bold leading-tight">
-          {patient.firstName} {patient.lastName}
-        </h2>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">{patient.mrn}</span>
-          {patient.gender && <span className="capitalize">{patient.gender}</span>}
-          {age !== null && <span>{age} yrs</span>}
-          {patient.bloodGroup && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-              {patient.bloodGroup}
+
+      {/* Name + meta */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h1 className="font-headline text-lg font-bold leading-tight">
+            {patient.firstName} {patient.lastName}
+          </h1>
+          {status && (
+            <Badge className={`text-[10px] px-2 py-0.5 font-medium ${status.className}`}>
+              {status.label}
             </Badge>
           )}
-          {patient.phone && <span>{patient.phone}</span>}
+        </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground mt-0.5">
+          <span className="font-semibold text-foreground">{patient.mrn}</span>
+          <Separator orientation="vertical" className="h-3" />
+          {patient.gender && <span className="capitalize">{patient.gender}</span>}
+          {age && (
+            <>
+              <Separator orientation="vertical" className="h-3" />
+              <span>{age}</span>
+            </>
+          )}
+          {patient.bloodGroup && (
+            <>
+              <Separator orientation="vertical" className="h-3" />
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-medium">
+                {patient.bloodGroup}
+              </Badge>
+            </>
+          )}
+          {patient.phone && (
+            <>
+              <Separator orientation="vertical" className="h-3" />
+              <span className="flex items-center gap-1">
+                <Phone className="h-3 w-3" />
+                {patient.phone}
+              </span>
+            </>
+          )}
+          {appointment?.reason && (
+            <>
+              <Separator orientation="vertical" className="h-3" />
+              <span className="text-foreground">
+                Reason: {appointment.reason}
+              </span>
+            </>
+          )}
         </div>
       </div>
+
+      {/* Print */}
+      <Button variant="outline" size="sm" className="gap-1.5 shrink-0">
+        <Printer className="h-3.5 w-3.5" />
+        Print
+      </Button>
     </div>
   );
 }
@@ -93,125 +176,426 @@ function PatientDemographics({ patient }: { patient: Patient }) {
 // Allergy Banner
 // ============================================================
 
-function AllergyBanner({ allergies }: { allergies?: Array<{ allergen: string; severity: string }> }) {
+function AllergyBanner({ allergies }: { allergies?: Array<{ id?: string; allergen: string; severity: string }> }) {
   if (!allergies || allergies.length === 0) return null;
   return (
-    <div className="flex items-start gap-2 rounded-xl bg-destructive/10 border border-destructive/30 px-3 py-2">
-      <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
-      <div className="flex-1 min-w-0">
-        <p className="text-xs font-bold text-destructive">Known Allergies</p>
-        <p className="text-[11px] text-destructive/80 mt-0.5">
-          {allergies.map((a) => `${a.allergen} (${a.severity})`).join(' · ')}
-        </p>
+    <div className="flex items-center gap-2 rounded-lg bg-destructive/8 border border-destructive/25 px-3 py-2">
+      <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
+      <span className="text-xs font-semibold text-destructive mr-1">Allergies:</span>
+      <div className="flex flex-wrap gap-1.5">
+        {allergies.map((a, i) => (
+          <Badge key={a.id ?? i} variant="destructive" className="text-[10px] font-medium py-0">
+            {a.allergen}
+            {a.severity && <span className="ml-1 opacity-75">({a.severity})</span>}
+          </Badge>
+        ))}
       </div>
     </div>
   );
 }
 
 // ============================================================
-// Vital card
+// Vitals Strip (inline compact)
 // ============================================================
 
-function VitalCard({
-  icon: Icon,
-  label,
-  value,
-  unit,
-  alert,
-}: {
-  icon: React.ElementType;
-  label: string;
-  value: string | number | null | undefined;
-  unit?: string;
-  alert?: boolean;
-}) {
-  if (value === null || value === undefined) return null;
-  return (
-    <div
-      className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 ${alert ? 'border-destructive/40 bg-destructive/5' : ''}`}
-    >
-      <Icon className={`h-4 w-4 shrink-0 ${alert ? 'text-destructive' : 'text-primary'}`} />
-      <div>
-        <p className="text-[10px] text-muted-foreground font-label uppercase tracking-wider">
-          {label}
-        </p>
-        <p className="text-sm font-bold font-headline leading-tight">
-          {value}
-          {unit && <span className="text-[10px] font-normal text-muted-foreground ml-0.5">{unit}</span>}
-        </p>
-      </div>
-    </div>
-  );
-}
+function VitalsStrip({ patientId }: { patientId: string }) {
+  const { data: vitals, isLoading } = usePatientVitals(patientId);
+  const latest = (vitals as Vital[] | undefined)?.[0];
 
-function LatestVitals({ patientId }: { patientId: string }) {
-  const { data: vitals } = usePatientVitals(patientId);
-  const latest = vitals?.[0] as Vital | undefined;
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Loader2 className="size-3 animate-spin" /> Loading vitals…
+      </div>
+    );
+  }
+
   if (!latest) {
-    return <p className="text-xs text-muted-foreground italic">No vitals recorded</p>;
+    return <span className="text-xs text-muted-foreground italic">No vitals recorded</span>;
   }
+
+  const items: { icon: React.ElementType; label: string; value: string | number | null | undefined; unit: string; alert?: boolean }[] = [
+    {
+      icon: Thermometer,
+      label: 'Temp',
+      value: latest.temperature,
+      unit: '°F',
+      alert: latest.temperature ? Number(latest.temperature) > 100.4 : false,
+    },
+    {
+      icon: Heart,
+      label: 'Pulse',
+      value: latest.pulseRate ?? latest.heartRate,
+      unit: 'bpm',
+      alert: (latest.pulseRate ?? latest.heartRate) ? ((latest.pulseRate ?? latest.heartRate)! > 100 || (latest.pulseRate ?? latest.heartRate)! < 60) : false,
+    },
+    {
+      icon: Activity,
+      label: 'BP',
+      value: latest.bloodPressureSystolic && latest.bloodPressureDiastolic
+        ? `${latest.bloodPressureSystolic}/${latest.bloodPressureDiastolic}`
+        : null,
+      unit: 'mmHg',
+    },
+    {
+      icon: Droplets,
+      label: 'SpO₂',
+      value: latest.oxygenSaturation,
+      unit: '%',
+      alert: latest.oxygenSaturation ? latest.oxygenSaturation < 95 : false,
+    },
+    {
+      icon: Weight,
+      label: 'Wt',
+      value: latest.weightKg ?? latest.weight,
+      unit: 'kg',
+    },
+  ];
+
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-      <VitalCard icon={Thermometer} label="Temp" value={latest.temperature} unit="°F" alert={latest.temperature ? Number(latest.temperature) > 100.4 : false} />
-      <VitalCard icon={Heart} label="Pulse" value={latest.pulseRate ?? latest.heartRate} unit="bpm" alert={latest.pulseRate ? latest.pulseRate > 100 || latest.pulseRate < 60 : false} />
-      <VitalCard icon={Activity} label="BP" value={latest.bloodPressureSystolic && latest.bloodPressureDiastolic ? `${latest.bloodPressureSystolic}/${latest.bloodPressureDiastolic}` : null} unit="mmHg" />
-      <VitalCard icon={Droplets} label="SpO₂" value={latest.oxygenSaturation} unit="%" alert={latest.oxygenSaturation ? latest.oxygenSaturation < 95 : false} />
-      <VitalCard icon={Weight} label="Weight" value={latest.weightKg} unit="kg" />
+    <div className="flex flex-wrap items-center gap-2">
+      {items.map((item) => {
+        if (item.value == null) return null;
+        const Icon = item.icon;
+        return (
+          <div
+            key={item.label}
+            className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs ${
+              item.alert ? 'border-destructive/40 bg-destructive/5' : 'bg-muted/40'
+            }`}
+          >
+            <Icon className={`h-3.5 w-3.5 ${item.alert ? 'text-destructive' : 'text-primary'}`} />
+            <span className="font-medium">{item.value}</span>
+            <span className="text-muted-foreground text-[10px]">{item.unit}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 // ============================================================
-// Active Medications
+// Empty / Loading states
 // ============================================================
 
-function ActiveMedications({ patientId }: { patientId: string }) {
-  const { data } = usePrescriptions({ patientId });
-  const prescriptions = data?.data ?? [];
-  const active = prescriptions.filter((p: Prescription) => p.status === 'active');
-  if (active.length === 0) {
-    return <p className="text-xs text-muted-foreground italic">No active medications</p>;
-  }
-  const allItems = active.flatMap((p: Prescription) => p.items ?? []);
+function LoadingSpinner() {
   return (
-    <div className="flex flex-wrap gap-1.5">
-      {allItems.slice(0, 8).map((item, i) => (
-        <Badge key={i} variant="secondary" className="text-[10px] gap-1 py-0.5">
-          <Pill className="h-3 w-3" />
-          {item.drugName} {item.dosage}
-        </Badge>
+    <div className="flex items-center justify-center min-h-[50vh]">
+      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+    </div>
+  );
+}
+
+function TabLoading() {
+  return (
+    <div className="flex items-center justify-center py-12">
+      <Loader2 className="size-5 animate-spin text-muted-foreground" />
+    </div>
+  );
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <p className="py-8 text-center text-sm text-muted-foreground">{message}</p>
+  );
+}
+
+// ============================================================
+// Tab: Visit History (progress notes as table)
+// ============================================================
+
+function VisitHistoryTab({ patientId }: { patientId: string }) {
+  const { data, isLoading } = useProgressNotes({ patientId });
+  const notes: ProgressNote[] = data?.data ?? [];
+
+  if (isLoading) return <TabLoading />;
+  if (notes.length === 0) return <EmptyState message="No visit history found" />;
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b text-left text-xs font-label font-medium text-muted-foreground">
+            <th className="pb-2 pr-4">Date</th>
+            <th className="pb-2 pr-4">Type</th>
+            <th className="pb-2 pr-4">Doctor</th>
+            <th className="pb-2 pr-4">Chief Complaint</th>
+            <th className="pb-2">Status</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y">
+          {notes.map((note) => (
+            <tr key={note.id} className="text-foreground hover:bg-muted/30 transition-colors">
+              <td className="py-2.5 pr-4 whitespace-nowrap text-xs">{formatDate(note.createdAt)}</td>
+              <td className="py-2.5 pr-4 text-xs capitalize">{note.noteType?.replace(/_/g, ' ') || '—'}</td>
+              <td className="py-2.5 pr-4 text-xs">{getDoctorName(note.doctor)}</td>
+              <td className="py-2.5 pr-4 text-xs max-w-[250px] truncate">
+                {note.subjective || note.content || '—'}
+              </td>
+              <td className="py-2.5">
+                <Badge
+                  variant={note.status === 'finalized' ? 'default' : 'secondary'}
+                  className="text-[10px]"
+                >
+                  {note.status === 'finalized' ? 'Signed' : 'Draft'}
+                </Badge>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ============================================================
+// Tab: Prescriptions (table with drug details)
+// ============================================================
+
+function PrescriptionsTab({ patientId }: { patientId: string }) {
+  const { data, isLoading } = usePrescriptions({ patientId });
+  const prescriptions: Prescription[] = data?.data ?? [];
+
+  if (isLoading) return <TabLoading />;
+  if (prescriptions.length === 0) return <EmptyState message="No prescriptions found" />;
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b text-left text-xs font-label font-medium text-muted-foreground">
+            <th className="pb-2 pr-4">Date</th>
+            <th className="pb-2 pr-4">Drug</th>
+            <th className="pb-2 pr-4">Dosage</th>
+            <th className="pb-2 pr-4">Frequency</th>
+            <th className="pb-2 pr-4">Duration</th>
+            <th className="pb-2 pr-4">Prescriber</th>
+            <th className="pb-2">Status</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y">
+          {prescriptions.flatMap((rx) =>
+            rx.items.map((item, idx) => (
+              <tr key={`${rx.id}-${idx}`} className="text-foreground hover:bg-muted/30 transition-colors">
+                <td className="py-2.5 pr-4 whitespace-nowrap text-xs">
+                  {idx === 0 ? formatDate(rx.createdAt) : ''}
+                </td>
+                <td className="py-2.5 pr-4 text-xs font-medium">{item.drugName}</td>
+                <td className="py-2.5 pr-4 text-xs">{item.dosage}</td>
+                <td className="py-2.5 pr-4 text-xs">{item.frequency}</td>
+                <td className="py-2.5 pr-4 text-xs">{item.duration}</td>
+                <td className="py-2.5 pr-4 text-xs">
+                  {idx === 0 ? getDoctorName(rx.doctor) : ''}
+                </td>
+                <td className="py-2.5">
+                  {idx === 0 && (
+                    <Badge
+                      variant={rx.status === 'active' ? 'default' : 'secondary'}
+                      className="text-[10px] capitalize"
+                    >
+                      {rx.status}
+                    </Badge>
+                  )}
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ============================================================
+// Tab: Lab Results (table)
+// ============================================================
+
+function LabResultsTab({ patientId }: { patientId: string }) {
+  const { data, isLoading } = useLabOrders({ patientId });
+  const orders: LabOrder[] = data?.data ?? [];
+
+  if (isLoading) return <TabLoading />;
+  if (orders.length === 0) return <EmptyState message="No lab orders found" />;
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b text-left text-xs font-label font-medium text-muted-foreground">
+            <th className="pb-2 pr-4">Date</th>
+            <th className="pb-2 pr-4">Test</th>
+            <th className="pb-2 pr-4">Status</th>
+            <th className="pb-2">Priority</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y">
+          {orders.map((order) => (
+            <tr key={order.id} className="text-foreground hover:bg-muted/30 transition-colors">
+              <td className="py-2.5 pr-4 whitespace-nowrap text-xs">{formatDate(order.createdAt)}</td>
+              <td className="py-2.5 pr-4 text-xs">
+                {order.tests?.map((t) => t.name).join(', ') || order.orderNumber || '—'}
+              </td>
+              <td className="py-2.5 pr-4">
+                <Badge
+                  variant={
+                    order.status === 'completed' ? 'default' :
+                    order.status === 'cancelled' ? 'destructive' :
+                    'secondary'
+                  }
+                  className="text-[10px] capitalize"
+                >
+                  {order.status}
+                </Badge>
+              </td>
+              <td className="py-2.5">
+                {order.priority && (
+                  <Badge
+                    variant={order.priority === 'urgent' || order.priority === 'stat' ? 'destructive' : 'outline'}
+                    className="text-[10px] capitalize"
+                  >
+                    {order.priority}
+                  </Badge>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ============================================================
+// Tab: Imaging
+// ============================================================
+
+interface ImagingRequest {
+  id: string;
+  type?: string;
+  modality?: string;
+  bodyPart?: string;
+  status: string;
+  findings?: string;
+  createdAt: string;
+}
+
+function ImagingTab({ patientId }: { patientId: string }) {
+  const { data: imagingData, isLoading } = useQuery({
+    queryKey: ['doctor', 'imaging', patientId],
+    queryFn: async () => {
+      const response = await apiGet<ImagingRequest[]>('/imaging/requests', {
+        params: { patientId },
+      });
+      return response.data ?? [];
+    },
+    enabled: !!patientId,
+  });
+
+  if (isLoading) return <TabLoading />;
+
+  const requests: ImagingRequest[] = Array.isArray(imagingData) ? imagingData : [];
+  if (requests.length === 0) return <EmptyState message="No imaging requests found" />;
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b text-left text-xs font-label font-medium text-muted-foreground">
+            <th className="pb-2 pr-4">Date</th>
+            <th className="pb-2 pr-4">Type</th>
+            <th className="pb-2 pr-4">Body Part</th>
+            <th className="pb-2 pr-4">Status</th>
+            <th className="pb-2">Findings</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y">
+          {requests.map((req) => (
+            <tr key={req.id} className="text-foreground hover:bg-muted/30 transition-colors">
+              <td className="py-2.5 pr-4 whitespace-nowrap text-xs">{formatDate(req.createdAt)}</td>
+              <td className="py-2.5 pr-4 text-xs">{req.type || req.modality || '—'}</td>
+              <td className="py-2.5 pr-4 text-xs">{req.bodyPart || '—'}</td>
+              <td className="py-2.5 pr-4">
+                <Badge
+                  variant={
+                    req.status === 'completed' ? 'default' :
+                    req.status === 'cancelled' ? 'destructive' :
+                    'secondary'
+                  }
+                  className="text-[10px] capitalize"
+                >
+                  {req.status}
+                </Badge>
+              </td>
+              <td className="py-2.5 text-xs max-w-[200px] truncate">{req.findings || '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ============================================================
+// Tab: Documents
+// ============================================================
+
+function DocumentsTab({ patient }: { patient: Patient }) {
+  const documents = patient.documents;
+
+  if (!documents || documents.length === 0) {
+    return <EmptyState message="No documents uploaded" />;
+  }
+
+  return (
+    <div className="space-y-2">
+      {documents.map((doc) => (
+        <div
+          key={doc.id}
+          className="flex items-center justify-between rounded-lg border px-3 py-2.5 hover:bg-muted/30 transition-colors"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <FileText className="size-4 shrink-0 text-muted-foreground" />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium">{doc.title || doc.fileName}</p>
+              <p className="text-xs text-muted-foreground">
+                {doc.type} &middot; {formatDate(doc.createdAt)}
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="shrink-0 text-xs"
+            render={<a href={doc.fileUrl} target="_blank" rel="noopener noreferrer" />}
+          >
+            Download
+          </Button>
+        </div>
       ))}
-      {allItems.length > 8 && (
-        <Badge variant="outline" className="text-[10px]">+{allItems.length - 8} more</Badge>
-      )}
     </div>
   );
 }
 
 // ============================================================
-// Latest Form Submissions (inline)
+// Tab: Forms (inline submissions)
 // ============================================================
 
-function LatestFormSubmissions({ patientId, appointmentId }: { patientId: string; appointmentId?: string | null }) {
+function FormsTab({ patientId, appointmentId }: { patientId: string; appointmentId?: string | null }) {
   const { data, isLoading } = useFormSubmissions({
     patientId,
     appointmentId: appointmentId ?? undefined,
-    limit: 5,
+    limit: 20,
   });
   const submissions = data?.data ?? [];
 
-  if (isLoading || submissions.length === 0) return null;
+  if (isLoading) return <TabLoading />;
+  if (submissions.length === 0) return <EmptyState message="No form submissions for this visit" />;
 
   return (
     <div className="space-y-1.5">
-      <h3 className="text-xs font-label font-semibold uppercase tracking-wide text-on-surface-variant">
-        Submitted Forms
-      </h3>
-      <div className="space-y-1">
-        {submissions.map((sub) => (
-          <InlineSubmission key={sub.id} submission={sub} />
-        ))}
-      </div>
+      {submissions.map((sub) => (
+        <InlineSubmission key={sub.id} submission={sub} />
+      ))}
     </div>
   );
 }
@@ -267,95 +651,6 @@ function InlineSubmission({ submission }: { submission: FormSubmission }) {
 }
 
 // ============================================================
-// Tabs
-// ============================================================
-
-function VisitHistoryTab({ patientId }: { patientId: string }) {
-  const { data } = useProgressNotes({ patientId });
-  const notes = data?.data ?? [];
-  if (notes.length === 0) {
-    return <p className="text-xs text-muted-foreground italic py-4">No visit history</p>;
-  }
-  return (
-    <div className="space-y-2">
-      {notes.slice(0, 10).map((note: ProgressNote) => (
-        <div key={note.id} className="rounded-lg border px-3 py-2">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-medium">{note.noteType?.replace(/_/g, ' ')}</p>
-            <span className="text-[10px] text-muted-foreground">{formatDate(note.createdAt)}</span>
-          </div>
-          {note.subjective && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{note.subjective}</p>}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function PrescriptionsTab({ patientId }: { patientId: string }) {
-  const { data } = usePrescriptions({ patientId });
-  const prescriptions = data?.data ?? [];
-  if (prescriptions.length === 0) {
-    return <p className="text-xs text-muted-foreground italic py-4">No prescriptions</p>;
-  }
-  return (
-    <div className="space-y-2">
-      {prescriptions.slice(0, 10).map((rx: Prescription) => (
-        <div key={rx.id} className="rounded-lg border px-3 py-2">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-medium">{rx.items?.map(i => `${i.drugName} ${i.dosage}`).join(', ') || 'Prescription'}</p>
-            <Badge variant={rx.status === 'active' ? 'default' : 'secondary'} className="text-[10px]">
-              {rx.status}
-            </Badge>
-          </div>
-          <p className="text-[10px] text-muted-foreground mt-0.5">{formatDate(rx.createdAt)}</p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function LabResultsTab({ patientId }: { patientId: string }) {
-  const { data } = useLabOrders({ patientId });
-  const labOrders = data?.data ?? [];
-  if (labOrders.length === 0) {
-    return <p className="text-xs text-muted-foreground italic py-4">No lab orders</p>;
-  }
-  return (
-    <div className="space-y-2">
-      {labOrders.slice(0, 10).map((order: LabOrder) => (
-        <div key={order.id} className="rounded-lg border px-3 py-2">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-medium">{order.tests?.map(t => t.name).join(', ') || order.orderNumber || 'Lab Order'}</p>
-            <Badge variant="outline" className="text-[10px]">{order.status}</Badge>
-          </div>
-          <p className="text-[10px] text-muted-foreground mt-0.5">{formatDate(order.createdAt)}</p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function ImagingTab() {
-  return <p className="text-xs text-muted-foreground italic py-4">No imaging records</p>;
-}
-
-function DocumentsTab() {
-  return <p className="text-xs text-muted-foreground italic py-4">No documents</p>;
-}
-
-// ============================================================
-// Loading & Empty
-// ============================================================
-
-function LoadingSpinner() {
-  return (
-    <div className="flex items-center justify-center min-h-[50vh]">
-      <Loader2 className="h-6 w-6 animate-spin text-primary" />
-    </div>
-  );
-}
-
-// ============================================================
 // Full-Page Consultation View
 // ============================================================
 
@@ -370,6 +665,16 @@ export default function PatientConsultationPage({
   const appointmentId = searchParams.get('appointmentId');
 
   const { data: patient, isLoading: patientLoading } = usePatientDetail(patientId);
+
+  // Fetch appointment details if we have an appointmentId
+  const { data: appointment } = useQuery({
+    queryKey: ['doctor', 'appointments', 'detail', appointmentId],
+    queryFn: async () => {
+      const response = await apiGet<Appointment>(`/appointments/${appointmentId}`);
+      return response.data;
+    },
+    enabled: !!appointmentId,
+  });
 
   if (patientLoading) return <LoadingSpinner />;
 
@@ -386,114 +691,117 @@ export default function PatientConsultationPage({
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-5">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => router.back()}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <h1 className="font-headline text-xl font-bold">Patient Consultation</h1>
+    <div className="space-y-4">
+      {/* ── Top Bar: Back + Patient Banner ── */}
+      <div className="rounded-xl border bg-card p-4 space-y-3">
+        <div className="flex items-start gap-3">
+          <Button variant="ghost" size="icon" className="shrink-0 mt-0.5 h-8 w-8" onClick={() => router.back()}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div className="flex-1 min-w-0">
+            <PatientBanner patient={patient} appointment={appointment} />
+          </div>
+        </div>
+
+        {/* Allergy Banner */}
+        <AllergyBanner allergies={patient.allergies} />
+
+        {/* Vitals Strip */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-[10px] font-label font-semibold uppercase tracking-wider text-muted-foreground shrink-0">
+            Vitals
+          </span>
+          <VitalsStrip patientId={patient.id} />
+        </div>
       </div>
 
-      {/* Pending pre-consultation forms gate */}
+      {/* ── Pre-consultation forms gate ── */}
       <TriggerFormsGate
         trigger="pre_consultation"
         context={{ patientId: patient.id, appointmentId }}
         bannerHeading="Pre-consultation forms required"
       />
 
-      {/* Two-column layout on large screens */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Left column — patient info + forms */}
-        <div className="lg:col-span-1 space-y-4">
-          {/* Profile */}
-          <div className="rounded-xl border bg-card p-4 space-y-3">
-            <PatientDemographics patient={patient} />
-            <AllergyBanner allergies={patient.allergies} />
+      {/* ── Action Buttons ── */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" className="gap-1.5">
+          <NotepadText className="h-3.5 w-3.5" />
+          Progress Note
+        </Button>
+        <Button variant="outline" size="sm" className="gap-1.5">
+          <Pill className="h-3.5 w-3.5" />
+          Write Prescription
+        </Button>
+        <Button variant="outline" size="sm" className="gap-1.5">
+          <FlaskConical className="h-3.5 w-3.5" />
+          Order Lab
+        </Button>
+        <Button variant="outline" size="sm" className="gap-1.5">
+          <ImageIcon className="h-3.5 w-3.5" />
+          Request Imaging
+        </Button>
+        <Button variant="outline" size="sm" className="gap-1.5">
+          <Syringe className="h-3.5 w-3.5" />
+          Record Vitals
+        </Button>
+      </div>
+
+      {/* ── Main Tabs ── */}
+      <div className="rounded-xl border bg-card">
+        <Tabs defaultValue="visits" className="w-full">
+          <TabsList variant="line" className="w-full justify-start px-4 pt-2">
+            <TabsTrigger value="visits" className="gap-1.5">
+              <FileText className="size-3.5" />
+              Visit History
+            </TabsTrigger>
+            <TabsTrigger value="prescriptions" className="gap-1.5">
+              <Pill className="size-3.5" />
+              Prescriptions
+            </TabsTrigger>
+            <TabsTrigger value="lab" className="gap-1.5">
+              <FlaskConical className="size-3.5" />
+              Lab Results
+            </TabsTrigger>
+            <TabsTrigger value="imaging" className="gap-1.5">
+              <ImageIcon className="size-3.5" />
+              Imaging
+            </TabsTrigger>
+            <TabsTrigger value="documents" className="gap-1.5">
+              <FolderOpen className="size-3.5" />
+              Documents
+            </TabsTrigger>
+            <TabsTrigger value="forms" className="gap-1.5">
+              <ClipboardList className="size-3.5" />
+              Forms
+            </TabsTrigger>
+          </TabsList>
+
+          <div className="p-4">
+            <TabsContent value="visits">
+              <VisitHistoryTab patientId={patient.id} />
+            </TabsContent>
+
+            <TabsContent value="prescriptions">
+              <PrescriptionsTab patientId={patient.id} />
+            </TabsContent>
+
+            <TabsContent value="lab">
+              <LabResultsTab patientId={patient.id} />
+            </TabsContent>
+
+            <TabsContent value="imaging">
+              <ImagingTab patientId={patient.id} />
+            </TabsContent>
+
+            <TabsContent value="documents">
+              <DocumentsTab patient={patient} />
+            </TabsContent>
+
+            <TabsContent value="forms">
+              <FormsTab patientId={patient.id} appointmentId={appointmentId} />
+            </TabsContent>
           </div>
-
-          {/* Latest Vitals */}
-          <div className="rounded-xl border bg-card p-4 space-y-2">
-            <h3 className="text-xs font-label font-semibold uppercase tracking-wide text-on-surface-variant">
-              Latest Vitals
-            </h3>
-            <LatestVitals patientId={patient.id} />
-          </div>
-
-          {/* Active Medications */}
-          <div className="rounded-xl border bg-card p-4 space-y-2">
-            <h3 className="text-xs font-label font-semibold uppercase tracking-wide text-on-surface-variant">
-              Active Medications
-            </h3>
-            <ActiveMedications patientId={patient.id} />
-          </div>
-
-          {/* Submitted Forms for this appointment */}
-          <div className="rounded-xl border bg-card p-4 space-y-2">
-            <LatestFormSubmissions patientId={patient.id} appointmentId={appointmentId} />
-          </div>
-        </div>
-
-        {/* Right column — tabbed history */}
-        <div className="lg:col-span-2">
-          <div className="rounded-xl border bg-card p-4">
-            <Tabs defaultValue="visits" className="w-full">
-              <TabsList variant="line" className="w-full justify-start">
-                <TabsTrigger value="visits" className="gap-1">
-                  <FileText className="size-3.5" />
-                  Visit History
-                </TabsTrigger>
-                <TabsTrigger value="prescriptions" className="gap-1">
-                  <Pill className="size-3.5" />
-                  Prescriptions
-                </TabsTrigger>
-                <TabsTrigger value="lab" className="gap-1">
-                  <FlaskConical className="size-3.5" />
-                  Lab Results
-                </TabsTrigger>
-                <TabsTrigger value="imaging" className="gap-1">
-                  <ImageIcon className="size-3.5" />
-                  Imaging
-                </TabsTrigger>
-                <TabsTrigger value="documents" className="gap-1">
-                  <FolderOpen className="size-3.5" />
-                  Documents
-                </TabsTrigger>
-                <TabsTrigger value="forms" className="gap-1">
-                  <ClipboardList className="size-3.5" />
-                  All Forms
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="visits" className="pt-3">
-                <VisitHistoryTab patientId={patient.id} />
-              </TabsContent>
-
-              <TabsContent value="prescriptions" className="pt-3">
-                <PrescriptionsTab patientId={patient.id} />
-              </TabsContent>
-
-              <TabsContent value="lab" className="pt-3">
-                <LabResultsTab patientId={patient.id} />
-              </TabsContent>
-
-              <TabsContent value="imaging" className="pt-3">
-                <ImagingTab />
-              </TabsContent>
-
-              <TabsContent value="documents" className="pt-3">
-                <DocumentsTab />
-              </TabsContent>
-
-              <TabsContent value="forms" className="pt-3">
-                <PatientFormSubmissionsPanel
-                  patientId={patient.id}
-                  title="All Patient Forms (All Visits)"
-                />
-              </TabsContent>
-            </Tabs>
-          </div>
-        </div>
+        </Tabs>
       </div>
     </div>
   );
