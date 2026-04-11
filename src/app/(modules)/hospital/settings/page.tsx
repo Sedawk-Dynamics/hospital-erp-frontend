@@ -45,6 +45,7 @@ const settingsGroups: SettingsGroup[] = [
     title: 'Layouts / Templates',
     icon: Layout,
     items: [
+      { label: 'Form Templates & Submissions', href: '/hospital/settings/forms' },
       { label: 'Layout', href: '#', comingSoon: true },
       { label: 'Template', href: '#', comingSoon: true },
       { label: 'Card Layout Configuration', href: '#', comingSoon: true },

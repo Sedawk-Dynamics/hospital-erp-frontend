@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useCreateLabOrder } from '@/hooks/use-doctor';
+import { useActionFormsTrigger } from '@/hooks/use-action-forms-trigger';
+import { IntakeFormsModal } from '@/components/forms/intake-forms-modal';
 import { apiGet } from '@/lib/api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -48,6 +50,7 @@ export function LabOrderDialog({ open, onOpenChange, patientId, visitId }: LabOr
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const createLabOrder = useCreateLabOrder();
+  const formsTrigger = useActionFormsTrigger();
 
   // Search for tests with debounce
   useEffect(() => {
@@ -125,6 +128,11 @@ export function LabOrderDialog({ open, onOpenChange, patientId, visitId }: LabOr
       toast.success('Lab order created successfully');
       handleReset();
       onOpenChange(false);
+      // Fire any forms assigned to lab_order_created trigger
+      formsTrigger.fire('lab_order_created', undefined, {
+        patientId,
+        visitId,
+      });
     } catch {
       toast.error('Failed to create lab order');
     }
@@ -296,6 +304,15 @@ export function LabOrderDialog({ open, onOpenChange, patientId, visitId }: LabOr
           </div>
         </div>
       </DialogContent>
+
+      {/* Forms assigned to lab_order_created trigger fire after order creation */}
+      <IntakeFormsModal
+        open={formsTrigger.isOpen}
+        trigger="lab_order_created"
+        tenantId={formsTrigger.tenantId}
+        context={formsTrigger.context}
+        onComplete={formsTrigger.close}
+      />
     </Dialog>
   );
 }

@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useCreateImagingRequest } from '@/hooks/use-doctor';
+import { useActionFormsTrigger } from '@/hooks/use-action-forms-trigger';
+import { IntakeFormsModal } from '@/components/forms/intake-forms-modal';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -50,6 +52,7 @@ export function ImagingRequestDialog({ open, onOpenChange, patientId, visitId }:
   const [notes, setNotes] = useState('');
 
   const createImagingRequest = useCreateImagingRequest();
+  const formsTrigger = useActionFormsTrigger();
 
   const handleSubmit = async () => {
     if (!imagingType) {
@@ -70,6 +73,11 @@ export function ImagingRequestDialog({ open, onOpenChange, patientId, visitId }:
       toast.success('Imaging request created successfully');
       handleReset();
       onOpenChange(false);
+      // Fire any forms assigned to imaging_request_created trigger
+      formsTrigger.fire('imaging_request_created', undefined, {
+        patientId,
+        visitId,
+      });
     } catch {
       toast.error('Failed to create imaging request');
     }
@@ -197,6 +205,15 @@ export function ImagingRequestDialog({ open, onOpenChange, patientId, visitId }:
           </div>
         </div>
       </DialogContent>
+
+      {/* Forms assigned to imaging_request_created trigger fire after request creation */}
+      <IntakeFormsModal
+        open={formsTrigger.isOpen}
+        trigger="imaging_request_created"
+        tenantId={formsTrigger.tenantId}
+        context={formsTrigger.context}
+        onComplete={formsTrigger.close}
+      />
     </Dialog>
   );
 }

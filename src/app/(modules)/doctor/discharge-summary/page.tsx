@@ -10,6 +10,8 @@ import {
   type DischargeSummary,
 } from '@/hooks/use-doctor';
 import { useAuthStore } from '@/stores/auth-store';
+import { useActionFormsTrigger } from '@/hooks/use-action-forms-trigger';
+import { IntakeFormsModal } from '@/components/forms/intake-forms-modal';
 import { formatDate, toInputDateStr } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -96,6 +98,7 @@ export default function DischargeSummaryPage() {
   const updateMutation = useUpdateDischargeSummary();
   const signMutation = useSignDischargeSummary();
   const publishMutation = usePublishDischargeSummary();
+  const formsTrigger = useActionFormsTrigger();
 
   // Populate local form when summary loads
   useEffect(() => {
@@ -163,10 +166,17 @@ export default function DischargeSummaryPage() {
       const published = await publishMutation.mutateAsync(summaryData.id);
       if (published) setSummaryData(published);
       toast.success('Discharge summary published');
+
+      // After successful publish, fire any forms assigned to the discharge trigger
+      formsTrigger.fire('discharge', undefined, {
+        admissionId: summaryData.admissionId,
+        visitId: summaryData.visitId,
+        patientId: summaryData.patientId,
+      });
     } catch {
       toast.error('Failed to publish discharge summary');
     }
-  }, [summaryData, publishMutation]);
+  }, [summaryData, publishMutation, formsTrigger]);
 
   const handlePrint = useCallback(() => {
     window.print();
@@ -595,6 +605,16 @@ export default function DischargeSummaryPage() {
           </div>
         </div>
       </div>
+
+      {/* Discharge forms — fires after Publish to capture any final
+          discharge paperwork the hospital admin has assigned. */}
+      <IntakeFormsModal
+        open={formsTrigger.isOpen}
+        trigger="discharge"
+        tenantId={formsTrigger.tenantId}
+        context={formsTrigger.context}
+        onComplete={formsTrigger.close}
+      />
     </div>
   );
 }

@@ -456,6 +456,7 @@ export default function DoctorIPHomePage() {
           </div>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 }

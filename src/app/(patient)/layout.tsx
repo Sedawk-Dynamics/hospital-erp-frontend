@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
-import { Bell, Building2, Calendar, FileText, Home, LogOut, Menu, Pill, Settings, TestTube, User } from 'lucide-react';
+import { Bell, Building2, Calendar, ClipboardList, FileText, Home, LogOut, Menu, Pill, Settings, TestTube, User } from 'lucide-react';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { label: 'Lab Reports', href: '/patient-portal/lab-reports', icon: TestTube },
   { label: 'Prescriptions', href: '/patient-portal/prescriptions', icon: Pill },
   { label: 'Bills & Payments', href: '/patient-portal/billing', icon: FileText },
+  { label: 'My Forms', href: '/patient-portal/my-forms', icon: ClipboardList },
   { label: 'My Profile', href: '/patient-portal/profile', icon: User },
   { label: 'Settings', href: '/patient-portal/settings', icon: Settings },
 ];

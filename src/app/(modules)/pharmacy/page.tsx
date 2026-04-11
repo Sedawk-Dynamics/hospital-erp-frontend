@@ -17,6 +17,7 @@ import {
   type FormularyItem,
   type DrugBatch,
 } from '@/hooks/use-pharmacy';
+import { PatientFormSubmissionsPanel } from '@/components/forms/patient-form-submissions-panel';
 
 export default function PharmacyBillingPage() {
   return (
@@ -40,6 +41,12 @@ export default function PharmacyBillingPage() {
           <PharmacyCashCounterTab />
         </TabsContent>
       </Tabs>
+
+      {/* Forms assigned by admin to pharmacy_home view location appear here */}
+      <PatientFormSubmissionsPanel
+        title="Pharmacy Forms Submissions"
+        viewLocation="pharmacy_home"
+      />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { toInputDateStr, formatTime24 } from '@/lib/date-utils';
 import { Search, CalendarIcon, Users, Clock, BedDouble, FlaskConical, Scissors } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -10,12 +11,20 @@ import { AppointmentStatsRow } from '@/components/hospital/appointment-stats-row
 import { PatientTagFilter } from '@/components/hospital/patient-tag-filter';
 import { PatientCategoryIndicators } from '@/components/doctor/patient-category-indicators';
 import { DoctorActionButtons } from '@/components/doctor/doctor-action-buttons';
-import { PatientConsultationView } from '@/components/doctor/patient-consultation-view';
 import { useDoctorAppointments, useDoctorAppointmentStats, useUpdateAppointmentStatus, useLabOrders, useDoctorOTRequests } from '@/hooks/use-doctor';
 import { useAuthStore } from '@/stores/auth-store';
+import { useActionFormsTrigger } from '@/hooks/use-action-forms-trigger';
+import { IntakeFormsModal } from '@/components/forms/intake-forms-modal';
+import type { FormTrigger } from '@/types/forms';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import type { Appointment } from '@/types';
+
+// Map doctor status transitions to form triggers
+const DOCTOR_STATUS_TO_TRIGGER: Record<string, FormTrigger> = {
+  in_consultation: 'pre_consultation',
+  completed: 'feedback',
+};
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -130,10 +139,10 @@ export default function DoctorHomePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [fromDate, setFromDate] = useState(toInputDateStr());
   const [toDate, setToDate] = useState(toInputDateStr());
-  const [activeStatFilter, setActiveStatFilter] = useState('booked');
+  const [activeStatFilter, setActiveStatFilter] = useState('all');
   const [activeTag, setActiveTag] = useState('all');
   const [page, setPage] = useState(1);
-  const [consultPatientId, setConsultPatientId] = useState<string | null>(null);
+  const router = useRouter();
   const [viewMode, setViewMode] = useState<ViewMode>('today');
 
   const statusFilter = statusFilterMap[activeStatFilter];
@@ -326,14 +335,10 @@ export default function DoctorHomePage() {
         totalPages={appointmentsData?.meta?.totalPages ?? 1}
         total={appointmentsData?.meta?.total ?? 0}
         onPageChange={setPage}
-        onViewDetails={(patientId) => setConsultPatientId(patientId)}
-      />
-
-      {/* Patient Consultation View Sheet */}
-      <PatientConsultationView
-        open={!!consultPatientId}
-        onOpenChange={(o) => { if (!o) setConsultPatientId(null); }}
-        patientId={consultPatientId}
+        onViewDetails={(patientId, appointmentId) => {
+          const params = appointmentId ? `?appointmentId=${appointmentId}` : '';
+          router.push(`/doctor/consultation/${patientId}${params}`);
+        }}
       />
     </div>
   );
@@ -379,16 +384,26 @@ function DoctorAppointmentTable({
   totalPages: number;
   total: number;
   onPageChange: (page: number) => void;
-  onViewDetails: (patientId: string) => void;
+  onViewDetails: (patientId: string, appointmentId?: string) => void;
 }) {
   const statusMutation = useUpdateAppointmentStatus();
+  const formsTrigger = useActionFormsTrigger();
 
-  const handleStatusChange = (id: string, newStatus: string) => {
+  const handleStatusChange = (apt: Appointment, newStatus: string) => {
     statusMutation.mutate(
-      { id, status: newStatus },
+      { id: apt.id, status: newStatus },
       {
         onSuccess: () => {
           toast.success(`Appointment ${newStatus.replace('_', ' ')} successfully`);
+
+          // After Start Consultation / Complete, fire any matching forms
+          const trigger = DOCTOR_STATUS_TO_TRIGGER[newStatus];
+          if (trigger) {
+            formsTrigger.fire(trigger, apt.tenantId, {
+              appointmentId: apt.id,
+              patientId: apt.patientId,
+            });
+          }
         },
         onError: (err: any) => {
           toast.error(err?.response?.data?.message || `Failed to update status`);
@@ -528,7 +543,7 @@ function DoctorAppointmentTable({
                           variant="ghost"
                           size="sm"
                           className={cn('h-7 text-xs gap-1', transitions[0].color)}
-                          onClick={() => handleStatusChange(apt.id, transitions[0].to)}
+                          onClick={() => handleStatusChange(apt, transitions[0].to)}
                           disabled={statusMutation.isPending}
                           title={transitions[0].label}
                         >
@@ -551,7 +566,7 @@ function DoctorAppointmentTable({
                               return (
                                 <DropdownMenuItem
                                   key={t.to}
-                                  onClick={() => handleStatusChange(apt.id, t.to)}
+                                  onClick={() => handleStatusChange(apt, t.to)}
                                   className={t.color}
                                 >
                                   <TIcon className="mr-2 h-4 w-4" />
@@ -559,7 +574,7 @@ function DoctorAppointmentTable({
                                 </DropdownMenuItem>
                               );
                             })}
-                            <DropdownMenuItem onClick={() => apt.patientId && onViewDetails(apt.patientId)}>
+                            <DropdownMenuItem onClick={() => apt.patientId && onViewDetails(apt.patientId, apt.id)}>
                               <Eye className="mr-2 h-4 w-4" />
                               View Details
                             </DropdownMenuItem>
@@ -573,7 +588,7 @@ function DoctorAppointmentTable({
                           size="icon"
                           className="h-7 w-7"
                           title="View"
-                          onClick={() => apt.patientId && onViewDetails(apt.patientId)}
+                          onClick={() => apt.patientId && onViewDetails(apt.patientId, apt.id)}
                         >
                           <Eye className="h-3.5 w-3.5" />
                         </Button>
@@ -603,6 +618,15 @@ function DoctorAppointmentTable({
           </Button>
         </div>
       </div>
+
+      {/* After-action forms modal — fires after Start Consultation / Complete */}
+      <IntakeFormsModal
+        open={formsTrigger.isOpen}
+        trigger={formsTrigger.trigger ?? 'manual'}
+        tenantId={formsTrigger.tenantId}
+        context={formsTrigger.context}
+        onComplete={formsTrigger.close}
+      />
     </div>
   );
 }

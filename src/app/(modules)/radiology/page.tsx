@@ -12,6 +12,7 @@ import { DataTable, type Column } from '@/components/shared/data-table';
 import { PageHeader } from '@/components/shared/page-header';
 import { useImagingRequests, type ImagingRequest } from '@/hooks/use-imaging';
 import { cn } from '@/lib/utils';
+import { PatientFormSubmissionsPanel } from '@/components/forms/patient-form-submissions-panel';
 
 const statCards = [
   { label: 'Total Requests', icon: Activity, color: 'text-blue-600', bgColor: 'bg-blue-50', key: 'total' },
@@ -181,6 +182,12 @@ export default function RadiologyHomePage() {
         total={total}
         onPageChange={setPage}
         emptyMessage="No imaging requests found for the selected filters."
+      />
+
+      {/* Forms assigned by admin to radiology_home view location appear here */}
+      <PatientFormSubmissionsPanel
+        title="Radiology Forms Submissions"
+        viewLocation="radiology_home"
       />
     </div>
   );

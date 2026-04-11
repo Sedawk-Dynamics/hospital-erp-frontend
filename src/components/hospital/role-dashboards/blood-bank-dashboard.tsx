@@ -9,6 +9,7 @@ import {
   Droplets, Heart, AlertTriangle, Clock, Syringe,
   RefreshCw, Users, CalendarClock,
 } from 'lucide-react';
+import { PatientFormSubmissionsPanel } from '@/components/forms/patient-form-submissions-panel';
 
 interface BloodGroupInventory {
   bloodGroup: string;
@@ -386,6 +387,12 @@ export function BloodBankDashboard() {
           </table>
         </div>
       </div>
+
+      {/* Forms assigned by admin to blood_bank_home view location appear here */}
+      <PatientFormSubmissionsPanel
+        title="Blood Bank Forms Submissions"
+        viewLocation="blood_bank_home"
+      />
     </div>
   );
 }

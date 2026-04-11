@@ -10,6 +10,7 @@ import { apiGet } from '@/lib/api';
 import type { LabOrder } from '@/types';
 import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/lib/date-utils';
+import { PatientFormSubmissionsPanel } from '@/components/forms/patient-form-submissions-panel';
 
 export default function LaboratoryHomePage() {
   return (
@@ -41,6 +42,12 @@ export default function LaboratoryHomePage() {
           <LabOrderList />
         </TabsContent>
       </Tabs>
+
+      {/* Forms assigned by admin to lab_home view location appear here */}
+      <PatientFormSubmissionsPanel
+        title="Lab Forms Submissions"
+        viewLocation="lab_home"
+      />
     </div>
   );
 }

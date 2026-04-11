@@ -247,6 +247,7 @@ function OPHomeDashboard() {
         total={appointmentsData?.meta?.total ?? 0}
         onPageChange={setPage}
       />
+
     </div>
   );
 }

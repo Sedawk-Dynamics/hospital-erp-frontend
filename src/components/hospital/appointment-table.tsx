@@ -22,6 +22,9 @@ import {
 import { toast } from 'sonner';
 import type { Appointment } from '@/types';
 import { useUpdateAppointmentStatus } from '@/hooks/use-hospital';
+import { useActionFormsTrigger } from '@/hooks/use-action-forms-trigger';
+import { IntakeFormsModal } from '@/components/forms/intake-forms-modal';
+import type { FormTrigger } from '@/types/forms';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,6 +32,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+
+// Map status transitions to form triggers — when this status change happens,
+// fire the IntakeFormsModal for the matching workflow trigger.
+const STATUS_TO_TRIGGER: Record<string, FormTrigger> = {
+  checked_in: 'visit_check_in',
+  in_consultation: 'pre_consultation',
+  completed: 'feedback',
+};
 
 interface AppointmentTableProps {
   appointments: Appointment[];
@@ -74,14 +85,25 @@ export function AppointmentTable({
   onPageChange,
 }: AppointmentTableProps) {
   const updateStatus = useUpdateAppointmentStatus();
+  const formsTrigger = useActionFormsTrigger();
   const [cancelTarget, setCancelTarget] = useState<Appointment | null>(null);
   const [rescheduleTarget, setRescheduleTarget] = useState<Appointment | null>(null);
   const [viewPatientId, setViewPatientId] = useState<string | null>(null);
+  const [viewAppointmentId, setViewAppointmentId] = useState<string | null>(null);
 
-  const handleStatusAdvance = async (id: string, status: string) => {
+  const handleStatusAdvance = async (apt: Appointment, status: string) => {
     try {
-      await updateStatus.mutateAsync({ id, status });
+      await updateStatus.mutateAsync({ id: apt.id, status });
       toast.success(`Status updated to ${status.replace('_', ' ')}`);
+
+      // After the status change succeeds, fire any forms assigned to the matching trigger.
+      const trigger = STATUS_TO_TRIGGER[status];
+      if (trigger) {
+        formsTrigger.fire(trigger, apt.tenantId, {
+          appointmentId: apt.id,
+          patientId: apt.patientId,
+        });
+      }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Failed to update status';
       toast.error(message);
@@ -222,57 +244,69 @@ export function AppointmentTable({
                       </p>
                     </td>
 
-                    {/* Status Progression */}
+                    {/* Status + Inline Action */}
                     <td className="px-4 py-4">
-                      <StatusProgression status={apt.status} />
+                      <div className="flex items-center gap-2">
+                        <StatusProgression status={apt.status} />
+                        {statusActions.length > 0 && (
+                          <Button
+                            size="sm"
+                            className="h-7 px-2.5 text-[11px] font-bold gap-1 shrink-0"
+                            onClick={() => handleStatusAdvance(apt, statusActions[0].status)}
+                            disabled={updateStatus.isPending}
+                          >
+                            {(() => { const Icon = statusActions[0].icon; return <Icon className="h-3 w-3" />; })()}
+                            {statusActions[0].label}
+                          </Button>
+                        )}
+                      </div>
                     </td>
 
                     {/* Actions */}
                     <td className="px-4 py-4 text-center">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          render={<Button variant="ghost" size="icon" className="h-8 w-8 text-outline hover:text-primary transition-colors" />}
+                      <div className="flex items-center justify-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-outline hover:text-primary"
+                          onClick={() => { setViewPatientId(apt.patientId); setViewAppointmentId(apt.id); }}
+                          title="View Details"
                         >
-                          <MoreHorizontal className="h-4 w-4" />
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => setViewPatientId(apt.patientId)}>
-                            <Eye className="mr-2 h-4 w-4" />
-                            View Details
-                          </DropdownMenuItem>
+                          <Eye className="h-3.5 w-3.5" />
+                        </Button>
 
-                          {statusActions.length > 0 && <DropdownMenuSeparator />}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={<Button variant="ghost" size="icon" className="h-7 w-7 text-outline hover:text-primary transition-colors" />}
+                          >
+                            <MoreHorizontal className="h-3.5 w-3.5" />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {canReschedule && (
+                              <DropdownMenuItem onClick={() => setRescheduleTarget(apt)}>
+                                <CalendarClock className="mr-2 h-4 w-4" />
+                                Reschedule
+                              </DropdownMenuItem>
+                            )}
 
-                          {statusActions.map((action) => (
-                            <DropdownMenuItem
-                              key={action.status}
-                              onClick={() => handleStatusAdvance(apt.id, action.status)}
-                            >
-                              <action.icon className="mr-2 h-4 w-4" />
-                              {action.label}
-                            </DropdownMenuItem>
-                          ))}
+                            {canCancel && (
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => setCancelTarget(apt)}
+                              >
+                                <XCircle className="mr-2 h-4 w-4" />
+                                Cancel
+                              </DropdownMenuItem>
+                            )}
 
-                          {(canReschedule || canCancel) && <DropdownMenuSeparator />}
-
-                          {canReschedule && (
-                            <DropdownMenuItem onClick={() => setRescheduleTarget(apt)}>
-                              <CalendarClock className="mr-2 h-4 w-4" />
-                              Reschedule
-                            </DropdownMenuItem>
-                          )}
-
-                          {canCancel && (
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onClick={() => setCancelTarget(apt)}
-                            >
-                              <XCircle className="mr-2 h-4 w-4" />
-                              Cancel
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                            {!canReschedule && !canCancel && (
+                              <DropdownMenuItem disabled>
+                                No actions available
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -326,8 +360,20 @@ export function AppointmentTable({
       {/* Patient Detail Dialog */}
       <PatientDetailDialog
         open={!!viewPatientId}
-        onOpenChange={(open) => { if (!open) setViewPatientId(null); }}
+        onOpenChange={(open) => { if (!open) { setViewPatientId(null); setViewAppointmentId(null); } }}
         patientId={viewPatientId}
+        appointmentId={viewAppointmentId}
+      />
+
+      {/* After-action forms modal — fires after Confirm/Check In/etc.
+          Picks up any forms the hospital has assigned to the matching trigger
+          (visit_check_in, pre_consultation, feedback, etc.). */}
+      <IntakeFormsModal
+        open={formsTrigger.isOpen}
+        trigger={formsTrigger.trigger ?? 'manual'}
+        tenantId={formsTrigger.tenantId}
+        context={formsTrigger.context}
+        onComplete={formsTrigger.close}
       />
     </>
   );

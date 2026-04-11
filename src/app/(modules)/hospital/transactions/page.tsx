@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Banknote, CreditCard, Smartphone, FileText, Download } from 'lucide-react';
+import { PatientFormSubmissionsPanel } from '@/components/forms/patient-form-submissions-panel';
 
 export default function BillingTransactionPage() {
   return (
@@ -51,6 +52,12 @@ export default function BillingTransactionPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Forms assigned by admin to transactions_home view location appear here */}
+      <PatientFormSubmissionsPanel
+        title="Transactions Forms Submissions"
+        viewLocation="transactions_home"
+      />
     </div>
   );
 }

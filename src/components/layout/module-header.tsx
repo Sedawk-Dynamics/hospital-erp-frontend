@@ -1,6 +1,6 @@
 'use client';
 
-import { Menu, Bell, HelpCircle, LogOut, Building2, Settings, ArrowLeftRight, Search, User, CreditCard } from 'lucide-react';
+import { Menu, Bell, HelpCircle, LogOut, Building2, Settings, ArrowLeftRight, Search, User, CreditCard, ClipboardList } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -136,6 +136,10 @@ export function ModuleHeader() {
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
+              <DropdownMenuItem onClick={() => router.push('/staff-forms')}>
+                <ClipboardList className="mr-2 h-4 w-4" />
+                <span>Staff Forms Inbox</span>
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => router.push('/my-account')}>
                 <User className="mr-2 h-4 w-4" />
                 <span>My Account</span>

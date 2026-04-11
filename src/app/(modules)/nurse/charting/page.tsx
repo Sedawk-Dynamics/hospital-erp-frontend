@@ -15,6 +15,9 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
+import { useActionFormsTrigger } from '@/hooks/use-action-forms-trigger';
+import { IntakeFormsModal } from '@/components/forms/intake-forms-modal';
+import { PatientFormSubmissionsPanel } from '@/components/forms/patient-form-submissions-panel';
 import {
   useNurseAdmissions,
   usePatientVitals,
@@ -199,6 +202,7 @@ export default function ClinicalChartingPage() {
   // ── Mutations ──────────────────────────────────────────────
 
   const recordVitals = useRecordVitals();
+  const formsTrigger = useActionFormsTrigger();
   const createNote = useCreateNursingNote();
 
   // ── Handlers ───────────────────────────────────────────────
@@ -262,6 +266,11 @@ export default function ClinicalChartingPage() {
           weightKg: '',
           bloodSugar: '',
           notes: '',
+        });
+        // Fire any forms assigned to vital_signs_entry trigger
+        formsTrigger.fire('vital_signs_entry', undefined, {
+          patientId: selectedPatientId,
+          admissionId: selectedAdmission?.id,
         });
       },
       onError: (err: unknown) => {
@@ -1235,6 +1244,22 @@ export default function ClinicalChartingPage() {
           </div>
         </>
       )}
+
+      {/* Forms assigned to vital_signs_entry trigger fire after recording vitals */}
+      <IntakeFormsModal
+        open={formsTrigger.isOpen}
+        trigger="vital_signs_entry"
+        tenantId={formsTrigger.tenantId}
+        context={formsTrigger.context}
+        onComplete={formsTrigger.close}
+      />
+
+      {/* Forms assigned by admin to nurse_charting view location appear here */}
+      <PatientFormSubmissionsPanel
+        title="Nurse Forms Submissions"
+        viewLocation="nurse_charting"
+        patientId={selectedPatientId || undefined}
+      />
     </div>
   );
 }

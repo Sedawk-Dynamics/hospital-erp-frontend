@@ -16,6 +16,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
 import { toInputDateStr, formatTime24, getCurrentISTTime, isToday } from '@/lib/date-utils';
+import { IntakeFormsModal } from '@/components/forms/intake-forms-modal';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -97,6 +98,10 @@ export default function BookAppointmentPage() {
   const [bookedAppointmentId, setBookedAppointmentId] = useState<string | null>(null);
   const [paymentComplete, setPaymentComplete] = useState(false);
   const [paymentProcessing, setPaymentProcessing] = useState(false);
+
+  // Intake forms (assigned to the appointment_booking trigger by the hospital)
+  const [showIntakeForms, setShowIntakeForms] = useState(false);
+  const [postFormsRedirect, setPostFormsRedirect] = useState<string | null>(null);
 
   // ── Data Queries ───────────────────────────────────────
 
@@ -855,7 +860,10 @@ export default function BookAppointmentPage() {
               <Button
                 className="w-full"
                 size="lg"
-                onClick={() => router.push('/patient-portal/appointments')}
+                onClick={() => {
+                  setPostFormsRedirect('/patient-portal/appointments');
+                  setShowIntakeForms(true);
+                }}
               >
                 View My Appointments
               </Button>
@@ -932,7 +940,8 @@ export default function BookAppointmentPage() {
                       }
                     }
                     toast.success('Appointment booked! Please pay at the hospital front desk.');
-                    router.push('/patient-portal/appointments');
+                    setPostFormsRedirect('/patient-portal/appointments');
+                    setShowIntakeForms(true);
                   }}
                   className={cn(
                     'flex w-full items-center gap-4 rounded-xl border p-4 text-left transition-colors hover:bg-muted/50 hover:border-primary/40',
@@ -964,6 +973,22 @@ export default function BookAppointmentPage() {
           )}
         </div>
       )}
+
+      {/* Intake forms — auto-prompts the patient to fill any forms the hospital has
+          assigned to the 'appointment_booking' trigger. Front desk and doctor will see
+          the responses on the patient/appointment view.
+          We pass tenantId={selectedHospital.id} explicitly because the patient is
+          registered under the platform tenant, not under this hospital. */}
+      <IntakeFormsModal
+        open={showIntakeForms}
+        trigger="appointment_booking"
+        tenantId={selectedHospital?.id}
+        context={{ appointmentId: bookedAppointmentId ?? undefined }}
+        onComplete={() => {
+          setShowIntakeForms(false);
+          if (postFormsRedirect) router.push(postFormsRedirect);
+        }}
+      />
     </div>
   );
 }

@@ -10,6 +10,7 @@ import { apiGet } from '@/lib/api';
 import { formatDate, formatTime24, toInputDateStr } from '@/lib/date-utils';
 import type { Bill } from '@/types';
 import { cn } from '@/lib/utils';
+import { PatientFormSubmissionsPanel } from '@/components/forms/patient-form-submissions-panel';
 
 export default function HospitalBillingPage() {
   return (
@@ -35,6 +36,12 @@ export default function HospitalBillingPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Forms assigned by admin to billing_home view location appear here */}
+      <PatientFormSubmissionsPanel
+        title="Billing Forms Submissions"
+        viewLocation="billing_home"
+      />
     </div>
   );
 }
