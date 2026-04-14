@@ -34,6 +34,13 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 
 import {
   usePatientDetail,
@@ -137,10 +144,10 @@ function parseNoteContent(content?: string): Record<string, string> {
 }
 
 // ============================================================
-// Patient Header (compact, connected)
+// Sticky Top Navigation Bar
 // ============================================================
 
-function PatientHeader({
+function ConsultationTopBar({
   patient,
   appointment,
   onBack,
@@ -153,73 +160,117 @@ function PatientHeader({
   const status = appointment?.status ? STATUS_STYLES[appointment.status] : null;
 
   return (
-    <div className="flex items-center gap-3">
-      <Button variant="ghost" size="icon" className="shrink-0 h-8 w-8" onClick={onBack}>
-        <ArrowLeft className="h-4 w-4" />
-      </Button>
+    <div className="sticky top-0 z-30 -mx-4 lg:-mx-6 px-4 lg:px-6 py-2.5 bg-white/85 backdrop-blur-md border-b shadow-sm">
+      <div className="flex items-center gap-3">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="shrink-0 h-9 w-9 rounded-lg hover:bg-primary/10 hover:text-primary"
+          onClick={onBack}
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
 
-      {/* Avatar */}
-      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary font-headline text-sm font-bold shrink-0">
-        {patient.firstName?.[0]}
-        {patient.lastName?.[0]}
-      </div>
+        <div className="h-8 w-px bg-border" />
 
-      {/* Name + meta */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <h1 className="font-headline text-lg font-bold leading-tight">
-            {patient.firstName} {patient.lastName}
-          </h1>
-          {status && (
-            <Badge className={`text-[10px] px-2 py-0.5 font-medium ${status.className}`}>
-              {status.label}
-            </Badge>
-          )}
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/70 text-white font-headline text-xs font-bold shrink-0 shadow-md shadow-primary/30">
+            {patient.firstName?.[0]}{patient.lastName?.[0]}
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h1 className="font-headline text-sm font-bold truncate">
+                {patient.firstName} {patient.lastName}
+              </h1>
+              {status && (
+                <Badge className={`text-[9px] px-1.5 py-0 font-semibold ${status.className}`}>
+                  {status.label}
+                </Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground leading-tight">
+              <span className="font-semibold text-primary">{patient.mrn}</span>
+              {patient.gender && <><span>·</span><span className="capitalize">{patient.gender}</span></>}
+              {age && <><span>·</span><span>{age}</span></>}
+              {patient.bloodGroup && <><span>·</span><span className="font-semibold text-rose-600">{patient.bloodGroup}</span></>}
+            </div>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground mt-0.5">
-          <span className="font-semibold text-foreground">{patient.mrn}</span>
-          {patient.gender && (
-            <>
-              <Separator orientation="vertical" className="h-3" />
-              <span className="capitalize">{patient.gender}</span>
-            </>
-          )}
-          {age && (
-            <>
-              <Separator orientation="vertical" className="h-3" />
-              <span>{age}</span>
-            </>
-          )}
-          {patient.bloodGroup && (
-            <>
-              <Separator orientation="vertical" className="h-3" />
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-medium">
-                {patient.bloodGroup}
-              </Badge>
-            </>
-          )}
-          {patient.phone && (
-            <>
-              <Separator orientation="vertical" className="h-3" />
-              <span className="flex items-center gap-1">
-                <Phone className="h-3 w-3" />
-                {patient.phone}
-              </span>
-            </>
-          )}
-          {appointment?.reason && (
-            <>
-              <Separator orientation="vertical" className="h-3" />
-              <span className="text-foreground">{appointment.reason}</span>
-            </>
-          )}
-        </div>
-      </div>
 
-      <Button variant="outline" size="sm" className="gap-1.5 shrink-0">
-        <Printer className="h-3.5 w-3.5" />
-        Print
-      </Button>
+        <div className="flex-1" />
+
+        {appointment?.reason && (
+          <div className="hidden md:flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <StickyNote className="h-3 w-3" />
+            <span className="truncate max-w-xs">{appointment.reason}</span>
+          </div>
+        )}
+
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 shrink-0 h-8 border-primary/20 text-primary hover:bg-primary/5"
+        >
+          <Printer className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Print</span>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// Patient Profile Card (sidebar)
+// ============================================================
+
+function AppointmentCard({ patient, appointment }: { patient: Patient; appointment?: Appointment | null }) {
+  const hasContent = patient.phone || appointment?.appointmentDate || appointment?.doctor || appointment?.reason;
+  if (!hasContent) return null;
+
+  return (
+    <div className="rounded-2xl border bg-card overflow-hidden shadow-sm">
+      <div className="px-4 py-2.5 border-b flex items-center gap-2 bg-gradient-to-r from-primary/5 to-transparent">
+        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/15">
+          <Calendar className="h-3.5 w-3.5 text-primary" />
+        </div>
+        <span className="text-xs font-bold uppercase tracking-wide text-foreground">
+          Appointment
+        </span>
+      </div>
+      <div className="p-3 space-y-1.5">
+        {appointment?.appointmentDate && (
+          <div className="flex items-center gap-2 text-[11px]">
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-purple-100 shrink-0">
+              <Clock className="h-3 w-3 text-purple-600" />
+            </div>
+            <span className="font-medium">{formatDate(appointment.appointmentDate)}{appointment.startTime ? ` · ${appointment.startTime}` : ''}</span>
+          </div>
+        )}
+        {appointment?.doctor && (
+          <div className="flex items-center gap-2 text-[11px]">
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-100 shrink-0">
+              <Stethoscope className="h-3 w-3 text-emerald-600" />
+            </div>
+            <span className="font-medium truncate">{getDoctorName(appointment.doctor)}</span>
+          </div>
+        )}
+        {patient.phone && (
+          <div className="flex items-center gap-2 text-[11px]">
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-100 shrink-0">
+              <Phone className="h-3 w-3 text-blue-600" />
+            </div>
+            <span className="font-medium">{patient.phone}</span>
+          </div>
+        )}
+        {appointment?.reason && (
+          <div className="flex items-start gap-2 text-[11px] pt-1.5 border-t">
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-100 shrink-0">
+              <StickyNote className="h-3 w-3 text-amber-600" />
+            </div>
+            <span className="text-muted-foreground leading-snug">{appointment.reason}</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -256,15 +307,27 @@ function VitalsStrip({ patientId }: { patientId: string }) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Loader2 className="size-3 animate-spin" /> Loading vitals…
+      <div className="grid grid-cols-2 gap-2">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="h-14 rounded-xl border border-primary/10 bg-muted/30 animate-pulse" />
+        ))}
       </div>
     );
   }
 
   if (!latest) {
-    return <span className="text-[11px] text-muted-foreground italic">No vitals recorded</span>;
+    return (
+      <div className="rounded-xl border border-dashed border-muted bg-muted/20 py-4 text-center">
+        <Activity className="h-4 w-4 text-muted-foreground/40 mx-auto mb-1" />
+        <p className="text-[11px] text-muted-foreground italic">No vitals recorded</p>
+      </div>
+    );
   }
+
+  const heightVal = latest.heightCm ?? latest.height;
+  const weightVal = latest.weightKg ?? latest.weight;
+  const bmiVal = latest.bmi ?? (heightVal && weightVal ? +(weightVal / Math.pow(heightVal / 100, 2)).toFixed(1) : undefined);
+  const pulseVal = latest.pulseRate ?? latest.heartRate;
 
   const items: { icon: React.ElementType; label: string; value: string | number | null | undefined; unit: string; alert?: boolean }[] = [
     {
@@ -277,9 +340,9 @@ function VitalsStrip({ patientId }: { patientId: string }) {
     {
       icon: Heart,
       label: 'Pulse',
-      value: latest.pulseRate ?? latest.heartRate,
+      value: pulseVal,
       unit: 'bpm',
-      alert: (latest.pulseRate ?? latest.heartRate) ? ((latest.pulseRate ?? latest.heartRate)! > 100 || (latest.pulseRate ?? latest.heartRate)! < 60) : false,
+      alert: pulseVal ? (pulseVal > 100 || pulseVal < 60) : false,
     },
     {
       icon: Activity,
@@ -288,6 +351,7 @@ function VitalsStrip({ patientId }: { patientId: string }) {
         ? `${latest.bloodPressureSystolic}/${latest.bloodPressureDiastolic}`
         : null,
       unit: 'mmHg',
+      alert: latest.bloodPressureSystolic ? (latest.bloodPressureSystolic > 140 || latest.bloodPressureSystolic < 90) : false,
     },
     {
       icon: Droplets,
@@ -297,31 +361,100 @@ function VitalsStrip({ patientId }: { patientId: string }) {
       alert: latest.oxygenSaturation ? latest.oxygenSaturation < 95 : false,
     },
     {
+      icon: Activity,
+      label: 'Resp',
+      value: latest.respiratoryRate,
+      unit: '/min',
+      alert: latest.respiratoryRate ? (latest.respiratoryRate > 20 || latest.respiratoryRate < 12) : false,
+    },
+    {
+      icon: Droplets,
+      label: 'Sugar',
+      value: latest.bloodSugar,
+      unit: 'mg/dL',
+      alert: latest.bloodSugar ? (latest.bloodSugar > 180 || latest.bloodSugar < 70) : false,
+    },
+    {
       icon: Weight,
-      label: 'Wt',
-      value: latest.weightKg ?? latest.weight,
+      label: 'Weight',
+      value: weightVal,
       unit: 'kg',
+    },
+    {
+      icon: Activity,
+      label: 'Height',
+      value: heightVal,
+      unit: 'cm',
+    },
+    {
+      icon: Activity,
+      label: 'BMI',
+      value: bmiVal,
+      unit: 'kg/m²',
+      alert: bmiVal ? (bmiVal >= 30 || bmiVal < 18.5) : false,
     },
   ];
 
+  const visibleItems = items.filter((i) => i.value != null && i.value !== '');
+
+  if (visibleItems.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-muted bg-muted/20 py-4 text-center">
+        <Activity className="h-4 w-4 text-muted-foreground/40 mx-auto mb-1" />
+        <p className="text-[11px] text-muted-foreground italic">No vitals recorded</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {items.map((item) => {
-        if (item.value == null) return null;
+    <div className="space-y-2">
+    <div className="grid grid-cols-2 gap-2">
+      {visibleItems.map((item) => {
         const Icon = item.icon;
         return (
           <div
             key={item.label}
-            className={`flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] ${
-              item.alert ? 'border-destructive/40 bg-destructive/5' : 'bg-muted/40'
-            }`}
+            className={cn(
+              'rounded-xl border p-2.5 transition-all hover:shadow-md hover:-translate-y-0.5',
+              item.alert
+                ? 'border-destructive/40 bg-gradient-to-br from-destructive/10 to-destructive/5'
+                : 'border-primary/15 bg-gradient-to-br from-primary/5 to-transparent',
+            )}
           >
-            <Icon className={`h-3 w-3 ${item.alert ? 'text-destructive' : 'text-primary'}`} />
-            <span className="font-medium">{item.value}</span>
-            <span className="text-muted-foreground text-[9px]">{item.unit}</span>
+            <div className="flex items-center gap-1.5 mb-1">
+              <div
+                className={cn(
+                  'flex h-5 w-5 items-center justify-center rounded-md',
+                  item.alert ? 'bg-destructive/15' : 'bg-primary/15',
+                )}
+              >
+                <Icon className={cn('h-3 w-3', item.alert ? 'text-destructive' : 'text-primary')} />
+              </div>
+              <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+                {item.label}
+              </span>
+            </div>
+            <div className="flex items-baseline gap-1">
+              <span className={cn('text-base font-bold leading-none', item.alert && 'text-destructive')}>
+                {item.value}
+              </span>
+              <span className="text-[9px] text-muted-foreground">{item.unit}</span>
+            </div>
           </div>
         );
       })}
+    </div>
+    {latest.createdAt && (
+      <div className="flex items-center justify-between gap-2 px-1 pt-1">
+        <span className="text-[9px] text-muted-foreground flex items-center gap-1">
+          <Clock className="h-2.5 w-2.5" />
+          Recorded {formatDateTimeAmPm(latest.createdAt)}
+        </span>
+        <span className="text-[9px] font-semibold text-primary">
+          {visibleItems.length} vital{visibleItems.length === 1 ? '' : 's'}
+        </span>
+      </div>
+    )}
     </div>
   );
 }
@@ -348,20 +481,22 @@ function CollapsibleSection({
   const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <div className="rounded-xl border bg-card overflow-hidden">
+    <div className="rounded-xl border bg-card overflow-hidden shadow-sm hover:shadow-md transition-shadow">
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-2.5 px-4 py-3 hover:bg-muted/30 transition-colors text-left"
+        className="w-full flex items-center gap-2.5 px-4 py-3 hover:bg-muted/40 transition-colors text-left"
       >
-        <span className={cn('shrink-0', color)}>{icon}</span>
+        <span className={cn('shrink-0 flex h-7 w-7 items-center justify-center rounded-lg bg-current/10', color)}>
+          <span className={cn('[&>svg]:h-4 [&>svg]:w-4', color)}>{icon}</span>
+        </span>
         <span className={cn('text-sm font-semibold flex-1', color)}>{title}</span>
         {badge && (
-          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{badge}</Badge>
+          <Badge variant="secondary" className={cn('text-[10px] px-1.5 py-0 font-bold', color)}>{badge}</Badge>
         )}
         <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', open && 'rotate-180')} />
       </button>
-      {open && <div className="border-t">{children}</div>}
+      {open && <div className="border-t bg-muted/10">{children}</div>}
     </div>
   );
 }
@@ -646,15 +781,69 @@ function VisitTimeline({ patientId, patient, appointmentId }: { patientId: strin
 
   if (isLoading) return <SectionLoading />;
 
+  // ── Stats
+  const totalVisits = visits.length;
+  const totalRx = visits.reduce((sum, v) => sum + v.rxItems.length, 0);
+  const totalLabs = labOrders.length;
+  const totalImaging = imagingRequests.length;
+  const lastVisitDate = visits[0]?.date;
+
   return (
     <div className="space-y-3">
-      {/* ── Visit Cards ── */}
+      {/* ── Stats Strip ── */}
+      {visits.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+          <div className="rounded-xl border bg-gradient-to-br from-primary/10 to-transparent p-2.5">
+            <div className="flex items-center gap-1.5">
+              <CalendarDays className="h-3 w-3 text-primary" />
+              <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Visits</span>
+            </div>
+            <p className="text-base font-bold text-foreground mt-0.5 leading-none">{totalVisits}</p>
+          </div>
+          <div className="rounded-xl border bg-gradient-to-br from-emerald-100/60 to-transparent p-2.5">
+            <div className="flex items-center gap-1.5">
+              <Pill className="h-3 w-3 text-emerald-600" />
+              <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Rx Items</span>
+            </div>
+            <p className="text-base font-bold text-emerald-700 mt-0.5 leading-none">{totalRx}</p>
+          </div>
+          <div className="rounded-xl border bg-gradient-to-br from-amber-100/60 to-transparent p-2.5">
+            <div className="flex items-center gap-1.5">
+              <FlaskConical className="h-3 w-3 text-amber-600" />
+              <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Labs</span>
+            </div>
+            <p className="text-base font-bold text-amber-700 mt-0.5 leading-none">{totalLabs}</p>
+          </div>
+          <div className="rounded-xl border bg-gradient-to-br from-pink-100/60 to-transparent p-2.5">
+            <div className="flex items-center gap-1.5">
+              <ImageIcon className="h-3 w-3 text-pink-600" />
+              <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Imaging</span>
+            </div>
+            <p className="text-base font-bold text-pink-700 mt-0.5 leading-none">{totalImaging}</p>
+          </div>
+          <div className="rounded-xl border bg-gradient-to-br from-blue-100/60 to-transparent p-2.5 col-span-2 md:col-span-1">
+            <div className="flex items-center gap-1.5">
+              <Clock className="h-3 w-3 text-blue-600" />
+              <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Last Visit</span>
+            </div>
+            <p className="text-[11px] font-bold text-blue-700 mt-0.5 leading-tight truncate">{lastVisitDate ?? '—'}</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Empty ── */}
       {visits.length === 0 && unattachedLabs.length === 0 && unattachedImaging.length === 0 && (
         <EmptyState icon={Clock} message="No visit history found for this patient" />
       )}
 
+      {visits.length > 0 && (
+      <div className="relative pl-7">
+        {/* rail */}
+        <div className="absolute left-3 top-3 bottom-3 w-px bg-gradient-to-b from-primary/40 via-primary/20 to-transparent" aria-hidden />
+        <div className="space-y-3">
       {visits.map((visit, i) => {
         const isExpanded = expandedVisit === i;
+        const visitNumber = visits.length - i;
 
         // Build display items for this visit
         const items: { label: string; color: string; content: React.ReactNode }[] = [];
@@ -803,24 +992,72 @@ function VisitTimeline({ patientId, patient, appointmentId }: { patientId: strin
         }
 
         return (
-          <div key={visit.id} className="rounded-xl border bg-card overflow-hidden">
-            {/* Visit header */}
-            <button
-              type="button"
-              className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-muted/40 transition-colors text-left"
-              onClick={() => setExpandedVisit(isExpanded ? null : i)}
+          <div key={visit.id} className="relative">
+            {/* timeline dot */}
+            <div
+              className={cn(
+                'absolute -left-[18px] top-3 flex h-4 w-4 items-center justify-center rounded-full ring-4 ring-background shadow-md',
+                i === 0 ? 'bg-primary animate-pulse' : 'bg-primary/60',
+              )}
+              aria-hidden
             >
-              <CalendarDays className="h-4 w-4 text-primary shrink-0" />
-              <span className="text-xs font-bold text-primary">{visit.date}</span>
-              {visit.doctorName && (
-                <span className="text-[11px] text-muted-foreground">· {visit.doctorName}</span>
-              )}
-              <div className="flex-1" />
-              {visit.rxStatus && (
-                <Badge variant="outline" className="text-[9px] capitalize">{visit.rxStatus}</Badge>
-              )}
-              <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', isExpanded && 'rotate-180')} />
-            </button>
+              <div className="h-1.5 w-1.5 rounded-full bg-white" />
+            </div>
+
+            <div className={cn(
+              'rounded-xl border bg-card overflow-hidden shadow-sm transition-all',
+              isExpanded ? 'shadow-md ring-1 ring-primary/20' : 'hover:shadow-md',
+              i === 0 && 'border-primary/30',
+            )}>
+              {/* Visit header */}
+              <button
+                type="button"
+                className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-muted/40 transition-colors text-left"
+                onClick={() => setExpandedVisit(isExpanded ? null : i)}
+              >
+                <Badge className={cn(
+                  'text-[9px] px-1.5 py-0 font-bold shrink-0',
+                  i === 0 ? 'bg-primary text-white' : 'bg-muted text-muted-foreground',
+                )}>
+                  #{visitNumber}
+                </Badge>
+                <div className="flex flex-col leading-tight">
+                  <span className="text-xs font-bold text-foreground">{visit.date}</span>
+                  {visit.doctorName && (
+                    <span className="text-[10px] text-muted-foreground">{visit.doctorName}</span>
+                  )}
+                </div>
+                <div className="flex-1" />
+
+                {/* Summary count chips */}
+                <div className="hidden sm:flex items-center gap-1 mr-1">
+                  {visit.rxItems.length > 0 && (
+                    <span className="inline-flex items-center gap-0.5 rounded-md bg-emerald-50 text-emerald-700 px-1.5 py-0.5 text-[9px] font-bold">
+                      <Pill className="h-2.5 w-2.5" />{visit.rxItems.length}
+                    </span>
+                  )}
+                  {visit.labs.length > 0 && (
+                    <span className="inline-flex items-center gap-0.5 rounded-md bg-amber-50 text-amber-700 px-1.5 py-0.5 text-[9px] font-bold">
+                      <FlaskConical className="h-2.5 w-2.5" />{visit.labs.length}
+                    </span>
+                  )}
+                  {visit.imaging.length > 0 && (
+                    <span className="inline-flex items-center gap-0.5 rounded-md bg-pink-50 text-pink-700 px-1.5 py-0.5 text-[9px] font-bold">
+                      <ImageIcon className="h-2.5 w-2.5" />{visit.imaging.length}
+                    </span>
+                  )}
+                  {visit.diagnoses.length > 0 && (
+                    <span className="inline-flex items-center gap-0.5 rounded-md bg-red-50 text-red-700 px-1.5 py-0.5 text-[9px] font-bold">
+                      Dx {visit.diagnoses.length}
+                    </span>
+                  )}
+                </div>
+
+                {visit.rxStatus && (
+                  <Badge variant="outline" className="text-[9px] capitalize">{visit.rxStatus}</Badge>
+                )}
+                <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', isExpanded && 'rotate-180')} />
+              </button>
 
             {/* Collapsed summary */}
             {!isExpanded && items.length > 0 && (
@@ -856,9 +1093,13 @@ function VisitTimeline({ patientId, patient, appointmentId }: { patientId: strin
                 )}
               </div>
             )}
+            </div>
           </div>
         );
       })}
+        </div>
+      </div>
+      )}
 
       {/* ── Unattached Lab Orders ── */}
       {unattachedLabs.length > 0 && (
@@ -1094,6 +1335,19 @@ export default function PatientConsultationPage({
   const router = useRouter();
   const searchParams = useSearchParams();
   const appointmentId = searchParams.get('appointmentId');
+  const [clinicalOpen, setClinicalOpen] = useState(false);
+  const [activeClinical, setActiveClinical] = useState<'medications' | 'history' | 'investigations' | 'drugs' | null>(null);
+
+  const openClinical = (key: 'medications' | 'history' | 'investigations' | 'drugs') => {
+    setActiveClinical(key);
+    setClinicalOpen(true);
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        const el = document.getElementById(`clinical-${key}`);
+        el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 80);
+    });
+  };
 
   const { data: patient, isLoading: patientLoading } = usePatientDetail(patientId);
 
@@ -1151,161 +1405,392 @@ export default function PatientConsultationPage({
   const startEdit = () => router.push(`/doctor/consultation/${patient.id}?appointmentId=${appointmentId}&edit=1`);
   const cancelEdit = () => router.push(`/doctor/consultation/${patient.id}?appointmentId=${appointmentId}`);
 
+  const showForm = isInConsultation || isEditing;
+
   return (
-    <div className="space-y-3">
-      {/* ── Unified Patient Header Card ── */}
-      <div className="rounded-xl border bg-card px-4 py-3 space-y-2">
-        <PatientHeader patient={patient} appointment={appointment} onBack={() => router.back()} />
-        <AllergyBanner allergies={patient.allergies} />
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[9px] font-label font-semibold uppercase tracking-widest text-muted-foreground shrink-0">
-            Latest Vitals
-          </span>
-          <VitalsStrip patientId={patient.id} />
-        </div>
-      </div>
-
-      {/* ── Consultation edit-window banner (completed + eligible) ── */}
-      {canEdit && completedAt !== null && (
-        <EditWindowBanner
-          isEditing={isEditing}
-          completedAt={completedAt}
-          onStartEdit={startEdit}
-          onCancelEdit={cancelEdit}
-        />
-      )}
-      {editWindowClosed && (
-        <div className="rounded-xl border-2 border-muted bg-muted/30 px-4 py-3 flex items-center gap-3">
-          <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
-          <div className="flex-1 text-xs text-muted-foreground">
-            <span className="font-semibold text-foreground">Edit window closed.</span>{' '}
-            OP consultations can be amended for 24 hours after completion. Contact an administrator
-            for corrections.
-          </div>
-        </div>
-      )}
-
-      {/* ── Pre-consultation forms gate ── */}
-      <TriggerFormsGate
-        trigger="pre_consultation"
-        context={{ patientId: patient.id, appointmentId }}
-        bannerHeading="Pre-consultation forms required"
+    <div className="min-h-screen bg-gradient-to-b from-muted/20 via-background to-muted/10">
+      {/* ── Sticky Top Bar ── */}
+      <ConsultationTopBar
+        patient={patient}
+        appointment={appointment}
+        onBack={() => router.back()}
       />
 
-      {/* ── Clinical Record sidebar (collapsible; context panels, not editable in consultation) ── */}
-      <div className="space-y-2">
-        <div className="flex items-center gap-2 px-1">
-          <span className="text-[9px] font-label font-semibold uppercase tracking-widest text-muted-foreground">
-            Clinical Record
-          </span>
-          <div className="h-px flex-1 bg-border" />
+      <div className="px-4 lg:px-6 py-4">
+        {/* ── Edit window banner / closed banner / pre-consult gate (full width) ── */}
+        {canEdit && completedAt !== null && (
+          <div className="mb-4">
+            <EditWindowBanner
+              isEditing={isEditing}
+              completedAt={completedAt}
+              onStartEdit={startEdit}
+              onCancelEdit={cancelEdit}
+            />
+          </div>
+        )}
+        {editWindowClosed && (
+          <div className="mb-4 rounded-xl border-2 border-muted bg-muted/30 px-4 py-3 flex items-center gap-3">
+            <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
+            <div className="flex-1 text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">Edit window closed.</span>{' '}
+              OP consultations can be amended for 24 hours after completion. Contact an administrator
+              for corrections.
+            </div>
+          </div>
+        )}
+        <div className="mb-4">
+          <TriggerFormsGate
+            trigger="pre_consultation"
+            context={{ patientId: patient.id, appointmentId }}
+            bannerHeading="Pre-consultation forms required"
+          />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
-          <CollapsibleSection
-            icon={<Stethoscope className="h-4 w-4" />}
-            title="Current Medications"
-            color="text-emerald-600"
-            defaultOpen={!isInConsultation}
-          >
-            <div className="p-3">
-              <CurrentMedicationsPanel patientId={patient.id} />
+        {/* ── Clinical Record Quick Cards (top) ── */}
+        <div className="mb-4">
+          <div className="flex items-center gap-2 px-1 mb-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/15">
+              <FolderOpen className="h-3.5 w-3.5 text-primary" />
             </div>
-          </CollapsibleSection>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">
+              Clinical Record
+            </h3>
+            <span className="text-[10px] text-muted-foreground">· click any card to view details</span>
+            <div className="h-px flex-1 bg-gradient-to-r from-primary/20 via-primary/5 to-transparent" />
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { key: 'medications' as const, title: 'Current Medications', subtitle: 'Active prescriptions', icon: Stethoscope, tint: 'emerald', gradFrom: 'from-emerald-50', gradVia: 'via-emerald-100/40', border: 'border-emerald-200', iconBg: 'bg-emerald-100', iconColor: 'text-emerald-600', text: 'text-emerald-700', hover: 'hover:border-emerald-400 hover:shadow-emerald-100' },
+              { key: 'history' as const, title: 'Medical History', subtitle: 'Conditions & surgeries', icon: Heart, tint: 'rose', gradFrom: 'from-rose-50', gradVia: 'via-rose-100/40', border: 'border-rose-200', iconBg: 'bg-rose-100', iconColor: 'text-rose-600', text: 'text-rose-700', hover: 'hover:border-rose-400 hover:shadow-rose-100' },
+              { key: 'investigations' as const, title: 'Investigation History', subtitle: 'Labs & imaging', icon: FlaskConical, tint: 'amber', gradFrom: 'from-amber-50', gradVia: 'via-amber-100/40', border: 'border-amber-200', iconBg: 'bg-amber-100', iconColor: 'text-amber-600', text: 'text-amber-700', hover: 'hover:border-amber-400 hover:shadow-amber-100' },
+              { key: 'drugs' as const, title: 'Drug History', subtitle: 'Past meds & adherence', icon: Pill, tint: 'blue', gradFrom: 'from-blue-50', gradVia: 'via-blue-100/40', border: 'border-blue-200', iconBg: 'bg-blue-100', iconColor: 'text-blue-600', text: 'text-blue-700', hover: 'hover:border-blue-400 hover:shadow-blue-100' },
+            ].map((c) => {
+              const Icon = c.icon;
+              return (
+                <button
+                  key={c.key}
+                  type="button"
+                  onClick={() => openClinical(c.key)}
+                  className={cn(
+                    'group relative overflow-hidden rounded-2xl border-2 bg-gradient-to-br to-transparent p-3 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg',
+                    c.gradFrom, c.gradVia, c.border, c.hover,
+                  )}
+                >
+                  <div className="flex items-start gap-2.5">
+                    <div className={cn('flex h-10 w-10 items-center justify-center rounded-xl shadow-sm shrink-0', c.iconBg)}>
+                      <Icon className={cn('h-5 w-5', c.iconColor)} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1">
+                        <h4 className={cn('text-[13px] font-bold leading-tight truncate', c.text)}>{c.title}</h4>
+                        <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-0.5', c.iconColor)} />
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{c.subtitle}</p>
+                      <p className={cn('text-[9px] font-bold uppercase tracking-wider mt-1.5 opacity-70', c.text)}>View details →</p>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
-          <CollapsibleSection
-            icon={<Heart className="h-4 w-4" />}
-            title="Medical History"
-            color="text-rose-600"
-          >
-            <div className="p-3">
-              <MedicalHistoryPanel patientId={patient.id} />
-            </div>
-          </CollapsibleSection>
+        {/* ── 2-Column Dashboard Layout ── */}
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
+          {/* ═══════ MAIN COLUMN ═══════ */}
+          <div className="xl:col-span-8 space-y-4 min-w-0">
+            {/* CONSULTATION FORM — only when active/editing */}
+            {showForm && (
+              <section className="relative">
+                <div className="absolute -inset-0.5 rounded-2xl bg-gradient-to-br from-primary/40 via-primary/20 to-transparent opacity-60 blur-sm" aria-hidden />
+                <div className="relative rounded-2xl border-2 border-primary/30 bg-card overflow-hidden shadow-xl shadow-primary/10">
+                  {/* Form header bar */}
+                  <div className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-b border-primary/15">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/70 text-white shadow-md shadow-primary/20">
+                      <Stethoscope className="h-4 w-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h2 className="text-sm font-bold text-primary leading-tight">
+                        {isEditing ? 'Editing Consultation' : 'Active Consultation'}
+                      </h2>
+                      <p className="text-[10px] text-muted-foreground leading-tight">
+                        {isEditing
+                          ? 'Amend the saved consultation — changes update existing records'
+                          : 'Record symptoms, vitals, diagnosis & prescription'}
+                      </p>
+                    </div>
+                    {isEditing ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={cancelEdit}
+                        className="h-8 gap-1.5 border-amber-300 text-amber-700 hover:bg-amber-50"
+                      >
+                        <ArrowLeft className="h-3.5 w-3.5" />
+                        Cancel Edit
+                      </Button>
+                    ) : (
+                      <Badge className="bg-emerald-100 text-emerald-700 text-[9px] px-2 py-0.5 font-bold gap-1 shadow-sm">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        LIVE
+                      </Badge>
+                    )}
+                  </div>
 
-          <CollapsibleSection
-            icon={<FlaskConical className="h-4 w-4" />}
-            title="Investigation History"
-            color="text-amber-600"
-          >
-            <div className="p-3">
-              <InvestigationHistoryPanel patientId={patient.id} />
-            </div>
-          </CollapsibleSection>
+                  {/* Form body */}
+                  {isEditing && !prefill ? (
+                    <div className="flex items-center justify-center py-20">
+                      <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                      <span className="ml-2 text-sm text-muted-foreground">Loading saved consultation…</span>
+                    </div>
+                  ) : (
+                    <>
+                      <PrescriptionPad
+                        key={isEditing ? `edit-${prefill?.visitId}` : 'new'}
+                        patientId={patient.id}
+                        patientName={`${patient.firstName} ${patient.lastName}`}
+                        patientAge={patient.dateOfBirth ? calculateAge(patient.dateOfBirth) : undefined}
+                        patientGender={patient.gender}
+                        patientPhone={patient.phone}
+                        appointmentId={appointmentId || ''}
+                        doctorProfileId={appointment?.doctorId || ''}
+                        doctorUserId={appointment?.doctor?.userId || ''}
+                        onComplete={() => (isEditing ? cancelEdit() : router.back())}
+                        hideHeader
+                        initialValues={isEditing && prefill ? prefill : undefined}
+                        editMode={
+                          isEditing && prefill?.visitId
+                            ? {
+                                visitId: prefill.visitId,
+                                progressNoteId: prefill.progressNoteId,
+                                prescriptionId: prefill.prescriptionId,
+                              }
+                            : undefined
+                        }
+                      />
+                      {isEditing && (
+                        <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-primary/15 bg-gradient-to-r from-amber-50/40 via-transparent to-transparent">
+                          <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                            <Clock className="h-3 w-3" />
+                            Unsaved edits will be discarded.
+                          </p>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={cancelEdit}
+                            className="h-8 gap-1.5 border-amber-300 text-amber-700 hover:bg-amber-50"
+                          >
+                            <ArrowLeft className="h-3.5 w-3.5" />
+                            Cancel Edit
+                          </Button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </section>
+            )}
 
-          <CollapsibleSection
-            icon={<Pill className="h-4 w-4" />}
-            title="Drug History"
-            color="text-blue-600"
-          >
-            <div className="p-3">
-              <DrugHistoryPanel patientId={patient.id} />
+            {/* VISIT TIMELINE */}
+            <section>
+              <div className="flex items-center gap-2 px-1 mb-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/15">
+                  <CalendarDays className="h-3.5 w-3.5 text-primary" />
+                </div>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">
+                  Visit Timeline
+                </h3>
+                <div className="h-px flex-1 bg-gradient-to-r from-primary/20 via-primary/5 to-transparent" />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs h-7 border-amber-300 text-amber-700 hover:bg-amber-50"
+                >
+                  <FlaskConical className="h-3 w-3" />
+                  Order Lab
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs h-7 border-pink-300 text-pink-700 hover:bg-pink-50"
+                >
+                  <ImageIcon className="h-3 w-3" />
+                  Request Imaging
+                </Button>
+              </div>
+              <VisitTimeline patientId={patient.id} patient={patient} appointmentId={appointmentId} />
+            </section>
+          </div>
+
+          {/* ═══════ SIDEBAR ═══════ */}
+          <aside className="xl:col-span-4 space-y-4">
+            <div className="xl:sticky xl:top-20 space-y-4">
+              {/* Appointment */}
+              <AppointmentCard patient={patient} appointment={appointment} />
+
+              {/* Allergies */}
+              {patient.allergies && patient.allergies.length > 0 && (
+                <div className="rounded-2xl border-2 border-destructive/30 bg-gradient-to-br from-destructive/10 via-destructive/5 to-transparent overflow-hidden shadow-sm">
+                  <div className="px-4 py-2.5 bg-destructive/10 border-b border-destructive/20 flex items-center gap-2">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-destructive text-white shadow-sm">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                    </div>
+                    <span className="text-xs font-bold text-destructive uppercase tracking-wide">
+                      Allergies
+                    </span>
+                    <Badge variant="destructive" className="ml-auto text-[9px] px-1.5 py-0">
+                      {patient.allergies.length}
+                    </Badge>
+                  </div>
+                  <div className="p-3 flex flex-wrap gap-1.5">
+                    {patient.allergies.map((a, i) => (
+                      <Badge
+                        key={a.id ?? i}
+                        variant="destructive"
+                        className="text-[10px] font-semibold py-0.5 px-2"
+                      >
+                        {a.allergen}
+                        {a.severity && <span className="ml-1 opacity-75">· {a.severity}</span>}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Vitals */}
+              <div className="rounded-2xl border bg-card overflow-hidden shadow-sm">
+                <div className="px-4 py-2.5 border-b flex items-center gap-2 bg-gradient-to-r from-primary/5 to-transparent">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/15">
+                    <Activity className="h-3.5 w-3.5 text-primary" />
+                  </div>
+                  <span className="text-xs font-bold uppercase tracking-wide text-foreground">
+                    Latest Vitals
+                  </span>
+                </div>
+                <div className="p-3">
+                  <VitalsStrip patientId={patient.id} />
+                </div>
+              </div>
+
             </div>
-          </CollapsibleSection>
+          </aside>
         </div>
       </div>
 
-      {/* ── Consultation Form (active consultation, or editing a completed one within 24h) ── */}
-      {(isInConsultation || isEditing) ? (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 px-1">
-            <span className="text-[9px] font-label font-semibold uppercase tracking-widest text-muted-foreground">
-              {isEditing ? 'Editing Consultation' : 'Consultation Form'}
-            </span>
-            <div className="h-px flex-1 bg-border" />
-          </div>
-          <div className="rounded-xl border bg-card overflow-hidden">
-            {isEditing && !prefill ? (
-              <div className="flex items-center justify-center py-16">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                <span className="ml-2 text-sm text-muted-foreground">Loading saved consultation…</span>
+      {/* ═══════════ Clinical Record Popup ═══════════ */}
+      <Dialog
+        open={clinicalOpen}
+        onOpenChange={(o) => {
+          setClinicalOpen(o);
+          if (!o) setActiveClinical(null);
+        }}
+      >
+        <DialogContent className="max-w-5xl w-[calc(100%-2rem)] p-0 gap-0 overflow-hidden max-h-[90vh] flex flex-col sm:max-w-5xl">
+          {/* Header */}
+          <div className="relative overflow-hidden bg-gradient-to-br from-primary via-primary to-emerald-700 px-6 py-4 text-white shrink-0">
+            <div className="absolute -top-16 -right-16 h-40 w-40 rounded-full bg-white/10 blur-3xl" aria-hidden />
+            <div className="relative flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 backdrop-blur-sm ring-2 ring-white/20">
+                <FolderOpen className="h-5 w-5" />
               </div>
-            ) : (
-              <PrescriptionPad
-                key={isEditing ? `edit-${prefill?.visitId}` : 'new'}
-                patientId={patient.id}
-                patientName={`${patient.firstName} ${patient.lastName}`}
-                patientAge={patient.dateOfBirth ? calculateAge(patient.dateOfBirth) : undefined}
-                patientGender={patient.gender}
-                patientPhone={patient.phone}
-                appointmentId={appointmentId || ''}
-                doctorProfileId={appointment?.doctorId || ''}
-                doctorUserId={appointment?.doctor?.userId || ''}
-                onComplete={() => (isEditing ? cancelEdit() : router.back())}
-                hideHeader
-                initialValues={isEditing && prefill ? prefill : undefined}
-                editMode={
-                  isEditing && prefill?.visitId
-                    ? {
-                        visitId: prefill.visitId,
-                        progressNoteId: prefill.progressNoteId,
-                        prescriptionId: prefill.prescriptionId,
-                      }
-                    : undefined
-                }
-              />
+              <div className="flex-1 min-w-0">
+                <DialogTitle className="text-lg font-bold tracking-tight text-white">
+                  Clinical Record
+                </DialogTitle>
+                <DialogDescription className="text-[11px] text-white/70 mt-0.5">
+                  Complete medical context — read-only view
+                </DialogDescription>
+              </div>
+            </div>
+          </div>
+
+          {/* Scrollable Body — only the clicked section is rendered */}
+          <div className="flex-1 overflow-y-auto bg-gradient-to-b from-muted/20 to-background p-5">
+            {activeClinical === 'medications' && (
+              <section className="rounded-2xl border bg-card overflow-hidden shadow-sm">
+                <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-emerald-50 to-transparent border-b">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100">
+                    <Stethoscope className="h-4.5 w-4.5 text-emerald-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-emerald-700">Current Medications</h3>
+                    <p className="text-[11px] text-muted-foreground">Active prescriptions</p>
+                  </div>
+                </div>
+                <div className="p-4">
+                  <CurrentMedicationsPanel patientId={patient.id} />
+                </div>
+              </section>
+            )}
+
+            {activeClinical === 'history' && (
+              <section className="rounded-2xl border bg-card overflow-hidden shadow-sm">
+                <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-rose-50 to-transparent border-b">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-100">
+                    <Heart className="h-4.5 w-4.5 text-rose-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-rose-700">Medical History</h3>
+                    <p className="text-[11px] text-muted-foreground">Conditions, surgeries & family hx</p>
+                  </div>
+                </div>
+                <div className="p-4">
+                  <MedicalHistoryPanel patientId={patient.id} />
+                </div>
+              </section>
+            )}
+
+            {activeClinical === 'investigations' && (
+              <section className="rounded-2xl border bg-card overflow-hidden shadow-sm">
+                <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-amber-50 to-transparent border-b">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100">
+                    <FlaskConical className="h-4.5 w-4.5 text-amber-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-amber-700">Investigation History</h3>
+                    <p className="text-[11px] text-muted-foreground">Lab results & imaging reports</p>
+                  </div>
+                </div>
+                <div className="p-4">
+                  <InvestigationHistoryPanel patientId={patient.id} />
+                </div>
+              </section>
+            )}
+
+            {activeClinical === 'drugs' && (
+              <section className="rounded-2xl border bg-card overflow-hidden shadow-sm">
+                <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-blue-50 to-transparent border-b">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-100">
+                    <Pill className="h-4.5 w-4.5 text-blue-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-blue-700">Drug History</h3>
+                    <p className="text-[11px] text-muted-foreground">Past medications & adherence</p>
+                  </div>
+                </div>
+                <div className="p-4">
+                  <DrugHistoryPanel patientId={patient.id} />
+                </div>
+              </section>
             )}
           </div>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 px-1">
-            <span className="text-[9px] font-label font-semibold uppercase tracking-widest text-muted-foreground">
-              Visit Timeline
-            </span>
-            <div className="h-px flex-1 bg-border" />
-            <Button variant="outline" size="sm" className="gap-1.5 text-xs h-7">
-              <FlaskConical className="h-3 w-3" />
-              Order Lab
-            </Button>
-            <Button variant="outline" size="sm" className="gap-1.5 text-xs h-7">
-              <ImageIcon className="h-3 w-3" />
-              Request Imaging
+
+          {/* Footer */}
+          <div className="border-t bg-muted/30 px-5 py-3 flex items-center justify-between shrink-0">
+            <p className="text-[11px] text-muted-foreground">
+              Data is read-only here. Record new findings in the consultation form.
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setClinicalOpen(false)}
+              className="h-8"
+            >
+              Close
             </Button>
           </div>
-          <VisitTimeline patientId={patient.id} patient={patient} appointmentId={appointmentId} />
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
