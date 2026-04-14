@@ -43,7 +43,11 @@ import { useFormSubmissions, useSystemForm } from '@/hooks/use-forms';
 import { FormRenderer } from '@/components/forms/form-renderer';
 import { TRIGGER_LABELS } from '@/types/forms';
 import type { FormSubmission } from '@/types/forms';
-import { ClipboardList, ChevronDown, ChevronRight } from 'lucide-react';
+import { ClipboardList, ChevronDown, ChevronRight, History, Stethoscope, HeartPulse } from 'lucide-react';
+import { DrugHistoryPanel } from './drug-history-panel';
+import { MedicalHistoryPanel } from './medical-history-panel';
+import { InvestigationHistoryPanel } from './investigation-history-panel';
+import { CurrentMedicationsPanel } from './current-medications-panel';
 
 import type { Patient } from '@/types';
 import type {
@@ -239,53 +243,6 @@ function LatestVitals({ patientId }: { patientId: string }) {
           </div>
         );
       })}
-    </div>
-  );
-}
-
-// --- Active Medications ---
-
-function ActiveMedications({ patientId }: { patientId: string }) {
-  const { data, isLoading } = usePrescriptions({ patientId });
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Loader2 className="size-3 animate-spin" />
-        Loading medications...
-      </div>
-    );
-  }
-
-  const prescriptions: Prescription[] = data?.data ?? [];
-  const activePrescriptions = prescriptions.filter(
-    (p) => p.status === 'active' || p.status === 'dispensed'
-  );
-  const activeItems = activePrescriptions.flatMap((p) => p.items);
-
-  if (activeItems.length === 0) {
-    return (
-      <p className="text-xs text-muted-foreground">No active medications</p>
-    );
-  }
-
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {activeItems.slice(0, 6).map((item, idx) => (
-        <Badge
-          key={`${item.drugName}-${idx}`}
-          variant="secondary"
-          className="gap-1 text-xs"
-        >
-          <Pill className="size-3" />
-          {item.drugName} {item.dosage} — {item.frequency}
-        </Badge>
-      ))}
-      {activeItems.length > 6 && (
-        <Badge variant="outline" className="text-xs">
-          +{activeItems.length - 6} more
-        </Badge>
-      )}
     </div>
   );
 }
@@ -707,13 +664,7 @@ export function PatientConsultationView({
               <LatestVitals patientId={patient.id} />
             </div>
 
-            {/* Active Medications */}
-            <div className="space-y-1.5">
-              <h3 className="text-xs font-label font-semibold uppercase tracking-wide text-on-surface-variant">
-                Active Medications
-              </h3>
-              <ActiveMedications patientId={patient.id} />
-            </div>
+            {/* Active medications moved to the "Current Meds" tab below to avoid duplication. */}
 
             {/* Latest Form Submissions — inline with patient details */}
             <LatestFormSubmissions patientId={patient.id} appointmentId={appointmentId} />
@@ -743,6 +694,22 @@ export function PatientConsultationView({
                   <FolderOpen className="size-3.5" />
                   Documents
                 </TabsTrigger>
+                <TabsTrigger value="drug-history" className="gap-1">
+                  <History className="size-3.5" />
+                  Drug History
+                </TabsTrigger>
+                <TabsTrigger value="current-meds" className="gap-1">
+                  <Stethoscope className="size-3.5" />
+                  Current Meds
+                </TabsTrigger>
+                <TabsTrigger value="investigations" className="gap-1">
+                  <FlaskConical className="size-3.5" />
+                  Investigations
+                </TabsTrigger>
+                <TabsTrigger value="medical-history" className="gap-1">
+                  <HeartPulse className="size-3.5" />
+                  Medical History
+                </TabsTrigger>
                 <TabsTrigger value="forms" className="gap-1">
                   <ClipboardList className="size-3.5" />
                   All Forms
@@ -767,6 +734,22 @@ export function PatientConsultationView({
 
               <TabsContent value="documents" className="pt-3">
                 <DocumentsTab patient={patient} />
+              </TabsContent>
+
+              <TabsContent value="drug-history" className="pt-3">
+                <DrugHistoryPanel patientId={patient.id} />
+              </TabsContent>
+
+              <TabsContent value="current-meds" className="pt-3">
+                <CurrentMedicationsPanel patientId={patient.id} />
+              </TabsContent>
+
+              <TabsContent value="investigations" className="pt-3">
+                <InvestigationHistoryPanel patientId={patient.id} />
+              </TabsContent>
+
+              <TabsContent value="medical-history" className="pt-3">
+                <MedicalHistoryPanel patientId={patient.id} />
               </TabsContent>
 
               <TabsContent value="forms" className="pt-3">

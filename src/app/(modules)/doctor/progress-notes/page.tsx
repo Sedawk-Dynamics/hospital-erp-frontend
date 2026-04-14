@@ -8,9 +8,9 @@ import {
   usePatientSearch,
   type ProgressNote,
 } from '@/hooks/use-doctor';
-import { apiPut, apiPost } from '@/lib/api';
+import { apiPut, apiPost, apiGet } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/lib/date-utils';
@@ -586,6 +586,25 @@ function NoteFormDialog({
   const [pinnedToDischarge, setPinnedToDischarge] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Structured clinical fields (impressions / discussions / conclusions)
+  const [impressions, setImpressions] = useState('');
+  const [discussions, setDiscussions] = useState('');
+  const [conclusions, setConclusions] = useState('');
+  const [customFields, setCustomFields] = useState<Array<{ label: string; value: string }>>([]);
+  const [showDetails, setShowDetails] = useState(false);
+
+  // Templates — per-doctor reusable custom-field definitions
+  const { data: templatesData } = useQuery({
+    queryKey: ['doctor', 'progress-note-templates'],
+    queryFn: async () => {
+      const res = await apiGet<Array<{ id: string; name: string; fields: Array<{ label: string; defaultValue?: string }>; isDefault?: boolean }>>(
+        '/progress-notes/templates',
+      );
+      return res.data ?? [];
+    },
+  });
+  const templates = templatesData ?? [];
+
   // Reset form when dialog opens
   const handleOpenChange = useCallback(
     (isOpen: boolean) => {
@@ -593,6 +612,12 @@ function NoteFormDialog({
         // Populate from editing note
         setNoteType((editingNote.noteType as NoteType) || 'general');
         setPinnedToDischarge(editingNote.pinToDischargeSummary || false);
+        setImpressions((editingNote as any).impressions || '');
+        setDiscussions((editingNote as any).discussions || '');
+        setConclusions((editingNote as any).conclusions || '');
+        const cf = (editingNote as any).customFields;
+        setCustomFields(Array.isArray(cf) ? cf : []);
+        setShowDetails(!!((editingNote as any).impressions || (editingNote as any).discussions || (editingNote as any).conclusions || (Array.isArray(cf) && cf.length > 0)));
         setSelectedPatient(
           editingNote.patient
             ? {
@@ -626,6 +651,17 @@ function NoteFormDialog({
         setPatientQuery('');
         setUseRawMode(false);
         setRawContent('');
+        setImpressions('');
+        setDiscussions('');
+        setConclusions('');
+        // Auto-apply default template's fields if one exists
+        const defaultTpl = templates.find((t) => t.isDefault);
+        setCustomFields(
+          defaultTpl
+            ? defaultTpl.fields.map((f) => ({ label: f.label, value: f.defaultValue || '' }))
+            : [],
+        );
+        setShowDetails(false);
         const empty: Record<string, string> = {};
         for (const h of SECTION_HEADERS) empty[h] = '';
         setSections(empty);
@@ -667,6 +703,10 @@ function NoteFormDialog({
           content: finalContent,
           noteType,
           pinToDischargeSummary: pinnedToDischarge,
+          impressions: impressions || null,
+          discussions: discussions || null,
+          conclusions: conclusions || null,
+          customFields: customFields.length > 0 ? customFields : undefined,
         });
         queryClient.invalidateQueries({ queryKey: ['doctor', 'progress-notes'] });
         toast.success('Note updated successfully');
@@ -692,7 +732,11 @@ function NoteFormDialog({
           noteType,
           content: finalContent,
           pinToDischargeSummary: pinnedToDischarge,
-        });
+          impressions: impressions || undefined,
+          discussions: discussions || undefined,
+          conclusions: conclusions || undefined,
+          customFields: customFields.length > 0 ? customFields : undefined,
+        } as any);
         toast.success('Note created successfully');
       }
 
@@ -922,6 +966,161 @@ function NoteFormDialog({
               <p className="text-xs text-destructive">
                 Content exceeds maximum length of 10,000 characters.
               </p>
+            )}
+          </div>
+
+          {/* Structured clinical details */}
+          <div className="rounded-lg border">
+            <button
+              type="button"
+              onClick={() => setShowDetails((v) => !v)}
+              className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium hover:bg-muted/50"
+            >
+              <span>Clinical Details (impressions, discussions, conclusions, custom fields)</span>
+              <span className="text-xs text-muted-foreground">{showDetails ? 'Hide' : 'Show'}</span>
+            </button>
+            {showDetails && (
+              <div className="space-y-3 border-t p-3">
+                {/* Template controls */}
+                {templates.length > 0 && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-muted-foreground">Apply template:</span>
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        const tpl = templates.find((t) => t.id === e.target.value);
+                        if (tpl) {
+                          setCustomFields(
+                            tpl.fields.map((f) => ({ label: f.label, value: f.defaultValue || '' })),
+                          );
+                        }
+                      }}
+                      className="rounded-md border bg-background px-2 py-1"
+                    >
+                      <option value="">—</option>
+                      {templates.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                          {t.isDefault ? ' (default)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase tracking-widest text-on-surface-variant font-semibold">
+                    Impressions
+                  </label>
+                  <Textarea
+                    value={impressions}
+                    onChange={(e) => setImpressions(e.target.value)}
+                    className="min-h-[50px] text-sm resize-none"
+                    rows={2}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase tracking-widest text-on-surface-variant font-semibold">
+                    Discussions
+                  </label>
+                  <Textarea
+                    value={discussions}
+                    onChange={(e) => setDiscussions(e.target.value)}
+                    className="min-h-[50px] text-sm resize-none"
+                    rows={2}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase tracking-widest text-on-surface-variant font-semibold">
+                    Conclusions
+                  </label>
+                  <Textarea
+                    value={conclusions}
+                    onChange={(e) => setConclusions(e.target.value)}
+                    className="min-h-[50px] text-sm resize-none"
+                    rows={2}
+                  />
+                </div>
+
+                {/* Custom fields */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] uppercase tracking-widest text-on-surface-variant font-semibold">
+                      Custom Fields
+                    </label>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-6 gap-1 text-[11px]"
+                      onClick={() =>
+                        setCustomFields((prev) => [...prev, { label: '', value: '' }])
+                      }
+                    >
+                      + Add Field
+                    </Button>
+                  </div>
+                  {customFields.map((cf, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <input
+                        placeholder="Field label"
+                        value={cf.label}
+                        onChange={(e) =>
+                          setCustomFields((prev) =>
+                            prev.map((x, i) => (i === idx ? { ...x, label: e.target.value } : x)),
+                          )
+                        }
+                        className="w-40 rounded-md border bg-background px-2 py-1 text-xs"
+                      />
+                      <input
+                        placeholder="Value"
+                        value={cf.value}
+                        onChange={(e) =>
+                          setCustomFields((prev) =>
+                            prev.map((x, i) => (i === idx ? { ...x, value: e.target.value } : x)),
+                          )
+                        }
+                        className="flex-1 rounded-md border bg-background px-2 py-1 text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCustomFields((prev) => prev.filter((_, i) => i !== idx))
+                        }
+                        className="text-muted-foreground hover:text-destructive text-xs px-1"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                  {customFields.length > 0 && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-6 text-[11px] mt-1"
+                      onClick={async () => {
+                        const name = window.prompt('Template name?');
+                        if (!name) return;
+                        const makeDefault = window.confirm('Set as default template?');
+                        try {
+                          await apiPost('/progress-notes/templates', {
+                            name,
+                            fields: customFields.map((c) => ({ label: c.label, type: 'text' as const })),
+                            isDefault: makeDefault,
+                          });
+                          queryClient.invalidateQueries({ queryKey: ['doctor', 'progress-note-templates'] });
+                          toast.success('Template saved');
+                        } catch {
+                          toast.error('Failed to save template');
+                        }
+                      }}
+                    >
+                      Save as template
+                    </Button>
+                  )}
+                </div>
+              </div>
             )}
           </div>
 

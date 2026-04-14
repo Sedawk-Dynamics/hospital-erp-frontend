@@ -1,6 +1,6 @@
 'use client';
 
-import { User, Mail, Phone, MapPin, Calendar, Shield, Heart, AlertTriangle } from 'lucide-react';
+import { User, Mail, Phone, MapPin, Calendar, Shield } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
@@ -17,7 +17,6 @@ export default function PatientProfilePage() {
         phone?: string; gender?: string; dateOfBirth?: string; bloodGroup?: string;
         addressLine1?: string; city?: string; state?: string;
         emergencyContacts?: Array<{ name: string; phone: string; relationship: string }>;
-        allergies?: Array<{ allergen: string; severity: string; reaction?: string }>;
         mrn?: string;
       }>('/patient-portal/profile');
       return res.data;
@@ -69,28 +68,13 @@ export default function PatientProfilePage() {
         )}
       </div>
 
-      {/* Allergies */}
-      <div className="rounded-xl border bg-card p-6">
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4" /> Allergies
-        </h3>
-        {patient?.allergies && patient.allergies.length > 0 ? (
-          <div className="space-y-2">
-            {patient.allergies.map((a: { allergen: string; severity: string; reaction?: string }, i: number) => (
-              <div key={i} className="flex items-center gap-3 rounded-lg bg-red-50 border border-red-100 p-3 text-sm">
-                <Heart className="h-4 w-4 text-red-500 flex-shrink-0" />
-                <div className="flex-1">
-                  <span className="font-medium text-red-800">{a.allergen}</span>
-                  <span className="text-red-600 ml-2 text-xs capitalize">({a.severity})</span>
-                  {a.reaction && <p className="text-xs text-red-600 mt-0.5">{a.reaction}</p>}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">No allergies recorded</p>
-        )}
-      </div>
+      <p className="text-xs text-muted-foreground">
+        Manage allergies, personal habits, and family history in{' '}
+        <a href="/patient-portal/medical-history" className="text-primary underline">
+          Medical History
+        </a>
+        .
+      </p>
     </div>
   );
 }

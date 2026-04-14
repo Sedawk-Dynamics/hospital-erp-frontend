@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   useDoctorAdmissions,
   useGenerateDischargeSummary,
@@ -22,6 +23,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import {
   Search,
@@ -32,7 +34,11 @@ import {
   PenLine,
   Send,
   Calendar,
+  RefreshCw,
+  Download,
 } from 'lucide-react';
+import apiClient from '@/lib/api-client';
+import { apiPost } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Status badge helper
@@ -59,13 +65,16 @@ function StatusBadge({ status }: { status: DischargeSummary['status'] }) {
 
 export default function DischargeSummaryPage() {
   const { user } = useAuthStore();
+  const searchParams = useSearchParams();
 
   // -- Admission list state --
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
 
   // -- Editor state --
-  const [selectedAdmissionId, setSelectedAdmissionId] = useState<string | null>(null);
+  const [selectedAdmissionId, setSelectedAdmissionId] = useState<string | null>(
+    searchParams.get('admissionId'),
+  );
   const [summaryData, setSummaryData] = useState<DischargeSummary | null>(null);
 
   // Local form fields
@@ -149,16 +158,69 @@ export default function DischargeSummaryPage() {
     followUpDate, followUpInstructions,
   ]);
 
-  const handleSign = useCallback(async () => {
+  // E-sign popup state
+  const [signDialogOpen, setSignDialogOpen] = useState(false);
+  const [signatureName, setSignatureName] = useState('');
+
+  const requestSign = useCallback(() => {
     if (!summaryData) return;
+    const defaultName = user ? `Dr. ${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() : '';
+    setSignatureName(defaultName);
+    setSignDialogOpen(true);
+  }, [summaryData, user]);
+
+  const confirmSign = useCallback(async () => {
+    if (!summaryData) return;
+    const expectedName = user ? `Dr. ${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() : '';
+    if (!signatureName.trim() || (expectedName && signatureName.trim().toLowerCase() !== expectedName.toLowerCase())) {
+      toast.error('Please type your full name exactly to sign');
+      return;
+    }
     try {
       const signed = await signMutation.mutateAsync(summaryData.id);
       if (signed) setSummaryData(signed);
       toast.success('Discharge summary signed & finalized');
+      setSignDialogOpen(false);
+      setSignatureName('');
     } catch {
       toast.error('Failed to sign discharge summary');
     }
-  }, [summaryData, signMutation]);
+  }, [summaryData, signMutation, signatureName, user]);
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(async () => {
+    if (!summaryData) return;
+    setIsRefreshing(true);
+    try {
+      const res = await apiPost<any>(`/mrd/discharge-summary/${summaryData.id}/refresh`);
+      if (res.data) {
+        setSummaryData(res.data);
+        toast.success('Refreshed from pinned notes & source data');
+      }
+    } catch {
+      toast.error('Failed to refresh');
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [summaryData]);
+
+  const handleDownloadPdf = useCallback(async () => {
+    if (!summaryData) return;
+    try {
+      const res = await apiClient.get(`/mrd/discharge-summary/${summaryData.id}/pdf`, {
+        responseType: 'blob',
+      });
+      const url = URL.createObjectURL(res.data as Blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `discharge-summary-${summaryData.id}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Failed to download PDF');
+    }
+  }, [summaryData]);
 
   const handlePublish = useCallback(async () => {
     if (!summaryData) return;
@@ -393,6 +455,20 @@ export default function DischargeSummaryPage() {
             )}
           </div>
           <div className="flex items-center gap-2">
+            {summaryData.status === 'draft' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className="gap-1.5"
+                title="Regenerate summary from pinned notes, diagnoses, labs, and prescriptions"
+              >
+                <RefreshCw className={cn('h-3.5 w-3.5', isRefreshing && 'animate-spin')} />
+                {isRefreshing ? 'Refreshing...' : 'Refresh from Notes'}
+              </Button>
+            )}
+
             {!isReadOnly && (
               <Button
                 variant="outline"
@@ -406,11 +482,18 @@ export default function DischargeSummaryPage() {
               </Button>
             )}
 
+            {summaryData.status !== 'draft' && (
+              <Button variant="outline" size="sm" onClick={handleDownloadPdf} className="gap-1.5">
+                <Download className="h-3.5 w-3.5" />
+                PDF
+              </Button>
+            )}
+
             {summaryData.status === 'draft' && (
               <Button
                 variant="default"
                 size="sm"
-                onClick={handleSign}
+                onClick={requestSign}
                 disabled={signMutation.isPending}
                 className="gap-1.5"
               >
@@ -438,6 +521,53 @@ export default function DischargeSummaryPage() {
             </Button>
           </div>
         </div>
+
+        {/* E-Sign Confirmation Dialog */}
+        <Dialog open={signDialogOpen} onOpenChange={setSignDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <PenLine className="h-4 w-4" /> Electronic Signature
+              </DialogTitle>
+              <DialogDescription>
+                By typing your full name below and clicking <strong>Sign & Finalize</strong>, you
+                certify that the information in this discharge summary is accurate and complete.
+                This action is permanent.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <div>
+                <Label htmlFor="signature-name" className="text-xs">
+                  Type your full name to sign
+                </Label>
+                <Input
+                  id="signature-name"
+                  value={signatureName}
+                  onChange={(e) => setSignatureName(e.target.value)}
+                  placeholder="Dr. First Last"
+                  autoFocus
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Date & time of signature: {new Date().toLocaleString('en-IN')}
+              </p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" size="sm" onClick={() => setSignDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={confirmSign}
+                disabled={signMutation.isPending || !signatureName.trim()}
+                className="gap-1.5"
+              >
+                <PenLine className="h-3.5 w-3.5" />
+                {signMutation.isPending ? 'Signing...' : 'Sign & Finalize'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     );
   }

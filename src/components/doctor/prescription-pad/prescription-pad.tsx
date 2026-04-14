@@ -12,8 +12,11 @@ import {
   GripVertical, FlaskConical, ClipboardList, StickyNote,
   UserCheck, CalendarDays, MessageSquare, Eye,
   Printer, CheckCircle2, RotateCcw, ChevronDown,
-  Clock,
+  Clock, FileSignature, Save, PinIcon,
 } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiGet, apiPost } from '@/lib/api';
+import { toast } from 'sonner';
 import { useFormularySearch, useAllergyCheck, usePatientVitals, usePatientDiagnoses, usePrescriptions, useProgressNotes, type FormularyDrug } from '@/hooks/use-doctor';
 import { useDebounce } from '@/hooks/use-debounce';
 import { cn } from '@/lib/utils';
@@ -57,6 +60,14 @@ interface PrescriptionPadProps {
   onBack?: () => void;
   /** Hide the built-in patient header (when page already shows one) */
   hideHeader?: boolean;
+  /** Pre-fill the form with existing data (used when editing a completed consultation within 24h) */
+  initialValues?: Partial<ConsultationFormData>;
+  /** Edit mode: update existing records in-place and don't change appointment status */
+  editMode?: {
+    visitId: string;
+    progressNoteId?: string;
+    prescriptionId?: string;
+  };
 }
 
 export function PrescriptionPad({
@@ -71,11 +82,21 @@ export function PrescriptionPad({
   onComplete,
   onBack,
   hideHeader,
+  initialValues,
+  editMode,
 }: PrescriptionPadProps) {
   const form = useForm<ConsultationFormData>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(consultationCompletionSchema) as any,
-    defaultValues: defaultFormValues,
+    defaultValues: {
+      ...defaultFormValues,
+      ...(initialValues ?? {}),
+      vitals: { ...defaultFormValues.vitals, ...(initialValues?.vitals ?? {}) },
+      diagnoses:
+        initialValues?.diagnoses && initialValues.diagnoses.length > 0
+          ? initialValues.diagnoses
+          : defaultFormValues.diagnoses,
+    },
   });
 
   const { register, watch, setValue, formState: { errors } } = form;
@@ -103,6 +124,7 @@ export function PrescriptionPad({
         appointmentId,
         doctorProfileId,
         doctorUserId,
+        editMode,
       });
       onComplete?.();
     } catch {
@@ -239,6 +261,9 @@ export function PrescriptionPad({
             </div>
           </PadSection>
 
+          {/* ═══════ CLINICAL NARRATIVE (impressions / discussions / conclusions + custom fields) ═══════ */}
+          <ClinicalNarrativeSection form={form} collapsed={collapsed.narrative} onToggle={() => toggleSection('narrative')} />
+
           {/* ═══════ 7. NOTES ═══════ */}
           <PadSection
             icon={<StickyNote className="h-4 w-4" />}
@@ -349,7 +374,7 @@ export function PrescriptionPad({
           disabled={isSubmitting}
         >
           <CheckCircle2 className="h-4 w-4" />
-          {isSubmitting ? 'Saving...' : 'Finish Prescription'}
+          {isSubmitting ? 'Saving...' : editMode ? 'Save Changes' : 'Finish Prescription'}
         </Button>
       </div>
     </div>
@@ -1312,5 +1337,214 @@ function DiagnosisList({ content }: { content: string }) {
         );
       })}
     </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// Clinical Narrative Section (impressions / discussions / conclusions + custom fields + pin)
+// ═══════════════════════════════════════════════════════════
+
+function ClinicalNarrativeSection({
+  form,
+  collapsed,
+  onToggle,
+}: {
+  form: any;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  const { register, watch, setValue } = form;
+  const qc = useQueryClient();
+  const customFields: Array<{ label: string; value?: string }> = watch('customFields') || [];
+  const pinToDischarge: boolean = watch('pinToDischargeSummary') || false;
+
+  const { data: templates } = useQuery({
+    queryKey: ['doctor', 'progress-note-templates'],
+    queryFn: async () => {
+      const res = await apiGet<Array<{ id: string; name: string; fields: Array<{ label: string; defaultValue?: string }>; isDefault?: boolean }>>(
+        '/progress-notes/templates',
+      );
+      return res.data ?? [];
+    },
+  });
+  const tpls = templates ?? [];
+
+  const applyTemplate = (id: string) => {
+    const tpl = tpls.find((t) => t.id === id);
+    if (!tpl) return;
+    setValue(
+      'customFields',
+      tpl.fields.map((f) => ({ label: f.label, value: f.defaultValue || '' })),
+      { shouldDirty: true },
+    );
+  };
+
+  const addField = () => {
+    setValue('customFields', [...customFields, { label: '', value: '' }], { shouldDirty: true });
+  };
+
+  const removeField = (idx: number) => {
+    setValue('customFields', customFields.filter((_, i) => i !== idx), { shouldDirty: true });
+  };
+
+  const updateField = (idx: number, patch: Partial<{ label: string; value: string }>) => {
+    setValue(
+      'customFields',
+      customFields.map((f, i) => (i === idx ? { ...f, ...patch } : f)),
+      { shouldDirty: true },
+    );
+  };
+
+  const saveAsTemplate = async () => {
+    const valid = customFields.filter((f) => f.label.trim());
+    if (valid.length === 0) {
+      toast.error('Add at least one custom field first');
+      return;
+    }
+    const name = window.prompt('Template name?');
+    if (!name) return;
+    const makeDefault = window.confirm('Set as default template?');
+    try {
+      await apiPost('/progress-notes/templates', {
+        name,
+        fields: valid.map((f) => ({ label: f.label, type: 'text' as const })),
+        isDefault: makeDefault,
+      });
+      qc.invalidateQueries({ queryKey: ['doctor', 'progress-note-templates'] });
+      toast.success('Template saved');
+    } catch {
+      toast.error('Failed to save template');
+    }
+  };
+
+  return (
+    <PadSection
+      icon={<FileSignature className="h-4 w-4" />}
+      title="Clinical Narrative"
+      badge="Impressions · Discussions · Conclusions"
+      collapsed={collapsed}
+      onToggle={onToggle}
+      color="text-fuchsia-600"
+    >
+      <div className="space-y-4">
+        {tpls.length > 0 && (
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-muted-foreground">Apply template:</span>
+            <select
+              value=""
+              onChange={(e) => applyTemplate(e.target.value)}
+              className="flex-1 rounded-md border bg-background px-2 py-1"
+            >
+              <option value="">—</option>
+              {tpls.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                  {t.isDefault ? ' (default)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+              Impressions
+            </label>
+            <textarea
+              {...register('impressions')}
+              placeholder="Clinical impression / working hypothesis..."
+              rows={3}
+              className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-y"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+              Discussions
+            </label>
+            <textarea
+              {...register('discussions')}
+              placeholder="Differential discussion, reasoning..."
+              rows={3}
+              className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-y"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+              Conclusions
+            </label>
+            <textarea
+              {...register('conclusions')}
+              placeholder="Conclusion / plan summary..."
+              rows={3}
+              className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-y"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+              Custom Fields
+            </label>
+            <div className="flex gap-2">
+              {customFields.length > 0 && (
+                <Button type="button" variant="outline" size="sm" onClick={saveAsTemplate} className="h-7 gap-1 text-[11px]">
+                  <Save className="h-3 w-3" /> Save as template
+                </Button>
+              )}
+              <Button type="button" variant="outline" size="sm" onClick={addField} className="h-7 gap-1 text-[11px]">
+                <Plus className="h-3 w-3" /> Add Field
+              </Button>
+            </div>
+          </div>
+
+          {customFields.length === 0 ? (
+            <p className="text-xs text-muted-foreground italic">
+              No custom fields. Use + Add Field to create your own (e.g., &ldquo;ASA grade&rdquo;, &ldquo;Pain score&rdquo;).
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              {customFields.map((cf, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <Input
+                    placeholder="Field label"
+                    value={cf.label}
+                    onChange={(e) => updateField(idx, { label: e.target.value })}
+                    className="w-48 h-8 text-xs"
+                  />
+                  <Input
+                    placeholder="Value"
+                    value={cf.value ?? ''}
+                    onChange={(e) => updateField(idx, { value: e.target.value })}
+                    className="flex-1 h-8 text-xs"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                    onClick={() => removeField(idx)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <label className="flex items-center gap-2 cursor-pointer select-none rounded-lg border bg-muted/30 px-3 py-2">
+          <input
+            type="checkbox"
+            checked={pinToDischarge}
+            onChange={(e) => setValue('pinToDischargeSummary', e.target.checked, { shouldDirty: true })}
+            className="h-4 w-4 rounded border-input accent-primary"
+          />
+          <PinIcon className="h-3.5 w-3.5 text-primary" />
+          <span className="text-sm">Pin this note to Discharge Summary</span>
+        </label>
+      </div>
+    </PadSection>
   );
 }

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
-import { Bell, Building2, Calendar, CalendarDays, ClipboardList, FileText, Home, LogOut, Menu, Pill, Settings, TestTube, User } from 'lucide-react';
+import { Bell, Building2, Calendar, CalendarDays, ClipboardList, FileText, FileCheck, Folder, Heart, Home, LogOut, Menu, Pill, Stethoscope, Settings, TestTube, User } from 'lucide-react';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -15,6 +15,10 @@ const NAV_ITEMS = [
   { label: 'Book Appointment', href: '/patient-portal/book-appointment', icon: Building2 },
   { label: 'Lab Reports', href: '/patient-portal/lab-reports', icon: TestTube },
   { label: 'Prescriptions', href: '/patient-portal/prescriptions', icon: Pill },
+  { label: 'Discharge Summaries', href: '/patient-portal/discharge-summaries', icon: FileCheck },
+  { label: 'Medical History', href: '/patient-portal/medical-history', icon: Heart },
+  { label: 'Current Medications', href: '/patient-portal/current-medications', icon: Stethoscope },
+  { label: 'My Documents', href: '/patient-portal/documents', icon: Folder },
   { label: 'Follow-Ups', href: '/patient-portal/follow-ups', icon: CalendarDays },
   { label: 'Bills & Payments', href: '/patient-portal/billing', icon: FileText },
   { label: 'My Forms', href: '/patient-portal/my-forms', icon: ClipboardList },

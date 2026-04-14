@@ -57,6 +57,7 @@ interface PrescriptionData {
   status: string;
   createdAt: string;
   notes?: string;
+  followUpDate?: string | null;
   doctor?: { user?: { firstName: string; lastName: string } };
   patient?: { tenant?: { id: string; name: string } };
   prescriptionItems?: PrescriptionItem[];
@@ -483,24 +484,7 @@ function DiagnosisText({ content }: { content: string }) {
 // ── Follow-up Banner ──────────────────────────────────────────
 
 function FollowUpBanner({ prescription }: { prescription: PrescriptionData }) {
-  let followUpDate: string | undefined;
-  let followUpNotes = '';
-
-  if (prescription.notes) {
-    const match = prescription.notes.match(/Follow-up:\s*(.+)/i);
-    if (match) {
-      const dateMatch = match[1].match(/(\d{1,2}\s+\w+\s+\d{4}|\d{4}-\d{2}-\d{2})/);
-      if (dateMatch) {
-        const parsed = new Date(dateMatch[1]);
-        if (!isNaN(parsed.getTime())) {
-          followUpDate = parsed.toISOString().split('T')[0];
-        }
-      }
-      const notesParts = match[1].split('—').map((s: string) => s.trim());
-      followUpNotes = notesParts.filter((p: string) => !p.match(/\d{4}/) && !p.match(/^After\s/i)).join(' ').trim();
-    }
-  }
-
+  const followUpDate = prescription.followUpDate || undefined;
   if (!followUpDate) return null;
 
   const dateObj = new Date(followUpDate);
@@ -549,9 +533,6 @@ function FollowUpBanner({ prescription }: { prescription: PrescriptionData }) {
             {statusLabel}
           </Badge>
         </p>
-        {followUpNotes && (
-          <p className="text-[11px] text-muted-foreground mt-0.5">{followUpNotes}</p>
-        )}
       </div>
       {!isPast && (
         <Link href="/patient-portal/book-appointment">

@@ -148,6 +148,16 @@ export const consultationCompletionSchema = z.object({
   followUpNotes: z.string().optional(),
   referralNotes: z.string().optional(),
   additionalNotes: z.string().optional(),
+
+  // Clinical narrative (stored as ProgressNote fields)
+  impressions: z.string().optional(),
+  discussions: z.string().optional(),
+  conclusions: z.string().optional(),
+  customFields: z
+    .array(z.object({ label: z.string(), value: z.string().optional().default('') }))
+    .optional()
+    .default([]),
+  pinToDischargeSummary: z.boolean().optional().default(false),
 });
 
 export type ConsultationFormData = z.infer<typeof consultationCompletionSchema>;
@@ -295,4 +305,9 @@ export const defaultFormValues: ConsultationFormData = {
   followUpNotes: '',
   referralNotes: '',
   additionalNotes: '',
+  impressions: '',
+  discussions: '',
+  conclusions: '',
+  customFields: [],
+  pinToDischargeSummary: false,
 };

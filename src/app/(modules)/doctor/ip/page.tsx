@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { formatDate, toInputDateStr } from '@/lib/date-utils';
 import { Search, CalendarIcon, Eye, FileText, FlaskConical, MoreVertical } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -42,6 +43,7 @@ const ipStatItems = [
 
 export default function DoctorIPHomePage() {
   const { user } = useAuthStore();
+  const router = useRouter();
   const [activeFilter, setActiveFilter] = useState('admitted');
   const [selectedWard, setSelectedWard] = useState('all');
   const [fromDate, setFromDate] = useState(toInputDateStr());
@@ -371,6 +373,13 @@ export default function DoctorIPHomePage() {
                               <DropdownMenuItem>View Full Record</DropdownMenuItem>
                               <DropdownMenuItem>Add Prescription</DropdownMenuItem>
                               <DropdownMenuItem>Record Vitals</DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  router.push(`/doctor/discharge-summary?admissionId=${admission.id}`)
+                                }
+                              >
+                                Prepare Discharge Summary
+                              </DropdownMenuItem>
                               {admission.status === 'admitted' && (
                                 <DropdownMenuItem
                                   className="text-destructive"

@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { apiGet, apiPost, apiPatch } from '@/lib/api';
+import { apiGet, apiPost, apiPatch, apiPut, apiDelete } from '@/lib/api';
 import { useQueryClient } from '@tanstack/react-query';
 import { doctorKeys } from '@/hooks/use-doctor';
 import { clinicalKeys } from '@/hooks/use-clinical';
@@ -12,6 +12,16 @@ interface SubmitParams {
   appointmentId: string;
   doctorProfileId: string;
   doctorUserId: string;
+  /**
+   * When set, updates existing records in-place instead of creating new ones
+   * and does NOT change the appointment status or close the visit. Used for
+   * the 24h edit window on completed consultations.
+   */
+  editMode?: {
+    visitId: string;
+    progressNoteId?: string;
+    prescriptionId?: string;
+  };
 }
 
 interface SubmitResult {
@@ -28,33 +38,34 @@ export function useConsultationCompletion() {
 
   const submitConsultation = useCallback(
     async (params: SubmitParams): Promise<SubmitResult> => {
-      const { formData, patientId, appointmentId, doctorProfileId, doctorUserId } = params;
+      const { formData, patientId, appointmentId, doctorProfileId, doctorUserId, editMode } = params;
       setIsSubmitting(true);
       setError(null);
 
       try {
         // ── 1. Find or create visit ──
-        setCurrentStep('Creating visit record...');
         let visitId: string;
-
-        // Look for an existing active visit for this patient+appointment
-        const visitsRes = await apiGet<Array<{ id: string; status: string }>>('/clinical/visits', {
-          params: { patientId, status: 'active', limit: 5 },
-        });
-        const existingVisit = visitsRes.data?.find((v) => v.status === 'active');
-
-        if (existingVisit) {
-          visitId = existingVisit.id;
+        if (editMode?.visitId) {
+          visitId = editMode.visitId;
         } else {
-          const newVisit = await apiPost<{ id: string }>('/clinical/visits', {
-            patientId,
-            doctorId: doctorProfileId,
-            appointmentId,
-            visitType: 'op',
-            visitDate: new Date().toISOString(),
-            chiefComplaint: formData.chiefComplaint,
+          setCurrentStep('Creating visit record...');
+          const visitsRes = await apiGet<Array<{ id: string; status: string }>>('/clinical/visits', {
+            params: { patientId, status: 'active', limit: 5 },
           });
-          visitId = newVisit.data!.id;
+          const existingVisit = visitsRes.data?.find((v) => v.status === 'active');
+          if (existingVisit) {
+            visitId = existingVisit.id;
+          } else {
+            const newVisit = await apiPost<{ id: string }>('/clinical/visits', {
+              patientId,
+              doctorId: doctorProfileId,
+              appointmentId,
+              visitType: 'op',
+              visitDate: new Date().toISOString(),
+              chiefComplaint: formData.chiefComplaint,
+            });
+            visitId = newVisit.data!.id;
+          }
         }
 
         // ── 2. Record vitals (if any filled) ──
@@ -90,7 +101,20 @@ export function useConsultationCompletion() {
           await apiPost('/clinical/vitals', cleanVitals);
         }
 
-        // ── 3. Add diagnoses ──
+        // ── 3. Diagnoses ──
+        // In edit mode we replace: delete existing for this visit, then re-insert.
+        // This keeps the list in sync with what the doctor sees in the form.
+        if (editMode?.visitId) {
+          setCurrentStep('Updating diagnoses...');
+          try {
+            const existingRes = await apiGet<Array<{ id: string }>>('/clinical/diagnoses', {
+              params: { visitId, limit: 100 },
+            });
+            for (const d of existingRes.data ?? []) {
+              try { await apiDelete(`/clinical/diagnoses/${d.id}`); } catch { /* ignore */ }
+            }
+          } catch { /* ignore */ }
+        }
         if (formData.diagnoses.length > 0) {
           setCurrentStep('Saving diagnoses...');
           for (const diag of formData.diagnoses) {
@@ -105,25 +129,45 @@ export function useConsultationCompletion() {
           }
         }
 
-        // ── 4. Create prescription (if medicines added OR follow-up set) ──
-        let prescriptionId: string | undefined;
+        // ── 4. Prescription ──
+        let prescriptionId: string | undefined = editMode?.prescriptionId;
         const hasMedicines = formData.medicines.length > 0;
         const hasFollowUp = !!formData.followUpDate;
-        if (hasMedicines || hasFollowUp) {
-          setCurrentStep('Creating prescription...');
-          const items = hasMedicines
-            ? formData.medicines.map((med) => ({
-                drugId: med.drugId || undefined,
-                drugName: med.drugName,
-                dosage: med.dose || med.strength || med.dosage || '',
-                frequency: encodeFrequency(med.frequency, med.timing, med.isPrn),
-                duration: med.durationValue ? encodeDuration(med.durationValue, med.durationUnit) : undefined,
-                route: med.route || 'oral',
-                instructions: med.instructions || undefined,
-                quantity: typeof med.quantity === 'number' ? med.quantity : undefined,
-              }))
-            : undefined;
+        const rxBuildItems = () =>
+          formData.medicines.map((med) => ({
+            drugId: med.drugId || undefined,
+            drugName: med.drugName,
+            dosage: med.dose || med.strength || med.dosage || '',
+            frequency: encodeFrequency(med.frequency, med.timing, med.isPrn),
+            duration: med.durationValue ? encodeDuration(med.durationValue, med.durationUnit) : undefined,
+            route: med.route || 'oral',
+            instructions: med.instructions || undefined,
+            quantity: typeof med.quantity === 'number' ? med.quantity : undefined,
+          }));
 
+        if (editMode?.prescriptionId) {
+          // Update existing Rx: replace items (delete all, add new) + update header fields
+          setCurrentStep('Updating prescription...');
+          try {
+            const rxRes = await apiGet<{ id: string; prescriptionItems: Array<{ id: string }> }>(
+              `/prescriptions/${editMode.prescriptionId}`,
+            );
+            const items = rxRes.data?.prescriptionItems ?? [];
+            for (const it of items) {
+              try { await apiDelete(`/prescriptions/${editMode.prescriptionId}/items/${it.id}`); } catch { /* ignore */ }
+            }
+          } catch { /* ignore */ }
+          await apiPut(`/prescriptions/${editMode.prescriptionId}`, {
+            notes: formData.advice || formData.followUpNotes || undefined,
+            followUpDate: formData.followUpDate || null,
+          });
+          if (hasMedicines) {
+            for (const item of rxBuildItems()) {
+              try { await apiPost(`/prescriptions/${editMode.prescriptionId}/items`, item); } catch { /* ignore */ }
+            }
+          }
+        } else if (hasMedicines || hasFollowUp) {
+          setCurrentStep('Creating prescription...');
           const rxRes = await apiPost<{ id: string }>('/prescriptions', {
             patientId,
             doctorId: doctorProfileId,
@@ -131,39 +175,57 @@ export function useConsultationCompletion() {
             prescriptionType: 'op',
             notes: formData.advice || formData.followUpNotes || undefined,
             followUpDate: formData.followUpDate || undefined,
-            items,
+            items: hasMedicines ? rxBuildItems() : undefined,
           });
           prescriptionId = rxRes.data?.id;
         }
 
-        // ── 5. Create & sign progress note ──
-        setCurrentStep('Saving consultation notes...');
+        // ── 5. Progress note ──
         const noteContent = buildProgressNoteContent(formData);
-        const noteRes = await apiPost<{ id: string }>('/progress-notes', {
-          patientId,
-          visitId,
+        const notePayload: any = {
           noteType: 'general',
           content: noteContent,
-          pinToDischargeSummary: false,
-        });
-        const progressNoteId = noteRes.data?.id;
-
-        // Try to auto-sign the note (may fail if user lacks approve permission — non-blocking)
-        if (progressNoteId) {
-          try {
-            await apiPatch(`/progress-notes/${progressNoteId}/sign`);
-          } catch {
-            // Signing requires progress_notes:approve permission — skip silently
+          pinToDischargeSummary: !!formData.pinToDischargeSummary,
+          impressions: formData.impressions || undefined,
+          discussions: formData.discussions || undefined,
+          conclusions: formData.conclusions || undefined,
+          customFields:
+            formData.customFields && formData.customFields.length > 0
+              ? formData.customFields
+              : undefined,
+          weightKgAtEntry:
+            typeof formData.vitals?.weightKg === 'number' && formData.vitals.weightKg > 0
+              ? formData.vitals.weightKg
+              : undefined,
+        };
+        let progressNoteId: string | undefined = editMode?.progressNoteId;
+        if (editMode?.progressNoteId) {
+          setCurrentStep('Updating consultation notes...');
+          await apiPut(`/progress-notes/${editMode.progressNoteId}`, notePayload);
+        } else {
+          setCurrentStep('Saving consultation notes...');
+          const noteRes = await apiPost<{ id: string }>('/progress-notes', {
+            patientId,
+            visitId,
+            ...notePayload,
+          });
+          progressNoteId = noteRes.data?.id;
+          if (progressNoteId) {
+            try {
+              await apiPatch(`/progress-notes/${progressNoteId}/sign`);
+            } catch {
+              // Signing requires progress_notes:approve permission — skip silently
+            }
           }
         }
 
-        // ── 6. Close visit ──
-        setCurrentStep('Closing visit...');
-        await apiPatch(`/clinical/visits/${visitId}/close`);
-
-        // ── 7. Update appointment status to completed ──
-        setCurrentStep('Completing appointment...');
-        await apiPatch(`/appointments/${appointmentId}/status`, { status: 'completed' });
+        // ── 6-7. Close visit + complete appointment — only on initial submit ──
+        if (!editMode) {
+          setCurrentStep('Closing visit...');
+          await apiPatch(`/clinical/visits/${visitId}/close`);
+          setCurrentStep('Completing appointment...');
+          await apiPatch(`/appointments/${appointmentId}/status`, { status: 'completed' });
+        }
 
         // ── 8. Invalidate queries ──
         queryClient.invalidateQueries({ queryKey: doctorKeys.appointments.all });

@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useMemo } from 'react';
+import { use, useState, useMemo, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -43,10 +43,16 @@ import {
   useProgressNotes,
   usePatientDiagnoses,
 } from '@/hooks/use-doctor';
-import { apiGet } from '@/lib/api';
+import { apiGet, apiPost } from '@/lib/api';
+import { toast } from 'sonner';
+import { Edit3 } from 'lucide-react';
 import { formatDate, formatTime, formatDateTimeAmPm } from '@/lib/date-utils';
 import { TriggerFormsGate } from '@/components/forms/trigger-forms-gate';
 import { PrescriptionPad } from '@/components/doctor/prescription-pad';
+import { DrugHistoryPanel } from '@/components/doctor/drug-history-panel';
+import { CurrentMedicationsPanel } from '@/components/doctor/current-medications-panel';
+import { MedicalHistoryPanel } from '@/components/doctor/medical-history-panel';
+import { InvestigationHistoryPanel } from '@/components/doctor/investigation-history-panel';
 import { useFormSubmissions, useSystemForm } from '@/hooks/use-forms';
 import { FormRenderer } from '@/components/forms/form-renderer';
 import { TRIGGER_LABELS } from '@/types/forms';
@@ -1017,6 +1023,65 @@ function InlineSubmission({ submission }: { submission: FormSubmission }) {
 }
 
 // ============================================================
+// Edit Banner (completed consultation, still inside 24h edit window)
+// ============================================================
+
+function EditWindowBanner({
+  isEditing,
+  completedAt,
+  onStartEdit,
+  onCancelEdit,
+}: {
+  isEditing: boolean;
+  completedAt: number;
+  onStartEdit: () => void;
+  onCancelEdit: () => void;
+}) {
+  const [, force] = useState(0);
+  // Tick once per minute so the remaining-time label stays accurate
+  useEffect(() => {
+    const t = setInterval(() => force((v) => v + 1), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const remaining = 24 * 60 * 60 * 1000 - (Date.now() - completedAt);
+  const hrs = Math.max(0, Math.floor(remaining / (60 * 60 * 1000)));
+  const mins = Math.max(0, Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000)));
+
+  return (
+    <div className="rounded-xl border-2 border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3">
+      <div className="h-9 w-9 rounded-lg bg-amber-200 flex items-center justify-center shrink-0">
+        <Clock className="h-4 w-4 text-amber-700" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-amber-900">
+          Edit window: {hrs}h {mins}m remaining
+        </p>
+        <p className="text-[11px] text-amber-700 mt-0.5">
+          {isEditing
+            ? 'Editing consultation — your changes will update the existing records in place.'
+            : 'This consultation is completed but still editable for 24 hours.'}
+        </p>
+      </div>
+      {isEditing ? (
+        <Button size="sm" variant="outline" onClick={onCancelEdit} className="shrink-0">
+          Cancel Edit
+        </Button>
+      ) : (
+        <Button
+          size="sm"
+          onClick={onStartEdit}
+          className="gap-1.5 bg-amber-600 hover:bg-amber-700 shrink-0"
+        >
+          <Edit3 className="h-3.5 w-3.5" />
+          Edit Consultation
+        </Button>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
 // Full-Page Consultation View
 // ============================================================
 
@@ -1041,6 +1106,34 @@ export default function PatientConsultationPage({
     enabled: !!appointmentId,
   });
 
+  const isInConsultation = appointment?.status === 'in_consultation';
+  const isCompleted = appointment?.status === 'completed';
+
+  // Client-side edit-window check (server re-checks on every mutation)
+  const completedAt = appointment?.updatedAt ? new Date(appointment.updatedAt).getTime() : null;
+  const withinEditWindow = !!completedAt && Date.now() - completedAt < 24 * 60 * 60 * 1000;
+  const canEdit = isCompleted && withinEditWindow;
+  const editWindowClosed = isCompleted && !withinEditWindow;
+
+  // ?edit=1 enables the editable form over a completed consultation (24h window)
+  const editParam = searchParams.get('edit') === '1';
+  const isEditing = canEdit && editParam;
+
+  // Fetch prefill data when editing a completed consultation
+  // IMPORTANT: This hook must run on every render (before any early return)
+  // to keep hook order stable across renders.
+  const { data: prefillResponse } = useQuery({
+    queryKey: ['doctor', 'consultation-form-data', appointmentId],
+    queryFn: async () => {
+      const res = await apiGet<{ canEdit: boolean; reason?: string; prefill: any; appointmentStatus: string }>(
+        `/appointments/${appointmentId}/consultation-form-data`,
+      );
+      return res.data;
+    },
+    enabled: !!appointmentId && isEditing,
+  });
+  const prefill = prefillResponse?.prefill;
+
   if (patientLoading) return <LoadingSpinner />;
 
   if (!patient) {
@@ -1055,7 +1148,8 @@ export default function PatientConsultationPage({
     );
   }
 
-  const isInConsultation = appointment?.status === 'in_consultation';
+  const startEdit = () => router.push(`/doctor/consultation/${patient.id}?appointmentId=${appointmentId}&edit=1`);
+  const cancelEdit = () => router.push(`/doctor/consultation/${patient.id}?appointmentId=${appointmentId}`);
 
   return (
     <div className="space-y-3">
@@ -1071,6 +1165,26 @@ export default function PatientConsultationPage({
         </div>
       </div>
 
+      {/* ── Consultation edit-window banner (completed + eligible) ── */}
+      {canEdit && completedAt !== null && (
+        <EditWindowBanner
+          isEditing={isEditing}
+          completedAt={completedAt}
+          onStartEdit={startEdit}
+          onCancelEdit={cancelEdit}
+        />
+      )}
+      {editWindowClosed && (
+        <div className="rounded-xl border-2 border-muted bg-muted/30 px-4 py-3 flex items-center gap-3">
+          <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
+          <div className="flex-1 text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground">Edit window closed.</span>{' '}
+            OP consultations can be amended for 24 hours after completion. Contact an administrator
+            for corrections.
+          </div>
+        </div>
+      )}
+
       {/* ── Pre-consultation forms gate ── */}
       <TriggerFormsGate
         trigger="pre_consultation"
@@ -1078,37 +1192,119 @@ export default function PatientConsultationPage({
         bannerHeading="Pre-consultation forms required"
       />
 
-      {/* ── Prescription Pad (during active consultation) ── */}
-      {isInConsultation ? (
-        <PrescriptionPad
-          patientId={patient.id}
-          patientName={`${patient.firstName} ${patient.lastName}`}
-          patientAge={patient.dateOfBirth ? calculateAge(patient.dateOfBirth) : undefined}
-          patientGender={patient.gender}
-          patientPhone={patient.phone}
-          appointmentId={appointmentId || ''}
-          doctorProfileId={appointment?.doctorId || ''}
-          doctorUserId={appointment?.doctor?.userId || ''}
-          onComplete={() => router.back()}
-          hideHeader
-        />
+      {/* ── Clinical Record sidebar (collapsible; context panels, not editable in consultation) ── */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 px-1">
+          <span className="text-[9px] font-label font-semibold uppercase tracking-widest text-muted-foreground">
+            Clinical Record
+          </span>
+          <div className="h-px flex-1 bg-border" />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+          <CollapsibleSection
+            icon={<Stethoscope className="h-4 w-4" />}
+            title="Current Medications"
+            color="text-emerald-600"
+            defaultOpen={!isInConsultation}
+          >
+            <div className="p-3">
+              <CurrentMedicationsPanel patientId={patient.id} />
+            </div>
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            icon={<Heart className="h-4 w-4" />}
+            title="Medical History"
+            color="text-rose-600"
+          >
+            <div className="p-3">
+              <MedicalHistoryPanel patientId={patient.id} />
+            </div>
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            icon={<FlaskConical className="h-4 w-4" />}
+            title="Investigation History"
+            color="text-amber-600"
+          >
+            <div className="p-3">
+              <InvestigationHistoryPanel patientId={patient.id} />
+            </div>
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            icon={<Pill className="h-4 w-4" />}
+            title="Drug History"
+            color="text-blue-600"
+          >
+            <div className="p-3">
+              <DrugHistoryPanel patientId={patient.id} />
+            </div>
+          </CollapsibleSection>
+        </div>
+      </div>
+
+      {/* ── Consultation Form (active consultation, or editing a completed one within 24h) ── */}
+      {(isInConsultation || isEditing) ? (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 px-1">
+            <span className="text-[9px] font-label font-semibold uppercase tracking-widest text-muted-foreground">
+              {isEditing ? 'Editing Consultation' : 'Consultation Form'}
+            </span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+          <div className="rounded-xl border bg-card overflow-hidden">
+            {isEditing && !prefill ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                <span className="ml-2 text-sm text-muted-foreground">Loading saved consultation…</span>
+              </div>
+            ) : (
+              <PrescriptionPad
+                key={isEditing ? `edit-${prefill?.visitId}` : 'new'}
+                patientId={patient.id}
+                patientName={`${patient.firstName} ${patient.lastName}`}
+                patientAge={patient.dateOfBirth ? calculateAge(patient.dateOfBirth) : undefined}
+                patientGender={patient.gender}
+                patientPhone={patient.phone}
+                appointmentId={appointmentId || ''}
+                doctorProfileId={appointment?.doctorId || ''}
+                doctorUserId={appointment?.doctor?.userId || ''}
+                onComplete={() => (isEditing ? cancelEdit() : router.back())}
+                hideHeader
+                initialValues={isEditing && prefill ? prefill : undefined}
+                editMode={
+                  isEditing && prefill?.visitId
+                    ? {
+                        visitId: prefill.visitId,
+                        progressNoteId: prefill.progressNoteId,
+                        prescriptionId: prefill.prescriptionId,
+                      }
+                    : undefined
+                }
+              />
+            )}
+          </div>
+        </div>
       ) : (
-        <>
-          {/* ── Quick Actions ── */}
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-1.5 text-xs">
-              <FlaskConical className="h-3.5 w-3.5" />
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 px-1">
+            <span className="text-[9px] font-label font-semibold uppercase tracking-widest text-muted-foreground">
+              Visit Timeline
+            </span>
+            <div className="h-px flex-1 bg-border" />
+            <Button variant="outline" size="sm" className="gap-1.5 text-xs h-7">
+              <FlaskConical className="h-3 w-3" />
               Order Lab
             </Button>
-            <Button variant="outline" size="sm" className="gap-1.5 text-xs">
-              <ImageIcon className="h-3.5 w-3.5" />
+            <Button variant="outline" size="sm" className="gap-1.5 text-xs h-7">
+              <ImageIcon className="h-3 w-3" />
               Request Imaging
             </Button>
           </div>
-
-          {/* ── Unified Visit Timeline (everything together) ── */}
           <VisitTimeline patientId={patient.id} patient={patient} appointmentId={appointmentId} />
-        </>
+        </div>
       )}
     </div>
   );

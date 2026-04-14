@@ -34,49 +34,47 @@ export default function PatientPortalHome() {
     },
   });
 
-  // Fetch recent prescriptions to check for follow-up reminders
-  const { data: recentPrescriptions } = useQuery({
-    queryKey: ['patient', 'recent-prescriptions-followup'],
+  // Fetch next upcoming/overdue follow-up from the dedicated endpoint
+  const { data: followUps } = useQuery({
+    queryKey: ['patient', 'dashboard-follow-ups'],
     queryFn: async () => {
       const res = await apiGet<Array<{
-        id: string; notes?: string; createdAt: string;
+        followUpDate: string;
+        prescriptionDate: string;
         doctor?: { user?: { firstName: string; lastName: string } };
-      }>>('/patient-portal/prescriptions', { params: { limit: 5 } });
+      }>>('/patient-portal/follow-ups', { params: { limit: 10 } });
       return res.data ?? [];
     },
   });
 
-  // Parse follow-up dates from prescription notes
   const followUpReminder = useMemo(() => {
-    if (!recentPrescriptions) return null;
-    for (const rx of recentPrescriptions) {
-      if (!rx.notes) continue;
-      const match = rx.notes.match(/Follow-up:\s*(.+)/i);
-      if (!match) continue;
-      const dateMatch = match[1].match(/(\d{1,2}\s+\w+\s+\d{4}|\d{4}-\d{2}-\d{2})/);
-      if (!dateMatch) continue;
-      const parsed = new Date(dateMatch[1]);
-      if (isNaN(parsed.getTime())) continue;
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      parsed.setHours(0, 0, 0, 0);
-      const diff = Math.round((parsed.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-      if (diff < -30) continue; // Skip if more than 30 days overdue
-      return {
-        date: parsed,
+    if (!followUps || followUps.length === 0) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    // Pick the most urgent: overdue (within 30 days) or soonest upcoming
+    let best: { date: Date; diffDays: number; doctorName?: string; prescriptionDate: string } | null = null;
+    for (const fu of followUps) {
+      const d = new Date(fu.followUpDate);
+      if (isNaN(d.getTime())) continue;
+      d.setHours(0, 0, 0, 0);
+      const diff = Math.round((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      if (diff < -30) continue;
+      const entry = {
+        date: d,
         diffDays: diff,
-        doctorName: rx.doctor?.user ? `Dr. ${rx.doctor.user.firstName} ${rx.doctor.user.lastName}` : undefined,
-        prescriptionDate: rx.createdAt,
+        doctorName: fu.doctor?.user ? `Dr. ${fu.doctor.user.firstName} ${fu.doctor.user.lastName}` : undefined,
+        prescriptionDate: fu.prescriptionDate,
       };
+      if (!best || Math.abs(diff) < Math.abs(best.diffDays)) best = entry;
     }
-    return null;
-  }, [recentPrescriptions]);
+    return best;
+  }, [followUps]);
 
   const quickLinks = [
     { label: 'Book Appointment', href: '/patient-portal/book-appointment', icon: CalendarPlus, color: 'bg-primary/10 text-primary', desc: 'Schedule a visit' },
     { label: 'Appointments', href: '/patient-portal/appointments', icon: Calendar, color: 'bg-blue-50 text-blue-600', desc: 'View all appointments' },
     { label: 'Lab Reports', href: '/patient-portal/lab-reports', icon: TestTube, color: 'bg-orange-50 text-orange-600', desc: 'View test results' },
-    { label: 'Prescriptions', href: '/patient-portal/prescriptions', icon: Pill, color: 'bg-green-50 text-green-600', desc: 'Current medications' },
+    { label: 'Prescriptions', href: '/patient-portal/prescriptions', icon: Pill, color: 'bg-green-50 text-green-600', desc: 'Past prescriptions' },
     { label: 'Follow-Ups', href: '/patient-portal/follow-ups', icon: CalendarDays, color: 'bg-cyan-50 text-cyan-600', desc: 'Scheduled follow-ups' },
     { label: 'Bills', href: '/patient-portal/billing', icon: CreditCard, color: 'bg-purple-50 text-purple-600', desc: 'View & pay bills' },
   ];
