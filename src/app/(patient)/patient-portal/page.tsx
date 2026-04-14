@@ -1,6 +1,7 @@
 'use client';
 
-import { Calendar, FileText, TestTube, Pill, CreditCard, Clock, CalendarPlus } from 'lucide-react';
+import { useMemo } from 'react';
+import { Calendar, FileText, TestTube, Pill, CreditCard, Clock, CalendarPlus, CalendarDays } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
@@ -33,11 +34,50 @@ export default function PatientPortalHome() {
     },
   });
 
+  // Fetch recent prescriptions to check for follow-up reminders
+  const { data: recentPrescriptions } = useQuery({
+    queryKey: ['patient', 'recent-prescriptions-followup'],
+    queryFn: async () => {
+      const res = await apiGet<Array<{
+        id: string; notes?: string; createdAt: string;
+        doctor?: { user?: { firstName: string; lastName: string } };
+      }>>('/patient-portal/prescriptions', { params: { limit: 5 } });
+      return res.data ?? [];
+    },
+  });
+
+  // Parse follow-up dates from prescription notes
+  const followUpReminder = useMemo(() => {
+    if (!recentPrescriptions) return null;
+    for (const rx of recentPrescriptions) {
+      if (!rx.notes) continue;
+      const match = rx.notes.match(/Follow-up:\s*(.+)/i);
+      if (!match) continue;
+      const dateMatch = match[1].match(/(\d{1,2}\s+\w+\s+\d{4}|\d{4}-\d{2}-\d{2})/);
+      if (!dateMatch) continue;
+      const parsed = new Date(dateMatch[1]);
+      if (isNaN(parsed.getTime())) continue;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      parsed.setHours(0, 0, 0, 0);
+      const diff = Math.round((parsed.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      if (diff < -30) continue; // Skip if more than 30 days overdue
+      return {
+        date: parsed,
+        diffDays: diff,
+        doctorName: rx.doctor?.user ? `Dr. ${rx.doctor.user.firstName} ${rx.doctor.user.lastName}` : undefined,
+        prescriptionDate: rx.createdAt,
+      };
+    }
+    return null;
+  }, [recentPrescriptions]);
+
   const quickLinks = [
     { label: 'Book Appointment', href: '/patient-portal/book-appointment', icon: CalendarPlus, color: 'bg-primary/10 text-primary', desc: 'Schedule a visit' },
     { label: 'Appointments', href: '/patient-portal/appointments', icon: Calendar, color: 'bg-blue-50 text-blue-600', desc: 'View all appointments' },
     { label: 'Lab Reports', href: '/patient-portal/lab-reports', icon: TestTube, color: 'bg-orange-50 text-orange-600', desc: 'View test results' },
     { label: 'Prescriptions', href: '/patient-portal/prescriptions', icon: Pill, color: 'bg-green-50 text-green-600', desc: 'Current medications' },
+    { label: 'Follow-Ups', href: '/patient-portal/follow-ups', icon: CalendarDays, color: 'bg-cyan-50 text-cyan-600', desc: 'Scheduled follow-ups' },
     { label: 'Bills', href: '/patient-portal/billing', icon: CreditCard, color: 'bg-purple-50 text-purple-600', desc: 'View & pay bills' },
   ];
 
@@ -59,7 +99,7 @@ export default function PatientPortalHome() {
       </div>
 
       {/* Quick Links */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
         {quickLinks.map((link) => (
           <Link
             key={link.href}
@@ -76,6 +116,58 @@ export default function PatientPortalHome() {
           </Link>
         ))}
       </div>
+
+      {/* Follow-up Reminder Banner */}
+      {followUpReminder && (
+        <Link
+          href="/patient-portal/book-appointment"
+          className={cn(
+            'flex items-center gap-4 rounded-xl border-2 px-5 py-4 transition-all hover:shadow-md',
+            followUpReminder.diffDays < 0
+              ? 'border-red-300 bg-red-50 hover:bg-red-100/70'
+              : followUpReminder.diffDays === 0
+                ? 'border-orange-300 bg-orange-50 hover:bg-orange-100/70'
+                : followUpReminder.diffDays <= 3
+                  ? 'border-amber-300 bg-amber-50 hover:bg-amber-100/70'
+                  : 'border-blue-300 bg-blue-50 hover:bg-blue-100/70',
+          )}
+        >
+          <div className={cn(
+            'flex h-11 w-11 items-center justify-center rounded-xl shrink-0',
+            followUpReminder.diffDays < 0 ? 'bg-red-200' : followUpReminder.diffDays <= 3 ? 'bg-orange-200' : 'bg-blue-200',
+          )}>
+            <CalendarDays className={cn(
+              'h-5 w-5',
+              followUpReminder.diffDays < 0 ? 'text-red-700' : followUpReminder.diffDays <= 3 ? 'text-orange-700' : 'text-blue-700',
+            )} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className={cn(
+              'text-sm font-bold',
+              followUpReminder.diffDays < 0 ? 'text-red-900' : followUpReminder.diffDays <= 3 ? 'text-orange-900' : 'text-blue-900',
+            )}>
+              {followUpReminder.diffDays < 0
+                ? 'Follow-up appointment overdue'
+                : followUpReminder.diffDays === 0
+                  ? 'Follow-up appointment is today!'
+                  : followUpReminder.diffDays === 1
+                    ? 'Follow-up appointment is tomorrow'
+                    : `Follow-up appointment in ${followUpReminder.diffDays} days`}
+            </p>
+            <p className={cn(
+              'text-xs mt-0.5',
+              followUpReminder.diffDays < 0 ? 'text-red-700' : followUpReminder.diffDays <= 3 ? 'text-orange-700' : 'text-blue-700',
+            )}>
+              {followUpReminder.date.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+              {followUpReminder.doctorName && ` · ${followUpReminder.doctorName}`}
+            </p>
+          </div>
+          <Button size="sm" variant="outline" className="shrink-0 gap-1.5">
+            <CalendarPlus className="h-3.5 w-3.5" />
+            Book Now
+          </Button>
+        </Link>
+      )}
 
       <div className="grid md:grid-cols-2 gap-6">
         {/* Upcoming Appointments */}

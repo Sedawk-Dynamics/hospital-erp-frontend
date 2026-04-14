@@ -5,7 +5,6 @@ import { doctorKeys } from '@/hooks/use-doctor';
 import { clinicalKeys } from '@/hooks/use-clinical';
 import type { ConsultationFormData } from './consultation-completion-schema';
 import { encodeFrequency, encodeDuration } from './consultation-completion-schema';
-import type { TimingSlot, MealRelation } from './consultation-completion-schema';
 
 interface SubmitParams {
   formData: ConsultationFormData;
@@ -60,25 +59,25 @@ export function useConsultationCompletion() {
 
         // ── 2. Record vitals (if any filled) ──
         const v = formData.vitals;
-        // Filter: only send values that are real positive numbers (not 0, NaN, or coerced empty)
-        const num = (val: unknown): number | undefined => {
+        // Filter: only send values that are real positive numbers within DB column limits
+        const num = (val: unknown, max = 999.9): number | undefined => {
           const n = Number(val);
-          return n > 0 && !isNaN(n) ? n : undefined;
+          return n > 0 && !isNaN(n) && n <= max ? n : undefined;
         };
-        const int = (val: unknown): number | undefined => {
-          const n = num(val);
-          return n !== undefined ? Math.round(n) : undefined;
+        const int = (val: unknown, max = 999): number | undefined => {
+          const n = Number(val);
+          return n > 0 && !isNaN(n) && n <= max ? Math.round(n) : undefined;
         };
         const vitalsPayload = {
-          temperature: num(v.temperature),
-          bloodPressureSystolic: int(v.bloodPressureSystolic),
-          bloodPressureDiastolic: int(v.bloodPressureDiastolic),
-          pulseRate: int(v.pulseRate),
-          respiratoryRate: int(v.respiratoryRate),
-          oxygenSaturation: num(v.oxygenSaturation),
-          weightKg: num(v.weightKg),
-          heightCm: num(v.heightCm),
-          bloodSugar: num(v.bloodSugar),
+          temperature: num(v.temperature, 999.9),         // Decimal(4,1)
+          bloodPressureSystolic: int(v.bloodPressureSystolic, 400),
+          bloodPressureDiastolic: int(v.bloodPressureDiastolic, 300),
+          pulseRate: int(v.pulseRate, 300),
+          respiratoryRate: int(v.respiratoryRate, 100),
+          oxygenSaturation: num(v.oxygenSaturation, 100), // Decimal(4,1), max 100%
+          weightKg: num(v.weightKg, 999.99),              // Decimal(5,2)
+          heightCm: num(v.heightCm, 300),                 // Decimal(5,1), max 300cm
+          bloodSugar: num(v.bloodSugar, 9999.99),         // Decimal(6,2)
         };
         const hasVitals = Object.values(vitalsPayload).some((val) => val !== undefined);
 
@@ -106,31 +105,32 @@ export function useConsultationCompletion() {
           }
         }
 
-        // ── 4. Create prescription (if medicines added) ──
+        // ── 4. Create prescription (if medicines added OR follow-up set) ──
         let prescriptionId: string | undefined;
-        if (formData.medicines.length > 0) {
+        const hasMedicines = formData.medicines.length > 0;
+        const hasFollowUp = !!formData.followUpDate;
+        if (hasMedicines || hasFollowUp) {
           setCurrentStep('Creating prescription...');
-          const items = formData.medicines.map((med) => ({
-            drugId: med.drugId || undefined,
-            drugName: med.drugName,
-            dosage: med.dosage,
-            frequency: encodeFrequency(
-              med.timings as Record<TimingSlot, boolean>,
-              med.mealRelation as MealRelation,
-              med.isPrn,
-            ),
-            duration: encodeDuration(med.durationValue, med.durationUnit),
-            route: med.route || 'oral',
-            instructions: med.instructions || undefined,
-            quantity: typeof med.quantity === 'number' ? med.quantity : undefined,
-          }));
+          const items = hasMedicines
+            ? formData.medicines.map((med) => ({
+                drugId: med.drugId || undefined,
+                drugName: med.drugName,
+                dosage: med.dose || med.strength || med.dosage || '',
+                frequency: encodeFrequency(med.frequency, med.timing, med.isPrn),
+                duration: med.durationValue ? encodeDuration(med.durationValue, med.durationUnit) : undefined,
+                route: med.route || 'oral',
+                instructions: med.instructions || undefined,
+                quantity: typeof med.quantity === 'number' ? med.quantity : undefined,
+              }))
+            : undefined;
 
           const rxRes = await apiPost<{ id: string }>('/prescriptions', {
             patientId,
             doctorId: doctorProfileId,
             visitId,
             prescriptionType: 'op',
-            notes: formData.advice || undefined,
+            notes: formData.advice || formData.followUpNotes || undefined,
+            followUpDate: formData.followUpDate || undefined,
             items,
           });
           prescriptionId = rxRes.data?.id;
@@ -231,11 +231,12 @@ function buildProgressNoteContent(data: ConsultationFormData): string {
   // Medicines prescribed
   if (data.medicines.length > 0) {
     const medLines = data.medicines.map((m) => {
-      const timingSlots = (['Morning', 'Afternoon', 'Evening', 'Night'] as const).filter(
-        (t) => m.timings[t],
-      );
-      const timing = m.isPrn ? 'As Needed (SOS)' : timingSlots.join(', ');
-      return `- ${m.drugName} ${m.dosage} | ${timing} | ${m.mealRelation} | ${m.durationValue} ${m.durationUnit}${m.instructions ? ` | ${m.instructions}` : ''}`;
+      const dose = m.dose || m.strength || m.dosage || '';
+      const freq = m.frequency || '';
+      const timing = m.timing || '';
+      const dur = m.durationValue ? `${m.durationValue} ${m.durationUnit}` : '';
+      const parts = [m.drugName, dose, freq, timing, dur].filter(Boolean);
+      return `- ${parts.join(' | ')}${m.instructions ? ` | ${m.instructions}` : ''}`;
     });
     sections.push(`**Prescription:**\n${medLines.join('\n')}`);
   }
@@ -244,8 +245,20 @@ function buildProgressNoteContent(data: ConsultationFormData): string {
   if (data.advice) {
     sections.push(`**Advice:**\n${data.advice}`);
   }
-  if (data.followUpDate) {
-    sections.push(`**Follow-up:** ${data.followUpDate}${data.followUpNotes ? ` — ${data.followUpNotes}` : ''}`);
+  if (data.followUpDate || data.followUpDuration) {
+    const parts: string[] = [];
+    if (data.followUpDuration && data.followUpDurationUnit) {
+      parts.push(`After ${data.followUpDuration} ${data.followUpDurationUnit}`);
+    }
+    if (data.followUpDate) {
+      const dateObj = new Date(data.followUpDate);
+      const formatted = dateObj.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+      parts.push(formatted);
+    }
+    if (data.followUpNotes) {
+      parts.push(data.followUpNotes);
+    }
+    sections.push(`**Follow-up:** ${parts.join(' — ')}`);
   }
   if (data.referralNotes) {
     sections.push(`**Referral:**\n${data.referralNotes}`);

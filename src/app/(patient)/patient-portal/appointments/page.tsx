@@ -288,7 +288,7 @@ export default function PatientAppointmentsPage() {
                     </p>
                     {apt.reason && (
                       <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                        Reason: {apt.reason}
+                        {apt.reason}
                       </p>
                     )}
                     <button

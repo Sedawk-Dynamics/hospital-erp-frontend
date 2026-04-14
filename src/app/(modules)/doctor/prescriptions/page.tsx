@@ -9,6 +9,7 @@ import {
   usePatientSearch,
   useCancelPrescription,
   usePrescriptionDetail,
+  useUpdatePrescriptionItem,
   type Prescription,
   type PrescriptionItem,
   type FormularyDrug,
@@ -59,6 +60,11 @@ import {
   ArrowLeft,
   ArrowRight,
   FileText,
+  Pencil,
+  Check,
+  X,
+  Clock,
+  Shield,
 } from 'lucide-react';
 
 // ── Constants ────────────────────────────────────────────────
@@ -297,6 +303,10 @@ export default function EPrescriptionPage() {
                     .replace(/_/g, ' ')
                     .replace(/\b\w/g, (c) => c.toUpperCase());
 
+                  const hoursElapsed = (Date.now() - new Date(rx.createdAt).getTime()) / (1000 * 60 * 60);
+                  const isEditable = hoursElapsed <= 24 && rx.status === 'active';
+                  const editHoursLeft = Math.max(0, Math.floor(24 - hoursElapsed));
+
                   return (
                     <tr
                       key={rx.id}
@@ -305,6 +315,12 @@ export default function EPrescriptionPage() {
                     >
                       <td className="px-4 py-3">
                         <span className="text-sm text-foreground">{formatDate(rx.createdAt)}</span>
+                        {isEditable && (
+                          <p className="text-[9px] text-amber-600 font-medium mt-0.5">{editHoursLeft}h left to edit</p>
+                        )}
+                        {!isEditable && rx.status === 'active' && (
+                          <p className="text-[9px] text-muted-foreground mt-0.5">Locked</p>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <div>
@@ -1161,6 +1177,60 @@ function ViewPrescriptionDialog({
   onCancel: (id: string) => void;
 }) {
   const { data: prescription, isLoading } = usePrescriptionDetail(open ? prescriptionId : '');
+  const updateItemMutation = useUpdatePrescriptionItem();
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<Record<string, string>>({});
+
+  // 24-hour edit window check
+  const isEditable = prescription
+    ? (Date.now() - new Date(prescription.createdAt).getTime()) / (1000 * 60 * 60) <= 24
+      && prescription.status === 'active'
+    : false;
+
+  const editHoursLeft = prescription
+    ? Math.max(0, Math.floor(24 - (Date.now() - new Date(prescription.createdAt).getTime()) / (1000 * 60 * 60)))
+    : 0;
+
+  const startEditing = useCallback((item: any) => {
+    setEditingItemId(item.id);
+    setEditValues({
+      dosage: item.dosage || '',
+      frequency: item.frequency || '',
+      duration: item.duration || '',
+      route: item.route || '',
+      instructions: item.instructions || '',
+    });
+  }, []);
+
+  const cancelEditing = useCallback(() => {
+    setEditingItemId(null);
+    setEditValues({});
+  }, []);
+
+  const saveEditing = useCallback(() => {
+    if (!editingItemId || !prescription) return;
+    updateItemMutation.mutate(
+      {
+        prescriptionId: prescription.id,
+        itemId: editingItemId,
+        dosage: editValues.dosage,
+        frequency: editValues.frequency,
+        duration: editValues.duration,
+        route: editValues.route,
+        instructions: editValues.instructions,
+      },
+      {
+        onSuccess: () => {
+          toast.success('Prescription item updated');
+          setEditingItemId(null);
+          setEditValues({});
+        },
+        onError: (err: any) => {
+          toast.error(err?.response?.data?.message || 'Failed to update');
+        },
+      },
+    );
+  }, [editingItemId, editValues, prescription, updateItemMutation]);
 
   const handlePrint = useCallback(() => {
     const printWindow = window.open('', '_blank');
@@ -1217,7 +1287,7 @@ function ViewPrescriptionDialog({
             </tr>
           </thead>
           <tbody>
-            ${prescription.items.map((item, i) => `
+            ${prescription.items.map((item: any, i: number) => `
               <tr>
                 <td>${i + 1}</td>
                 <td><strong>${item.drugName}</strong>${item.genericName ? `<br/><small style="color:#888">${item.genericName}</small>` : ''}</td>
@@ -1249,12 +1319,24 @@ function ViewPrescriptionDialog({
     : '';
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(v) => { cancelEditing(); onOpenChange(v); }}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5 text-primary" />
             Prescription Details
+            {prescription && isEditable && (
+              <span className="text-[10px] font-medium text-amber-600 flex items-center gap-1 ml-auto">
+                <Clock className="h-3 w-3" />
+                {editHoursLeft}h left to edit
+              </span>
+            )}
+            {prescription && !isEditable && prescription.status === 'active' && (
+              <span className="text-[10px] font-medium text-muted-foreground flex items-center gap-1 ml-auto">
+                <Shield className="h-3 w-3" />
+                Locked (24h expired)
+              </span>
+            )}
           </DialogTitle>
         </DialogHeader>
 
@@ -1303,7 +1385,7 @@ function ViewPrescriptionDialog({
               </span>
             </div>
 
-            {/* Drug Items */}
+            {/* Drug Items — with inline editing */}
             <div className="rounded-lg border overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
@@ -1314,31 +1396,122 @@ function ViewPrescriptionDialog({
                     <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">Frequency</th>
                     <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">Duration</th>
                     <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">Route</th>
-                    <th className="px-3 py-2 text-center text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">Qty</th>
+                    {isEditable && <th className="px-3 py-2 text-center text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant w-16">Edit</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {prescription.items.map((item, index) => (
-                    <tr key={item.id || index} className="border-t border-border/50">
-                      <td className="px-3 py-2 text-xs font-bold text-primary">{index + 1}</td>
-                      <td className="px-3 py-2">
-                        <p className="text-sm font-medium">{item.drugName}</p>
-                        {item.genericName && (
-                          <p className="text-[10px] text-muted-foreground">{item.genericName}</p>
+                  {prescription.items.map((item: any, index: number) => {
+                    const isEditingThis = editingItemId === item.id;
+
+                    return (
+                      <tr key={item.id || index} className={cn('border-t border-border/50', isEditingThis && 'bg-amber-50/50')}>
+                        <td className="px-3 py-2 text-xs font-bold text-primary align-top">{index + 1}</td>
+                        <td className="px-3 py-2 align-top">
+                          <p className="text-sm font-medium">{item.drugName}</p>
+                          {item.genericName && (
+                            <p className="text-[10px] text-muted-foreground">{item.genericName}</p>
+                          )}
+                          {isEditingThis ? (
+                            <Input
+                              value={editValues.instructions}
+                              onChange={(e) => setEditValues((v) => ({ ...v, instructions: e.target.value }))}
+                              placeholder="Instructions..."
+                              className="mt-1 h-7 text-xs"
+                            />
+                          ) : (
+                            item.instructions && (
+                              <p className="text-[10px] text-muted-foreground italic mt-0.5">
+                                {item.instructions}
+                              </p>
+                            )
+                          )}
+                        </td>
+                        <td className="px-3 py-2 align-top">
+                          {isEditingThis ? (
+                            <Input
+                              value={editValues.dosage}
+                              onChange={(e) => setEditValues((v) => ({ ...v, dosage: e.target.value }))}
+                              className="h-7 text-xs w-20"
+                            />
+                          ) : (
+                            <span className="text-sm">{item.dosage}</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 align-top">
+                          {isEditingThis ? (
+                            <Input
+                              value={editValues.frequency}
+                              onChange={(e) => setEditValues((v) => ({ ...v, frequency: e.target.value }))}
+                              className="h-7 text-xs w-24"
+                            />
+                          ) : (
+                            <span className="text-sm">{item.frequency}</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 align-top">
+                          {isEditingThis ? (
+                            <Input
+                              value={editValues.duration}
+                              onChange={(e) => setEditValues((v) => ({ ...v, duration: e.target.value }))}
+                              className="h-7 text-xs w-20"
+                            />
+                          ) : (
+                            <span className="text-sm">{item.duration}</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 align-top">
+                          {isEditingThis ? (
+                            <Input
+                              value={editValues.route}
+                              onChange={(e) => setEditValues((v) => ({ ...v, route: e.target.value }))}
+                              className="h-7 text-xs w-16"
+                            />
+                          ) : (
+                            <span className="text-sm">{item.route || '-'}</span>
+                          )}
+                        </td>
+                        {isEditable && (
+                          <td className="px-3 py-2 text-center align-top">
+                            {isEditingThis ? (
+                              <div className="flex items-center gap-1 justify-center">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 text-emerald-600 hover:text-emerald-700"
+                                  onClick={saveEditing}
+                                  disabled={updateItemMutation.isPending}
+                                >
+                                  {updateItemMutation.isPending ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <Check className="h-3 w-3" />
+                                  )}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                                  onClick={cancelEditing}
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                title="Edit item"
+                                onClick={() => startEditing(item)}
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </td>
                         )}
-                        {item.instructions && (
-                          <p className="text-[10px] text-muted-foreground italic mt-0.5">
-                            {item.instructions}
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-sm">{item.dosage}</td>
-                      <td className="px-3 py-2 text-sm">{item.frequency}</td>
-                      <td className="px-3 py-2 text-sm">{item.duration}</td>
-                      <td className="px-3 py-2 text-sm">{item.route || '-'}</td>
-                      <td className="px-3 py-2 text-sm text-center">{item.quantity ?? '-'}</td>
-                    </tr>
-                  ))}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

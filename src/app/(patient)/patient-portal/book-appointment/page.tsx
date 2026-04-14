@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   Calendar as CalendarIcon, Clock, User, Building2, Search,
   ChevronLeft, ChevronRight, Stethoscope, MapPin, Phone, Mail,
@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Calendar } from '@/components/ui/calendar';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
 import { toInputDateStr, formatTime24, getCurrentISTTime, isToday } from '@/lib/date-utils';
@@ -76,8 +76,17 @@ type BookingStep = 'hospital' | 'doctor' | 'datetime' | 'confirm' | 'payment';
 
 export default function BookAppointmentPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
+
+  // Prefill params from /patient-portal/follow-ups deep link
+  const prefillTenantId = searchParams.get('tenantId');
+  const prefillTenantName = searchParams.get('tenantName');
+  const prefillDoctorId = searchParams.get('doctorId');
+  const prefillDate = searchParams.get('date');
+  const prefillApplied = useRef(false);
+  const prefillDoctorApplied = useRef(false);
 
   // Step state
   const [step, setStep] = useState<BookingStep>('hospital');
@@ -268,6 +277,43 @@ export default function BookAppointmentPage() {
       toast.error(err?.response?.data?.message || 'Failed to initiate payment');
     }
   }, [bookedAppointmentId, selectedHospital, selectedDoctor, user]);
+
+  // ── Prefill from follow-up deep link ───────────────────
+
+  // On mount: if tenantId + tenantName present, skip hospital step
+  useEffect(() => {
+    if (prefillApplied.current) return;
+    if (!prefillTenantId || !prefillTenantName) return;
+    prefillApplied.current = true;
+    setSelectedHospital({
+      id: prefillTenantId,
+      name: prefillTenantName,
+      slug: '',
+      hospitalCode: null,
+      logoUrl: null,
+      city: null,
+      state: null,
+      address: null,
+      phone: null,
+      email: null,
+    });
+    if (prefillDate) {
+      const d = new Date(prefillDate);
+      if (!isNaN(d.getTime())) setSelectedDate(d);
+    }
+    setStep('doctor');
+  }, [prefillTenantId, prefillTenantName, prefillDate]);
+
+  // Once doctors load, pick the pre-selected doctor and advance to datetime
+  useEffect(() => {
+    if (prefillDoctorApplied.current) return;
+    if (!prefillDoctorId || !doctorsRaw || doctorsRaw.length === 0) return;
+    const match = doctorsRaw.find((d) => d.id === prefillDoctorId);
+    if (!match) return;
+    prefillDoctorApplied.current = true;
+    setSelectedDoctor(match);
+    setStep('datetime');
+  }, [prefillDoctorId, doctorsRaw]);
 
   // ── Disabled days for calendar ─────────────────────────
 

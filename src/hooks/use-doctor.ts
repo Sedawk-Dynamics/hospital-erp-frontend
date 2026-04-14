@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPost, apiPatch } from '@/lib/api';
+import { apiGet, apiPost, apiPatch, apiPut } from '@/lib/api';
 import type { Patient, Appointment, DoctorProfile } from '@/types';
 
 // ============================================================
@@ -920,7 +920,38 @@ export function useUpdatePrescription() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, ...data }: { id: string; status?: string; notes?: string }) => {
-      const response = await apiPatch<Prescription>(`/prescriptions/${id}`, data);
+      const response = await apiPut<Prescription>(`/prescriptions/${id}`, data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: doctorKeys.prescriptions.all });
+    },
+  });
+}
+
+export function useUpdatePrescriptionItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      prescriptionId,
+      itemId,
+      ...data
+    }: {
+      prescriptionId: string;
+      itemId: string;
+      drugName?: string;
+      dosage?: string;
+      frequency?: string;
+      duration?: string;
+      route?: string;
+      instructions?: string;
+      quantity?: number;
+      isPrn?: boolean;
+    }) => {
+      const response = await apiPut<PrescriptionItem>(
+        `/prescriptions/${prescriptionId}/items/${itemId}`,
+        data,
+      );
       return response.data;
     },
     onSuccess: () => {
