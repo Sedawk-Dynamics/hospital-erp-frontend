@@ -55,7 +55,7 @@ import { toast } from 'sonner';
 import { Edit3 } from 'lucide-react';
 import { formatDate, formatTime, formatDateTimeAmPm } from '@/lib/date-utils';
 import { TriggerFormsGate } from '@/components/forms/trigger-forms-gate';
-import { PrescriptionPad } from '@/components/doctor/prescription-pad';
+import { PrescriptionPad, clearConsultationDraft } from '@/components/doctor/prescription-pad';
 import { DrugHistoryPanel } from '@/components/doctor/drug-history-panel';
 import { CurrentMedicationsPanel } from '@/components/doctor/current-medications-panel';
 import { MedicalHistoryPanel } from '@/components/doctor/medical-history-panel';
@@ -1363,9 +1363,23 @@ export default function PatientConsultationPage({
   const canEdit = isCompleted && withinEditWindow;
   const editWindowClosed = isCompleted && !withinEditWindow;
 
-  // ?edit=1 enables the editable form over a completed consultation (24h window)
-  const editParam = searchParams.get('edit') === '1';
-  const isEditing = canEdit && editParam;
+  // Edit mode is a local UI toggle — NOT a URL state — so that toggling
+  // it doesn't push a history entry (Back would otherwise bounce through
+  // edit/view states). `?edit=1` is still honored as an initial opener
+  // (e.g. deep links from the edit-window banner).
+  const [editRequested, setEditRequested] = useState<boolean>(searchParams.get('edit') === '1');
+  // Strip ?edit=1 from the URL on first render so refresh/Back don't
+  // reopen edit mode unintentionally.
+  useEffect(() => {
+    if (searchParams.get('edit') === '1') {
+      const params = new URLSearchParams(Array.from(searchParams.entries()));
+      params.delete('edit');
+      const qs = params.toString();
+      router.replace(`/doctor/consultation/${patientId}${qs ? `?${qs}` : ''}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const isEditing = canEdit && editRequested;
 
   // Fetch prefill data when editing a completed consultation
   // IMPORTANT: This hook must run on every render (before any early return)
@@ -1396,8 +1410,13 @@ export default function PatientConsultationPage({
     );
   }
 
-  const startEdit = () => router.push(`/doctor/consultation/${patient.id}?appointmentId=${appointmentId}&edit=1`);
-  const cancelEdit = () => router.push(`/doctor/consultation/${patient.id}?appointmentId=${appointmentId}`);
+  const startEdit = () => setEditRequested(true);
+  const cancelEdit = () => {
+    // Discard any in-progress edits for this visit — matches the
+    // "Unsaved edits will be discarded" banner promise.
+    if (prefill?.visitId) clearConsultationDraft(appointmentId || '', prefill.visitId);
+    setEditRequested(false);
+  };
 
   const showForm = isInConsultation || isEditing;
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Input } from '@/components/ui/input';
@@ -12,11 +12,8 @@ import {
   GripVertical, FlaskConical, ClipboardList, StickyNote,
   UserCheck, CalendarDays, MessageSquare, Eye,
   Printer, CheckCircle2, RotateCcw, ChevronDown,
-  Clock, FileSignature, Save, PinIcon,
+  Clock,
 } from 'lucide-react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPost } from '@/lib/api';
-import { toast } from 'sonner';
 import { useFormularySearch, useAllergyCheck, usePatientVitals, usePatientDiagnoses, usePrescriptions, useProgressNotes, type FormularyDrug } from '@/hooks/use-doctor';
 import { useDebounce } from '@/hooks/use-debounce';
 import { cn } from '@/lib/utils';
@@ -35,17 +32,20 @@ import {
 } from '../consultation-completion/consultation-completion-schema';
 import { useConsultationCompletion } from '../consultation-completion/use-consultation-completion';
 
-// ── Common advice presets ──────────────────────────────────
-const ADVICE_PRESETS = [
-  'Please take some rest.',
-  'Drink plenty of water.',
-  'Avoid oily and spicy food.',
-  'Take medicines as prescribed.',
-  'Follow up if symptoms persist.',
-  'Get adequate sleep (7-8 hrs).',
-  'Avoid strenuous activity.',
-  'Monitor temperature regularly.',
-];
+/** Build the localStorage key where the consultation draft is stored. */
+export function getConsultationDraftKey(appointmentId: string, visitId?: string): string {
+  return `consult-draft:${visitId ? `edit:${visitId}` : appointmentId || 'unknown'}`;
+}
+
+/** Remove any persisted draft for this appointment / edit session. */
+export function clearConsultationDraft(appointmentId: string, visitId?: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(getConsultationDraftKey(appointmentId, visitId));
+  } catch {
+    /* ignore */
+  }
+}
 
 interface PrescriptionPadProps {
   patientId: string;
@@ -85,22 +85,70 @@ export function PrescriptionPad({
   initialValues,
   editMode,
 }: PrescriptionPadProps) {
+  // Draft key — persists in-progress form state across navigation so the
+  // doctor doesn't lose work when they hit Back or accidentally unmount.
+  const draftKey = useMemo(
+    () => getConsultationDraftKey(appointmentId, editMode?.visitId),
+    [appointmentId, editMode?.visitId],
+  );
+
+  // Lazy read draft from localStorage (runs once on mount)
+  const draft = useMemo<Partial<ConsultationFormData> | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = window.localStorage.getItem(draftKey);
+      return raw ? (JSON.parse(raw) as Partial<ConsultationFormData>) : null;
+    } catch {
+      return null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey]);
+
+  // Precedence: saved draft (in-progress work) > server initialValues > defaults
+  const seed = draft ?? initialValues;
+
   const form = useForm<ConsultationFormData>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(consultationCompletionSchema) as any,
     defaultValues: {
       ...defaultFormValues,
-      ...(initialValues ?? {}),
-      vitals: { ...defaultFormValues.vitals, ...(initialValues?.vitals ?? {}) },
+      ...(seed ?? {}),
+      vitals: { ...defaultFormValues.vitals, ...(seed?.vitals ?? {}) },
       diagnoses:
-        initialValues?.diagnoses && initialValues.diagnoses.length > 0
-          ? initialValues.diagnoses
+        seed?.diagnoses && seed.diagnoses.length > 0
+          ? seed.diagnoses
           : defaultFormValues.diagnoses,
     },
   });
 
   const { register, watch, setValue, formState: { errors } } = form;
   const { submitConsultation, isSubmitting, error: submitError, currentStep } = useConsultationCompletion();
+
+  // Persist form state to localStorage (debounced) so the draft survives
+  // Back navigation, remounts, and accidental tab closes.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const subscription = form.watch((value) => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        try {
+          window.localStorage.setItem(draftKey, JSON.stringify(value));
+        } catch {
+          /* quota / serialization errors — ignore */
+        }
+      }, 400);
+    });
+    return () => {
+      subscription.unsubscribe();
+      if (timer) clearTimeout(timer);
+    };
+  }, [form, draftKey]);
+
+  const clearDraft = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    try { window.localStorage.removeItem(draftKey); } catch { /* ignore */ }
+  }, [draftKey]);
 
   // Section collapse state
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -126,16 +174,18 @@ export function PrescriptionPad({
         doctorUserId,
         editMode,
       });
+      clearDraft();
       onComplete?.();
     } catch {
       // error is set in hook
     }
-  }, [form, submitConsultation, patientId, appointmentId, doctorProfileId, doctorUserId, onComplete]);
+  }, [form, submitConsultation, patientId, appointmentId, doctorProfileId, doctorUserId, editMode, onComplete, clearDraft]);
 
   // ── Handle Clear ──
   const handleClear = useCallback(() => {
     form.reset(defaultFormValues);
-  }, [form]);
+    clearDraft();
+  }, [form, clearDraft]);
 
   return (
     <div className="bg-background">
@@ -261,9 +311,6 @@ export function PrescriptionPad({
             </div>
           </PadSection>
 
-          {/* ═══════ CLINICAL NARRATIVE (impressions / discussions / conclusions + custom fields) ═══════ */}
-          <ClinicalNarrativeSection form={form} collapsed={collapsed.narrative} onToggle={() => toggleSection('narrative')} />
-
           {/* ═══════ 7. NOTES ═══════ */}
           <PadSection
             icon={<StickyNote className="h-4 w-4" />}
@@ -272,32 +319,16 @@ export function PrescriptionPad({
             onToggle={() => toggleSection('notes')}
             color="text-green-600"
           >
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-                  Notes for Patient (Treatment/Surgical/Others)
-                </label>
-                <textarea
-                  {...register('advice')}
-                  placeholder="Add notes..."
-                  rows={4}
-                  className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-y"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-                    Private Notes
-                  </label>
-                  <span className="text-[10px] text-muted-foreground/60 italic">These will not be printed</span>
-                </div>
-                <textarea
-                  {...register('additionalNotes')}
-                  placeholder="Add private notes..."
-                  rows={4}
-                  className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-y"
-                />
-              </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                Notes for Patient (Treatment/Surgical/Others)
+              </label>
+              <textarea
+                {...register('advice')}
+                placeholder="Add notes..."
+                rows={4}
+                className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-y"
+              />
             </div>
           </PadSection>
 
@@ -764,48 +795,15 @@ function MedRow({ index, med, patientId, onUpdate, onRemove }: {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function AdvicesSection({ form }: { form: any }) {
-  const [selectedAdvices, setSelectedAdvices] = useState<Set<string>>(new Set());
-  const { register, setValue, watch } = form;
-
-  const toggleAdvice = useCallback((advice: string) => {
-    setSelectedAdvices((prev) => {
-      const next = new Set(prev);
-      if (next.has(advice)) {
-        next.delete(advice);
-      } else {
-        next.add(advice);
-      }
-      // Build combined advice text
-      const currentCustom = watch('advice') || '';
-      const presetText = Array.from(next).join('\n');
-      // We store presets separately and combine on submit via the advice field
-      return next;
-    });
-  }, [watch]);
+  const { register } = form;
 
   return (
     <div className="space-y-3">
-      {/* Preset advice checkboxes */}
-      <div className="space-y-1.5">
-        {ADVICE_PRESETS.map((advice) => (
-          <label key={advice} className="flex items-center gap-2 cursor-pointer group">
-            <input
-              type="checkbox"
-              checked={selectedAdvices.has(advice)}
-              onChange={() => toggleAdvice(advice)}
-              className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary/20"
-            />
-            <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors">
-              {advice}
-            </span>
-          </label>
-        ))}
-      </div>
-      {/* Custom advice text */}
       <textarea
+        {...register('advice')}
         placeholder="Add custom advice..."
-        rows={2}
-        className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-none"
+        rows={3}
+        className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-y"
       />
     </div>
   );
@@ -1327,214 +1325,5 @@ function DiagnosisList({ content }: { content: string }) {
         );
       })}
     </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════
-// Clinical Narrative Section (impressions / discussions / conclusions + custom fields + pin)
-// ═══════════════════════════════════════════════════════════
-
-function ClinicalNarrativeSection({
-  form,
-  collapsed,
-  onToggle,
-}: {
-  form: any;
-  collapsed: boolean;
-  onToggle: () => void;
-}) {
-  const { register, watch, setValue } = form;
-  const qc = useQueryClient();
-  const customFields: Array<{ label: string; value?: string }> = watch('customFields') || [];
-  const pinToDischarge: boolean = watch('pinToDischargeSummary') || false;
-
-  const { data: templates } = useQuery({
-    queryKey: ['doctor', 'progress-note-templates'],
-    queryFn: async () => {
-      const res = await apiGet<Array<{ id: string; name: string; fields: Array<{ label: string; defaultValue?: string }>; isDefault?: boolean }>>(
-        '/progress-notes/templates',
-      );
-      return res.data ?? [];
-    },
-  });
-  const tpls = templates ?? [];
-
-  const applyTemplate = (id: string) => {
-    const tpl = tpls.find((t) => t.id === id);
-    if (!tpl) return;
-    setValue(
-      'customFields',
-      tpl.fields.map((f) => ({ label: f.label, value: f.defaultValue || '' })),
-      { shouldDirty: true },
-    );
-  };
-
-  const addField = () => {
-    setValue('customFields', [...customFields, { label: '', value: '' }], { shouldDirty: true });
-  };
-
-  const removeField = (idx: number) => {
-    setValue('customFields', customFields.filter((_, i) => i !== idx), { shouldDirty: true });
-  };
-
-  const updateField = (idx: number, patch: Partial<{ label: string; value: string }>) => {
-    setValue(
-      'customFields',
-      customFields.map((f, i) => (i === idx ? { ...f, ...patch } : f)),
-      { shouldDirty: true },
-    );
-  };
-
-  const saveAsTemplate = async () => {
-    const valid = customFields.filter((f) => f.label.trim());
-    if (valid.length === 0) {
-      toast.error('Add at least one custom field first');
-      return;
-    }
-    const name = window.prompt('Template name?');
-    if (!name) return;
-    const makeDefault = window.confirm('Set as default template?');
-    try {
-      await apiPost('/progress-notes/templates', {
-        name,
-        fields: valid.map((f) => ({ label: f.label, type: 'text' as const })),
-        isDefault: makeDefault,
-      });
-      qc.invalidateQueries({ queryKey: ['doctor', 'progress-note-templates'] });
-      toast.success('Template saved');
-    } catch {
-      toast.error('Failed to save template');
-    }
-  };
-
-  return (
-    <PadSection
-      icon={<FileSignature className="h-4 w-4" />}
-      title="Clinical Narrative"
-      badge="Impressions · Discussions · Conclusions"
-      collapsed={collapsed}
-      onToggle={onToggle}
-      color="text-fuchsia-600"
-    >
-      <div className="space-y-4">
-        {tpls.length > 0 && (
-          <div className="flex items-center gap-2 text-xs">
-            <span className="text-muted-foreground">Apply template:</span>
-            <select
-              value=""
-              onChange={(e) => applyTemplate(e.target.value)}
-              className="flex-1 rounded-md border bg-background px-2 py-1"
-            >
-              <option value="">—</option>
-              {tpls.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                  {t.isDefault ? ' (default)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-              Impressions
-            </label>
-            <textarea
-              {...register('impressions')}
-              placeholder="Clinical impression / working hypothesis..."
-              rows={3}
-              className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-y"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-              Discussions
-            </label>
-            <textarea
-              {...register('discussions')}
-              placeholder="Differential discussion, reasoning..."
-              rows={3}
-              className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-y"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-              Conclusions
-            </label>
-            <textarea
-              {...register('conclusions')}
-              placeholder="Conclusion / plan summary..."
-              rows={3}
-              className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-y"
-            />
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-              Custom Fields
-            </label>
-            <div className="flex gap-2">
-              {customFields.length > 0 && (
-                <Button type="button" variant="outline" size="sm" onClick={saveAsTemplate} className="h-7 gap-1 text-[11px]">
-                  <Save className="h-3 w-3" /> Save as template
-                </Button>
-              )}
-              <Button type="button" variant="outline" size="sm" onClick={addField} className="h-7 gap-1 text-[11px]">
-                <Plus className="h-3 w-3" /> Add Field
-              </Button>
-            </div>
-          </div>
-
-          {customFields.length === 0 ? (
-            <p className="text-xs text-muted-foreground italic">
-              No custom fields. Use + Add Field to create your own (e.g., &ldquo;ASA grade&rdquo;, &ldquo;Pain score&rdquo;).
-            </p>
-          ) : (
-            <div className="space-y-1.5">
-              {customFields.map((cf, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <Input
-                    placeholder="Field label"
-                    value={cf.label}
-                    onChange={(e) => updateField(idx, { label: e.target.value })}
-                    className="w-48 h-8 text-xs"
-                  />
-                  <Input
-                    placeholder="Value"
-                    value={cf.value ?? ''}
-                    onChange={(e) => updateField(idx, { value: e.target.value })}
-                    className="flex-1 h-8 text-xs"
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                    onClick={() => removeField(idx)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <label className="flex items-center gap-2 cursor-pointer select-none rounded-lg border bg-muted/30 px-3 py-2">
-          <input
-            type="checkbox"
-            checked={pinToDischarge}
-            onChange={(e) => setValue('pinToDischargeSummary', e.target.checked, { shouldDirty: true })}
-            className="h-4 w-4 rounded border-input accent-primary"
-          />
-          <PinIcon className="h-3.5 w-3.5 text-primary" />
-          <span className="text-sm">Pin this note to Discharge Summary</span>
-        </label>
-      </div>
-    </PadSection>
   );
 }

@@ -1,1 +1,1 @@
-export { PrescriptionPad } from './prescription-pad';
+export { PrescriptionPad, clearConsultationDraft, getConsultationDraftKey } from './prescription-pad';

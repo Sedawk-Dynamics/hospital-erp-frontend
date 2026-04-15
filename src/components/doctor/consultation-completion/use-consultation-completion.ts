@@ -185,14 +185,6 @@ export function useConsultationCompletion() {
         const notePayload: any = {
           noteType: 'general',
           content: noteContent,
-          pinToDischargeSummary: !!formData.pinToDischargeSummary,
-          impressions: formData.impressions || undefined,
-          discussions: formData.discussions || undefined,
-          conclusions: formData.conclusions || undefined,
-          customFields:
-            formData.customFields && formData.customFields.length > 0
-              ? formData.customFields
-              : undefined,
           weightKgAtEntry:
             typeof formData.vitals?.weightKg === 'number' && formData.vitals.weightKg > 0
               ? formData.vitals.weightKg
@@ -324,9 +316,6 @@ function buildProgressNoteContent(data: ConsultationFormData): string {
   }
   if (data.referralNotes) {
     sections.push(`**Referral:**\n${data.referralNotes}`);
-  }
-  if (data.additionalNotes) {
-    sections.push(`**Additional Notes:**\n${data.additionalNotes}`);
   }
 
   return sections.join('\n\n');

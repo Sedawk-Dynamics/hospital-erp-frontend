@@ -79,20 +79,6 @@ export function StepAdvice({ form }: StepAdviceProps) {
         />
       </div>
 
-      {/* ── Additional Notes ── */}
-      <div className="space-y-2">
-        <Label htmlFor="additionalNotes" className="text-sm font-semibold">
-          Additional Notes
-        </Label>
-        <textarea
-          id="additionalNotes"
-          {...register('additionalNotes')}
-          placeholder="Any other notes for internal records..."
-          rows={2}
-          className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none"
-        />
-      </div>
-
       <Separator />
 
       {/* ── Consultation Summary Preview ── */}
