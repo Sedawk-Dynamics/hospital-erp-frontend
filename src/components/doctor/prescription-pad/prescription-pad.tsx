@@ -331,16 +331,6 @@ export function PrescriptionPad({
             <AdvicesSection form={form} />
           </PadSection>
 
-          {/* ═══════ 11. PATIENT HISTORY ═══════ */}
-          <PatientHistorySection
-            pastNotes={pastNotes}
-            pastPrescriptions={pastPrescriptions}
-            pastDiagnoses={pastDiagnoses}
-            pastVitals={pastVitals}
-            collapsed={collapsed.history}
-            onToggle={() => toggleSection('history')}
-          />
-
       </div>
 
       {/* ── Sticky Bottom Action Bar ── */}

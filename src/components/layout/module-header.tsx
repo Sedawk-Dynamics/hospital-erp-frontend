@@ -48,7 +48,7 @@ export function ModuleHeader() {
   const clinicName = selectedClinic?.name || user?.tenant?.name || 'Hospital ERP';
 
   return (
-    <header className="flex justify-between items-center sticky top-0 z-40 bg-[#fbf9f6]/80 backdrop-blur-xl h-20 px-8">
+    <header className="flex justify-between items-center sticky top-0 z-40 bg-background/80 backdrop-blur-xl h-20 px-8">
       {/* Left: Mobile menu + App name + Search — code.html: gap-8 */}
       <div className="flex items-center gap-8">
         {/* Mobile menu toggle */}

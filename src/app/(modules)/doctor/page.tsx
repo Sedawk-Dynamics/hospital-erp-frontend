@@ -113,14 +113,17 @@ const DOCTOR_TRANSITIONS: Record<string, { label: string; to: string; icon: type
 
 // ── Quick Stat Card ──────────────────────────────────────
 
-function QuickStatCard({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: number; color: string }) {
+function QuickStatCard({ icon, label, value, accent, iconBg, iconColor, badge }: { icon: React.ReactNode; label: string; value: number; accent: string; iconBg: string; iconColor: string; badge?: string }) {
   return (
-    <div className="flex items-center gap-3 rounded-xl bg-surface-container-lowest p-3 shadow-sanctuary">
-      <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${color}`}>{icon}</div>
-      <div>
-        <p className="font-headline text-lg font-bold">{value}</p>
-        <p className="font-label text-[10px] text-on-surface-variant">{label}</p>
+    <div className={cn('bg-surface-container-lowest p-6 rounded-xl shadow-sanctuary border-l-4', accent)}>
+      <div className="flex justify-between items-start mb-4">
+        <div className={cn('p-2 rounded-lg', iconBg, iconColor)}>{icon}</div>
+        {badge && (
+          <span className={cn('text-[10px] font-label font-bold px-2 py-1 rounded-full', iconColor, iconBg.replace('/10', '/5'))}>{badge}</span>
+        )}
       </div>
+      <p className="font-label text-[10px] text-on-surface-variant uppercase tracking-widest mb-1">{label}</p>
+      <h3 className="font-headline text-2xl font-extrabold tracking-tight text-on-surface">{value}</h3>
     </div>
   );
 }
@@ -132,13 +135,13 @@ function AlertsPanel({ pendingLabCount, pendingOTCount }: { pendingLabCount: num
   return (
     <div className="flex flex-wrap gap-2">
       {pendingLabCount > 0 && (
-        <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-1.5 text-xs font-medium text-amber-700">
+        <div className="inline-flex items-center gap-2 rounded-lg bg-secondary/10 border border-secondary/20 px-3 py-1.5 font-label text-xs font-bold text-secondary">
           <FlaskConical className="h-3.5 w-3.5" />
           {pendingLabCount} pending lab results
         </div>
       )}
       {pendingOTCount > 0 && (
-        <div className="flex items-center gap-2 rounded-lg bg-purple-50 border border-purple-200 px-3 py-1.5 text-xs font-medium text-purple-700">
+        <div className="inline-flex items-center gap-2 rounded-lg bg-tertiary/10 border border-tertiary/20 px-3 py-1.5 font-label text-xs font-bold text-tertiary">
           <Scissors className="h-3.5 w-3.5" />
           {pendingOTCount} OT approvals pending
         </div>
@@ -215,10 +218,13 @@ export default function DoctorHomePage() {
   }, []);
 
   return (
-    <div className="space-y-4 animate-fade-in-up">
+    <div className="space-y-6 animate-fade-in-up">
       {/* Header with action buttons */}
-      <div className="flex items-center justify-between">
-        <h1 className="font-headline text-xl font-bold">Doctor Appointments</h1>
+      <div className="flex items-end justify-between">
+        <div>
+          <h1 className="font-headline text-2xl font-extrabold tracking-tight text-on-surface">Doctor Appointments</h1>
+          <p className="font-label text-sm text-on-surface-variant mt-0.5">Manage today's consultations, upcoming visits & patient queue</p>
+        </div>
       </div>
 
       <DoctorActionButtons />
@@ -243,11 +249,11 @@ export default function DoctorHomePage() {
 
       {/* Quick Stats Cards — only meaningful for Today view */}
       {viewMode === 'today' && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <QuickStatCard icon={<Users className="h-4 w-4" />} label="Total Patients" value={doctorStats?.all ?? 0} color="bg-indigo-50 text-indigo-600" />
-          <QuickStatCard icon={<CheckCircle className="h-4 w-4" />} label="Completed" value={doctorStats?.completed ?? 0} color="bg-green-50 text-green-600" />
-          <QuickStatCard icon={<Clock className="h-4 w-4" />} label="Pending" value={(doctorStats?.booked ?? 0) + (doctorStats?.arrived ?? 0)} color="bg-amber-50 text-amber-600" />
-          <QuickStatCard icon={<BedDouble className="h-4 w-4" />} label="IP Referrals" value={doctorStats?.ipAppointments ?? 0} color="bg-blue-50 text-blue-600" />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
+          <QuickStatCard icon={<Users className="h-5 w-5" />} label="Total Patients" value={doctorStats?.all ?? 0} accent="border-primary" iconBg="bg-primary/10" iconColor="text-primary" />
+          <QuickStatCard icon={<CheckCircle className="h-5 w-5" />} label="Completed" value={doctorStats?.completed ?? 0} accent="border-primary-container" iconBg="bg-primary-container/10" iconColor="text-primary-container" />
+          <QuickStatCard icon={<Clock className="h-5 w-5" />} label="Pending" value={(doctorStats?.booked ?? 0) + (doctorStats?.arrived ?? 0)} accent="border-secondary" iconBg="bg-secondary/10" iconColor="text-secondary" />
+          <QuickStatCard icon={<BedDouble className="h-5 w-5" />} label="IP Referrals" value={doctorStats?.ipAppointments ?? 0} accent="border-tertiary" iconBg="bg-tertiary/10" iconColor="text-tertiary" />
         </div>
       )}
 
@@ -370,14 +376,14 @@ function formatTimeFromISO(t: string | null | undefined): string {
 }
 
 const statusLabels: Record<string, { label: string; bg: string; text: string }> = {
-  pending_payment: { label: 'Pending Payment', bg: 'bg-amber-100', text: 'text-amber-700' },
-  booked: { label: 'Booked', bg: 'bg-blue-100', text: 'text-blue-700' },
-  confirmed: { label: 'Confirmed', bg: 'bg-cyan-100', text: 'text-cyan-700' },
-  checked_in: { label: 'Checked In', bg: 'bg-amber-100', text: 'text-amber-700' },
-  in_consultation: { label: 'In Consultation', bg: 'bg-purple-100', text: 'text-purple-700' },
-  completed: { label: 'Completed', bg: 'bg-green-100', text: 'text-green-700' },
-  cancelled: { label: 'Cancelled', bg: 'bg-red-100', text: 'text-red-700' },
-  no_show: { label: 'No Show', bg: 'bg-gray-100', text: 'text-gray-700' },
+  pending_payment: { label: 'Pending Payment', bg: 'bg-secondary/10', text: 'text-secondary' },
+  booked: { label: 'Booked', bg: 'bg-primary-container/10', text: 'text-primary-container' },
+  confirmed: { label: 'Confirmed', bg: 'bg-primary/10', text: 'text-primary' },
+  checked_in: { label: 'Checked In', bg: 'bg-secondary/10', text: 'text-secondary' },
+  in_consultation: { label: 'In Consultation', bg: 'bg-tertiary/10', text: 'text-tertiary' },
+  completed: { label: 'Completed', bg: 'bg-primary/10', text: 'text-primary' },
+  cancelled: { label: 'Cancelled', bg: 'bg-error/10', text: 'text-error' },
+  no_show: { label: 'No Show', bg: 'bg-surface-container-high', text: 'text-on-surface-variant' },
 };
 
 // ── Doctor-specific appointment table ──────────────────
@@ -553,9 +559,10 @@ function DoctorAppointmentTable({
                   {/* Status */}
                   <td className="px-4 py-3">
                     <span className={cn(
-                      'text-[10px] font-bold px-2 py-0.5 rounded-full',
+                      'inline-flex items-center gap-1.5 font-label text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full',
                       st.bg, st.text,
                     )}>
+                      <span className={cn('w-1.5 h-1.5 rounded-full', st.text.replace('text-', 'bg-'))} />
                       {st.label}
                     </span>
                   </td>
@@ -629,17 +636,17 @@ function DoctorAppointmentTable({
       </div>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between border-t px-4 py-3">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <div className="flex items-center justify-between border-t border-outline-variant/30 px-6 py-4">
+        <div className="flex items-center gap-2 font-label text-xs text-on-surface-variant">
           <span>Rows per page:</span>
-          <span className="font-medium">30</span>
+          <span className="font-bold text-on-surface">30</span>
         </div>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 font-label text-xs text-on-surface-variant">
           <span>1–{appointments.length} of {total}</span>
-          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
+          <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-surface-container-high" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
             ‹
           </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>
+          <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-surface-container-high" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>
             ›
           </Button>
         </div>

@@ -105,24 +105,24 @@ const STATUS_STYLES: Record<string, { label: string; className: string }> = {
   no_show: { label: 'No Show', className: 'bg-gray-100 text-gray-700' },
 };
 
-/** Section label → color mapping */
+/** Section label → color mapping (M3 tokens) */
 const SECTION_COLORS: Record<string, string> = {
-  'Chief Complaint': 'text-blue-600',
-  'Symptoms': 'text-blue-600',
-  'Diagnosis': 'text-red-600',
-  'Prescription': 'text-emerald-600',
-  'Medicines': 'text-emerald-600',
-  'Vitals': 'text-orange-600',
-  'Advice': 'text-purple-600',
-  'Follow-up': 'text-cyan-600',
-  'General Examination': 'text-teal-600',
-  'Systemic Examination': 'text-teal-600',
-  'Referral': 'text-indigo-600',
-  'Additional Notes': 'text-gray-600',
-  'Lab Orders': 'text-amber-600',
-  'Imaging': 'text-pink-600',
-  'Documents': 'text-slate-600',
-  'Forms': 'text-violet-600',
+  'Chief Complaint': 'text-primary',
+  'Symptoms': 'text-primary',
+  'Diagnosis': 'text-error',
+  'Prescription': 'text-primary',
+  'Medicines': 'text-primary',
+  'Vitals': 'text-secondary',
+  'Advice': 'text-tertiary',
+  'Follow-up': 'text-primary-container',
+  'General Examination': 'text-primary',
+  'Systemic Examination': 'text-primary',
+  'Referral': 'text-tertiary',
+  'Additional Notes': 'text-on-surface-variant',
+  'Lab Orders': 'text-secondary',
+  'Imaging': 'text-tertiary',
+  'Documents': 'text-on-surface-variant',
+  'Forms': 'text-primary-container',
 };
 
 /** Parse a progress note's markdown content into sections */
@@ -149,67 +149,64 @@ function parseNoteContent(content?: string): Record<string, string> {
 
 function ConsultationTopBar({
   patient,
-  appointment,
   onBack,
 }: {
   patient: Patient;
-  appointment?: Appointment | null;
   onBack: () => void;
 }) {
   const age = patient.dateOfBirth ? calculateAge(patient.dateOfBirth) : null;
-  const status = appointment?.status ? STATUS_STYLES[appointment.status] : null;
 
   return (
-    <div className="sticky top-0 z-30 -mx-4 lg:-mx-6 px-4 lg:px-6 py-2.5 bg-white/85 backdrop-blur-md border-b shadow-sm">
-      <div className="flex items-center gap-3">
+    <div className="sticky top-0 z-30 -mx-4 lg:-mx-6 px-4 lg:px-6 py-3 bg-background/80 backdrop-blur-xl border-b border-outline-variant/30">
+      <div className="flex items-center gap-4">
         <Button
           variant="ghost"
           size="icon"
-          className="shrink-0 h-9 w-9 rounded-lg hover:bg-primary/10 hover:text-primary"
+          className="shrink-0 h-9 w-9 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-primary"
           onClick={onBack}
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
 
-        <div className="h-8 w-px bg-border" />
-
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/70 text-white font-headline text-xs font-bold shrink-0 shadow-md shadow-primary/30">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary-container text-on-secondary-container font-headline text-sm font-bold shrink-0">
             {patient.firstName?.[0]}{patient.lastName?.[0]}
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="font-headline text-sm font-bold truncate">
-                {patient.firstName} {patient.lastName}
-              </h1>
-              {status && (
-                <Badge className={`text-[9px] px-1.5 py-0 font-semibold ${status.className}`}>
-                  {status.label}
-                </Badge>
-              )}
-            </div>
-            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground leading-tight">
+            <h1 className="font-headline text-base font-extrabold tracking-tight text-on-surface truncate">
+              {patient.firstName} {patient.lastName}
+            </h1>
+            <div className="flex items-center gap-1.5 font-label text-[11px] text-on-surface-variant leading-tight">
               <span className="font-semibold text-primary">{patient.mrn}</span>
-              {patient.gender && <><span>·</span><span className="capitalize">{patient.gender}</span></>}
-              {age && <><span>·</span><span>{age}</span></>}
-              {patient.bloodGroup && <><span>·</span><span className="font-semibold text-rose-600">{patient.bloodGroup}</span></>}
+              {patient.gender && <><span className="text-outline-variant">·</span><span className="capitalize">{patient.gender}</span></>}
+              {age && <><span className="text-outline-variant">·</span><span>{age}</span></>}
+              {patient.bloodGroup && <><span className="text-outline-variant">·</span><span className="font-semibold text-error">{patient.bloodGroup}</span></>}
             </div>
           </div>
         </div>
 
         <div className="flex-1" />
 
-        {appointment?.reason && (
-          <div className="hidden md:flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <StickyNote className="h-3 w-3" />
-            <span className="truncate max-w-xs">{appointment.reason}</span>
-          </div>
-        )}
-
         <Button
           variant="outline"
           size="sm"
-          className="gap-1.5 shrink-0 h-8 border-primary/20 text-primary hover:bg-primary/5"
+          className="gap-1.5 shrink-0 h-9 rounded-lg border-outline-variant/40 font-label font-bold text-xs text-on-surface-variant hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+        >
+          <FlaskConical className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Order Lab</span>
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 shrink-0 h-9 rounded-lg border-outline-variant/40 font-label font-bold text-xs text-on-surface-variant hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+        >
+          <ImageIcon className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Request Imaging</span>
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 shrink-0 h-9 rounded-lg border-outline-variant/40 font-label font-bold text-xs text-on-surface-variant hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
         >
           <Printer className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">Print</span>
@@ -301,13 +298,18 @@ function AllergyBanner({ allergies }: { allergies?: Array<{ id?: string; allerge
 // Vitals Strip (compact horizontal pills)
 // ============================================================
 
-function VitalsStrip({ patientId }: { patientId: string }) {
+function VitalsStrip({ patientId, variant = 'sidebar' }: { patientId: string; variant?: 'sidebar' | 'top' }) {
   const { data: vitals, isLoading } = usePatientVitals(patientId);
   const latest = (vitals as Vital[] | undefined)?.[0];
 
+  const gridCols =
+    variant === 'top'
+      ? 'grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-9'
+      : 'grid-cols-2';
+
   if (isLoading) {
     return (
-      <div className="grid grid-cols-2 gap-2">
+      <div className={cn('grid gap-2', gridCols)}>
         {[0, 1, 2, 3].map((i) => (
           <div key={i} className="h-14 rounded-xl border border-primary/10 bg-muted/30 animate-pulse" />
         ))}
@@ -317,9 +319,9 @@ function VitalsStrip({ patientId }: { patientId: string }) {
 
   if (!latest) {
     return (
-      <div className="rounded-xl border border-dashed border-muted bg-muted/20 py-4 text-center">
-        <Activity className="h-4 w-4 text-muted-foreground/40 mx-auto mb-1" />
-        <p className="text-[11px] text-muted-foreground italic">No vitals recorded</p>
+      <div className="rounded-xl border border-dashed border-outline-variant/40 bg-surface-container-low py-6 text-center">
+        <Activity className="h-4 w-4 text-on-surface-variant/40 mx-auto mb-1" />
+        <p className="font-label text-[11px] text-on-surface-variant italic">No vitals recorded</p>
       </div>
     );
   }
@@ -399,58 +401,49 @@ function VitalsStrip({ patientId }: { patientId: string }) {
 
   if (visibleItems.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-muted bg-muted/20 py-4 text-center">
-        <Activity className="h-4 w-4 text-muted-foreground/40 mx-auto mb-1" />
-        <p className="text-[11px] text-muted-foreground italic">No vitals recorded</p>
+      <div className="rounded-xl border border-dashed border-outline-variant/40 bg-surface-container-low py-6 text-center">
+        <Activity className="h-4 w-4 text-on-surface-variant/40 mx-auto mb-1" />
+        <p className="font-label text-[11px] text-on-surface-variant italic">No vitals recorded</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-2">
-    <div className="grid grid-cols-2 gap-2">
+    <div className="space-y-3">
+    <div className={cn('grid gap-3', gridCols)}>
       {visibleItems.map((item) => {
         const Icon = item.icon;
         return (
           <div
             key={item.label}
             className={cn(
-              'rounded-xl border p-2.5 transition-all hover:shadow-md hover:-translate-y-0.5',
-              item.alert
-                ? 'border-destructive/40 bg-gradient-to-br from-destructive/10 to-destructive/5'
-                : 'border-primary/15 bg-gradient-to-br from-primary/5 to-transparent',
+              'rounded-xl bg-surface-container-low p-3 border-l-4 transition-all hover:bg-surface-container',
+              item.alert ? 'border-error' : 'border-primary',
             )}
           >
-            <div className="flex items-center gap-1.5 mb-1">
-              <div
-                className={cn(
-                  'flex h-5 w-5 items-center justify-center rounded-md',
-                  item.alert ? 'bg-destructive/15' : 'bg-primary/15',
-                )}
-              >
-                <Icon className={cn('h-3 w-3', item.alert ? 'text-destructive' : 'text-primary')} />
-              </div>
-              <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Icon className={cn('h-3.5 w-3.5', item.alert ? 'text-error' : 'text-primary')} />
+              <span className="font-label text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
                 {item.label}
               </span>
             </div>
             <div className="flex items-baseline gap-1">
-              <span className={cn('text-base font-bold leading-none', item.alert && 'text-destructive')}>
+              <span className={cn('font-headline text-lg font-extrabold leading-none', item.alert ? 'text-error' : 'text-on-surface')}>
                 {item.value}
               </span>
-              <span className="text-[9px] text-muted-foreground">{item.unit}</span>
+              <span className="font-label text-[10px] text-on-surface-variant">{item.unit}</span>
             </div>
           </div>
         );
       })}
     </div>
     {latest.createdAt && (
-      <div className="flex items-center justify-between gap-2 px-1 pt-1">
-        <span className="text-[9px] text-muted-foreground flex items-center gap-1">
+      <div className="flex items-center justify-between gap-2 px-1">
+        <span className="font-label text-[10px] text-on-surface-variant flex items-center gap-1">
           <Clock className="h-2.5 w-2.5" />
           Recorded {formatDateTimeAmPm(latest.createdAt)}
         </span>
-        <span className="text-[9px] font-semibold text-primary">
+        <span className="font-label text-[10px] font-bold uppercase tracking-wider text-primary">
           {visibleItems.length} vital{visibleItems.length === 1 ? '' : 's'}
         </span>
       </div>
@@ -536,20 +529,21 @@ function EmptyState({ icon: Icon, message }: { icon?: React.ElementType; message
 
 function PrescriptionLines({ content }: { content: string }) {
   const lines = content.split('\n').filter((l) => l.trim().startsWith('-'));
-  if (lines.length === 0) return <span className="text-[11px]">{content}</span>;
+  if (lines.length === 0) return <span className="font-label text-[11px] text-on-surface">{content}</span>;
 
   return (
-    <div className="space-y-0.5">
+    <div className="space-y-1">
       {lines.map((line, idx) => {
         const cleaned = line.replace(/^-\s*/, '');
         const parts = cleaned.split(' | ');
         const drugName = parts[0] || cleaned;
         const rest = parts.slice(1).join(' · ');
         return (
-          <span key={idx} className="text-[11px] block">
-            {idx + 1}. <span className="font-medium">{drugName}</span>
-            {rest && <span className="text-muted-foreground"> {rest}</span>}
-          </span>
+          <div key={idx} className="flex items-baseline gap-1.5 font-label text-[11px]">
+            <span className="font-bold text-primary min-w-[1rem]">{idx + 1}.</span>
+            <span className="font-headline font-bold text-on-surface">{drugName}</span>
+            {rest && <span className="text-on-surface-variant">{rest}</span>}
+          </div>
         );
       })}
     </div>
@@ -559,12 +553,13 @@ function PrescriptionLines({ content }: { content: string }) {
 function VitalsGrid({ content }: { content: string }) {
   const lines = content.split('\n').filter((l) => l.trim());
   return (
-    <div className="flex flex-wrap gap-x-4 gap-y-0.5">
+    <div className="flex flex-wrap gap-x-4 gap-y-1">
       {lines.map((line, idx) => {
         const [label, value] = line.split(':').map((s) => s.trim());
         return (
-          <span key={idx} className="text-[11px]">
-            <span className="text-muted-foreground">{label}:</span> <span className="font-semibold">{value}</span>
+          <span key={idx} className="inline-flex items-baseline gap-1 font-label text-[11px]">
+            <span className="text-on-surface-variant">{label}:</span>
+            <span className="font-headline font-bold text-on-surface">{value}</span>
           </span>
         );
       })}
@@ -588,12 +583,14 @@ function DiagnosisList({ content }: { content: string }) {
           <span key={idx} className="text-[11px]">
             {nameOnly}
             {diagType && (
-              <Badge variant="outline" className={cn(
-                'text-[8px] px-1 py-0 capitalize ml-1',
-                diagType === 'primary' ? 'border-red-300 text-red-600' : 'border-gray-300 text-gray-500',
+              <span className={cn(
+                'inline-flex items-center rounded-full border font-label text-[9px] font-bold px-1.5 py-0 capitalize ml-1',
+                diagType === 'primary'
+                  ? 'border-error/30 bg-error/5 text-error'
+                  : 'border-outline-variant/40 bg-surface-container-low text-on-surface-variant',
               )}>
                 {diagType}
-              </Badge>
+              </span>
             )}
             {idx < lines.length - 1 && ','}
           </span>
@@ -792,42 +789,34 @@ function VisitTimeline({ patientId, patient, appointmentId }: { patientId: strin
     <div className="space-y-3">
       {/* ── Stats Strip ── */}
       {visits.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-          <div className="rounded-xl border bg-gradient-to-br from-primary/10 to-transparent p-2.5">
-            <div className="flex items-center gap-1.5">
-              <CalendarDays className="h-3 w-3 text-primary" />
-              <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Visits</span>
-            </div>
-            <p className="text-base font-bold text-foreground mt-0.5 leading-none">{totalVisits}</p>
-          </div>
-          <div className="rounded-xl border bg-gradient-to-br from-emerald-100/60 to-transparent p-2.5">
-            <div className="flex items-center gap-1.5">
-              <Pill className="h-3 w-3 text-emerald-600" />
-              <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Rx Items</span>
-            </div>
-            <p className="text-base font-bold text-emerald-700 mt-0.5 leading-none">{totalRx}</p>
-          </div>
-          <div className="rounded-xl border bg-gradient-to-br from-amber-100/60 to-transparent p-2.5">
-            <div className="flex items-center gap-1.5">
-              <FlaskConical className="h-3 w-3 text-amber-600" />
-              <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Labs</span>
-            </div>
-            <p className="text-base font-bold text-amber-700 mt-0.5 leading-none">{totalLabs}</p>
-          </div>
-          <div className="rounded-xl border bg-gradient-to-br from-pink-100/60 to-transparent p-2.5">
-            <div className="flex items-center gap-1.5">
-              <ImageIcon className="h-3 w-3 text-pink-600" />
-              <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Imaging</span>
-            </div>
-            <p className="text-base font-bold text-pink-700 mt-0.5 leading-none">{totalImaging}</p>
-          </div>
-          <div className="rounded-xl border bg-gradient-to-br from-blue-100/60 to-transparent p-2.5 col-span-2 md:col-span-1">
-            <div className="flex items-center gap-1.5">
-              <Clock className="h-3 w-3 text-blue-600" />
-              <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Last Visit</span>
-            </div>
-            <p className="text-[11px] font-bold text-blue-700 mt-0.5 leading-tight truncate">{lastVisitDate ?? '—'}</p>
-          </div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {[
+            { label: 'Visits', value: totalVisits, icon: CalendarDays, accent: 'border-primary', iconBg: 'bg-primary/10', iconColor: 'text-primary' },
+            { label: 'Rx Items', value: totalRx, icon: Pill, accent: 'border-primary', iconBg: 'bg-primary/10', iconColor: 'text-primary' },
+            { label: 'Labs', value: totalLabs, icon: FlaskConical, accent: 'border-secondary', iconBg: 'bg-secondary/10', iconColor: 'text-secondary' },
+            { label: 'Imaging', value: totalImaging, icon: ImageIcon, accent: 'border-tertiary', iconBg: 'bg-tertiary/10', iconColor: 'text-tertiary' },
+            { label: 'Last Visit', value: lastVisitDate ?? '—', icon: Clock, accent: 'border-primary-container', iconBg: 'bg-primary-container/10', iconColor: 'text-primary-container', wide: true },
+          ].map((s) => {
+            const Icon = s.icon;
+            return (
+              <div
+                key={s.label}
+                className={cn(
+                  'rounded-xl bg-surface-container-lowest p-4 shadow-sanctuary border-l-4',
+                  s.accent,
+                  s.wide && 'col-span-2 md:col-span-1',
+                )}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className={cn('p-1.5 rounded-lg', s.iconBg, s.iconColor)}>
+                    <Icon className="h-3.5 w-3.5" />
+                  </div>
+                </div>
+                <p className="font-label text-[10px] font-semibold text-on-surface-variant uppercase tracking-widest">{s.label}</p>
+                <p className="font-headline text-lg font-extrabold tracking-tight text-on-surface leading-tight truncate mt-0.5">{s.value}</p>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -839,7 +828,7 @@ function VisitTimeline({ patientId, patient, appointmentId }: { patientId: strin
       {visits.length > 0 && (
       <div className="relative pl-7">
         {/* rail */}
-        <div className="absolute left-3 top-3 bottom-3 w-px bg-gradient-to-b from-primary/40 via-primary/20 to-transparent" aria-hidden />
+        <div className="absolute left-3 top-4 bottom-4 w-px bg-outline-variant/40" aria-hidden />
         <div className="space-y-3">
       {visits.map((visit, i) => {
         const isExpanded = expandedVisit === i;
@@ -878,12 +867,14 @@ function VisitTimeline({ patientId, patient, appointmentId }: { patientId: strin
                   <span key={d.id || idx} className="text-[11px]">
                     {d.diagnosisName}{d.icdCode ? ` (${d.icdCode})` : ''}
                     {d.diagnosisType && (
-                      <Badge variant="outline" className={cn(
-                        'text-[8px] px-1 py-0 capitalize ml-1',
-                        d.diagnosisType === 'primary' ? 'border-red-300 text-red-600' : 'border-gray-300 text-gray-500',
+                      <span className={cn(
+                        'inline-flex items-center rounded-full border font-label text-[9px] font-bold px-1.5 py-0 capitalize ml-1',
+                        d.diagnosisType === 'primary'
+                          ? 'border-error/30 bg-error/5 text-error'
+                          : 'border-outline-variant/40 bg-surface-container-low text-on-surface-variant',
                       )}>
                         {d.diagnosisType}
-                      </Badge>
+                      </span>
                     )}
                     {idx < visit.diagnoses.length - 1 && ','}
                   </span>
@@ -900,12 +891,13 @@ function VisitTimeline({ patientId, patient, appointmentId }: { patientId: strin
           items.push({
             label: `Medicines (${visit.rxItems.length})`, color: SECTION_COLORS['Medicines'],
             content: (
-              <div className="space-y-0.5">
+              <div className="space-y-1">
                 {visit.rxItems.map((item: any, idx: number) => (
-                  <span key={idx} className="text-[11px] block">
-                    {idx + 1}. <span className="font-medium">{item.drugName}</span>
-                    <span className="text-muted-foreground"> {[item.dosage, item.frequency, item.duration].filter(Boolean).join(' · ')}</span>
-                  </span>
+                  <div key={idx} className="flex items-baseline gap-1.5 font-label text-[11px]">
+                    <span className="font-bold text-primary min-w-[1rem]">{idx + 1}.</span>
+                    <span className="font-headline font-bold text-on-surface">{item.drugName}</span>
+                    <span className="text-on-surface-variant">{[item.dosage, item.frequency, item.duration].filter(Boolean).join(' · ')}</span>
+                  </div>
                 ))}
               </div>
             ),
@@ -920,14 +912,14 @@ function VisitTimeline({ patientId, patient, appointmentId }: { patientId: strin
               <div className="space-y-0.5">
                 {visit.labs.map((lab) => (
                   <div key={lab.id} className="flex items-center gap-2 text-[11px]">
-                    <FlaskConical className="h-3 w-3 text-amber-500 shrink-0" />
+                    <FlaskConical className="h-3 w-3 text-secondary shrink-0" />
                     <span className="font-medium">{lab.tests?.map((t) => t.name).join(', ') || lab.orderNumber || '—'}</span>
-                    <Badge
-                      variant={lab.status === 'completed' ? 'default' : 'secondary'}
-                      className="text-[8px] px-1 py-0 capitalize"
-                    >
+                    <span className={cn(
+                      'inline-flex items-center rounded-full font-label text-[9px] font-bold px-1.5 py-0.5 capitalize',
+                      lab.status === 'completed' ? 'bg-primary/10 text-primary' : 'bg-surface-container-high text-on-surface-variant',
+                    )}>
                       {lab.status}
-                    </Badge>
+                    </span>
                   </div>
                 ))}
               </div>
@@ -943,15 +935,15 @@ function VisitTimeline({ patientId, patient, appointmentId }: { patientId: strin
               <div className="space-y-0.5">
                 {visit.imaging.map((img) => (
                   <div key={img.id} className="flex items-center gap-2 text-[11px]">
-                    <ImageIcon className="h-3 w-3 text-pink-500 shrink-0" />
+                    <ImageIcon className="h-3 w-3 text-tertiary shrink-0" />
                     <span className="font-medium">{img.type || img.modality || '—'}</span>
-                    {img.bodyPart && <span className="text-muted-foreground">({img.bodyPart})</span>}
-                    <Badge
-                      variant={img.status === 'completed' ? 'default' : 'secondary'}
-                      className="text-[8px] px-1 py-0 capitalize"
-                    >
+                    {img.bodyPart && <span className="text-on-surface-variant">({img.bodyPart})</span>}
+                    <span className={cn(
+                      'inline-flex items-center rounded-full font-label text-[9px] font-bold px-1.5 py-0.5 capitalize',
+                      img.status === 'completed' ? 'bg-primary/10 text-primary' : 'bg-surface-container-high text-on-surface-variant',
+                    )}>
                       {img.status}
-                    </Badge>
+                    </span>
                   </div>
                 ))}
               </div>
@@ -974,16 +966,16 @@ function VisitTimeline({ patientId, patient, appointmentId }: { patientId: strin
               <div className="space-y-0.5">
                 {visit.forms.map((sub) => (
                   <div key={sub.id} className="flex items-center gap-2 text-[11px]">
-                    <ClipboardList className="h-3 w-3 text-violet-500 shrink-0" />
+                    <ClipboardList className="h-3 w-3 text-primary-container shrink-0" />
                     <span className="font-medium">{sub.systemForm?.name || 'Form'}</span>
-                    <Badge className={cn(
-                      'text-[8px] px-1 py-0',
-                      sub.status === 'verified' ? 'bg-emerald-100 text-emerald-700' :
-                      sub.status === 'submitted' ? 'bg-blue-100 text-blue-700' :
-                      'bg-muted text-muted-foreground',
+                    <span className={cn(
+                      'inline-flex items-center rounded-full font-label text-[9px] font-bold px-1.5 py-0.5 capitalize',
+                      sub.status === 'verified' ? 'bg-primary/10 text-primary' :
+                      sub.status === 'submitted' ? 'bg-primary-container/10 text-primary-container' :
+                      'bg-surface-container-high text-on-surface-variant',
                     )}>
                       {sub.status}
-                    </Badge>
+                    </span>
                   </div>
                 ))}
               </div>
@@ -996,99 +988,101 @@ function VisitTimeline({ patientId, patient, appointmentId }: { patientId: strin
             {/* timeline dot */}
             <div
               className={cn(
-                'absolute -left-[18px] top-3 flex h-4 w-4 items-center justify-center rounded-full ring-4 ring-background shadow-md',
-                i === 0 ? 'bg-primary animate-pulse' : 'bg-primary/60',
+                'absolute -left-[18px] top-4 flex h-4 w-4 items-center justify-center rounded-full ring-4 ring-background',
+                i === 0 ? 'bg-primary animate-pulse' : 'bg-primary/50',
               )}
               aria-hidden
             >
-              <div className="h-1.5 w-1.5 rounded-full bg-white" />
+              <div className="h-1.5 w-1.5 rounded-full bg-surface-container-lowest" />
             </div>
 
             <div className={cn(
-              'rounded-xl border bg-card overflow-hidden shadow-sm transition-all',
-              isExpanded ? 'shadow-md ring-1 ring-primary/20' : 'hover:shadow-md',
-              i === 0 && 'border-primary/30',
+              'rounded-xl bg-surface-container-lowest overflow-hidden shadow-sanctuary transition-all border-l-4',
+              i === 0 ? 'border-primary' : 'border-outline-variant/30',
+              isExpanded && i !== 0 && 'border-primary/50',
             )}>
               {/* Visit header */}
               <button
                 type="button"
-                className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-muted/40 transition-colors text-left"
+                className="w-full flex items-center gap-3 px-5 py-3 hover:bg-surface-container-low transition-colors text-left"
                 onClick={() => setExpandedVisit(isExpanded ? null : i)}
               >
-                <Badge className={cn(
-                  'text-[9px] px-1.5 py-0 font-bold shrink-0',
-                  i === 0 ? 'bg-primary text-white' : 'bg-muted text-muted-foreground',
+                <span className={cn(
+                  'inline-flex h-6 min-w-[28px] items-center justify-center rounded-full font-label text-[10px] font-bold px-2 shrink-0',
+                  i === 0 ? 'bg-primary text-on-primary' : 'bg-surface-container-high text-on-surface-variant',
                 )}>
                   #{visitNumber}
-                </Badge>
+                </span>
                 <div className="flex flex-col leading-tight">
-                  <span className="text-xs font-bold text-foreground">{visit.date}</span>
+                  <span className="font-headline text-sm font-extrabold tracking-tight text-on-surface">{visit.date}</span>
                   {visit.doctorName && (
-                    <span className="text-[10px] text-muted-foreground">{visit.doctorName}</span>
+                    <span className="font-label text-[10px] text-on-surface-variant">{visit.doctorName}</span>
                   )}
                 </div>
                 <div className="flex-1" />
 
                 {/* Summary count chips */}
-                <div className="hidden sm:flex items-center gap-1 mr-1">
+                <div className="hidden sm:flex items-center gap-1.5 mr-1">
                   {visit.rxItems.length > 0 && (
-                    <span className="inline-flex items-center gap-0.5 rounded-md bg-emerald-50 text-emerald-700 px-1.5 py-0.5 text-[9px] font-bold">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2 py-0.5 font-label text-[10px] font-bold">
                       <Pill className="h-2.5 w-2.5" />{visit.rxItems.length}
                     </span>
                   )}
                   {visit.labs.length > 0 && (
-                    <span className="inline-flex items-center gap-0.5 rounded-md bg-amber-50 text-amber-700 px-1.5 py-0.5 text-[9px] font-bold">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-secondary/10 text-secondary px-2 py-0.5 font-label text-[10px] font-bold">
                       <FlaskConical className="h-2.5 w-2.5" />{visit.labs.length}
                     </span>
                   )}
                   {visit.imaging.length > 0 && (
-                    <span className="inline-flex items-center gap-0.5 rounded-md bg-pink-50 text-pink-700 px-1.5 py-0.5 text-[9px] font-bold">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-tertiary/10 text-tertiary px-2 py-0.5 font-label text-[10px] font-bold">
                       <ImageIcon className="h-2.5 w-2.5" />{visit.imaging.length}
                     </span>
                   )}
                   {visit.diagnoses.length > 0 && (
-                    <span className="inline-flex items-center gap-0.5 rounded-md bg-red-50 text-red-700 px-1.5 py-0.5 text-[9px] font-bold">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-error/10 text-error px-2 py-0.5 font-label text-[10px] font-bold">
                       Dx {visit.diagnoses.length}
                     </span>
                   )}
                 </div>
 
                 {visit.rxStatus && (
-                  <Badge variant="outline" className="text-[9px] capitalize">{visit.rxStatus}</Badge>
+                  <span className="inline-flex items-center rounded-full border border-outline-variant/40 bg-surface-container-low px-2 py-0.5 font-label text-[10px] font-bold capitalize text-on-surface-variant">
+                    {visit.rxStatus}
+                  </span>
                 )}
-                <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', isExpanded && 'rotate-180')} />
+                <ChevronDown className={cn('h-4 w-4 text-on-surface-variant transition-transform', isExpanded && 'rotate-180')} />
               </button>
 
             {/* Collapsed summary */}
             {!isExpanded && items.length > 0 && (
-              <div className="px-4 py-1.5 border-t border-dashed text-[11px] text-muted-foreground truncate">
+              <div className="px-5 py-2 border-t border-outline-variant/20 font-label text-[11px] text-on-surface-variant truncate">
                 {items.slice(0, 4).map((item, idx) => (
                   <span key={item.label}>
-                    {idx > 0 && <span className="mx-1.5">·</span>}
-                    <span className={cn('font-semibold', item.color)}>{item.label}</span>
+                    {idx > 0 && <span className="mx-1.5 text-outline-variant">·</span>}
+                    <span className={cn('font-bold', item.color)}>{item.label}</span>
                   </span>
                 ))}
-                {items.length > 4 && <span className="ml-1.5 text-muted-foreground/50">+{items.length - 4} more</span>}
+                {items.length > 4 && <span className="ml-1.5 text-on-surface-variant/60">+{items.length - 4} more</span>}
               </div>
             )}
 
             {/* Expanded: all sections flat */}
             {isExpanded && (
-              <div className="divide-y">
+              <div className="border-t border-outline-variant/20 divide-y divide-outline-variant/20 bg-surface-container-low/40">
                 {items.map((item) => (
-                  <div key={item.label} className="px-4 py-2.5">
-                    <span className={cn('text-[10px] font-bold uppercase tracking-wide', item.color)}>{item.label}</span>
-                    <div className="mt-0.5 text-foreground/80 leading-relaxed">{item.content}</div>
+                  <div key={item.label} className="px-5 py-3">
+                    <span className={cn('font-label text-[10px] font-bold uppercase tracking-widest', item.color)}>{item.label}</span>
+                    <div className="mt-1 text-on-surface leading-relaxed">{item.content}</div>
                   </div>
                 ))}
                 {items.length === 0 && visit.noteContent && (
-                  <div className="px-4 py-2.5">
-                    <p className="text-[11px] text-muted-foreground whitespace-pre-line">{visit.noteContent}</p>
+                  <div className="px-5 py-3">
+                    <p className="font-label text-[11px] text-on-surface-variant whitespace-pre-line">{visit.noteContent}</p>
                   </div>
                 )}
                 {items.length === 0 && !visit.noteContent && (
-                  <div className="px-4 py-2.5 text-center">
-                    <p className="text-[11px] text-muted-foreground">No details recorded for this visit</p>
+                  <div className="px-5 py-3 text-center">
+                    <p className="font-label text-[11px] text-on-surface-variant italic">No details recorded for this visit</p>
                   </div>
                 )}
               </div>
@@ -1408,11 +1402,10 @@ export default function PatientConsultationPage({
   const showForm = isInConsultation || isEditing;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-muted/20 via-background to-muted/10">
+    <div className="min-h-screen bg-background">
       {/* ── Sticky Top Bar ── */}
       <ConsultationTopBar
         patient={patient}
-        appointment={appointment}
         onBack={() => router.back()}
       />
 
@@ -1446,24 +1439,36 @@ export default function PatientConsultationPage({
           />
         </div>
 
-        {/* ── Clinical Record Quick Cards (top) ── */}
-        <div className="mb-4">
-          <div className="flex items-center gap-2 px-1 mb-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/15">
-              <FolderOpen className="h-3.5 w-3.5 text-primary" />
+        {/* ── Latest Vitals (top) ── */}
+        <div className="mb-6 rounded-xl bg-surface-container-lowest shadow-sanctuary border-l-4 border-primary overflow-hidden">
+          <div className="px-6 py-4 flex items-center justify-between">
+            <div>
+              <h2 className="font-headline text-base font-extrabold tracking-tight text-on-surface">Latest Vitals</h2>
+              <p className="font-label text-[11px] text-on-surface-variant">Most recent measurements snapshot</p>
             </div>
-            <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">
-              Clinical Record
-            </h3>
-            <span className="text-[10px] text-muted-foreground">· click any card to view details</span>
-            <div className="h-px flex-1 bg-gradient-to-r from-primary/20 via-primary/5 to-transparent" />
+            <div className="p-2 bg-primary/10 rounded-lg text-primary">
+              <Activity className="h-4 w-4" />
+            </div>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="px-6 pb-5">
+            <VitalsStrip patientId={patient.id} variant="top" />
+          </div>
+        </div>
+
+        {/* ── Clinical Record Quick Cards (top) ── */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="font-headline text-base font-extrabold tracking-tight text-on-surface">Clinical Record</h2>
+              <p className="font-label text-[11px] text-on-surface-variant">Click any card to view details</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             {[
-              { key: 'medications' as const, title: 'Current Medications', subtitle: 'Active prescriptions', icon: Stethoscope, tint: 'emerald', gradFrom: 'from-emerald-50', gradVia: 'via-emerald-100/40', border: 'border-emerald-200', iconBg: 'bg-emerald-100', iconColor: 'text-emerald-600', text: 'text-emerald-700', hover: 'hover:border-emerald-400 hover:shadow-emerald-100' },
-              { key: 'history' as const, title: 'Medical History', subtitle: 'Conditions & surgeries', icon: Heart, tint: 'rose', gradFrom: 'from-rose-50', gradVia: 'via-rose-100/40', border: 'border-rose-200', iconBg: 'bg-rose-100', iconColor: 'text-rose-600', text: 'text-rose-700', hover: 'hover:border-rose-400 hover:shadow-rose-100' },
-              { key: 'investigations' as const, title: 'Investigation History', subtitle: 'Labs & imaging', icon: FlaskConical, tint: 'amber', gradFrom: 'from-amber-50', gradVia: 'via-amber-100/40', border: 'border-amber-200', iconBg: 'bg-amber-100', iconColor: 'text-amber-600', text: 'text-amber-700', hover: 'hover:border-amber-400 hover:shadow-amber-100' },
-              { key: 'drugs' as const, title: 'Drug History', subtitle: 'Past meds & adherence', icon: Pill, tint: 'blue', gradFrom: 'from-blue-50', gradVia: 'via-blue-100/40', border: 'border-blue-200', iconBg: 'bg-blue-100', iconColor: 'text-blue-600', text: 'text-blue-700', hover: 'hover:border-blue-400 hover:shadow-blue-100' },
+              { key: 'medications' as const, title: 'Current Medications', subtitle: 'Active prescriptions', icon: Stethoscope, accent: 'border-primary', iconBg: 'bg-primary/10', iconColor: 'text-primary', badge: 'text-primary bg-primary/5' },
+              { key: 'history' as const, title: 'Medical History', subtitle: 'Conditions & surgeries', icon: Heart, accent: 'border-secondary', iconBg: 'bg-secondary/10', iconColor: 'text-secondary', badge: 'text-secondary bg-secondary/5' },
+              { key: 'investigations' as const, title: 'Investigation History', subtitle: 'Labs & imaging', icon: FlaskConical, accent: 'border-primary-container', iconBg: 'bg-primary-container/10', iconColor: 'text-primary-container', badge: 'text-primary-container bg-primary-container/5' },
+              { key: 'drugs' as const, title: 'Drug History', subtitle: 'Past meds & adherence', icon: Pill, accent: 'border-tertiary', iconBg: 'bg-tertiary/10', iconColor: 'text-tertiary', badge: 'text-tertiary bg-tertiary/5' },
             ].map((c) => {
               const Icon = c.icon;
               return (
@@ -1472,23 +1477,18 @@ export default function PatientConsultationPage({
                   type="button"
                   onClick={() => openClinical(c.key)}
                   className={cn(
-                    'group relative overflow-hidden rounded-2xl border-2 bg-gradient-to-br to-transparent p-3 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg',
-                    c.gradFrom, c.gradVia, c.border, c.hover,
+                    'group bg-surface-container-lowest p-6 rounded-xl shadow-sanctuary border-l-4 text-left transition-transform hover:-translate-y-0.5',
+                    c.accent,
                   )}
                 >
-                  <div className="flex items-start gap-2.5">
-                    <div className={cn('flex h-10 w-10 items-center justify-center rounded-xl shadow-sm shrink-0', c.iconBg)}>
-                      <Icon className={cn('h-5 w-5', c.iconColor)} />
+                  <div className="flex justify-between items-start mb-4">
+                    <div className={cn('p-2 rounded-lg', c.iconBg, c.iconColor)}>
+                      <Icon className="h-5 w-5" />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1">
-                        <h4 className={cn('text-[13px] font-bold leading-tight truncate', c.text)}>{c.title}</h4>
-                        <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-0.5', c.iconColor)} />
-                      </div>
-                      <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{c.subtitle}</p>
-                      <p className={cn('text-[9px] font-bold uppercase tracking-wider mt-1.5 opacity-70', c.text)}>View details →</p>
-                    </div>
+                    <span className={cn('text-[10px] font-label font-bold px-2 py-1 rounded-full', c.badge)}>View →</span>
                   </div>
+                  <p className="font-label text-[10px] text-on-surface-variant uppercase tracking-widest mb-1">{c.subtitle}</p>
+                  <h3 className="font-headline text-base font-extrabold tracking-tight text-on-surface leading-tight">{c.title}</h3>
                 </button>
               );
             })}
@@ -1501,19 +1501,17 @@ export default function PatientConsultationPage({
           <div className="xl:col-span-8 space-y-4 min-w-0">
             {/* CONSULTATION FORM — only when active/editing */}
             {showForm && (
-              <section className="relative">
-                <div className="absolute -inset-0.5 rounded-2xl bg-gradient-to-br from-primary/40 via-primary/20 to-transparent opacity-60 blur-sm" aria-hidden />
-                <div className="relative rounded-2xl border-2 border-primary/30 bg-card overflow-hidden shadow-xl shadow-primary/10">
+              <section className="rounded-xl bg-surface-container-lowest shadow-sanctuary border-l-4 border-primary overflow-hidden">
                   {/* Form header bar */}
-                  <div className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-b border-primary/15">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/70 text-white shadow-md shadow-primary/20">
+                  <div className="flex items-center gap-3 px-6 py-4 border-b border-outline-variant/30">
+                    <div className="p-2 bg-primary/10 rounded-lg text-primary">
                       <Stethoscope className="h-4 w-4" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h2 className="text-sm font-bold text-primary leading-tight">
+                      <h2 className="font-headline text-base font-extrabold tracking-tight text-on-surface leading-tight">
                         {isEditing ? 'Editing Consultation' : 'Active Consultation'}
                       </h2>
-                      <p className="text-[10px] text-muted-foreground leading-tight">
+                      <p className="font-label text-[11px] text-on-surface-variant leading-tight mt-0.5">
                         {isEditing
                           ? 'Amend the saved consultation — changes update existing records'
                           : 'Record symptoms, vitals, diagnosis & prescription'}
@@ -1524,17 +1522,12 @@ export default function PatientConsultationPage({
                         size="sm"
                         variant="outline"
                         onClick={cancelEdit}
-                        className="h-8 gap-1.5 border-amber-300 text-amber-700 hover:bg-amber-50"
+                        className="h-8 gap-1.5 rounded-lg border-outline-variant/40 font-label font-bold text-xs text-on-surface-variant hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
                       >
                         <ArrowLeft className="h-3.5 w-3.5" />
                         Cancel Edit
                       </Button>
-                    ) : (
-                      <Badge className="bg-emerald-100 text-emerald-700 text-[9px] px-2 py-0.5 font-bold gap-1 shadow-sm">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        LIVE
-                      </Badge>
-                    )}
+                    ) : null}
                   </div>
 
                   {/* Form body */}
@@ -1587,36 +1580,19 @@ export default function PatientConsultationPage({
                       )}
                     </>
                   )}
-                </div>
               </section>
             )}
 
             {/* VISIT TIMELINE */}
             <section>
-              <div className="flex items-center gap-2 px-1 mb-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/15">
-                  <CalendarDays className="h-3.5 w-3.5 text-primary" />
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-2 bg-primary/10 rounded-lg text-primary">
+                  <CalendarDays className="h-4 w-4" />
                 </div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">
-                  Visit Timeline
-                </h3>
-                <div className="h-px flex-1 bg-gradient-to-r from-primary/20 via-primary/5 to-transparent" />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 text-xs h-7 border-amber-300 text-amber-700 hover:bg-amber-50"
-                >
-                  <FlaskConical className="h-3 w-3" />
-                  Order Lab
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 text-xs h-7 border-pink-300 text-pink-700 hover:bg-pink-50"
-                >
-                  <ImageIcon className="h-3 w-3" />
-                  Request Imaging
-                </Button>
+                <div>
+                  <h2 className="font-headline text-base font-extrabold tracking-tight text-on-surface">Visit Timeline</h2>
+                  <p className="font-label text-[11px] text-on-surface-variant">Past visits & clinical events</p>
+                </div>
               </div>
               <VisitTimeline patientId={patient.id} patient={patient} appointmentId={appointmentId} />
             </section>
@@ -1625,52 +1601,31 @@ export default function PatientConsultationPage({
           {/* ═══════ SIDEBAR ═══════ */}
           <aside className="xl:col-span-4 space-y-4">
             <div className="xl:sticky xl:top-20 space-y-4">
-              {/* Appointment */}
-              <AppointmentCard patient={patient} appointment={appointment} />
-
               {/* Allergies */}
               {patient.allergies && patient.allergies.length > 0 && (
-                <div className="rounded-2xl border-2 border-destructive/30 bg-gradient-to-br from-destructive/10 via-destructive/5 to-transparent overflow-hidden shadow-sm">
-                  <div className="px-4 py-2.5 bg-destructive/10 border-b border-destructive/20 flex items-center gap-2">
-                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-destructive text-white shadow-sm">
-                      <AlertTriangle className="h-3.5 w-3.5" />
+                <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary border-l-4 border-error overflow-hidden">
+                  <div className="px-5 py-4 flex items-center justify-between">
+                    <div>
+                      <h3 className="font-headline text-base font-extrabold tracking-tight text-on-surface">Allergies</h3>
+                      <p className="font-label text-[10px] text-on-surface-variant uppercase tracking-widest mt-0.5">{patient.allergies.length} known</p>
                     </div>
-                    <span className="text-xs font-bold text-destructive uppercase tracking-wide">
-                      Allergies
-                    </span>
-                    <Badge variant="destructive" className="ml-auto text-[9px] px-1.5 py-0">
-                      {patient.allergies.length}
-                    </Badge>
+                    <div className="p-2 bg-error/10 rounded-lg text-error">
+                      <AlertTriangle className="h-4 w-4" />
+                    </div>
                   </div>
-                  <div className="p-3 flex flex-wrap gap-1.5">
+                  <div className="px-5 pb-5 flex flex-wrap gap-1.5">
                     {patient.allergies.map((a, i) => (
-                      <Badge
+                      <span
                         key={a.id ?? i}
-                        variant="destructive"
-                        className="text-[10px] font-semibold py-0.5 px-2"
+                        className="font-label text-[10px] font-bold text-error bg-error/5 border border-error/20 rounded-full px-2.5 py-1"
                       >
                         {a.allergen}
-                        {a.severity && <span className="ml-1 opacity-75">· {a.severity}</span>}
-                      </Badge>
+                        {a.severity && <span className="ml-1 opacity-70">· {a.severity}</span>}
+                      </span>
                     ))}
                   </div>
                 </div>
               )}
-
-              {/* Vitals */}
-              <div className="rounded-2xl border bg-card overflow-hidden shadow-sm">
-                <div className="px-4 py-2.5 border-b flex items-center gap-2 bg-gradient-to-r from-primary/5 to-transparent">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/15">
-                    <Activity className="h-3.5 w-3.5 text-primary" />
-                  </div>
-                  <span className="text-xs font-bold uppercase tracking-wide text-foreground">
-                    Latest Vitals
-                  </span>
-                </div>
-                <div className="p-3">
-                  <VitalsStrip patientId={patient.id} />
-                </div>
-              </div>
 
             </div>
           </aside>
@@ -1686,105 +1641,53 @@ export default function PatientConsultationPage({
         }}
       >
         <DialogContent className="max-w-5xl w-[calc(100%-2rem)] p-0 gap-0 overflow-hidden max-h-[90vh] flex flex-col sm:max-w-5xl">
-          {/* Header */}
-          <div className="relative overflow-hidden bg-gradient-to-br from-primary via-primary to-emerald-700 px-6 py-4 text-white shrink-0">
-            <div className="absolute -top-16 -right-16 h-40 w-40 rounded-full bg-white/10 blur-3xl" aria-hidden />
-            <div className="relative flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 backdrop-blur-sm ring-2 ring-white/20">
-                <FolderOpen className="h-5 w-5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <DialogTitle className="text-lg font-bold tracking-tight text-white">
-                  Clinical Record
-                </DialogTitle>
-                <DialogDescription className="text-[11px] text-white/70 mt-0.5">
-                  Complete medical context — read-only view
-                </DialogDescription>
-              </div>
-            </div>
-          </div>
+          {(() => {
+            const map = {
+              medications: { title: 'Current Medications', subtitle: 'Active prescriptions', icon: Stethoscope, iconBg: 'bg-primary/10', iconColor: 'text-primary', panel: <CurrentMedicationsPanel patientId={patient.id} /> },
+              history: { title: 'Medical History', subtitle: 'Conditions, surgeries & family hx', icon: Heart, iconBg: 'bg-secondary/10', iconColor: 'text-secondary', panel: <MedicalHistoryPanel patientId={patient.id} /> },
+              investigations: { title: 'Investigation History', subtitle: 'Lab results & imaging reports', icon: FlaskConical, iconBg: 'bg-primary-container/10', iconColor: 'text-primary-container', panel: <InvestigationHistoryPanel patientId={patient.id} /> },
+              drugs: { title: 'Drug History', subtitle: 'Past medications & adherence', icon: Pill, iconBg: 'bg-tertiary/10', iconColor: 'text-tertiary', panel: <DrugHistoryPanel patientId={patient.id} /> },
+            } as const;
+            const entry = activeClinical ? map[activeClinical] : null;
+            if (!entry) return null;
+            const Icon = entry.icon;
+            return (
+              <>
+                {/* Header */}
+                <div className="px-6 py-5 bg-surface-container-lowest border-b border-outline-variant/30 shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className={cn('p-2.5 rounded-lg', entry.iconBg, entry.iconColor)}>
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <DialogTitle className="font-headline text-lg font-extrabold tracking-tight text-on-surface">
+                        {entry.title}
+                      </DialogTitle>
+                      <DialogDescription className="font-label text-[11px] text-on-surface-variant mt-0.5">
+                        {entry.subtitle}
+                      </DialogDescription>
+                    </div>
+                  </div>
+                </div>
 
-          {/* Scrollable Body — only the clicked section is rendered */}
-          <div className="flex-1 overflow-y-auto bg-gradient-to-b from-muted/20 to-background p-5">
-            {activeClinical === 'medications' && (
-              <section className="rounded-2xl border bg-card overflow-hidden shadow-sm">
-                <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-emerald-50 to-transparent border-b">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100">
-                    <Stethoscope className="h-4.5 w-4.5 text-emerald-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-emerald-700">Current Medications</h3>
-                    <p className="text-[11px] text-muted-foreground">Active prescriptions</p>
-                  </div>
+                {/* Scrollable Body */}
+                <div className="flex-1 overflow-y-auto bg-background p-6">
+                  {entry.panel}
                 </div>
-                <div className="p-4">
-                  <CurrentMedicationsPanel patientId={patient.id} />
-                </div>
-              </section>
-            )}
-
-            {activeClinical === 'history' && (
-              <section className="rounded-2xl border bg-card overflow-hidden shadow-sm">
-                <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-rose-50 to-transparent border-b">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-100">
-                    <Heart className="h-4.5 w-4.5 text-rose-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-rose-700">Medical History</h3>
-                    <p className="text-[11px] text-muted-foreground">Conditions, surgeries & family hx</p>
-                  </div>
-                </div>
-                <div className="p-4">
-                  <MedicalHistoryPanel patientId={patient.id} />
-                </div>
-              </section>
-            )}
-
-            {activeClinical === 'investigations' && (
-              <section className="rounded-2xl border bg-card overflow-hidden shadow-sm">
-                <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-amber-50 to-transparent border-b">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100">
-                    <FlaskConical className="h-4.5 w-4.5 text-amber-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-amber-700">Investigation History</h3>
-                    <p className="text-[11px] text-muted-foreground">Lab results & imaging reports</p>
-                  </div>
-                </div>
-                <div className="p-4">
-                  <InvestigationHistoryPanel patientId={patient.id} />
-                </div>
-              </section>
-            )}
-
-            {activeClinical === 'drugs' && (
-              <section className="rounded-2xl border bg-card overflow-hidden shadow-sm">
-                <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-blue-50 to-transparent border-b">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-100">
-                    <Pill className="h-4.5 w-4.5 text-blue-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-blue-700">Drug History</h3>
-                    <p className="text-[11px] text-muted-foreground">Past medications & adherence</p>
-                  </div>
-                </div>
-                <div className="p-4">
-                  <DrugHistoryPanel patientId={patient.id} />
-                </div>
-              </section>
-            )}
-          </div>
+              </>
+            );
+          })()}
 
           {/* Footer */}
-          <div className="border-t bg-muted/30 px-5 py-3 flex items-center justify-between shrink-0">
-            <p className="text-[11px] text-muted-foreground">
+          <div className="border-t border-outline-variant/30 bg-surface-container-low px-6 py-3 flex items-center justify-between shrink-0">
+            <p className="font-label text-[11px] text-on-surface-variant">
               Data is read-only here. Record new findings in the consultation form.
             </p>
             <Button
               size="sm"
               variant="outline"
               onClick={() => setClinicalOpen(false)}
-              className="h-8"
+              className="h-8 rounded-lg border-outline-variant/40 font-label font-bold text-xs text-on-surface-variant hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
             >
               Close
             </Button>
