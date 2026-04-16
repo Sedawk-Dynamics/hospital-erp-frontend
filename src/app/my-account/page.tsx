@@ -136,7 +136,7 @@ export default function MyAccountPage() {
                 <div className="bg-surface-container-low rounded-lg p-3">
                   <Clock className="h-3.5 w-3.5 text-on-surface-variant mb-1" />
                   <p className="font-label text-[10px] text-on-surface-variant">Days Left</p>
-                  <p className={`font-label text-sm font-bold ${daysRemaining !== null && daysRemaining <= 7 ? 'text-error' : ''}`}>
+                  <p className={`font-label text-sm font-bold ${daysRemaining != null && daysRemaining <= 7 ? 'text-error' : ''}`}>
                     {daysRemaining ?? '-'}
                   </p>
                 </div>
@@ -149,7 +149,7 @@ export default function MyAccountPage() {
                 </div>
               </div>
 
-              {daysRemaining !== null && daysRemaining <= 7 && sub.status === 'active' && (
+              {daysRemaining != null && daysRemaining <= 7 && sub.status === 'active' && (
                 <div className="flex items-start gap-3 bg-error/5 border border-error/20 rounded-lg p-3 mt-4">
                   <AlertTriangle className="h-4 w-4 text-error shrink-0 mt-0.5" />
                   <p className="font-label text-xs text-error font-bold">

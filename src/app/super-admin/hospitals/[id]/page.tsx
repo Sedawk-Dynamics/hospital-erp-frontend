@@ -169,8 +169,8 @@ export default function HospitalDetailPage({ params }: PageProps) {
                     { icon: Mail, value: tenant.email, fallback: 'No email' },
                     { icon: Phone, value: tenant.phone, fallback: 'No phone' },
                     { icon: MapPin, value: [tenant.address, tenant.city, tenant.state, tenant.country].filter(Boolean).join(', '), fallback: 'No address' },
-                    { icon: Globe, value: tenant.website, fallback: null },
-                    { icon: Hash, value: tenant.hospitalCode ? `Code: ${tenant.hospitalCode}` : null, fallback: null },
+                    { icon: Globe, value: (tenant as any).website, fallback: null },
+                    { icon: Hash, value: (tenant as any).hospitalCode ? `Code: ${(tenant as any).hospitalCode}` : null, fallback: null },
                   ].filter(({ value, fallback }) => value || fallback).map(({ icon: Icon, value, fallback }, i) => (
                     <div key={i} className="flex items-center gap-2.5">
                       <Icon className="h-4 w-4 text-on-surface-variant shrink-0" />
@@ -180,7 +180,7 @@ export default function HospitalDetailPage({ params }: PageProps) {
                 </div>
                 <div className="pt-3 border-t border-surface-container font-label text-[10px] text-on-surface-variant">
                   Created {formatDate(tenant.createdAt)}
-                  {tenant.onboardedAt && <> &middot; Onboarded {formatDate(tenant.onboardedAt)}</>}
+                  {(tenant as any).onboardedAt && <> &middot; Onboarded {formatDate((tenant as any).onboardedAt)}</>}
                 </div>
               </div>
 

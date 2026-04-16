@@ -217,8 +217,8 @@ export default function ManageSubscriptionPage() {
                   <Clock className="h-3.5 w-3.5 text-on-surface-variant" />
                   <span className="font-label text-[10px] text-on-surface-variant uppercase tracking-wider">Days Left</span>
                 </div>
-                <p className={`font-label text-sm font-bold ${daysRemaining !== null && daysRemaining <= 7 ? 'text-error' : ''}`}>
-                  {daysRemaining !== null ? daysRemaining : '-'}
+                <p className={`font-label text-sm font-bold ${daysRemaining != null && daysRemaining <= 7 ? 'text-error' : ''}`}>
+                  {daysRemaining != null ? daysRemaining : '-'}
                 </p>
               </div>
               <div className="bg-surface-container-low rounded-lg p-3">
@@ -230,7 +230,7 @@ export default function ManageSubscriptionPage() {
               </div>
             </div>
 
-            {daysRemaining !== null && daysRemaining <= 7 && sub.status === 'active' && (
+            {daysRemaining != null && daysRemaining <= 7 && sub.status === 'active' && (
               <div className="flex items-start gap-3 bg-error/5 border border-error/20 rounded-lg p-4 mb-4">
                 <AlertTriangle className="h-5 w-5 text-error shrink-0 mt-0.5" />
                 <div>
