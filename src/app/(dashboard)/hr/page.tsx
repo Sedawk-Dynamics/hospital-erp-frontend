@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Filter } from 'lucide-react';
+import { Plus, Filter, ClipboardCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDate } from '@/lib/date-utils';
 import { Button } from '@/components/ui/button';
@@ -160,10 +160,20 @@ export default function HRPage() {
         title="Staff Management"
         description="Manage hospital staff and human resources"
         action={
-          <Button onClick={() => router.push('/hr/new')} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Add Staff
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => router.push('/hr/doctor-leaves')}
+              className="gap-2"
+            >
+              <ClipboardCheck className="h-4 w-4" />
+              Doctor Leave Requests
+            </Button>
+            <Button onClick={() => router.push('/hr/new')} className="gap-2">
+              <Plus className="h-4 w-4" />
+              Add Staff
+            </Button>
+          </div>
         }
       />
 

@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { GripVertical, ChevronDown, User, Stethoscope, Calendar, Clock, Shield } from 'lucide-react';
+import { GripVertical, ChevronDown, User, Stethoscope, Calendar, Clock, Shield, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
 import { useDoctorProfile } from '@/hooks/use-doctor';
@@ -213,11 +213,22 @@ export default function DoctorSettingsPage() {
 
       {/* Schedule Tab */}
       {activeTab === 'schedule' && (
-        <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-5">
+        <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-5 space-y-4">
+          <div className="flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
+            <Info className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+            <div className="text-xs text-foreground">
+              <p className="font-medium">Your schedule & consultation fee are managed by the Hospital Admin / HR.</p>
+              <p className="text-muted-foreground mt-1">
+                To change working hours, shifts, or fees, please contact your administrator.
+                You can <a href="/doctor/schedule" className="text-primary hover:underline">view your calendar</a> or <a href="/doctor/leaves" className="text-primary hover:underline">apply for leave</a>.
+              </p>
+            </div>
+          </div>
           {doctorProfile?.id ? (
             <DoctorScheduleManager
               doctorId={doctorProfile.id}
               doctorName={`Dr. ${user?.firstName} ${user?.lastName}`}
+              readOnly
             />
           ) : profileLoading ? (
             <div className="flex justify-center py-12">

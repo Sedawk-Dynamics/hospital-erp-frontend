@@ -146,12 +146,16 @@ export interface AvailableSlot {
   startTime: string;
   endTime: string;
   available: boolean;
+  /** True when this slot overlaps an approved partial-hours leave. */
+  onLeave?: boolean;
 }
 
 export interface AvailableSlotsResponse {
   date: string;
-  doctorId: string;
+  doctorId?: string;
   slots: AvailableSlot[];
+  /** Populated when no slots are available (e.g. "Doctor is on leave on this date"). */
+  message?: string;
 }
 
 export function useAvailableSlots(doctorId: string, date: string) {

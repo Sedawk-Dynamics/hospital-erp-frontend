@@ -31,7 +31,8 @@ const settingsGroups: SettingsGroup[] = [
     icon: UserCog,
     items: [
       { label: 'User Access Configuration', href: '/hospital/settings/users' },
-      { label: 'Doctor Schedules', href: '/hospital/settings/doctor-schedules' },
+      { label: 'Doctor Schedules & Fees', href: '/hospital/settings/doctor-schedules' },
+      { label: 'Doctor Leave Requests', href: '/hr/doctor-leaves' },
     ],
   },
   {

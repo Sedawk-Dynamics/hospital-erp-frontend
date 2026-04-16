@@ -721,6 +721,7 @@ export default function BookAppointmentPage() {
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
                   {slots.map((slot) => {
                     const isDisabled = !slot.available || slot.isPast;
+                    const isOnLeave = !slot.available && (slot as any).onLeave;
                     return (
                       <button
                         key={slot.startTime}
@@ -728,7 +729,8 @@ export default function BookAppointmentPage() {
                         onClick={() => setSelectedSlot(slot)}
                         className={cn(
                           'rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
-                          !slot.available && 'opacity-60 cursor-not-allowed bg-red-50 text-red-400 border-red-200 line-through dark:bg-red-950/20 dark:text-red-400/60 dark:border-red-900/30',
+                          !slot.available && !isOnLeave && 'opacity-60 cursor-not-allowed bg-red-50 text-red-400 border-red-200 line-through dark:bg-red-950/20 dark:text-red-400/60 dark:border-red-900/30',
+                          isOnLeave && 'opacity-80 cursor-not-allowed bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/40',
                           slot.available && slot.isPast && 'opacity-40 cursor-not-allowed text-muted-foreground',
                           slot.available && !slot.isPast && selectedSlot?.startTime === slot.startTime
                             ? 'border-primary bg-primary text-primary-foreground'
@@ -738,7 +740,9 @@ export default function BookAppointmentPage() {
                         <span className="flex flex-col items-center leading-tight">
                           <span>{formatTime(slot.startTime)}</span>
                           {!slot.available && (
-                            <span className="text-[9px] font-bold no-underline" style={{ textDecoration: 'none' }}>Booked</span>
+                            <span className="text-[9px] font-bold no-underline" style={{ textDecoration: 'none' }}>
+                              {isOnLeave ? 'On Leave' : 'Booked'}
+                            </span>
                           )}
                         </span>
                       </button>

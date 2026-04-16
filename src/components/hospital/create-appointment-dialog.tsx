@@ -359,6 +359,7 @@ export function CreateAppointmentDialog({
                   {slots.map((slot) => {
                     const isSelected = watchedStartTime === slot.startTime;
                     const isDisabled = !slot.available || slot.isPast;
+                    const isOnLeave = !slot.available && (slot as any).onLeave;
                     return (
                       <Button
                         key={slot.startTime}
@@ -367,20 +368,22 @@ export function CreateAppointmentDialog({
                         size="sm"
                         disabled={isDisabled}
                         className={
-                          !slot.available
-                            ? 'opacity-60 cursor-not-allowed bg-red-50 text-red-400 border-red-200 line-through dark:bg-red-950/20 dark:text-red-400/60 dark:border-red-900/30'
-                            : slot.isPast
-                              ? 'opacity-40 cursor-not-allowed text-muted-foreground'
-                              : isSelected
-                                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                                : 'hover:bg-primary/10 hover:text-primary hover:border-primary'
+                          isOnLeave
+                            ? 'opacity-80 cursor-not-allowed bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/40'
+                            : !slot.available
+                              ? 'opacity-60 cursor-not-allowed bg-red-50 text-red-400 border-red-200 line-through dark:bg-red-950/20 dark:text-red-400/60 dark:border-red-900/30'
+                              : slot.isPast
+                                ? 'opacity-40 cursor-not-allowed text-muted-foreground'
+                                : isSelected
+                                  ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                                  : 'hover:bg-primary/10 hover:text-primary hover:border-primary'
                         }
                         onClick={() => handleSlotSelect(slot.startTime, slot.endTime)}
                       >
                         <span className="flex flex-col items-center leading-tight">
                           <span>{slot.startTime}</span>
                           {!slot.available && (
-                            <span className="text-[9px] font-bold">Booked</span>
+                            <span className="text-[9px] font-bold">{isOnLeave ? 'On Leave' : 'Booked'}</span>
                           )}
                         </span>
                       </Button>
