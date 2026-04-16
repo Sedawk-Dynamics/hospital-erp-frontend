@@ -5,7 +5,6 @@ import { Bell, Lock, Globe, User, Shield, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuthStore } from '@/stores/auth-store';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod/v4';
@@ -37,45 +36,64 @@ const verifyTotpSchema = z.object({
 type VerifyTotpForm = z.infer<typeof verifyTotpSchema>;
 
 // ============================================================
+// Helpers — shared Sanctuary section wrapper
+// ============================================================
+
+function SanctuarySection({
+  icon: Icon,
+  title,
+  children,
+}: {
+  icon: typeof User;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-6">
+      <h2 className="font-headline text-sm font-bold uppercase tracking-widest text-on-surface-variant mb-4 flex items-center gap-2">
+        <Icon className="h-4 w-4 text-primary" /> {title}
+      </h2>
+      {children}
+    </div>
+  );
+}
+
+// ============================================================
 // Page
 // ============================================================
 
 export default function PatientSettingsPage() {
-  const { user } = useAuthStore();
-
   return (
-    <div className="space-y-6 animate-fade-in-up max-w-2xl">
-      <h1 className="text-xl font-bold text-foreground">Settings</h1>
+    <div className="space-y-6 max-w-2xl">
+      {/* Header */}
+      <div>
+        <p className="font-label text-xs uppercase tracking-[0.2em] text-on-surface-variant mb-2">
+          Account
+        </p>
+        <h1 className="font-headline text-3xl font-extrabold text-on-surface tracking-tight">
+          Settings
+        </h1>
+        <p className="font-label text-sm text-on-surface-variant mt-1.5">
+          Manage your profile, security, and notification preferences
+        </p>
+      </div>
 
-      {/* Profile Section */}
       <ProfileSection />
-
-      {/* Change Password */}
       <ChangePasswordSection />
-
-      {/* Notification Preferences */}
       <NotificationPreferencesSection />
-
-      {/* Security / 2FA */}
       <SecuritySection />
 
-      {/* Language */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <Globe className="h-4 w-4 text-primary" /> Preferences
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-foreground">Language</p>
-              <p className="text-xs text-muted-foreground">Display language for the portal</p>
-            </div>
-            <span className="text-sm text-muted-foreground">English</span>
+      <SanctuarySection icon={Globe} title="Preferences">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-label text-sm font-bold text-on-surface">Language</p>
+            <p className="font-label text-xs text-on-surface-variant">
+              Display language for the portal
+            </p>
           </div>
-        </CardContent>
-      </Card>
+          <span className="font-label text-sm text-on-surface-variant">English</span>
+        </div>
+      </SanctuarySection>
     </div>
   );
 }
@@ -88,41 +106,30 @@ function ProfileSection() {
   const { user } = useAuthStore();
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-semibold flex items-center gap-2">
-          <User className="h-4 w-4 text-primary" /> Profile Information
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <Label className="text-xs text-muted-foreground">Full Name</Label>
-            <p className="text-sm font-medium text-foreground mt-1">
-              {user?.firstName} {user?.lastName}
-            </p>
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground">Email</Label>
-            <p className="text-sm font-medium text-foreground mt-1">
-              {user?.email ?? '-'}
-            </p>
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground">Phone</Label>
-            <p className="text-sm font-medium text-foreground mt-1">
-              {user?.phone ?? '-'}
-            </p>
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground">Role</Label>
-            <p className="text-sm font-medium text-foreground mt-1 capitalize">
-              {user?.role?.name?.replace(/_/g, ' ') ?? '-'}
-            </p>
-          </div>
+    <SanctuarySection icon={User} title="Profile Information">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <Label className="font-label text-xs text-on-surface-variant">Full Name</Label>
+          <p className="font-label text-sm font-bold text-on-surface mt-1">
+            {user?.firstName} {user?.lastName}
+          </p>
         </div>
-      </CardContent>
-    </Card>
+        <div>
+          <Label className="font-label text-xs text-on-surface-variant">Email</Label>
+          <p className="font-label text-sm font-bold text-on-surface mt-1">{user?.email ?? '-'}</p>
+        </div>
+        <div>
+          <Label className="font-label text-xs text-on-surface-variant">Phone</Label>
+          <p className="font-label text-sm font-bold text-on-surface mt-1">{user?.phone ?? '-'}</p>
+        </div>
+        <div>
+          <Label className="font-label text-xs text-on-surface-variant">Role</Label>
+          <p className="font-label text-sm font-bold text-on-surface mt-1 capitalize">
+            {user?.role?.name?.replace(/_/g, ' ') ?? '-'}
+          </p>
+        </div>
+      </div>
+    </SanctuarySection>
   );
 }
 
@@ -153,86 +160,84 @@ function ChangePasswordSection() {
       toast.success('Password changed successfully');
       reset();
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : 'Failed to change password';
+      const message = err instanceof Error ? err.message : 'Failed to change password';
       toast.error(message);
     }
   };
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-semibold flex items-center gap-2">
-          <Lock className="h-4 w-4 text-primary" /> Change Password
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 max-w-sm">
-          <div className="space-y-1.5">
-            <Label htmlFor="currentPassword" className="text-sm">Current Password</Label>
-            <div className="relative">
-              <Input
-                id="currentPassword"
-                type={showCurrent ? 'text' : 'password'}
-                placeholder="Enter current password"
-                {...register('currentPassword')}
-                className="pr-9"
-              />
-              <button
-                type="button"
-                onClick={() => setShowCurrent(!showCurrent)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showCurrent ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
-            {errors.currentPassword && (
-              <p className="text-xs text-destructive">{errors.currentPassword.message}</p>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="newPassword" className="text-sm">New Password</Label>
-            <div className="relative">
-              <Input
-                id="newPassword"
-                type={showNew ? 'text' : 'password'}
-                placeholder="Enter new password"
-                {...register('newPassword')}
-                className="pr-9"
-              />
-              <button
-                type="button"
-                onClick={() => setShowNew(!showNew)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
-            {errors.newPassword && (
-              <p className="text-xs text-destructive">{errors.newPassword.message}</p>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="confirmPassword" className="text-sm">Confirm New Password</Label>
+    <SanctuarySection icon={Lock} title="Change Password">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 max-w-sm">
+        <div className="space-y-1.5">
+          <Label htmlFor="currentPassword" className="text-sm">
+            Current Password
+          </Label>
+          <div className="relative">
             <Input
-              id="confirmPassword"
-              type="password"
-              placeholder="Confirm new password"
-              {...register('confirmPassword')}
+              id="currentPassword"
+              type={showCurrent ? 'text' : 'password'}
+              placeholder="Enter current password"
+              {...register('currentPassword')}
+              className="pr-9"
             />
-            {errors.confirmPassword && (
-              <p className="text-xs text-destructive">{errors.confirmPassword.message}</p>
-            )}
+            <button
+              type="button"
+              onClick={() => setShowCurrent(!showCurrent)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface"
+            >
+              {showCurrent ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
           </div>
+          {errors.currentPassword && (
+            <p className="font-label text-xs text-error">{errors.currentPassword.message}</p>
+          )}
+        </div>
 
-          <Button type="submit" disabled={isSubmitting} size="sm">
-            {isSubmitting ? 'Updating...' : 'Update Password'}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+        <div className="space-y-1.5">
+          <Label htmlFor="newPassword" className="text-sm">
+            New Password
+          </Label>
+          <div className="relative">
+            <Input
+              id="newPassword"
+              type={showNew ? 'text' : 'password'}
+              placeholder="Enter new password"
+              {...register('newPassword')}
+              className="pr-9"
+            />
+            <button
+              type="button"
+              onClick={() => setShowNew(!showNew)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface"
+            >
+              {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+          {errors.newPassword && (
+            <p className="font-label text-xs text-error">{errors.newPassword.message}</p>
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="confirmPassword" className="text-sm">
+            Confirm New Password
+          </Label>
+          <Input
+            id="confirmPassword"
+            type="password"
+            placeholder="Confirm new password"
+            {...register('confirmPassword')}
+          />
+          {errors.confirmPassword && (
+            <p className="font-label text-xs text-error">{errors.confirmPassword.message}</p>
+          )}
+        </div>
+
+        <Button type="submit" disabled={isSubmitting} size="sm">
+          {isSubmitting ? 'Updating...' : 'Update Password'}
+        </Button>
+      </form>
+    </SanctuarySection>
   );
 }
 
@@ -253,7 +258,6 @@ function NotificationPreferencesSection() {
   const toggle = (key: keyof typeof prefs) => {
     setPrefs((prev) => {
       const updated = { ...prev, [key]: !prev[key] };
-      // Persist locally
       if (typeof window !== 'undefined') {
         localStorage.setItem('notification_prefs', JSON.stringify(updated));
       }
@@ -262,7 +266,6 @@ function NotificationPreferencesSection() {
     toast.success('Preference updated');
   };
 
-  // Load persisted prefs on mount
   useState(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -287,34 +290,27 @@ function NotificationPreferencesSection() {
   ];
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-semibold flex items-center gap-2">
-          <Bell className="h-4 w-4 text-primary" /> Notification Preferences
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          {items.map((pref) => (
-            <div key={pref.key} className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-foreground">{pref.label}</p>
-                <p className="text-xs text-muted-foreground">{pref.desc}</p>
-              </div>
-              <label className="relative inline-flex cursor-pointer items-center">
-                <input
-                  type="checkbox"
-                  checked={prefs[pref.key]}
-                  onChange={() => toggle(pref.key)}
-                  className="peer sr-only"
-                />
-                <div className="h-5 w-9 rounded-full bg-muted peer-checked:bg-primary transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-all peer-checked:after:translate-x-4" />
-              </label>
+    <SanctuarySection icon={Bell} title="Notification Preferences">
+      <div className="space-y-4">
+        {items.map((pref) => (
+          <div key={pref.key} className="flex items-center justify-between">
+            <div>
+              <p className="font-label text-sm font-bold text-on-surface">{pref.label}</p>
+              <p className="font-label text-xs text-on-surface-variant">{pref.desc}</p>
             </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+            <label className="relative inline-flex cursor-pointer items-center">
+              <input
+                type="checkbox"
+                checked={prefs[pref.key]}
+                onChange={() => toggle(pref.key)}
+                className="peer sr-only"
+              />
+              <div className="h-5 w-9 rounded-full bg-surface-container-high peer-checked:bg-primary transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-all peer-checked:after:translate-x-4" />
+            </label>
+          </div>
+        ))}
+      </div>
+    </SanctuarySection>
   );
 }
 
@@ -378,18 +374,13 @@ function SecuritySection() {
   };
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-semibold flex items-center gap-2">
-          <Shield className="h-4 w-4 text-primary" /> Security
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <SanctuarySection icon={Shield} title="Security">
+      <div className="space-y-4">
         {/* 2FA Status */}
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-foreground">Two-Factor Authentication</p>
-            <p className="text-xs text-muted-foreground">
+            <p className="font-label text-sm font-bold text-on-surface">Two-Factor Authentication</p>
+            <p className="font-label text-xs text-on-surface-variant">
               {is2FAEnabled
                 ? 'Your account is protected with 2FA'
                 : 'Add an extra layer of security to your account'}
@@ -397,11 +388,12 @@ function SecuritySection() {
           </div>
           <div className="flex items-center gap-2">
             <span
-              className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                is2FAEnabled
-                  ? 'bg-green-100 text-green-800'
-                  : 'bg-amber-100 text-amber-800'
-              }`}
+              className={
+                'text-[10px] font-bold font-label px-2 py-0.5 rounded-full capitalize ' +
+                (is2FAEnabled
+                  ? 'bg-primary/10 text-primary'
+                  : 'bg-secondary/10 text-secondary')
+              }
             >
               {is2FAEnabled ? 'Enabled' : 'Disabled'}
             </span>
@@ -424,30 +416,43 @@ function SecuritySection() {
 
         {/* 2FA Setup Flow */}
         {twoFAState === 'verify' && (
-          <div className="rounded-lg border bg-muted/30 p-4 space-y-4">
-            <p className="text-sm font-medium text-foreground">Setup Two-Factor Authentication</p>
+          <div className="rounded-xl bg-surface-container-low p-5 space-y-4">
+            <p className="font-label text-sm font-bold text-on-surface">
+              Setup Two-Factor Authentication
+            </p>
 
             {qrCodeUrl && (
               <div className="flex flex-col items-center gap-3">
-                <p className="text-xs text-muted-foreground text-center">
+                <p className="font-label text-xs text-on-surface-variant text-center">
                   Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)
                 </p>
-                <img src={qrCodeUrl} alt="2FA QR Code" className="h-48 w-48 rounded-lg border bg-white p-2" />
+                <img
+                  src={qrCodeUrl}
+                  alt="2FA QR Code"
+                  className="h-48 w-48 rounded-lg border border-outline-variant/30 bg-white p-2"
+                />
               </div>
             )}
 
             {secret && (
               <div className="text-center">
-                <p className="text-xs text-muted-foreground mb-1">Or enter this key manually:</p>
-                <code className="rounded bg-muted px-3 py-1 text-sm font-mono tracking-wider select-all">
+                <p className="font-label text-xs text-on-surface-variant mb-1">
+                  Or enter this key manually:
+                </p>
+                <code className="rounded bg-surface-container-high px-3 py-1 text-sm font-mono tracking-wider select-all">
                   {secret}
                 </code>
               </div>
             )}
 
-            <form onSubmit={handleSubmit(handleVerify2FA)} className="flex items-end gap-3 max-w-xs mx-auto">
+            <form
+              onSubmit={handleSubmit(handleVerify2FA)}
+              className="flex items-end gap-3 max-w-xs mx-auto"
+            >
               <div className="flex-1 space-y-1.5">
-                <Label htmlFor="totp-token" className="text-sm">Verification Code</Label>
+                <Label htmlFor="totp-token" className="text-sm">
+                  Verification Code
+                </Label>
                 <Input
                   id="totp-token"
                   placeholder="000000"
@@ -456,7 +461,7 @@ function SecuritySection() {
                   className="text-center tracking-widest font-mono"
                 />
                 {verifyErrors.token && (
-                  <p className="text-xs text-destructive">{verifyErrors.token.message}</p>
+                  <p className="font-label text-xs text-error">{verifyErrors.token.message}</p>
                 )}
               </div>
               <Button type="submit" size="sm" disabled={isVerifying}>
@@ -473,14 +478,14 @@ function SecuritySection() {
                   setSecret(null);
                   resetVerifyForm();
                 }}
-                className="text-xs text-muted-foreground hover:text-foreground underline"
+                className="font-label text-xs text-on-surface-variant hover:text-on-surface underline"
               >
                 Cancel
               </button>
             </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </SanctuarySection>
   );
 }

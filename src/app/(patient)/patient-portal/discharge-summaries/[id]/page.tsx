@@ -64,7 +64,7 @@ export default function DischargeSummaryDetailPage() {
   if (!data) return null;
 
   return (
-    <div className="space-y-4 animate-fade-in-up">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <Link href="/patient-portal/discharge-summaries">
           <Button size="sm" variant="ghost" className="gap-1.5">
@@ -76,7 +76,21 @@ export default function DischargeSummaryDetailPage() {
         </Button>
       </div>
 
-      <div className="rounded-xl border bg-card p-5 space-y-5">
+      <div>
+        <p className="font-label text-xs uppercase tracking-[0.2em] text-on-surface-variant mb-2">
+          Care Records
+        </p>
+        <h1 className="font-headline text-3xl font-extrabold text-on-surface tracking-tight">
+          Discharge Summary
+        </h1>
+        <p className="font-label text-sm text-on-surface-variant mt-1.5">
+          {data.doctor?.user
+            ? `Signed by Dr. ${data.doctor.user.firstName} ${data.doctor.user.lastName}`
+            : 'Full discharge record from your care team'}
+        </p>
+      </div>
+
+      <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-6 space-y-6">
         <Section title="Patient & Admission Details" body={data.headerSummary} />
         <Section title="Diagnoses" body={data.diagnosesSummary} />
         <Section title="Clinical Course / Procedures" body={data.proceduresSummary} />
@@ -90,7 +104,9 @@ export default function DischargeSummaryDetailPage() {
             body={[
               data.followUpDate ? `Date: ${new Date(data.followUpDate).toLocaleDateString('en-IN')}` : '',
               data.followUpInstructions || '',
-            ].filter(Boolean).join('\n')}
+            ]
+              .filter(Boolean)
+              .join('\n')}
           />
         )}
       </div>
@@ -101,9 +117,9 @@ export default function DischargeSummaryDetailPage() {
 function Section({ title, body }: { title: string; body?: string | null }) {
   if (!body) return null;
   return (
-    <div>
-      <h3 className="text-sm font-bold text-foreground mb-1.5">{title}</h3>
-      <pre className="whitespace-pre-wrap text-xs text-foreground/80 font-sans leading-relaxed">
+    <div className="border-t border-outline-variant/30 first:border-t-0 first:pt-0 pt-4">
+      <h3 className="font-headline text-sm font-bold text-on-surface mb-2">{title}</h3>
+      <pre className="whitespace-pre-wrap text-xs text-on-surface-variant font-sans leading-relaxed">
         {body}
       </pre>
     </div>

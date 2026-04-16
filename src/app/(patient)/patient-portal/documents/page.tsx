@@ -6,7 +6,6 @@ import { Folder, Upload, Trash2, FileText, Download } from 'lucide-react';
 import { apiGet, apiDelete } from '@/lib/api';
 import apiClient from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 
 interface DocumentEntry {
   id: string;
@@ -72,32 +71,36 @@ export default function MyDocumentsPage() {
   const docs = data ?? [];
 
   return (
-    <div className="space-y-5 animate-fade-in-up">
-      <div className="flex items-center gap-3">
-        <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-          <Folder className="h-5 w-5 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold text-foreground">My Documents</h1>
-          <p className="text-xs text-muted-foreground">
-            Upload external reports, prescriptions, or personal medical documents.
-          </p>
-        </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <p className="font-label text-xs uppercase tracking-[0.2em] text-on-surface-variant mb-2">
+          Personal Vault
+        </p>
+        <h1 className="font-headline text-3xl font-extrabold text-on-surface tracking-tight">
+          My Documents
+        </h1>
+        <p className="font-label text-sm text-on-surface-variant mt-1.5">
+          Upload external reports, prescriptions, or personal medical documents
+        </p>
       </div>
 
-      <div className="rounded-xl border bg-card p-4 space-y-3">
-        <p className="text-xs font-semibold">Upload new document</p>
+      {/* Upload card */}
+      <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-5 space-y-3">
+        <p className="font-label text-xs font-bold uppercase tracking-widest text-on-surface-variant">
+          Upload new document
+        </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           <input
             placeholder="Title (optional)"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="rounded-md border bg-background px-3 py-2 text-sm"
+            className="rounded-lg bg-surface-container-low border border-outline-variant/30 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
           />
           <select
             value={docType}
             onChange={(e) => setDocType(e.target.value)}
-            className="rounded-md border bg-background px-3 py-2 text-sm"
+            className="rounded-lg bg-surface-container-low border border-outline-variant/30 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
           >
             <option value="external_report">External Report</option>
             <option value="referral_letter">Referral Letter</option>
@@ -111,7 +114,7 @@ export default function MyDocumentsPage() {
           placeholder="Notes (optional)"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+          className="w-full rounded-lg bg-surface-container-low border border-outline-variant/30 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
         />
         <input
           ref={fileRef}
@@ -130,7 +133,7 @@ export default function MyDocumentsPage() {
             {upload.isPending ? 'Uploading…' : 'Choose file & upload'}
           </Button>
         </div>
-        <p className="text-[11px] text-muted-foreground">
+        <p className="font-label text-[11px] text-on-surface-variant">
           Max 10MB. PDF, images, or Word docs.
         </p>
       </div>
@@ -140,9 +143,16 @@ export default function MyDocumentsPage() {
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
         </div>
       ) : docs.length === 0 ? (
-        <div className="rounded-xl border bg-card p-8 text-center">
-          <Folder className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-          <p className="text-sm font-medium">No documents uploaded yet</p>
+        <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-10 text-center">
+          <div className="w-12 h-12 mx-auto bg-surface-container-high rounded-full flex items-center justify-center text-outline mb-3">
+            <Folder className="h-5 w-5" />
+          </div>
+          <p className="font-label text-sm font-semibold text-on-surface">
+            No documents uploaded yet
+          </p>
+          <p className="font-label text-xs text-on-surface-variant mt-1">
+            Your uploaded files will appear here
+          </p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -150,19 +160,24 @@ export default function MyDocumentsPage() {
             const fullUrl = d.fileUrl.startsWith('http') ? d.fileUrl : `${ORIGIN}${d.fileUrl}`;
             const sizeKB = d.fileSizeBytes ? Math.round(Number(d.fileSizeBytes) / 1024) : null;
             return (
-              <div key={d.id} className="rounded-xl border-2 bg-card p-3 flex items-start gap-3">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                  <FileText className="h-5 w-5 text-primary" />
+              <div
+                key={d.id}
+                className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4 flex items-start gap-3"
+              >
+                <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                  <FileText className="h-5 w-5" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <p className="text-sm font-bold truncate">{d.title}</p>
-                    <Badge className="text-[10px] px-1.5 py-0 capitalize">
+                    <p className="font-label text-sm font-bold text-on-surface truncate">{d.title}</p>
+                    <span className="text-[10px] font-bold font-label px-2 py-0.5 rounded-full capitalize bg-tertiary-fixed text-on-tertiary-fixed-variant">
                       {d.documentType.replace(/_/g, ' ')}
-                    </Badge>
+                    </span>
                   </div>
-                  {d.notes && <p className="text-xs text-foreground/70 mt-0.5">{d.notes}</p>}
-                  <p className="text-[10px] text-muted-foreground mt-1">
+                  {d.notes && (
+                    <p className="font-label text-xs text-on-surface-variant mt-0.5">{d.notes}</p>
+                  )}
+                  <p className="font-label text-[10px] text-outline mt-1">
                     {new Date(d.createdAt).toLocaleDateString('en-IN')}
                     {sizeKB !== null && ` · ${sizeKB} KB`}
                   </p>
@@ -175,9 +190,9 @@ export default function MyDocumentsPage() {
                   </a>
                   <button
                     onClick={() => remove.mutate(d.id)}
-                    className="p-2 hover:bg-muted rounded-md"
+                    className="p-2 hover:bg-error-container/40 text-on-surface-variant hover:text-error rounded-lg transition-colors"
                   >
-                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>

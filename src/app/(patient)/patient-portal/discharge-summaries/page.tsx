@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { FileCheck, Download, Calendar } from 'lucide-react';
+import { FileCheck, Download } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 
@@ -49,15 +49,18 @@ export default function DischargeSummariesListPage() {
   };
 
   return (
-    <div className="space-y-5 animate-fade-in-up">
-      <div className="flex items-center gap-3">
-        <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-          <FileCheck className="h-5 w-5 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold text-foreground">Discharge Summaries</h1>
-          <p className="text-xs text-muted-foreground">Hospital discharge summaries published by your doctors.</p>
-        </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <p className="font-label text-xs uppercase tracking-[0.2em] text-on-surface-variant mb-2">
+          Care Records
+        </p>
+        <h1 className="font-headline text-3xl font-extrabold text-on-surface tracking-tight">
+          Discharge Summaries
+        </h1>
+        <p className="font-label text-sm text-on-surface-variant mt-1.5">
+          Hospital discharge summaries published by your doctors
+        </p>
       </div>
 
       {isLoading ? (
@@ -65,11 +68,13 @@ export default function DischargeSummariesListPage() {
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
         </div>
       ) : summaries.length === 0 ? (
-        <div className="rounded-xl border bg-card p-8 text-center">
-          <FileCheck className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-          <p className="text-sm font-medium text-foreground">No discharge summaries yet</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Summaries appear here once your doctor publishes them.
+        <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-10 text-center">
+          <div className="w-12 h-12 mx-auto bg-surface-container-high rounded-full flex items-center justify-center text-outline mb-3">
+            <FileCheck className="h-5 w-5" />
+          </div>
+          <p className="font-label text-sm font-semibold text-on-surface">No discharge summaries yet</p>
+          <p className="font-label text-xs text-on-surface-variant mt-1">
+            Summaries appear here once your doctor publishes them
           </p>
         </div>
       ) : (
@@ -80,26 +85,33 @@ export default function DischargeSummariesListPage() {
               : 'Doctor';
             const dischargeDate = s.dischargeDate
               ? new Date(s.dischargeDate).toLocaleDateString('en-IN', {
-                  day: 'numeric', month: 'short', year: 'numeric',
+                  day: 'numeric',
+                  month: 'short',
+                  year: 'numeric',
                 })
               : '—';
             return (
-              <div key={s.id} className="rounded-xl border-2 bg-card p-4 flex items-center gap-4">
-                <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                  <FileCheck className="h-5 w-5 text-primary" />
+              <div
+                key={s.id}
+                className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4 flex items-center gap-4"
+              >
+                <div className="h-12 w-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                  <FileCheck className="h-5 w-5" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-foreground">
+                  <p className="font-label text-sm font-bold text-on-surface">
                     Discharged: {dischargeDate}
                   </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
+                  <p className="font-label text-xs text-on-surface-variant mt-0.5">
                     {doctorName}
                     {s.patient?.tenant?.name && ` · ${s.patient.tenant.name}`}
                   </p>
                 </div>
                 <div className="flex gap-2 shrink-0">
                   <Link href={`/patient-portal/discharge-summaries/${s.id}`}>
-                    <Button size="sm" variant="outline">View</Button>
+                    <Button size="sm" variant="outline">
+                      View
+                    </Button>
                   </Link>
                   <Button size="sm" onClick={() => downloadPdf(s.id)} className="gap-1.5">
                     <Download className="h-3.5 w-3.5" />

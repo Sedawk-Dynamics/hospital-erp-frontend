@@ -8,15 +8,18 @@ import { cn } from '@/lib/utils';
 import { formatDate } from '@/lib/date-utils';
 import { Button } from '@/components/ui/button';
 import { HospitalFilter } from '../_components/hospital-filter';
+import { usePatientProfileStore } from '@/stores/patient-profile-store';
 
 export default function PatientLabReportsPage() {
   const [hospitalFilter, setHospitalFilter] = useState('');
+  const { selectedProfileId } = usePatientProfileStore();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['patient', 'lab-reports', hospitalFilter],
+    queryKey: ['patient', 'lab-reports', hospitalFilter, selectedProfileId],
     queryFn: async () => {
       const params: Record<string, unknown> = { limit: 50 };
       if (hospitalFilter) params.tenantId = hospitalFilter;
+      if (selectedProfileId) params.profileId = selectedProfileId;
       const res = await apiGet<Array<{
         id: string; reportNumber?: string; status: string; createdAt: string;
         labOrder?: { id: string; orderNumber?: string; labOrderItems?: Array<{ test?: { testName: string } }> };
@@ -28,48 +31,85 @@ export default function PatientLabReportsPage() {
   const reports = data ?? [];
 
   return (
-    <div className="space-y-5 animate-fade-in-up">
-      <h1 className="text-xl font-bold text-foreground">Lab Reports</h1>
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <p className="font-label text-xs uppercase tracking-[0.2em] text-on-surface-variant mb-2">
+          Care Records
+        </p>
+        <h1 className="font-headline text-3xl font-extrabold text-on-surface tracking-tight">
+          Lab Reports
+        </h1>
+        <p className="font-label text-sm text-on-surface-variant mt-1.5">
+          Access diagnostic results and download test reports from your hospitals
+        </p>
+      </div>
 
       <HospitalFilter value={hospitalFilter} onChange={setHospitalFilter} />
 
-      <div className="rounded-xl border bg-card overflow-hidden">
+      <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b bg-muted/50">
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Report #</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Tests</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Date</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>
+            <tr className="border-b border-surface-container text-on-surface-variant font-label text-[10px] uppercase tracking-widest">
+              <th className="px-4 py-3 text-left font-bold">Report #</th>
+              <th className="px-4 py-3 text-left font-bold">Tests</th>
+              <th className="px-4 py-3 text-left font-bold">Date</th>
+              <th className="px-4 py-3 text-left font-bold">Status</th>
+              <th className="px-4 py-3 text-right font-bold">Actions</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-surface-container/50">
             {isLoading ? (
-              <tr><td colSpan={5} className="px-4 py-8 text-center"><div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" /></td></tr>
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center">
+                  <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                </td>
+              </tr>
             ) : reports.length === 0 ? (
-              <tr><td colSpan={5} className="px-4 py-8 text-center">
-                <TestTube className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                <p className="text-muted-foreground">No lab reports yet</p>
-              </td></tr>
+              <tr>
+                <td colSpan={5} className="px-4 py-10 text-center">
+                  <div className="w-12 h-12 mx-auto bg-surface-container-high rounded-full flex items-center justify-center text-outline mb-3">
+                    <TestTube className="h-5 w-5" />
+                  </div>
+                  <p className="font-label text-sm font-semibold text-on-surface">No lab reports yet</p>
+                  <p className="font-label text-xs text-on-surface-variant mt-1">
+                    Your diagnostic results will appear here once published
+                  </p>
+                </td>
+              </tr>
             ) : (
               reports.map((r) => (
-                <tr key={r.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
-                  <td className="px-4 py-3 font-medium">{r.reportNumber ?? r.labOrder?.orderNumber ?? r.id.slice(0, 8)}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{r.labOrder?.labOrderItems?.map((i) => i.test?.testName).join(', ') || '-'}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{formatDate(r.createdAt)}</td>
+                <tr
+                  key={r.id}
+                  className="hover:bg-surface-container-low transition-colors"
+                >
+                  <td className="px-4 py-3 font-label font-bold text-on-surface">
+                    {r.reportNumber ?? r.labOrder?.orderNumber ?? r.id.slice(0, 8)}
+                  </td>
+                  <td className="px-4 py-3 text-on-surface-variant">
+                    {r.labOrder?.labOrderItems?.map((i) => i.test?.testName).join(', ') || '-'}
+                  </td>
+                  <td className="px-4 py-3 text-on-surface-variant">{formatDate(r.createdAt)}</td>
                   <td className="px-4 py-3">
-                    <span className={cn(
-                      'inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize',
-                      r.status === 'published' && 'bg-green-100 text-green-800',
-                      r.status === 'draft' && 'bg-gray-100 text-gray-800',
-                      r.status === 'verified' && 'bg-blue-100 text-blue-800',
-                    )}>{r.status}</span>
+                    <span
+                      className={cn(
+                        'text-[10px] font-bold font-label px-2 py-0.5 rounded-full capitalize',
+                        r.status === 'published' && 'bg-primary/10 text-primary',
+                        r.status === 'draft' && 'bg-tertiary-fixed text-on-tertiary-fixed-variant',
+                        r.status === 'verified' && 'bg-primary/10 text-primary',
+                      )}
+                    >
+                      {r.status}
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="icon-sm"><Eye className="h-4 w-4" /></Button>
-                      <Button variant="ghost" size="icon-sm"><Download className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="icon-sm">
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon-sm">
+                        <Download className="h-4 w-4" />
+                      </Button>
                     </div>
                   </td>
                 </tr>

@@ -2,9 +2,8 @@
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Stethoscope, Pill } from 'lucide-react';
+import { Pill } from 'lucide-react';
 import { apiGet } from '@/lib/api';
-import { Badge } from '@/components/ui/badge';
 import { HospitalFilter } from '../_components/hospital-filter';
 
 interface DerivedMed {
@@ -52,17 +51,18 @@ export default function CurrentMedicationsPage() {
   const total = derived.length + manual.length;
 
   return (
-    <div className="space-y-5 animate-fade-in-up">
-      <div className="flex items-center gap-3">
-        <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-          <Stethoscope className="h-5 w-5 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold text-foreground">Current Medications</h1>
-          <p className="text-xs text-muted-foreground">
-            Medications you are currently taking. Contact your doctor to add or change.
-          </p>
-        </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <p className="font-label text-xs uppercase tracking-[0.2em] text-on-surface-variant mb-2">
+          Care Records
+        </p>
+        <h1 className="font-headline text-3xl font-extrabold text-on-surface tracking-tight">
+          Current Medications
+        </h1>
+        <p className="font-label text-sm text-on-surface-variant mt-1.5">
+          Medications you are currently taking. Contact your doctor to add or change.
+        </p>
       </div>
 
       <HospitalFilter value={hospitalFilter} onChange={setHospitalFilter} />
@@ -70,18 +70,23 @@ export default function CurrentMedicationsPage() {
       {isLoading ? (
         <Loader />
       ) : total === 0 ? (
-        <div className="rounded-xl border bg-card p-8 text-center">
-          <Pill className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-          <p className="text-sm font-medium">No current medications</p>
+        <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-10 text-center">
+          <div className="w-12 h-12 mx-auto bg-surface-container-high rounded-full flex items-center justify-center text-outline mb-3">
+            <Pill className="h-5 w-5" />
+          </div>
+          <p className="font-label text-sm font-semibold text-on-surface">No current medications</p>
+          <p className="font-label text-xs text-on-surface-variant mt-1">
+            Medications prescribed by your care team will appear here
+          </p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-6">
           {manual.length > 0 && (
             <section>
-              <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">
+              <p className="font-label text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-3">
                 Added by your doctor
               </p>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {manual.map((m) => (
                   <ManualCard key={m.id} med={m} />
                 ))}
@@ -90,10 +95,10 @@ export default function CurrentMedicationsPage() {
           )}
           {derived.length > 0 && (
             <section>
-              <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">
+              <p className="font-label text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-3">
                 From your prescriptions
               </p>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {derived.map((d) => (
                   <DerivedCard key={d.itemId} med={d} />
                 ))}
@@ -108,25 +113,27 @@ export default function CurrentMedicationsPage() {
 
 function ManualCard({ med }: { med: ManualMed }) {
   return (
-    <div className="rounded-xl border-2 bg-card p-3 flex items-start gap-3">
-      <div className="h-9 w-9 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
-        <Pill className="h-4 w-4 text-blue-700" />
+    <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4 flex items-start gap-3">
+      <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+        <Pill className="h-4 w-4" />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <p className="text-sm font-bold">{med.drugName}</p>
+          <p className="font-label text-sm font-bold text-on-surface">{med.drugName}</p>
           {med.source && (
-            <Badge className="bg-blue-100 text-blue-700 text-[10px] px-1.5 py-0 capitalize">
+            <span className="text-[10px] font-bold font-label px-2 py-0.5 rounded-full capitalize bg-primary/10 text-primary">
               {med.source}
-            </Badge>
+            </span>
           )}
         </div>
-        <p className="text-xs text-foreground/80 mt-0.5">
+        <p className="font-label text-xs text-on-surface-variant mt-0.5">
           {[med.dosage, med.frequency, med.route].filter(Boolean).join(' · ') || '—'}
         </p>
-        {med.notes && <p className="text-[11px] text-foreground/70 mt-1">{med.notes}</p>}
+        {med.notes && (
+          <p className="font-label text-[11px] text-on-surface-variant mt-1">{med.notes}</p>
+        )}
         {med.startedOn && (
-          <p className="text-[10px] text-muted-foreground mt-1">
+          <p className="font-label text-[10px] text-outline mt-1">
             Since {new Date(med.startedOn).toLocaleDateString('en-IN')}
           </p>
         )}
@@ -137,17 +144,19 @@ function ManualCard({ med }: { med: ManualMed }) {
 
 function DerivedCard({ med }: { med: DerivedMed }) {
   return (
-    <div className="rounded-xl border bg-card p-3 flex items-start gap-3">
-      <div className="h-9 w-9 rounded-lg bg-green-100 flex items-center justify-center shrink-0">
-        <Pill className="h-4 w-4 text-green-700" />
+    <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4 flex items-start gap-3">
+      <div className="h-10 w-10 rounded-xl bg-secondary/10 text-secondary flex items-center justify-center shrink-0">
+        <Pill className="h-4 w-4" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold">{med.drugName}</p>
-        <p className="text-xs text-foreground/80 mt-0.5">
+        <p className="font-label text-sm font-bold text-on-surface">{med.drugName}</p>
+        <p className="font-label text-xs text-on-surface-variant mt-0.5">
           {[med.dosage, med.frequency, med.duration, med.route].filter(Boolean).join(' · ') || '—'}
         </p>
-        {med.instructions && <p className="text-[11px] text-foreground/70 mt-1">{med.instructions}</p>}
-        <p className="text-[10px] text-muted-foreground mt-1">
+        {med.instructions && (
+          <p className="font-label text-[11px] text-on-surface-variant mt-1">{med.instructions}</p>
+        )}
+        <p className="font-label text-[10px] text-outline mt-1">
           {med.doctorName}
           {med.tenantName && ` · ${med.tenantName}`}
           {` · ${new Date(med.prescribedAt).toLocaleDateString('en-IN')}`}

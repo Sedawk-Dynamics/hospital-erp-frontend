@@ -6,7 +6,6 @@ import { Heart, Users, AlertTriangle, Plus, Trash2, Save } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 
 type Tab = 'personal' | 'family' | 'allergies';
 
@@ -14,35 +13,37 @@ export default function MedicalHistoryPage() {
   const [tab, setTab] = useState<Tab>('personal');
 
   return (
-    <div className="space-y-5 animate-fade-in-up">
-      <div className="flex items-center gap-3">
-        <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-          <Heart className="h-5 w-5 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold text-foreground">Medical History</h1>
-          <p className="text-xs text-muted-foreground">
-            Personal habits, family conditions, and allergies.
-          </p>
-        </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <p className="font-label text-xs uppercase tracking-[0.2em] text-on-surface-variant mb-2">
+          Care Records
+        </p>
+        <h1 className="font-headline text-3xl font-extrabold text-on-surface tracking-tight">
+          Medical History
+        </h1>
+        <p className="font-label text-sm text-on-surface-variant mt-1.5">
+          Personal habits, family conditions, and allergies
+        </p>
       </div>
 
+      {/* Tabs */}
       <div className="flex gap-2">
         {(
           [
             { key: 'personal', label: 'Personal', icon: Heart },
             { key: 'family', label: 'Family', icon: Users },
             { key: 'allergies', label: 'Allergies', icon: AlertTriangle },
-          ] as { key: Tab; label: string; icon: any }[]
+          ] as { key: Tab; label: string; icon: typeof Heart }[]
         ).map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
             className={cn(
-              'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+              'flex items-center gap-1.5 rounded-lg px-4 py-1.5 font-label text-xs font-bold transition-colors',
               t.key === tab
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground hover:text-foreground',
+                ? 'bg-primary text-white'
+                : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface',
             )}
           >
             <t.icon className="h-3.5 w-3.5" />
@@ -96,21 +97,34 @@ function PersonalTab() {
 
   if (isLoading) return <Loader />;
 
-  const Input = ({ label, field, textarea }: { label: string; field: keyof PersonalHistory; textarea?: boolean }) => (
+  const inputClass =
+    'w-full rounded-lg bg-surface-container-low border border-outline-variant/30 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30';
+
+  const Input = ({
+    label,
+    field,
+    textarea,
+  }: {
+    label: string;
+    field: keyof PersonalHistory;
+    textarea?: boolean;
+  }) => (
     <div>
-      <label className="text-xs font-medium text-foreground/80 block mb-1">{label}</label>
+      <label className="font-label text-xs font-bold text-on-surface-variant block mb-1.5">
+        {label}
+      </label>
       {textarea ? (
         <textarea
-          value={(current as any)[field] ?? ''}
+          value={(current as Record<string, unknown>)[field] as string ?? ''}
           onChange={(e) => setForm((f) => ({ ...f, [field]: e.target.value }))}
           rows={3}
-          className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+          className={inputClass}
         />
       ) : (
         <input
-          value={(current as any)[field] ?? ''}
+          value={(current as Record<string, unknown>)[field] as string ?? ''}
           onChange={(e) => setForm((f) => ({ ...f, [field]: e.target.value }))}
-          className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+          className={inputClass}
         />
       )}
     </div>
@@ -126,11 +140,13 @@ function PersonalTab() {
     options: string[];
   }) => (
     <div>
-      <label className="text-xs font-medium text-foreground/80 block mb-1">{label}</label>
+      <label className="font-label text-xs font-bold text-on-surface-variant block mb-1.5">
+        {label}
+      </label>
       <select
-        value={(current as any)[field] ?? ''}
+        value={(current as Record<string, unknown>)[field] as string ?? ''}
         onChange={(e) => setForm((f) => ({ ...f, [field]: e.target.value || null }))}
-        className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+        className={inputClass}
       >
         <option value="">—</option>
         {options.map((o) => (
@@ -143,7 +159,7 @@ function PersonalTab() {
   );
 
   return (
-    <div className="rounded-xl border bg-card p-5 space-y-4">
+    <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-6 space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Input label="Appetite" field="appetite" />
         <Input label="Diet" field="diet" />
@@ -215,21 +231,28 @@ function FamilyTab() {
   const maternal = entries.filter((e) => e.relationSide === 'maternal');
   const paternal = entries.filter((e) => e.relationSide === 'paternal');
 
+  const inputClass =
+    'rounded-lg bg-surface-container-low border border-outline-variant/30 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30';
+
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border bg-card p-4">
-        <p className="text-xs font-semibold mb-2">Add condition</p>
+      <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-5">
+        <p className="font-label text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-3">
+          Add condition
+        </p>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
           <input
             placeholder="Condition (e.g. Diabetes)"
             value={draft.conditionName ?? ''}
             onChange={(e) => setDraft((d) => ({ ...d, conditionName: e.target.value }))}
-            className="rounded-md border bg-background px-3 py-2 text-sm md:col-span-2"
+            className={cn(inputClass, 'md:col-span-2')}
           />
           <select
             value={draft.relationSide}
-            onChange={(e) => setDraft((d) => ({ ...d, relationSide: e.target.value as any }))}
-            className="rounded-md border bg-background px-3 py-2 text-sm"
+            onChange={(e) =>
+              setDraft((d) => ({ ...d, relationSide: e.target.value as 'maternal' | 'paternal' }))
+            }
+            className={inputClass}
           >
             <option value="maternal">Maternal</option>
             <option value="paternal">Paternal</option>
@@ -238,7 +261,7 @@ function FamilyTab() {
             placeholder="Relationship (e.g. Mother)"
             value={draft.relationship ?? ''}
             onChange={(e) => setDraft((d) => ({ ...d, relationship: e.target.value }))}
-            className="rounded-md border bg-background px-3 py-2 text-sm"
+            className={inputClass}
           />
         </div>
         <div className="flex justify-end mt-3">
@@ -266,23 +289,43 @@ function FamilyTab() {
   );
 }
 
-function FamilyColumn({ label, entries, onRemove }: { label: string; entries: FamilyEntry[]; onRemove: (id: string) => void }) {
+function FamilyColumn({
+  label,
+  entries,
+  onRemove,
+}: {
+  label: string;
+  entries: FamilyEntry[];
+  onRemove: (id: string) => void;
+}) {
   return (
-    <div className="rounded-xl border bg-card p-4">
-      <p className="text-xs font-semibold text-foreground/70 mb-2">{label}</p>
+    <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-5">
+      <p className="font-label text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-3">
+        {label}
+      </p>
       {entries.length === 0 ? (
-        <p className="text-xs text-muted-foreground italic">No entries</p>
+        <p className="font-label text-xs text-outline italic">No entries</p>
       ) : (
         <div className="space-y-2">
           {entries.map((e) => (
-            <div key={e.id} className="flex items-start gap-2 rounded-md border px-3 py-2 text-xs">
+            <div
+              key={e.id}
+              className="flex items-start gap-2 rounded-lg bg-surface-container-low px-3 py-2 text-xs"
+            >
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-foreground">{e.conditionName}</p>
-                {e.relationship && <p className="text-muted-foreground">{e.relationship}</p>}
-                {e.notes && <p className="text-foreground/70 mt-0.5">{e.notes}</p>}
+                <p className="font-label font-bold text-on-surface">{e.conditionName}</p>
+                {e.relationship && (
+                  <p className="font-label text-on-surface-variant">{e.relationship}</p>
+                )}
+                {e.notes && (
+                  <p className="font-label text-on-surface-variant mt-0.5">{e.notes}</p>
+                )}
               </div>
-              <button onClick={() => onRemove(e.id)} className="shrink-0 p-1 hover:bg-muted rounded">
-                <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+              <button
+                onClick={() => onRemove(e.id)}
+                className="shrink-0 p-1 hover:bg-error-container/40 hover:text-error rounded-md text-on-surface-variant transition-colors"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
               </button>
             </div>
           ))}
@@ -333,27 +376,37 @@ function AllergiesTab() {
   const entries = data ?? [];
 
   const severityColor: Record<string, string> = {
-    mild: 'bg-green-100 text-green-700',
-    moderate: 'bg-amber-100 text-amber-700',
-    severe: 'bg-orange-100 text-orange-700',
-    life_threatening: 'bg-red-100 text-red-700',
+    mild: 'bg-primary/10 text-primary',
+    moderate: 'bg-secondary/10 text-secondary',
+    severe: 'bg-secondary/10 text-secondary',
+    life_threatening: 'bg-error/10 text-error',
   };
+
+  const inputClass =
+    'rounded-lg bg-surface-container-low border border-outline-variant/30 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30';
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border bg-card p-4">
-        <p className="text-xs font-semibold mb-2">Add allergy</p>
+      <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-5">
+        <p className="font-label text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-3">
+          Add allergy
+        </p>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
           <input
             placeholder="Allergen (e.g. Penicillin)"
             value={draft.allergen ?? ''}
             onChange={(e) => setDraft((d) => ({ ...d, allergen: e.target.value }))}
-            className="rounded-md border bg-background px-3 py-2 text-sm md:col-span-2"
+            className={cn(inputClass, 'md:col-span-2')}
           />
           <select
             value={draft.allergyType}
-            onChange={(e) => setDraft((d) => ({ ...d, allergyType: e.target.value as any }))}
-            className="rounded-md border bg-background px-3 py-2 text-sm"
+            onChange={(e) =>
+              setDraft((d) => ({
+                ...d,
+                allergyType: e.target.value as AllergyEntry['allergyType'],
+              }))
+            }
+            className={inputClass}
           >
             <option value="drug">Drug</option>
             <option value="food">Food</option>
@@ -363,7 +416,7 @@ function AllergiesTab() {
           <select
             value={draft.severity ?? ''}
             onChange={(e) => setDraft((d) => ({ ...d, severity: e.target.value || null }))}
-            className="rounded-md border bg-background px-3 py-2 text-sm"
+            className={inputClass}
           >
             <option value="">Severity</option>
             <option value="mild">Mild</option>
@@ -376,7 +429,7 @@ function AllergiesTab() {
           placeholder="Reaction (e.g. Rash, anaphylaxis)"
           value={draft.reaction ?? ''}
           onChange={(e) => setDraft((d) => ({ ...d, reaction: e.target.value }))}
-          className="w-full rounded-md border bg-background px-3 py-2 text-sm mt-2"
+          className={cn(inputClass, 'w-full mt-2')}
         />
         <div className="flex justify-end mt-3">
           <Button
@@ -394,31 +447,48 @@ function AllergiesTab() {
       {isLoading ? (
         <Loader />
       ) : entries.length === 0 ? (
-        <div className="rounded-xl border bg-card p-8 text-center">
-          <AlertTriangle className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-          <p className="text-sm font-medium">No allergies recorded</p>
+        <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-10 text-center">
+          <div className="w-12 h-12 mx-auto bg-surface-container-high rounded-full flex items-center justify-center text-outline mb-3">
+            <AlertTriangle className="h-5 w-5" />
+          </div>
+          <p className="font-label text-sm font-semibold text-on-surface">No allergies recorded</p>
         </div>
       ) : (
         <div className="space-y-2">
           {entries.map((a) => (
-            <div key={a.id} className="flex items-start gap-3 rounded-xl border-2 bg-card p-3">
-              <div className="h-9 w-9 rounded-lg bg-red-100 flex items-center justify-center shrink-0">
-                <AlertTriangle className="h-4 w-4 text-red-600" />
+            <div
+              key={a.id}
+              className="flex items-start gap-3 rounded-xl bg-surface-container-lowest shadow-sanctuary p-4"
+            >
+              <div className="h-10 w-10 rounded-xl bg-error/10 text-error flex items-center justify-center shrink-0">
+                <AlertTriangle className="h-4 w-4" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <p className="text-sm font-bold">{a.allergen}</p>
-                  <Badge className="text-[10px] px-1.5 py-0 uppercase">{a.allergyType}</Badge>
+                  <p className="font-label text-sm font-bold text-on-surface">{a.allergen}</p>
+                  <span className="text-[10px] font-bold font-label px-2 py-0.5 rounded-full uppercase bg-tertiary-fixed text-on-tertiary-fixed-variant">
+                    {a.allergyType}
+                  </span>
                   {a.severity && (
-                    <Badge className={cn('text-[10px] px-1.5 py-0', severityColor[a.severity])}>
+                    <span
+                      className={cn(
+                        'text-[10px] font-bold font-label px-2 py-0.5 rounded-full capitalize',
+                        severityColor[a.severity],
+                      )}
+                    >
                       {a.severity.replace('_', ' ')}
-                    </Badge>
+                    </span>
                   )}
                 </div>
-                {a.reaction && <p className="text-xs text-foreground/70 mt-1">{a.reaction}</p>}
+                {a.reaction && (
+                  <p className="font-label text-xs text-on-surface-variant mt-1">{a.reaction}</p>
+                )}
               </div>
-              <button onClick={() => remove.mutate(a.id)} className="shrink-0 p-1 hover:bg-muted rounded">
-                <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+              <button
+                onClick={() => remove.mutate(a.id)}
+                className="shrink-0 p-1 hover:bg-error-container/40 hover:text-error rounded-md text-on-surface-variant transition-colors"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
               </button>
             </div>
           ))}

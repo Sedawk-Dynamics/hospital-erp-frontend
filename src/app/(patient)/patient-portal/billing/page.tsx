@@ -8,15 +8,18 @@ import { cn } from '@/lib/utils';
 import { formatDate } from '@/lib/date-utils';
 import { Button } from '@/components/ui/button';
 import { HospitalFilter } from '../_components/hospital-filter';
+import { usePatientProfileStore } from '@/stores/patient-profile-store';
 
 export default function PatientBillingPage() {
   const [hospitalFilter, setHospitalFilter] = useState('');
+  const { selectedProfileId } = usePatientProfileStore();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['patient', 'bills', hospitalFilter],
+    queryKey: ['patient', 'bills', hospitalFilter, selectedProfileId],
     queryFn: async () => {
       const params: Record<string, unknown> = { limit: 30 };
       if (hospitalFilter) params.tenantId = hospitalFilter;
+      if (selectedProfileId) params.profileId = selectedProfileId;
       const res = await apiGet<Array<{
         id: string; billNumber: string; total: number; paidAmount: number;
         balanceAmount: number; status: string; createdAt: string;
@@ -30,57 +33,104 @@ export default function PatientBillingPage() {
   const totalDue = bills.reduce((s, b) => s + (Number(b.balanceAmount) || 0), 0);
 
   return (
-    <div className="space-y-5 animate-fade-in-up">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-foreground">Bills & Payments</h1>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+        <div>
+          <p className="font-label text-xs uppercase tracking-[0.2em] text-on-surface-variant mb-2">
+            Finance
+          </p>
+          <h1 className="font-headline text-3xl font-extrabold text-on-surface tracking-tight">
+            Bills &amp; Payments
+          </h1>
+          <p className="font-label text-sm text-on-surface-variant mt-1.5">
+            View your invoices, download receipts, and track outstanding balances
+          </p>
+        </div>
         {totalDue > 0 && (
-          <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-2">
-            <span className="text-sm text-amber-800 font-medium">Outstanding: {`\u20B9${totalDue.toLocaleString('en-IN')}`}</span>
+          <div className="flex items-center gap-4 rounded-xl bg-secondary-fixed/50 border-l-4 border-secondary px-5 py-3 shadow-sanctuary">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-secondary/10 text-secondary shrink-0">
+              <CreditCard className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
+                Outstanding
+              </p>
+              <p className="font-headline text-base font-bold text-on-surface">
+                {`\u20B9${totalDue.toLocaleString('en-IN')}`}
+              </p>
+            </div>
           </div>
         )}
       </div>
 
       <HospitalFilter value={hospitalFilter} onChange={setHospitalFilter} />
 
-      <div className="rounded-xl border bg-card overflow-hidden">
+      <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b bg-muted/50">
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Bill #</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Date</th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Total</th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Paid</th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Balance</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>
+            <tr className="border-b border-surface-container text-on-surface-variant font-label text-[10px] uppercase tracking-widest">
+              <th className="px-4 py-3 text-left font-bold">Bill #</th>
+              <th className="px-4 py-3 text-left font-bold">Date</th>
+              <th className="px-4 py-3 text-right font-bold">Total</th>
+              <th className="px-4 py-3 text-right font-bold">Paid</th>
+              <th className="px-4 py-3 text-right font-bold">Balance</th>
+              <th className="px-4 py-3 text-left font-bold">Status</th>
+              <th className="px-4 py-3 text-right font-bold">Actions</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-surface-container/50">
             {isLoading ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center"><div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" /></td></tr>
+              <tr>
+                <td colSpan={7} className="px-4 py-8 text-center">
+                  <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                </td>
+              </tr>
             ) : bills.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center">
-                <CreditCard className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                <p className="text-muted-foreground">No bills found</p>
-              </td></tr>
+              <tr>
+                <td colSpan={7} className="px-4 py-10 text-center">
+                  <div className="w-12 h-12 mx-auto bg-surface-container-high rounded-full flex items-center justify-center text-outline mb-3">
+                    <CreditCard className="h-5 w-5" />
+                  </div>
+                  <p className="font-label text-sm font-semibold text-on-surface">No bills found</p>
+                  <p className="font-label text-xs text-on-surface-variant mt-1">Your invoices will appear here</p>
+                </td>
+              </tr>
             ) : (
               bills.map((bill) => (
-                <tr key={bill.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
-                  <td className="px-4 py-3 font-medium">{bill.billNumber}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{formatDate(bill.createdAt)}</td>
-                  <td className="px-4 py-3 text-right font-medium">{`\u20B9${Number(bill.total).toLocaleString('en-IN')}`}</td>
-                  <td className="px-4 py-3 text-right text-emerald-600">{`\u20B9${Number(bill.paidAmount).toLocaleString('en-IN')}`}</td>
-                  <td className="px-4 py-3 text-right text-red-600 font-medium">{Number(bill.balanceAmount) > 0 ? `\u20B9${Number(bill.balanceAmount).toLocaleString('en-IN')}` : '-'}</td>
+                <tr
+                  key={bill.id}
+                  className="hover:bg-surface-container-low transition-colors"
+                >
+                  <td className="px-4 py-3 font-label font-bold text-on-surface">{bill.billNumber}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">{formatDate(bill.createdAt)}</td>
+                  <td className="px-4 py-3 text-right font-label font-bold text-on-surface">
+                    {`\u20B9${Number(bill.total).toLocaleString('en-IN')}`}
+                  </td>
+                  <td className="px-4 py-3 text-right text-primary font-label font-semibold">
+                    {`\u20B9${Number(bill.paidAmount).toLocaleString('en-IN')}`}
+                  </td>
+                  <td className="px-4 py-3 text-right text-error font-label font-bold">
+                    {Number(bill.balanceAmount) > 0
+                      ? `\u20B9${Number(bill.balanceAmount).toLocaleString('en-IN')}`
+                      : '-'}
+                  </td>
                   <td className="px-4 py-3">
-                    <span className={cn(
-                      'inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize',
-                      bill.status === 'paid' && 'bg-green-100 text-green-800',
-                      bill.status === 'pending' && 'bg-amber-100 text-amber-800',
-                      bill.status === 'partially_paid' && 'bg-blue-100 text-blue-800',
-                    )}>{bill.status?.replace('_', ' ')}</span>
+                    <span
+                      className={cn(
+                        'text-[10px] font-bold font-label px-2 py-0.5 rounded-full capitalize',
+                        bill.status === 'paid' && 'bg-primary/10 text-primary',
+                        bill.status === 'pending' && 'bg-secondary/10 text-secondary',
+                        bill.status === 'partially_paid' && 'bg-tertiary-fixed text-on-tertiary-fixed-variant',
+                      )}
+                    >
+                      {bill.status?.replace('_', ' ')}
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Button variant="ghost" size="icon-sm"><Download className="h-4 w-4" /></Button>
+                    <Button variant="ghost" size="icon-sm">
+                      <Download className="h-4 w-4" />
+                    </Button>
                   </td>
                 </tr>
               ))

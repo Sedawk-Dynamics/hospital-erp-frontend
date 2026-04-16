@@ -4,9 +4,9 @@ import { useMemo, useState, useEffect } from 'react';
 import { Calendar, Clock, User, X, FileWarning, ChevronDown, ChevronUp, FileText } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost } from '@/lib/api';
+import { usePatientProfileStore } from '@/stores/patient-profile-store';
 import { cn } from '@/lib/utils';
 import { formatDate, formatTime24, getCurrentISTDate, toInputDateStr } from '@/lib/date-utils';
-import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { IntakeFormsModal } from '@/components/forms/intake-forms-modal';
 import { PatientFormSubmissionsPanel } from '@/components/forms/patient-form-submissions-panel';
@@ -31,15 +31,15 @@ interface PatientAppointment {
 }
 
 const statusStyles: Record<string, string> = {
-  pending_payment: 'bg-amber-100 text-amber-800',
-  booked: 'bg-blue-100 text-blue-800',
-  confirmed: 'bg-emerald-100 text-emerald-800',
-  checked_in: 'bg-teal-100 text-teal-800',
-  waiting: 'bg-amber-100 text-amber-800',
-  in_consultation: 'bg-purple-100 text-purple-800',
-  completed: 'bg-gray-100 text-gray-800',
-  cancelled: 'bg-red-100 text-red-800',
-  no_show: 'bg-orange-100 text-orange-800',
+  pending_payment: 'bg-secondary/10 text-secondary',
+  booked: 'bg-primary/10 text-primary',
+  confirmed: 'bg-primary/10 text-primary',
+  checked_in: 'bg-primary/10 text-primary',
+  waiting: 'bg-secondary/10 text-secondary',
+  in_consultation: 'bg-secondary/10 text-secondary',
+  completed: 'bg-tertiary-fixed text-on-tertiary-fixed-variant',
+  cancelled: 'bg-error/10 text-error',
+  no_show: 'bg-secondary/10 text-secondary',
 };
 
 // Statuses that represent a terminal/non-completed outcome — always belong in "Past".
@@ -77,17 +77,18 @@ function isPastAppointment(apt: PatientAppointment, todayIST: string): boolean {
 
 export default function PatientAppointmentsPage() {
   const queryClient = useQueryClient();
+  const { selectedProfileId } = usePatientProfileStore();
   const [filter, setFilter] = useState<FilterKey>('upcoming');
   const [pastStatus, setPastStatus] = useState<PastStatusKey>('all');
   const [showIntakeForms, setShowIntakeForms] = useState(false);
   const [expandedFormsAptId, setExpandedFormsAptId] = useState<string | null>(null);
 
   const { data: appointmentsRaw, isLoading } = useQuery({
-    queryKey: ['patient', 'appointments'],
+    queryKey: ['patient', 'appointments', selectedProfileId],
     queryFn: async () => {
-      const res = await apiGet<PatientAppointment[]>('/patient-portal/appointments', {
-        params: { limit: 100, sortOrder: 'desc' },
-      });
+      const params: Record<string, unknown> = { limit: 100, sortOrder: 'desc' };
+      if (selectedProfileId) params.profileId = selectedProfileId;
+      const res = await apiGet<PatientAppointment[]>('/patient-portal/appointments', { params });
       return res.data ?? [];
     },
   });
@@ -113,10 +114,6 @@ export default function PatientAppointmentsPage() {
   });
 
   // ─── Pending intake forms detection ──────────────────────
-  // Find the most recent appointment that's still actionable
-  // (not cancelled / no_show / completed). Check if it has any pending
-  // required forms — if yes, auto-open the IntakeFormsModal so the patient
-  // can't escape the form by refreshing the page.
   const pendingTarget = useMemo(() => {
     const all = appointmentsRaw ?? [];
     const today = getCurrentISTDate();
@@ -151,10 +148,8 @@ export default function PatientAppointmentsPage() {
       return filter === 'past' ? past : !past;
     });
     if (filter !== 'past' || pastStatus === 'all') return filtered;
-    // Apply Past Bookings sub-filter
     return filtered.filter((apt) => {
       if (pastStatus === 'missed') {
-        // Past-dated but never completed (not in a terminal state)
         return !TERMINAL_STATUSES.has(apt.status);
       }
       return apt.status === pastStatus;
@@ -164,11 +159,25 @@ export default function PatientAppointmentsPage() {
   const filters: FilterKey[] = ['upcoming', 'past', 'all'];
 
   return (
-    <div className="space-y-5 animate-fade-in-up">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-foreground">My Appointments</h1>
-        <Link href="/patient-portal/book-appointment">
-          <Button>Book Appointment</Button>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+        <div>
+          <p className="font-label text-xs uppercase tracking-[0.2em] text-on-surface-variant mb-2">
+            Care Records
+          </p>
+          <h1 className="font-headline text-3xl font-extrabold text-on-surface tracking-tight">
+            My Appointments
+          </h1>
+          <p className="font-label text-sm text-on-surface-variant mt-1.5">
+            Track upcoming visits and review your past bookings
+          </p>
+        </div>
+        <Link
+          href="/patient-portal/book-appointment"
+          className="inline-flex items-center gap-2 bg-primary text-white font-label font-bold text-sm px-6 py-2.5 rounded-xl hover:shadow-lg transition-shadow"
+        >
+          Book Appointment
         </Link>
       </div>
 
@@ -176,22 +185,22 @@ export default function PatientAppointmentsPage() {
       {pendingForms && pendingForms.length > 0 && (
         <button
           onClick={() => setShowIntakeForms(true)}
-          className="flex w-full items-center gap-3 rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3 text-left hover:bg-amber-100/70 transition-colors"
+          className="flex w-full items-center gap-4 rounded-xl px-5 py-4 shadow-sanctuary text-left transition-all hover:shadow-lg border-l-4 border-secondary bg-secondary-fixed/50"
         >
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-200 shrink-0">
-            <FileWarning className="h-5 w-5 text-amber-800" />
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-secondary/10 text-secondary shrink-0">
+            <FileWarning className="h-5 w-5" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-amber-900">
+            <p className="font-headline text-sm font-bold text-on-surface">
               {pendingForms.length} required form{pendingForms.length > 1 ? 's' : ''} need
               your attention
             </p>
-            <p className="text-[11px] text-amber-800">
+            <p className="font-label text-xs text-on-surface-variant mt-0.5">
               Please complete the intake form{pendingForms.length > 1 ? 's' : ''} for your
               upcoming appointment. Click to fill now.
             </p>
           </div>
-          <span className="text-xs font-semibold text-amber-900">Open →</span>
+          <span className="font-label text-xs font-bold text-secondary shrink-0">Open →</span>
         </button>
       )}
 
@@ -199,31 +208,34 @@ export default function PatientAppointmentsPage() {
       {formsToFillCount > 0 && (!pendingForms || pendingForms.length === 0) && (
         <Link
           href="/patient-portal/my-forms"
-          className="flex w-full items-center gap-3 rounded-xl border-2 border-blue-200 bg-blue-50 px-4 py-3 text-left hover:bg-blue-100/70 transition-colors"
+          className="flex w-full items-center gap-4 rounded-xl px-5 py-4 shadow-sanctuary transition-all hover:shadow-lg border-l-4 border-primary bg-primary-fixed/30"
         >
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-200 shrink-0">
-            <FileWarning className="h-5 w-5 text-blue-800" />
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary shrink-0">
+            <FileWarning className="h-5 w-5" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-blue-900">
+            <p className="font-headline text-sm font-bold text-on-surface">
               {formsToFillCount} form{formsToFillCount > 1 ? 's' : ''} available to fill
             </p>
-            <p className="text-[11px] text-blue-800">
-              Open <strong>My Forms</strong> in the sidebar to fill them whenever you're ready.
+            <p className="font-label text-xs text-on-surface-variant mt-0.5">
+              Open <strong>My Forms</strong> in the sidebar to fill them whenever you&apos;re ready.
             </p>
           </div>
-          <span className="text-xs font-semibold text-blue-900">View →</span>
+          <span className="font-label text-xs font-bold text-primary shrink-0">View →</span>
         </Link>
       )}
 
+      {/* Filter pills */}
       <div className="flex gap-2 overflow-x-auto">
         {filters.map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}
             className={cn(
-              'rounded-lg px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap',
-              f === filter ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground',
+              'rounded-lg px-4 py-1.5 font-label text-xs font-bold transition-colors whitespace-nowrap',
+              f === filter
+                ? 'bg-primary text-white'
+                : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface',
             )}
           >
             {FILTER_LABELS[f]}
@@ -238,10 +250,10 @@ export default function PatientAppointmentsPage() {
               key={f.value}
               onClick={() => setPastStatus(f.value)}
               className={cn(
-                'rounded-full border px-3 py-1 text-xs font-medium transition-colors whitespace-nowrap',
+                'rounded-full px-3 py-1 font-label text-[11px] font-bold transition-colors whitespace-nowrap',
                 f.value === pastStatus
-                  ? 'border-primary bg-primary/10 text-primary'
-                  : 'border-border bg-card text-muted-foreground hover:text-foreground',
+                  ? 'bg-primary/10 text-primary'
+                  : 'bg-surface-container-lowest text-on-surface-variant hover:text-primary',
               )}
             >
               {f.label}
@@ -256,16 +268,18 @@ export default function PatientAppointmentsPage() {
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           </div>
         ) : appointments.length === 0 ? (
-          <div className="rounded-xl border bg-card p-8 text-center">
-            <Calendar className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-            <p className="text-sm font-medium text-foreground">
+          <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-10 text-center">
+            <div className="w-12 h-12 mx-auto bg-surface-container-high rounded-full flex items-center justify-center text-outline mb-3">
+              <Calendar className="h-5 w-5" />
+            </div>
+            <p className="font-label text-sm font-semibold text-on-surface">
               {filter === 'upcoming'
                 ? 'No upcoming appointments'
                 : filter === 'past'
                   ? 'No past bookings'
                   : 'No appointments found'}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="font-label text-xs text-on-surface-variant mt-1">
               {filter === 'upcoming' ? 'Book an appointment to get started' : ' '}
             </p>
           </div>
@@ -273,27 +287,30 @@ export default function PatientAppointmentsPage() {
           appointments.map((apt) => {
             const isFormsExpanded = expandedFormsAptId === apt.id;
             return (
-              <div key={apt.id} className="rounded-xl border bg-card overflow-hidden transition-colors">
-                <div className="flex items-center gap-4 p-4 hover:bg-muted/30">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 flex-shrink-0">
-                    <User className="h-5 w-5 text-primary" />
+              <div
+                key={apt.id}
+                className="rounded-xl bg-surface-container-lowest shadow-sanctuary overflow-hidden transition-colors"
+              >
+                <div className="flex items-center gap-4 p-4 hover:bg-surface-container-low transition-colors">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary flex-shrink-0">
+                    <User className="h-5 w-5" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-foreground">
+                    <p className="font-label text-sm font-bold text-on-surface">
                       Dr. {apt.doctor?.user?.firstName} {apt.doctor?.user?.lastName}
                     </p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="font-label text-xs text-on-surface-variant">
                       {apt.doctor?.specialization ?? apt.doctor?.department?.name ?? 'General'}
                       {apt.patient?.tenant?.name && ` \u00b7 ${apt.patient.tenant.name}`}
                     </p>
                     {apt.reason && (
-                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                      <p className="font-label text-xs text-on-surface-variant mt-0.5 truncate">
                         {apt.reason}
                       </p>
                     )}
                     <button
                       onClick={() => setExpandedFormsAptId(isFormsExpanded ? null : apt.id)}
-                      className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+                      className="mt-1.5 inline-flex items-center gap-1 font-label text-[11px] font-bold text-primary hover:underline"
                     >
                       <FileText className="h-3 w-3" />
                       View Submitted Forms
@@ -301,22 +318,24 @@ export default function PatientAppointmentsPage() {
                     </button>
                   </div>
                   <div className="text-right flex-shrink-0 space-y-1">
-                    <div className="flex items-center gap-1.5 text-sm text-foreground justify-end">
-                      <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                    <div className="flex items-center gap-1.5 font-label text-sm text-on-surface justify-end">
+                      <Calendar className="h-3.5 w-3.5 text-on-surface-variant" />
                       {formatDate(apt.appointmentDate)}
                     </div>
                     {apt.startTime && (
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground justify-end">
+                      <div className="flex items-center gap-1.5 font-label text-xs text-on-surface-variant justify-end">
                         <Clock className="h-3 w-3" />
                         {formatTime24(apt.startTime)}
                         {apt.endTime && ` - ${formatTime24(apt.endTime)}`}
                       </div>
                     )}
                     <div className="flex items-center gap-1.5 justify-end">
-                      <span className={cn(
-                        'inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize',
-                        statusStyles[apt.status] ?? 'bg-gray-100 text-gray-800',
-                      )}>
+                      <span
+                        className={cn(
+                          'text-[10px] font-bold font-label px-2 py-0.5 rounded-full capitalize',
+                          statusStyles[apt.status] ?? 'bg-tertiary-fixed text-on-tertiary-fixed-variant',
+                        )}
+                      >
                         {apt.status.replace('_', ' ')}
                       </span>
                       {['booked', 'confirmed'].includes(apt.status) &&
@@ -324,7 +343,7 @@ export default function PatientAppointmentsPage() {
                           <button
                             onClick={() => cancelMutation.mutate(apt.id)}
                             disabled={cancelMutation.isPending}
-                            className="rounded-full p-1 text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors"
+                            className="rounded-full p-1 text-on-surface-variant hover:text-error hover:bg-error-container/40 transition-colors"
                             title="Cancel appointment"
                           >
                             <X className="h-3.5 w-3.5" />
@@ -335,7 +354,7 @@ export default function PatientAppointmentsPage() {
                 </div>
 
                 {isFormsExpanded && (
-                  <div className="border-t px-4 py-3 bg-muted/20">
+                  <div className="border-t border-outline-variant/30 px-4 py-3 bg-surface-container-low">
                     <PatientFormSubmissionsPanel
                       appointmentId={apt.id}
                       title="Forms for this Appointment"
@@ -349,10 +368,7 @@ export default function PatientAppointmentsPage() {
         )}
       </div>
 
-      {/* Pending intake forms modal — auto-opens whenever the patient has a
-          required form to complete for any of their upcoming appointments.
-          Cannot be dismissed until all required forms are submitted, and
-          will re-appear on every page refresh until then. */}
+      {/* Pending intake forms modal */}
       <IntakeFormsModal
         open={showIntakeForms}
         trigger="appointment_booking"
@@ -360,7 +376,6 @@ export default function PatientAppointmentsPage() {
         context={{ appointmentId: pendingTarget?.id }}
         onComplete={() => {
           setShowIntakeForms(false);
-          // Refetch pending so the next pending form (if any) auto-opens
           queryClient.invalidateQueries({ queryKey: ['forms', 'pending'] });
         }}
       />

@@ -35,16 +35,6 @@ import { toast } from 'sonner';
 // ─────────────────────────────────────────────────────────
 // Patient Portal — My Forms (Unified Inbox)
 // ─────────────────────────────────────────────────────────
-//
-// One-stop place where the patient can:
-//   • See ALL forms hospitals have made visible to them (across every
-//     hospital where they have a Patient record)
-//   • Click any form to fill it on demand
-//   • See their past submissions
-//
-// This is the safety-net surface so patients can always find their forms
-// regardless of which workflow trigger the admin picked.
-// ─────────────────────────────────────────────────────────
 
 interface AvailableForm {
   assignmentId: string;
@@ -80,7 +70,6 @@ export default function PatientMyFormsPage() {
   const toFill = allForms.filter((f) => !f.isSubmitted);
   const submitted = allForms.filter((f) => f.isSubmitted);
 
-  // Group "to fill" forms by hospital
   const formsByHospital = useMemo(() => {
     const map = new Map<string, { tenant: AvailableForm['tenant']; forms: AvailableForm[] }>();
     for (const f of toFill) {
@@ -112,24 +101,26 @@ export default function PatientMyFormsPage() {
   };
 
   return (
-    <div className="space-y-5 animate-fade-in-up">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-            <ClipboardList className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-foreground">My Forms</h1>
-            <p className="text-xs text-muted-foreground">
-              Forms you can fill for hospitals you've visited.
-            </p>
-          </div>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="font-label text-xs uppercase tracking-[0.2em] text-on-surface-variant mb-2">
+            Care Records
+          </p>
+          <h1 className="font-headline text-3xl font-extrabold text-on-surface tracking-tight">
+            My Forms
+          </h1>
+          <p className="font-label text-sm text-on-surface-variant mt-1.5">
+            Forms you can fill for hospitals you&apos;ve visited
+          </p>
         </div>
         {requiredCount > 0 && (
-          <div className="rounded-xl border-2 border-amber-300 bg-amber-50 px-3 py-2 text-center shrink-0">
-            <p className="font-headline text-lg font-bold text-amber-900">{requiredCount}</p>
-            <p className="text-[10px] text-amber-800 font-semibold uppercase tracking-wider">
+          <div className="rounded-xl bg-secondary-fixed/50 border-l-4 border-secondary px-4 py-3 shadow-sanctuary text-center shrink-0">
+            <p className="font-headline text-2xl font-extrabold text-on-surface leading-none">
+              {requiredCount}
+            </p>
+            <p className="font-label text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mt-1">
               Required
             </p>
           </div>
@@ -138,7 +129,7 @@ export default function PatientMyFormsPage() {
 
       {/* ── Forms to fill ── */}
       <section className="space-y-3">
-        <h2 className="font-headline text-sm font-bold uppercase tracking-wider flex items-center gap-2">
+        <h2 className="font-headline text-sm font-bold uppercase tracking-widest text-on-surface-variant flex items-center gap-2">
           <FileText className="h-4 w-4 text-primary" />
           Forms to Fill
           {toFill.length > 0 && (
@@ -149,15 +140,19 @@ export default function PatientMyFormsPage() {
         </h2>
 
         {isLoading ? (
-          <div className="rounded-xl border bg-card p-12 text-center">
+          <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-12 text-center">
             <Loader2 className="h-6 w-6 animate-spin text-primary mx-auto" />
           </div>
         ) : toFill.length === 0 ? (
-          <div className="rounded-xl border bg-card p-12 text-center">
-            <Inbox className="h-10 w-10 text-muted-foreground/50 mx-auto mb-2" />
-            <p className="text-sm font-medium">No forms to fill right now</p>
-            <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
-              When a hospital you've booked with assigns a form to you, it'll appear here.
+          <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-10 text-center">
+            <div className="w-12 h-12 mx-auto bg-surface-container-high rounded-full flex items-center justify-center text-outline mb-3">
+              <Inbox className="h-5 w-5" />
+            </div>
+            <p className="font-label text-sm font-semibold text-on-surface">
+              No forms to fill right now
+            </p>
+            <p className="font-label text-xs text-on-surface-variant mt-1 max-w-md mx-auto">
+              When a hospital you&apos;ve booked with assigns a form to you, it&apos;ll appear here.
             </p>
           </div>
         ) : (
@@ -165,10 +160,12 @@ export default function PatientMyFormsPage() {
             {formsByHospital.map(({ tenant, forms }) => (
               <div key={tenant.id} className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                  <p className="text-xs font-bold text-foreground">
+                  <Building2 className="h-3.5 w-3.5 text-on-surface-variant" />
+                  <p className="font-label text-xs font-bold text-on-surface">
                     {tenant.name}
-                    {tenant.city && <span className="text-muted-foreground"> · {tenant.city}</span>}
+                    {tenant.city && (
+                      <span className="text-on-surface-variant font-normal"> · {tenant.city}</span>
+                    )}
                   </p>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -176,38 +173,44 @@ export default function PatientMyFormsPage() {
                     <div
                       key={f.assignmentId}
                       className={cn(
-                        'rounded-xl border-2 bg-card p-4 flex flex-col gap-3',
-                        f.isRequired ? 'border-amber-300 bg-amber-50/30' : 'border-border',
+                        'rounded-xl shadow-sanctuary p-5 flex flex-col gap-3',
+                        f.isRequired
+                          ? 'border-l-4 border-secondary bg-secondary-fixed/30'
+                          : 'bg-surface-container-lowest',
                       )}
                     >
-                      <div className="flex items-start gap-2">
+                      <div className="flex items-start gap-3">
                         <div
                           className={cn(
-                            'flex h-9 w-9 items-center justify-center rounded-lg shrink-0',
-                            f.isRequired ? 'bg-amber-100' : 'bg-primary/10',
+                            'flex h-10 w-10 items-center justify-center rounded-xl shrink-0',
+                            f.isRequired
+                              ? 'bg-secondary/10 text-secondary'
+                              : 'bg-primary/10 text-primary',
                           )}
                         >
                           {f.isRequired ? (
-                            <AlertCircle className="h-4 w-4 text-amber-700" />
+                            <AlertCircle className="h-4 w-4" />
                           ) : (
-                            <FileText className="h-4 w-4 text-primary" />
+                            <FileText className="h-4 w-4" />
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-sm">{f.instance.name}</h3>
-                          <p className="text-[10px] text-muted-foreground">
+                          <h3 className="font-label font-bold text-sm text-on-surface">
+                            {f.instance.name}
+                          </h3>
+                          <p className="font-label text-[10px] text-on-surface-variant">
                             {TRIGGER_LABELS[f.trigger]} ·{' '}
                             {CATEGORY_LABELS[f.instance.category as FormCategory]}
                           </p>
                         </div>
                         {f.isRequired && (
-                          <span className="rounded-full bg-amber-200 px-1.5 py-0.5 text-[9px] font-bold text-amber-900">
+                          <span className="rounded-full bg-secondary/10 text-secondary px-2 py-0.5 text-[9px] font-bold font-label tracking-wider">
                             REQUIRED
                           </span>
                         )}
                       </div>
                       {f.instance.description && (
-                        <p className="text-xs text-muted-foreground line-clamp-2">
+                        <p className="font-label text-xs text-on-surface-variant line-clamp-2">
                           {f.instance.description}
                         </p>
                       )}
@@ -237,33 +240,33 @@ export default function PatientMyFormsPage() {
         )}
       </section>
 
-      {/* ── Submitted forms — patient sees their own submissions across all hospitals ── */}
+      {/* ── Submitted forms ── */}
       {submitted.length > 0 && (
         <section className="space-y-3 pt-2">
-          <h2 className="font-headline text-sm font-bold uppercase tracking-wider flex items-center gap-2">
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+          <h2 className="font-headline text-sm font-bold uppercase tracking-widest text-on-surface-variant flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-primary" />
             Your Submitted Forms
-            <span className="rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5">
+            <span className="rounded-full bg-primary/10 text-primary text-[10px] font-bold px-2 py-0.5">
               {submitted.length}
             </span>
           </h2>
-          <div className="rounded-xl border bg-card divide-y">
+          <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary divide-y divide-surface-container/50 overflow-hidden">
             {submitted.map((f) => (
               <div
                 key={f.assignmentId}
-                className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors"
+                className="flex items-center gap-3 px-4 py-3 hover:bg-surface-container-low transition-colors"
               >
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 shrink-0">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-700" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary shrink-0">
+                  <CheckCircle2 className="h-4 w-4" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{f.instance.name}</p>
-                  <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                  <p className="font-label text-sm font-bold text-on-surface">{f.instance.name}</p>
+                  <p className="font-label text-[10px] text-on-surface-variant flex items-center gap-1">
                     <Building2 className="h-2.5 w-2.5" />
                     {f.tenant.name} · {TRIGGER_LABELS[f.trigger]}
                   </p>
                 </div>
-                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                <span className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-bold font-label">
                   Submitted
                 </span>
               </div>
@@ -295,7 +298,7 @@ export default function PatientMyFormsPage() {
                   {selectedForm.tenant.name}
                 </span>
               </DialogDescription>
-              <div className="mt-3 rounded-lg border bg-muted/20 p-4">
+              <div className="mt-3 rounded-lg bg-surface-container-low p-4">
                 <FormRenderer
                   schema={selectedForm.instance.schema}
                   onSubmit={handleSubmit}
@@ -321,7 +324,7 @@ export default function PatientMyFormsPage() {
             { label: 'Hospital', value: previewForm.tenant.name },
             { label: 'Trigger', value: TRIGGER_LABELS[previewForm.trigger] },
             ...(previewForm.isRequired
-              ? [{ label: 'Status', value: 'Required', badgeClass: 'bg-amber-100 text-amber-800' }]
+              ? [{ label: 'Status', value: 'Required', badgeClass: 'bg-secondary/10 text-secondary' }]
               : []),
           ]}
           primaryAction={{

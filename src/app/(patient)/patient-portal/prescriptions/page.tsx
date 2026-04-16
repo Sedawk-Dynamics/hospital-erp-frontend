@@ -2,16 +2,24 @@
 
 import { useState } from 'react';
 import {
-  Pill, Sun, Cloud, Sunset, Moon, AlertCircle, Clock, CalendarDays,
-  ChevronDown, Stethoscope, Activity, Thermometer, Heart, Droplets,
-  Weight, FileText,
+  Pill,
+  Sun,
+  Cloud,
+  Sunset,
+  Moon,
+  AlertCircle,
+  Clock,
+  CalendarDays,
+  ChevronDown,
+  Stethoscope,
+  FileText,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
+import { usePatientProfileStore } from '@/stores/patient-profile-store';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/lib/date-utils';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import { HospitalFilter } from '../_components/hospital-filter';
 import { parseFrequencyToSchedule } from '@/components/doctor/consultation-completion';
@@ -86,15 +94,16 @@ function parseNoteContent(content?: string): Record<string, string> {
   return sections;
 }
 
-
 export default function PatientPrescriptionsPage() {
   const [hospitalFilter, setHospitalFilter] = useState('');
+  const { selectedProfileId } = usePatientProfileStore();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['patient', 'prescriptions', hospitalFilter],
+    queryKey: ['patient', 'prescriptions', hospitalFilter, selectedProfileId],
     queryFn: async () => {
       const params: Record<string, unknown> = { limit: 30 };
       if (hospitalFilter) params.tenantId = hospitalFilter;
+      if (selectedProfileId) params.profileId = selectedProfileId;
       const res = await apiGet<PrescriptionData[]>('/patient-portal/prescriptions', { params });
       return res.data ?? [];
     },
@@ -103,8 +112,19 @@ export default function PatientPrescriptionsPage() {
   const prescriptions = data ?? [];
 
   return (
-    <div className="space-y-5 animate-fade-in-up">
-      <h1 className="text-xl font-bold text-foreground">My Prescriptions</h1>
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <p className="font-label text-xs uppercase tracking-[0.2em] text-on-surface-variant mb-2">
+          Care Records
+        </p>
+        <h1 className="font-headline text-3xl font-extrabold text-on-surface tracking-tight">
+          My Prescriptions
+        </h1>
+        <p className="font-label text-sm text-on-surface-variant mt-1.5">
+          Medications, dosing schedules, and visit summaries from your doctors
+        </p>
+      </div>
 
       <HospitalFilter value={hospitalFilter} onChange={setHospitalFilter} />
 
@@ -113,9 +133,14 @@ export default function PatientPrescriptionsPage() {
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
         </div>
       ) : prescriptions.length === 0 ? (
-        <div className="rounded-xl border bg-card p-8 text-center">
-          <Pill className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-          <p className="text-muted-foreground">No prescriptions found</p>
+        <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-10 text-center">
+          <div className="w-12 h-12 mx-auto bg-surface-container-high rounded-full flex items-center justify-center text-outline mb-3">
+            <Pill className="h-5 w-5" />
+          </div>
+          <p className="font-label text-sm font-semibold text-on-surface">No prescriptions found</p>
+          <p className="font-label text-xs text-on-surface-variant mt-1">
+            Prescriptions issued by your doctors will appear here
+          </p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -133,19 +158,16 @@ export default function PatientPrescriptionsPage() {
 function PrescriptionCard({ prescription: rx }: { prescription: PrescriptionData }) {
   const [expanded, setExpanded] = useState(false);
 
-  // Parse visit data
   const progressNote = rx.visit?.progressNotes?.[0];
   const sections = parseNoteContent(progressNote?.content);
   const diagnoses = rx.visit?.diagnoses ?? [];
   const vitals = rx.visit?.vitals?.[0];
 
-  // Build visit detail items
-  const visitDetails: { label: string; color: string; content: React.ReactNode }[] = [];
+  const visitDetails: { label: string; content: React.ReactNode }[] = [];
 
   if (sections['Chief Complaint']) {
     visitDetails.push({
       label: 'Symptoms',
-      color: 'text-blue-600',
       content: <span className="text-[11px]">{sections['Chief Complaint']}</span>,
     });
   }
@@ -153,29 +175,30 @@ function PrescriptionCard({ prescription: rx }: { prescription: PrescriptionData
   if (sections['General Examination']) {
     visitDetails.push({
       label: 'Examination',
-      color: 'text-teal-600',
       content: <span className="text-[11px]">{sections['General Examination']}</span>,
     });
   }
 
-  // Diagnoses
   if (diagnoses.length > 0) {
     visitDetails.push({
       label: 'Diagnosis',
-      color: 'text-red-600',
       content: (
         <div className="flex flex-wrap gap-1.5">
           {diagnoses.map((d, i) => (
             <span key={d.id || i} className="text-[11px]">
               {d.diagnosisName}
-              {d.icdCode && <span className="text-muted-foreground"> ({d.icdCode})</span>}
+              {d.icdCode && <span className="text-on-surface-variant"> ({d.icdCode})</span>}
               {d.diagnosisType && (
-                <Badge variant="outline" className={cn(
-                  'text-[8px] px-1 py-0 capitalize ml-1',
-                  d.diagnosisType === 'primary' ? 'border-red-300 text-red-600' : 'border-gray-300 text-gray-500',
-                )}>
+                <span
+                  className={cn(
+                    'text-[9px] font-bold font-label px-1.5 py-0 rounded-full ml-1 capitalize',
+                    d.diagnosisType === 'primary'
+                      ? 'bg-error/10 text-error'
+                      : 'bg-tertiary-fixed text-on-tertiary-fixed-variant',
+                  )}
+                >
                   {d.diagnosisType}
-                </Badge>
+                </span>
               )}
               {i < diagnoses.length - 1 && ','}
             </span>
@@ -186,40 +209,32 @@ function PrescriptionCard({ prescription: rx }: { prescription: PrescriptionData
   } else if (sections['Diagnosis']) {
     visitDetails.push({
       label: 'Diagnosis',
-      color: 'text-red-600',
       content: <DiagnosisText content={sections['Diagnosis']} />,
     });
   }
 
-  // Vitals
   if (vitals) {
     visitDetails.push({
       label: 'Vitals',
-      color: 'text-orange-600',
       content: <VitalsCompact vitals={vitals} />,
     });
   } else if (sections['Vitals']) {
     visitDetails.push({
       label: 'Vitals',
-      color: 'text-orange-600',
       content: <VitalsText content={sections['Vitals']} />,
     });
   }
 
-  // Advice
   if (sections['Advice']) {
     visitDetails.push({
       label: 'Advice',
-      color: 'text-purple-600',
       content: <span className="text-[11px]">{sections['Advice']}</span>,
     });
   }
 
-  // Referral
   if (sections['Referral']) {
     visitDetails.push({
       label: 'Referral',
-      color: 'text-indigo-600',
       content: <span className="text-[11px]">{sections['Referral']}</span>,
     });
   }
@@ -227,43 +242,49 @@ function PrescriptionCard({ prescription: rx }: { prescription: PrescriptionData
   const hasVisitDetails = visitDetails.length > 0;
 
   return (
-    <div className="rounded-xl border bg-card overflow-hidden transition-colors hover:border-primary/20">
-      {/* ── Header: Doctor + Date + Status ── */}
+    <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary overflow-hidden">
+      {/* Header */}
       <div className="flex items-center gap-4 px-5 py-4">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 shrink-0">
-          <Stethoscope className="h-5 w-5 text-primary" />
+        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary shrink-0">
+          <Stethoscope className="h-5 w-5" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-foreground">
+          <p className="font-label text-sm font-bold text-on-surface">
             Dr. {rx.doctor?.user?.firstName} {rx.doctor?.user?.lastName}
           </p>
           <div className="flex items-center gap-2 flex-wrap mt-0.5">
-            <span className="text-xs text-muted-foreground">{formatDate(rx.createdAt)}</span>
+            <span className="font-label text-xs text-on-surface-variant">
+              {formatDate(rx.createdAt)}
+            </span>
             {rx.patient?.tenant?.name && (
               <>
-                <span className="text-muted-foreground">·</span>
-                <span className="text-xs text-muted-foreground">{rx.patient.tenant.name}</span>
+                <span className="text-on-surface-variant">·</span>
+                <span className="font-label text-xs text-on-surface-variant">
+                  {rx.patient.tenant.name}
+                </span>
               </>
             )}
           </div>
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
-          <Badge className={cn(
-            'text-[10px] capitalize',
-            rx.status === 'active' && 'bg-green-100 text-green-800',
-            rx.status === 'dispensed' && 'bg-blue-100 text-blue-800',
-            rx.status === 'completed' && 'bg-gray-100 text-gray-800',
-            rx.status === 'cancelled' && 'bg-red-100 text-red-800',
-          )}>
+          <span
+            className={cn(
+              'text-[10px] font-bold font-label px-2 py-0.5 rounded-full capitalize',
+              rx.status === 'active' && 'bg-primary/10 text-primary',
+              rx.status === 'dispensed' && 'bg-primary/10 text-primary',
+              rx.status === 'completed' && 'bg-tertiary-fixed text-on-tertiary-fixed-variant',
+              rx.status === 'cancelled' && 'bg-error/10 text-error',
+            )}
+          >
             {rx.status}
-          </Badge>
+          </span>
         </div>
       </div>
 
-      {/* ── Medicines ── */}
+      {/* Medicines */}
       {rx.prescriptionItems && rx.prescriptionItems.length > 0 && (
-        <div className="border-t px-5 py-4 space-y-3">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">
+        <div className="border-t border-outline-variant/30 px-5 py-4 space-y-3">
+          <p className="font-label text-[10px] font-bold uppercase tracking-widest text-primary">
             Medicines ({rx.prescriptionItems.length})
           </p>
           {rx.prescriptionItems.map((item, i) => (
@@ -272,26 +293,28 @@ function PrescriptionCard({ prescription: rx }: { prescription: PrescriptionData
         </div>
       )}
 
-      {/* ── Visit Details Toggle ── */}
+      {/* Visit Details Toggle */}
       {hasVisitDetails && (
         <>
           <button
             onClick={() => setExpanded(!expanded)}
-            className="w-full flex items-center justify-center gap-1.5 border-t px-5 py-2 text-xs font-medium text-primary hover:bg-muted/30 transition-colors"
+            className="w-full flex items-center justify-center gap-1.5 border-t border-outline-variant/30 px-5 py-2 font-label text-xs font-bold text-primary hover:bg-surface-container-low transition-colors"
           >
             <FileText className="h-3 w-3" />
             {expanded ? 'Hide Visit Details' : 'View Visit Details'}
-            <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', expanded && 'rotate-180')} />
+            <ChevronDown
+              className={cn('h-3.5 w-3.5 transition-transform', expanded && 'rotate-180')}
+            />
           </button>
 
           {expanded && (
-            <div className="border-t divide-y">
+            <div className="border-t border-outline-variant/30 divide-y divide-surface-container/50">
               {visitDetails.map((item) => (
                 <div key={item.label} className="px-5 py-2.5">
-                  <span className={cn('text-[10px] font-bold uppercase tracking-wide', item.color)}>
+                  <span className="font-label text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
                     {item.label}
                   </span>
-                  <div className="mt-0.5 text-foreground/80 leading-relaxed">{item.content}</div>
+                  <div className="mt-0.5 text-on-surface leading-relaxed">{item.content}</div>
                 </div>
               ))}
             </div>
@@ -299,7 +322,7 @@ function PrescriptionCard({ prescription: rx }: { prescription: PrescriptionData
         </>
       )}
 
-      {/* ── Follow-up Banner ── */}
+      {/* Follow-up Banner */}
       <FollowUpBanner prescription={rx} />
     </div>
   );
@@ -316,31 +339,32 @@ const TIMING_SLOTS = [
 
 function MedicineScheduleCard({ item, index }: { item: PrescriptionItem; index: number }) {
   const schedule = parseFrequencyToSchedule(item.frequency || '');
-  const hasStructuredSchedule = schedule.morning || schedule.afternoon || schedule.evening || schedule.night || schedule.isPrn;
+  const hasStructuredSchedule =
+    schedule.morning || schedule.afternoon || schedule.evening || schedule.night || schedule.isPrn;
 
   return (
-    <div className="rounded-lg border bg-background p-4 space-y-3">
+    <div className="rounded-xl bg-surface-container-low p-4 space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0 mt-0.5">
-            <span className="text-xs font-bold">{index}</span>
+            <span className="font-label text-xs font-bold">{index}</span>
           </div>
           <div>
-            <p className="text-sm font-semibold text-foreground">{item.drugName}</p>
+            <p className="font-label text-sm font-bold text-on-surface">{item.drugName}</p>
             {item.dosage && (
-              <p className="text-xs text-primary font-medium">{item.dosage}</p>
+              <p className="font-label text-xs text-primary font-bold">{item.dosage}</p>
             )}
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {item.duration && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-bold font-label">
               <Clock className="h-2.5 w-2.5" />
               {item.duration}
             </span>
           )}
           {item.route && item.route !== 'oral' && (
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground capitalize">
+            <span className="rounded-full bg-tertiary-fixed text-on-tertiary-fixed-variant px-2 py-0.5 text-[10px] font-bold font-label capitalize">
               {item.route}
             </span>
           )}
@@ -348,9 +372,11 @@ function MedicineScheduleCard({ item, index }: { item: PrescriptionItem; index: 
       </div>
 
       {schedule.isPrn ? (
-        <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
-          <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
-          <span className="text-xs font-semibold text-amber-700">Take as needed (SOS)</span>
+        <div className="flex items-center gap-2 rounded-lg bg-secondary-fixed/50 border-l-4 border-secondary px-3 py-2">
+          <AlertCircle className="h-3.5 w-3.5 text-secondary" />
+          <span className="font-label text-xs font-bold text-on-surface">
+            Take as needed (SOS)
+          </span>
         </div>
       ) : hasStructuredSchedule ? (
         <div className="space-y-2">
@@ -362,21 +388,33 @@ function MedicineScheduleCard({ item, index }: { item: PrescriptionItem; index: 
                 <div
                   key={slot.key}
                   className={cn(
-                    'flex flex-col items-center gap-1 rounded-lg p-2 border text-center transition-colors',
+                    'flex flex-col items-center gap-1 rounded-lg p-2 text-center transition-colors',
                     isActive
-                      ? 'bg-primary/5 border-primary/30'
-                      : 'bg-muted/30 border-transparent opacity-40',
+                      ? 'bg-primary/10'
+                      : 'bg-surface-container opacity-50',
                   )}
                 >
-                  <SlotIcon className={cn('h-4 w-4', isActive ? 'text-primary' : 'text-muted-foreground')} />
-                  <span className={cn('text-[10px] font-semibold', isActive ? 'text-foreground' : 'text-muted-foreground')}>
+                  <SlotIcon
+                    className={cn(
+                      'h-4 w-4',
+                      isActive ? 'text-primary' : 'text-on-surface-variant',
+                    )}
+                  />
+                  <span
+                    className={cn(
+                      'font-label text-[10px] font-bold',
+                      isActive ? 'text-on-surface' : 'text-on-surface-variant',
+                    )}
+                  >
                     {slot.label}
                   </span>
                   {isActive && (
-                    <span className="text-[9px] text-muted-foreground">{slot.time}</span>
+                    <span className="font-label text-[9px] text-on-surface-variant">
+                      {slot.time}
+                    </span>
                   )}
                   {isActive && item.dosage && (
-                    <span className="inline-flex items-center justify-center rounded bg-primary text-primary-foreground px-1.5 py-0.5 text-[9px] font-bold">
+                    <span className="inline-flex items-center justify-center rounded bg-primary text-white px-1.5 py-0.5 text-[9px] font-bold font-label">
                       {item.dosage}
                     </span>
                   )}
@@ -386,20 +424,20 @@ function MedicineScheduleCard({ item, index }: { item: PrescriptionItem; index: 
           </div>
           {schedule.mealRelation && (
             <div className="flex items-center justify-center">
-              <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 border border-orange-200 px-2.5 py-0.5 text-[10px] font-semibold text-orange-700">
+              <span className="inline-flex items-center gap-1 rounded-full bg-secondary/10 text-secondary px-3 py-0.5 text-[10px] font-bold font-label">
                 {schedule.mealRelation}
               </span>
             </div>
           )}
         </div>
       ) : (
-        <p className="text-xs text-muted-foreground">
+        <p className="font-label text-xs text-on-surface-variant">
           {[item.dosage, item.frequency, item.duration].filter(Boolean).join(' · ')}
         </p>
       )}
 
       {item.instructions && (
-        <p className="text-xs text-muted-foreground italic border-t pt-2">
+        <p className="font-label text-xs text-on-surface-variant italic border-t border-outline-variant/30 pt-2">
           {item.instructions}
         </p>
       )}
@@ -413,9 +451,13 @@ function VitalsCompact({ vitals }: { vitals: VitalRecord }) {
   const items: { label: string; value: string }[] = [];
   if (vitals.temperature) items.push({ label: 'Temp', value: `${vitals.temperature}°F` });
   if (vitals.bloodPressureSystolic || vitals.bloodPressureDiastolic) {
-    items.push({ label: 'BP', value: `${vitals.bloodPressureSystolic || '-'}/${vitals.bloodPressureDiastolic || '-'} mmHg` });
+    items.push({
+      label: 'BP',
+      value: `${vitals.bloodPressureSystolic || '-'}/${vitals.bloodPressureDiastolic || '-'} mmHg`,
+    });
   }
-  if (vitals.pulseRate || vitals.heartRate) items.push({ label: 'Pulse', value: `${vitals.pulseRate || vitals.heartRate} bpm` });
+  if (vitals.pulseRate || vitals.heartRate)
+    items.push({ label: 'Pulse', value: `${vitals.pulseRate || vitals.heartRate} bpm` });
   if (vitals.oxygenSaturation) items.push({ label: 'SpO2', value: `${vitals.oxygenSaturation}%` });
   if (vitals.weightKg) items.push({ label: 'Weight', value: `${vitals.weightKg} kg` });
   if (vitals.bloodSugar) items.push({ label: 'Sugar', value: `${vitals.bloodSugar} mg/dL` });
@@ -426,8 +468,8 @@ function VitalsCompact({ vitals }: { vitals: VitalRecord }) {
     <div className="flex flex-wrap gap-x-4 gap-y-0.5">
       {items.map((item) => (
         <span key={item.label} className="text-[11px]">
-          <span className="text-muted-foreground">{item.label}:</span>{' '}
-          <span className="font-semibold">{item.value}</span>
+          <span className="text-on-surface-variant">{item.label}:</span>{' '}
+          <span className="font-bold">{item.value}</span>
         </span>
       ))}
     </div>
@@ -442,7 +484,8 @@ function VitalsText({ content }: { content: string }) {
         const [label, value] = line.split(':').map((s) => s.trim());
         return (
           <span key={idx} className="text-[11px]">
-            <span className="text-muted-foreground">{label}:</span> <span className="font-semibold">{value}</span>
+            <span className="text-on-surface-variant">{label}:</span>{' '}
+            <span className="font-bold">{value}</span>
           </span>
         );
       })}
@@ -466,12 +509,16 @@ function DiagnosisText({ content }: { content: string }) {
           <span key={idx} className="text-[11px]">
             {nameOnly}
             {diagType && (
-              <Badge variant="outline" className={cn(
-                'text-[8px] px-1 py-0 capitalize ml-1',
-                diagType === 'primary' ? 'border-red-300 text-red-600' : 'border-gray-300 text-gray-500',
-              )}>
+              <span
+                className={cn(
+                  'text-[9px] font-bold font-label px-1.5 py-0 rounded-full ml-1 capitalize',
+                  diagType === 'primary'
+                    ? 'bg-error/10 text-error'
+                    : 'bg-tertiary-fixed text-on-tertiary-fixed-variant',
+                )}
+              >
                 {diagType}
-              </Badge>
+              </span>
             )}
             {idx < lines.length - 1 && ','}
           </span>
@@ -498,40 +545,61 @@ function FollowUpBanner({ prescription }: { prescription: PrescriptionData }) {
   const isSoon = diffDays > 0 && diffDays <= 3;
 
   const displayDate = dateObj.toLocaleDateString('en-IN', {
-    weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
   });
 
   let statusLabel = `in ${diffDays} day${diffDays !== 1 ? 's' : ''}`;
   if (isToday) statusLabel = 'Today';
-  else if (isPast) statusLabel = `${Math.abs(diffDays)} day${Math.abs(diffDays) !== 1 ? 's' : ''} overdue`;
+  else if (isPast)
+    statusLabel = `${Math.abs(diffDays)} day${Math.abs(diffDays) !== 1 ? 's' : ''} overdue`;
   else if (diffDays === 1) statusLabel = 'Tomorrow';
+
+  const bgClass = isPast
+    ? 'bg-error-container/40'
+    : isToday
+      ? 'bg-secondary-fixed/50'
+      : isSoon
+        ? 'bg-secondary-fixed/30'
+        : 'bg-primary-fixed/30';
+
+  const iconClass = isPast
+    ? 'text-error'
+    : isToday
+      ? 'text-secondary'
+      : isSoon
+        ? 'text-secondary'
+        : 'text-primary';
+
+  const chipClass = isPast
+    ? 'bg-error/10 text-error'
+    : isToday
+      ? 'bg-secondary/10 text-secondary'
+      : isSoon
+        ? 'bg-secondary/10 text-secondary'
+        : 'bg-primary/10 text-primary';
 
   return (
     <div
       className={cn(
-        'flex items-center gap-3 border-t px-5 py-3',
-        isPast && 'bg-red-50',
-        isToday && 'bg-orange-50',
-        isSoon && 'bg-amber-50',
-        !isPast && !isToday && !isSoon && 'bg-blue-50',
+        'flex items-center gap-3 border-t border-outline-variant/30 px-5 py-3',
+        bgClass,
       )}
     >
-      <CalendarDays className={cn(
-        'h-4 w-4 shrink-0',
-        isPast ? 'text-red-500' : isToday ? 'text-orange-600' : isSoon ? 'text-amber-600' : 'text-blue-600',
-      )} />
+      <CalendarDays className={cn('h-4 w-4 shrink-0', iconClass)} />
       <div className="flex-1 min-w-0">
-        <p className={cn(
-          'text-xs font-bold',
-          isPast ? 'text-red-800' : isToday ? 'text-orange-800' : isSoon ? 'text-amber-800' : 'text-blue-800',
-        )}>
+        <p className="font-label text-xs font-bold text-on-surface">
           Follow-up: {displayDate}
-          <Badge className={cn(
-            'ml-2 text-[9px] px-1.5 py-0',
-            isPast ? 'bg-red-100 text-red-700' : isToday ? 'bg-orange-100 text-orange-700' : isSoon ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700',
-          )}>
+          <span
+            className={cn(
+              'ml-2 text-[9px] font-bold font-label px-1.5 py-0.5 rounded-full capitalize',
+              chipClass,
+            )}
+          >
             {statusLabel}
-          </Badge>
+          </span>
         </p>
       </div>
       {!isPast && (

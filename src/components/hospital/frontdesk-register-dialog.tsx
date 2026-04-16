@@ -59,9 +59,45 @@ const patientSchema = z.object({
   city: z.string().optional(),
   state: z.string().optional(),
   zipCode: z.string().optional(),
+  relationship: z
+    .enum(['self', 'spouse', 'child', 'parent', 'sibling', 'guardian', 'other'])
+    .optional(),
 });
 
 type PatientFormData = z.infer<typeof patientSchema>;
+
+const RELATIONSHIPS = [
+  { value: 'self', label: 'Self (Account Holder)' },
+  { value: 'spouse', label: 'Spouse' },
+  { value: 'child', label: 'Child' },
+  { value: 'parent', label: 'Parent' },
+  { value: 'sibling', label: 'Sibling' },
+  { value: 'guardian', label: 'Guardian / Ward' },
+  { value: 'other', label: 'Other' },
+] as const;
+
+type AccountHolder = {
+  id: string;
+  firstName: string;
+  lastName?: string | null;
+  email: string;
+  phone?: string | null;
+  tenantId: string;
+  tenant?: { id: string; name: string; slug: string } | null;
+  _count?: { patients: number };
+};
+
+type ExistingProfile = {
+  id: string;
+  mrn: string;
+  firstName: string;
+  lastName?: string | null;
+  phone?: string | null;
+  gender?: string | null;
+  relationship?: string | null;
+  isSelf?: boolean;
+  tenant?: { id: string; name: string } | null;
+};
 
 const GENDERS = [
   { value: 'male', label: 'Male' },
@@ -164,6 +200,16 @@ export function FrontDeskRegisterDialog({
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [showPatientDropdown, setShowPatientDropdown] = useState(false);
 
+  // New-patient sub-mode: register standalone OR attach as family profile to an existing user
+  const [newPatientMode, setNewPatientMode] = useState<'standalone' | 'linkUser'>('standalone');
+  const [userSearchValue, setUserSearchValue] = useState('');
+  const [userSearchType, setUserSearchType] = useState<'phone' | 'email'>('phone');
+  const [userResults, setUserResults] = useState<AccountHolder[]>([]);
+  const [userSearchLoading, setUserSearchLoading] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<AccountHolder | null>(null);
+  const [existingProfiles, setExistingProfiles] = useState<ExistingProfile[]>([]);
+  const [profilesLoading, setProfilesLoading] = useState(false);
+
   // Appointment state
   const [selectedDoctorId, setSelectedDoctorId] = useState('');
   const [appointmentDate, setAppointmentDate] = useState(toInputDateStr());
@@ -225,10 +271,12 @@ export function FrontDeskRegisterDialog({
       city: '',
       state: '',
       zipCode: '',
+      relationship: 'self',
     },
   });
 
   const genderValue = watchPatient('gender');
+  const relationshipValue = watchPatient('relationship') ?? 'self';
 
   // Reset everything on close
   useEffect(() => {
@@ -245,9 +293,56 @@ export function FrontDeskRegisterDialog({
       setReason('');
       setPaymentMode('cash');
       setIsSubmitting(false);
+      setNewPatientMode('standalone');
+      setUserSearchValue('');
+      setUserSearchType('phone');
+      setUserResults([]);
+      setSelectedUser(null);
+      setExistingProfiles([]);
       resetPatientForm();
     }
-  }, [open, resetPatientForm]);
+  }, [open, resetPatientForm, initialMode]);
+
+  // Account-holder search (phone or email)
+  const runUserSearch = useCallback(async () => {
+    const val = userSearchValue.trim();
+    if (!val) {
+      setUserResults([]);
+      return;
+    }
+    setUserSearchLoading(true);
+    try {
+      const resp = await apiGet<AccountHolder[]>('/users/by-contact', {
+        params: userSearchType === 'phone' ? { phone: val } : { email: val },
+      });
+      setUserResults(resp.data ?? []);
+    } catch {
+      setUserResults([]);
+    } finally {
+      setUserSearchLoading(false);
+    }
+  }, [userSearchValue, userSearchType]);
+
+  // Load existing profiles under the selected user (in this tenant only)
+  useEffect(() => {
+    if (!selectedUser) {
+      setExistingProfiles([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setProfilesLoading(true);
+      try {
+        const resp = await apiGet<ExistingProfile[]>(`/patients/by-user/${selectedUser.id}`);
+        if (!cancelled) setExistingProfiles(resp.data ?? []);
+      } catch {
+        if (!cancelled) setExistingProfiles([]);
+      } finally {
+        if (!cancelled) setProfilesLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedUser]);
 
   // Clear slot when doctor or date changes
   useEffect(() => {
@@ -278,7 +373,11 @@ export function FrontDeskRegisterDialog({
     setStep(1);
   };
 
-  const handlePatientFormNext = (data: PatientFormData) => {
+  const handlePatientFormNext = (_data: PatientFormData) => {
+    if (newPatientMode === 'linkUser' && !selectedUser) {
+      toast.error('Please search and select an account holder');
+      return;
+    }
     // Store form data — we'll create patient on final submit
     setStep(1);
   };
@@ -318,6 +417,12 @@ export function FrontDeskRegisterDialog({
         if (patientData.city) payload.city = patientData.city;
         if (patientData.state) payload.state = patientData.state;
         if (patientData.zipCode) payload.zipCode = patientData.zipCode;
+
+        // Linking as family member under an existing user account
+        if (newPatientMode === 'linkUser' && selectedUser) {
+          payload.userId = selectedUser.id;
+          payload.relationship = patientData.relationship ?? 'other';
+        }
 
         const patientResp = await apiPost<Patient>('/patients', payload);
         patientId = patientResp.data?.id;
@@ -552,10 +657,201 @@ export function FrontDeskRegisterDialog({
               </div>
             ) : (
               <form onSubmit={handlePatientSubmit(handlePatientFormNext)} className="space-y-4">
+                {/* Account-holder linkage toggle */}
+                <div className="flex gap-2 p-1 rounded-xl bg-surface-container">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewPatientMode('standalone');
+                      setSelectedUser(null);
+                      setExistingProfiles([]);
+                      setPatientValue('relationship', 'self');
+                    }}
+                    className={`flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all ${
+                      newPatientMode === 'standalone'
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'text-on-surface-variant hover:text-on-surface'
+                    }`}
+                  >
+                    Standalone Patient
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewPatientMode('linkUser');
+                      setPatientValue('relationship', 'other');
+                    }}
+                    className={`flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all ${
+                      newPatientMode === 'linkUser'
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'text-on-surface-variant hover:text-on-surface'
+                    }`}
+                  >
+                    Add Under Existing User
+                  </button>
+                </div>
+
+                {/* Account-holder search panel (only in linkUser mode) */}
+                {newPatientMode === 'linkUser' && (
+                  <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-3">
+                    <p className="text-xs font-medium text-primary uppercase tracking-wider">
+                      Find Account Holder
+                    </p>
+                    <div className="flex gap-2">
+                      <Select
+                        value={userSearchType}
+                        onValueChange={(v: string | null) => setUserSearchType((v ?? 'phone') as 'phone' | 'email')}
+                      >
+                        <SelectTrigger className="w-[110px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="phone">Phone</SelectItem>
+                          <SelectItem value="email">Email</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        placeholder={userSearchType === 'phone' ? '+91XXXXXXXXXX' : 'user@example.com'}
+                        value={userSearchValue}
+                        onChange={(e) => setUserSearchValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            runUserSearch();
+                          }
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        onClick={runUserSearch}
+                        disabled={userSearchLoading || !userSearchValue.trim()}
+                        className="gap-1.5"
+                      >
+                        {userSearchLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Search className="h-4 w-4" />
+                        )}
+                        Search
+                      </Button>
+                    </div>
+
+                    {/* Search results */}
+                    {userResults.length > 0 && !selectedUser && (
+                      <div className="rounded-lg border bg-card divide-y">
+                        {userResults.map((u) => (
+                          <button
+                            key={u.id}
+                            type="button"
+                            onClick={() => setSelectedUser(u)}
+                            className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-muted transition-colors"
+                          >
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold">
+                              {u.firstName?.[0]}{u.lastName?.[0] ?? ''}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-semibold truncate">
+                                {u.firstName} {u.lastName}
+                              </p>
+                              <p className="text-[11px] text-muted-foreground truncate">
+                                {u.email} · {u.phone || 'No phone'} ·{' '}
+                                {u._count?.patients ?? 0} profile{(u._count?.patients ?? 0) === 1 ? '' : 's'}
+                              </p>
+                            </div>
+                            <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {userSearchValue && !userSearchLoading && userResults.length === 0 && !selectedUser && (
+                      <p className="text-xs text-muted-foreground italic">
+                        No user found with that {userSearchType}.
+                      </p>
+                    )}
+
+                    {/* Selected user card */}
+                    {selectedUser && (
+                      <div className="rounded-lg bg-card border border-primary/30 p-3 space-y-2">
+                        <div className="flex items-start gap-3">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary font-bold shrink-0">
+                            {selectedUser.firstName?.[0]}{selectedUser.lastName?.[0] ?? ''}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-bold">
+                              {selectedUser.firstName} {selectedUser.lastName}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground">
+                              {selectedUser.email} · {selectedUser.phone || '—'}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => { setSelectedUser(null); setUserResults([]); setUserSearchValue(''); }}
+                            className="text-muted-foreground hover:text-foreground text-sm"
+                          >
+                            Change
+                          </button>
+                        </div>
+
+                        {/* Existing profiles under this user */}
+                        {profilesLoading ? (
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Loader2 className="h-3 w-3 animate-spin" /> Loading profiles...
+                          </div>
+                        ) : existingProfiles.length > 0 ? (
+                          <div className="space-y-1">
+                            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                              Existing profiles ({existingProfiles.length})
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {existingProfiles.map((p) => (
+                                <span
+                                  key={p.id}
+                                  className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium"
+                                >
+                                  {p.firstName} {p.lastName ?? ''}
+                                  <span className="text-muted-foreground">· {p.relationship ?? 'self'}</span>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-muted-foreground italic">
+                            No profiles yet — this will be their first.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Relationship selector — only meaningful in linkUser mode */}
+                {newPatientMode === 'linkUser' && selectedUser && (
+                  <div className="space-y-1.5">
+                    <Label>Relationship to Account Holder *</Label>
+                    <Select
+                      value={relationshipValue}
+                      onValueChange={(v: string | null) => {
+                        if (v) setPatientValue('relationship', v as PatientFormData['relationship']);
+                      }}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select relationship" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {RELATIONSHIPS.map((r) => (
+                          <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
                 {/* Basic Info */}
                 <div className="rounded-lg border border-dashed border-muted-foreground/30 p-3 space-y-3">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Basic Info
+                    {newPatientMode === 'linkUser' ? 'Patient Profile Info' : 'Basic Info'}
                   </p>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
