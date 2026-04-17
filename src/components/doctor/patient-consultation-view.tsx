@@ -145,8 +145,8 @@ function AllergyBanner({ allergies }: { allergies: Patient['allergies'] }) {
   if (!allergies || allergies.length === 0) return null;
 
   return (
-    <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2">
-      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-red-600" />
+    <div className="flex items-start gap-2 rounded-md border border-error/30 bg-error/10 px-3 py-2">
+      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-error" />
       <div className="flex flex-wrap gap-2">
         {allergies.map((allergy) => (
           <Badge
@@ -588,9 +588,9 @@ function InlineSubmission({ submission }: { submission: FormSubmission }) {
         )}
         <Badge
           className={`text-[9px] px-1.5 py-0 shrink-0 ${
-            submission.status === 'verified' ? 'bg-emerald-100 text-emerald-700' :
-            submission.status === 'submitted' ? 'bg-blue-100 text-blue-700' :
-            submission.status === 'rejected' ? 'bg-red-100 text-red-700' :
+            submission.status === 'verified' ? 'bg-primary/10 text-primary' :
+            submission.status === 'submitted' ? 'bg-primary-container/10 text-primary-container' :
+            submission.status === 'rejected' ? 'bg-error/10 text-error' :
             'bg-muted text-muted-foreground'
           }`}
         >

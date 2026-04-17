@@ -135,9 +135,9 @@ export default function DoctorSchedulePage() {
   if (!doctorId) {
     return (
       <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-8 text-center">
-        <CalIcon className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-        <p className="text-sm font-medium">No doctor profile found</p>
-        <p className="text-xs text-muted-foreground mt-1">
+        <CalIcon className="h-10 w-10 text-on-surface-variant mx-auto mb-3" />
+        <p className="font-label text-sm font-medium text-on-surface">No doctor profile found</p>
+        <p className="font-label text-xs text-on-surface-variant mt-1">
           Contact your hospital administrator to set up your profile.
         </p>
       </div>
@@ -149,11 +149,11 @@ export default function DoctorSchedulePage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="font-headline text-xl font-bold flex items-center gap-2">
+          <h1 className="font-headline text-2xl font-extrabold tracking-tight text-on-surface flex items-center gap-2">
             <CalendarClock className="h-5 w-5 text-primary" />
             Schedule & Leaves
           </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
+          <p className="font-label text-sm text-on-surface-variant mt-0.5">
             Your shifts, approved leaves, and appointments — all in one place. Approved leaves automatically block patient booking.
           </p>
         </div>
@@ -165,9 +165,9 @@ export default function DoctorSchedulePage() {
       </div>
 
       {/* Info banner */}
-      <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
+      <div className="flex items-start gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 font-label text-xs">
         <Info className="h-3.5 w-3.5 text-primary mt-0.5 flex-shrink-0" />
-        <span className="text-muted-foreground">
+        <span className="text-on-surface-variant">
           Schedules & fees are managed by Hospital Admin. Tip: in month view, click any date to drill into the day view.
         </span>
       </div>
@@ -184,19 +184,19 @@ export default function DoctorSchedulePage() {
           <Button variant="outline" size="sm" onClick={() => navigate(1)}>
             <ChevronRight className="h-4 w-4" />
           </Button>
-          <span className="ml-2 text-sm font-semibold">{title}</span>
+          <span className="ml-2 font-label text-sm font-semibold text-on-surface">{title}</span>
         </div>
 
-        <div className="inline-flex rounded-lg border overflow-hidden bg-card">
+        <div className="inline-flex rounded-xl border border-outline-variant/30 overflow-hidden bg-surface-container-lowest">
           {VIEWS.map((v) => (
             <button
               key={v.value}
               onClick={() => setView(v.value)}
               className={cn(
-                'px-3 py-1.5 text-xs font-medium transition-colors border-r last:border-r-0',
+                'px-3 py-1.5 font-label text-xs font-semibold transition-colors border-r border-outline-variant/30 last:border-r-0',
                 view === v.value
                   ? 'bg-primary text-primary-foreground'
-                  : 'bg-transparent text-muted-foreground hover:text-foreground',
+                  : 'bg-transparent text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low',
               )}
             >
               {v.label}

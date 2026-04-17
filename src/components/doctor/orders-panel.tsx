@@ -18,19 +18,19 @@ interface OrdersPanelProps {
 }
 
 const labStatusConfig: Record<string, { label: string; bg: string; text: string }> = {
-  ordered: { label: 'Ordered', bg: 'bg-blue-100', text: 'text-blue-700' },
-  sample_collected: { label: 'Sample Collected', bg: 'bg-amber-100', text: 'text-amber-700' },
-  in_progress: { label: 'In Progress', bg: 'bg-purple-100', text: 'text-purple-700' },
-  completed: { label: 'Completed', bg: 'bg-green-100', text: 'text-green-700' },
-  cancelled: { label: 'Cancelled', bg: 'bg-red-100', text: 'text-red-700' },
+  ordered: { label: 'Ordered', bg: 'bg-primary-container/10', text: 'text-primary-container' },
+  sample_collected: { label: 'Sample Collected', bg: 'bg-secondary/10', text: 'text-secondary' },
+  in_progress: { label: 'In Progress', bg: 'bg-tertiary/10', text: 'text-tertiary' },
+  completed: { label: 'Completed', bg: 'bg-primary/10', text: 'text-primary' },
+  cancelled: { label: 'Cancelled', bg: 'bg-error/10', text: 'text-error' },
 };
 
 const imagingStatusConfig: Record<string, { label: string; bg: string; text: string }> = {
-  requested: { label: 'Requested', bg: 'bg-blue-100', text: 'text-blue-700' },
-  scheduled: { label: 'Scheduled', bg: 'bg-amber-100', text: 'text-amber-700' },
-  in_progress: { label: 'In Progress', bg: 'bg-purple-100', text: 'text-purple-700' },
-  completed: { label: 'Completed', bg: 'bg-green-100', text: 'text-green-700' },
-  cancelled: { label: 'Cancelled', bg: 'bg-red-100', text: 'text-red-700' },
+  requested: { label: 'Requested', bg: 'bg-primary-container/10', text: 'text-primary-container' },
+  scheduled: { label: 'Scheduled', bg: 'bg-secondary/10', text: 'text-secondary' },
+  in_progress: { label: 'In Progress', bg: 'bg-tertiary/10', text: 'text-tertiary' },
+  completed: { label: 'Completed', bg: 'bg-primary/10', text: 'text-primary' },
+  cancelled: { label: 'Cancelled', bg: 'bg-error/10', text: 'text-error' },
 };
 
 const imagingTypeLabels: Record<string, string> = {
@@ -127,8 +127,8 @@ export function OrdersPanel({ patientId, visitId }: OrdersPanelProps) {
                             variant="outline"
                             className={cn(
                               'text-[10px] px-1.5 py-0',
-                              order.priority === 'stat' && 'border-red-300 text-red-600',
-                              order.priority === 'urgent' && 'border-amber-300 text-amber-600'
+                              order.priority === 'stat' && 'border-error/30 text-error',
+                              order.priority === 'urgent' && 'border-secondary/30 text-secondary'
                             )}
                           >
                             {order.priority.toUpperCase()}
@@ -215,8 +215,8 @@ export function OrdersPanel({ patientId, visitId }: OrdersPanelProps) {
                             variant="outline"
                             className={cn(
                               'text-[10px] px-1.5 py-0',
-                              request.urgency === 'stat' && 'border-red-300 text-red-600',
-                              request.urgency === 'urgent' && 'border-amber-300 text-amber-600'
+                              request.urgency === 'stat' && 'border-error/30 text-error',
+                              request.urgency === 'urgent' && 'border-secondary/30 text-secondary'
                             )}
                           >
                             {request.urgency.toUpperCase()}

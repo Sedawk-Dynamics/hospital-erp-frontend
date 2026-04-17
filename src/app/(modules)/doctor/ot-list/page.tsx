@@ -32,12 +32,12 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useDoctorOTRequests, useCreateOTRequest, usePatientSearch } from '@/hooks/use-doctor';
 
 const otStatItems = [
-  { key: 'all', label: 'All', color: 'text-foreground', statusFilter: undefined },
-  { key: 'upcoming', label: 'Upcoming', color: 'text-blue-600', statusFilter: 'scheduled' },
-  { key: 'approved', label: 'Approved', color: 'text-green-600', statusFilter: 'approved' },
-  { key: 'in_progress', label: 'In Progress', color: 'text-amber-600', statusFilter: 'in_progress' },
-  { key: 'completed', label: 'Completed', color: 'text-teal-600', statusFilter: 'completed' },
-  { key: 'cancelled', label: 'Cancelled', color: 'text-red-600', statusFilter: 'cancelled' },
+  { key: 'all', label: 'All', color: 'text-on-surface', statusFilter: undefined },
+  { key: 'upcoming', label: 'Upcoming', color: 'text-primary-container', statusFilter: 'scheduled' },
+  { key: 'approved', label: 'Approved', color: 'text-primary', statusFilter: 'approved' },
+  { key: 'in_progress', label: 'In Progress', color: 'text-secondary', statusFilter: 'in_progress' },
+  { key: 'completed', label: 'Completed', color: 'text-tertiary', statusFilter: 'completed' },
+  { key: 'cancelled', label: 'Cancelled', color: 'text-error', statusFilter: 'cancelled' },
 ];
 
 export default function DoctorOTListPage() {
@@ -288,13 +288,13 @@ export default function DoctorOTListPage() {
                       </td>
                       <td className="px-4 py-3">
                         <span className={cn(
-                          'text-[10px] font-bold px-2 py-0.5 rounded-full',
-                          req.status === 'scheduled' && 'bg-blue-100 text-blue-800',
-                          req.status === 'approved' && 'bg-green-100 text-green-800',
-                          req.status === 'in_progress' && 'bg-amber-100 text-amber-800',
-                          req.status === 'completed' && 'bg-teal-100 text-teal-800',
-                          req.status === 'cancelled' && 'bg-red-100 text-red-800',
-                          req.status === 'pending' && 'bg-purple-100 text-purple-800',
+                          'font-label text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full',
+                          req.status === 'scheduled' && 'bg-primary-container/10 text-primary-container',
+                          req.status === 'approved' && 'bg-primary/10 text-primary',
+                          req.status === 'in_progress' && 'bg-secondary/10 text-secondary',
+                          req.status === 'completed' && 'bg-tertiary/10 text-tertiary',
+                          req.status === 'cancelled' && 'bg-error/10 text-error',
+                          req.status === 'pending' && 'bg-surface-container-high text-on-surface-variant',
                         )}>
                           {req.status.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
                         </span>

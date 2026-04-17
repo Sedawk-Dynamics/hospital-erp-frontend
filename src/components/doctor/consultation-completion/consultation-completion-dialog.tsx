@@ -347,7 +347,7 @@ export function ConsultationCompletionDialog({
                 size="sm"
                 onClick={handleComplete}
                 disabled={isSubmitting}
-                className="gap-1.5 bg-emerald-600 hover:bg-emerald-700"
+                className="gap-1.5 bg-primary hover:bg-primary/90"
               >
                 {isSubmitting ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />

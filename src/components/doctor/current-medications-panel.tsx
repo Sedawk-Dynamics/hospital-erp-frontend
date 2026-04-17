@@ -75,7 +75,7 @@ export function CurrentMedicationsPanel({ patientId }: { patientId: string }) {
               <div className="space-y-1.5">
                 {derived.map((d) => (
                   <div key={d.itemId} className="flex items-start gap-2 rounded-md border px-2 py-1.5 text-xs">
-                    <Pill className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                    <Pill className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold">{d.drugName}</div>
                       <div className="text-foreground/70 text-[10px]">
@@ -99,12 +99,12 @@ export function CurrentMedicationsPanel({ patientId }: { patientId: string }) {
               <div className="space-y-1.5">
                 {manual.map((m) => (
                   <div key={m.id} className="flex items-start gap-2 rounded-md border px-2 py-1.5 text-xs">
-                    <Pill className="h-3.5 w-3.5 text-blue-600 shrink-0 mt-0.5" />
+                    <Pill className="h-3.5 w-3.5 text-primary-container shrink-0 mt-0.5" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1 flex-wrap">
                         <span className="font-semibold">{m.drugName}</span>
                         {m.source && (
-                          <Badge className="bg-blue-100 text-blue-700 text-[9px] px-1 py-0 capitalize">
+                          <Badge className="bg-primary-container/10 text-primary-container text-[9px] px-1 py-0 capitalize">
                             {m.source}
                           </Badge>
                         )}

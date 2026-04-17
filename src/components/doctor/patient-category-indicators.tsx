@@ -12,18 +12,18 @@ export function PatientCategoryIndicators({
   oldPatients,
 }: PatientCategoryIndicatorsProps) {
   return (
-    <div className="flex items-center gap-4 text-sm">
+    <div className="flex items-center gap-4 font-label text-xs">
       <div className="flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
-        <span className="text-muted-foreground">New Patients ({newPatients})</span>
+        <span className="h-2 w-2 rounded-full bg-error" />
+        <span className="text-on-surface-variant">New Patients ({newPatients})</span>
       </div>
       <div className="flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-blue-500" />
-        <span className="text-muted-foreground">Review Patients ({reviewPatients})</span>
+        <span className="h-2 w-2 rounded-full bg-primary" />
+        <span className="text-on-surface-variant">Review Patients ({reviewPatients})</span>
       </div>
       <div className="flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-purple-500" />
-        <span className="text-muted-foreground">Old Patients ({oldPatients})</span>
+        <span className="h-2 w-2 rounded-full bg-tertiary" />
+        <span className="text-on-surface-variant">Old Patients ({oldPatients})</span>
       </div>
     </div>
   );

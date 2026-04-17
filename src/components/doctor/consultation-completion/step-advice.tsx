@@ -92,19 +92,19 @@ export function StepAdvice({ form }: StepAdviceProps) {
             icon={<Activity className="h-4 w-4" />}
             label="Vitals Recorded"
             value={vitalsCount}
-            color="text-blue-600 bg-blue-50"
+            color="text-primary-container bg-primary-container/10"
           />
           <SummaryCard
             icon={<Stethoscope className="h-4 w-4" />}
             label="Diagnoses"
             value={diagnosisCount}
-            color="text-purple-600 bg-purple-50"
+            color="text-tertiary bg-tertiary/10"
           />
           <SummaryCard
             icon={<Pill className="h-4 w-4" />}
             label="Medicines"
             value={medicines.length}
-            color="text-emerald-600 bg-emerald-50"
+            color="text-primary bg-primary/10"
           />
         </div>
         <p className="text-[11px] text-muted-foreground">

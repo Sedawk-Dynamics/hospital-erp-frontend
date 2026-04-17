@@ -181,7 +181,7 @@ export default function DoctorSettingsPage() {
                     <InfoRow
                       label="Availability"
                       value={doctorProfile?.isAvailable ? 'Available' : 'Not Available'}
-                      valueClassName={doctorProfile?.isAvailable ? 'text-green-600' : 'text-red-600'}
+                      valueClassName={doctorProfile?.isAvailable ? 'text-primary' : 'text-error'}
                     />
                   </div>
                 </div>
@@ -200,7 +200,7 @@ export default function DoctorSettingsPage() {
                     <InfoRow
                       label="Status"
                       value={user?.isActive ? 'Active' : 'Inactive'}
-                      valueClassName={user?.isActive ? 'text-green-600' : 'text-red-600'}
+                      valueClassName={user?.isActive ? 'text-primary' : 'text-error'}
                     />
                   </div>
                 </div>

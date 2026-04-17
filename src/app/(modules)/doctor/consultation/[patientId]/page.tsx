@@ -95,14 +95,14 @@ function getDoctorName(doctor?: { id: string; user?: { firstName: string; lastNa
 }
 
 const STATUS_STYLES: Record<string, { label: string; className: string }> = {
-  pending_payment: { label: 'Pending Payment', className: 'bg-orange-100 text-orange-700' },
-  booked: { label: 'Booked', className: 'bg-blue-100 text-blue-700' },
-  confirmed: { label: 'Confirmed', className: 'bg-cyan-100 text-cyan-700' },
-  checked_in: { label: 'Checked In', className: 'bg-amber-100 text-amber-700' },
-  in_consultation: { label: 'In Consultation', className: 'bg-purple-100 text-purple-700' },
-  completed: { label: 'Completed', className: 'bg-emerald-100 text-emerald-700' },
-  cancelled: { label: 'Cancelled', className: 'bg-red-100 text-red-700' },
-  no_show: { label: 'No Show', className: 'bg-gray-100 text-gray-700' },
+  pending_payment: { label: 'Pending Payment', className: 'bg-secondary/10 text-secondary' },
+  booked: { label: 'Booked', className: 'bg-primary-container/10 text-primary-container' },
+  confirmed: { label: 'Confirmed', className: 'bg-primary/10 text-primary' },
+  checked_in: { label: 'Checked In', className: 'bg-secondary/10 text-secondary' },
+  in_consultation: { label: 'In Consultation', className: 'bg-tertiary/10 text-tertiary' },
+  completed: { label: 'Completed', className: 'bg-primary/10 text-primary' },
+  cancelled: { label: 'Cancelled', className: 'bg-error/10 text-error' },
+  no_show: { label: 'No Show', className: 'bg-surface-container-high text-on-surface-variant' },
 };
 
 /** Section label → color mapping (M3 tokens) */
@@ -237,34 +237,34 @@ function AppointmentCard({ patient, appointment }: { patient: Patient; appointme
       <div className="p-3 space-y-1.5">
         {appointment?.appointmentDate && (
           <div className="flex items-center gap-2 text-[11px]">
-            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-purple-100 shrink-0">
-              <Clock className="h-3 w-3 text-purple-600" />
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-tertiary/10 shrink-0">
+              <Clock className="h-3 w-3 text-tertiary" />
             </div>
             <span className="font-medium">{formatDate(appointment.appointmentDate)}{appointment.startTime ? ` · ${appointment.startTime}` : ''}</span>
           </div>
         )}
         {appointment?.doctor && (
           <div className="flex items-center gap-2 text-[11px]">
-            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-100 shrink-0">
-              <Stethoscope className="h-3 w-3 text-emerald-600" />
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10 shrink-0">
+              <Stethoscope className="h-3 w-3 text-primary" />
             </div>
             <span className="font-medium truncate">{getDoctorName(appointment.doctor)}</span>
           </div>
         )}
         {patient.phone && (
           <div className="flex items-center gap-2 text-[11px]">
-            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-100 shrink-0">
-              <Phone className="h-3 w-3 text-blue-600" />
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary-container/10 shrink-0">
+              <Phone className="h-3 w-3 text-primary-container" />
             </div>
             <span className="font-medium">{patient.phone}</span>
           </div>
         )}
         {appointment?.reason && (
           <div className="flex items-start gap-2 text-[11px] pt-1.5 border-t">
-            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-100 shrink-0">
-              <StickyNote className="h-3 w-3 text-amber-600" />
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-secondary/10 shrink-0">
+              <StickyNote className="h-3 w-3 text-secondary" />
             </div>
-            <span className="text-muted-foreground leading-snug">{appointment.reason}</span>
+            <span className="text-on-surface-variant leading-snug">{appointment.reason}</span>
           </div>
         )}
       </div>
@@ -954,7 +954,7 @@ function VisitTimeline({ patientId, patient, appointmentId }: { patientId: strin
         // Advice, Follow-up, Referral, Additional Notes
         for (const key of ['Advice', 'Follow-up', 'Referral', 'Additional Notes']) {
           if (visit.sections[key]) {
-            items.push({ label: key, color: SECTION_COLORS[key] || 'text-gray-600', content: <span className="text-[11px]">{visit.sections[key]}</span> });
+            items.push({ label: key, color: SECTION_COLORS[key] || 'text-on-surface-variant', content: <span className="text-[11px]">{visit.sections[key]}</span> });
           }
         }
 
@@ -1101,7 +1101,7 @@ function VisitTimeline({ patientId, patient, appointmentId }: { patientId: strin
           icon={<FlaskConical className="h-4 w-4" />}
           title="Lab Orders"
           badge={`${unattachedLabs.length}`}
-          color="text-amber-600"
+          color="text-secondary"
         >
           <div className="divide-y">
             {unattachedLabs.map((lab) => (
@@ -1133,7 +1133,7 @@ function VisitTimeline({ patientId, patient, appointmentId }: { patientId: strin
           icon={<ImageIcon className="h-4 w-4" />}
           title="Imaging"
           badge={`${unattachedImaging.length}`}
-          color="text-pink-600"
+          color="text-tertiary"
         >
           <div className="divide-y">
             {unattachedImaging.map((req) => (
@@ -1161,7 +1161,7 @@ function VisitTimeline({ patientId, patient, appointmentId }: { patientId: strin
           icon={<FolderOpen className="h-4 w-4" />}
           title="Documents"
           badge={`${documents.length}`}
-          color="text-slate-600"
+          color="text-on-surface-variant"
         >
           <div className="divide-y">
             {documents.map((doc) => (
@@ -1191,7 +1191,7 @@ function VisitTimeline({ patientId, patient, appointmentId }: { patientId: strin
           icon={<ClipboardList className="h-4 w-4" />}
           title="Form Submissions"
           badge={`${unattachedForms.length}`}
-          color="text-violet-600"
+          color="text-primary-container"
         >
           <div className="space-y-1 p-3">
             {unattachedForms.map((sub) => (
@@ -1234,10 +1234,10 @@ function InlineSubmission({ submission }: { submission: FormSubmission }) {
         <Badge
           className={cn(
             'text-[9px] px-1.5 py-0 shrink-0',
-            submission.status === 'verified' ? 'bg-emerald-100 text-emerald-700' :
-            submission.status === 'submitted' ? 'bg-blue-100 text-blue-700' :
-            submission.status === 'rejected' ? 'bg-red-100 text-red-700' :
-            'bg-muted text-muted-foreground',
+            submission.status === 'verified' ? 'bg-primary/10 text-primary' :
+            submission.status === 'submitted' ? 'bg-primary-container/10 text-primary-container' :
+            submission.status === 'rejected' ? 'bg-error/10 text-error' :
+            'bg-surface-container text-on-surface-variant',
           )}
         >
           {submission.status}
@@ -1284,15 +1284,15 @@ function EditWindowBanner({
   const mins = Math.max(0, Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000)));
 
   return (
-    <div className="rounded-xl border-2 border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3">
-      <div className="h-9 w-9 rounded-lg bg-amber-200 flex items-center justify-center shrink-0">
-        <Clock className="h-4 w-4 text-amber-700" />
+    <div className="rounded-xl border border-secondary/30 bg-secondary/10 px-4 py-3 flex items-center gap-3">
+      <div className="h-9 w-9 rounded-lg bg-secondary/20 flex items-center justify-center shrink-0">
+        <Clock className="h-4 w-4 text-secondary" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-amber-900">
+        <p className="font-label text-sm font-semibold text-on-surface">
           Edit window: {hrs}h {mins}m remaining
         </p>
-        <p className="text-[11px] text-amber-700 mt-0.5">
+        <p className="font-label text-[11px] text-on-surface-variant mt-0.5">
           {isEditing
             ? 'Editing consultation — your changes will update the existing records in place.'
             : 'This consultation is completed but still editable for 24 hours.'}
@@ -1306,7 +1306,7 @@ function EditWindowBanner({
         <Button
           size="sm"
           onClick={onStartEdit}
-          className="gap-1.5 bg-amber-600 hover:bg-amber-700 shrink-0"
+          className="gap-1.5 bg-secondary text-on-secondary hover:bg-secondary/90 shrink-0"
         >
           <Edit3 className="h-3.5 w-3.5" />
           Edit Consultation
@@ -1590,7 +1590,7 @@ export default function PatientConsultationPage({
                             size="sm"
                             variant="outline"
                             onClick={cancelEdit}
-                            className="h-8 gap-1.5 border-amber-300 text-amber-700 hover:bg-amber-50"
+                            className="h-8 gap-1.5 border-secondary/40 text-secondary hover:bg-secondary/10"
                           >
                             <ArrowLeft className="h-3.5 w-3.5" />
                             Cancel Edit

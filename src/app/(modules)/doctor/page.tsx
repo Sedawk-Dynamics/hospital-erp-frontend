@@ -78,10 +78,10 @@ function shiftDate(dateStr: string, days: number): string {
 }
 
 const categoryColors: Record<string, string> = {
-  consultation: 'bg-red-500',
-  follow_up: 'bg-blue-500',
-  emergency: 'bg-purple-500',
-  procedure: 'bg-amber-500',
+  consultation: 'bg-error',
+  follow_up: 'bg-primary-container',
+  emergency: 'bg-tertiary',
+  procedure: 'bg-secondary',
 };
 
 // Patient type badge config based on visitType + patient.isNew
@@ -89,12 +89,12 @@ function getPatientTypeBadge(apt: Appointment): { label: string; className: stri
   const visitType = (apt as any).visitType as string | undefined;
   const isNew = (apt as any).patient?.isNew as boolean | undefined;
   if (visitType === 'revisit') {
-    return { label: 'Review', className: 'bg-blue-100 text-blue-700' };
+    return { label: 'Review', className: 'bg-primary/10 text-primary' };
   }
   if (isNew === true) {
-    return { label: 'New', className: 'bg-red-100 text-red-700' };
+    return { label: 'New', className: 'bg-error/10 text-error' };
   }
-  return { label: 'Old', className: 'bg-purple-100 text-purple-700' };
+  return { label: 'Old', className: 'bg-tertiary/10 text-tertiary' };
 }
 
 // Status transitions the doctor can perform
@@ -500,7 +500,7 @@ function DoctorAppointmentTable({
                         <div
                           className={cn(
                             'absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card',
-                            (apt.type && categoryColors[apt.type]) || 'bg-gray-400'
+                            (apt.type && categoryColors[apt.type]) || 'bg-outline'
                           )}
                           title={apt.type ?? 'general'}
                         />

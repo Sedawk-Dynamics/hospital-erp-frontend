@@ -78,10 +78,10 @@ const STATUS_OPTIONS = [
 ] as const;
 
 const STATUS_BADGE_STYLES: Record<string, string> = {
-  active: 'bg-blue-100 text-blue-800',
-  dispensed: 'bg-green-100 text-green-800',
-  partially_dispensed: 'bg-amber-100 text-amber-800',
-  cancelled: 'bg-red-100 text-red-800',
+  active: 'bg-primary-container/10 text-primary-container',
+  dispensed: 'bg-primary/10 text-primary',
+  partially_dispensed: 'bg-secondary/10 text-secondary',
+  cancelled: 'bg-error/10 text-error',
 };
 
 const FREQUENCY_OPTIONS = [
@@ -298,7 +298,7 @@ export default function EPrescriptionPage() {
                   const doctorName = rx.doctor?.user
                     ? `Dr. ${rx.doctor.user.firstName || ''} ${rx.doctor.user.lastName || ''}`.trim()
                     : '-';
-                  const statusStyle = STATUS_BADGE_STYLES[rx.status] || 'bg-gray-100 text-gray-800';
+                  const statusStyle = STATUS_BADGE_STYLES[rx.status] || 'bg-surface-container-high text-on-surface-variant';
                   const statusLabel = rx.status
                     .replace(/_/g, ' ')
                     .replace(/\b\w/g, (c) => c.toUpperCase());
@@ -316,7 +316,7 @@ export default function EPrescriptionPage() {
                       <td className="px-4 py-3">
                         <span className="text-sm text-foreground">{formatDate(rx.createdAt)}</span>
                         {isEditable && (
-                          <p className="text-[9px] text-amber-600 font-medium mt-0.5">{editHoursLeft}h left to edit</p>
+                          <p className="text-[9px] text-secondary font-medium mt-0.5">{editHoursLeft}h left to edit</p>
                         )}
                         {!isEditable && rx.status === 'active' && (
                           <p className="text-[9px] text-muted-foreground mt-0.5">Locked</p>
@@ -430,7 +430,7 @@ export default function EPrescriptionPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              <AlertTriangle className="h-5 w-5 text-secondary" />
               Cancel Prescription
             </DialogTitle>
             <DialogDescription>
@@ -817,7 +817,7 @@ function CreatePrescriptionDialog({
                     </SelectContent>
                   </Select>
                 ) : (
-                  <p className="text-xs text-muted-foreground p-2 rounded-lg bg-amber-50 text-amber-700">
+                  <p className="font-label text-xs p-2 rounded-lg bg-secondary/10 text-secondary">
                     No active visits found for this patient. A visit must be created first.
                   </p>
                 )}
@@ -883,16 +883,16 @@ function CreatePrescriptionDialog({
 
             {/* Allergy Warning */}
             {allergyResult && allergyResult.hasAllergy && (
-              <div className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 p-3">
-                <AlertTriangle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+              <div className="flex items-start gap-2 rounded-lg border border-error/30 bg-error/10 p-3">
+                <AlertTriangle className="h-4 w-4 text-error shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-sm font-semibold text-red-800">Allergy Alert</p>
-                  <p className="text-xs text-red-700 mt-0.5">
+                  <p className="font-label text-sm font-semibold text-error">Allergy Alert</p>
+                  <p className="font-label text-xs text-error mt-0.5">
                     This patient has known allergies related to this drug:
                   </p>
                   <ul className="mt-1 space-y-0.5">
                     {allergyResult.matchedAllergies.map((a) => (
-                      <li key={a.id} className="text-xs text-red-700">
+                      <li key={a.id} className="font-label text-xs text-error">
                         - {a.allergen} {a.reaction ? `(Reaction: ${a.reaction})` : ''} - Severity: {a.severity}
                       </li>
                     ))}
@@ -1313,7 +1313,7 @@ function ViewPrescriptionDialog({
     printWindow.print();
   }, [prescription]);
 
-  const statusStyle = prescription ? (STATUS_BADGE_STYLES[prescription.status] || 'bg-gray-100 text-gray-800') : '';
+  const statusStyle = prescription ? (STATUS_BADGE_STYLES[prescription.status] || 'bg-surface-container-high text-on-surface-variant') : '';
   const statusLabel = prescription
     ? prescription.status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
     : '';
@@ -1326,7 +1326,7 @@ function ViewPrescriptionDialog({
             <FileText className="h-5 w-5 text-primary" />
             Prescription Details
             {prescription && isEditable && (
-              <span className="text-[10px] font-medium text-amber-600 flex items-center gap-1 ml-auto">
+              <span className="text-[10px] font-medium text-secondary flex items-center gap-1 ml-auto">
                 <Clock className="h-3 w-3" />
                 {editHoursLeft}h left to edit
               </span>
@@ -1404,7 +1404,7 @@ function ViewPrescriptionDialog({
                     const isEditingThis = editingItemId === item.id;
 
                     return (
-                      <tr key={item.id || index} className={cn('border-t border-border/50', isEditingThis && 'bg-amber-50/50')}>
+                      <tr key={item.id || index} className={cn('border-t border-border/50', isEditingThis && 'bg-secondary/10')}>
                         <td className="px-3 py-2 text-xs font-bold text-primary align-top">{index + 1}</td>
                         <td className="px-3 py-2 align-top">
                           <p className="text-sm font-medium">{item.drugName}</p>
@@ -1477,7 +1477,7 @@ function ViewPrescriptionDialog({
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className="h-6 w-6 text-emerald-600 hover:text-emerald-700"
+                                  className="h-6 w-6 text-primary hover:text-primary/80"
                                   onClick={saveEditing}
                                   disabled={updateItemMutation.isPending}
                                 >

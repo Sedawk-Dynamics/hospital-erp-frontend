@@ -213,7 +213,7 @@ function DoctorAllergies({ patientId }: { patientId: string }) {
       ) : (
         entries.map((a: any) => (
           <div key={a.id} className="flex items-center gap-2 rounded-md border px-2 py-1.5">
-            <AlertTriangle className="h-3.5 w-3.5 text-red-600 shrink-0" />
+            <AlertTriangle className="h-3.5 w-3.5 text-error shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1 flex-wrap">
                 <span className="font-semibold">{a.allergen}</span>

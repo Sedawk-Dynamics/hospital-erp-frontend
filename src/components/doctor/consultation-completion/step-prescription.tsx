@@ -189,11 +189,11 @@ export function StepPrescription({ form, patientId }: StepPrescriptionProps) {
                       variant="outline"
                       className={cn(
                         'text-[10px] font-bold shrink-0 px-1.5 py-0.5',
-                        drug.dosageForm === 'tablet' && 'bg-blue-50 text-blue-700 border-blue-200',
-                        drug.dosageForm === 'capsule' && 'bg-green-50 text-green-700 border-green-200',
-                        drug.dosageForm === 'syrup' && 'bg-purple-50 text-purple-700 border-purple-200',
-                        drug.dosageForm === 'injection' && 'bg-red-50 text-red-700 border-red-200',
-                        drug.dosageForm === 'cream' && 'bg-amber-50 text-amber-700 border-amber-200',
+                        drug.dosageForm === 'tablet' && 'bg-primary-container/10 text-primary-container border-primary-container/30',
+                        drug.dosageForm === 'capsule' && 'bg-primary/10 text-primary border-primary/30',
+                        drug.dosageForm === 'syrup' && 'bg-tertiary/10 text-tertiary border-tertiary/30',
+                        drug.dosageForm === 'injection' && 'bg-error/10 text-error border-error/30',
+                        drug.dosageForm === 'cream' && 'bg-secondary/10 text-secondary border-secondary/30',
                       )}
                     >
                       {badge}
@@ -251,9 +251,9 @@ function MedicineRow({
     <div className="group">
       {/* Allergy alert */}
       {allergyResult?.hasAllergy && (
-        <div className="flex items-center gap-2 bg-red-50 border-b border-red-200 px-3 py-1.5">
-          <AlertTriangle className="h-3.5 w-3.5 text-red-600 shrink-0" />
-          <span className="text-xs text-red-700 font-medium">
+        <div className="flex items-center gap-2 bg-error/10 border-b border-error/30 px-3 py-1.5">
+          <AlertTriangle className="h-3.5 w-3.5 text-error shrink-0" />
+          <span className="text-xs text-error font-medium">
             Allergy: {allergyResult.matchedAllergies.map((a) => a.allergen).join(', ')}
           </span>
         </div>
@@ -371,7 +371,7 @@ function MedicineRow({
             type="button"
             variant="ghost"
             size="icon"
-            className="h-7 w-7 text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-red-500 hover:bg-red-50 transition-all"
+            className="h-7 w-7 text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-error hover:bg-error/10 transition-all"
             onClick={onRemove}
           >
             <Trash2 className="h-3.5 w-3.5" />

@@ -69,7 +69,7 @@ export function InvestigationHistoryPanel({ patientId }: { patientId: string }) 
     <div>
       {abnormal.length > 0 && (
         <div className="pb-2">
-          <Badge className="bg-red-100 text-red-700 text-[10px]">
+          <Badge className="bg-error/10 text-error text-[10px]">
             {abnormal.length} abnormal
           </Badge>
         </div>
@@ -113,15 +113,15 @@ export function InvestigationHistoryPanel({ patientId }: { patientId: string }) 
         ) : (
           <div className="space-y-1.5">
             {abnormal.map((a, i) => (
-              <div key={i} className="rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-xs">
+              <div key={i} className="rounded-md border border-error/30 bg-error/10 px-2 py-1.5 text-xs">
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <AlertCircle className="h-3 w-3 text-red-600 shrink-0" />
+                  <AlertCircle className="h-3 w-3 text-error shrink-0" />
                   <span className="font-semibold text-foreground">{a.testName}</span>
                   <span className="text-muted-foreground">·</span>
                   <span className="text-foreground/80">{a.parameterName}</span>
                 </div>
                 <div className="mt-0.5 text-foreground/80">
-                  <span className="font-semibold text-red-700">{a.value ?? '-'}</span>
+                  <span className="font-semibold text-error">{a.value ?? '-'}</span>
                   {a.unit && <span> {a.unit}</span>}
                   {a.normalRange && <span className="text-muted-foreground"> (Ref: {a.normalRange})</span>}
                 </div>
@@ -152,8 +152,8 @@ function OrderCard({
   const reportPublished = order.labReport?.status === 'published';
 
   const statusIcon = order.status === 'completed'
-    ? <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
-    : <Clock className="h-3.5 w-3.5 text-amber-600" />;
+    ? <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
+    : <Clock className="h-3.5 w-3.5 text-secondary" />;
 
   return (
     <div className="rounded-md border text-xs overflow-hidden">
@@ -170,7 +170,7 @@ function OrderCard({
             {order.orderer && ` · Dr. ${order.orderer.firstName} ${order.orderer.lastName}`}
           </p>
         </div>
-        <Badge className={cn('text-[9px] px-1 py-0', reportPublished ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground')}>
+        <Badge className={cn('text-[9px] px-1 py-0', reportPublished ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>
           {hasReport ? order.labReport!.status : order.status}
         </Badge>
       </button>
@@ -191,9 +191,9 @@ function OrderCard({
                 <table className="w-full text-[11px] mt-1">
                   <tbody>
                     {item.labResults.map((r) => (
-                      <tr key={r.id} className={cn(r.isAbnormal && 'text-red-700')}>
+                      <tr key={r.id} className={cn(r.isAbnormal && 'text-error')}>
                         <td className="py-0.5 pr-2">{r.parameterName}</td>
-                        <td className={cn('py-0.5 pr-2 font-semibold', r.isAbnormal && 'text-red-700')}>
+                        <td className={cn('py-0.5 pr-2 font-semibold', r.isAbnormal && 'text-error')}>
                           {r.value ?? '-'} {r.unit}
                         </td>
                         <td className="py-0.5 text-muted-foreground">{r.normalRange || '-'}</td>

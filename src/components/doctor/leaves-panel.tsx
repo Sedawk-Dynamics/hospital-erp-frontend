@@ -24,9 +24,9 @@ const STATUS_FILTERS: { value: 'all' | DoctorLeaveStatus; label: string }[] = [
 
 function StatusBadge({ status }: { status: DoctorLeaveStatus }) {
   const map: Record<DoctorLeaveStatus, { label: string; className: string; Icon: typeof Clock }> = {
-    pending: { label: 'Pending', className: 'bg-amber-50 text-amber-700 border-amber-200', Icon: Clock },
-    approved: { label: 'Approved', className: 'bg-green-50 text-green-700 border-green-200', Icon: CheckCircle2 },
-    rejected: { label: 'Rejected', className: 'bg-red-50 text-red-700 border-red-200', Icon: XCircle },
+    pending: { label: 'Pending', className: 'bg-secondary/10 text-secondary border-secondary/30', Icon: Clock },
+    approved: { label: 'Approved', className: 'bg-primary/10 text-primary border-primary/30', Icon: CheckCircle2 },
+    rejected: { label: 'Rejected', className: 'bg-error/10 text-error border-error/30', Icon: XCircle },
     cancelled: { label: 'Cancelled', className: 'bg-muted text-muted-foreground border-muted-foreground/20', Icon: Ban },
   };
   const { label, className, Icon } = map[status];
@@ -174,7 +174,7 @@ export function LeavesPanel({ doctorId, onApplyClick }: Props) {
                     <button
                       onClick={() => handleCancel(leave.id)}
                       disabled={cancelMutation.isPending}
-                      className="text-[10px] text-muted-foreground hover:text-red-600 transition-colors inline-flex items-center gap-0.5"
+                      className="text-[10px] text-muted-foreground hover:text-error transition-colors inline-flex items-center gap-0.5"
                     >
                       <X className="h-2.5 w-2.5" />
                       Cancel

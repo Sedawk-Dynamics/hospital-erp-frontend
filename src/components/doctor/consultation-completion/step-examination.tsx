@@ -26,7 +26,7 @@ export function StepExamination({ form }: StepExaminationProps) {
       {/* ── Chief Complaint ── */}
       <div className="space-y-2">
         <Label htmlFor="chiefComplaint" className="text-sm font-semibold">
-          Chief Complaint <span className="text-red-500">*</span>
+          Chief Complaint <span className="text-error">*</span>
         </Label>
         <textarea
           id="chiefComplaint"
@@ -36,7 +36,7 @@ export function StepExamination({ form }: StepExaminationProps) {
           className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none"
         />
         {errors.chiefComplaint && (
-          <p className="text-xs text-red-500">{errors.chiefComplaint.message}</p>
+          <p className="text-xs text-error">{errors.chiefComplaint.message}</p>
         )}
       </div>
 
@@ -149,7 +149,7 @@ export function StepExamination({ form }: StepExaminationProps) {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold">
-            Diagnosis <span className="text-red-500">*</span>
+            Diagnosis <span className="text-error">*</span>
           </h3>
           <Button
             type="button"
@@ -164,7 +164,7 @@ export function StepExamination({ form }: StepExaminationProps) {
         </div>
 
         {errors.diagnoses?.message && (
-          <p className="text-xs text-red-500">{errors.diagnoses.message}</p>
+          <p className="text-xs text-error">{errors.diagnoses.message}</p>
         )}
 
         <div className="space-y-2">
@@ -185,7 +185,7 @@ export function StepExamination({ form }: StepExaminationProps) {
                     {...register(`diagnoses.${index}.diagnosisName`)}
                   />
                   {errors.diagnoses?.[index]?.diagnosisName && (
-                    <p className="text-[10px] text-red-500 mt-0.5">
+                    <p className="text-[10px] text-error mt-0.5">
                       {errors.diagnoses[index].diagnosisName?.message}
                     </p>
                   )}
@@ -206,7 +206,7 @@ export function StepExamination({ form }: StepExaminationProps) {
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:text-red-500 shrink-0"
+                  className="h-8 w-8 text-muted-foreground hover:text-error shrink-0"
                   onClick={() => remove(index)}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -241,10 +241,10 @@ const VitalField = forwardRef<HTMLInputElement, VitalFieldProps>(
           ref={ref}
           type="number"
           step="any"
-          className={`h-8 text-xs ${error ? 'ring-2 ring-red-300' : ''}`}
+          className={`h-8 text-xs ${error ? 'ring-2 ring-error/30' : ''}`}
           {...props}
         />
-        {error && <p className="text-[10px] text-red-500">{error}</p>}
+        {error && <p className="text-[10px] text-error">{error}</p>}
       </div>
     );
   },

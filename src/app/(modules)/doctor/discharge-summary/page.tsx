@@ -48,10 +48,10 @@ function StatusBadge({ status }: { status: DischargeSummary['status'] }) {
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold',
-        status === 'draft' && 'bg-amber-100 text-amber-800',
-        status === 'finalized' && 'bg-blue-100 text-blue-800',
-        status === 'published' && 'bg-green-100 text-green-800',
+        'inline-flex items-center rounded-full px-2.5 py-0.5 font-label text-[10px] font-bold uppercase tracking-widest',
+        status === 'draft' && 'bg-secondary/10 text-secondary',
+        status === 'finalized' && 'bg-primary-container/10 text-primary-container',
+        status === 'published' && 'bg-primary/10 text-primary',
       )}
     >
       {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -508,7 +508,7 @@ export default function DischargeSummaryPage() {
                 size="sm"
                 onClick={handlePublish}
                 disabled={publishMutation.isPending}
-                className="gap-1.5 bg-green-600 hover:bg-green-700"
+                className="gap-1.5"
               >
                 <Send className="h-3.5 w-3.5" />
                 {publishMutation.isPending ? 'Publishing...' : 'Publish'}
@@ -672,11 +672,11 @@ export default function DischargeSummaryPage() {
                       {/* Status */}
                       <td className="px-4 py-3">
                         <span className={cn(
-                          'text-[10px] font-bold px-2 py-0.5 rounded-full',
-                          admission.status === 'admitted' && 'bg-blue-100 text-blue-800',
-                          admission.status === 'discharged' && 'bg-green-100 text-green-800',
-                          admission.status === 'transferred' && 'bg-amber-100 text-amber-800',
-                          admission.status === 'absconded' && 'bg-red-100 text-red-800',
+                          'font-label text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full',
+                          admission.status === 'admitted' && 'bg-primary-container/10 text-primary-container',
+                          admission.status === 'discharged' && 'bg-primary/10 text-primary',
+                          admission.status === 'transferred' && 'bg-secondary/10 text-secondary',
+                          admission.status === 'absconded' && 'bg-error/10 text-error',
                         )}>
                           {admission.status.charAt(0).toUpperCase() + admission.status.slice(1)}
                         </span>

@@ -215,8 +215,8 @@ function MonthView({ anchorDate, schedules, leaves, overrides, appointments, onC
                 isToday && 'bg-primary/5',
                 (idx % 7) === 6 && 'border-r-0',
                 interactive && 'cursor-pointer hover:bg-primary/5 hover:ring-1 hover:ring-primary/40 transition-all',
-                resolved.isOverride && !isDayOff && 'bg-blue-50/50',
-                isDayOff && 'bg-slate-100',
+                resolved.isOverride && !isDayOff && 'bg-primary-container/10',
+                isDayOff && 'bg-surface-container-high',
               )}
             >
               <div className="flex items-center justify-between">
@@ -229,7 +229,7 @@ function MonthView({ anchorDate, schedules, leaves, overrides, appointments, onC
                 <div className="flex items-center gap-0.5">
                   {resolved.isOverride && (
                     <span title="Custom schedule override" className="inline-flex">
-                      <Sparkles className="h-2.5 w-2.5 text-blue-600" />
+                      <Sparkles className="h-2.5 w-2.5 text-primary-container" />
                     </span>
                   )}
                   {resolved.shifts.length > 0 && !isFullDayLeave && !isDayOff && (
@@ -241,12 +241,12 @@ function MonthView({ anchorDate, schedules, leaves, overrides, appointments, onC
               </div>
 
               {isDayOff ? (
-                <div className="rounded-sm bg-slate-200 border border-slate-300 px-1.5 py-0.5">
-                  <p className="text-[10px] font-semibold text-slate-700 truncate">Day Off</p>
+                <div className="rounded-sm bg-surface-container-highest border border-outline-variant/30 px-1.5 py-0.5">
+                  <p className="text-[10px] font-semibold text-on-surface-variant truncate">Day Off</p>
                 </div>
               ) : isFullDayLeave ? (
-                <div className="rounded-sm bg-red-100 border border-red-200 px-1.5 py-0.5">
-                  <p className="text-[10px] font-semibold text-red-700 capitalize truncate">
+                <div className="rounded-sm bg-error/10 border border-error/30 px-1.5 py-0.5">
+                  <p className="text-[10px] font-semibold text-error capitalize truncate">
                     On Leave · {approvedLeave!.leaveType}
                   </p>
                 </div>
@@ -258,8 +258,8 @@ function MonthView({ anchorDate, schedules, leaves, overrides, appointments, onC
                       const s = parseUtcTime(l.startTime);
                       const e = parseUtcTime(l.endTime);
                       return (
-                        <div key={l.id} className="rounded-sm bg-red-50 border border-red-200 px-1.5 py-0.5">
-                          <p className="text-[10px] font-semibold text-red-700 truncate">
+                        <div key={l.id} className="rounded-sm bg-error/10 border border-error/30 px-1.5 py-0.5">
+                          <p className="text-[10px] font-semibold text-error truncate">
                             Leave {s}-{e}
                           </p>
                         </div>
@@ -267,8 +267,8 @@ function MonthView({ anchorDate, schedules, leaves, overrides, appointments, onC
                     })}
 
                   {pendingLeave && (
-                    <div className="rounded-sm bg-amber-50 border border-amber-200 px-1.5 py-0.5">
-                      <p className="text-[10px] font-medium text-amber-700 truncate">Leave pending</p>
+                    <div className="rounded-sm bg-secondary/10 border border-secondary/30 px-1.5 py-0.5">
+                      <p className="text-[10px] font-medium text-secondary truncate">Leave pending</p>
                     </div>
                   )}
 
@@ -429,14 +429,14 @@ function TimeGrid({
                 {/* Day-off (admin override) — takes precedence over everything */}
                 {isDayOff && !approvedFullDay && (
                   <div
-                    className="absolute left-1 right-1 rounded-md bg-slate-100 border-2 border-slate-300 flex items-center justify-center"
+                    className="absolute left-1 right-1 rounded-md bg-surface-container-high border-2 border-outline-variant/30 flex items-center justify-center"
                     style={{ top: 0, height: gridHeight }}
                   >
                     <div className="text-center px-2">
-                      <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">Day Off</p>
-                      <p className="text-[11px] text-slate-600 mt-1">Marked by Admin</p>
+                      <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Day Off</p>
+                      <p className="text-[11px] text-on-surface-variant mt-1">Marked by Admin</p>
                       {resolved.note && (
-                        <p className="text-[11px] text-slate-700/80 mt-1 italic line-clamp-3">{resolved.note}</p>
+                        <p className="text-[11px] text-on-surface-variant/80 mt-1 italic line-clamp-3">{resolved.note}</p>
                       )}
                     </div>
                   </div>
@@ -445,14 +445,14 @@ function TimeGrid({
                 {/* Full-day leave overlay */}
                 {approvedFullDay && (
                   <div
-                    className="absolute left-1 right-1 rounded-md bg-red-100 border-2 border-red-300 flex items-center justify-center"
+                    className="absolute left-1 right-1 rounded-md bg-error/10 border-2 border-error/30 flex items-center justify-center"
                     style={{ top: 0, height: gridHeight }}
                   >
                     <div className="text-center px-2">
-                      <p className="text-xs font-bold text-red-700 uppercase tracking-wider">On Leave</p>
-                      <p className="text-[11px] text-red-700 capitalize mt-1">{approvedFullDay.leaveType}</p>
+                      <p className="text-xs font-bold text-error uppercase tracking-wider">On Leave</p>
+                      <p className="text-[11px] text-error capitalize mt-1">{approvedFullDay.leaveType}</p>
                       {approvedFullDay.reason && (
-                        <p className="text-[11px] text-red-700/80 mt-1 italic line-clamp-3">{approvedFullDay.reason}</p>
+                        <p className="text-[11px] text-error/80 mt-1 italic line-clamp-3">{approvedFullDay.reason}</p>
                       )}
                     </div>
                   </div>
@@ -460,9 +460,9 @@ function TimeGrid({
 
                 {/* Override badge (top-right) when using an override but not a day-off */}
                 {isOverride && !isDayOff && !approvedFullDay && (
-                  <div className="absolute top-1 right-1 z-40 inline-flex items-center gap-0.5 rounded-full bg-blue-100 border border-blue-300 px-1.5 py-0.5">
-                    <Sparkles className="h-2.5 w-2.5 text-blue-700" />
-                    <span className="text-[9px] font-semibold text-blue-700 uppercase tracking-wider">Custom</span>
+                  <div className="absolute top-1 right-1 z-40 inline-flex items-center gap-0.5 rounded-full bg-primary-container/10 border border-primary-container/30 px-1.5 py-0.5">
+                    <Sparkles className="h-2.5 w-2.5 text-primary-container" />
+                    <span className="text-[9px] font-semibold text-primary-container uppercase tracking-wider">Custom</span>
                   </div>
                 )}
 
@@ -489,7 +489,7 @@ function TimeGrid({
                           <div className="px-1.5 py-1 flex items-center gap-1">
                             <Icon className={cn(
                               'h-2.5 w-2.5 flex-shrink-0',
-                              isMorning ? 'text-amber-600' : isEvening ? 'text-indigo-600' : 'text-orange-600',
+                              isMorning ? 'text-secondary' : isEvening ? 'text-tertiary' : 'text-secondary',
                             )} />
                             <span className="text-[10px] font-semibold text-foreground truncate">
                               {s.startTime}–{s.endTime}
@@ -514,15 +514,15 @@ function TimeGrid({
                         return (
                           <div
                             key={l.id}
-                            className="absolute left-1 right-1 rounded-md bg-red-200/70 border-2 border-red-400 backdrop-blur-[1px] z-10 overflow-hidden"
+                            className="absolute left-1 right-1 rounded-md bg-error/20 border-2 border-error/30 backdrop-blur-[1px] z-10 overflow-hidden"
                             style={{ top, height }}
                             title={`Leave ${minToHhmm(range.startMin)} – ${minToHhmm(range.endMin)}${l.reason ? ` · ${l.reason}` : ''}`}
                           >
                             <div className="p-1">
-                              <p className="text-[10px] font-bold text-red-800 uppercase tracking-wider">
+                              <p className="text-[10px] font-bold text-error uppercase tracking-wider">
                                 Leave
                               </p>
-                              <p className="text-[10px] text-red-800">
+                              <p className="text-[10px] text-error">
                                 {minToHhmm(range.startMin)}–{minToHhmm(range.endMin)}
                               </p>
                             </div>
@@ -545,16 +545,16 @@ function TimeGrid({
                         return (
                           <div
                             key={l.id}
-                            className="absolute left-1 right-1 rounded-md bg-amber-100/60 border-2 border-dashed border-amber-400 z-10 overflow-hidden"
+                            className="absolute left-1 right-1 rounded-md bg-secondary/10 border-2 border-dashed border-secondary/30 z-10 overflow-hidden"
                             style={{ top, height }}
                             title={`Pending approval${l.reason ? ` · ${l.reason}` : ''}`}
                           >
                             <div className="p-1">
-                              <p className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">
+                              <p className="text-[10px] font-bold text-secondary uppercase tracking-wider">
                                 Pending
                               </p>
                               {range && (
-                                <p className="text-[10px] text-amber-800">
+                                <p className="text-[10px] text-secondary">
                                   {minToHhmm(range.startMin)}–{minToHhmm(range.endMin)}
                                 </p>
                               )}
@@ -602,8 +602,8 @@ function TimeGrid({
                     className="absolute left-0 right-0 z-30 pointer-events-none"
                     style={{ top: nowTop }}
                   >
-                    <div className="h-0.5 bg-red-500 w-full" />
-                    <div className="absolute -left-1 -top-1 h-2 w-2 rounded-full bg-red-500" />
+                    <div className="h-0.5 bg-error w-full" />
+                    <div className="absolute -left-1 -top-1 h-2 w-2 rounded-full bg-error" />
                   </div>
                 )}
               </div>
@@ -615,12 +615,12 @@ function TimeGrid({
       {/* Legend */}
       <div className="px-3 py-2 border-t bg-muted/20 flex items-center gap-3 flex-wrap text-[11px]">
         <LegendSwatch className="bg-primary/10 border-primary/20" label="Scheduled Shift" />
-        <LegendSwatch className="bg-red-200 border-red-400" label="Approved Leave" />
-        <LegendSwatch className="bg-amber-100 border-amber-400" label="Pending Leave" dashed />
+        <LegendSwatch className="bg-error/20 border-error/30" label="Approved Leave" />
+        <LegendSwatch className="bg-secondary/10 border-secondary/30" label="Pending Leave" dashed />
         <LegendSwatch className="bg-primary" label="Appointment" />
-        <LegendSwatch className="bg-slate-100 border-slate-300" label="Day Off (Admin)" />
+        <LegendSwatch className="bg-surface-container-high border-outline-variant/30" label="Day Off (Admin)" />
         <div className="flex items-center gap-1.5">
-          <Sparkles className="h-3 w-3 text-blue-600" />
+          <Sparkles className="h-3 w-3 text-primary-container" />
           <span className="text-muted-foreground">Custom Override</span>
         </div>
       </div>

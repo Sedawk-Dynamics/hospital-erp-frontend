@@ -79,7 +79,7 @@ export function DrugHistoryPanel({ patientId }: { patientId: string }) {
                 <span className="font-semibold text-foreground">{e.drugName}</span>
                 <Badge className="text-[9px] px-1 py-0 uppercase">{e.prescriptionType}</Badge>
                 {e.isPrn && (
-                  <Badge className="bg-amber-100 text-amber-700 text-[9px] px-1 py-0">PRN</Badge>
+                  <Badge className="bg-secondary/10 text-secondary text-[9px] px-1 py-0">PRN</Badge>
                 )}
               </div>
               <div className="text-foreground/70 mt-0.5">

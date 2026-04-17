@@ -304,11 +304,11 @@ export default function DoctorMRDPage() {
                       </td>
                       <td className="px-4 py-3">
                         <span className={cn(
-                          'text-[10px] font-bold px-2 py-0.5 rounded-full',
-                          doc.status === 'Initiated' && 'bg-blue-100 text-blue-800',
-                          doc.status === 'In Progress' && 'bg-amber-100 text-amber-800',
-                          doc.status === 'Completed' && 'bg-green-100 text-green-800',
-                          doc.status === 'Rejected' && 'bg-red-100 text-red-800',
+                          'font-label text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full',
+                          doc.status === 'Initiated' && 'bg-primary-container/10 text-primary-container',
+                          doc.status === 'In Progress' && 'bg-secondary/10 text-secondary',
+                          doc.status === 'Completed' && 'bg-primary/10 text-primary',
+                          doc.status === 'Rejected' && 'bg-error/10 text-error',
                         )}>
                           {doc.status}
                         </span>
@@ -531,10 +531,10 @@ function MedicalRecordDialog({
                           <div className="flex items-center justify-between mb-1">
                             <span className="font-medium">{order.orderNumber || order.id.slice(-6)}</span>
                             <span className={cn(
-                              'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-                              order.status === 'completed' && 'bg-green-100 text-green-800',
-                              order.status === 'ordered' && 'bg-blue-100 text-blue-800',
-                              order.status === 'in_progress' && 'bg-amber-100 text-amber-800',
+                              'inline-flex items-center rounded-full px-2 py-0.5 font-label text-[10px] font-bold uppercase tracking-widest',
+                              order.status === 'completed' && 'bg-primary/10 text-primary',
+                              order.status === 'ordered' && 'bg-primary-container/10 text-primary-container',
+                              order.status === 'in_progress' && 'bg-secondary/10 text-secondary',
                             )}>
                               {order.status}
                             </span>
@@ -563,7 +563,7 @@ function MedicalRecordDialog({
                           <div className="flex items-center justify-between mb-1">
                             <span className="font-medium">
                               {n.noteType || 'Progress Note'}
-                              {n.status === 'finalized' && <span className="text-green-600 text-xs ml-2">(Signed)</span>}
+                              {n.status === 'finalized' && <span className="text-primary text-xs ml-2">(Signed)</span>}
                             </span>
                             <span className="text-xs text-muted-foreground">
                               {formatDateTime(n.createdAt)}

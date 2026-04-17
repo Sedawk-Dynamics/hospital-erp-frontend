@@ -221,19 +221,19 @@ export function PrescriptionPad({
             title="Vitals"
             collapsed={collapsed.vitals}
             onToggle={() => toggleSection('vitals')}
-            color="text-emerald-600"
+            color="text-primary"
           >
             <div className="grid grid-cols-3 gap-x-6 gap-y-3">
-              <VitalInput icon={<Heart className="h-3.5 w-3.5 text-red-500" />} label="Systolic BP" unit="mmHg" {...register('vitals.bloodPressureSystolic')} error={(errors.vitals as any)?.bloodPressureSystolic?.message} />
-              <VitalInput icon={<Heart className="h-3.5 w-3.5 text-red-500" />} label="Diastolic BP" unit="mmHg" {...register('vitals.bloodPressureDiastolic')} error={(errors.vitals as any)?.bloodPressureDiastolic?.message} />
-              <VitalInput icon={<Thermometer className="h-3.5 w-3.5 text-orange-500" />} label="Temperature" unit="°C" {...register('vitals.temperature')} error={(errors.vitals as any)?.temperature?.message} />
-              <VitalInput icon={<Droplets className="h-3.5 w-3.5 text-blue-500" />} label="SpO2" unit="%" {...register('vitals.oxygenSaturation')} error={(errors.vitals as any)?.oxygenSaturation?.message} />
-              <VitalInput icon={<Activity className="h-3.5 w-3.5 text-pink-500" />} label="Pulse" unit="/min" {...register('vitals.pulseRate')} error={(errors.vitals as any)?.pulseRate?.message} />
-              <VitalInput icon={<Wind className="h-3.5 w-3.5 text-cyan-500" />} label="Respiratory Rate" unit="/min" {...register('vitals.respiratoryRate')} error={(errors.vitals as any)?.respiratoryRate?.message} />
-              <VitalInput icon={<Ruler className="h-3.5 w-3.5 text-violet-500" />} label="Height" unit="cm" {...register('vitals.heightCm')} error={(errors.vitals as any)?.heightCm?.message} />
-              <VitalInput icon={<Weight className="h-3.5 w-3.5 text-amber-500" />} label="Weight" unit="kg" {...register('vitals.weightKg')} error={(errors.vitals as any)?.weightKg?.message} />
+              <VitalInput icon={<Heart className="h-3.5 w-3.5 text-error" />} label="Systolic BP" unit="mmHg" {...register('vitals.bloodPressureSystolic')} error={(errors.vitals as any)?.bloodPressureSystolic?.message} />
+              <VitalInput icon={<Heart className="h-3.5 w-3.5 text-error" />} label="Diastolic BP" unit="mmHg" {...register('vitals.bloodPressureDiastolic')} error={(errors.vitals as any)?.bloodPressureDiastolic?.message} />
+              <VitalInput icon={<Thermometer className="h-3.5 w-3.5 text-secondary" />} label="Temperature" unit="°C" {...register('vitals.temperature')} error={(errors.vitals as any)?.temperature?.message} />
+              <VitalInput icon={<Droplets className="h-3.5 w-3.5 text-primary-container" />} label="SpO2" unit="%" {...register('vitals.oxygenSaturation')} error={(errors.vitals as any)?.oxygenSaturation?.message} />
+              <VitalInput icon={<Activity className="h-3.5 w-3.5 text-tertiary" />} label="Pulse" unit="/min" {...register('vitals.pulseRate')} error={(errors.vitals as any)?.pulseRate?.message} />
+              <VitalInput icon={<Wind className="h-3.5 w-3.5 text-primary-container" />} label="Respiratory Rate" unit="/min" {...register('vitals.respiratoryRate')} error={(errors.vitals as any)?.respiratoryRate?.message} />
+              <VitalInput icon={<Ruler className="h-3.5 w-3.5 text-tertiary" />} label="Height" unit="cm" {...register('vitals.heightCm')} error={(errors.vitals as any)?.heightCm?.message} />
+              <VitalInput icon={<Weight className="h-3.5 w-3.5 text-secondary" />} label="Weight" unit="kg" {...register('vitals.weightKg')} error={(errors.vitals as any)?.weightKg?.message} />
               <BMIField heightCm={watch('vitals.heightCm')} weightKg={watch('vitals.weightKg')} />
-              <VitalInput icon={<Droplets className="h-3.5 w-3.5 text-rose-500" />} label="Blood Sugar" unit="mg/dL" {...register('vitals.bloodSugar')} error={(errors.vitals as any)?.bloodSugar?.message} />
+              <VitalInput icon={<Droplets className="h-3.5 w-3.5 text-error" />} label="Blood Sugar" unit="mg/dL" {...register('vitals.bloodSugar')} error={(errors.vitals as any)?.bloodSugar?.message} />
             </div>
           </PadSection>
 
@@ -244,7 +244,7 @@ export function PrescriptionPad({
             badge="Chief Complaints"
             collapsed={collapsed.symptoms}
             onToggle={() => toggleSection('symptoms')}
-            color="text-blue-600"
+            color="text-primary-container"
           >
             <textarea
               {...register('chiefComplaint')}
@@ -253,7 +253,7 @@ export function PrescriptionPad({
               className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-none"
             />
             {errors.chiefComplaint && (
-              <p className="text-xs text-red-500 mt-1">{errors.chiefComplaint.message}</p>
+              <p className="text-xs text-error mt-1">{errors.chiefComplaint.message}</p>
             )}
           </PadSection>
 
@@ -269,7 +269,7 @@ export function PrescriptionPad({
             title="Lab Investigations"
             collapsed={collapsed.lab}
             onToggle={() => toggleSection('lab')}
-            color="text-purple-600"
+            color="text-tertiary"
           >
             <Input
               placeholder="Start typing Lab test / Radiology..."
@@ -287,7 +287,7 @@ export function PrescriptionPad({
             badge="O/E"
             collapsed={collapsed.exam}
             onToggle={() => toggleSection('exam')}
-            color="text-teal-600"
+            color="text-primary"
           >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="space-y-1.5">
@@ -317,7 +317,7 @@ export function PrescriptionPad({
             title="Notes"
             collapsed={collapsed.notes}
             onToggle={() => toggleSection('notes')}
-            color="text-green-600"
+            color="text-primary"
           >
             <div className="space-y-1.5">
               <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
@@ -338,7 +338,7 @@ export function PrescriptionPad({
             title="Refer to a Doctor"
             collapsed={collapsed.refer}
             onToggle={() => toggleSection('refer')}
-            color="text-indigo-600"
+            color="text-tertiary"
           >
             <textarea
               {...register('referralNotes')}
@@ -357,7 +357,7 @@ export function PrescriptionPad({
             title="Advices"
             collapsed={collapsed.advices}
             onToggle={() => toggleSection('advices')}
-            color="text-sky-600"
+            color="text-primary-container"
           >
             <AdvicesSection form={form} />
           </PadSection>
@@ -378,7 +378,7 @@ export function PrescriptionPad({
         <div className="flex-1" />
 
         {submitError && (
-          <span className="text-xs text-red-500 mr-2">{submitError}</span>
+          <span className="text-xs text-error mr-2">{submitError}</span>
         )}
         {isSubmitting && (
           <span className="text-xs text-muted-foreground mr-2">{currentStep}</span>
@@ -497,7 +497,7 @@ function BMIField({ heightCm, weightKg }: { heightCm?: number; weightKg?: number
 
   return (
     <div className="flex items-center gap-2">
-      <div className="shrink-0"><Activity className="h-3.5 w-3.5 text-green-500" /></div>
+      <div className="shrink-0"><Activity className="h-3.5 w-3.5 text-primary" /></div>
       <span className="text-xs font-medium text-muted-foreground w-24 shrink-0">BMI</span>
       <div className="relative flex-1">
         <Input type="text" className="h-8 text-sm pr-12 bg-muted/30" value={bmi} readOnly />
@@ -521,7 +521,7 @@ function DiagnosisSection({ form }: { form: any }) {
   return (
     <div className="rounded-xl border bg-card overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-3">
-        <ClipboardList className="h-4 w-4 text-red-500 shrink-0" />
+        <ClipboardList className="h-4 w-4 text-error shrink-0" />
         <h3 className="text-sm font-bold flex-1">Diagnosis</h3>
         <Badge variant="secondary" className="text-[10px] font-medium">ICD-10</Badge>
         <Button
@@ -536,7 +536,7 @@ function DiagnosisSection({ form }: { form: any }) {
       </div>
       <div className="px-4 pb-4 space-y-2">
         {errors.diagnoses?.message && (
-          <p className="text-xs text-red-500">{errors.diagnoses.message}</p>
+          <p className="text-xs text-error">{errors.diagnoses.message}</p>
         )}
         {fields.map((field, index) => (
           <div key={field.id} className="flex items-center gap-2">
@@ -563,7 +563,7 @@ function DiagnosisSection({ form }: { form: any }) {
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 shrink-0 text-muted-foreground hover:text-red-500"
+                className="h-7 w-7 shrink-0 text-muted-foreground hover:text-error"
                 onClick={() => remove(index)}
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -626,7 +626,7 @@ function MedicationsSection({ form, patientId }: { form: any; patientId: string 
   return (
     <div className="rounded-xl border bg-card overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-3">
-        <Pill className="h-4 w-4 text-rose-500 shrink-0" />
+        <Pill className="h-4 w-4 text-error shrink-0" />
         <h3 className="text-sm font-bold flex-1">Medications</h3>
         <span className="text-xs text-muted-foreground">{fields.length} medicine{fields.length !== 1 ? 's' : ''}</span>
       </div>
@@ -688,9 +688,9 @@ function MedicationsSection({ form, patientId }: { form: any; patientId: string 
                   >
                     {badge && (
                       <Badge variant="outline" className={cn('text-[10px] font-bold px-1.5 py-0',
-                        drug.dosageForm === 'tablet' && 'bg-blue-50 text-blue-700 border-blue-200',
-                        drug.dosageForm === 'capsule' && 'bg-green-50 text-green-700 border-green-200',
-                        drug.dosageForm === 'injection' && 'bg-red-50 text-red-700 border-red-200',
+                        drug.dosageForm === 'tablet' && 'bg-primary-container/10 text-primary-container border-primary-container/30',
+                        drug.dosageForm === 'capsule' && 'bg-primary/10 text-primary border-primary/30',
+                        drug.dosageForm === 'injection' && 'bg-error/10 text-error border-error/30',
                       )}>
                         {badge}
                       </Badge>
@@ -730,9 +730,9 @@ function MedRow({ index, med, patientId, onUpdate, onRemove }: {
   return (
     <div className="group">
       {allergyResult?.hasAllergy && (
-        <div className="flex items-center gap-2 bg-red-50 border-b border-red-200 px-3 py-1">
-          <AlertTriangle className="h-3 w-3 text-red-600" />
-          <span className="text-[11px] text-red-700 font-medium">
+        <div className="flex items-center gap-2 bg-error/10 border-b border-error/30 px-3 py-1">
+          <AlertTriangle className="h-3 w-3 text-error" />
+          <span className="text-[11px] text-error font-medium">
             Allergy: {allergyResult.matchedAllergies.map((a) => a.allergen).join(', ')}
           </span>
         </div>
@@ -780,7 +780,7 @@ function MedRow({ index, med, patientId, onUpdate, onRemove }: {
           <Input placeholder="Instructions" className="h-7 text-[11px] border-dashed" value={med.instructions || ''} onChange={(e) => onUpdate(index, 'instructions', e.target.value)} />
         </div>
         <div className="px-0.5 py-1.5 flex items-center">
-          <Button type="button" variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-500" onClick={onRemove}>
+          <Button type="button" variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-error" onClick={onRemove}>
             <Trash2 className="h-3 w-3" />
           </Button>
         </div>
@@ -900,12 +900,12 @@ function FollowUpSection({ form }: { form: any }) {
       icon={<CalendarDays className="h-4 w-4" />}
       title="Follow Up"
       collapsed={false}
-      color="text-orange-600"
+      color="text-secondary"
       actions={
         hasFollowUp ? (
           <button
             type="button"
-            className="text-[10px] text-muted-foreground hover:text-red-500 transition-colors mr-1"
+            className="text-[10px] text-muted-foreground hover:text-error transition-colors mr-1"
             onClick={(e) => { e.stopPropagation(); handleClear(); }}
           >
             Clear
@@ -927,7 +927,7 @@ function FollowUpSection({ form }: { form: any }) {
                 className={cn(
                   'px-3 py-1.5 rounded-full text-xs font-medium border transition-all',
                   isActive
-                    ? 'bg-orange-100 text-orange-700 border-orange-300 ring-1 ring-orange-200'
+                    ? 'bg-secondary/10 text-secondary border-secondary/30 ring-1 ring-secondary/30'
                     : 'bg-muted/40 text-muted-foreground border-transparent hover:bg-muted hover:text-foreground',
                 )}
                 onClick={() => handlePreset(preset)}
@@ -994,13 +994,13 @@ function FollowUpSection({ form }: { form: any }) {
 
         {/* Follow-up confirmation banner */}
         {hasFollowUp && displayDate && (
-          <div className="flex items-center gap-2 rounded-lg bg-orange-50 border border-orange-200 px-3 py-2">
-            <CalendarDays className="h-4 w-4 text-orange-600 shrink-0" />
+          <div className="flex items-center gap-2 rounded-lg bg-secondary/10 border border-secondary/30 px-3 py-2">
+            <CalendarDays className="h-4 w-4 text-secondary shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-orange-800">
+              <p className="text-xs font-semibold text-secondary">
                 Follow-up scheduled for {displayDate}
               </p>
-              <p className="text-[10px] text-orange-600/80">
+              <p className="text-[10px] text-secondary/80">
                 Patient will see a follow-up reminder in their portal and can book the appointment themselves.
               </p>
             </div>
@@ -1035,16 +1035,16 @@ function parseNoteContent(content?: string): Record<string, string> {
 
 /** Section label → color mapping */
 const SECTION_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  'Chief Complaint': { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
-  'Diagnosis': { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
-  'Prescription': { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
-  'Vitals': { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
-  'Advice': { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
-  'Follow-up': { bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200' },
-  'General Examination': { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200' },
-  'Systemic Examination': { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200' },
-  'Referral': { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200' },
-  'Additional Notes': { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200' },
+  'Chief Complaint': { bg: 'bg-primary-container/10', text: 'text-primary-container', border: 'border-primary-container/30' },
+  'Diagnosis': { bg: 'bg-error/10', text: 'text-error', border: 'border-error/30' },
+  'Prescription': { bg: 'bg-primary/10', text: 'text-primary', border: 'border-primary/30' },
+  'Vitals': { bg: 'bg-secondary/10', text: 'text-secondary', border: 'border-secondary/30' },
+  'Advice': { bg: 'bg-tertiary/10', text: 'text-tertiary', border: 'border-tertiary/30' },
+  'Follow-up': { bg: 'bg-primary-container/10', text: 'text-primary-container', border: 'border-primary-container/30' },
+  'General Examination': { bg: 'bg-primary/10', text: 'text-primary', border: 'border-primary/30' },
+  'Systemic Examination': { bg: 'bg-primary/10', text: 'text-primary', border: 'border-primary/30' },
+  'Referral': { bg: 'bg-tertiary/10', text: 'text-tertiary', border: 'border-tertiary/30' },
+  'Additional Notes': { bg: 'bg-surface-container-high', text: 'text-on-surface-variant', border: 'border-outline-variant/30' },
 };
 
 function PatientHistorySection({
@@ -1079,7 +1079,7 @@ function PatientHistorySection({
       badge={totalVisits > 0 ? `${totalVisits} visit${totalVisits !== 1 ? 's' : ''}` : undefined}
       collapsed={collapsed}
       onToggle={onToggle}
-      color="text-slate-600"
+      color="text-on-surface-variant"
     >
       {totalVisits === 0 ? (
         <div className="text-center py-6">
@@ -1104,15 +1104,15 @@ function PatientHistorySection({
 
             // Chief Complaint
             if (sections['Chief Complaint']) {
-              items.push({ label: 'Symptoms', color: 'text-blue-600', content: <span className="text-[11px]">{sections['Chief Complaint']}</span> });
+              items.push({ label: 'Symptoms', color: 'text-primary-container', content: <span className="text-[11px]">{sections['Chief Complaint']}</span> });
             }
 
             // Diagnosis (from note or API)
             if (sections['Diagnosis']) {
-              items.push({ label: 'Diagnosis', color: 'text-red-600', content: <DiagnosisList content={sections['Diagnosis']} /> });
+              items.push({ label: 'Diagnosis', color: 'text-error', content: <DiagnosisList content={sections['Diagnosis']} /> });
             } else if (matchingDiags.length > 0) {
               items.push({
-                label: 'Diagnosis', color: 'text-red-600',
+                label: 'Diagnosis', color: 'text-error',
                 content: (
                   <div className="flex flex-wrap gap-1.5">
                     {matchingDiags.map((d: any, idx: number) => (
@@ -1128,10 +1128,10 @@ function PatientHistorySection({
             // Prescription (from note or API)
             const rxItems = matchingRx?.items || matchingRx?.prescriptionItems || [];
             if (sections['Prescription']) {
-              items.push({ label: `Medicines`, color: 'text-emerald-600', content: <PrescriptionLines content={sections['Prescription']} /> });
+              items.push({ label: `Medicines`, color: 'text-primary', content: <PrescriptionLines content={sections['Prescription']} /> });
             } else if (rxItems.length > 0) {
               items.push({
-                label: `Medicines (${rxItems.length})`, color: 'text-emerald-600',
+                label: `Medicines (${rxItems.length})`, color: 'text-primary',
                 content: (
                   <div className="space-y-0.5">
                     {rxItems.map((item: any, idx: number) => (
@@ -1147,13 +1147,13 @@ function PatientHistorySection({
 
             // Vitals (from note text)
             if (sections['Vitals']) {
-              items.push({ label: 'Vitals', color: 'text-orange-600', content: <VitalsGrid content={sections['Vitals']} /> });
+              items.push({ label: 'Vitals', color: 'text-secondary', content: <VitalsGrid content={sections['Vitals']} /> });
             }
 
             // Other sections: Advice, Follow-up, Exam, Referral
             for (const key of ['Advice', 'Follow-up', 'General Examination', 'Systemic Examination', 'Referral']) {
               if (sections[key]) {
-                const c = SECTION_COLORS[key] || { text: 'text-gray-600' };
+                const c = SECTION_COLORS[key] || { text: 'text-on-surface-variant' };
                 items.push({ label: key, color: c.text, content: <span className="text-[11px]">{sections[key]}</span> });
               }
             }
@@ -1227,7 +1227,7 @@ function PatientHistorySection({
                 <div className="divide-y">
                   {rxDiags.length > 0 && (
                     <div className="px-3 py-2">
-                      <span className="text-[10px] font-bold uppercase tracking-wide text-red-600">Diagnosis</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-error">Diagnosis</span>
                       <div className="mt-0.5 text-[11px]">
                         {rxDiags.map((d: any) => d.diagnosisName).join(', ')}
                       </div>
@@ -1235,7 +1235,7 @@ function PatientHistorySection({
                   )}
                   {rxItems.length > 0 && (
                     <div className="px-3 py-2">
-                      <span className="text-[10px] font-bold uppercase tracking-wide text-emerald-600">Medicines ({rxItems.length})</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-primary">Medicines ({rxItems.length})</span>
                       <div className="mt-0.5 space-y-0.5">
                         {rxItems.map((item: any, idx: number) => (
                           <span key={idx} className="text-[11px] block">
@@ -1315,7 +1315,7 @@ function DiagnosisList({ content }: { content: string }) {
             {diagType && (
               <Badge variant="outline" className={cn(
                 'text-[8px] px-1 py-0 capitalize ml-1',
-                diagType === 'primary' ? 'border-red-300 text-red-600' : 'border-gray-300 text-gray-500',
+                diagType === 'primary' ? 'border-error/30 text-error' : 'border-outline-variant/30 text-on-surface-variant',
               )}>
                 {diagType}
               </Badge>

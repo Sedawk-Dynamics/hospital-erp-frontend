@@ -364,10 +364,10 @@ function PatientProfileDialog({
                             <span className="font-medium text-foreground">{d.description}</span>
                             {d.type && (
                               <span className={cn(
-                                'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-                                d.type === 'primary' && 'bg-blue-100 text-blue-800',
-                                d.type === 'secondary' && 'bg-amber-100 text-amber-800',
-                                d.type === 'differential' && 'bg-purple-100 text-purple-800',
+                                'inline-flex items-center rounded-full px-2 py-0.5 font-label text-[10px] font-bold uppercase tracking-widest',
+                                d.type === 'primary' && 'bg-primary/10 text-primary',
+                                d.type === 'secondary' && 'bg-secondary/10 text-secondary',
+                                d.type === 'differential' && 'bg-tertiary/10 text-tertiary',
                               )}>
                                 {d.type}
                               </span>
@@ -421,7 +421,7 @@ function PatientProfileDialog({
                           <div className="flex items-center justify-between mb-2">
                             <span className="font-medium text-foreground">
                               {n.noteType || 'Progress Note'}
-                              {n.status === 'finalized' && <span className="ml-2 text-green-600 text-xs">(Signed)</span>}
+                              {n.status === 'finalized' && <span className="ml-2 text-primary text-xs">(Signed)</span>}
                             </span>
                             <span className="text-xs text-muted-foreground">
                               {formatDateTime(n.createdAt)}
@@ -450,10 +450,10 @@ function PatientProfileDialog({
                           <div className="flex items-center justify-between">
                             <span className="font-medium text-foreground">{a.allergen}</span>
                             <span className={cn(
-                              'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-                              a.severity === 'mild' && 'bg-green-100 text-green-800',
-                              a.severity === 'moderate' && 'bg-amber-100 text-amber-800',
-                              a.severity === 'severe' && 'bg-red-100 text-red-800',
+                              'inline-flex items-center rounded-full px-2 py-0.5 font-label text-[10px] font-bold uppercase tracking-widest',
+                              a.severity === 'mild' && 'bg-primary/10 text-primary',
+                              a.severity === 'moderate' && 'bg-secondary/10 text-secondary',
+                              a.severity === 'severe' && 'bg-error/10 text-error',
                             )}>
                               {a.severity}
                             </span>

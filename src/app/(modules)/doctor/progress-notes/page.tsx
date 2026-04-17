@@ -62,13 +62,13 @@ const NOTE_TYPES = [
 type NoteType = (typeof NOTE_TYPES)[number];
 
 const NOTE_TYPE_COLORS: Record<NoteType, { bg: string; text: string }> = {
-  complaint: { bg: 'bg-red-100', text: 'text-red-700' },
-  vitals: { bg: 'bg-blue-100', text: 'text-blue-700' },
-  investigation: { bg: 'bg-purple-100', text: 'text-purple-700' },
-  discussion: { bg: 'bg-cyan-100', text: 'text-cyan-700' },
-  impression: { bg: 'bg-indigo-100', text: 'text-indigo-700' },
-  advice: { bg: 'bg-teal-100', text: 'text-teal-700' },
-  general: { bg: 'bg-gray-100', text: 'text-gray-700' },
+  complaint: { bg: 'bg-error/10', text: 'text-error' },
+  vitals: { bg: 'bg-primary-container/10', text: 'text-primary-container' },
+  investigation: { bg: 'bg-tertiary/10', text: 'text-tertiary' },
+  discussion: { bg: 'bg-primary/10', text: 'text-primary' },
+  impression: { bg: 'bg-secondary/10', text: 'text-secondary' },
+  advice: { bg: 'bg-primary/10', text: 'text-primary' },
+  general: { bg: 'bg-surface-container-high', text: 'text-on-surface-variant' },
 };
 
 const SECTION_HEADERS = [
@@ -367,7 +367,7 @@ export default function ProgressNotesPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              <AlertTriangle className="h-5 w-5 text-secondary" />
               Sign Progress Note
             </DialogTitle>
             <DialogDescription>
@@ -465,12 +465,12 @@ function NoteCard({
         </span>
 
         {note.status === 'finalized' ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-semibold">
+          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-semibold">
             <Lock className="h-2.5 w-2.5" />
             Signed
           </span>
         ) : (
-          <span className="inline-flex items-center rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[10px] font-semibold">
+          <span className="inline-flex items-center rounded-full bg-secondary/10 text-secondary px-2 py-0.5 text-[10px] font-semibold">
             Unsigned
           </span>
         )}
@@ -483,14 +483,14 @@ function NoteCard({
         )}
 
         {isAutoClosedOP && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 text-gray-600 px-2 py-0.5 text-[10px] font-semibold">
+          <span className="inline-flex items-center gap-1 rounded-full bg-surface-container-high text-on-surface-variant px-2 py-0.5 text-[10px] font-semibold">
             <Clock className="h-2.5 w-2.5" />
             Auto-closed
           </span>
         )}
 
         {isIP && note.status !== 'finalized' && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 text-blue-600 px-2 py-0.5 text-[10px] font-semibold">
+          <span className="inline-flex items-center gap-1 rounded-full bg-primary-container/10 text-primary-container px-2 py-0.5 text-[10px] font-semibold">
             <Clock className="h-2.5 w-2.5" />
             Active until discharge
           </span>
@@ -518,7 +518,7 @@ function NoteCard({
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 text-xs gap-1 text-green-700 hover:text-green-800 hover:bg-green-50"
+              className="h-7 text-xs gap-1 text-primary hover:text-primary/80 hover:bg-primary/5"
               onClick={() => onSign(note)}
             >
               <Lock className="h-3 w-3" />

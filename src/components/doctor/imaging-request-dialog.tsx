@@ -40,8 +40,8 @@ const imagingTypes = [
 
 const urgencyOptions: { value: Urgency; label: string; color: string; activeBg: string }[] = [
   { value: 'routine', label: 'Routine', color: 'text-foreground', activeBg: 'bg-primary text-white' },
-  { value: 'urgent', label: 'Urgent', color: 'text-amber-700', activeBg: 'bg-amber-500 text-white' },
-  { value: 'stat', label: 'STAT', color: 'text-red-700', activeBg: 'bg-red-500 text-white' },
+  { value: 'urgent', label: 'Urgent', color: 'text-secondary', activeBg: 'bg-secondary text-white' },
+  { value: 'stat', label: 'STAT', color: 'text-error', activeBg: 'bg-error text-white' },
 ];
 
 export function ImagingRequestDialog({ open, onOpenChange, patientId, visitId }: ImagingRequestDialogProps) {
