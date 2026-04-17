@@ -7,6 +7,7 @@ import { StatusProgression } from './status-progression';
 import { CancelAppointmentDialog } from './cancel-appointment-dialog';
 import { RescheduleAppointmentDialog } from './reschedule-appointment-dialog';
 import { PatientDetailDialog } from './patient-detail-dialog';
+import { CollectFrontdeskPaymentDialog } from './collect-frontdesk-payment-dialog';
 import { cn } from '@/lib/utils';
 import { formatDate, formatTime24 } from '@/lib/date-utils';
 import {
@@ -90,8 +91,20 @@ export function AppointmentTable({
   const [rescheduleTarget, setRescheduleTarget] = useState<Appointment | null>(null);
   const [viewPatientId, setViewPatientId] = useState<string | null>(null);
   const [viewAppointmentId, setViewAppointmentId] = useState<string | null>(null);
+  const [collectPayTarget, setCollectPayTarget] = useState<Appointment | null>(null);
+
+  // True when this appointment requires front-desk payment collection before check-in.
+  const needsFrontdeskPayment = (apt: Appointment) =>
+    apt.paymentInfo?.paymentStatus === 'pay_at_frontdesk' && apt.paymentInfo.balanceDue > 0;
 
   const handleStatusAdvance = async (apt: Appointment, status: string) => {
+    // Intercept confirm when payment is still pending at the front desk.
+    // Collect payment first, then confirm the appointment.
+    if (status === 'confirmed' && needsFrontdeskPayment(apt)) {
+      setCollectPayTarget(apt);
+      return;
+    }
+
     try {
       await updateStatus.mutateAsync({ id: apt.id, status });
       toast.success(`Status updated to ${status.replace('_', ' ')}`);
@@ -108,6 +121,10 @@ export function AppointmentTable({
       const message = error instanceof Error ? error.message : 'Failed to update status';
       toast.error(message);
     }
+  };
+
+  const handlePaymentConfirmed = (apt: Appointment) => {
+    // Payment collected and appointment confirmed — no form trigger for confirm step.
   };
 
   if (isLoading) {
@@ -217,10 +234,12 @@ export function AppointmentTable({
                           <span className={cn(
                             'text-[10px] font-bold px-2 py-0.5 rounded-full inline-block',
                             apt.paymentInfo.paymentStatus === 'paid_online' && 'bg-green-100 text-green-700',
+                            apt.paymentInfo.paymentStatus === 'paid_at_frontdesk' && 'bg-emerald-100 text-emerald-700',
                             apt.paymentInfo.paymentStatus === 'pay_at_frontdesk' && 'bg-amber-100 text-amber-700',
                             apt.paymentInfo.paymentStatus === 'pending' && 'bg-blue-100 text-blue-700',
                           )}>
                             {apt.paymentInfo.paymentStatus === 'paid_online' && 'Paid Online'}
+                            {apt.paymentInfo.paymentStatus === 'paid_at_frontdesk' && 'Paid at Desk'}
                             {apt.paymentInfo.paymentStatus === 'pay_at_frontdesk' && 'Pay at Desk'}
                             {apt.paymentInfo.paymentStatus === 'pending' && 'Payment Pending'}
                           </span>
@@ -248,17 +267,26 @@ export function AppointmentTable({
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-2">
                         <StatusProgression status={apt.status} />
-                        {statusActions.length > 0 && (
-                          <Button
-                            size="sm"
-                            className="h-7 px-2.5 text-[11px] font-bold gap-1 shrink-0"
-                            onClick={() => handleStatusAdvance(apt, statusActions[0].status)}
-                            disabled={updateStatus.isPending}
-                          >
-                            {(() => { const Icon = statusActions[0].icon; return <Icon className="h-3 w-3" />; })()}
-                            {statusActions[0].label}
-                          </Button>
-                        )}
+                        {statusActions.length > 0 && (() => {
+                          const action = statusActions[0];
+                          const payFirst = action.status === 'confirmed' && needsFrontdeskPayment(apt);
+                          const Icon = action.icon;
+                          return (
+                            <Button
+                              size="sm"
+                              className={cn(
+                                'h-7 px-2.5 text-[11px] font-bold gap-1 shrink-0',
+                                payFirst && 'bg-amber-600 hover:bg-amber-700 text-white',
+                              )}
+                              onClick={() => handleStatusAdvance(apt, action.status)}
+                              disabled={updateStatus.isPending}
+                              title={payFirst ? 'Collect front-desk payment, then confirm' : undefined}
+                            >
+                              <Icon className="h-3 w-3" />
+                              {payFirst ? 'Collect & Confirm' : action.label}
+                            </Button>
+                          );
+                        })()}
                       </div>
                     </td>
 
@@ -363,6 +391,15 @@ export function AppointmentTable({
         onOpenChange={(open) => { if (!open) { setViewPatientId(null); setViewAppointmentId(null); } }}
         patientId={viewPatientId}
         appointmentId={viewAppointmentId}
+      />
+
+      {/* Front-desk payment collection — opens when staff hits Confirm on a
+          'pay_at_frontdesk' appointment with an outstanding balance. */}
+      <CollectFrontdeskPaymentDialog
+        open={!!collectPayTarget}
+        onOpenChange={(open) => { if (!open) setCollectPayTarget(null); }}
+        appointment={collectPayTarget}
+        onConfirmed={handlePaymentConfirmed}
       />
 
       {/* After-action forms modal — fires after Confirm/Check In/etc.

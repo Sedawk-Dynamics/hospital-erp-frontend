@@ -258,7 +258,7 @@ export interface Appointment {
     totalAmount: number;
     amountPaid: number;
     balanceDue: number;
-    paymentStatus: 'paid_online' | 'pay_at_frontdesk' | 'pending' | 'no_billing';
+    paymentStatus: 'paid_online' | 'paid_at_frontdesk' | 'pay_at_frontdesk' | 'pending' | 'no_billing';
   } | null;
   tenantId: string;
   createdAt: string;
@@ -428,6 +428,17 @@ export interface CreditSettlement {
 }
 
 // --- Collection Summary ---
+export interface CollectionMethodBreakdown {
+  total: number;
+  cash: number;
+  card: number;
+  upi: number;
+  bankTransfer: number;
+  cheque: number;
+  insurance: number;
+  other: number;
+}
+
 export interface CollectionSummary {
   totalCollection: number;
   cash: number;
@@ -439,6 +450,11 @@ export interface CollectionSummary {
   totalPaid: number;
   totalCredit: number;
   netAdvanceAdjusted: number;
+  bySource?: {
+    online: CollectionMethodBreakdown;
+    frontdesk: CollectionMethodBreakdown;
+    unknown: CollectionMethodBreakdown;
+  };
 }
 
 // --- Billing ---

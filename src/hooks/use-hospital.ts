@@ -471,6 +471,41 @@ export function useCollectPayment() {
   });
 }
 
+export type FrontdeskPaymentMethod =
+  | 'cash'
+  | 'credit_card'
+  | 'debit_card'
+  | 'upi'
+  | 'net_banking'
+  | 'cheque'
+  | 'other';
+
+export function useRecordPayment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      billId: string;
+      amount: number;
+      paymentMethod: FrontdeskPaymentMethod;
+      referenceNumber?: string;
+      notes?: string;
+    }) => {
+      const payload = {
+        ...data,
+        paymentMethod: data.paymentMethod === 'net_banking' ? 'bank_transfer' : data.paymentMethod,
+      };
+      const response = await apiPost<Payment>('/billing/payments', payload);
+      return response.data ?? null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'payments'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bills'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'collection-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'op-appointments'] });
+    },
+  });
+}
+
 export function useSettleCredit() {
   const queryClient = useQueryClient();
   return useMutation({
