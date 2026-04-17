@@ -177,7 +177,10 @@ export default function DischargeSummaryPage() {
       return;
     }
     try {
-      const signed = await signMutation.mutateAsync(summaryData.id);
+      const signed = await signMutation.mutateAsync({
+        id: summaryData.id,
+        signatureName: signatureName.trim(),
+      });
       if (signed) setSummaryData(signed);
       toast.success('Discharge summary signed & finalized');
       setSignDialogOpen(false);
@@ -227,7 +230,7 @@ export default function DischargeSummaryPage() {
     try {
       const published = await publishMutation.mutateAsync(summaryData.id);
       if (published) setSummaryData(published);
-      toast.success('Discharge summary published');
+      toast.success('Discharge summary published — patient notified via portal & email');
 
       // After successful publish, fire any forms assigned to the discharge trigger
       formsTrigger.fire('discharge', undefined, {
@@ -451,6 +454,14 @@ export default function DischargeSummaryPage() {
             {summaryData.signedAt && summaryData.signer && (
               <span className="text-xs text-muted-foreground">
                 Signed by {summaryData.signer.firstName} {summaryData.signer.lastName} on {formatDate(summaryData.signedAt)}
+                {summaryData.eSignatureUrl?.startsWith('typed:') && (
+                  <>
+                    {' — attested as '}
+                    <em className="not-italic font-medium">
+                      &ldquo;{summaryData.eSignatureUrl.replace(/^typed:/, '')}&rdquo;
+                    </em>
+                  </>
+                )}
               </span>
             )}
           </div>

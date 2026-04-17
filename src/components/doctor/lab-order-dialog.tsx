@@ -22,6 +22,14 @@ interface LabTest {
   category?: string;
 }
 
+interface LabTestCatalogEntry {
+  id: string;
+  testName: string;
+  testCode?: string;
+  sampleType?: string;
+  labDepartment?: { id: string; name: string };
+}
+
 interface LabOrderDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -67,10 +75,15 @@ export function LabOrderDialog({ open, onOpenChange, patientId, visitId }: LabOr
     searchTimeoutRef.current = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const response = await apiGet<LabTest[]>('/lab/tests', {
-          params: { search: searchQuery, limit: 20 },
+        const response = await apiGet<LabTestCatalogEntry[]>('/lab/test-catalog', {
+          params: { search: searchQuery, limit: 20, isActive: 'true' },
         });
-        const results = response.data ?? [];
+        const results: LabTest[] = (response.data ?? []).map((t) => ({
+          id: t.id,
+          name: t.testName,
+          code: t.testCode,
+          category: t.labDepartment?.name ?? t.sampleType,
+        }));
         // Filter out already selected tests
         const filtered = results.filter(
           (t) => !selectedTests.some((s) => s.id === t.id)
@@ -116,14 +129,28 @@ export function LabOrderDialog({ open, onOpenChange, patientId, visitId }: LabOr
       toast.error('Please select at least one test');
       return;
     }
+    if (!visitId) {
+      toast.error('A visit is required to order lab tests');
+      return;
+    }
+
+    // LabOrder has only one `notes` field; merge clinical context in.
+    const clinical = clinicalNotes.trim();
+    const misc = notes.trim();
+    const mergedNotes = [
+      clinical ? `Clinical: ${clinical}` : '',
+      misc ? `Notes: ${misc}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
 
     try {
       await createLabOrder.mutateAsync({
         patientId,
-        tests: selectedTests.map((t) => ({ testId: t.id, name: t.name })),
-        priority: urgency,
-        clinicalNotes: clinicalNotes.trim() || undefined,
-        notes: notes.trim() || undefined,
+        visitId,
+        items: selectedTests.map((t) => ({ testId: t.id })),
+        urgency,
+        notes: mergedNotes || undefined,
       });
       toast.success('Lab order created successfully');
       handleReset();
@@ -133,8 +160,8 @@ export function LabOrderDialog({ open, onOpenChange, patientId, visitId }: LabOr
         patientId,
         visitId,
       });
-    } catch {
-      toast.error('Failed to create lab order');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Failed to create lab order');
     }
   };
 

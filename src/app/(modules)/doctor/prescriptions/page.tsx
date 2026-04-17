@@ -10,6 +10,8 @@ import {
   useCancelPrescription,
   usePrescriptionDetail,
   useUpdatePrescriptionItem,
+  useAddPrescriptionItem,
+  useRemovePrescriptionItem,
   type Prescription,
   type PrescriptionItem,
   type FormularyDrug,
@@ -20,6 +22,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useActionFormsTrigger } from '@/hooks/use-action-forms-trigger';
 import { IntakeFormsModal } from '@/components/forms/intake-forms-modal';
 import { formatDate, formatDateTimeAmPm, toInputDateStr } from '@/lib/date-utils';
+import { printPrescription } from '@/lib/print-prescription';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -1178,8 +1181,26 @@ function ViewPrescriptionDialog({
 }) {
   const { data: prescription, isLoading } = usePrescriptionDetail(open ? prescriptionId : '');
   const updateItemMutation = useUpdatePrescriptionItem();
+  const addItemMutation = useAddPrescriptionItem();
+  const removeItemMutation = useRemovePrescriptionItem();
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Record<string, string>>({});
+
+  // Add-drug state (only shown within 24h edit window)
+  const [addingDrug, setAddingDrug] = useState(false);
+  const [newDrug, setNewDrug] = useState<DrugFormItem>(emptyDrugItem());
+  const [newDrugSearch, setNewDrugSearch] = useState('');
+  const [debouncedNewDrugSearch, setDebouncedNewDrugSearch] = useState('');
+  const [showNewDrugDropdown, setShowNewDrugDropdown] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedNewDrugSearch(newDrugSearch), 400);
+    return () => clearTimeout(t);
+  }, [newDrugSearch]);
+  const { data: newDrugResults, isLoading: newDrugLoading } = useFormularySearch(debouncedNewDrugSearch);
+  const { data: newDrugAllergy } = useAllergyCheck(
+    prescription?.patient?.id || '',
+    newDrug.drugName,
+  );
 
   // 24-hour edit window check
   const isEditable = prescription
@@ -1232,85 +1253,74 @@ function ViewPrescriptionDialog({
     );
   }, [editingItemId, editValues, prescription, updateItemMutation]);
 
+  const resetAddDrug = useCallback(() => {
+    setAddingDrug(false);
+    setNewDrug(emptyDrugItem());
+    setNewDrugSearch('');
+    setDebouncedNewDrugSearch('');
+    setShowNewDrugDropdown(false);
+  }, []);
+
+  const handleSelectNewDrug = useCallback((drug: FormularyDrug) => {
+    setNewDrug({
+      ...emptyDrugItem(),
+      drugName: drug.drugName,
+      genericName: drug.genericName || '',
+      dosage: drug.strength || '',
+    });
+    setNewDrugSearch('');
+    setDebouncedNewDrugSearch('');
+    setShowNewDrugDropdown(false);
+  }, []);
+
+  const handleAddNewDrug = useCallback(() => {
+    if (!prescription) return;
+    if (!newDrug.drugName || !newDrug.dosage || !newDrug.duration) {
+      toast.error('Please fill in drug name, dosage, and duration');
+      return;
+    }
+    addItemMutation.mutate(
+      {
+        prescriptionId: prescription.id,
+        drugName: newDrug.drugName,
+        dosage: newDrug.dosage,
+        frequency: newDrug.frequency,
+        duration: newDrug.duration,
+        route: newDrug.route.toLowerCase(),
+        instructions: newDrug.instructions || undefined,
+        quantity: newDrug.quantity,
+      },
+      {
+        onSuccess: () => {
+          toast.success('Drug added to prescription');
+          resetAddDrug();
+        },
+        onError: (err: any) => {
+          toast.error(err?.response?.data?.message || 'Failed to add drug');
+        },
+      },
+    );
+  }, [prescription, newDrug, addItemMutation, resetAddDrug]);
+
+  const handleRemoveItem = useCallback(
+    (itemId: string) => {
+      if (!prescription) return;
+      if (!window.confirm('Remove this drug from the prescription?')) return;
+      removeItemMutation.mutate(
+        { prescriptionId: prescription.id, itemId },
+        {
+          onSuccess: () => toast.success('Drug removed'),
+          onError: (err: any) =>
+            toast.error(err?.response?.data?.message || 'Failed to remove drug'),
+        },
+      );
+    },
+    [prescription, removeItemMutation],
+  );
+
   const handlePrint = useCallback(() => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow || !prescription) return;
-
-    const patientName = prescription.patient
-      ? `${prescription.patient.firstName || ''} ${prescription.patient.lastName || ''}`.trim()
-      : 'Unknown';
-    const doctorName = prescription.doctor?.user
-      ? `Dr. ${prescription.doctor.user.firstName || ''} ${prescription.doctor.user.lastName || ''}`.trim()
-      : '-';
-
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Prescription - ${patientName}</title>
-        <style>
-          body { font-family: Arial, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; color: #333; }
-          h1 { text-align: center; color: #00897B; margin-bottom: 5px; font-size: 24px; }
-          .subtitle { text-align: center; color: #666; font-size: 12px; margin-bottom: 30px; }
-          .info-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; }
-          .info-label { color: #666; }
-          .info-value { font-weight: 600; }
-          hr { border: none; border-top: 1px solid #e0e0e0; margin: 20px 0; }
-          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-          th { background: #f5f5f5; text-align: left; padding: 10px; font-size: 12px; text-transform: uppercase; color: #666; border-bottom: 2px solid #e0e0e0; }
-          td { padding: 10px; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
-          .footer { margin-top: 60px; text-align: right; }
-          .footer .sign { border-top: 1px solid #333; display: inline-block; padding-top: 5px; min-width: 200px; text-align: center; font-size: 14px; }
-          .notes { margin-top: 20px; padding: 10px; background: #f9f9f9; border-radius: 4px; font-size: 13px; }
-          @media print { body { padding: 20px; } }
-        </style>
-      </head>
-      <body>
-        <h1>e-Prescription</h1>
-        <p class="subtitle">Date: ${formatDateTimeAmPm(prescription.createdAt)}</p>
-        <hr />
-        <div class="info-row"><span class="info-label">Patient:</span> <span class="info-value">${patientName}</span></div>
-        <div class="info-row"><span class="info-label">MRN:</span> <span class="info-value">${prescription.patient?.mrn || '-'}</span></div>
-        <div class="info-row"><span class="info-label">Doctor:</span> <span class="info-value">${doctorName}</span></div>
-        <div class="info-row"><span class="info-label">Status:</span> <span class="info-value">${prescription.status}</span></div>
-        <hr />
-        <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Drug</th>
-              <th>Dosage</th>
-              <th>Frequency</th>
-              <th>Duration</th>
-              <th>Route</th>
-              <th>Qty</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${prescription.items.map((item: any, i: number) => `
-              <tr>
-                <td>${i + 1}</td>
-                <td><strong>${item.drugName}</strong>${item.genericName ? `<br/><small style="color:#888">${item.genericName}</small>` : ''}</td>
-                <td>${item.dosage}</td>
-                <td>${item.frequency}</td>
-                <td>${item.duration}</td>
-                <td>${item.route || '-'}</td>
-                <td>${item.quantity ?? '-'}</td>
-              </tr>
-              ${item.instructions ? `<tr><td></td><td colspan="6" style="padding-top:0;font-style:italic;color:#666;font-size:12px">Instructions: ${item.instructions}</td></tr>` : ''}
-            `).join('')}
-          </tbody>
-        </table>
-        ${prescription.notes ? `<div class="notes"><strong>Notes:</strong> ${prescription.notes}</div>` : ''}
-        <div class="footer">
-          <div class="sign">${doctorName}</div>
-        </div>
-      </body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
+    if (!prescription) return;
+    printPrescription(prescription);
   }, [prescription]);
 
   const statusStyle = prescription ? (STATUS_BADGE_STYLES[prescription.status] || 'bg-surface-container-high text-on-surface-variant') : '';
@@ -1319,7 +1329,7 @@ function ViewPrescriptionDialog({
     : '';
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { cancelEditing(); onOpenChange(v); }}>
+    <Dialog open={open} onOpenChange={(v) => { cancelEditing(); resetAddDrug(); onOpenChange(v); }}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -1396,7 +1406,7 @@ function ViewPrescriptionDialog({
                     <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">Frequency</th>
                     <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">Duration</th>
                     <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">Route</th>
-                    {isEditable && <th className="px-3 py-2 text-center text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant w-16">Edit</th>}
+                    {isEditable && <th className="px-3 py-2 text-center text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant w-24">Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -1497,15 +1507,27 @@ function ViewPrescriptionDialog({
                                 </Button>
                               </div>
                             ) : (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6"
-                                title="Edit item"
-                                onClick={() => startEditing(item)}
-                              >
-                                <Pencil className="h-3 w-3" />
-                              </Button>
+                              <div className="flex items-center gap-1 justify-center">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6"
+                                  title="Edit item"
+                                  onClick={() => startEditing(item)}
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 text-destructive hover:text-destructive"
+                                  title="Remove item"
+                                  onClick={() => handleRemoveItem(item.id)}
+                                  disabled={removeItemMutation.isPending}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
                             )}
                           </td>
                         )}
@@ -1515,6 +1537,195 @@ function ViewPrescriptionDialog({
                 </tbody>
               </table>
             </div>
+
+            {/* Add Drug (within 24h edit window) */}
+            {isEditable && (
+              <div className="rounded-lg border border-dashed p-3 space-y-3">
+                {!addingDrug ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 w-full"
+                    onClick={() => setAddingDrug(true)}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add Drug
+                  </Button>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <p className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
+                        Add a new drug
+                      </p>
+                      <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={resetAddDrug}>
+                        Cancel
+                      </Button>
+                    </div>
+
+                    {/* Formulary search */}
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        placeholder="Search drug from formulary..."
+                        value={newDrugSearch}
+                        onChange={(e) => {
+                          setNewDrugSearch(e.target.value);
+                          setShowNewDrugDropdown(true);
+                        }}
+                        onFocus={() => setShowNewDrugDropdown(true)}
+                        className="pl-8 h-9 text-sm"
+                      />
+                      {showNewDrugDropdown && debouncedNewDrugSearch.length >= 2 && (
+                        <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-48 overflow-y-auto rounded-lg border bg-popover shadow-lg">
+                          {newDrugLoading ? (
+                            <div className="flex items-center justify-center p-3">
+                              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                              <span className="ml-2 text-xs text-muted-foreground">Searching...</span>
+                            </div>
+                          ) : newDrugResults && newDrugResults.length > 0 ? (
+                            newDrugResults.map((drug) => (
+                              <button
+                                key={drug.id}
+                                type="button"
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent transition-colors"
+                                onClick={() => handleSelectNewDrug(drug)}
+                              >
+                                <Pill className="h-3.5 w-3.5 text-primary shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-medium truncate">{drug.drugName}</p>
+                                  <p className="text-[10px] text-muted-foreground">
+                                    {drug.genericName || ''} {drug.strength ? `| ${drug.strength}` : ''} {drug.dosageForm ? `| ${drug.dosageForm}` : ''}
+                                  </p>
+                                </div>
+                              </button>
+                            ))
+                          ) : (
+                            <div className="p-3 text-center text-xs text-muted-foreground">No drugs found</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Allergy Warning */}
+                    {newDrugAllergy?.hasAllergy && (
+                      <div className="flex items-start gap-2 rounded-lg border border-error/30 bg-error/10 p-3">
+                        <AlertTriangle className="h-4 w-4 text-error shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-label text-sm font-semibold text-error">Allergy Alert</p>
+                          <ul className="mt-1 space-y-0.5">
+                            {newDrugAllergy.matchedAllergies.map((a) => (
+                              <li key={a.id} className="font-label text-xs text-error">
+                                - {a.allergen} {a.reaction ? `(Reaction: ${a.reaction})` : ''} - Severity: {a.severity}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Drug fields */}
+                    {newDrug.drugName && (
+                      <div className="space-y-3 rounded-lg border p-3 bg-muted/20">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-semibold text-foreground">{newDrug.drugName}</p>
+                          {newDrug.genericName && (
+                            <span className="text-xs text-muted-foreground">{newDrug.genericName}</span>
+                          )}
+                        </div>
+
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Dosage</Label>
+                            <Input
+                              placeholder="e.g., 500mg"
+                              value={newDrug.dosage}
+                              onChange={(e) => setNewDrug((prev) => ({ ...prev, dosage: e.target.value }))}
+                              className="h-8 text-sm"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Frequency</Label>
+                            <Select
+                              value={newDrug.frequency}
+                              onValueChange={(v) => { if (v) setNewDrug((prev) => ({ ...prev, frequency: v })); }}
+                            >
+                              <SelectTrigger className="h-8 text-sm">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {FREQUENCY_OPTIONS.map((f) => (
+                                  <SelectItem key={f} value={f}>{f}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Duration</Label>
+                            <Input
+                              placeholder="e.g., 5 days"
+                              value={newDrug.duration}
+                              onChange={(e) => setNewDrug((prev) => ({ ...prev, duration: e.target.value }))}
+                              className="h-8 text-sm"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Route</Label>
+                            <Select
+                              value={newDrug.route}
+                              onValueChange={(v) => { if (v) setNewDrug((prev) => ({ ...prev, route: v })); }}
+                            >
+                              <SelectTrigger className="h-8 text-sm">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {ROUTE_OPTIONS.map((r) => (
+                                  <SelectItem key={r} value={r}>{r}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Quantity</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              value={newDrug.quantity}
+                              onChange={(e) => setNewDrug((prev) => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))}
+                              className="h-8 text-sm"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Instructions</Label>
+                          <Textarea
+                            placeholder="Special instructions for this drug..."
+                            value={newDrug.instructions}
+                            onChange={(e) => setNewDrug((prev) => ({ ...prev, instructions: e.target.value }))}
+                            rows={2}
+                            className="text-sm resize-none"
+                          />
+                        </div>
+
+                        <Button
+                          size="sm"
+                          className="gap-1.5"
+                          onClick={handleAddNewDrug}
+                          disabled={addItemMutation.isPending}
+                        >
+                          {addItemMutation.isPending ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Plus className="h-3.5 w-3.5" />
+                          )}
+                          Add to Prescription
+                        </Button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
 
             {/* Notes */}
             {prescription.notes && (

@@ -160,6 +160,7 @@ export default function DoctorHomePage() {
   const [page, setPage] = useState(1);
   const router = useRouter();
   const [viewMode, setViewMode] = useState<ViewMode>('today');
+  const [telemedicineActive, setTelemedicineActive] = useState(false);
 
   const statusFilter = statusFilterMap[activeStatFilter];
 
@@ -184,7 +185,19 @@ export default function DoctorHomePage() {
     doctorUserId: user?.id,
     status: statusFilter,
     search: searchQuery || undefined,
+    type: telemedicineActive ? 'telemedicine' : undefined,
   });
+
+  // Separate lightweight query just for the telemedicine count badge
+  const { data: telemedicineData } = useDoctorAppointments({
+    page: 1,
+    limit: 1,
+    ...dateParams,
+    doctorUserId: user?.id,
+    type: 'telemedicine',
+  });
+  const telemedicineCount =
+    telemedicineData?.meta?.total ?? telemedicineData?.data?.length ?? 0;
 
   // Stats only meaningful for the "today" view (single-date stats)
   const { data: doctorStats, isLoading: statsLoading } = useDoctorAppointmentStats(
@@ -217,6 +230,11 @@ export default function DoctorHomePage() {
     setPage(1);
   }, []);
 
+  const handleToggleTelemedicine = useCallback(() => {
+    setTelemedicineActive((prev) => !prev);
+    setPage(1);
+  }, []);
+
   return (
     <div className="space-y-6 animate-fade-in-up">
       {/* Header with action buttons */}
@@ -227,7 +245,11 @@ export default function DoctorHomePage() {
         </div>
       </div>
 
-      <DoctorActionButtons />
+      <DoctorActionButtons
+        telemedicineCount={telemedicineCount}
+        telemedicineActive={telemedicineActive}
+        onToggleTelemedicine={handleToggleTelemedicine}
+      />
 
       {/* View mode tabs: Today / Upcoming / Past Bookings */}
       <div className="flex gap-2 overflow-x-auto">

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPost, apiPatch, apiPut } from '@/lib/api';
+import { apiGet, apiPost, apiPatch, apiPut, apiDelete } from '@/lib/api';
 import type { Patient, Appointment, DoctorProfile } from '@/types';
 
 // ============================================================
@@ -107,23 +107,38 @@ export interface Diagnosis {
   updatedAt: string;
 }
 
+export interface LabOrderItem {
+  id: string;
+  testId: string;
+  status?: string;
+  test?: { id: string; testName: string; testCode?: string };
+}
+
 export interface LabOrder {
   id: string;
   orderNumber?: string;
   patientId: string;
+  visitId?: string;
   patient?: Pick<Patient, 'id' | 'mrn' | 'firstName' | 'lastName'>;
-  doctorId: string;
+  doctorId?: string;
   doctor?: {
     id: string;
     user?: { firstName: string; lastName: string };
   };
-  tests?: { id: string; name: string; code?: string; category?: string }[];
-  priority?: string;
+  orderedBy?: string;
+  orderer?: { id: string; firstName: string; lastName: string };
+  labOrderItems?: LabOrderItem[];
+  urgency?: 'routine' | 'urgent' | 'stat';
+  isThirdParty?: boolean;
+  thirdPartyLabName?: string;
   status: string;
   notes?: string;
   clinicalNotes?: string;
   createdAt: string;
   updatedAt: string;
+  // Legacy/denormalized fields surfaced by some list endpoints or consumers.
+  tests?: { id: string; name: string; code?: string; category?: string }[];
+  priority?: string;
 }
 
 export interface NutritionPlan {
@@ -243,6 +258,7 @@ interface DoctorAppointmentsParams {
   fromDate?: string;
   toDate?: string;
   search?: string;
+  type?: 'consultation' | 'follow_up' | 'emergency' | 'procedure' | 'telemedicine';
 }
 
 export function useDoctorAppointments(params?: DoctorAppointmentsParams) {
@@ -646,16 +662,44 @@ export function useCreateLabOrder() {
   return useMutation({
     mutationFn: async (data: {
       patientId: string;
-      tests: { testId: string; name?: string }[];
-      priority?: string;
+      visitId: string;
+      items: { testId: string }[];
+      urgency?: 'routine' | 'urgent' | 'stat';
       notes?: string;
-      clinicalNotes?: string;
+      isThirdParty?: boolean;
+      thirdPartyLabName?: string;
     }) => {
       const response = await apiPost<LabOrder>('/lab/orders', data);
       return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: doctorKeys.labOrders.all });
+    },
+  });
+}
+
+export function useCancelLabOrder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason?: string }) => {
+      const response = await apiPatch<LabOrder>(`/lab/orders/${id}/cancel`, { reason });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: doctorKeys.labOrders.all });
+    },
+  });
+}
+
+export function useCancelImagingRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id }: { id: string }) => {
+      const response = await apiPatch<ImagingRequest>(`/imaging/requests/${id}/cancel`);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: doctorKeys.imagingRequests.all });
     },
   });
 }
@@ -960,6 +1004,51 @@ export function useUpdatePrescriptionItem() {
   });
 }
 
+export function useAddPrescriptionItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      prescriptionId,
+      ...data
+    }: {
+      prescriptionId: string;
+      drugId?: string;
+      drugName: string;
+      dosage: string;
+      frequency: string;
+      duration?: string;
+      route?: string;
+      instructions?: string;
+      quantity?: number;
+      isPrn?: boolean;
+    }) => {
+      const response = await apiPost<PrescriptionItem>(
+        `/prescriptions/${prescriptionId}/items`,
+        data,
+      );
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: doctorKeys.prescriptions.all });
+    },
+  });
+}
+
+export function useRemovePrescriptionItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ prescriptionId, itemId }: { prescriptionId: string; itemId: string }) => {
+      const response = await apiDelete<{ id: string; deleted: boolean }>(
+        `/prescriptions/${prescriptionId}/items/${itemId}`,
+      );
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: doctorKeys.prescriptions.all });
+    },
+  });
+}
+
 export function useCancelPrescription() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -1127,8 +1216,13 @@ export function useUpdateDischargeSummary() {
 export function useSignDischargeSummary() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (id: string) => {
-      const response = await apiPost<DischargeSummary>(`/mrd/discharge-summary/${id}/sign`);
+    mutationFn: async (input: string | { id: string; signatureName?: string }) => {
+      const id = typeof input === 'string' ? input : input.id;
+      const signatureName = typeof input === 'string' ? undefined : input.signatureName;
+      const response = await apiPost<DischargeSummary>(
+        `/mrd/discharge-summary/${id}/sign`,
+        signatureName ? { signatureName } : undefined,
+      );
       return response.data;
     },
     onSuccess: () => {
@@ -1146,6 +1240,49 @@ export function usePublishDischargeSummary() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: doctorKeys.dischargeSummary.all });
+    },
+  });
+}
+
+// ============================================================
+// Patient Transfer Hooks (doctor-to-doctor)
+// ============================================================
+
+export interface PatientTransfer {
+  id: string;
+  patientId: string;
+  visitId: string;
+  transferType: 'doctor_to_doctor' | 'ward_to_ward' | 'bed_to_bed';
+  fromDoctorId?: string;
+  toDoctorId?: string;
+  reason?: string;
+  status: 'requested' | 'approved' | 'completed' | 'rejected';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function useCreateDoctorTransfer() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      patientId: string;
+      visitId: string;
+      fromDoctorId: string;
+      toDoctorId: string;
+      reason?: string;
+    }) => {
+      const response = await apiPost<PatientTransfer>('/clinical/transfers', {
+        patientId: data.patientId,
+        visitId: data.visitId,
+        transferType: 'doctor_to_doctor',
+        fromDoctorId: data.fromDoctorId,
+        toDoctorId: data.toDoctorId,
+        reason: data.reason,
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['doctor', 'transfers'] });
     },
   });
 }
@@ -1261,5 +1398,118 @@ export function useCreateTicket() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: doctorKeys.tickets.all });
     },
+  });
+}
+
+// ============================================================
+// Unlocked Progress Notes
+// ============================================================
+
+export interface UnlockedProgressNote {
+  id: string;
+  visitId: string;
+  patientId: string;
+  doctorId: string;
+  noteType?: string | null;
+  content?: string | null;
+  status: string;
+  unlockedUntil: string;
+  updatedAt: string;
+  createdAt: string;
+  patient?: Pick<Patient, 'id' | 'mrn' | 'firstName' | 'lastName'>;
+  doctor?: { id: string; user?: { firstName: string; lastName: string } };
+  visit?: { id: string; visitType: string; visitDate: string };
+}
+
+export function useUnlockedProgressNotes(mine: boolean = true) {
+  return useQuery({
+    queryKey: ['doctor', 'progress-notes', 'unlocked', { mine }],
+    queryFn: async () => {
+      const response = await apiGet<UnlockedProgressNote[]>('/progress-notes/unlocked', {
+        params: { mine: mine ? 'true' : undefined },
+      });
+      return response.data ?? [];
+    },
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useUnlockProgressNote() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, hours }: { id: string; hours?: number }) => {
+      const response = await apiPost<{ note: UnlockedProgressNote; unlockedUntil: string }>(
+        `/progress-notes/${id}/unlock`,
+        hours ? { hours } : undefined,
+      );
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['doctor', 'progress-notes'] });
+    },
+  });
+}
+
+export function useRelockProgressNote() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiPost(`/progress-notes/${id}/relock`);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['doctor', 'progress-notes'] });
+    },
+  });
+}
+
+// ============================================================
+// Inbound Doctor Requests (assigned tickets + inbound transfers)
+// ============================================================
+
+export function useInboundTransfers(toDoctorId?: string, status: string = 'requested') {
+  return useQuery({
+    queryKey: ['doctor', 'transfers', 'inbound', { toDoctorId, status }],
+    queryFn: async () => {
+      const response = await apiGet<PatientTransfer[]>('/clinical/transfers', {
+        params: {
+          toDoctorId,
+          status,
+          transferType: 'doctor_to_doctor',
+          limit: 50,
+        },
+      });
+      return { data: response.data ?? [], meta: response.meta as PaginationMeta };
+    },
+    enabled: !!toDoctorId,
+  });
+}
+
+export function useApproveTransfer() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, status, notes }: { id: string; status: 'approved' | 'rejected'; notes?: string }) => {
+      const response = await apiPatch<PatientTransfer>(`/clinical/transfers/${id}/approve`, {
+        status,
+        notes,
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['doctor', 'transfers'] });
+    },
+  });
+}
+
+export function useAssignedTickets(assignedTo?: string, status?: string) {
+  return useQuery({
+    queryKey: ['doctor', 'tickets', 'assigned', { assignedTo, status }],
+    queryFn: async () => {
+      const response = await apiGet<Ticket[]>('/communication/tickets', {
+        params: { assignedTo, status, limit: 50 },
+      });
+      return { data: response.data ?? [], meta: response.meta as PaginationMeta };
+    },
+    enabled: !!assignedTo,
   });
 }

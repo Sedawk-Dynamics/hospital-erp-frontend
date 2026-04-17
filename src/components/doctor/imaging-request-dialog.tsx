@@ -7,13 +7,6 @@ import { IntakeFormsModal } from '@/components/forms/intake-forms-modal';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
@@ -30,12 +23,13 @@ interface ImagingRequestDialogProps {
 type Urgency = 'routine' | 'urgent' | 'stat';
 
 const imagingTypes = [
-  { value: 'x_ray', label: 'X-Ray' },
+  { value: 'xray', label: 'X-Ray' },
   { value: 'mri', label: 'MRI' },
   { value: 'ct_scan', label: 'CT Scan' },
   { value: 'ultrasound', label: 'Ultrasound' },
   { value: 'ecg', label: 'ECG' },
   { value: 'echo', label: 'Echo' },
+  { value: 'other', label: 'Other' },
 ];
 
 const urgencyOptions: { value: Urgency; label: string; color: string; activeBg: string }[] = [
@@ -46,10 +40,17 @@ const urgencyOptions: { value: Urgency; label: string; color: string; activeBg: 
 
 export function ImagingRequestDialog({ open, onOpenChange, patientId, visitId }: ImagingRequestDialogProps) {
   const [imagingType, setImagingType] = useState('');
+  const [typeSearch, setTypeSearch] = useState('');
   const [bodyPart, setBodyPart] = useState('');
   const [clinicalIndication, setClinicalIndication] = useState('');
   const [urgency, setUrgency] = useState<Urgency>('routine');
   const [notes, setNotes] = useState('');
+
+  const filteredTypes = typeSearch.trim()
+    ? imagingTypes.filter((t) =>
+        t.label.toLowerCase().includes(typeSearch.trim().toLowerCase()),
+      )
+    : imagingTypes;
 
   const createImagingRequest = useCreateImagingRequest();
   const formsTrigger = useActionFormsTrigger();
@@ -57,6 +58,10 @@ export function ImagingRequestDialog({ open, onOpenChange, patientId, visitId }:
   const handleSubmit = async () => {
     if (!imagingType) {
       toast.error('Please select an imaging type');
+      return;
+    }
+    if (!visitId) {
+      toast.error('A visit is required to request imaging');
       return;
     }
 
@@ -78,13 +83,14 @@ export function ImagingRequestDialog({ open, onOpenChange, patientId, visitId }:
         patientId,
         visitId,
       });
-    } catch {
-      toast.error('Failed to create imaging request');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Failed to create imaging request');
     }
   };
 
   const handleReset = () => {
     setImagingType('');
+    setTypeSearch('');
     setBodyPart('');
     setClinicalIndication('');
     setUrgency('routine');
@@ -110,18 +116,33 @@ export function ImagingRequestDialog({ open, onOpenChange, patientId, visitId }:
           {/* Imaging Type */}
           <div>
             <Label className="text-sm font-medium">Imaging Type</Label>
-            <Select value={imagingType} onValueChange={(v) => setImagingType(v ?? '')}>
-              <SelectTrigger className="mt-1.5">
-                <SelectValue placeholder="Select imaging type" />
-              </SelectTrigger>
-              <SelectContent>
-                {imagingTypes.map((type) => (
-                  <SelectItem key={type.value} value={type.value}>
+            <Input
+              placeholder="Search imaging type..."
+              value={typeSearch}
+              onChange={(e) => setTypeSearch(e.target.value)}
+              className="mt-1.5 text-sm"
+            />
+            <div className="mt-2 flex flex-wrap gap-2">
+              {filteredTypes.length === 0 ? (
+                <span className="text-xs text-muted-foreground">No types match.</span>
+              ) : (
+                filteredTypes.map((type) => (
+                  <button
+                    key={type.value}
+                    type="button"
+                    onClick={() => setImagingType(type.value)}
+                    className={cn(
+                      'rounded-lg px-3 py-1.5 text-sm font-medium border transition-all duration-200',
+                      imagingType === type.value
+                        ? 'bg-primary text-primary-foreground border-transparent shadow-sm'
+                        : 'bg-card border-border hover:border-primary/40 text-foreground',
+                    )}
+                  >
                     {type.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                  </button>
+                ))
+              )}
+            </div>
           </div>
 
           {/* Body Part */}

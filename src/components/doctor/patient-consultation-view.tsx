@@ -48,6 +48,7 @@ import { DrugHistoryPanel } from './drug-history-panel';
 import { MedicalHistoryPanel } from './medical-history-panel';
 import { InvestigationHistoryPanel } from './investigation-history-panel';
 import { CurrentMedicationsPanel } from './current-medications-panel';
+import { OrdersPanel } from './orders-panel';
 
 import type { Patient } from '@/types';
 import type {
@@ -682,6 +683,10 @@ export function PatientConsultationView({
                   <Pill className="size-3.5" />
                   Prescriptions
                 </TabsTrigger>
+                <TabsTrigger value="orders" className="gap-1">
+                  <ClipboardList className="size-3.5" />
+                  Orders
+                </TabsTrigger>
                 <TabsTrigger value="lab" className="gap-1">
                   <FlaskConical className="size-3.5" />
                   Lab Results
@@ -722,6 +727,10 @@ export function PatientConsultationView({
 
               <TabsContent value="prescriptions" className="pt-3">
                 <PrescriptionsTab patientId={patient.id} />
+              </TabsContent>
+
+              <TabsContent value="orders" className="pt-3">
+                <OrdersPanel patientId={patient.id} />
               </TabsContent>
 
               <TabsContent value="lab" className="pt-3">
