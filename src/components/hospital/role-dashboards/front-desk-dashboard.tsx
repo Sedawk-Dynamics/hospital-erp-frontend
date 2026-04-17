@@ -14,6 +14,8 @@ import { toInputDateStr, formatTime24, formatDate } from '@/lib/date-utils';
 import { toast } from 'sonner';
 import { CreateAppointmentDialog } from '@/components/hospital/create-appointment-dialog';
 import { FrontDeskRegisterDialog } from '@/components/hospital/frontdesk-register-dialog';
+import { CollectFrontdeskPaymentDialog } from '@/components/hospital/collect-frontdesk-payment-dialog';
+import type { Appointment } from '@/types';
 
 /** Normalize @db.Time() or plain "HH:mm" values into a parseable ISO string */
 function normalizeTimeValue(value: string | undefined | null): string | null {
@@ -34,6 +36,15 @@ interface QueueAppointment {
   status: string;
   type?: string;
   queueTokens?: Array<{ tokenNumber: number }>;
+  paymentInfo?: {
+    billId: string;
+    billNumber: string;
+    billStatus: string;
+    totalAmount: number;
+    amountPaid: number;
+    balanceDue: number;
+    paymentStatus: 'paid_online' | 'paid_at_frontdesk' | 'pay_at_frontdesk' | 'pending' | 'no_billing';
+  } | null;
 }
 
 interface AppointmentStats {
@@ -50,8 +61,20 @@ export function FrontDeskDashboard() {
   const [registerOpen, setRegisterOpen] = useState(false);
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [bookAppointmentOpen, setBookAppointmentOpen] = useState(false);
+  const [collectPayTarget, setCollectPayTarget] = useState<QueueAppointment | null>(null);
   const today = toInputDateStr();
   const queryClient = useQueryClient();
+
+  const needsFrontdeskPayment = (apt: QueueAppointment) =>
+    apt.paymentInfo?.paymentStatus === 'pay_at_frontdesk' && apt.paymentInfo.balanceDue > 0;
+
+  const handleConfirmClick = (apt: QueueAppointment) => {
+    if (needsFrontdeskPayment(apt)) {
+      setCollectPayTarget(apt);
+      return;
+    }
+    confirmMutation.mutate(apt.id);
+  };
 
   const { data: queueData, isLoading: queueLoading } = useQuery({
     queryKey: ['front-desk', 'queue', today, search, statusFilter, page],
@@ -328,18 +351,27 @@ export function FrontDeskDashboard() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      {appt.status === 'booked' && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="gap-1.5 text-xs"
-                          disabled={confirmMutation.isPending}
-                          onClick={() => confirmMutation.mutate(appt.id)}
-                        >
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          Confirm
-                        </Button>
-                      )}
+                      {appt.status === 'booked' && (() => {
+                        const payFirst = needsFrontdeskPayment(appt);
+                        return (
+                          <Button
+                            size="sm"
+                            variant={payFirst ? 'default' : 'outline'}
+                            className={cn(
+                              'gap-1.5 text-xs',
+                              payFirst && 'bg-amber-600 hover:bg-amber-700 text-white',
+                            )}
+                            disabled={confirmMutation.isPending}
+                            onClick={() => handleConfirmClick(appt)}
+                            title={payFirst ? 'Collect front-desk payment, then confirm' : undefined}
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            {payFirst
+                              ? `Collect ₹${appt.paymentInfo!.balanceDue.toLocaleString('en-IN')} & Confirm`
+                              : 'Confirm'}
+                          </Button>
+                        );
+                      })()}
                       {appt.status === 'confirmed' && (
                         <Button
                           size="sm"
@@ -381,6 +413,17 @@ export function FrontDeskDashboard() {
           </div>
         )}
       </div>
+
+      <CollectFrontdeskPaymentDialog
+        open={!!collectPayTarget}
+        onOpenChange={(open) => { if (!open) setCollectPayTarget(null); }}
+        appointment={collectPayTarget as unknown as Appointment | null}
+        onConfirmed={() => {
+          queryClient.invalidateQueries({ queryKey: ['front-desk'] });
+          queryClient.invalidateQueries({ queryKey: ['hospital'] });
+          setCollectPayTarget(null);
+        }}
+      />
     </div>
   );
 }

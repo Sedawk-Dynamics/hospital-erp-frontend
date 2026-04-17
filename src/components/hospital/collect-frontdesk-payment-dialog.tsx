@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod/v4';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -25,7 +25,6 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 
@@ -40,15 +39,14 @@ const PAYMENT_METHODS: {
   value: FrontdeskPaymentMethod;
   label: string;
   icon: typeof Wallet;
-  needsReference: boolean;
 }[] = [
-  { value: 'cash', label: 'Cash', icon: Wallet, needsReference: false },
-  { value: 'upi', label: 'UPI', icon: Smartphone, needsReference: true },
-  { value: 'credit_card', label: 'Credit Card', icon: CreditCard, needsReference: true },
-  { value: 'debit_card', label: 'Debit Card', icon: CreditCard, needsReference: true },
-  { value: 'net_banking', label: 'Net Banking', icon: Landmark, needsReference: true },
-  { value: 'cheque', label: 'Cheque', icon: ScrollText, needsReference: true },
-  { value: 'other', label: 'Other', icon: Coins, needsReference: false },
+  { value: 'cash', label: 'Cash', icon: Wallet },
+  { value: 'upi', label: 'UPI', icon: Smartphone },
+  { value: 'credit_card', label: 'Credit Card', icon: CreditCard },
+  { value: 'debit_card', label: 'Debit Card', icon: CreditCard },
+  { value: 'net_banking', label: 'Net Banking', icon: Landmark },
+  { value: 'cheque', label: 'Cheque', icon: ScrollText },
+  { value: 'other', label: 'Other', icon: Coins },
 ];
 
 const formSchema = z.object({
@@ -61,7 +59,6 @@ const formSchema = z.object({
     'cheque',
     'other',
   ]),
-  referenceNumber: z.string().max(200).optional(),
   notes: z.string().max(500).optional(),
 });
 
@@ -102,14 +99,10 @@ export function CollectFrontdeskPaymentDialog({
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
-    defaultValues: { paymentMethod: 'cash', referenceNumber: '', notes: '' },
+    defaultValues: { paymentMethod: 'cash', notes: '' },
   });
 
   const selectedMethod = watch('paymentMethod');
-  const methodMeta = useMemo(
-    () => PAYMENT_METHODS.find((m) => m.value === selectedMethod) ?? PAYMENT_METHODS[0],
-    [selectedMethod],
-  );
 
   useEffect(() => {
     if (!open) {
@@ -121,18 +114,12 @@ export function CollectFrontdeskPaymentDialog({
   const onSubmit = async (data: FormData) => {
     if (!appointment || !billId || balanceDue <= 0) return;
 
-    if (methodMeta.needsReference && !data.referenceNumber?.trim()) {
-      toast.error(`Reference / transaction number is required for ${methodMeta.label}`);
-      return;
-    }
-
     setSubmitting(true);
     try {
       await recordPayment.mutateAsync({
         billId,
         amount: balanceDue,
         paymentMethod: data.paymentMethod,
-        referenceNumber: data.referenceNumber?.trim() || undefined,
         notes: data.notes?.trim() || undefined,
       });
 
@@ -212,24 +199,6 @@ export function CollectFrontdeskPaymentDialog({
               <p className="text-xs text-destructive">{errors.paymentMethod.message}</p>
             )}
           </div>
-
-          {/* Reference number */}
-          {methodMeta.needsReference && (
-            <div className="space-y-1.5">
-              <Label htmlFor="reference-number">
-                {methodMeta.value === 'upi' && 'UPI Transaction ID *'}
-                {methodMeta.value === 'cheque' && 'Cheque Number *'}
-                {(methodMeta.value === 'credit_card' || methodMeta.value === 'debit_card') &&
-                  'Card / Auth Reference *'}
-                {methodMeta.value === 'net_banking' && 'Bank Transaction Reference *'}
-              </Label>
-              <Input
-                id="reference-number"
-                placeholder="Enter reference / transaction number"
-                {...register('referenceNumber')}
-              />
-            </div>
-          )}
 
           {/* Notes */}
           <div className="space-y-1.5">
