@@ -60,6 +60,9 @@ import { DrugHistoryPanel } from '@/components/doctor/drug-history-panel';
 import { CurrentMedicationsPanel } from '@/components/doctor/current-medications-panel';
 import { MedicalHistoryPanel } from '@/components/doctor/medical-history-panel';
 import { InvestigationHistoryPanel } from '@/components/doctor/investigation-history-panel';
+import { LabOrderDialog } from '@/components/doctor/lab-order-dialog';
+import { ImagingRequestDialog } from '@/components/doctor/imaging-request-dialog';
+import { OrdersPanel } from '@/components/doctor/orders-panel';
 import { useFormSubmissions, useSystemForm } from '@/hooks/use-forms';
 import { FormRenderer } from '@/components/forms/form-renderer';
 import { TRIGGER_LABELS } from '@/types/forms';
@@ -150,9 +153,15 @@ function parseNoteContent(content?: string): Record<string, string> {
 function ConsultationTopBar({
   patient,
   onBack,
+  onOrderLab,
+  onOrderImaging,
+  canOrder,
 }: {
   patient: Patient;
   onBack: () => void;
+  onOrderLab: () => void;
+  onOrderImaging: () => void;
+  canOrder: boolean;
 }) {
   const age = patient.dateOfBirth ? calculateAge(patient.dateOfBirth) : null;
 
@@ -190,7 +199,10 @@ function ConsultationTopBar({
         <Button
           variant="outline"
           size="sm"
-          className="gap-1.5 shrink-0 h-9 rounded-lg border-outline-variant/40 font-label font-bold text-xs text-on-surface-variant hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+          onClick={onOrderLab}
+          disabled={!canOrder}
+          title={canOrder ? 'Order lab tests' : 'No active visit — start or check-in an appointment first'}
+          className="gap-1.5 shrink-0 h-9 rounded-lg border-outline-variant/40 font-label font-bold text-xs text-on-surface-variant hover:border-primary/40 hover:bg-primary/5 hover:text-primary disabled:opacity-50"
         >
           <FlaskConical className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">Order Lab</span>
@@ -198,7 +210,10 @@ function ConsultationTopBar({
         <Button
           variant="outline"
           size="sm"
-          className="gap-1.5 shrink-0 h-9 rounded-lg border-outline-variant/40 font-label font-bold text-xs text-on-surface-variant hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+          onClick={onOrderImaging}
+          disabled={!canOrder}
+          title={canOrder ? 'Request imaging' : 'No active visit — start or check-in an appointment first'}
+          className="gap-1.5 shrink-0 h-9 rounded-lg border-outline-variant/40 font-label font-bold text-xs text-on-surface-variant hover:border-primary/40 hover:bg-primary/5 hover:text-primary disabled:opacity-50"
         >
           <ImageIcon className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">Request Imaging</span>
@@ -1331,6 +1346,8 @@ export default function PatientConsultationPage({
   const appointmentId = searchParams.get('appointmentId');
   const [clinicalOpen, setClinicalOpen] = useState(false);
   const [activeClinical, setActiveClinical] = useState<'medications' | 'history' | 'investigations' | 'drugs' | null>(null);
+  const [labDialogOpen, setLabDialogOpen] = useState(false);
+  const [imagingDialogOpen, setImagingDialogOpen] = useState(false);
 
   const openClinical = (key: 'medications' | 'history' | 'investigations' | 'drugs') => {
     setActiveClinical(key);
@@ -1352,6 +1369,19 @@ export default function PatientConsultationPage({
       return response.data;
     },
     enabled: !!appointmentId,
+  });
+
+  // Resolve the patient's latest active visit for placing orders from the top bar.
+  const { data: activeVisitId } = useQuery({
+    queryKey: ['doctor', 'active-visit', patientId],
+    queryFn: async () => {
+      const response = await apiGet<Array<{ id: string; status?: string }>>(
+        '/clinical/visits',
+        { params: { patientId, status: 'active', limit: 1 } },
+      );
+      return response.data?.[0]?.id ?? null;
+    },
+    enabled: !!patientId,
   });
 
   const isInConsultation = appointment?.status === 'in_consultation';
@@ -1426,6 +1456,21 @@ export default function PatientConsultationPage({
       <ConsultationTopBar
         patient={patient}
         onBack={() => router.back()}
+        onOrderLab={() => {
+          if (!activeVisitId) {
+            toast.error('No active visit — start or check-in an appointment first');
+            return;
+          }
+          setLabDialogOpen(true);
+        }}
+        onOrderImaging={() => {
+          if (!activeVisitId) {
+            toast.error('No active visit — start or check-in an appointment first');
+            return;
+          }
+          setImagingDialogOpen(true);
+        }}
+        canOrder={!!activeVisitId}
       />
 
       <div className="px-4 lg:px-6 py-4">
@@ -1602,6 +1647,20 @@ export default function PatientConsultationPage({
               </section>
             )}
 
+            {/* ACTIVE ORDERS (lab + imaging with inline status) */}
+            <section>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-2 bg-secondary/10 rounded-lg text-secondary">
+                  <FlaskConical className="h-4 w-4" />
+                </div>
+                <div>
+                  <h2 className="font-headline text-base font-extrabold tracking-tight text-on-surface">Orders</h2>
+                  <p className="font-label text-[11px] text-on-surface-variant">Lab tests & imaging with live status</p>
+                </div>
+              </div>
+              <OrdersPanel patientId={patient.id} visitId={activeVisitId || undefined} />
+            </section>
+
             {/* VISIT TIMELINE */}
             <section>
               <div className="flex items-center gap-3 mb-3">
@@ -1713,6 +1772,22 @@ export default function PatientConsultationPage({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ═══════════ Lab Order Dialog ═══════════ */}
+      <LabOrderDialog
+        open={labDialogOpen}
+        onOpenChange={setLabDialogOpen}
+        patientId={patient.id}
+        visitId={activeVisitId || ''}
+      />
+
+      {/* ═══════════ Imaging Request Dialog ═══════════ */}
+      <ImagingRequestDialog
+        open={imagingDialogOpen}
+        onOpenChange={setImagingDialogOpen}
+        patientId={patient.id}
+        visitId={activeVisitId || ''}
+      />
     </div>
   );
 }
