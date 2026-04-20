@@ -61,6 +61,15 @@ export function useDoctorLeaves(
   });
 }
 
+/** Any change to a leave's status affects slot availability — invalidate all slot/schedule caches. */
+function invalidateLeaveCaches(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ['doctor-leaves'] });
+  qc.invalidateQueries({ queryKey: ['hospital', 'doctor-slots'] });
+  qc.invalidateQueries({ queryKey: ['patient', 'slots'] });
+  qc.invalidateQueries({ queryKey: ['patient', 'doctors'] });
+  qc.invalidateQueries({ queryKey: ['schedule-overrides'] });
+}
+
 /** Doctor applies for leave. */
 export function useApplyDoctorLeave(doctorId: string | undefined) {
   const qc = useQueryClient();
@@ -69,9 +78,7 @@ export function useApplyDoctorLeave(doctorId: string | undefined) {
       const res = await apiPost(`/appointments/doctors/${doctorId}/leaves`, input);
       return res.data;
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['doctor-leaves'] });
-    },
+    onSuccess: () => invalidateLeaveCaches(qc),
   });
 }
 
@@ -83,9 +90,7 @@ export function useCancelDoctorLeave() {
       const res = await apiPatch(`/appointments/doctor-leaves/${leaveId}/cancel`, {});
       return res.data;
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['doctor-leaves'] });
-    },
+    onSuccess: () => invalidateLeaveCaches(qc),
   });
 }
 
@@ -117,9 +122,7 @@ export function useApproveDoctorLeave() {
       const res = await apiPatch(`/appointments/doctor-leaves/${leaveId}/approve`, {});
       return res.data;
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['doctor-leaves'] });
-    },
+    onSuccess: () => invalidateLeaveCaches(qc),
   });
 }
 
@@ -131,8 +134,6 @@ export function useRejectDoctorLeave() {
       const res = await apiPatch(`/appointments/doctor-leaves/${leaveId}/reject`, { reason });
       return res.data;
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['doctor-leaves'] });
-    },
+    onSuccess: () => invalidateLeaveCaches(qc),
   });
 }

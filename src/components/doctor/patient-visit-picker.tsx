@@ -13,8 +13,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { usePatientSearch } from '@/hooks/use-doctor';
-import { apiGet } from '@/lib/api';
-import { formatDate } from '@/lib/date-utils';
+import { apiGet, apiPost } from '@/lib/api';
+import { formatDate, formatTime } from '@/lib/date-utils';
 
 export interface SelectedPatient {
   id: string;
@@ -30,6 +30,21 @@ export interface SelectedVisit {
   status?: string;
 }
 
+// When `appointmentId` is set, the option is derived from a booked/active
+// appointment that has no Visit yet — picking it materializes a Visit first.
+interface VisitOption extends SelectedVisit {
+  appointmentId?: string;
+  doctorName?: string;
+  startTime?: string;
+}
+
+function doctorLabel(doc: any): string | undefined {
+  const u = doc?.user;
+  if (!u) return undefined;
+  const name = `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim();
+  return name ? `Dr. ${name}` : undefined;
+}
+
 interface PatientVisitPickerProps {
   selectedPatient: SelectedPatient | null;
   onSelectPatient: (patient: SelectedPatient | null) => void;
@@ -37,6 +52,12 @@ interface PatientVisitPickerProps {
   onSelectVisitId: (id: string) => void;
   /** When true, shows the visit picker. When false, only the patient picker is rendered. */
   requireVisit?: boolean;
+  /**
+   * Current doctor's profile id. When provided, if the patient has no active
+   * Visit, the picker falls back to the doctor's recent booked / checked-in
+   * appointments with this patient and lazily creates a Visit on selection.
+   */
+  doctorId?: string;
 }
 
 export function PatientVisitPicker({
@@ -45,6 +66,7 @@ export function PatientVisitPicker({
   selectedVisitId,
   onSelectVisitId,
   requireVisit = true,
+  doctorId,
 }: PatientVisitPickerProps) {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -57,9 +79,12 @@ export function PatientVisitPicker({
 
   const { data: patientResults, isLoading: patientsLoading } = usePatientSearch(debouncedQuery);
 
-  // Fetch active visits once a patient is selected
-  const [visits, setVisits] = useState<SelectedVisit[]>([]);
+  // Fetch active visits once a patient is selected; fall back to recent
+  // appointments with the requesting doctor when no visit exists yet.
+  const [visits, setVisits] = useState<VisitOption[]>([]);
   const [visitsLoading, setVisitsLoading] = useState(false);
+  const [creatingVisit, setCreatingVisit] = useState(false);
+  const [pendingValue, setPendingValue] = useState<string | null>(null);
 
   useEffect(() => {
     if (!selectedPatient || !requireVisit) {
@@ -68,25 +93,75 @@ export function PatientVisitPicker({
     }
     let cancelled = false;
     setVisitsLoading(true);
-    apiGet<SelectedVisit[]>('/clinical/visits', {
-      params: { patientId: selectedPatient.id, status: 'active' },
-    })
-      .then((res) => {
+    (async () => {
+      try {
+        const visitsRes = await apiGet<Array<SelectedVisit & { doctor?: any }>>(
+          '/clinical/visits',
+          { params: { patientId: selectedPatient.id, status: 'active' } },
+        );
         if (cancelled) return;
-        const list = res.data ?? [];
-        setVisits(list);
-        if (list.length > 0 && !selectedVisitId) onSelectVisitId(list[0].id);
-      })
-      .catch(() => {
+        const activeVisits = visitsRes.data ?? [];
+        if (activeVisits.length > 0) {
+          const enriched: VisitOption[] = activeVisits.map((v) => ({
+            id: v.id,
+            visitType: v.visitType,
+            visitDate: v.visitDate,
+            status: v.status,
+            doctorName: doctorLabel(v.doctor),
+          }));
+          setVisits(enriched);
+          if (!selectedVisitId) onSelectVisitId(enriched[0].id);
+          return;
+        }
+
+        // No active visits — surface the doctor's open appointments so the
+        // user can act on a booked consultation.
+        if (!doctorId) {
+          setVisits([]);
+          return;
+        }
+        const apptRes = await apiGet<
+          Array<{
+            id: string;
+            status: string;
+            appointmentDate: string;
+            startTime?: string;
+            doctor?: any;
+          }>
+        >('/appointments', {
+          params: { patientId: selectedPatient.id, doctorId, limit: 20 },
+        });
+        if (cancelled) return;
+        const candidates = (apptRes.data ?? [])
+          .filter((a) =>
+            ['booked', 'confirmed', 'checked_in', 'in_consultation'].includes(a.status),
+          )
+          .sort(
+            (a, b) =>
+              new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime(),
+          );
+        const apptOptions: VisitOption[] = candidates.map((a) => ({
+          id: `appt:${a.id}`,
+          visitType: 'op',
+          visitDate: a.appointmentDate,
+          status: a.status,
+          appointmentId: a.id,
+          startTime: a.startTime,
+          doctorName: doctorLabel(a.doctor),
+        }));
+        setVisits(apptOptions);
+        // Do not auto-select an appointment option — selection triggers a
+        // Visit POST and should be an explicit user action.
+      } catch {
         if (!cancelled) setVisits([]);
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setVisitsLoading(false);
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
-  }, [selectedPatient, requireVisit, onSelectVisitId, selectedVisitId]);
+  }, [selectedPatient, requireVisit, doctorId, onSelectVisitId, selectedVisitId]);
 
   const handleSelectPatient = useCallback(
     (p: { id: string; firstName?: string; lastName?: string; mrn?: string }) => {
@@ -97,11 +172,59 @@ export function PatientVisitPicker({
         mrn: p.mrn,
       });
       onSelectVisitId('');
+      setPendingValue(null);
       setQuery('');
       setDebouncedQuery('');
       setShowDropdown(false);
     },
     [onSelectPatient, onSelectVisitId],
+  );
+
+  // Materialize a Visit when an appointment-derived option is picked.
+  const handleVisitChange = useCallback(
+    async (value: string | null) => {
+      if (!value) return;
+      const opt = visits.find((v) => v.id === value);
+      if (!opt) return;
+      if (!opt.appointmentId) {
+        onSelectVisitId(value);
+        return;
+      }
+      if (!selectedPatient || !doctorId) return;
+      setPendingValue(value);
+      setCreatingVisit(true);
+      try {
+        const res = await apiPost<{ id: string }>('/clinical/visits', {
+          patientId: selectedPatient.id,
+          doctorId,
+          appointmentId: opt.appointmentId,
+          visitType: 'op',
+          visitDate: new Date().toISOString(),
+        });
+        const newId = res.data!.id;
+        setVisits((prev) =>
+          prev.map((v) =>
+            v.id === value
+              ? {
+                  id: newId,
+                  visitType: 'op',
+                  visitDate: opt.visitDate,
+                  status: 'active',
+                  doctorName: opt.doctorName,
+                  startTime: opt.startTime,
+                }
+              : v,
+          ),
+        );
+        onSelectVisitId(newId);
+      } catch {
+        // leave selection unchanged on failure
+      } finally {
+        setCreatingVisit(false);
+        setPendingValue(null);
+      }
+    },
+    [visits, selectedPatient, doctorId, onSelectVisitId],
   );
 
   return (
@@ -187,27 +310,45 @@ export function PatientVisitPicker({
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading visits...
             </div>
           ) : visits.length > 0 ? (
-            <Select
-              value={selectedVisitId}
-              onValueChange={(v) => {
-                if (v) onSelectVisitId(v);
-              }}
-            >
-              <SelectTrigger className="w-full h-9">
-                <SelectValue placeholder="Select a visit" />
-              </SelectTrigger>
-              <SelectContent>
-                {visits.map((v) => (
-                  <SelectItem key={v.id} value={v.id}>
-                    {v.visitType.toUpperCase()} - {formatDate(v.visitDate)}{' '}
-                    {v.status ? `(${v.status})` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <>
+              <Select
+                value={pendingValue ?? selectedVisitId}
+                onValueChange={(v) => handleVisitChange(v)}
+                disabled={creatingVisit}
+              >
+                <SelectTrigger className="w-full h-9" disabled={creatingVisit}>
+                  <SelectValue placeholder="Select a visit" />
+                </SelectTrigger>
+                <SelectContent>
+                  {visits.map((v) => {
+                    const dateLabel = formatDate(v.visitDate);
+                    const timeLabel = v.startTime ? ` ${formatTime(v.startTime)}` : '';
+                    const statusLabel = v.appointmentId
+                      ? (v.status ?? 'appointment').replace(/_/g, ' ')
+                      : v.status;
+                    const segments = [
+                      v.visitType.toUpperCase(),
+                      `${dateLabel}${timeLabel}`,
+                      v.doctorName,
+                    ].filter(Boolean) as string[];
+                    return (
+                      <SelectItem key={v.id} value={v.id}>
+                        {segments.join(' · ')}
+                        {statusLabel ? ` (${statusLabel})` : ''}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+              {creatingVisit && (
+                <p className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Preparing visit...
+                </p>
+              )}
+            </>
           ) : (
             <p className="font-label text-xs p-2 rounded-lg bg-secondary/10 text-secondary">
-              No active visits found for this patient.
+              No active visits or open appointments found for this patient.
             </p>
           )}
         </div>

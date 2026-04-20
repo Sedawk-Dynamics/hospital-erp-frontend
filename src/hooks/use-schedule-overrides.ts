@@ -59,6 +59,15 @@ export function useScheduleOverrides(
   });
 }
 
+function invalidateScheduleCaches(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ['schedule-overrides'] });
+  qc.invalidateQueries({ queryKey: ['hospital', 'doctor-slots'] });
+  qc.invalidateQueries({ queryKey: ['doctor-schedule'] });
+  qc.invalidateQueries({ queryKey: ['hospital', 'doctors'] });
+  qc.invalidateQueries({ queryKey: ['patient', 'slots'] });
+  qc.invalidateQueries({ queryKey: ['patient', 'doctors'] });
+}
+
 export function useUpsertScheduleOverride(doctorId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
@@ -66,10 +75,7 @@ export function useUpsertScheduleOverride(doctorId: string | undefined) {
       const res = await apiPost(`/appointments/doctors/${doctorId}/schedule-overrides`, input);
       return res.data;
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['schedule-overrides'] });
-      qc.invalidateQueries({ queryKey: ['hospital', 'doctor-slots'] });
-    },
+    onSuccess: () => invalidateScheduleCaches(qc),
   });
 }
 
@@ -83,10 +89,7 @@ export function useBulkApplyOverrides(doctorId: string | undefined) {
       );
       return res.data;
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['schedule-overrides'] });
-      qc.invalidateQueries({ queryKey: ['hospital', 'doctor-slots'] });
-    },
+    onSuccess: () => invalidateScheduleCaches(qc),
   });
 }
 
@@ -97,9 +100,6 @@ export function useDeleteScheduleOverride() {
       const res = await apiDelete(`/appointments/doctors/schedule-overrides/${overrideId}`);
       return res.data;
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['schedule-overrides'] });
-      qc.invalidateQueries({ queryKey: ['hospital', 'doctor-slots'] });
-    },
+    onSuccess: () => invalidateScheduleCaches(qc),
   });
 }

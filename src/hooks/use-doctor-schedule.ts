@@ -89,6 +89,11 @@ export function useUpdateDoctorSchedule(doctorId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: scheduleKeys.doctorProfile(doctorId) });
       queryClient.invalidateQueries({ queryKey: ['hospital', 'doctors'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'doctor-slots'] });
+      queryClient.invalidateQueries({ queryKey: ['schedule-overrides'] });
+      queryClient.invalidateQueries({ queryKey: ['patient', 'slots'] });
+      queryClient.invalidateQueries({ queryKey: ['patient', 'doctors'] });
+      queryClient.invalidateQueries({ queryKey: ['doctor', 'profile'] });
     },
   });
 }

@@ -44,6 +44,8 @@ interface BookingDoctor {
   experienceYears: number | null;
   department: { id: string; name: string } | null;
   availableDays: number[];
+  extraAvailableDates?: string[];
+  blockedDates?: string[];
 }
 
 interface BookingDepartment {
@@ -300,8 +302,13 @@ export default function BookAppointmentPage() {
   const disabledDays = useMemo(() => {
     if (!selectedDoctor) return undefined;
     const available = new Set(selectedDoctor.availableDays);
+    const extra = new Set(selectedDoctor.extraAvailableDates ?? []);
+    const blocked = new Set(selectedDoctor.blockedDates ?? []);
     return (date: Date) => {
       if (date < new Date(new Date().setHours(0, 0, 0, 0))) return true;
+      const key = toInputDateStr(date);
+      if (blocked.has(key)) return true;
+      if (extra.has(key)) return false;
       if (available.size > 0) return !available.has(date.getDay());
       return false;
     };

@@ -120,6 +120,7 @@ export function PatientTransferDialog({
             onSelectPatient={setSelectedPatient}
             selectedVisitId={visitId}
             onSelectVisitId={setVisitId}
+            doctorId={myDoctor?.id}
           />
 
           <div className="space-y-1.5">
