@@ -22,8 +22,9 @@ import {
   useHandovers,
   useCreateHandover,
   useAcknowledgeHandover,
+  useCompleteHandover,
   useDutyRoster,
-  useNurseAdmissions,
+  useShiftSummary,
   type ShiftHandover,
 } from '@/hooks/use-nurse';
 import {
@@ -177,30 +178,39 @@ function ShiftInfoHeader({ currentShift }: { currentShift: ShiftType }) {
 
 // ── Shift Summary Panel ──────────────────────────────────────
 
-function ShiftSummaryPanel() {
+function ShiftSummaryPanel({ currentShift }: { currentShift: ShiftType }) {
   const today = toInputDateStr();
-  const { data: admissions } = useNurseAdmissions({ date: today, limit: 500 });
+  const { data, isLoading, isError } = useShiftSummary({
+    shiftDate: today,
+    shiftType: currentShift,
+  });
 
-  const stats = useMemo(() => {
-    const patientsSeen = Array.isArray(admissions) ? admissions.length : 0;
-    return {
-      patientsSeen,
-      vitalsRecorded: 0,
-      medicationsAdministered: 0,
-      notesWritten: 0,
-    };
-  }, [admissions]);
+  const counts = data?.data?.counts;
 
   const items = [
-    { icon: Users, label: 'Patients Seen', value: stats.patientsSeen, color: 'bg-primary/10 text-primary' },
-    { icon: Activity, label: 'Vitals Recorded', value: stats.vitalsRecorded, color: 'bg-emerald-100 text-emerald-700' },
-    { icon: Pill, label: 'Medications Given', value: stats.medicationsAdministered, color: 'bg-blue-100 text-blue-700' },
-    { icon: FileText, label: 'Notes Written', value: stats.notesWritten, color: 'bg-purple-100 text-purple-700' },
+    { icon: Users, label: 'Patients Seen', value: counts?.patientsSeen ?? 0, color: 'bg-primary/10 text-primary' },
+    { icon: Activity, label: 'Vitals Recorded', value: counts?.vitalsRecorded ?? 0, color: 'bg-emerald-100 text-emerald-700' },
+    { icon: Pill, label: 'Medications Given', value: counts?.medicationsAdministered ?? 0, color: 'bg-blue-100 text-blue-700' },
+    { icon: FileText, label: 'Notes Written', value: counts?.nursingNotes ?? 0, color: 'bg-purple-100 text-purple-700' },
+  ];
+
+  // Secondary breakdown row (wound care, IV lines, intake/output)
+  const extraItems = [
+    { label: 'Wound Care', value: counts?.woundCareRecords ?? 0 },
+    { label: 'IV Lines', value: counts?.ivLinesInserted ?? 0 },
+    { label: 'I/O Entries', value: counts?.intakeOutputEntries ?? 0 },
+    { label: 'Handovers In/Out', value: `${counts?.handoversReceived ?? 0} / ${counts?.handoversSubmitted ?? 0}` },
   ];
 
   return (
     <div className="rounded-xl bg-surface-container-lowest p-4 shadow-sanctuary">
-      <h3 className="font-headline text-sm font-bold text-on-surface mb-3">Shift Summary</h3>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-headline text-sm font-bold text-on-surface">
+          Shift Summary — {SHIFT_CONFIG[currentShift].label}
+        </h3>
+        {isLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />}
+      </div>
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {items.map((item) => {
           const Icon = item.icon;
@@ -217,6 +227,22 @@ function ShiftSummaryPanel() {
           );
         })}
       </div>
+
+      {/* Secondary counts — only show when we have actual data */}
+      {counts && (
+        <div className="mt-3 pt-3 border-t border-outline-variant/20 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+          {extraItems.map((i) => (
+            <div key={i.label} className="flex items-center justify-between rounded-md bg-surface-container-low/40 px-2 py-1">
+              <span className="text-on-surface-variant">{i.label}</span>
+              <span className="font-semibold text-on-surface">{i.value}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {isError && (
+        <p className="mt-2 text-[10px] text-red-600">Unable to load shift summary.</p>
+      )}
     </div>
   );
 }
@@ -473,11 +499,15 @@ function HandoverCard({
   currentUserId,
   onAcknowledge,
   isAcknowledging,
+  onComplete,
+  isCompleting,
 }: {
   handover: ShiftHandover;
   currentUserId?: string;
   onAcknowledge: (id: string) => void;
   isAcknowledging: boolean;
+  onComplete: (id: string, completionNote?: string) => void;
+  isCompleting: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const shiftCfg = SHIFT_CONFIG[handover.shiftType as ShiftType] ?? SHIFT_CONFIG.morning;
@@ -638,25 +668,116 @@ function HandoverCard({
             </div>
           )}
 
-          {/* Acknowledge button */}
+          {/* Acknowledge + Complete actions */}
           {canAcknowledge && (
-            <div className="flex justify-end pt-1">
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1.5 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-                onClick={() => onAcknowledge(handover.id)}
-                disabled={isAcknowledging}
-              >
-                {isAcknowledging ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                )}
-                Acknowledge
-              </Button>
-            </div>
+            <CompletionActions
+              onAcknowledge={() => onAcknowledge(handover.id)}
+              isAcknowledging={isAcknowledging}
+              onComplete={(note) => onComplete(handover.id, note)}
+              isCompleting={isCompleting}
+            />
           )}
+
+          {/* Already acknowledged but not yet "finalised" by current user —
+              still allow appending a completion note via Mark Complete */}
+          {!canAcknowledge && handover.status === 'acknowledged' && (
+            <CompletionActions
+              onComplete={(note) => onComplete(handover.id, note)}
+              isCompleting={isCompleting}
+              variant="finalise"
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CompletionActions({
+  onAcknowledge,
+  isAcknowledging,
+  onComplete,
+  isCompleting,
+  variant = 'default',
+}: {
+  onAcknowledge?: () => void;
+  isAcknowledging?: boolean;
+  onComplete: (note?: string) => void;
+  isCompleting: boolean;
+  variant?: 'default' | 'finalise';
+}) {
+  const [showCompleteForm, setShowCompleteForm] = useState(false);
+  const [completionNote, setCompletionNote] = useState('');
+
+  return (
+    <div className="pt-1 space-y-2">
+      <div className="flex flex-wrap justify-end gap-2">
+        {onAcknowledge && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+            onClick={onAcknowledge}
+            disabled={isAcknowledging}
+          >
+            {isAcknowledging ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <CheckCircle2 className="h-3.5 w-3.5" />
+            )}
+            Acknowledge
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant="outline"
+          className="gap-1.5 text-xs border-primary/40 text-primary hover:bg-primary/5"
+          onClick={() => setShowCompleteForm((v) => !v)}
+        >
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          {variant === 'finalise' ? 'Add Completion Note' : 'Mark Complete'}
+        </Button>
+      </div>
+
+      {showCompleteForm && (
+        <div className="rounded-lg border border-outline-variant/30 bg-surface-container-low/40 p-2 space-y-2">
+          <Textarea
+            rows={2}
+            className="text-xs resize-none"
+            placeholder="Optional closing note (appended to the handover content)..."
+            value={completionNote}
+            onChange={(e) => setCompletionNote(e.target.value)}
+          />
+          <div className="flex justify-end gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-xs"
+              onClick={() => {
+                setShowCompleteForm(false);
+                setCompletionNote('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              className="gap-1.5 text-xs"
+              onClick={() => {
+                onComplete(completionNote.trim() || undefined);
+                setShowCompleteForm(false);
+                setCompletionNote('');
+              }}
+              disabled={isCompleting}
+            >
+              {isCompleting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-3.5 w-3.5" />
+              )}
+              Confirm
+            </Button>
+          </div>
         </div>
       )}
     </div>
@@ -676,6 +797,7 @@ function HandoverHistoryList() {
   });
 
   const acknowledgeHandover = useAcknowledgeHandover();
+  const completeHandover = useCompleteHandover();
 
   const handleAcknowledge = useCallback(
     async (id: string) => {
@@ -687,6 +809,18 @@ function HandoverHistoryList() {
       }
     },
     [acknowledgeHandover],
+  );
+
+  const handleComplete = useCallback(
+    async (id: string, completionNote?: string) => {
+      try {
+        await completeHandover.mutateAsync({ id, completionNote });
+        toast.success('Handover marked complete');
+      } catch {
+        toast.error('Failed to mark handover complete');
+      }
+    },
+    [completeHandover],
   );
 
   const handoverList = Array.isArray(handovers) ? handovers : [];
@@ -728,6 +862,8 @@ function HandoverHistoryList() {
               currentUserId={user?.id}
               onAcknowledge={handleAcknowledge}
               isAcknowledging={acknowledgeHandover.isPending}
+              onComplete={handleComplete}
+              isCompleting={completeHandover.isPending}
             />
           ))}
         </div>
@@ -739,34 +875,77 @@ function HandoverHistoryList() {
 // ── Duty Roster View ─────────────────────────────────────────
 
 function DutyRosterView() {
-  const today = toInputDateStr();
+  const [date, setDate] = useState(toInputDateStr());
   const [shiftFilter, setShiftFilter] = useState<string>('');
-  const { data: roster, isLoading } = useDutyRoster({ date: today });
+  const [departmentFilter, setDepartmentFilter] = useState<string>('');
+
+  // Fetch the full roster for this date, unfiltered by department, so we can
+  // derive the department list for the filter dropdown. Department filter is
+  // applied client-side.
+  const { data: roster, isLoading } = useDutyRoster({ date });
+
+  const allRoster = useMemo(() => (Array.isArray(roster) ? roster : []), [roster]);
+
+  const departmentOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of allRoster) {
+      if (r.department?.id && r.department.name) {
+        map.set(r.department.id, r.department.name);
+      }
+    }
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [allRoster]);
 
   const filteredRoster = useMemo(() => {
-    const list = Array.isArray(roster) ? roster : [];
-    if (!shiftFilter || shiftFilter === 'all') return list;
-    return list.filter((r) => r.shiftType === shiftFilter);
-  }, [roster, shiftFilter]);
+    return allRoster.filter((r) => {
+      if (shiftFilter && shiftFilter !== 'all' && r.shiftType !== shiftFilter) return false;
+      if (departmentFilter && departmentFilter !== 'all' && r.department?.id !== departmentFilter) return false;
+      return true;
+    });
+  }, [allRoster, shiftFilter, departmentFilter]);
 
   return (
     <div className="space-y-4">
-      {/* Header + Filter */}
-      <div className="flex items-center justify-between">
+      {/* Header + Filters */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-headline text-sm font-bold text-on-surface">
-          Today&apos;s Duty Roster
+          Duty Roster
         </h3>
-        <Select value={shiftFilter} onValueChange={(value) => setShiftFilter(value ?? '')}>
-          <SelectTrigger className="h-8 w-36 text-xs">
-            <SelectValue placeholder="All shifts" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Shifts</SelectItem>
-            <SelectItem value="morning">Morning</SelectItem>
-            <SelectItem value="afternoon">Afternoon</SelectItem>
-            <SelectItem value="night">Night</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="h-8 w-40 text-xs"
+          />
+          <Select
+            value={departmentFilter}
+            onValueChange={(value) => setDepartmentFilter(value ?? '')}
+          >
+            <SelectTrigger className="h-8 w-44 text-xs">
+              <SelectValue placeholder="All departments" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Departments</SelectItem>
+              {departmentOptions.map((d) => (
+                <SelectItem key={d.id} value={d.id}>
+                  {d.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={shiftFilter} onValueChange={(value) => setShiftFilter(value ?? '')}>
+            <SelectTrigger className="h-8 w-36 text-xs">
+              <SelectValue placeholder="All shifts" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Shifts</SelectItem>
+              <SelectItem value="morning">Morning</SelectItem>
+              <SelectItem value="afternoon">Afternoon</SelectItem>
+              <SelectItem value="night">Night</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* Table */}
@@ -811,8 +990,8 @@ function DutyRosterView() {
                       className="border-b border-outline-variant/10 last:border-b-0 hover:bg-surface-container-low/30 transition-colors"
                     >
                       <td className="px-4 py-2.5 text-sm font-medium text-on-surface">
-                        {entry.staff
-                          ? `${entry.staff.firstName} ${entry.staff.lastName}`
+                        {entry.staff?.user
+                          ? `${entry.staff.user.firstName} ${entry.staff.user.lastName}`
                           : '-'}
                       </td>
                       <td className="px-4 py-2.5">
@@ -832,10 +1011,10 @@ function DutyRosterView() {
                         )}
                       </td>
                       <td className="px-4 py-2.5 text-xs text-on-surface-variant">
-                        {formatTime(entry.shiftStart)}
+                        {formatTime(entry.startTime)}
                       </td>
                       <td className="px-4 py-2.5 text-xs text-on-surface-variant">
-                        {formatTime(entry.shiftEnd)}
+                        {formatTime(entry.endTime)}
                       </td>
                       <td className="px-4 py-2.5 text-xs text-on-surface-variant">
                         {entry.department?.name ?? '-'}
@@ -870,7 +1049,7 @@ export default function ShiftHandoverPage() {
       <ShiftInfoHeader currentShift={currentShift} />
 
       {/* Shift Summary Panel */}
-      <ShiftSummaryPanel />
+      <ShiftSummaryPanel currentShift={currentShift} />
 
       {/* Tabs */}
       <div className="flex gap-1 rounded-lg bg-surface-container-low/60 p-1">

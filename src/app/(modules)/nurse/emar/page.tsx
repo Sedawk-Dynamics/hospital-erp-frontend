@@ -28,11 +28,13 @@ import {
   useActivePrescriptions,
   useAdministrationRecords,
   useRecordAdministration,
-  useMedicationSchedule,
+  useDrugInteractions,
   type NurseAdmission,
-  type PrescriptionItem,
   type Prescription,
   type AdministrationRecord,
+  type InteractionCheckResult,
+  type InteractionPair,
+  type InteractionSeverity,
 } from '@/hooks/use-nurse';
 import {
   AlertTriangle,
@@ -205,7 +207,9 @@ export default function EmarPage() {
   const allergies = selectedAdmission?.patient?.allergies ?? [];
 
   const { data: prescriptionsRaw, isLoading: prescriptionsLoading } = useActivePrescriptions({
-    patientId: patientId || undefined,
+    // admissionId scopes to the current admission; patientId is fallback for tests/older data.
+    admissionId: selectedAdmissionId || undefined,
+    patientId: !selectedAdmissionId ? patientId || undefined : undefined,
     prescriptionType: 'ip',
     status: 'active',
   });
@@ -225,6 +229,63 @@ export default function EmarPage() {
   }, [adminRecordsRaw]);
 
   const recordAdmin = useRecordAdministration();
+
+  // ── Drug Interaction Check ────────────────────────────────
+  // Collect unique drug names across all prescription items → query once per set.
+  const allDrugNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const rx of prescriptions) {
+      for (const item of rx.items) {
+        if (item.drugName) names.add(item.drugName);
+      }
+    }
+    return Array.from(names);
+  }, [prescriptions]);
+
+  const { data: interactionsData } = useDrugInteractions(allDrugNames);
+  const interactions: InteractionCheckResult | undefined = interactionsData?.data;
+
+  // Build a drug → [pairs involving that drug] map for quick row-level lookup.
+  const interactionsByDrug = useMemo(() => {
+    const map = new Map<string, InteractionPair[]>();
+    if (!interactions?.pairs) return map;
+    for (const pair of interactions.pairs) {
+      for (const d of pair.drugs) {
+        const key = d.toLowerCase().trim();
+        const existing = map.get(key) ?? [];
+        existing.push(pair);
+        map.set(key, existing);
+      }
+    }
+    return map;
+  }, [interactions]);
+
+  const contraindicationsByDrug = useMemo(() => {
+    const map = new Map<string, string>();
+    if (!interactions?.perDrug) return map;
+    for (const entry of interactions.perDrug) {
+      if (entry.contraindications) {
+        map.set(entry.drugName.toLowerCase().trim(), entry.contraindications);
+      }
+    }
+    return map;
+  }, [interactions]);
+
+  // Interaction detail dialog state
+  const [interactionDialog, setInteractionDialog] = useState<{
+    drugName: string;
+    pairs: InteractionPair[];
+    contraindications?: string;
+  } | null>(null);
+
+  const openInteractionDialog = useCallback(
+    (drugName: string) => {
+      const pairs = interactionsByDrug.get(drugName.toLowerCase().trim()) ?? [];
+      const contraindications = contraindicationsByDrug.get(drugName.toLowerCase().trim());
+      setInteractionDialog({ drugName, pairs, contraindications });
+    },
+    [interactionsByDrug, contraindicationsByDrug],
+  );
 
   // ── Build drug rows ──────────────────────────────────────
   const { regularDrugs, prnDrugs } = useMemo(() => {
@@ -270,6 +331,7 @@ export default function EmarPage() {
               .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
           : [];
 
+        const pairsForDrug = interactionsByDrug.get(item.drugName.toLowerCase().trim()) ?? [];
         const row: DrugRow = {
           prescriptionId: rx.id,
           prescriptionItemId: itemId,
@@ -280,7 +342,10 @@ export default function EmarPage() {
           route: item.route,
           instructions: item.instructions,
           isPRN: prn_,
-          interactions: [],
+          interactions: pairsForDrug.map((p) => {
+            const other = p.drugs.find((d) => d.toLowerCase().trim() !== item.drugName.toLowerCase().trim()) ?? '';
+            return `${other} — ${p.severity}`;
+          }),
           cells,
           lastAdminTime: prnRecords.length > 0 ? prnRecords[0].administeredTime ?? prnRecords[0].createdAt : undefined,
         };
@@ -294,7 +359,7 @@ export default function EmarPage() {
     }
 
     return { regularDrugs: regular, prnDrugs: prn };
-  }, [prescriptions, adminRecords]);
+  }, [prescriptions, adminRecords, interactionsByDrug]);
 
   const isLoading = admissionsLoading || prescriptionsLoading || adminRecordsLoading;
 
@@ -464,6 +529,11 @@ export default function EmarPage() {
         </div>
       )}
 
+      {/* ── Drug Interaction Banner ──────────────────────── */}
+      {selectedAdmissionId && interactions && interactions.pairs.length > 0 && (
+        <InteractionBanner result={interactions} />
+      )}
+
       {!selectedAdmissionId && (
         <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-12 text-center">
           <Pill className="h-10 w-10 text-primary/30 mx-auto mb-3" />
@@ -524,10 +594,15 @@ export default function EmarPage() {
                                   {drug.drugName}
                                 </span>
                                 {drug.interactions && drug.interactions.length > 0 && (
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 whitespace-nowrap">
+                                  <button
+                                    type="button"
+                                    onClick={() => openInteractionDialog(drug.drugName)}
+                                    className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 hover:bg-orange-200 whitespace-nowrap"
+                                    title="View drug interactions"
+                                  >
                                     <AlertTriangle className="h-2.5 w-2.5 inline -mt-0.5 mr-0.5" />
-                                    Interaction
-                                  </span>
+                                    {drug.interactions.length} Interaction{drug.interactions.length !== 1 ? 's' : ''}
+                                  </button>
                                 )}
                               </div>
                               {drug.genericName && (
@@ -629,10 +704,15 @@ export default function EmarPage() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-semibold text-on-surface">{drug.drugName}</span>
                         {drug.interactions && drug.interactions.length > 0 && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-800">
+                          <button
+                            type="button"
+                            onClick={() => openInteractionDialog(drug.drugName)}
+                            className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 hover:bg-orange-200"
+                            title="View drug interactions"
+                          >
                             <AlertTriangle className="h-2.5 w-2.5 inline -mt-0.5 mr-0.5" />
-                            Interaction
-                          </span>
+                            {drug.interactions.length} Interaction{drug.interactions.length !== 1 ? 's' : ''}
+                          </button>
                         )}
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
                           PRN
@@ -706,6 +786,28 @@ export default function EmarPage() {
                   <p className="text-[10px] text-amber-800">
                     Patient allergies: <span className="font-bold">{allergies.join(', ')}</span>
                   </p>
+                </div>
+              )}
+
+              {/* Per-drug interaction warning in the administration dialog */}
+              {adminDialog.drugRow && adminDialog.drugRow.interactions && adminDialog.drugRow.interactions.length > 0 && (
+                <div className="flex items-start gap-2 rounded-lg bg-orange-50 border border-orange-200 px-3 py-2">
+                  <AlertTriangle className="h-3.5 w-3.5 text-orange-600 mt-0.5 shrink-0" />
+                  <div className="text-[10px] text-orange-800 flex-1">
+                    <p className="font-bold mb-0.5">Interactions detected</p>
+                    <ul className="space-y-0.5">
+                      {adminDialog.drugRow.interactions.map((s, i) => (
+                        <li key={i}>• {s}</li>
+                      ))}
+                    </ul>
+                    <button
+                      type="button"
+                      onClick={() => adminDialog.drugRow && openInteractionDialog(adminDialog.drugRow.drugName)}
+                      className="mt-1 underline font-semibold"
+                    >
+                      View details
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -866,6 +968,88 @@ export default function EmarPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Drug Interaction Detail Dialog ────────────────── */}
+      <Dialog
+        open={!!interactionDialog}
+        onOpenChange={(open) => !open && setInteractionDialog(null)}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-orange-600" />
+              Drug Interactions — {interactionDialog?.drugName}
+            </DialogTitle>
+          </DialogHeader>
+          {interactionDialog && (
+            <div className="space-y-3 max-h-[60vh] overflow-y-auto">
+              {interactionDialog.pairs.length === 0 && !interactionDialog.contraindications ? (
+                <p className="text-sm text-on-surface-variant">
+                  No interactions or contraindications found.
+                </p>
+              ) : (
+                <>
+                  {interactionDialog.pairs.length > 0 && (
+                    <div>
+                      <p className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant mb-2">
+                        Interactions with co-prescribed drugs
+                      </p>
+                      <div className="space-y-2">
+                        {interactionDialog.pairs.map((p, i) => {
+                          const other =
+                            p.drugs.find(
+                              (d) =>
+                                d.toLowerCase().trim() !==
+                                interactionDialog.drugName.toLowerCase().trim(),
+                            ) ?? '';
+                          return (
+                            <div
+                              key={i}
+                              className={cn(
+                                'rounded-lg border p-3',
+                                severityStyles(p.severity),
+                              )}
+                            >
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-sm font-semibold">with {other}</span>
+                                <span
+                                  className={cn(
+                                    'text-[10px] font-bold uppercase px-2 py-0.5 rounded-full',
+                                    severityBadge(p.severity),
+                                  )}
+                                >
+                                  {p.severity}
+                                </span>
+                              </div>
+                              <p className="text-xs">{p.description}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {interactionDialog.contraindications && (
+                    <div>
+                      <p className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant mb-2">
+                        Formulary contraindications
+                      </p>
+                      <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 whitespace-pre-wrap">
+                        {interactionDialog.contraindications}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setInteractionDialog(null)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -879,6 +1063,74 @@ function StatCard({ label, value, color }: { label: string; value: number; color
       <p className={cn('text-2xl font-bold mt-0.5', color)}>{value}</p>
     </div>
   );
+}
+
+function InteractionBanner({ result }: { result: InteractionCheckResult }) {
+  const sevLabel: Record<InteractionSeverity, string> = {
+    contraindicated: 'Contraindicated',
+    major: 'Major',
+    moderate: 'Moderate',
+    minor: 'Minor',
+  };
+  const highest = result.highestSeverity;
+  const borderClass =
+    highest === 'contraindicated' || highest === 'major'
+      ? 'border-red-300 bg-red-50'
+      : 'border-orange-300 bg-orange-50';
+  const iconClass =
+    highest === 'contraindicated' || highest === 'major' ? 'text-red-600' : 'text-orange-600';
+  const textClass =
+    highest === 'contraindicated' || highest === 'major' ? 'text-red-800' : 'text-orange-800';
+  return (
+    <div className={cn('flex items-start gap-3 rounded-xl border-2 px-4 py-3 shadow-sm', borderClass)}>
+      <AlertTriangle className={cn('h-5 w-5 mt-0.5 shrink-0', iconClass)} />
+      <div className="flex-1">
+        <p className={cn('text-sm font-bold', textClass)}>
+          Drug Interaction Warning — {result.pairs.length} {result.pairs.length === 1 ? 'pair' : 'pairs'}{' '}
+          detected{highest ? ` (highest: ${sevLabel[highest]})` : ''}
+        </p>
+        <ul className={cn('text-xs mt-1 space-y-0.5', textClass)}>
+          {result.pairs.slice(0, 3).map((p, i) => (
+            <li key={i}>
+              <span className="font-semibold">{p.drugs[0]} + {p.drugs[1]}</span>
+              <span className="opacity-80"> — {p.description}</span>
+            </li>
+          ))}
+          {result.pairs.length > 3 && (
+            <li className="opacity-80">…and {result.pairs.length - 3} more. Click a drug's interaction badge for details.</li>
+          )}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+function severityStyles(s: InteractionSeverity): string {
+  switch (s) {
+    case 'contraindicated':
+      return 'bg-red-50 border-red-300';
+    case 'major':
+      return 'bg-red-50 border-red-200';
+    case 'moderate':
+      return 'bg-orange-50 border-orange-200';
+    case 'minor':
+    default:
+      return 'bg-amber-50 border-amber-200';
+  }
+}
+
+function severityBadge(s: InteractionSeverity): string {
+  switch (s) {
+    case 'contraindicated':
+      return 'bg-red-200 text-red-900';
+    case 'major':
+      return 'bg-red-100 text-red-800';
+    case 'moderate':
+      return 'bg-orange-100 text-orange-800';
+    case 'minor':
+    default:
+      return 'bg-amber-100 text-amber-800';
+  }
 }
 
 // ── Utility Helpers ────────────────────────────────────────────

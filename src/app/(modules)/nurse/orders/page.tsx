@@ -16,7 +16,7 @@ import {
   Loader2,
   Filter,
 } from 'lucide-react';
-import { formatDate, formatDateTime } from '@/lib/date-utils';
+import { formatDateTime } from '@/lib/date-utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -30,7 +30,8 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
-  usePendingOrders,
+  useClinicalOrders,
+  useAcknowledgeClinicalOrder,
   useLabSamples,
   useUpdateSampleStatus,
   useWardBeds,
@@ -40,26 +41,12 @@ import {
   useSupplyRequests,
   useCreateSupplyRequest,
 } from '@/hooks/use-nurse';
-import type { BedInfo, SupplyRequest, InventoryItem } from '@/hooks/use-nurse';
+import type { BedInfo, SupplyRequest, InventoryItem, NurseClinicalOrder } from '@/hooks/use-nurse';
 import { useWards } from '@/hooks/use-clinical';
 
 // ============================================================
 // Types
 // ============================================================
-
-interface DoctorOrder {
-  id: string;
-  orderNumber?: string;
-  patientId?: string;
-  patient?: { firstName: string; lastName: string; mrn?: string };
-  doctorId?: string;
-  doctor?: { user?: { firstName: string; lastName: string } };
-  orderType?: 'lab' | 'imaging' | 'medication';
-  priority?: 'routine' | 'urgent' | 'stat';
-  status: string;
-  description?: string;
-  createdAt: string;
-}
 
 interface LabSample {
   id: string;
@@ -153,14 +140,46 @@ export default function NurseOrdersPage() {
 // ============================================================
 
 function DoctorOrdersTab() {
-  const [statusFilter, setStatusFilter] = useState<string>('pending');
-  const { data, isLoading } = usePendingOrders({ status: statusFilter });
+  const [statusFilter, setStatusFilter] = useState<'pending' | 'completed' | 'cancelled' | 'all'>(
+    'pending',
+  );
+  const [typeFilter, setTypeFilter] = useState<'all' | 'lab' | 'imaging'>('all');
+  const [wardFilter, setWardFilter] = useState<string>('');
+  const [ackedIds, setAckedIds] = useState<Set<string>>(new Set());
 
-  const orders = (data?.data ?? data ?? []) as DoctorOrder[];
+  const { data: wardsData } = useWards();
+  const wards = (wardsData ?? []) as { id: string; name: string }[];
 
-  const handleAcknowledge = useCallback((orderId: string) => {
-    toast.success(`Order ${orderId} acknowledged`);
-  }, []);
+  const { data, isLoading } = useClinicalOrders({
+    status: statusFilter,
+    type: typeFilter,
+    wardId: wardFilter || undefined,
+  });
+
+  const orders = (data?.data ?? []) as NurseClinicalOrder[];
+  const acknowledge = useAcknowledgeClinicalOrder();
+
+  const handleAcknowledge = useCallback(
+    (order: NurseClinicalOrder) => {
+      acknowledge.mutate(
+        { orderType: order.orderType, orderId: order.id },
+        {
+          onSuccess: () => {
+            toast.success(`${order.orderType === 'lab' ? 'Lab' : 'Imaging'} order acknowledged`);
+            setAckedIds((prev) => {
+              const next = new Set(prev);
+              next.add(order.id);
+              return next;
+            });
+          },
+          onError: (err: unknown) => {
+            toast.error((err as { message?: string })?.message ?? 'Failed to acknowledge order');
+          },
+        },
+      );
+    },
+    [acknowledge],
+  );
 
   const priorityColor: Record<string, string> = {
     stat: 'bg-red-100 text-red-700',
@@ -169,8 +188,13 @@ function DoctorOrdersTab() {
   };
 
   const statusColor: Record<string, string> = {
-    pending: 'bg-amber-100 text-amber-700',
-    acknowledged: 'bg-blue-100 text-blue-700',
+    ordered: 'bg-amber-100 text-amber-700',
+    requested: 'bg-amber-100 text-amber-700',
+    sample_collected: 'bg-blue-100 text-blue-700',
+    scheduled: 'bg-blue-100 text-blue-700',
+    in_transit: 'bg-purple-100 text-purple-700',
+    received: 'bg-purple-100 text-purple-700',
+    in_progress: 'bg-purple-100 text-purple-700',
     completed: 'bg-emerald-100 text-emerald-700',
     cancelled: 'bg-red-100 text-red-700',
   };
@@ -178,28 +202,57 @@ function DoctorOrdersTab() {
   const typeColor: Record<string, string> = {
     lab: 'bg-purple-100 text-purple-700',
     imaging: 'bg-cyan-100 text-cyan-700',
-    medication: 'bg-teal-100 text-teal-700',
   };
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <h2 className="font-headline text-base font-semibold">Pending Doctor Orders</h2>
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <h2 className="font-headline text-base font-semibold">Doctor Orders</h2>
+        <div className="flex items-center gap-2 flex-wrap">
           <Filter className="h-4 w-4 text-on-surface-variant" />
+          <Select
+            value={wardFilter}
+            onValueChange={(val) => setWardFilter((val === 'all' ? '' : val) ?? '')}
+          >
+            <SelectTrigger className="w-[160px] h-8 text-xs">
+              <SelectValue placeholder="All wards" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Wards</SelectItem>
+              {wards.map((w) => (
+                <SelectItem key={w.id} value={w.id}>
+                  {w.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={typeFilter}
+            onValueChange={(val) => setTypeFilter((val ?? 'all') as 'all' | 'lab' | 'imaging')}
+          >
+            <SelectTrigger className="w-[140px] h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="lab">Lab</SelectItem>
+              <SelectItem value="imaging">Imaging</SelectItem>
+            </SelectContent>
+          </Select>
           <Select
             value={statusFilter}
             onValueChange={(val) => {
-              if (val) setStatusFilter(val);
+              if (val) setStatusFilter(val as 'pending' | 'completed' | 'cancelled' | 'all');
             }}
           >
-            <SelectTrigger className="w-[160px] h-8 text-xs">
+            <SelectTrigger className="w-[140px] h-8 text-xs">
               <SelectValue placeholder="Filter status" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="acknowledged">Acknowledged</SelectItem>
               <SelectItem value="completed">Completed</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
+              <SelectItem value="all">All</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -213,6 +266,8 @@ function DoctorOrdersTab() {
               <th className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant px-4 py-3 text-left">Patient</th>
               <th className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant px-4 py-3 text-left">Doctor</th>
               <th className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant px-4 py-3 text-left">Type</th>
+              <th className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant px-4 py-3 text-left">Description</th>
+              <th className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant px-4 py-3 text-left">Ward</th>
               <th className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant px-4 py-3 text-left">Priority</th>
               <th className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant px-4 py-3 text-left">Status</th>
               <th className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant px-4 py-3 text-left">Date</th>
@@ -222,57 +277,106 @@ function DoctorOrdersTab() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={8} className="py-12 text-center text-on-surface-variant">
+                <td colSpan={10} className="py-12 text-center text-on-surface-variant">
                   <Loader2 className="mx-auto h-5 w-5 animate-spin" />
                 </td>
               </tr>
             ) : orders.length === 0 ? (
               <tr>
-                <td colSpan={8} className="py-12 text-center text-on-surface-variant text-sm">
+                <td colSpan={10} className="py-12 text-center text-on-surface-variant text-sm">
                   No orders found
                 </td>
               </tr>
             ) : (
-              orders.map((order) => (
-                <tr key={order.id} className="border-b border-outline-variant last:border-0 hover:bg-surface-container-low/50 transition-colors">
-                  <td className="px-4 py-3 font-medium">{order.orderNumber || order.id.slice(0, 8)}</td>
-                  <td className="px-4 py-3">
-                    <div>
-                      <p className="font-medium">{order.patient ? `${order.patient.firstName} ${order.patient.lastName}` : '-'}</p>
-                      {order.patient?.mrn && <p className="text-xs text-on-surface-variant">{order.patient.mrn}</p>}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    {order.doctor?.user ? `Dr. ${order.doctor.user.firstName} ${order.doctor.user.lastName}` : '-'}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full uppercase', typeColor[order.orderType || ''] || 'bg-slate-100 text-slate-600')}>
-                      {order.orderType || 'N/A'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full uppercase', priorityColor[order.priority || 'routine'])}>
-                      {order.priority || 'routine'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full uppercase', statusColor[order.status] || 'bg-slate-100 text-slate-600')}>
-                      {order.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-on-surface-variant">
-                    {formatDateTime(order.createdAt)}
-                  </td>
-                  <td className="px-4 py-3">
-                    {order.status === 'pending' && (
-                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handleAcknowledge(order.id)}>
-                        <CheckCircle2 className="mr-1 h-3 w-3" />
-                        Acknowledge
-                      </Button>
+              orders.map((order) => {
+                const isAcked = ackedIds.has(order.id);
+                return (
+                  <tr
+                    key={`${order.orderType}-${order.id}`}
+                    className={cn(
+                      'border-b border-outline-variant last:border-0 hover:bg-surface-container-low/50 transition-colors',
+                      isAcked && 'bg-emerald-50/40',
                     )}
-                  </td>
-                </tr>
-              ))
+                  >
+                    <td className="px-4 py-3 font-mono text-xs">{order.orderNumber}</td>
+                    <td className="px-4 py-3">
+                      <div>
+                        <p className="font-medium">
+                          {order.patient ? `${order.patient.firstName} ${order.patient.lastName}` : '-'}
+                        </p>
+                        {order.patient?.mrn && (
+                          <p className="text-xs text-on-surface-variant">{order.patient.mrn}</p>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-xs">
+                      {order.doctor?.user
+                        ? `Dr. ${order.doctor.user.firstName} ${order.doctor.user.lastName}`
+                        : '-'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={cn(
+                          'text-[10px] font-bold px-2 py-0.5 rounded-full uppercase',
+                          typeColor[order.orderType] ?? 'bg-slate-100 text-slate-600',
+                        )}
+                      >
+                        {order.orderType}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs max-w-[240px] truncate">{order.description}</td>
+                    <td className="px-4 py-3 text-xs text-on-surface-variant">
+                      {order.ward?.name ?? '-'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={cn(
+                          'text-[10px] font-bold px-2 py-0.5 rounded-full uppercase',
+                          priorityColor[order.priority] ?? priorityColor.routine,
+                        )}
+                      >
+                        {order.priority}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={cn(
+                          'text-[10px] font-bold px-2 py-0.5 rounded-full uppercase',
+                          statusColor[order.status] ?? 'bg-slate-100 text-slate-600',
+                        )}
+                      >
+                        {order.status.replace(/_/g, ' ')}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-on-surface-variant">
+                      {formatDateTime(order.createdAt)}
+                    </td>
+                    <td className="px-4 py-3">
+                      {isAcked ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Acknowledged
+                        </span>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          disabled={acknowledge.isPending}
+                          onClick={() => handleAcknowledge(order)}
+                        >
+                          {acknowledge.isPending ? (
+                            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="mr-1 h-3 w-3" />
+                          )}
+                          Acknowledge
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
@@ -778,9 +882,17 @@ function PatientTransferTab() {
 // ============================================================
 
 function WardInventoryTab() {
+  const [wardId, setWardId] = useState('');
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
-  const { data, isLoading } = useWardInventory({ search: search || undefined, category: category || undefined });
+  const { data: wardsData } = useWards();
+  const wards = (wardsData ?? []) as { id: string; name: string }[];
+
+  const { data, isLoading } = useWardInventory({
+    wardId: wardId || undefined,
+    search: search || undefined,
+    category: category || undefined,
+  });
 
   const items = (data?.data ?? data ?? []) as InventoryItem[];
 
@@ -797,7 +909,23 @@ function WardInventoryTab() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h2 className="font-headline text-base font-semibold">Ward Inventory</h2>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select
+            value={wardId}
+            onValueChange={(val) => setWardId((val === 'all' ? '' : val) ?? '')}
+          >
+            <SelectTrigger className="w-[180px] h-8 text-xs">
+              <SelectValue placeholder="All wards" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Wards</SelectItem>
+              {wards.map((w) => (
+                <SelectItem key={w.id} value={w.id}>
+                  {w.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-on-surface-variant" />
             <Input
@@ -807,12 +935,15 @@ function WardInventoryTab() {
               className="pl-8 h-8 text-xs w-[200px]"
             />
           </div>
-          <Select value={category} onValueChange={(val) => setCategory(val ?? '')}>
+          <Select
+            value={category}
+            onValueChange={(val) => setCategory((val === 'all' ? '' : val) ?? '')}
+          >
             <SelectTrigger className="w-[160px] h-8 text-xs">
               <SelectValue placeholder="All categories" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Categories</SelectItem>
+              <SelectItem value="all">All Categories</SelectItem>
               {categories.map((cat) => (
                 <SelectItem key={cat} value={cat}>{cat}</SelectItem>
               ))}
@@ -893,23 +1024,48 @@ function WardInventoryTab() {
 // ============================================================
 
 interface SupplyItem {
-  itemId: string;
+  inventoryItemId: string;
   itemName: string;
   quantity: number;
-  unit: string;
+}
+
+interface WardWithDept {
+  id: string;
+  name: string;
+  departmentId?: string;
+  department?: { id: string; name: string };
 }
 
 function SupplyRequestTab() {
-  const [items, setItems] = useState<SupplyItem[]>([{ itemId: '', itemName: '', quantity: 1, unit: 'units' }]);
-  const [priority, setPriority] = useState<'low' | 'normal' | 'urgent'>('normal');
+  const [selectedWardId, setSelectedWardId] = useState('');
+  const [itemSearch, setItemSearch] = useState('');
+  const [items, setItems] = useState<SupplyItem[]>([
+    { inventoryItemId: '', itemName: '', quantity: 1 },
+  ]);
+  const [priority, setPriority] = useState<'routine' | 'urgent'>('routine');
   const [supplyNotes, setSupplyNotes] = useState('');
+
   const createRequest = useCreateSupplyRequest();
   const { data: requestsData, isLoading: requestsLoading } = useSupplyRequests({});
+  const { data: wardsData } = useWards();
+  // Fetch a list of inventory items the nurse can pick from. If a ward is
+  // selected, scope to it; otherwise show everything (full formulary search).
+  const { data: invData } = useWardInventory({
+    wardId: selectedWardId || undefined,
+    search: itemSearch || undefined,
+    limit: 50,
+  });
 
+  const wards = (wardsData ?? []) as WardWithDept[];
+  const selectedWard = wards.find((w) => w.id === selectedWardId);
+  const resolvedDepartmentId =
+    selectedWard?.departmentId ?? selectedWard?.department?.id ?? '';
+
+  const inventoryOptions = (invData?.data ?? []) as InventoryItem[];
   const recentRequests = (requestsData?.data ?? requestsData ?? []) as SupplyRequest[];
 
   const addItem = useCallback(() => {
-    setItems((prev) => [...prev, { itemId: '', itemName: '', quantity: 1, unit: 'units' }]);
+    setItems((prev) => [...prev, { inventoryItemId: '', itemName: '', quantity: 1 }]);
   }, []);
 
   const removeItem = useCallback((index: number) => {
@@ -919,43 +1075,72 @@ function SupplyRequestTab() {
     });
   }, []);
 
-  const updateItem = useCallback((index: number, field: keyof SupplyItem, value: string | number) => {
-    setItems((prev) =>
-      prev.map((item, i) => {
-        if (i !== index) return item;
-        return { ...item, [field]: value };
-      })
-    );
-  }, []);
+  const updateItem = useCallback(
+    (index: number, patch: Partial<SupplyItem>) => {
+      setItems((prev) =>
+        prev.map((item, i) => {
+          if (i !== index) return item;
+          return { ...item, ...patch };
+        }),
+      );
+    },
+    [],
+  );
 
   const handleSubmit = useCallback(() => {
-    const validItems = items.filter((i) => i.itemName.trim());
+    if (!selectedWardId || !resolvedDepartmentId) {
+      toast.error('Please select a ward (with a linked department) first.');
+      return;
+    }
+    const validItems = items.filter((i) => i.inventoryItemId && i.quantity > 0);
     if (validItems.length === 0) {
-      toast.error('Please add at least one item');
+      toast.error('Please pick at least one inventory item.');
       return;
     }
 
-    // Backend accepts one item per request — submit sequentially
-    const item = validItems[0];
-    createRequest.mutate(
-      {
-        departmentId: '', // Will be filled from nurse's assigned department
-        inventoryItemId: item.itemId || item.itemName.toLowerCase().replace(/\s+/g, '_'),
-        quantityRequested: item.quantity,
-        urgency: priority === 'urgent' ? 'urgent' : 'routine',
-        notes: supplyNotes.trim() || undefined,
-      },
-      {
-        onSuccess: () => {
-          toast.success('Supply request submitted');
-          setItems([{ itemId: '', itemName: '', quantity: 1, unit: 'units' }]);
-          setPriority('normal');
-          setSupplyNotes('');
+    // Backend creates one request per item. Submit sequentially and report
+    // aggregate status at the end so the nurse sees a single toast.
+    let completed = 0;
+    let failed = 0;
+
+    validItems.forEach((item) => {
+      createRequest.mutate(
+        {
+          departmentId: resolvedDepartmentId,
+          wardId: selectedWardId,
+          inventoryItemId: item.inventoryItemId,
+          quantityRequested: item.quantity,
+          urgency: priority,
+          notes: supplyNotes.trim() || undefined,
         },
-        onError: () => toast.error('Failed to submit supply request'),
-      }
-    );
-  }, [items, priority, supplyNotes, createRequest]);
+        {
+          onSuccess: () => {
+            completed += 1;
+            if (completed + failed === validItems.length) {
+              toast.success(
+                failed === 0
+                  ? `Supply request submitted (${completed} item${completed !== 1 ? 's' : ''})`
+                  : `Submitted ${completed}/${validItems.length} items. ${failed} failed.`,
+              );
+              setItems([{ inventoryItemId: '', itemName: '', quantity: 1 }]);
+              setPriority('routine');
+              setSupplyNotes('');
+            }
+          },
+          onError: () => {
+            failed += 1;
+            if (completed + failed === validItems.length) {
+              toast.error(
+                completed === 0
+                  ? 'Failed to submit supply request'
+                  : `Submitted ${completed}/${validItems.length} items. ${failed} failed.`,
+              );
+            }
+          },
+        },
+      );
+    });
+  }, [selectedWardId, resolvedDepartmentId, items, priority, supplyNotes, createRequest]);
 
   const requestStatusColor: Record<string, string> = {
     pending: 'bg-amber-100 text-amber-700',
@@ -976,6 +1161,50 @@ function SupplyRequestTab() {
 
       {/* Supply Request Form */}
       <div className="rounded-lg border border-outline-variant p-4 space-y-4">
+        {/* Ward + Item search */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <label className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
+              Ward *
+            </label>
+            <Select
+              value={selectedWardId}
+              onValueChange={(val) => setSelectedWardId(val ?? '')}
+            >
+              <SelectTrigger className="h-9 text-xs">
+                <SelectValue placeholder="Select ward" />
+              </SelectTrigger>
+              <SelectContent>
+                {wards.map((w) => (
+                  <SelectItem key={w.id} value={w.id}>
+                    {w.name}
+                    {w.department ? ` — ${w.department.name}` : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedWardId && !resolvedDepartmentId && (
+              <p className="text-[10px] text-amber-600">
+                Selected ward has no linked department — cannot submit request.
+              </p>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            <label className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
+              Search Items
+            </label>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-on-surface-variant" />
+              <Input
+                value={itemSearch}
+                onChange={(e) => setItemSearch(e.target.value)}
+                placeholder="Type to filter inventory..."
+                className="pl-8 h-9 text-xs"
+              />
+            </div>
+          </div>
+        </div>
+
         {/* Item rows */}
         <div className="space-y-2">
           <label className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
@@ -983,36 +1212,43 @@ function SupplyRequestTab() {
           </label>
           {items.map((item, idx) => (
             <div key={idx} className="flex items-center gap-2">
-              <Input
-                value={item.itemName}
-                onChange={(e) => updateItem(idx, 'itemName', e.target.value)}
-                placeholder="Item name"
-                className="h-8 text-xs flex-1"
-              />
+              <Select
+                value={item.inventoryItemId}
+                onValueChange={(val) => {
+                  if (!val) return;
+                  const picked = inventoryOptions.find((o) => o.id === val);
+                  updateItem(idx, {
+                    inventoryItemId: val,
+                    itemName: picked?.name ?? '',
+                  });
+                }}
+              >
+                <SelectTrigger className="h-8 text-xs flex-1">
+                  <SelectValue placeholder="Select inventory item" />
+                </SelectTrigger>
+                <SelectContent>
+                  {inventoryOptions.length === 0 ? (
+                    <div className="px-2 py-1.5 text-xs text-on-surface-variant">
+                      No inventory items found
+                    </div>
+                  ) : (
+                    inventoryOptions.map((opt) => (
+                      <SelectItem key={opt.id} value={opt.id}>
+                        {opt.name}
+                        {opt.unit ? ` (${opt.unit})` : ''}
+                        {opt.currentStock != null ? ` — ${opt.currentStock} avail` : ''}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
               <Input
                 type="number"
                 value={item.quantity}
-                onChange={(e) => updateItem(idx, 'quantity', parseInt(e.target.value) || 1)}
+                onChange={(e) => updateItem(idx, { quantity: parseInt(e.target.value) || 1 })}
                 min={1}
                 className="h-8 text-xs w-20"
               />
-              <Select
-                value={item.unit}
-                onValueChange={(val) => { if (val) updateItem(idx, 'unit', val); }}
-              >
-                <SelectTrigger className="h-8 text-xs w-[100px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="units">Units</SelectItem>
-                  <SelectItem value="packs">Packs</SelectItem>
-                  <SelectItem value="boxes">Boxes</SelectItem>
-                  <SelectItem value="bottles">Bottles</SelectItem>
-                  <SelectItem value="rolls">Rolls</SelectItem>
-                  <SelectItem value="pairs">Pairs</SelectItem>
-                  <SelectItem value="sets">Sets</SelectItem>
-                </SelectContent>
-              </Select>
               <Button
                 variant="ghost"
                 size="sm"
@@ -1034,15 +1270,19 @@ function SupplyRequestTab() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <label className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
-              Priority
+              Urgency
             </label>
-            <Select value={priority} onValueChange={(val) => { if (val) setPriority(val as 'low' | 'normal' | 'urgent'); }}>
+            <Select
+              value={priority}
+              onValueChange={(val) => {
+                if (val) setPriority(val as 'routine' | 'urgent');
+              }}
+            >
               <SelectTrigger className="h-9 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="low">Low</SelectItem>
-                <SelectItem value="normal">Normal</SelectItem>
+                <SelectItem value="routine">Routine</SelectItem>
                 <SelectItem value="urgent">Urgent</SelectItem>
               </SelectContent>
             </Select>
@@ -1065,7 +1305,12 @@ function SupplyRequestTab() {
         <div className="flex justify-end pt-2">
           <Button
             onClick={handleSubmit}
-            disabled={createRequest.isPending || items.every((i) => !i.itemName.trim())}
+            disabled={
+              createRequest.isPending ||
+              !selectedWardId ||
+              !resolvedDepartmentId ||
+              items.every((i) => !i.inventoryItemId)
+            }
             className="h-9"
           >
             {createRequest.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

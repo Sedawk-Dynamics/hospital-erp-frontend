@@ -12,7 +12,12 @@ export interface NurseAdmission {
   patientId: string;
   patient?: Pick<Patient, 'id' | 'mrn' | 'firstName' | 'lastName' | 'phone' | 'gender' | 'dateOfBirth'> & { uhid?: string; allergies?: string[] };
   doctorId?: string;
-  doctor?: { id: string; user?: { firstName: string; lastName: string }; specialization?: string };
+  doctor?: {
+    id: string;
+    userId?: string;
+    user?: { firstName: string; lastName: string };
+    specialization?: string;
+  };
   wardId?: string;
   ward?: { id: string; name: string };
   bedId?: string;
@@ -152,14 +157,18 @@ export interface ShiftHandover {
 export interface DutyRoster {
   id: string;
   staffId: string;
-  staff?: { firstName: string; lastName: string };
+  staff?: {
+    id: string;
+    employeeId?: string;
+    user?: { firstName: string; lastName: string };
+  };
   departmentId?: string;
-  department?: { name: string };
-  shiftType: string;
-  shiftStart: string;
-  shiftEnd: string;
-  date: string;
-  status?: string;
+  department?: { id: string; name: string };
+  shiftType: 'morning' | 'afternoon' | 'night' | 'general';
+  shiftDate: string;
+  startTime: string;
+  endTime: string;
+  status: 'scheduled' | 'completed' | 'swapped' | 'cancelled';
 }
 
 export interface BedInfo {
@@ -196,6 +205,119 @@ export interface InventoryItem {
   reorderLevel?: number;
   unit?: string;
   status?: string;
+}
+
+// ── Structured nursing records ─────────────────────────────
+
+export type WoundType = 'surgical' | 'pressure_ulcer' | 'laceration' | 'burn' | 'diabetic_ulcer' | 'other';
+export type WoundStage = 'stage_1' | 'stage_2' | 'stage_3' | 'stage_4' | 'unstageable';
+export type ExudateType = 'none' | 'serous' | 'sanguineous' | 'purulent';
+export type ExudateAmount = 'none' | 'scant' | 'moderate' | 'heavy';
+export type WoundStatus = 'active' | 'healing' | 'healed' | 'worsening';
+
+export interface WoundCareRecord {
+  id: string;
+  visitId: string;
+  patientId: string;
+  patient?: Pick<Patient, 'id' | 'firstName' | 'lastName' | 'mrn'>;
+  nurseId: string;
+  nurse?: { id: string; firstName: string; lastName: string };
+  woundLocation: string;
+  woundType?: WoundType;
+  woundStage?: WoundStage;
+  lengthCm?: number | string;
+  widthCm?: number | string;
+  depthCm?: number | string;
+  exudateType?: ExudateType;
+  exudateAmount?: ExudateAmount;
+  dressingApplied?: string;
+  treatmentNotes?: string;
+  photoUrl?: string;
+  assessedAt: string;
+  nextAssessmentDue?: string;
+  status: WoundStatus;
+  createdAt: string;
+}
+
+export type IVLineType =
+  | 'peripheral'
+  | 'central_picc'
+  | 'central_subclavian'
+  | 'central_jugular'
+  | 'arterial'
+  | 'midline';
+export type IVRemovalReason =
+  | 'completed'
+  | 'infiltration'
+  | 'phlebitis'
+  | 'dislodged'
+  | 'infection'
+  | 'scheduled_change';
+export type IVLineStatus = 'active' | 'removed' | 'replaced';
+
+export interface IVLineRecord {
+  id: string;
+  visitId: string;
+  patientId: string;
+  patient?: Pick<Patient, 'id' | 'firstName' | 'lastName' | 'mrn'>;
+  admissionId?: string | null;
+  lineType: IVLineType;
+  catheterGauge?: string;
+  insertionSite: string;
+  insertedAt: string;
+  insertedBy: string;
+  inserter?: { id: string; firstName: string; lastName: string };
+  removedAt?: string | null;
+  removedBy?: string | null;
+  remover?: { id: string; firstName: string; lastName: string } | null;
+  removalReason?: IVRemovalReason | null;
+  dressingChangeFrequencyHours: number;
+  lastDressingChangeAt?: string | null;
+  lastFlushedAt?: string | null;
+  fluidType?: string | null;
+  flowRateMlPerHr?: number | null;
+  status: IVLineStatus;
+  complications?: string | null;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type IOEntryType = 'intake' | 'output';
+export type IOCategory =
+  | 'oral'
+  | 'iv_fluid'
+  | 'blood_product'
+  | 'tube_feed'
+  | 'urine'
+  | 'drain'
+  | 'vomit'
+  | 'stool'
+  | 'blood_loss'
+  | 'other';
+
+export interface IntakeOutputRecord {
+  id: string;
+  visitId: string;
+  patientId: string;
+  patient?: Pick<Patient, 'id' | 'firstName' | 'lastName' | 'mrn'>;
+  nurseId: string;
+  nurse?: { id: string; firstName: string; lastName: string };
+  recordDatetime: string;
+  entryType: IOEntryType;
+  category: IOCategory;
+  volumeMl: number;
+  fluidDescription?: string | null;
+  ivLineId?: string | null;
+  ivLine?: { id: string; insertionSite: string; lineType: IVLineType } | null;
+  notes?: string | null;
+  createdAt: string;
+}
+
+export interface IntakeOutputSummary {
+  intakeMl: number;
+  outputMl: number;
+  balanceMl: number;
 }
 
 interface PaginationMeta {
@@ -259,6 +381,18 @@ export const nurseKeys = {
     all: ['nurse', 'supply-requests'] as const,
     list: (params?: Record<string, unknown>) => ['nurse', 'supply-requests', 'list', params] as const,
   },
+  woundCare: {
+    all: ['nurse', 'wound-care'] as const,
+    list: (params?: Record<string, unknown>) => ['nurse', 'wound-care', 'list', params] as const,
+  },
+  ivLines: {
+    all: ['nurse', 'iv-lines'] as const,
+    list: (params?: Record<string, unknown>) => ['nurse', 'iv-lines', 'list', params] as const,
+  },
+  intakeOutput: {
+    all: ['nurse', 'intake-output'] as const,
+    list: (params?: Record<string, unknown>) => ['nurse', 'intake-output', 'list', params] as const,
+  },
   samples: {
     all: ['nurse', 'samples'] as const,
     list: (params?: Record<string, unknown>) => ['nurse', 'samples', 'list', params] as const,
@@ -321,6 +455,18 @@ export function useLatestVitals(patientId: string) {
       return res;
     },
     enabled: !!patientId,
+  });
+}
+
+export function useAllVitals(params?: { page?: number; limit?: number; patientId?: string }) {
+  return useQuery({
+    queryKey: ['nurse', 'vitals', 'all', params],
+    queryFn: async () => {
+      const res = await apiGet<(Vital & {
+        patient?: Pick<Patient, 'id' | 'mrn' | 'firstName' | 'lastName'>;
+      })[]>('/clinical/vitals', { params });
+      return res;
+    },
   });
 }
 
@@ -409,6 +555,7 @@ export function useUpdateNursingNote() {
 
 export function useActivePrescriptions(params?: {
   patientId?: string;
+  admissionId?: string;
   status?: string;
   prescriptionType?: string;
   page?: number;
@@ -458,6 +605,24 @@ export function useAdministrationRecords(params?: {
   });
 }
 
+export function useOverdueAdministrations(params?: {
+  patientId?: string;
+  fromDate?: string;
+  toDate?: string;
+  page?: number;
+  limit?: number;
+}) {
+  return useQuery({
+    queryKey: ['nurse', 'administration', 'missed', params],
+    queryFn: async () => {
+      const res = await apiGet<AdministrationRecord[]>('/prescriptions/administration', {
+        params: { ...params, status: 'missed' },
+      });
+      return res;
+    },
+  });
+}
+
 export function useRecordAdministration() {
   const qc = useQueryClient();
   return useMutation({
@@ -489,6 +654,49 @@ export function useAllergyCheck(patientId: string, drugName: string) {
       return res;
     },
     enabled: !!patientId && !!drugName,
+  });
+}
+
+// ── Drug Interaction Check ────────────────────────────────
+
+export type InteractionSeverity = 'contraindicated' | 'major' | 'moderate' | 'minor';
+
+export interface InteractionPair {
+  drugs: [string, string];
+  severity: InteractionSeverity;
+  description: string;
+}
+
+export interface DrugContraindicationEntry {
+  drugName: string;
+  matchedFormularyName?: string;
+  genericName?: string | null;
+  contraindications?: string | null;
+}
+
+export interface InteractionCheckResult {
+  pairs: InteractionPair[];
+  perDrug: DrugContraindicationEntry[];
+  highestSeverity: InteractionSeverity | null;
+}
+
+/**
+ * Given a list of drug names, returns pairwise interactions + per-drug
+ * contraindications text from the formulary. Cache keyed on the sorted
+ * drug list so switching patients reuses the cache.
+ */
+export function useDrugInteractions(drugs: string[]) {
+  const sortedKey = [...drugs].map((d) => d.trim().toLowerCase()).sort();
+  return useQuery({
+    queryKey: ['nurse', 'drug-interactions', sortedKey],
+    queryFn: async () => {
+      const res = await apiPost<InteractionCheckResult>('/prescriptions/check-interactions', {
+        drugs,
+      });
+      return res;
+    },
+    enabled: drugs.length > 0,
+    staleTime: 5 * 60 * 1000,
   });
 }
 
@@ -558,15 +766,84 @@ export function useAcknowledgeHandover() {
   });
 }
 
+export function useCompleteHandover() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, completionNote }: { id: string; completionNote?: string }) => {
+      const res = await apiPatch<ShiftHandover>(
+        `/communication/handovers/${id}/complete`,
+        completionNote ? { completionNote } : undefined,
+      );
+      return res;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: nurseKeys.handovers.all });
+    },
+  });
+}
+
+// ── Shift Summary (auto-compiled activity counts) ─────────
+
+export interface ShiftSummaryCounts {
+  patientsSeen: number;
+  vitalsRecorded: number;
+  medicationsAdministered: number;
+  nursingNotes: number;
+  woundCareRecords: number;
+  ivLinesInserted: number;
+  intakeOutputEntries: number;
+  handoversReceived: number;
+  handoversSubmitted: number;
+}
+
+export interface ShiftSummary {
+  shiftType: 'morning' | 'afternoon' | 'night';
+  shiftDate: string;
+  windowFrom: string;
+  windowTo: string;
+  userId: string;
+  counts: ShiftSummaryCounts;
+}
+
+export function useShiftSummary(params?: {
+  shiftDate?: string;
+  shiftType?: 'morning' | 'afternoon' | 'night';
+  userId?: string;
+  wardId?: string;
+}) {
+  return useQuery({
+    queryKey: ['nurse', 'shift-summary', params],
+    queryFn: async () => {
+      const res = await apiGet<ShiftSummary>('/communication/shift-summary', { params });
+      return res;
+    },
+  });
+}
+
 // ============================================================
 // Duty Roster
 // ============================================================
 
-export function useDutyRoster(params?: { date?: string; departmentId?: string; staffId?: string }) {
+export function useDutyRoster(params?: {
+  date?: string;
+  fromDate?: string;
+  toDate?: string;
+  departmentId?: string;
+  staffId?: string;
+  shiftType?: 'morning' | 'afternoon' | 'night' | 'general';
+}) {
+  // Backend supports fromDate/toDate ranges; convenience-map a single `date` to both.
+  const { date, fromDate, toDate, ...rest } = params ?? {};
+  const queryParams = {
+    ...rest,
+    fromDate: fromDate ?? date,
+    toDate: toDate ?? date,
+    limit: 100,
+  };
   return useQuery({
-    queryKey: nurseKeys.roster.list(params as Record<string, unknown>),
+    queryKey: nurseKeys.roster.list(queryParams as Record<string, unknown>),
     queryFn: async () => {
-      const res = await apiGet<DutyRoster[]>('/hr/duty-rosters', { params });
+      const res = await apiGet<DutyRoster[]>('/hr/rosters', { params: queryParams });
       return res;
     },
   });
@@ -590,11 +867,71 @@ export function useWardBeds(params?: { wardId?: string; status?: string }) {
 // Orders (Doctor → Nurse)
 // ============================================================
 
-export function usePendingOrders(params?: { wardId?: string; status?: string; page?: number; limit?: number }) {
+export interface NurseClinicalOrder {
+  id: string;
+  orderType: 'lab' | 'imaging';
+  orderNumber: string;
+  status: string;
+  priority: 'routine' | 'urgent' | 'stat';
+  description: string;
+  createdAt: string;
+  patientId: string;
+  patient: { id: string; firstName: string; lastName: string; mrn: string | null } | null;
+  doctor: { id: string; user: { firstName: string; lastName: string } | null } | null;
+  wardId: string | null;
+  ward: { id: string; name: string } | null;
+}
+
+/**
+ * Unified pending-orders feed for the nurse ward view. Aggregates
+ * lab + imaging orders under /clinical/orders.
+ */
+export function useClinicalOrders(params?: {
+  wardId?: string;
+  status?: 'pending' | 'completed' | 'cancelled' | 'all';
+  type?: 'lab' | 'imaging' | 'all';
+  limit?: number;
+}) {
   return useQuery({
     queryKey: nurseKeys.orders.list(params as Record<string, unknown>),
     queryFn: async () => {
-      const res = await apiGet<unknown[]>('/lab/orders', { params: { ...params, status: params?.status || 'pending' } });
+      const res = await apiGet<NurseClinicalOrder[]>('/clinical/orders', {
+        params: { ...params, status: params?.status ?? 'pending' },
+      });
+      return res;
+    },
+  });
+}
+
+export function useAcknowledgeClinicalOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { orderType: 'lab' | 'imaging'; orderId: string; note?: string }) => {
+      const res = await apiPost<{ noteId: string; orderType: string; orderId: string }>(
+        '/clinical/orders/acknowledge',
+        data,
+      );
+      return res;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: nurseKeys.orders.all });
+      qc.invalidateQueries({ queryKey: nurseKeys.nursingNotes.all });
+    },
+  });
+}
+
+/**
+ * Legacy wrapper kept for compatibility with the nurse dashboard which
+ * only cares about the count of pending orders. Delegates to the new
+ * unified endpoint.
+ */
+export function usePendingOrders(params?: { wardId?: string; status?: string }) {
+  return useQuery({
+    queryKey: nurseKeys.orders.list(params as Record<string, unknown>),
+    queryFn: async () => {
+      const res = await apiGet<NurseClinicalOrder[]>('/clinical/orders', {
+        params: { ...params, status: 'pending' },
+      });
       return res;
     },
   });
@@ -649,6 +986,211 @@ export function useRequestTransfer() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: nurseKeys.admissions.all });
       qc.invalidateQueries({ queryKey: nurseKeys.beds.all });
+    },
+  });
+}
+
+// ============================================================
+// Notifications (e.g., alert doctor on abnormal vitals)
+// ============================================================
+
+export function useCreateNotification() {
+  return useMutation({
+    mutationFn: async (data: {
+      userId: string;
+      title: string;
+      message: string;
+      notificationType:
+        | 'appointment'
+        | 'lab_result'
+        | 'prescription'
+        | 'billing'
+        | 'system'
+        | 'ticket'
+        | 'alert'
+        | 'general';
+      channel?: 'in_app' | 'sms' | 'email' | 'push';
+      referenceType?: string;
+      referenceId?: string;
+    }) => {
+      const res = await apiPost('/communication/notifications', data);
+      return res;
+    },
+  });
+}
+
+// ============================================================
+// Wound Care
+// ============================================================
+
+export function useWoundCareRecords(params?: {
+  patientId?: string;
+  admissionId?: string;
+  visitId?: string;
+  status?: WoundStatus;
+  page?: number;
+  limit?: number;
+}) {
+  return useQuery({
+    queryKey: nurseKeys.woundCare.list(params as Record<string, unknown>),
+    queryFn: async () => {
+      const res = await apiGet<WoundCareRecord[]>('/progress-notes/wound-care', { params });
+      return res;
+    },
+  });
+}
+
+export function useCreateWoundCare() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      patientId: string;
+      visitId?: string;
+      admissionId?: string;
+      woundLocation: string;
+      woundType?: WoundType;
+      woundStage?: WoundStage;
+      lengthCm?: number;
+      widthCm?: number;
+      depthCm?: number;
+      exudateType?: ExudateType;
+      exudateAmount?: ExudateAmount;
+      dressingApplied?: string;
+      treatmentNotes?: string;
+      photoUrl?: string;
+      assessedAt?: string;
+      nextAssessmentDue?: string;
+      status?: WoundStatus;
+    }) => {
+      const res = await apiPost<WoundCareRecord>('/progress-notes/wound-care', data);
+      return res;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: nurseKeys.woundCare.all });
+    },
+  });
+}
+
+// ============================================================
+// IV Line Records
+// ============================================================
+
+export function useIvLineRecords(params?: {
+  patientId?: string;
+  admissionId?: string;
+  visitId?: string;
+  status?: IVLineStatus;
+  page?: number;
+  limit?: number;
+}) {
+  return useQuery({
+    queryKey: nurseKeys.ivLines.list(params as Record<string, unknown>),
+    queryFn: async () => {
+      const res = await apiGet<IVLineRecord[]>('/progress-notes/iv-lines', { params });
+      return res;
+    },
+  });
+}
+
+export function useCreateIvLine() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      patientId: string;
+      visitId?: string;
+      admissionId?: string;
+      lineType: IVLineType;
+      catheterGauge?: string;
+      insertionSite: string;
+      insertedAt?: string;
+      dressingChangeFrequencyHours?: number;
+      lastDressingChangeAt?: string;
+      lastFlushedAt?: string;
+      fluidType?: string;
+      flowRateMlPerHr?: number;
+      complications?: string;
+      notes?: string;
+    }) => {
+      const res = await apiPost<IVLineRecord>('/progress-notes/iv-lines', data);
+      return res;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: nurseKeys.ivLines.all });
+    },
+  });
+}
+
+export function useRemoveIvLine() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      ...data
+    }: {
+      id: string;
+      removedAt?: string;
+      removalReason: IVRemovalReason;
+      status?: 'removed' | 'replaced';
+      notes?: string;
+    }) => {
+      const res = await apiPatch<IVLineRecord>(`/progress-notes/iv-lines/${id}/remove`, data);
+      return res;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: nurseKeys.ivLines.all });
+      qc.invalidateQueries({ queryKey: nurseKeys.intakeOutput.all });
+    },
+  });
+}
+
+// ============================================================
+// Intake / Output
+// ============================================================
+
+/**
+ * Intake/output list endpoint also returns a `summary` field alongside meta.
+ */
+export function useIntakeOutputRecords(params?: {
+  patientId?: string;
+  admissionId?: string;
+  visitId?: string;
+  entryType?: IOEntryType;
+  category?: IOCategory;
+  fromDate?: string;
+  toDate?: string;
+  page?: number;
+  limit?: number;
+}) {
+  return useQuery({
+    queryKey: nurseKeys.intakeOutput.list(params as Record<string, unknown>),
+    queryFn: async () => {
+      const res = await apiGet<IntakeOutputRecord[]>('/progress-notes/intake-output', { params });
+      // Backend attaches `summary` at the top level of the JSON envelope; axios preserves it via `res`.
+      return res as typeof res & { summary?: IntakeOutputSummary };
+    },
+  });
+}
+
+export function useCreateIntakeOutput() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      patientId: string;
+      visitId?: string;
+      admissionId?: string;
+      recordDatetime?: string;
+      entryType: IOEntryType;
+      category: IOCategory;
+      volumeMl: number;
+      fluidDescription?: string;
+      ivLineId?: string;
+      notes?: string;
+    }) => {
+      const res = await apiPost<IntakeOutputRecord>('/progress-notes/intake-output', data);
+      return res;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: nurseKeys.intakeOutput.all });
     },
   });
 }

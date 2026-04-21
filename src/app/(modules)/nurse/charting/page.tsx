@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { formatDateTime, formatDate, formatTime } from '@/lib/date-utils';
+import { formatDateTime } from '@/lib/date-utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -25,10 +25,15 @@ import {
   useRecordVitals,
   useNursingNotes,
   useCreateNursingNote,
+  useCreateNotification,
   type NurseAdmission,
   type Vital,
   type NursingNote,
 } from '@/hooks/use-nurse';
+import { VitalTrendChart } from '@/components/nurse/vital-trend-chart';
+import { WoundCarePanel } from '@/components/nurse/wound-care-panel';
+import { IvLinePanel } from '@/components/nurse/iv-line-panel';
+import { IntakeOutputPanel } from '@/components/nurse/intake-output-panel';
 import {
   Search,
   Activity,
@@ -204,6 +209,7 @@ export default function ClinicalChartingPage() {
   const recordVitals = useRecordVitals();
   const formsTrigger = useActionFormsTrigger();
   const createNote = useCreateNursingNote();
+  const createNotification = useCreateNotification();
 
   // ── Handlers ───────────────────────────────────────────────
 
@@ -253,6 +259,18 @@ export default function ClinicalChartingPage() {
       return;
     }
 
+    // Detect abnormal values in the current submission
+    const abnormalSummary: string[] = [];
+    if (isBpSystolicAbnormal(payload.bloodPressureSystolic) || isBpDiastolicAbnormal(payload.bloodPressureDiastolic)) {
+      abnormalSummary.push(
+        `BP ${payload.bloodPressureSystolic ?? '?'}/${payload.bloodPressureDiastolic ?? '?'} mmHg`,
+      );
+    }
+    if (isTempAbnormal(payload.temperature)) abnormalSummary.push(`Temp ${payload.temperature}°C`);
+    if (isPulseAbnormal(payload.pulseRate)) abnormalSummary.push(`Pulse ${payload.pulseRate} bpm`);
+    if (isSpO2Abnormal(payload.oxygenSaturation)) abnormalSummary.push(`SpO₂ ${payload.oxygenSaturation}%`);
+    if (isRRAbnormal(payload.respiratoryRate)) abnormalSummary.push(`RR ${payload.respiratoryRate}/min`);
+
     recordVitals.mutate(payload, {
       onSuccess: () => {
         toast.success('Vitals recorded successfully');
@@ -272,6 +290,45 @@ export default function ClinicalChartingPage() {
           patientId: selectedPatientId,
           admissionId: selectedAdmission?.id,
         });
+
+        // If any reading was abnormal, notify the assigned doctor (best-effort).
+        const doctorUserId = selectedAdmission?.doctor?.userId;
+        if (abnormalSummary.length > 0 && doctorUserId) {
+          const patientName = selectedAdmission?.patient
+            ? `${selectedAdmission.patient.firstName} ${selectedAdmission.patient.lastName}`
+            : 'Patient';
+          createNotification.mutate(
+            {
+              userId: doctorUserId,
+              title: `Abnormal vitals: ${patientName}`,
+              message: `Abnormal readings recorded — ${abnormalSummary.join(', ')}.${
+                selectedAdmission?.bed?.bedNumber
+                  ? ` Bed ${selectedAdmission.bed.bedNumber}.`
+                  : ''
+              }`,
+              notificationType: 'alert',
+              channel: 'in_app',
+              referenceType: 'admission',
+              referenceId: selectedAdmission?.id,
+            },
+            {
+              onSuccess: () => {
+                toast.warning(
+                  `Abnormal values detected — doctor notified (${abnormalSummary.join(', ')})`,
+                );
+              },
+              onError: () => {
+                toast.warning(
+                  `Abnormal values detected (${abnormalSummary.join(', ')}). Notification failed — please alert the doctor directly.`,
+                );
+              },
+            },
+          );
+        } else if (abnormalSummary.length > 0) {
+          toast.warning(
+            `Abnormal values detected (${abnormalSummary.join(', ')}). No assigned doctor on record.`,
+          );
+        }
       },
       onError: (err: unknown) => {
         toast.error(
@@ -312,74 +369,39 @@ export default function ClinicalChartingPage() {
     );
   }
 
-  // ── Trends data (group vitals by date, last 7 days) ───────
+  // ── Trend series (keep every reading in the 7-day window) ─
 
-  const trendsData = useMemo(() => {
-    if (!vitals.length) return [];
-    const now = new Date();
-    const sevenDaysAgo = new Date(now);
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-    // Group by date string
-    const byDate = new Map<string, Vital[]>();
-    for (const v of vitals) {
-      const d = new Date(v.createdAt);
-      if (d < sevenDaysAgo) continue;
-      const dateKey = formatDate(v.createdAt);
-      const existing = byDate.get(dateKey) ?? [];
-      existing.push(v);
-      byDate.set(dateKey, existing);
-    }
-
-    // Build columns — last 7 calendar days
-    const columns: {
-      date: string;
-      bp?: string;
-      bpAbnormal?: boolean;
-      temp?: number;
-      tempAbnormal?: boolean;
-      pulse?: number;
-      pulseAbnormal?: boolean;
-      spo2?: number;
-      spo2Abnormal?: boolean;
-      rr?: number;
-      rrAbnormal?: boolean;
-    }[] = [];
-
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      const dateKey = formatDate(d);
-      const dayVitals = byDate.get(dateKey);
-
-      if (dayVitals && dayVitals.length > 0) {
-        // Use latest reading of the day
-        const latest = dayVitals[0];
-        const sys = latest.bloodPressureSystolic;
-        const dia = latest.bloodPressureDiastolic;
-        columns.push({
-          date: dateKey,
-          bp:
-            sys != null && dia != null
-              ? `${sys}/${dia}`
-              : sys != null
-                ? `${sys}/-`
-                : undefined,
-          bpAbnormal: isBpSystolicAbnormal(sys) || isBpDiastolicAbnormal(dia),
-          temp: latest.temperature,
-          tempAbnormal: isTempAbnormal(latest.temperature),
-          pulse: latest.pulseRate,
-          pulseAbnormal: isPulseAbnormal(latest.pulseRate),
-          spo2: latest.oxygenSaturation,
-          spo2Abnormal: isSpO2Abnormal(latest.oxygenSaturation),
-          rr: latest.respiratoryRate,
-          rrAbnormal: isRRAbnormal(latest.respiratoryRate),
-        });
-      } else {
-        columns.push({ date: dateKey });
-      }
-    }
-    return columns;
+  const trendSeries = useMemo(() => {
+    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const within = vitals.filter(
+      (v) => new Date(v.createdAt).getTime() >= cutoff,
+    );
+    return {
+      bp: within
+        .filter(
+          (v) => v.bloodPressureSystolic != null || v.bloodPressureDiastolic != null,
+        )
+        .map((v) => ({
+          time: v.createdAt,
+          value: v.bloodPressureSystolic ?? 0,
+          value2: v.bloodPressureDiastolic ?? undefined,
+        })),
+      temp: within
+        .filter((v) => v.temperature != null)
+        .map((v) => ({ time: v.createdAt, value: v.temperature! })),
+      pulse: within
+        .filter((v) => v.pulseRate != null || v.heartRate != null)
+        .map((v) => ({
+          time: v.createdAt,
+          value: (v.pulseRate ?? v.heartRate)!,
+        })),
+      rr: within
+        .filter((v) => v.respiratoryRate != null)
+        .map((v) => ({ time: v.createdAt, value: v.respiratoryRate! })),
+      spo2: within
+        .filter((v) => v.oxygenSaturation != null)
+        .map((v) => ({ time: v.createdAt, value: v.oxygenSaturation! })),
+    };
   }, [vitals]);
 
   // ── Vital field config (for form) ─────────────────────────
@@ -737,7 +759,7 @@ export default function ClinicalChartingPage() {
             </div>
           </div>
 
-          {/* ── Vital Trends (7-day grid) ────────────────────── */}
+          {/* ── Vital Trends (line charts with normal-range bands) ─── */}
           <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4">
             <h2 className="text-sm font-semibold text-on-surface mb-4 flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-primary" />
@@ -748,195 +770,47 @@ export default function ClinicalChartingPage() {
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-5 w-5 animate-spin text-primary" />
               </div>
-            ) : trendsData.length === 0 ? (
+            ) : vitals.length === 0 ? (
               <p className="text-sm text-on-surface-variant text-center py-8">
-                No vitals recorded in the last 7 days
+                No vitals recorded yet
               </p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr>
-                      <th className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant text-left py-2 pr-4 w-28">
-                        Parameter
-                      </th>
-                      {trendsData.map((col) => (
-                        <th
-                          key={col.date}
-                          className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant text-center py-2 px-2 min-w-[72px]"
-                        >
-                          {col.date.slice(0, 5)}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-outline-variant/30">
-                    {/* BP Row */}
-                    <tr>
-                      <td className="py-2 pr-4 text-xs font-medium text-on-surface">
-                        <div className="flex items-center gap-1.5">
-                          <Activity className="h-3 w-3 text-on-surface-variant" />
-                          BP
-                        </div>
-                        <span className="text-[9px] text-on-surface-variant block">
-                          {NORMAL_RANGES.bloodPressureSystolic}
-                        </span>
-                      </td>
-                      {trendsData.map((col) => (
-                        <td key={col.date} className="text-center py-2 px-2">
-                          {col.bp ? (
-                            <span
-                              className={cn(
-                                'text-xs font-medium px-1.5 py-0.5 rounded',
-                                col.bpAbnormal
-                                  ? 'bg-red-100 text-red-700'
-                                  : 'bg-emerald-50 text-emerald-700',
-                              )}
-                            >
-                              {col.bp}
-                            </span>
-                          ) : (
-                            <span className="text-on-surface-variant/40">
-                              --
-                            </span>
-                          )}
-                        </td>
-                      ))}
-                    </tr>
-
-                    {/* Temp Row */}
-                    <tr>
-                      <td className="py-2 pr-4 text-xs font-medium text-on-surface">
-                        <div className="flex items-center gap-1.5">
-                          <Thermometer className="h-3 w-3 text-on-surface-variant" />
-                          Temp
-                        </div>
-                        <span className="text-[9px] text-on-surface-variant block">
-                          {NORMAL_RANGES.temperature}
-                        </span>
-                      </td>
-                      {trendsData.map((col) => (
-                        <td key={col.date} className="text-center py-2 px-2">
-                          {col.temp != null ? (
-                            <span
-                              className={cn(
-                                'text-xs font-medium px-1.5 py-0.5 rounded',
-                                col.tempAbnormal
-                                  ? 'bg-red-100 text-red-700'
-                                  : 'bg-emerald-50 text-emerald-700',
-                              )}
-                            >
-                              {col.temp}
-                            </span>
-                          ) : (
-                            <span className="text-on-surface-variant/40">
-                              --
-                            </span>
-                          )}
-                        </td>
-                      ))}
-                    </tr>
-
-                    {/* Pulse Row */}
-                    <tr>
-                      <td className="py-2 pr-4 text-xs font-medium text-on-surface">
-                        <div className="flex items-center gap-1.5">
-                          <Heart className="h-3 w-3 text-on-surface-variant" />
-                          Pulse
-                        </div>
-                        <span className="text-[9px] text-on-surface-variant block">
-                          {NORMAL_RANGES.pulseRate}
-                        </span>
-                      </td>
-                      {trendsData.map((col) => (
-                        <td key={col.date} className="text-center py-2 px-2">
-                          {col.pulse != null ? (
-                            <span
-                              className={cn(
-                                'text-xs font-medium px-1.5 py-0.5 rounded',
-                                col.pulseAbnormal
-                                  ? 'bg-red-100 text-red-700'
-                                  : 'bg-emerald-50 text-emerald-700',
-                              )}
-                            >
-                              {col.pulse}
-                            </span>
-                          ) : (
-                            <span className="text-on-surface-variant/40">
-                              --
-                            </span>
-                          )}
-                        </td>
-                      ))}
-                    </tr>
-
-                    {/* SpO2 Row */}
-                    <tr>
-                      <td className="py-2 pr-4 text-xs font-medium text-on-surface">
-                        <div className="flex items-center gap-1.5">
-                          <Droplets className="h-3 w-3 text-on-surface-variant" />
-                          SpO2
-                        </div>
-                        <span className="text-[9px] text-on-surface-variant block">
-                          {NORMAL_RANGES.oxygenSaturation}
-                        </span>
-                      </td>
-                      {trendsData.map((col) => (
-                        <td key={col.date} className="text-center py-2 px-2">
-                          {col.spo2 != null ? (
-                            <span
-                              className={cn(
-                                'text-xs font-medium px-1.5 py-0.5 rounded',
-                                col.spo2Abnormal
-                                  ? 'bg-red-100 text-red-700'
-                                  : 'bg-emerald-50 text-emerald-700',
-                              )}
-                            >
-                              {col.spo2}
-                            </span>
-                          ) : (
-                            <span className="text-on-surface-variant/40">
-                              --
-                            </span>
-                          )}
-                        </td>
-                      ))}
-                    </tr>
-
-                    {/* RR Row */}
-                    <tr>
-                      <td className="py-2 pr-4 text-xs font-medium text-on-surface">
-                        <div className="flex items-center gap-1.5">
-                          <Wind className="h-3 w-3 text-on-surface-variant" />
-                          RR
-                        </div>
-                        <span className="text-[9px] text-on-surface-variant block">
-                          {NORMAL_RANGES.respiratoryRate}
-                        </span>
-                      </td>
-                      {trendsData.map((col) => (
-                        <td key={col.date} className="text-center py-2 px-2">
-                          {col.rr != null ? (
-                            <span
-                              className={cn(
-                                'text-xs font-medium px-1.5 py-0.5 rounded',
-                                col.rrAbnormal
-                                  ? 'bg-red-100 text-red-700'
-                                  : 'bg-emerald-50 text-emerald-700',
-                              )}
-                            >
-                              {col.rr}
-                            </span>
-                          ) : (
-                            <span className="text-on-surface-variant/40">
-                              --
-                            </span>
-                          )}
-                        </td>
-                      ))}
-                    </tr>
-                  </tbody>
-                </table>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                <VitalTrendChart
+                  title="Blood Pressure"
+                  unit="mmHg"
+                  points={trendSeries.bp}
+                  normalRange={[90, 140]}
+                  normalRange2={[60, 90]}
+                  seriesLabel="Systolic"
+                  seriesLabel2="Diastolic"
+                />
+                <VitalTrendChart
+                  title="Temperature"
+                  unit="°C"
+                  points={trendSeries.temp}
+                  normalRange={[36.1, 38.5]}
+                />
+                <VitalTrendChart
+                  title="Pulse Rate"
+                  unit="bpm"
+                  points={trendSeries.pulse}
+                  normalRange={[60, 100]}
+                />
+                <VitalTrendChart
+                  title="SpO₂"
+                  unit="%"
+                  points={trendSeries.spo2}
+                  normalRange={[95, 100]}
+                  yMin={85}
+                  yMax={100}
+                />
+                <VitalTrendChart
+                  title="Respiratory Rate"
+                  unit="/min"
+                  points={trendSeries.rr}
+                  normalRange={[12, 20]}
+                />
               </div>
             )}
           </div>
@@ -1142,104 +1016,104 @@ export default function ClinicalChartingPage() {
               })}
             </div>
 
-            {/* Add note form */}
-            <div className="mb-4 rounded-lg border border-outline-variant/30 p-3">
-              <label className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant mb-1 block">
-                New{' '}
-                {NOTE_TABS.find((t) => t.key === activeNoteTab)?.label ?? ''}{' '}
-                Note
-              </label>
-
-              {activeNoteTab === 'intake_output' && (
-                <p className="text-[10px] text-on-surface-variant mb-2">
-                  Document intake (oral, IV fluids) and output (urine, drain,
-                  emesis) volumes with timestamps.
-                </p>
-              )}
-              {activeNoteTab === 'wound_care' && (
-                <p className="text-[10px] text-on-surface-variant mb-2">
-                  Document wound location, size, appearance, drainage,
-                  dressing changes, and healing progress.
-                </p>
-              )}
-              {activeNoteTab === 'iv_line' && (
-                <p className="text-[10px] text-on-surface-variant mb-2">
-                  Document IV site, gauge, insertion date, patency, dressing
-                  condition, and any complications.
-                </p>
-              )}
-              {activeNoteTab === 'observation' && (
-                <p className="text-[10px] text-on-surface-variant mb-2">
-                  General nursing observations, patient condition, pain
-                  assessment, mobility status, etc.
-                </p>
-              )}
-
-              <Textarea
-                value={noteContent}
-                onChange={(e) => setNoteContent(e.target.value)}
-                placeholder={`Enter ${NOTE_TABS.find((t) => t.key === activeNoteTab)?.label?.toLowerCase() ?? ''} note...`}
-                rows={3}
-              />
-              <div className="mt-2 flex justify-end">
-                <Button
-                  size="sm"
-                  onClick={handleSubmitNote}
-                  disabled={createNote.isPending || !noteContent.trim()}
-                  className="gap-1.5"
-                >
-                  {createNote.isPending ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Plus className="h-3.5 w-3.5" />
-                  )}
-                  Add Note
-                </Button>
-              </div>
-            </div>
-
-            {/* Notes list */}
-            {notesLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              </div>
-            ) : notes.length === 0 ? (
-              <p className="text-sm text-on-surface-variant text-center py-8">
-                No{' '}
-                {NOTE_TABS.find((t) => t.key === activeNoteTab)?.label?.toLowerCase() ??
-                  ''}{' '}
-                notes recorded
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {notes.map((note) => (
-                  <div
-                    key={note.id}
-                    className="rounded-lg border border-outline-variant/20 p-3 hover:bg-surface-container-low/30 transition-colors"
-                  >
-                    <div className="flex items-start justify-between gap-2 mb-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary capitalize">
-                          {note.noteType?.replace('_', ' ') ?? 'note'}
-                        </span>
-                        {note.createdBy && (
-                          <span className="text-[10px] text-on-surface-variant">
-                            by {note.createdBy.firstName}{' '}
-                            {note.createdBy.lastName}
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-[10px] text-on-surface-variant whitespace-nowrap flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        {formatDateTime(note.createdAt)}
-                      </span>
-                    </div>
-                    <p className="text-sm text-on-surface whitespace-pre-wrap">
-                      {note.content}
-                    </p>
+            {/* Observations: free-text nursing notes */}
+            {activeNoteTab === 'observation' && (
+              <>
+                <div className="mb-4 rounded-lg border border-outline-variant/30 p-3">
+                  <label className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant mb-1 block">
+                    New Observation Note
+                  </label>
+                  <p className="text-[10px] text-on-surface-variant mb-2">
+                    General nursing observations, patient condition, pain
+                    assessment, mobility status, etc.
+                  </p>
+                  <Textarea
+                    value={noteContent}
+                    onChange={(e) => setNoteContent(e.target.value)}
+                    placeholder="Enter observation note..."
+                    rows={3}
+                  />
+                  <div className="mt-2 flex justify-end">
+                    <Button
+                      size="sm"
+                      onClick={handleSubmitNote}
+                      disabled={createNote.isPending || !noteContent.trim()}
+                      className="gap-1.5"
+                    >
+                      {createNote.isPending ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Plus className="h-3.5 w-3.5" />
+                      )}
+                      Add Note
+                    </Button>
                   </div>
-                ))}
-              </div>
+                </div>
+
+                {notesLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  </div>
+                ) : notes.length === 0 ? (
+                  <p className="text-sm text-on-surface-variant text-center py-8">
+                    No observation notes recorded
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {notes.map((note) => (
+                      <div
+                        key={note.id}
+                        className="rounded-lg border border-outline-variant/20 p-3 hover:bg-surface-container-low/30 transition-colors"
+                      >
+                        <div className="flex items-start justify-between gap-2 mb-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary capitalize">
+                              {note.noteType?.replace('_', ' ') ?? 'note'}
+                            </span>
+                            {note.createdBy && (
+                              <span className="text-[10px] text-on-surface-variant">
+                                by {note.createdBy.firstName}{' '}
+                                {note.createdBy.lastName}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-on-surface-variant whitespace-nowrap flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {formatDateTime(note.createdAt)}
+                          </span>
+                        </div>
+                        <p className="text-sm text-on-surface whitespace-pre-wrap">
+                          {note.content}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Wound Care: structured form + records list */}
+            {activeNoteTab === 'wound_care' && (
+              <WoundCarePanel
+                patientId={selectedPatientId}
+                admissionId={selectedAdmission?.id}
+              />
+            )}
+
+            {/* IV Line: structured form + active lines */}
+            {activeNoteTab === 'iv_line' && (
+              <IvLinePanel
+                patientId={selectedPatientId}
+                admissionId={selectedAdmission?.id}
+              />
+            )}
+
+            {/* Intake / Output: dual-entry + 24h summary */}
+            {activeNoteTab === 'intake_output' && (
+              <IntakeOutputPanel
+                patientId={selectedPatientId}
+                admissionId={selectedAdmission?.id}
+              />
             )}
           </div>
         </>
