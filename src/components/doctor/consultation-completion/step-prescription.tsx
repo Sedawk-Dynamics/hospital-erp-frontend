@@ -112,13 +112,12 @@ export function StepPrescription({ form, patientId }: StepPrescriptionProps) {
       {fields.length > 0 && (
         <div className="rounded-xl border bg-card overflow-hidden">
           {/* Table header */}
-          <div className="grid grid-cols-[minmax(180px,2fr)_100px_100px_110px_100px_100px_1fr_36px] gap-0 border-b bg-muted/50 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+          <div className="grid grid-cols-[minmax(180px,2fr)_100px_100px_110px_100px_1fr_36px] gap-0 border-b bg-muted/50 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
             <div className="px-3 py-2.5">Medicine</div>
             <div className="px-2 py-2.5">Dose</div>
             <div className="px-2 py-2.5">Frequency</div>
             <div className="px-2 py-2.5">Timing</div>
             <div className="px-2 py-2.5">Duration</div>
-            <div className="px-2 py-2.5">Start From</div>
             <div className="px-2 py-2.5">Instructions</div>
             <div className="px-1 py-2.5" />
           </div>
@@ -259,7 +258,7 @@ function MedicineRow({
         </div>
       )}
 
-      <div className="grid grid-cols-[minmax(180px,2fr)_100px_100px_110px_100px_100px_1fr_36px] gap-0 border-b last:border-b-0 hover:bg-accent/30 transition-colors">
+      <div className="grid grid-cols-[minmax(180px,2fr)_100px_100px_110px_100px_1fr_36px] gap-0 border-b last:border-b-0 hover:bg-accent/30 transition-colors">
         {/* Medicine name + generic */}
         <div className="px-3 py-2.5 flex items-start gap-2 min-w-0">
           <GripVertical className="h-4 w-4 text-muted-foreground/30 shrink-0 mt-0.5 cursor-grab" />
@@ -343,16 +342,6 @@ function MedicineRow({
               ))}
             </select>
           </div>
-        </div>
-
-        {/* Start From */}
-        <div className="px-1.5 py-2">
-          <Input
-            placeholder="eg: 3 day"
-            className="h-8 text-xs border-dashed"
-            value={med.startFrom || ''}
-            onChange={(e) => onUpdate(index, 'startFrom', e.target.value)}
-          />
         </div>
 
         {/* Instructions */}

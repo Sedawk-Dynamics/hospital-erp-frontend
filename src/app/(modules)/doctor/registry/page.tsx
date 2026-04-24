@@ -427,11 +427,7 @@ function PatientProfileDialog({
                               {formatDateTime(n.createdAt)}
                             </span>
                           </div>
-                          {n.content && <p className="text-xs text-foreground">{n.content}</p>}
-                          {n.subjective && <p className="text-xs text-foreground">S: {n.subjective}</p>}
-                          {n.objective && <p className="text-xs text-foreground">O: {n.objective}</p>}
-                          {n.assessment && <p className="text-xs text-foreground">A: {n.assessment}</p>}
-                          {n.plan && <p className="text-xs text-foreground">P: {n.plan}</p>}
+                          {n.content && <p className="text-xs text-foreground whitespace-pre-line">{n.content}</p>}
                         </div>
                       ))}
                     </div>

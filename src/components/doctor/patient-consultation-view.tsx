@@ -282,7 +282,7 @@ function VisitHistoryTab({ patientId }: { patientId: string }) {
               </td>
               <td className="py-2 pr-3">{getDoctorName(note.doctor)}</td>
               <td className="py-2 pr-3 max-w-[200px] truncate">
-                {note.subjective || note.content || '—'}
+                {note.content || '—'}
               </td>
               <td className="py-2">
                 <Badge variant={note.status === 'finalized' ? 'default' : 'secondary'} className="text-xs">

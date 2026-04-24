@@ -6,6 +6,46 @@ import type { Patient, Appointment, DoctorProfile } from '@/types';
 // Types
 // ============================================================
 
+// Structured SOAP payload shape — matches the `subjective/objective/
+// assessment/plan` JSON columns written by the backend. Each section
+// carries an array of typed entries the form understands.
+export interface SoapSectionPayload {
+  entries?: Array<{
+    source?: 'catalog' | 'free_text';
+    catalogId?: string;
+    value: string;
+    /** System/category — only populated for physical observations */
+    system?: string;
+  }>;
+  free?: string;
+}
+
+export interface ProgressNoteAmendmentEntry {
+  id: string;
+  noteId: string;
+  editorId: string;
+  editor?: { id: string; firstName: string; lastName?: string };
+  fieldName: string;
+  previousValue: string | null;
+  newValue: string | null;
+  reason: string | null;
+  createdAt: string;
+}
+
+export interface ProgressNotePinEntry {
+  id: string;
+  dischargeSection:
+    | 'diagnosis'
+    | 'hospital_course'
+    | 'procedure'
+    | 'medication'
+    | 'follow_up'
+    | 'advice'
+    | 'general';
+  content: string;
+  createdAt: string;
+}
+
 export interface ProgressNote {
   id: string;
   patientId: string;
@@ -19,17 +59,51 @@ export interface ProgressNote {
   admissionId?: string;
   noteType?: string;
   content?: string;
-  // Frontend convenience fields (parsed from content)
-  subjective?: string;
-  objective?: string;
-  assessment?: string;
-  plan?: string;
+  impressions?: string | null;
+  discussions?: string | null;
+  conclusions?: string | null;
+  // Structured SOAP JSON (backend columns)
+  subjective?: SoapSectionPayload | null;
+  objective?: SoapSectionPayload | null;
+  assessment?: SoapSectionPayload | null;
+  plan?: SoapSectionPayload | null;
   // Backend fields
   pinToDischargeSummary?: boolean;
-  status?: 'active' | 'finalized';
+  status?: 'active' | 'finalized' | 'archived';
   isAutoFilled?: boolean;
+  // Signature / lock
+  signedAt?: string | null;
+  signedById?: string | null;
+  signer?: { id: string; firstName: string; lastName?: string } | null;
+  lockedAt?: string | null;
+  // Relations
+  pins?: ProgressNotePinEntry[];
+  amendments?: ProgressNoteAmendmentEntry[];
+  _count?: { amendments?: number };
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PhysicalObservationCatalogEntry {
+  id: string;
+  tenantId: string | null;
+  system:
+    | 'general'
+    | 'cardiovascular'
+    | 'respiratory'
+    | 'gastrointestinal'
+    | 'neurological'
+    | 'musculoskeletal'
+    | 'skin'
+    | 'ent'
+    | 'eye'
+    | 'genitourinary'
+    | 'psychiatric'
+    | 'other';
+  name: string;
+  description?: string | null;
+  isGlobal: boolean;
+  isActive: boolean;
 }
 
 export interface Prescription {
@@ -441,23 +515,45 @@ export function useProgressNotes(params?: ProgressNotesParams) {
   });
 }
 
+export interface CreateProgressNoteInput {
+  patientId: string;
+  visitId: string;
+  admissionId?: string | null;
+  noteType?: string;
+  content: string;
+  impressions?: string | null;
+  discussions?: string | null;
+  conclusions?: string | null;
+  subjective?: SoapSectionPayload | null;
+  objective?: SoapSectionPayload | null;
+  assessment?: SoapSectionPayload | null;
+  plan?: SoapSectionPayload | null;
+  pinToDischargeSummary?: boolean;
+  pins?: Array<{ dischargeSection: ProgressNotePinEntry['dischargeSection']; content: string }>;
+}
+
+export interface UpdateProgressNoteInput extends Partial<CreateProgressNoteInput> {
+  amendmentReason?: string;
+}
+
 export function useCreateProgressNote() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: {
-      patientId: string;
-      visitId: string;
-      noteType?: string;
-      content: string;
-      pinToDischargeSummary?: boolean;
-    }) => {
-      const response = await apiPost<ProgressNote>('/progress-notes', {
-        patientId: data.patientId,
-        visitId: data.visitId,
-        noteType: data.noteType,
-        content: data.content,
-        pinToDischargeSummary: data.pinToDischargeSummary ?? false,
-      });
+    mutationFn: async (data: CreateProgressNoteInput) => {
+      const response = await apiPost<ProgressNote>('/progress-notes', data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: doctorKeys.progressNotes.all });
+    },
+  });
+}
+
+export function useUpdateProgressNote() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: UpdateProgressNoteInput }) => {
+      const response = await apiPut<ProgressNote>(`/progress-notes/${id}`, data);
       return response.data;
     },
     onSuccess: () => {
@@ -476,6 +572,63 @@ export function useSignProgressNote() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: doctorKeys.progressNotes.all });
     },
+  });
+}
+
+export function useProgressNoteAmendments(noteId: string | null | undefined) {
+  return useQuery({
+    queryKey: ['doctor', 'progress-notes', 'amendments', noteId],
+    queryFn: async () => {
+      const response = await apiGet<ProgressNoteAmendmentEntry[]>(
+        `/progress-notes/${noteId}/amendments`,
+      );
+      return response.data ?? [];
+    },
+    enabled: !!noteId,
+  });
+}
+
+export interface SmartSuggestionsInput {
+  chiefComplaints?: string;
+  presentIllness?: string;
+  vitalsSummary?: string;
+  physicalObservations?: Array<{ value: string; system?: string }>;
+  investigations?: string;
+  diagnosis?: string;
+  certainty?: 'provisional' | 'confirmed';
+  medications?: string;
+  advice?: string;
+  patientAge?: number | null;
+  patientSex?: string | null;
+  knownAllergies?: string[];
+}
+
+export function useSmartSuggestions() {
+  return useMutation({
+    mutationFn: async (input: SmartSuggestionsInput) => {
+      const response = await apiPost<{ suggestions: string[]; model: string }>(
+        '/progress-notes/ai/suggest',
+        input,
+      );
+      return response.data;
+    },
+  });
+}
+
+export function usePhysicalObservationCatalog(params?: {
+  system?: PhysicalObservationCatalogEntry['system'];
+  search?: string;
+}) {
+  return useQuery({
+    queryKey: ['doctor', 'physical-observation-catalog', params],
+    queryFn: async () => {
+      const response = await apiGet<PhysicalObservationCatalogEntry[]>(
+        '/progress-notes/physical-observations',
+        { params },
+      );
+      return response.data ?? [];
+    },
+    staleTime: 5 * 60 * 1000,
   });
 }
 

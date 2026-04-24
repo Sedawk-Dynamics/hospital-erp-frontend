@@ -113,7 +113,6 @@ const medicineSchema = z.object({
   timing: z.string().optional(),            // e.g. "After Meal", "Before Meal"
   durationValue: z.string().optional(),
   durationUnit: z.enum(['days', 'weeks', 'months']).default('days'),
-  startFrom: z.string().optional(),         // e.g. "3 day" — days to start from
   route: z.string().default('oral'),
   instructions: z.string().optional(),
   quantity: z.coerce.number().optional(),
@@ -127,6 +126,30 @@ const medicineSchema = z.object({
   }).optional(),
   mealRelation: z.enum(['Before Food', 'After Food', 'With Food']).optional(),
   isPrn: z.boolean().default(false),
+});
+
+// ── Progress Note SOAP extras ─────────────────────────────
+// Physical observation finding — either a catalog pick (bound by
+// catalogId) or a free-text entry. Matches the PhysicalObservationsPicker
+// shape used across the consultation page and any standalone views.
+const physicalObservationEntrySchema = z.object({
+  source: z.enum(['catalog', 'free_text']),
+  catalogId: z.string().optional(),
+  value: z.string().min(1),
+  system: z.string().optional(),
+});
+
+const dischargePinSchema = z.object({
+  dischargeSection: z.enum([
+    'diagnosis',
+    'hospital_course',
+    'procedure',
+    'medication',
+    'follow_up',
+    'advice',
+    'general',
+  ]),
+  content: z.string().min(1),
 });
 
 export const consultationCompletionSchema = z.object({
@@ -147,6 +170,12 @@ export const consultationCompletionSchema = z.object({
   followUpDurationUnit: z.string().optional(),
   followUpNotes: z.string().optional(),
   referralNotes: z.string().optional(),
+
+  // Progress Note SOAP extras (persisted into the ProgressNote's SOAP
+  // JSON columns + pins table by use-consultation-completion.ts)
+  physicalObservations: z.array(physicalObservationEntrySchema).default([]),
+  impression: z.string().optional(),
+  pins: z.array(dischargePinSchema).default([]),
 });
 
 export type ConsultationFormData = z.infer<typeof consultationCompletionSchema>;
@@ -260,7 +289,6 @@ export const defaultMedicine: MedicineFormData = {
   timing: '',
   durationValue: '',
   durationUnit: 'days',
-  startFrom: '',
   route: 'oral',
   instructions: '',
   quantity: undefined,
@@ -293,4 +321,7 @@ export const defaultFormValues: ConsultationFormData = {
   followUpDurationUnit: 'days',
   followUpNotes: '',
   referralNotes: '',
+  physicalObservations: [],
+  impression: '',
+  pins: [],
 };

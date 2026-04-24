@@ -12,9 +12,10 @@ import {
   GripVertical, FlaskConical, ClipboardList, StickyNote,
   UserCheck, CalendarDays, MessageSquare, Eye,
   Printer, CheckCircle2, RotateCcw, ChevronDown,
-  Clock,
+  Clock, Eye as ObservationIcon, Sparkles, Pin,
 } from 'lucide-react';
 import { useFormularySearch, useAllergyCheck, usePatientVitals, usePatientDiagnoses, usePrescriptions, useProgressNotes, type FormularyDrug } from '@/hooks/use-doctor';
+import { useLatestVitals } from '@/hooks/use-nurse';
 import { useDebounce } from '@/hooks/use-debounce';
 import { cn } from '@/lib/utils';
 import {
@@ -31,6 +32,38 @@ import {
   type MedicineFormData,
 } from '../consultation-completion/consultation-completion-schema';
 import { useConsultationCompletion } from '../consultation-completion/use-consultation-completion';
+import { VoiceInputButton } from '../voice-input-button';
+import { PhysicalObservationsPicker } from '../physical-observations-picker';
+import { DischargePinEditor } from '../discharge-pin-editor';
+import { SmartSuggestionsCard } from '../smart-suggestions-card';
+
+/** Format a Vital record into a single-line summary for carry-forward. */
+function formatVitalForCarryForward(v: any): {
+  bloodPressureSystolic?: number;
+  bloodPressureDiastolic?: number;
+  pulseRate?: number;
+  temperature?: number;
+  respiratoryRate?: number;
+  oxygenSaturation?: number;
+  weightKg?: number;
+  heightCm?: number;
+  bloodSugar?: number;
+} {
+  if (!v) return {};
+  const pick = (x: unknown) =>
+    typeof x === 'number' ? x : typeof x === 'string' && x !== '' ? Number(x) : undefined;
+  return {
+    bloodPressureSystolic: pick(v.bloodPressureSystolic),
+    bloodPressureDiastolic: pick(v.bloodPressureDiastolic),
+    pulseRate: pick(v.pulseRate ?? v.heartRate),
+    temperature: pick(v.temperature),
+    respiratoryRate: pick(v.respiratoryRate),
+    oxygenSaturation: pick(v.oxygenSaturation),
+    weightKg: pick(v.weightKg ?? v.weight),
+    heightCm: pick(v.heightCm ?? v.height),
+    bloodSugar: pick(v.bloodSugar),
+  };
+}
 
 /** Build the localStorage key where the consultation draft is stored. */
 export function getConsultationDraftKey(appointmentId: string, visitId?: string): string {
@@ -92,9 +125,23 @@ export function PrescriptionPad({
     [appointmentId, editMode?.visitId],
   );
 
-  // Lazy read draft from localStorage (runs once on mount)
+  // Lazy read draft from localStorage (runs once on mount). In edit mode
+  // we DISCARD the draft so the server prefill is authoritative — the
+  // doctor's saved values always win over any stale WIP that might have
+  // accumulated from a previous session. For fresh consultations the
+  // draft protects against unmount / back-navigation data loss.
   const draft = useMemo<Partial<ConsultationFormData> | null>(() => {
     if (typeof window === 'undefined') return null;
+    if (editMode?.visitId) {
+      // Editing a saved visit — nuke any leftover draft for this key
+      // before it has a chance to override initialValues.
+      try {
+        window.localStorage.removeItem(draftKey);
+      } catch {
+        /* ignore */
+      }
+      return null;
+    }
     try {
       const raw = window.localStorage.getItem(draftKey);
       return raw ? (JSON.parse(raw) as Partial<ConsultationFormData>) : null;
@@ -102,10 +149,13 @@ export function PrescriptionPad({
       return null;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftKey]);
+  }, [draftKey, editMode?.visitId]);
 
-  // Precedence: saved draft (in-progress work) > server initialValues > defaults
-  const seed = draft ?? initialValues;
+  // In edit mode the prefill is the source of truth. For fresh notes the
+  // draft protects WIP across unmounts. We also merge seed onto defaults
+  // *field-by-field* so that a seed with missing keys (e.g. older API
+  // responses) doesn't overwrite sensible defaults with undefined.
+  const seed = editMode?.visitId ? initialValues : (draft ?? initialValues);
 
   const form = useForm<ConsultationFormData>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -118,6 +168,16 @@ export function PrescriptionPad({
         seed?.diagnoses && seed.diagnoses.length > 0
           ? seed.diagnoses
           : defaultFormValues.diagnoses,
+      medicines:
+        seed?.medicines && seed.medicines.length > 0
+          ? seed.medicines.map((m: any) => ({ ...defaultMedicine, ...m }))
+          : defaultFormValues.medicines,
+      physicalObservations:
+        seed?.physicalObservations && seed.physicalObservations.length > 0
+          ? seed.physicalObservations
+          : defaultFormValues.physicalObservations,
+      pins:
+        seed?.pins && seed.pins.length > 0 ? seed.pins : defaultFormValues.pins,
     },
   });
 
@@ -159,6 +219,41 @@ export function PrescriptionPad({
   const { data: pastDiagnoses } = usePatientDiagnoses(patientId);
   const { data: pastPrescriptions } = usePrescriptions({ patientId, limit: 5 });
   const { data: pastNotes } = useProgressNotes({ patientId, limit: 5 });
+  // Latest recorded vitals → used for the "Carry forward" action.
+  const { data: latestVitalsResp } = useLatestVitals(patientId);
+  const latestVital = (latestVitalsResp as any)?.data ?? null;
+
+  // Watched SOAP extras — reading the field array this way keeps the
+  // render in sync without subscribing the whole form to every keystroke.
+  const physicalObservations = watch('physicalObservations') ?? [];
+  const impression = watch('impression') ?? '';
+  const pins = watch('pins') ?? [];
+
+  const carryForwardLastVitals = useCallback(() => {
+    const mapped = formatVitalForCarryForward(latestVital);
+    if (Object.values(mapped).every((v) => v === undefined)) return false;
+    Object.entries(mapped).forEach(([k, v]) => {
+      if (v !== undefined) setValue(`vitals.${k}` as any, v, { shouldDirty: true });
+    });
+    return true;
+  }, [latestVital, setValue]);
+
+  // SOAP-letter badge shown next to each section title. Keeps the
+  // doctor oriented inside a flat vertical scroll without forcing a
+  // tabbed UI. `s/o/a/p` map to the SOAP category each field belongs to.
+  const SoapBadge = ({ letter }: { letter: 'S' | 'O' | 'A' | 'P' }) => (
+    <span
+      className={cn(
+        'inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold',
+        'bg-primary/10 text-primary',
+      )}
+      title={
+        { S: 'Subjective', O: 'Objective', A: 'Assessment', P: 'Plan' }[letter]
+      }
+    >
+      {letter}
+    </span>
+  );
 
   // ── Handle Submit ──
   const handleFinish = useCallback(async () => {
@@ -213,155 +308,340 @@ export function PrescriptionPad({
         </div>
       )}
 
-      {/* Sections */}
+      {/* ── Sections (SOAP flow top → bottom) ── */}
       <div className="space-y-4 pb-4">
-          {/* ═══════ 1. VITALS ═══════ */}
-          <PadSection
-            icon={<Activity className="h-4 w-4" />}
-            title="Vitals"
-            collapsed={collapsed.vitals}
-            onToggle={() => toggleSection('vitals')}
-            color="text-primary"
-          >
-            <div className="grid grid-cols-3 gap-x-6 gap-y-3">
-              <VitalInput icon={<Heart className="h-3.5 w-3.5 text-error" />} label="Systolic BP" unit="mmHg" {...register('vitals.bloodPressureSystolic')} error={(errors.vitals as any)?.bloodPressureSystolic?.message} />
-              <VitalInput icon={<Heart className="h-3.5 w-3.5 text-error" />} label="Diastolic BP" unit="mmHg" {...register('vitals.bloodPressureDiastolic')} error={(errors.vitals as any)?.bloodPressureDiastolic?.message} />
-              <VitalInput icon={<Thermometer className="h-3.5 w-3.5 text-secondary" />} label="Temperature" unit="°C" {...register('vitals.temperature')} error={(errors.vitals as any)?.temperature?.message} />
-              <VitalInput icon={<Droplets className="h-3.5 w-3.5 text-primary-container" />} label="SpO2" unit="%" {...register('vitals.oxygenSaturation')} error={(errors.vitals as any)?.oxygenSaturation?.message} />
-              <VitalInput icon={<Activity className="h-3.5 w-3.5 text-tertiary" />} label="Pulse" unit="/min" {...register('vitals.pulseRate')} error={(errors.vitals as any)?.pulseRate?.message} />
-              <VitalInput icon={<Wind className="h-3.5 w-3.5 text-primary-container" />} label="Respiratory Rate" unit="/min" {...register('vitals.respiratoryRate')} error={(errors.vitals as any)?.respiratoryRate?.message} />
-              <VitalInput icon={<Ruler className="h-3.5 w-3.5 text-tertiary" />} label="Height" unit="cm" {...register('vitals.heightCm')} error={(errors.vitals as any)?.heightCm?.message} />
-              <VitalInput icon={<Weight className="h-3.5 w-3.5 text-secondary" />} label="Weight" unit="kg" {...register('vitals.weightKg')} error={(errors.vitals as any)?.weightKg?.message} />
-              <BMIField heightCm={watch('vitals.heightCm')} weightKg={watch('vitals.weightKg')} />
-              <VitalInput icon={<Droplets className="h-3.5 w-3.5 text-error" />} label="Blood Sugar" unit="mg/dL" {...register('vitals.bloodSugar')} error={(errors.vitals as any)?.bloodSugar?.message} />
-            </div>
-          </PadSection>
-
-          {/* ═══════ 2. SYMPTOMS / CHIEF COMPLAINTS ═══════ */}
-          <PadSection
-            icon={<Stethoscope className="h-4 w-4" />}
-            title="Symptoms"
-            badge="Chief Complaints"
-            collapsed={collapsed.symptoms}
-            onToggle={() => toggleSection('symptoms')}
-            color="text-primary-container"
-          >
-            <textarea
-              {...register('chiefComplaint')}
-              placeholder="Start typing Symptoms / Chief Complaints..."
-              rows={2}
-              className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-none"
-            />
-            {errors.chiefComplaint && (
-              <p className="text-xs text-error mt-1">{errors.chiefComplaint.message}</p>
-            )}
-          </PadSection>
-
-          {/* ═══════ 3. DIAGNOSIS ═══════ */}
-          <DiagnosisSection form={form} />
-
-          {/* ═══════ 4. MEDICATIONS ═══════ */}
-          <MedicationsSection form={form} patientId={patientId} />
-
-          {/* ═══════ 5. LAB INVESTIGATIONS ═══════ */}
-          <PadSection
-            icon={<FlaskConical className="h-4 w-4" />}
-            title="Lab Investigations"
-            collapsed={collapsed.lab}
-            onToggle={() => toggleSection('lab')}
-            color="text-tertiary"
-          >
-            <Input
-              placeholder="Start typing Lab test / Radiology..."
-              className="h-10 text-sm"
-            />
-            <p className="text-xs text-muted-foreground mt-2">
-              Lab orders can also be created from the consultation view after finishing the prescription.
-            </p>
-          </PadSection>
-
-          {/* ═══════ 6. EXAMINATION FINDINGS ═══════ */}
-          <PadSection
-            icon={<Search className="h-4 w-4" />}
-            title="Examination Findings"
-            badge="O/E"
-            collapsed={collapsed.exam}
-            onToggle={() => toggleSection('exam')}
-            color="text-primary"
-          >
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">General Examination</label>
-                <textarea
-                  {...register('generalExamination')}
-                  placeholder="General appearance, consciousness, pallor, icterus..."
-                  rows={3}
-                  className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-none"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Systemic Examination</label>
-                <textarea
-                  {...register('systemicExamination')}
-                  placeholder="CVS, RS, P/A, CNS findings..."
-                  rows={3}
-                  className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-none"
-                />
-              </div>
-            </div>
-          </PadSection>
-
-          {/* ═══════ 7. NOTES ═══════ */}
-          <PadSection
-            icon={<StickyNote className="h-4 w-4" />}
-            title="Notes"
-            collapsed={collapsed.notes}
-            onToggle={() => toggleSection('notes')}
-            color="text-primary"
-          >
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-                Notes for Patient (Treatment/Surgical/Others)
-              </label>
+        {/* ─── S · Subjective ─── */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 pt-1">
+            <SoapBadge letter="S" />
+            <span className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant font-semibold">
+              Subjective · what the patient reports
+            </span>
+          </div>
+            <PadSection
+              icon={<Stethoscope className="h-4 w-4" />}
+              title="Chief Complaints"
+              badge="Symptoms"
+              collapsed={collapsed.symptoms}
+              onToggle={() => toggleSection('symptoms')}
+              color="text-primary-container"
+              actions={
+                <div onClick={(e) => e.stopPropagation()} className="contents">
+                  <VoiceInputButton
+                    value={watch('chiefComplaint') ?? ''}
+                    onChange={(v) => setValue('chiefComplaint', v, { shouldDirty: true })}
+                    fieldLabel="Chief Complaints"
+                  />
+                </div>
+              }
+            >
               <textarea
-                {...register('advice')}
-                placeholder="Add notes..."
+                {...register('chiefComplaint')}
+                placeholder="e.g. Fever × 3 days, dry cough, fatigue · chronology, severity, related history…"
+                rows={6}
+                className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-y"
+              />
+              {errors.chiefComplaint && (
+                <p className="text-xs text-error mt-1">{errors.chiefComplaint.message}</p>
+              )}
+            </PadSection>
+
+        </div>
+
+        {/* ─── O · Objective ─── */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 pt-1">
+            <SoapBadge letter="O" />
+            <span className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant font-semibold">
+              Objective · what you measure & observe
+            </span>
+          </div>
+            {/* VITALS */}
+            <PadSection
+              icon={<Activity className="h-4 w-4" />}
+              title="Vitals"
+              collapsed={collapsed.vitals}
+              onToggle={() => toggleSection('vitals')}
+              color="text-primary"
+              actions={
+                latestVital ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-6 text-[10px] gap-1"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      carryForwardLastVitals();
+                    }}
+                    title="Re-use the last recorded vitals for this patient"
+                  >
+                    <Activity className="h-3 w-3" />
+                    Carry forward last
+                  </Button>
+                ) : undefined
+              }
+            >
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-3">
+                <VitalInput icon={<Heart className="h-3.5 w-3.5 text-error" />} label="Systolic BP" unit="mmHg" {...register('vitals.bloodPressureSystolic')} error={(errors.vitals as any)?.bloodPressureSystolic?.message} />
+                <VitalInput icon={<Heart className="h-3.5 w-3.5 text-error" />} label="Diastolic BP" unit="mmHg" {...register('vitals.bloodPressureDiastolic')} error={(errors.vitals as any)?.bloodPressureDiastolic?.message} />
+                <VitalInput icon={<Thermometer className="h-3.5 w-3.5 text-secondary" />} label="Temperature" unit="°C" {...register('vitals.temperature')} error={(errors.vitals as any)?.temperature?.message} />
+                <VitalInput icon={<Droplets className="h-3.5 w-3.5 text-primary-container" />} label="SpO2" unit="%" {...register('vitals.oxygenSaturation')} error={(errors.vitals as any)?.oxygenSaturation?.message} />
+                <VitalInput icon={<Activity className="h-3.5 w-3.5 text-tertiary" />} label="Pulse" unit="/min" {...register('vitals.pulseRate')} error={(errors.vitals as any)?.pulseRate?.message} />
+                <VitalInput icon={<Wind className="h-3.5 w-3.5 text-primary-container" />} label="Respiratory Rate" unit="/min" {...register('vitals.respiratoryRate')} error={(errors.vitals as any)?.respiratoryRate?.message} />
+                <VitalInput icon={<Ruler className="h-3.5 w-3.5 text-tertiary" />} label="Height" unit="cm" {...register('vitals.heightCm')} error={(errors.vitals as any)?.heightCm?.message} />
+                <VitalInput icon={<Weight className="h-3.5 w-3.5 text-secondary" />} label="Weight" unit="kg" {...register('vitals.weightKg')} error={(errors.vitals as any)?.weightKg?.message} />
+                <BMIField heightCm={watch('vitals.heightCm')} weightKg={watch('vitals.weightKg')} />
+                <VitalInput icon={<Droplets className="h-3.5 w-3.5 text-error" />} label="Blood Sugar" unit="mg/dL" {...register('vitals.bloodSugar')} error={(errors.vitals as any)?.bloodSugar?.message} />
+              </div>
+            </PadSection>
+
+            {/* PHYSICAL OBSERVATIONS */}
+            <PadSection
+              icon={<ObservationIcon className="h-4 w-4" />}
+              title="Physical Observations"
+              badge="Catalog"
+              collapsed={collapsed.physObs}
+              onToggle={() => toggleSection('physObs')}
+              color="text-primary-container"
+            >
+              <PhysicalObservationsPicker
+                value={physicalObservations}
+                onChange={(next) => setValue('physicalObservations', next, { shouldDirty: true })}
+              />
+            </PadSection>
+
+            {/* EXAMINATION FINDINGS */}
+            <PadSection
+              icon={<Search className="h-4 w-4" />}
+              title="Examination Findings"
+              badge="O/E"
+              collapsed={collapsed.exam}
+              onToggle={() => toggleSection('exam')}
+              color="text-primary"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-medium text-muted-foreground">General Examination</label>
+                    <VoiceInputButton
+                      value={watch('generalExamination') ?? ''}
+                      onChange={(v) => setValue('generalExamination', v, { shouldDirty: true })}
+                      fieldLabel="General Examination"
+                    />
+                  </div>
+                  <textarea
+                    {...register('generalExamination')}
+                    placeholder="General appearance, consciousness, pallor, icterus..."
+                    rows={3}
+                    className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-none"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-medium text-muted-foreground">Systemic Examination</label>
+                    <VoiceInputButton
+                      value={watch('systemicExamination') ?? ''}
+                      onChange={(v) => setValue('systemicExamination', v, { shouldDirty: true })}
+                      fieldLabel="Systemic Examination"
+                    />
+                  </div>
+                  <textarea
+                    {...register('systemicExamination')}
+                    placeholder="CVS, RS, P/A, CNS findings..."
+                    rows={3}
+                    className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-none"
+                  />
+                </div>
+              </div>
+            </PadSection>
+
+            {/* LAB INVESTIGATIONS — placeholder; real orders happen via Order Lab/Imaging */}
+            <PadSection
+              icon={<FlaskConical className="h-4 w-4" />}
+              title="Investigations Summary"
+              collapsed={collapsed.lab}
+              onToggle={() => toggleSection('lab')}
+              color="text-tertiary"
+            >
+              <Input
+                placeholder="Notable labs / imaging already done…"
+                className="h-10 text-sm"
+              />
+              <p className="text-xs text-muted-foreground mt-2">
+                Use <strong>Order Lab</strong> / <strong>Order Imaging</strong> in the top bar to
+                place new orders — they flow back into the Orders panel.
+              </p>
+            </PadSection>
+
+        </div>
+
+        {/* ─── A · Assessment ─── */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 pt-1">
+            <SoapBadge letter="A" />
+            <span className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant font-semibold">
+              Assessment · diagnosis & clinical judgement
+            </span>
+          </div>
+            <DiagnosisSection form={form} />
+
+            <PadSection
+              icon={<StickyNote className="h-4 w-4" />}
+              title="Impression"
+              badge="Clinical Note"
+              collapsed={collapsed.impression}
+              onToggle={() => toggleSection('impression')}
+              color="text-secondary"
+              actions={
+                <div onClick={(e) => e.stopPropagation()} className="contents">
+                  <VoiceInputButton
+                    value={impression}
+                    onChange={(v) => setValue('impression', v, { shouldDirty: true })}
+                    fieldLabel="Impression"
+                  />
+                </div>
+              }
+            >
+              <textarea
+                value={impression}
+                onChange={(e) => setValue('impression', e.target.value, { shouldDirty: true })}
+                placeholder="Clinical impression — serves as the official narrative note…"
                 rows={4}
                 className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-y"
               />
+            </PadSection>
+
+        </div>
+
+        {/* ─── P · Plan ─── */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 pt-1">
+            <SoapBadge letter="P" />
+            <span className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant font-semibold">
+              Plan · treatment, advice & next steps
+            </span>
+          </div>
+            {/* AI Smart Suggestions sit at the top of P so the doctor can use
+               them to guide treatment/next-step choices below. */}
+            <div className="rounded-xl border bg-card p-3">
+              <SmartSuggestionsCard
+                buildInput={() => ({
+                  chiefComplaints: watch('chiefComplaint') || undefined,
+                  presentIllness:
+                    [watch('generalExamination'), watch('systemicExamination')]
+                      .filter(Boolean)
+                      .join('\n') || undefined,
+                  vitalsSummary: (() => {
+                    const v = watch('vitals') ?? {};
+                    const parts: string[] = [];
+                    if (v.bloodPressureSystolic && v.bloodPressureDiastolic)
+                      parts.push(`BP ${v.bloodPressureSystolic}/${v.bloodPressureDiastolic}`);
+                    if (v.pulseRate) parts.push(`HR ${v.pulseRate}`);
+                    if (v.temperature) parts.push(`T ${v.temperature}`);
+                    if (v.respiratoryRate) parts.push(`RR ${v.respiratoryRate}`);
+                    if (v.oxygenSaturation) parts.push(`SpO2 ${v.oxygenSaturation}%`);
+                    return parts.join(' · ') || undefined;
+                  })(),
+                  physicalObservations: physicalObservations.map((po) => ({
+                    value: po.value,
+                    system: po.system,
+                  })),
+                  diagnosis: (watch('diagnoses') ?? [])
+                    .map((d: any) => d.diagnosisName)
+                    .filter(Boolean)
+                    .join(', ') || undefined,
+                  medications: (watch('medicines') ?? [])
+                    .map((m: any) => m.drugName)
+                    .filter(Boolean)
+                    .join(', ') || undefined,
+                  advice: watch('advice') || undefined,
+                })}
+                onAdopt={(s) => {
+                  const current = watch('advice') ?? '';
+                  const next = current ? `${current}\n- ${s}` : `- ${s}`;
+                  setValue('advice', next, { shouldDirty: true });
+                }}
+              />
             </div>
-          </PadSection>
 
-          {/* ═══════ 8. REFER TO DOCTOR ═══════ */}
-          <PadSection
-            icon={<UserCheck className="h-4 w-4" />}
-            title="Refer to a Doctor"
-            collapsed={collapsed.refer}
-            onToggle={() => toggleSection('refer')}
-            color="text-tertiary"
-          >
-            <textarea
-              {...register('referralNotes')}
-              placeholder="Start typing doctor name or speciality / Add referral notes..."
-              rows={2}
-              className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-none"
-            />
-          </PadSection>
+            <MedicationsSection form={form} patientId={patientId} />
 
-          {/* ═══════ 9. FOLLOW UP ═══════ */}
-          <FollowUpSection form={form} />
+            <PadSection
+              icon={<StickyNote className="h-4 w-4" />}
+              title="Notes for Patient"
+              badge="Treatment / Surgical / Other"
+              collapsed={collapsed.notes}
+              onToggle={() => toggleSection('notes')}
+              color="text-primary"
+              actions={
+                <div onClick={(e) => e.stopPropagation()} className="contents">
+                  <VoiceInputButton
+                    value={watch('advice') ?? ''}
+                    onChange={(v) => setValue('advice', v, { shouldDirty: true })}
+                    fieldLabel="Notes / Advice"
+                  />
+                </div>
+              }
+            >
+              <textarea
+                {...register('advice')}
+                placeholder="Add notes…"
+                rows={4}
+                className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-y"
+              />
+            </PadSection>
 
-          {/* ═══════ 10. ADVICES ═══════ */}
-          <PadSection
-            icon={<MessageSquare className="h-4 w-4" />}
-            title="Advices"
-            collapsed={collapsed.advices}
-            onToggle={() => toggleSection('advices')}
-            color="text-primary-container"
-          >
-            <AdvicesSection form={form} />
-          </PadSection>
+            <PadSection
+              icon={<MessageSquare className="h-4 w-4" />}
+              title="Advices"
+              collapsed={collapsed.advices}
+              onToggle={() => toggleSection('advices')}
+              color="text-primary-container"
+            >
+              <AdvicesSection form={form} />
+            </PadSection>
 
+            <FollowUpSection form={form} />
+
+            <PadSection
+              icon={<UserCheck className="h-4 w-4" />}
+              title="Refer to a Doctor"
+              collapsed={collapsed.refer}
+              onToggle={() => toggleSection('refer')}
+              color="text-tertiary"
+              actions={
+                <div onClick={(e) => e.stopPropagation()} className="contents">
+                  <VoiceInputButton
+                    value={watch('referralNotes') ?? ''}
+                    onChange={(v) => setValue('referralNotes', v, { shouldDirty: true })}
+                    fieldLabel="Referral"
+                  />
+                </div>
+              }
+            >
+              <textarea
+                {...register('referralNotes')}
+                placeholder="Start typing doctor name or speciality / Add referral notes…"
+                rows={2}
+                className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-none"
+              />
+            </PadSection>
+
+            <PadSection
+              icon={<Pin className="h-4 w-4" />}
+              title="Pin to Discharge Summary"
+              badge={pins.length > 0 ? `${pins.length} pinned` : 'IP only'}
+              collapsed={collapsed.pins}
+              onToggle={() => toggleSection('pins')}
+              color="text-primary"
+            >
+              <DischargePinEditor
+                value={pins}
+                onChange={(next) => setValue('pins', next, { shouldDirty: true })}
+              />
+            </PadSection>
+        </div>
       </div>
 
       {/* ── Sticky Bottom Action Bar ── */}
@@ -635,13 +915,12 @@ function MedicationsSection({ form, patientId }: { form: any; patientId: string 
         {/* Medication table */}
         {fields.length > 0 && (
           <div className="rounded-lg border overflow-hidden">
-            <div className="grid grid-cols-[minmax(160px,2fr)_90px_95px_105px_95px_90px_1fr_32px] gap-0 border-b bg-muted/50 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+            <div className="grid grid-cols-[minmax(160px,2fr)_90px_95px_105px_95px_1fr_32px] gap-0 border-b bg-muted/50 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
               <div className="px-3 py-2">Medicine</div>
               <div className="px-2 py-2">Dose</div>
               <div className="px-2 py-2">Frequency</div>
               <div className="px-2 py-2">Timing</div>
               <div className="px-2 py-2">Duration</div>
-              <div className="px-2 py-2">Start From</div>
               <div className="px-2 py-2">Instructions</div>
               <div className="px-1 py-2" />
             </div>
@@ -737,7 +1016,7 @@ function MedRow({ index, med, patientId, onUpdate, onRemove }: {
           </span>
         </div>
       )}
-      <div className="grid grid-cols-[minmax(160px,2fr)_90px_95px_105px_95px_90px_1fr_32px] gap-0 border-b last:border-b-0 hover:bg-accent/20 transition-colors">
+      <div className="grid grid-cols-[minmax(160px,2fr)_90px_95px_105px_95px_1fr_32px] gap-0 border-b last:border-b-0 hover:bg-accent/20 transition-colors">
         <div className="px-3 py-2 flex items-start gap-1.5 min-w-0">
           <GripVertical className="h-3.5 w-3.5 text-muted-foreground/20 shrink-0 mt-1 cursor-grab" />
           <div className="min-w-0 flex-1">
@@ -772,9 +1051,6 @@ function MedRow({ index, med, patientId, onUpdate, onRemove }: {
           <select className="flex h-7 rounded-md border border-dashed border-input bg-background px-0.5 text-[10px] w-12" value={med.durationUnit || 'days'} onChange={(e) => onUpdate(index, 'durationUnit', e.target.value)}>
             {DURATION_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
           </select>
-        </div>
-        <div className="px-1 py-1.5">
-          <Input placeholder="eg: 3d" className="h-7 text-[11px] border-dashed" value={med.startFrom || ''} onChange={(e) => onUpdate(index, 'startFrom', e.target.value)} />
         </div>
         <div className="px-1 py-1.5">
           <Input placeholder="Instructions" className="h-7 text-[11px] border-dashed" value={med.instructions || ''} onChange={(e) => onUpdate(index, 'instructions', e.target.value)} />

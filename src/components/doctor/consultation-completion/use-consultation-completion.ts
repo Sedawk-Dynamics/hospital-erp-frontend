@@ -47,6 +47,18 @@ export function useConsultationCompletion() {
         let visitId: string;
         if (editMode?.visitId) {
           visitId = editMode.visitId;
+          // Keep the visit's chief complaint in sync when editing. Without
+          // this, the prefill on next reload re-reads the stale value
+          // stored at first-create time.
+          if (formData.chiefComplaint !== undefined) {
+            try {
+              await apiPut(`/clinical/visits/${visitId}`, {
+                chiefComplaint: formData.chiefComplaint,
+              });
+            } catch {
+              /* non-fatal — the note's SOAP JSON still carries it */
+            }
+          }
         } else {
           setCurrentStep('Creating visit record...');
           const visitsRes = await apiGet<Array<{ id: string; status: string }>>('/clinical/visits', {
@@ -55,6 +67,17 @@ export function useConsultationCompletion() {
           const existingVisit = visitsRes.data?.find((v) => v.status === 'active');
           if (existingVisit) {
             visitId = existingVisit.id;
+            // New consultation but reusing an active visit — write the
+            // chief complaint so the visit reflects what the doctor typed.
+            if (formData.chiefComplaint) {
+              try {
+                await apiPut(`/clinical/visits/${visitId}`, {
+                  chiefComplaint: formData.chiefComplaint,
+                });
+              } catch {
+                /* non-fatal */
+              }
+            }
           } else {
             const newVisit = await apiPost<{ id: string }>('/clinical/visits', {
               patientId,
@@ -143,29 +166,20 @@ export function useConsultationCompletion() {
             route: med.route || 'oral',
             instructions: med.instructions || undefined,
             quantity: typeof med.quantity === 'number' ? med.quantity : undefined,
+            isPrn: med.isPrn ?? false,
           }));
 
         if (editMode?.prescriptionId) {
-          // Update existing Rx: replace items (delete all, add new) + update header fields
+          // Single PUT that updates header fields + atomically replaces
+          // items in a transaction. Avoids the old delete-then-recreate
+          // pattern which created duplicate rows whenever the doctor role
+          // lacked `prescriptions:delete` permission.
           setCurrentStep('Updating prescription...');
-          try {
-            const rxRes = await apiGet<{ id: string; prescriptionItems: Array<{ id: string }> }>(
-              `/prescriptions/${editMode.prescriptionId}`,
-            );
-            const items = rxRes.data?.prescriptionItems ?? [];
-            for (const it of items) {
-              try { await apiDelete(`/prescriptions/${editMode.prescriptionId}/items/${it.id}`); } catch { /* ignore */ }
-            }
-          } catch { /* ignore */ }
           await apiPut(`/prescriptions/${editMode.prescriptionId}`, {
             notes: formData.advice || formData.followUpNotes || undefined,
             followUpDate: formData.followUpDate || null,
+            items: hasMedicines ? rxBuildItems() : [],
           });
-          if (hasMedicines) {
-            for (const item of rxBuildItems()) {
-              try { await apiPost(`/prescriptions/${editMode.prescriptionId}/items`, item); } catch { /* ignore */ }
-            }
-          }
         } else if (hasMedicines || hasFollowUp) {
           setCurrentStep('Creating prescription...');
           const rxRes = await apiPost<{ id: string }>('/prescriptions', {
@@ -180,11 +194,19 @@ export function useConsultationCompletion() {
           prescriptionId = rxRes.data?.id;
         }
 
-        // ── 5. Progress note ──
+        // ── 5. Progress note (with SOAP JSON + impressions + pins) ──
         const noteContent = buildProgressNoteContent(formData);
+        const soap = buildSoapPayload(formData);
+        const cleanPins = (formData.pins ?? []).filter((p) => p.content && p.content.trim());
         const notePayload: any = {
           noteType: 'general',
           content: noteContent,
+          subjective: soap.subjective,
+          objective: soap.objective,
+          assessment: soap.assessment,
+          plan: soap.plan,
+          impressions: formData.impression || null,
+          pins: cleanPins.length > 0 ? cleanPins : undefined,
           weightKgAtEntry:
             typeof formData.vitals?.weightKg === 'number' && formData.vitals.weightKg > 0
               ? formData.vitals.weightKg
@@ -202,13 +224,12 @@ export function useConsultationCompletion() {
             ...notePayload,
           });
           progressNoteId = noteRes.data?.id;
-          if (progressNoteId) {
-            try {
-              await apiPatch(`/progress-notes/${progressNoteId}/sign`);
-            } catch {
-              // Signing requires progress_notes:approve permission — skip silently
-            }
-          }
+          // Don't auto-sign here. The spec's OP rule is "editable for 24
+          // hours → then LOCKED". Matching that, the note stays `active`
+          // so within-window edits don't require an amendment reason; the
+          // OP auto-archive cron flips it to `archived` after 24h. For
+          // notes the doctor wants to finalize early, surface an explicit
+          // Sign action in the consultation UI.
         }
 
         // ── 6-7. Close visit + complete appointment — only on initial submit ──
@@ -318,5 +339,56 @@ function buildProgressNoteContent(data: ConsultationFormData): string {
     sections.push(`**Referral:**\n${data.referralNotes}`);
   }
 
+  if (data.physicalObservations && data.physicalObservations.length > 0) {
+    const lines = data.physicalObservations.map((po) => `- ${po.value}`);
+    sections.push(`**Physical Observations:**\n${lines.join('\n')}`);
+  }
+
+  if (data.impression) {
+    sections.push(`**Impression:**\n${data.impression}`);
+  }
+
   return sections.join('\n\n');
+}
+
+// Map consultation form data onto the structured SOAP JSON payload the
+// ProgressNote backend expects (written to the `subjective/objective/
+// assessment/plan` columns). Free-text fields go directly; multi-row
+// fields are preserved as structured arrays so the future split-view
+// discharge renderer can slot them back into individual fields.
+function buildSoapPayload(data: ConsultationFormData) {
+  return {
+    subjective: {
+      chiefComplaints: data.chiefComplaint || '',
+      presentIllness: '',
+    },
+    objective: {
+      vitalsSummary: '',
+      physicalObservations: (data.physicalObservations ?? []).map((po) => ({
+        source: po.source,
+        catalogId: po.catalogId,
+        value: po.value,
+        system: po.system,
+      })),
+      generalExamination: data.generalExamination || '',
+      systemicExamination: data.systemicExamination || '',
+      investigations: '',
+    },
+    assessment: {
+      diagnoses: (data.diagnoses ?? []).map((d) => ({
+        icdCode: d.icdCode || '',
+        diagnosisName: d.diagnosisName,
+        diagnosisType: d.diagnosisType,
+      })),
+      certainty: 'provisional',
+      differential: '',
+    },
+    plan: {
+      medicationsSummary: (data.medicines ?? []).map((m) => m.drugName).filter(Boolean).join(', '),
+      advice: data.advice || '',
+      followUpDate: data.followUpDate || '',
+      followUpNotes: data.followUpNotes || '',
+      referralNotes: data.referralNotes || '',
+    },
+  };
 }

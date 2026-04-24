@@ -39,6 +39,7 @@ import {
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { apiPost } from '@/lib/api';
+import { DischargeProgressNotesPanel } from '@/components/doctor/discharge-progress-notes-panel';
 
 // ---------------------------------------------------------------------------
 // Status badge helper
@@ -324,8 +325,20 @@ export default function DischargeSummaryPage() {
           </CardContent>
         </Card>
 
+        {/* Split view: progress notes (left) + editable summary (right) */}
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(280px,360px)_1fr] gap-4">
+          {/* LEFT: progress notes panel (hidden on print) */}
+          <aside className="print:hidden max-h-[calc(100vh-200px)]">
+            <DischargeProgressNotesPanel
+              admissionId={summaryData.admissionId}
+              onRefreshSummary={handleRefresh}
+            />
+          </aside>
+
+          {/* RIGHT: existing summary editor */}
+          <div className="space-y-4 min-w-0">
         {/* Editable Sections */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           {/* Diagnoses Summary */}
           <Card>
             <CardHeader className="pb-2">
@@ -532,6 +545,9 @@ export default function DischargeSummaryPage() {
             </Button>
           </div>
         </div>
+
+          </div>{/* /RIGHT */}
+        </div>{/* /split */}
 
         {/* E-Sign Confirmation Dialog */}
         <Dialog open={signDialogOpen} onOpenChange={setSignDialogOpen}>

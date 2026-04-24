@@ -569,11 +569,7 @@ function MedicalRecordDialog({
                               {formatDateTime(n.createdAt)}
                             </span>
                           </div>
-                          {n.content && <p className="text-xs">{n.content}</p>}
-                          {n.subjective && <p className="text-xs">S: {n.subjective}</p>}
-                          {n.objective && <p className="text-xs">O: {n.objective}</p>}
-                          {n.assessment && <p className="text-xs">A: {n.assessment}</p>}
-                          {n.plan && <p className="text-xs">P: {n.plan}</p>}
+                          {n.content && <p className="text-xs whitespace-pre-line">{n.content}</p>}
                         </div>
                       ))}
                     </div>
