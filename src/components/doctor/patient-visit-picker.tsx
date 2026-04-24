@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/select';
 import { usePatientSearch } from '@/hooks/use-doctor';
 import { apiGet, apiPost } from '@/lib/api';
-import { formatDate, formatTime } from '@/lib/date-utils';
+import { formatDate, formatTime, toInputDateStr, getCurrentISTDate } from '@/lib/date-utils';
 
 export interface SelectedPatient {
   id: string;
@@ -58,6 +58,8 @@ interface PatientVisitPickerProps {
    * appointments with this patient and lazily creates a Visit on selection.
    */
   doctorId?: string;
+  /** Restrict visit and appointment options to today's IST date only. */
+  onlyToday?: boolean;
 }
 
 export function PatientVisitPicker({
@@ -67,6 +69,7 @@ export function PatientVisitPicker({
   onSelectVisitId,
   requireVisit = true,
   doctorId,
+  onlyToday = false,
 }: PatientVisitPickerProps) {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -95,12 +98,16 @@ export function PatientVisitPicker({
     setVisitsLoading(true);
     (async () => {
       try {
+        const today = getCurrentISTDate();
         const visitsRes = await apiGet<Array<SelectedVisit & { doctor?: any }>>(
           '/clinical/visits',
           { params: { patientId: selectedPatient.id, status: 'active' } },
         );
         if (cancelled) return;
-        const activeVisits = visitsRes.data ?? [];
+        let activeVisits = visitsRes.data ?? [];
+        if (onlyToday) {
+          activeVisits = activeVisits.filter((v) => toInputDateStr(v.visitDate) === today);
+        }
         if (activeVisits.length > 0) {
           const enriched: VisitOption[] = activeVisits.map((v) => ({
             id: v.id,
@@ -129,13 +136,19 @@ export function PatientVisitPicker({
             doctor?: any;
           }>
         >('/appointments', {
-          params: { patientId: selectedPatient.id, doctorId, limit: 20 },
+          params: {
+            patientId: selectedPatient.id,
+            doctorId,
+            limit: 20,
+            ...(onlyToday ? { dateFrom: today, dateTo: today } : {}),
+          },
         });
         if (cancelled) return;
         const candidates = (apptRes.data ?? [])
           .filter((a) =>
             ['booked', 'confirmed', 'checked_in', 'in_consultation'].includes(a.status),
           )
+          .filter((a) => (onlyToday ? toInputDateStr(a.appointmentDate) === today : true))
           .sort(
             (a, b) =>
               new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime(),
@@ -161,7 +174,7 @@ export function PatientVisitPicker({
     return () => {
       cancelled = true;
     };
-  }, [selectedPatient, requireVisit, doctorId, onSelectVisitId, selectedVisitId]);
+  }, [selectedPatient, requireVisit, doctorId, onSelectVisitId, selectedVisitId, onlyToday]);
 
   const handleSelectPatient = useCallback(
     (p: { id: string; firstName?: string; lastName?: string; mrn?: string }) => {
@@ -317,7 +330,24 @@ export function PatientVisitPicker({
                 disabled={creatingVisit}
               >
                 <SelectTrigger className="w-full h-9" disabled={creatingVisit}>
-                  <SelectValue placeholder="Select a visit" />
+                  <SelectValue placeholder="Select a visit">
+                    {(value) => {
+                      if (!value) return 'Select a visit';
+                      const v = visits.find((x) => x.id === value);
+                      if (!v) return '';
+                      const dateLabel = formatDate(v.visitDate);
+                      const timeLabel = v.startTime ? ` ${formatTime(v.startTime)}` : '';
+                      const statusLabel = v.appointmentId
+                        ? (v.status ?? 'appointment').replace(/_/g, ' ')
+                        : v.status;
+                      const segments = [
+                        v.visitType.toUpperCase(),
+                        `${dateLabel}${timeLabel}`,
+                        v.doctorName,
+                      ].filter(Boolean) as string[];
+                      return `${segments.join(' · ')}${statusLabel ? ` (${statusLabel})` : ''}`;
+                    }}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {visits.map((v) => {
@@ -348,7 +378,9 @@ export function PatientVisitPicker({
             </>
           ) : (
             <p className="font-label text-xs p-2 rounded-lg bg-secondary/10 text-secondary">
-              No active visits or open appointments found for this patient.
+              {onlyToday
+                ? "No visits or appointments for this patient today."
+                : 'No active visits or open appointments found for this patient.'}
             </p>
           )}
         </div>

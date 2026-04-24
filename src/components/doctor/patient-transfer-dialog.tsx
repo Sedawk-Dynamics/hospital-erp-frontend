@@ -121,6 +121,7 @@ export function PatientTransferDialog({
             selectedVisitId={visitId}
             onSelectVisitId={setVisitId}
             doctorId={myDoctor?.id}
+            onlyToday
           />
 
           <div className="space-y-1.5">
@@ -129,7 +130,18 @@ export function PatientTransferDialog({
             </Label>
             <Select value={toDoctorId} onValueChange={(v) => setToDoctorId(v ?? '')}>
               <SelectTrigger className="w-full h-9">
-                <SelectValue placeholder="Select a doctor" />
+                <SelectValue placeholder="Select a doctor">
+                  {(value) => {
+                    if (!value) return 'Select a doctor';
+                    const d = otherDoctors.find((x) => x.id === value);
+                    if (!d) return '';
+                    const name = d.user
+                      ? `Dr. ${d.user.firstName ?? ''} ${d.user.lastName ?? ''}`.trim()
+                      : d.id;
+                    const spec = d.specialization ? ` — ${d.specialization}` : '';
+                    return `${name}${spec}`;
+                  }}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {otherDoctors.length === 0 ? (

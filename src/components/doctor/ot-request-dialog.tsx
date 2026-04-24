@@ -150,6 +150,7 @@ export function OTRequestDialog({
             selectedVisitId={visitId}
             onSelectVisitId={setVisitId}
             doctorId={myDoctor?.id}
+            onlyToday
           />
 
           <div className="space-y-1.5">
