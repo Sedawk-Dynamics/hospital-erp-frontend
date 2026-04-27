@@ -10,7 +10,10 @@ export type ModuleKey =
   | 'daycare'
   | 'ward'
   | 'doctor'
-  | 'nurse';
+  | 'nurse'
+  | 'nurse-incharge'
+  | 'head-nurse'
+  | 'nurse-admin';
 
 function loadPersistedModule(): ModuleKey | null {
   if (typeof window === 'undefined') return null;

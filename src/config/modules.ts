@@ -32,6 +32,9 @@ import {
   PillBottle,
   ArrowRightLeft,
   ClipboardCheck,
+  UserCog,
+  ShieldCheck,
+  BookCheck,
   type LucideIcon,
 } from 'lucide-react';
 import type { ModuleKey } from '@/stores/module-store';
@@ -199,6 +202,52 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Shift Handover', href: '/nurse/handover', icon: ArrowRightLeft },
       { label: 'Orders & Ward', href: '/nurse/orders', icon: ClipboardCheck },
       { label: 'Settings', href: '/nurse/settings', icon: Settings },
+    ],
+  },
+
+  'nurse-incharge': {
+    key: 'nurse-incharge',
+    label: 'Nurse In-Charge',
+    icon: UserCog,
+    baseRoute: '/nurse-incharge',
+    sidebarItems: [
+      { label: 'Dashboard', href: '/nurse-incharge', icon: Home },
+      { label: 'Patient Assignments', href: '/nurse-incharge/assignments', icon: ClipboardCheck },
+      { label: 'Shift Handover', href: '/nurse-incharge/handover', icon: ArrowRightLeft },
+      { label: 'Ward Orders', href: '/nurse-incharge/orders', icon: ClipboardPlus },
+      { label: 'Reports', href: '/nurse-incharge/reports', icon: BarChart3 },
+      { label: 'Settings', href: '/nurse-incharge/settings', icon: Settings },
+    ],
+  },
+
+  'head-nurse': {
+    key: 'head-nurse',
+    label: 'Head Nurse',
+    icon: Users,
+    baseRoute: '/head-nurse',
+    sidebarItems: [
+      { label: 'Dashboard', href: '/head-nurse', icon: Home },
+      { label: 'Roster Planning', href: '/head-nurse/roster', icon: CalendarClock },
+      { label: 'In-Charge Assignments', href: '/head-nurse/incharge-assignments', icon: BookCheck },
+      { label: 'Staff Performance', href: '/head-nurse/staff', icon: BarChart3 },
+      { label: 'Reports', href: '/head-nurse/reports', icon: FileBarChart },
+      { label: 'Settings', href: '/head-nurse/settings', icon: Settings },
+    ],
+  },
+
+  'nurse-admin': {
+    key: 'nurse-admin',
+    label: 'Nursing Admin',
+    icon: ShieldCheck,
+    baseRoute: '/nurse-admin',
+    sidebarItems: [
+      { label: 'Dashboard', href: '/nurse-admin', icon: Home },
+      { label: 'Staffing & Rosters', href: '/nurse-admin/staffing', icon: Users },
+      { label: 'Roster Approvals', href: '/nurse-admin/rosters', icon: FileCheck },
+      { label: 'Policies', href: '/nurse-admin/policies', icon: FileText },
+      { label: 'Compliance', href: '/nurse-admin/compliance', icon: ShieldCheck },
+      { label: 'Reports', href: '/nurse-admin/reports', icon: FileBarChart },
+      { label: 'Settings', href: '/nurse-admin/settings', icon: Settings },
     ],
   },
 };
