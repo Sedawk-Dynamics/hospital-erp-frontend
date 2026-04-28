@@ -114,7 +114,7 @@ export function LabOrderDialog({ open, onOpenChange, patientId, visitId }: LabOr
   }, []);
 
   const handleAddTest = useCallback((test: LabTest) => {
-    setSelectedTests((prev) => [...prev, test]);
+    setSelectedTests((prev) => (prev.some((t) => t.id === test.id) ? prev : [...prev, test]));
     setSearchQuery('');
     setSearchResults([]);
     setShowDropdown(false);
@@ -123,6 +123,15 @@ export function LabOrderDialog({ open, onOpenChange, patientId, visitId }: LabOr
   const handleRemoveTest = useCallback((testId: string) => {
     setSelectedTests((prev) => prev.filter((t) => t.id !== testId));
   }, []);
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && searchResults.length > 0) {
+      e.preventDefault();
+      handleAddTest(searchResults[0]);
+    } else if (e.key === 'Escape') {
+      setShowDropdown(false);
+    }
+  };
 
   const handleSubmit = async () => {
     if (selectedTests.length === 0) {
@@ -182,7 +191,7 @@ export function LabOrderDialog({ open, onOpenChange, patientId, visitId }: LabOr
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[540px]">
+      <DialogContent className="sm:max-w-[540px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FlaskConical className="h-5 w-5 text-primary" />
@@ -197,10 +206,11 @@ export function LabOrderDialog({ open, onOpenChange, patientId, visitId }: LabOr
             <div className="relative mt-1.5">
               <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search by test name or code..."
+                placeholder="Search by test name or code (Enter to add top result)..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
+                onKeyDown={handleSearchKeyDown}
                 className="pl-8 text-sm"
               />
               {isSearching && (
@@ -214,8 +224,12 @@ export function LabOrderDialog({ open, onOpenChange, patientId, visitId }: LabOr
                 {searchResults.map((test) => (
                   <button
                     key={test.id}
+                    type="button"
                     className="flex w-full items-center justify-between px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
-                    onClick={() => handleAddTest(test)}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      handleAddTest(test);
+                    }}
                   >
                     <div>
                       <p className="font-medium text-foreground">{test.name}</p>
@@ -233,11 +247,15 @@ export function LabOrderDialog({ open, onOpenChange, patientId, visitId }: LabOr
           </div>
 
           {/* Selected Tests */}
-          {selectedTests.length > 0 && (
-            <div>
-              <Label className="text-sm font-medium">
-                Selected Tests ({selectedTests.length})
-              </Label>
+          <div>
+            <Label className="text-sm font-medium">
+              Selected Tests ({selectedTests.length})
+            </Label>
+            {selectedTests.length === 0 ? (
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                Pick a test from the search results above to add it here. At least one test is required.
+              </p>
+            ) : (
               <div className="mt-1.5 flex flex-wrap gap-2">
                 {selectedTests.map((test) => (
                   <Badge
@@ -250,6 +268,7 @@ export function LabOrderDialog({ open, onOpenChange, patientId, visitId }: LabOr
                       <span className="text-xs text-muted-foreground">({test.code})</span>
                     )}
                     <button
+                      type="button"
                       onClick={() => handleRemoveTest(test.id)}
                       className="ml-1 rounded-full hover:bg-destructive/20 p-0.5 transition-colors"
                     >
@@ -258,8 +277,8 @@ export function LabOrderDialog({ open, onOpenChange, patientId, visitId }: LabOr
                   </Badge>
                 ))}
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Urgency */}
           <div>
@@ -268,6 +287,7 @@ export function LabOrderDialog({ open, onOpenChange, patientId, visitId }: LabOr
               {urgencyOptions.map((opt) => (
                 <button
                   key={opt.value}
+                  type="button"
                   onClick={() => setUrgency(opt.value)}
                   className={cn(
                     'rounded-lg px-4 py-1.5 text-sm font-medium border transition-all duration-200',
@@ -307,13 +327,25 @@ export function LabOrderDialog({ open, onOpenChange, patientId, visitId }: LabOr
           </div>
 
           {/* Footer */}
+          {!visitId && (
+            <p className="text-xs text-error">
+              No active visit — open this dialog from a patient with an active visit.
+            </p>
+          )}
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={createLabOrder.isPending || selectedTests.length === 0}
+              disabled={createLabOrder.isPending || selectedTests.length === 0 || !visitId}
+              title={
+                !visitId
+                  ? 'No active visit'
+                  : selectedTests.length === 0
+                    ? 'Add at least one test from the search above'
+                    : undefined
+              }
               className="gap-1.5"
             >
               {createLabOrder.isPending ? (

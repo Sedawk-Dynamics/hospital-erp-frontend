@@ -28,7 +28,7 @@ export default function MyDocumentsPage() {
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error: listError } = useQuery({
     queryKey: ['patient', 'documents'],
     queryFn: async () => {
       const res = await apiGet<DocumentEntry[]>('/patient-portal/documents');
@@ -43,9 +43,10 @@ export default function MyDocumentsPage() {
       if (title) fd.append('title', title);
       fd.append('documentType', docType);
       if (notes) fd.append('notes', notes);
-      await apiClient.post('/patient-portal/documents', fd, {
+      const res = await apiClient.post('/patient-portal/documents', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
+      return res.data;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['patient', 'documents'] });
@@ -54,6 +55,13 @@ export default function MyDocumentsPage() {
       if (fileRef.current) fileRef.current.value = '';
     },
   });
+
+  const uploadErrorMsg =
+    upload.error && (upload.error as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message
+      || (upload.error as { message?: string } | null)?.message;
+  const listErrorMsg =
+    listError && (listError as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message
+      || (listError as { message?: string } | null)?.message;
 
   const remove = useMutation({
     mutationFn: async (id: string) => {
@@ -136,7 +144,18 @@ export default function MyDocumentsPage() {
         <p className="font-label text-[11px] text-on-surface-variant">
           Max 10MB. PDF, images, or Word docs.
         </p>
+        {uploadErrorMsg && (
+          <p className="font-label text-xs text-error bg-error-container/40 rounded-lg px-3 py-2">
+            Upload failed: {uploadErrorMsg}
+          </p>
+        )}
       </div>
+
+      {listErrorMsg && (
+        <div className="rounded-xl bg-error-container/40 text-on-error-container p-3">
+          <p className="font-label text-xs">Could not load documents: {listErrorMsg}</p>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="flex justify-center py-12">
