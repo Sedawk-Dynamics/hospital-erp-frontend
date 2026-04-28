@@ -1,8 +1,18 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { cn } from '@/lib/utils';
-import { Search, Plus, MoreHorizontal, Eye, ArrowRightLeft, LogOut } from 'lucide-react';
+import {
+  Search,
+  Plus,
+  MoreHorizontal,
+  Eye,
+  ArrowRightLeft,
+  LogOut,
+  Printer,
+  ClipboardCheck,
+  CheckCircle2,
+} from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -15,7 +25,6 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -31,9 +40,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiPatch } from '@/lib/api';
-import { formatDate, toInputDateStr } from '@/lib/date-utils';
+import { formatDate, formatDateTime, toInputDateStr } from '@/lib/date-utils';
 import { toast } from 'sonner';
 import type { Admission, Patient, DoctorProfile, BedWithStatus } from '@/types';
 
@@ -44,28 +54,40 @@ const statItems = [
   { key: 'all', label: 'Total', color: 'text-foreground' },
   { key: 'admitted', label: 'In IP', color: 'text-blue-600' },
   { key: 'discharged', label: 'Discharged', color: 'text-green-600' },
-  { key: 'cancelled', label: 'Cancelled', color: 'text-red-600' },
+  { key: 'absconded', label: 'Cancelled', color: 'text-red-600' },
 ];
 
-// ---------------------------------------------------------------------------
-// Ward type (lightweight, from /infrastructure/wards)
-// ---------------------------------------------------------------------------
 interface Ward {
   id: string;
   name: string;
 }
 
+// Standard admission checklist (used both during admission and on detail view)
+const ADMISSION_CHECKLIST = [
+  { key: 'id_proof', label: 'Government ID proof verified', required: true },
+  { key: 'consent', label: 'Admission consent form signed', required: true },
+  { key: 'insurance', label: 'Insurance / TPA card collected (if applicable)', required: false },
+  { key: 'allergy', label: 'Drug allergy history recorded', required: true },
+  { key: 'belongings', label: 'Patient belongings list signed', required: false },
+  { key: 'kin_contact', label: 'Next-of-kin contact captured', required: true },
+  { key: 'deposit', label: 'Advance deposit collected', required: true },
+  { key: 'orientation', label: 'Ward / bed orientation given to attendant', required: false },
+];
+
 // ---------------------------------------------------------------------------
-// AdmissionDialog — Create a new admission
+// AdmissionDialog — Create a new admission (multi-step: details → checklist)
 // ---------------------------------------------------------------------------
 function AdmissionDialog({
   open,
   onOpenChange,
+  onAdmitted,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onAdmitted: (admission: Admission) => void;
 }) {
   const queryClient = useQueryClient();
+  const [step, setStep] = useState<'details' | 'checklist'>('details');
 
   // Form state
   const [patientSearch, setPatientSearch] = useState('');
@@ -77,6 +99,7 @@ function AdmissionDialog({
   const [expectedDischarge, setExpectedDischarge] = useState('');
   const [admissionReason, setAdmissionReason] = useState('');
   const [depositAmount, setDepositAmount] = useState('');
+  const [checklist, setChecklist] = useState<Record<string, boolean>>({});
 
   // Debounced patient search
   const [debouncedPatientSearch, setDebouncedPatientSearch] = useState('');
@@ -97,19 +120,20 @@ function AdmissionDialog({
 
   const { data: doctorsData } = useQuery({
     queryKey: ['doctors-list'],
-    queryFn: () => apiGet<DoctorProfile[]>('/users', { params: { role: 'doctor', limit: 50 } }),
+    queryFn: () =>
+      apiGet<DoctorProfile[]>('/appointments/doctors', { params: { limit: 100 } }),
   });
 
   const { data: wardsData } = useQuery({
     queryKey: ['wards-list'],
-    queryFn: () => apiGet<Ward[]>('/infrastructure/wards'),
+    queryFn: () => apiGet<Ward[]>('/infrastructure/wards', { params: { limit: 200 } }),
   });
 
   const { data: bedsData } = useQuery({
     queryKey: ['beds-available', selectedWardId],
     queryFn: () =>
       apiGet<BedWithStatus[]>('/infrastructure/beds', {
-        params: { wardId: selectedWardId, status: 'available' },
+        params: { wardId: selectedWardId, status: 'available', limit: 200 },
       }),
     enabled: !!selectedWardId,
   });
@@ -124,6 +148,11 @@ function AdmissionDialog({
   const wards = wardsData?.data ?? [];
   const beds = bedsData?.data ?? [];
 
+  const selectedPatient = patients.find((p) => p.id === selectedPatientId);
+  const selectedDoctor = doctors.find((d) => d.id === selectedDoctorId);
+  const selectedWard = wards.find((w) => w.id === selectedWardId);
+  const selectedBed = beds.find((b) => b.id === selectedBedId);
+
   // Mutation: create visit then admission
   const admitMutation = useMutation({
     mutationFn: async () => {
@@ -137,7 +166,7 @@ function AdmissionDialog({
       const visitId = visitRes.data.id;
 
       // Step 2: create admission
-      await apiPost('/clinical/admissions', {
+      const admissionRes = await apiPost<Admission>('/clinical/admissions', {
         visitId,
         patientId: selectedPatientId,
         doctorId: selectedDoctorId,
@@ -148,10 +177,14 @@ function AdmissionDialog({
         admissionReason: admissionReason || undefined,
         depositAmount: depositAmount ? parseFloat(depositAmount) : 0,
       });
+      return admissionRes.data;
     },
-    onSuccess: () => {
+    onSuccess: (admission) => {
       toast.success('Patient admitted successfully');
       queryClient.invalidateQueries({ queryKey: ['hospital', 'admissions'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'beds'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'occupancy'] });
+      onAdmitted(admission);
       resetForm();
       onOpenChange(false);
     },
@@ -170,183 +203,456 @@ function AdmissionDialog({
     setExpectedDischarge('');
     setAdmissionReason('');
     setDepositAmount('');
+    setChecklist({});
+    setStep('details');
   }, []);
+
+  const detailsValid =
+    !!selectedPatientId && !!selectedDoctorId && !!selectedWardId && !!selectedBedId;
+
+  const requiredChecklistDone = ADMISSION_CHECKLIST.filter((c) => c.required).every(
+    (c) => checklist[c.key],
+  );
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        onOpenChange(o);
+        if (!o) resetForm();
+      }}
+    >
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Admit Patient</DialogTitle>
+          <DialogDescription>
+            {step === 'details'
+              ? 'Fill in admission details (ward, bed, doctor, deposit).'
+              : 'Verify the admission checklist before confirming.'}
+          </DialogDescription>
+        </DialogHeader>
+
+        {/* Stepper */}
+        <div className="flex items-center gap-2 text-xs">
+          <span
+            className={cn(
+              'rounded-full px-3 py-1 font-bold',
+              step === 'details' ? 'bg-primary text-white' : 'bg-primary/10 text-primary',
+            )}
+          >
+            1. Details
+          </span>
+          <span className="text-muted-foreground">→</span>
+          <span
+            className={cn(
+              'rounded-full px-3 py-1 font-bold',
+              step === 'checklist'
+                ? 'bg-primary text-white'
+                : 'bg-surface-container-high text-on-surface-variant',
+            )}
+          >
+            2. Checklist
+          </span>
+        </div>
+
+        {step === 'details' && (
+          <div className="grid gap-4 py-2">
+            {/* Patient search */}
+            <div className="grid gap-1.5">
+              <Label>Patient *</Label>
+              {selectedPatientId ? (
+                <div className="flex items-center justify-between rounded-lg border px-3 py-2">
+                  <span className="text-sm">
+                    {selectedPatient?.firstName} {selectedPatient?.lastName} ({selectedPatient?.mrn})
+                  </span>
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedPatientId('')}>
+                    Change
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <Input
+                    placeholder="Search by name, MRN, phone..."
+                    value={patientSearch}
+                    onChange={(e) => setPatientSearch(e.target.value)}
+                  />
+                  {patients.length > 0 && (
+                    <div className="max-h-40 overflow-y-auto rounded-lg border bg-popover">
+                      {patients.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent text-left"
+                          onClick={() => {
+                            setSelectedPatientId(p.id);
+                            setPatientSearch(`${p.firstName} ${p.lastName}`);
+                          }}
+                        >
+                          <span className="font-medium">
+                            {p.firstName} {p.lastName}
+                          </span>
+                          <span className="text-muted-foreground text-xs">
+                            {p.mrn} | {p.phone}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {/* Doctor */}
+              <div className="grid gap-1.5">
+                <Label>Consultant Doctor *</Label>
+                <Select value={selectedDoctorId} onValueChange={(v) => setSelectedDoctorId(v ?? '')}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select doctor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {doctors.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        Dr. {d.user?.firstName} {d.user?.lastName}
+                        {d.specialization ? ` — ${d.specialization}` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Ward */}
+              <div className="grid gap-1.5">
+                <Label>Ward *</Label>
+                <Select value={selectedWardId} onValueChange={(v) => setSelectedWardId(v ?? '')}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select ward" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {wards.map((w) => (
+                      <SelectItem key={w.id} value={w.id}>
+                        {w.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Bed (filtered by ward) */}
+              <div className="grid gap-1.5 col-span-2">
+                <Label>Bed *</Label>
+                <Select
+                  value={selectedBedId}
+                  onValueChange={(v) => setSelectedBedId(v ?? '')}
+                  disabled={!selectedWardId}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue
+                      placeholder={selectedWardId ? 'Select available bed' : 'Select ward first'}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {beds.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        Bed {b.bedNumber}
+                        {b.room ? ` (Room ${b.room.roomNumber})` : ''}
+                        {b.bedType ? ` · ${b.bedType.toUpperCase()}` : ''}
+                      </SelectItem>
+                    ))}
+                    {beds.length === 0 && selectedWardId && (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">
+                        No available beds in this ward
+                      </div>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Dates row */}
+              <div className="grid gap-1.5">
+                <Label>Admission Date *</Label>
+                <Input
+                  type="date"
+                  value={admissionDate}
+                  onChange={(e) => setAdmissionDate(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Expected Discharge</Label>
+                <Input
+                  type="date"
+                  value={expectedDischarge}
+                  onChange={(e) => setExpectedDischarge(e.target.value)}
+                />
+              </div>
+
+              {/* Deposit */}
+              <div className="grid gap-1.5 col-span-2">
+                <Label>Deposit / Advance Amount (₹)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  placeholder="0.00"
+                  value={depositAmount}
+                  onChange={(e) => setDepositAmount(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {/* Reason */}
+            <div className="grid gap-1.5">
+              <Label>Diagnosis / Admission Reason</Label>
+              <Textarea
+                placeholder="Provisional diagnosis or chief complaint..."
+                value={admissionReason}
+                onChange={(e) => setAdmissionReason(e.target.value)}
+                rows={2}
+              />
+            </div>
+          </div>
+        )}
+
+        {step === 'checklist' && (
+          <div className="space-y-3 py-2">
+            <div className="rounded-lg border bg-muted/30 p-3 text-sm space-y-1">
+              <p>
+                <span className="text-muted-foreground">Patient:</span>{' '}
+                <strong>
+                  {selectedPatient?.firstName} {selectedPatient?.lastName}
+                </strong>{' '}
+                ({selectedPatient?.mrn})
+              </p>
+              <p>
+                <span className="text-muted-foreground">Doctor:</span>{' '}
+                <strong>
+                  Dr. {selectedDoctor?.user?.firstName} {selectedDoctor?.user?.lastName}
+                </strong>
+              </p>
+              <p>
+                <span className="text-muted-foreground">Bed:</span>{' '}
+                <strong>{selectedBed?.bedNumber}</strong> in{' '}
+                <strong>{selectedWard?.name}</strong>
+              </p>
+              <p>
+                <span className="text-muted-foreground">Deposit:</span>{' '}
+                <strong>₹{Number(depositAmount || 0).toLocaleString('en-IN')}</strong>
+              </p>
+            </div>
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <ClipboardCheck className="h-3.5 w-3.5" />
+              Confirm required documents (marked *) are collected.
+            </p>
+            <ul className="space-y-2">
+              {ADMISSION_CHECKLIST.map((item) => (
+                <li
+                  key={item.key}
+                  className="flex items-start gap-3 rounded-lg border bg-card px-3 py-2 hover:bg-muted/30 transition-colors"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!checklist[item.key]}
+                    onChange={(e) =>
+                      setChecklist((prev) => ({ ...prev, [item.key]: e.target.checked }))
+                    }
+                    className="mt-1 h-4 w-4 rounded border-input accent-primary cursor-pointer"
+                  />
+                  <span className="text-sm">
+                    {item.label}
+                    {item.required && <span className="text-destructive ml-1">*</span>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <DialogFooter>
+          {step === 'details' ? (
+            <>
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button disabled={!detailsValid} onClick={() => setStep('checklist')}>
+                Next: Checklist
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => setStep('details')}>
+                Back
+              </Button>
+              <Button
+                onClick={() => admitMutation.mutate()}
+                disabled={admitMutation.isPending || !requiredChecklistDone}
+              >
+                {admitMutation.isPending ? 'Admitting...' : 'Confirm Admission'}
+              </Button>
+            </>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AdmissionSlipDialog — Printable admission slip
+// ---------------------------------------------------------------------------
+function AdmissionSlipDialog({
+  admission,
+  open,
+  onOpenChange,
+}: {
+  admission: Admission | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const slipRef = useRef<HTMLDivElement>(null);
+
+  const handlePrint = () => {
+    if (!slipRef.current) return;
+    const html = slipRef.current.innerHTML;
+    const w = window.open('', '_blank', 'width=800,height=900');
+    if (!w) return;
+    w.document.write(`<!DOCTYPE html>
+<html><head><title>Admission Slip — ${admission?.patient?.firstName} ${admission?.patient?.lastName}</title>
+<style>
+  body{font-family:system-ui,sans-serif;color:#111;margin:24px;font-size:13px;line-height:1.5}
+  h1{font-size:18px;margin:0 0 4px}
+  h2{font-size:14px;margin:16px 0 8px;border-bottom:1px solid #ddd;padding-bottom:4px}
+  table{width:100%;border-collapse:collapse;margin:6px 0}
+  td{padding:4px 6px;vertical-align:top}
+  td.lbl{color:#666;width:38%}
+  td.val{font-weight:600}
+  ul{margin:4px 0 0 0;padding-left:18px}
+  li{margin-bottom:3px}
+  .header{display:flex;justify-content:space-between;align-items:end;border-bottom:2px solid #111;padding-bottom:8px}
+  .muted{color:#666;font-size:11px}
+  .signrow{display:flex;justify-content:space-between;margin-top:50px}
+  .sign{border-top:1px solid #111;padding-top:4px;font-size:11px;width:200px;text-align:center}
+</style>
+</head><body>${html}</body></html>`);
+    w.document.close();
+    w.focus();
+    setTimeout(() => {
+      w.print();
+      w.close();
+    }, 250);
+  };
+
+  if (!admission) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Admit Patient</DialogTitle>
-          <DialogDescription>Fill in the details to admit a patient to IP.</DialogDescription>
+          <DialogTitle>Admission Slip</DialogTitle>
+          <DialogDescription>
+            Generated for {admission.patient?.firstName} {admission.patient?.lastName}
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4 py-2">
-          {/* Patient search */}
-          <div className="grid gap-1.5">
-            <Label>Patient *</Label>
-            {selectedPatientId ? (
-              <div className="flex items-center justify-between rounded-lg border px-3 py-2">
-                <span className="text-sm">
-                  {patients.find((p) => p.id === selectedPatientId)?.firstName}{' '}
-                  {patients.find((p) => p.id === selectedPatientId)?.lastName}
-                </span>
-                <Button variant="ghost" size="sm" onClick={() => setSelectedPatientId('')}>
-                  Change
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-1">
-                <Input
-                  placeholder="Search by name, MRN, phone..."
-                  value={patientSearch}
-                  onChange={(e) => setPatientSearch(e.target.value)}
-                />
-                {patients.length > 0 && (
-                  <div className="max-h-40 overflow-y-auto rounded-lg border bg-popover">
-                    {patients.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent text-left"
-                        onClick={() => {
-                          setSelectedPatientId(p.id);
-                          setPatientSearch(`${p.firstName} ${p.lastName}`);
-                        }}
-                      >
-                        <span className="font-medium">
-                          {p.firstName} {p.lastName}
-                        </span>
-                        <span className="text-muted-foreground text-xs">
-                          {p.mrn} | {p.phone}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Doctor */}
-          <div className="grid gap-1.5">
-            <Label>Doctor *</Label>
-            <Select value={selectedDoctorId} onValueChange={(v) => setSelectedDoctorId(v ?? '')}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select doctor" />
-              </SelectTrigger>
-              <SelectContent>
-                {doctors.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    Dr. {d.user?.firstName} {d.user?.lastName} — {d.specialization}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Ward */}
-          <div className="grid gap-1.5">
-            <Label>Ward *</Label>
-            <Select value={selectedWardId} onValueChange={(v) => setSelectedWardId(v ?? '')}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select ward" />
-              </SelectTrigger>
-              <SelectContent>
-                {wards.map((w) => (
-                  <SelectItem key={w.id} value={w.id}>
-                    {w.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Bed (filtered by ward) */}
-          <div className="grid gap-1.5">
-            <Label>Bed *</Label>
-            <Select
-              value={selectedBedId}
-              onValueChange={(v) => setSelectedBedId(v ?? '')}
-              disabled={!selectedWardId}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder={selectedWardId ? 'Select bed' : 'Select ward first'} />
-              </SelectTrigger>
-              <SelectContent>
-                {beds.map((b) => (
-                  <SelectItem key={b.id} value={b.id}>
-                    Bed {b.bedNumber}
-                    {b.room ? ` (Room ${b.room.roomNumber})` : ''}
-                  </SelectItem>
-                ))}
-                {beds.length === 0 && selectedWardId && (
-                  <div className="px-3 py-2 text-sm text-muted-foreground">
-                    No available beds
-                  </div>
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Dates row */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-1.5">
-              <Label>Admission Date *</Label>
-              <Input
-                type="date"
-                value={admissionDate}
-                onChange={(e) => setAdmissionDate(e.target.value)}
-              />
+        <div ref={slipRef} className="rounded-lg border bg-white p-6 text-foreground">
+          <div className="header flex items-end justify-between border-b-2 border-foreground pb-2">
+            <div>
+              <h1 className="text-lg font-bold">ADMISSION SLIP</h1>
+              <p className="muted text-xs text-muted-foreground">
+                Generated: {formatDateTime(new Date())}
+              </p>
             </div>
-            <div className="grid gap-1.5">
-              <Label>Expected Discharge</Label>
-              <Input
-                type="date"
-                value={expectedDischarge}
-                onChange={(e) => setExpectedDischarge(e.target.value)}
-              />
+            <div className="text-right text-xs">
+              <p>
+                <strong>IP No:</strong> {admission.id?.slice(0, 8).toUpperCase()}
+              </p>
+              <p>
+                <strong>Admission Date:</strong> {formatDate(admission.admissionDate)}
+              </p>
             </div>
           </div>
 
-          {/* Reason */}
-          <div className="grid gap-1.5">
-            <Label>Admission Reason</Label>
-            <Textarea
-              placeholder="Reason for admission..."
-              value={admissionReason}
-              onChange={(e) => setAdmissionReason(e.target.value)}
-              rows={2}
-            />
-          </div>
+          <h2 className="text-sm font-semibold mt-4 border-b pb-1">Patient Details</h2>
+          <table className="w-full text-sm">
+            <tbody>
+              <tr>
+                <td className="lbl text-muted-foreground py-1">Name</td>
+                <td className="val font-semibold">
+                  {admission.patient?.firstName} {admission.patient?.lastName}
+                </td>
+              </tr>
+              <tr>
+                <td className="lbl text-muted-foreground py-1">MRN</td>
+                <td className="val font-semibold">{admission.patient?.mrn ?? '-'}</td>
+              </tr>
+              <tr>
+                <td className="lbl text-muted-foreground py-1">Phone</td>
+                <td className="val font-semibold">{admission.patient?.phone ?? '-'}</td>
+              </tr>
+            </tbody>
+          </table>
 
-          {/* Deposit */}
-          <div className="grid gap-1.5">
-            <Label>Deposit Amount</Label>
-            <Input
-              type="number"
-              min={0}
-              placeholder="0.00"
-              value={depositAmount}
-              onChange={(e) => setDepositAmount(e.target.value)}
-            />
+          <h2 className="text-sm font-semibold mt-4 border-b pb-1">Admission Details</h2>
+          <table className="w-full text-sm">
+            <tbody>
+              <tr>
+                <td className="lbl text-muted-foreground py-1">Consultant</td>
+                <td className="val font-semibold">
+                  Dr. {admission.doctor?.user?.firstName} {admission.doctor?.user?.lastName}
+                </td>
+              </tr>
+              <tr>
+                <td className="lbl text-muted-foreground py-1">Ward</td>
+                <td className="val font-semibold">{admission.ward?.name ?? '-'}</td>
+              </tr>
+              <tr>
+                <td className="lbl text-muted-foreground py-1">Bed</td>
+                <td className="val font-semibold">{admission.bed?.bedNumber ?? '-'}</td>
+              </tr>
+              <tr>
+                <td className="lbl text-muted-foreground py-1">Diagnosis / Reason</td>
+                <td className="val font-semibold">{admission.admissionReason ?? '-'}</td>
+              </tr>
+              <tr>
+                <td className="lbl text-muted-foreground py-1">Expected Discharge</td>
+                <td className="val font-semibold">
+                  {admission.expectedDischargeDate
+                    ? formatDate(admission.expectedDischargeDate)
+                    : '-'}
+                </td>
+              </tr>
+              <tr>
+                <td className="lbl text-muted-foreground py-1">Deposit Collected</td>
+                <td className="val font-semibold">
+                  ₹{Number(admission.depositAmount ?? 0).toLocaleString('en-IN')}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h2 className="text-sm font-semibold mt-4 border-b pb-1">Required Documents</h2>
+          <ul className="text-sm">
+            {ADMISSION_CHECKLIST.map((item) => (
+              <li key={item.key}>
+                ☐ {item.label}
+                {item.required ? ' *' : ''}
+              </li>
+            ))}
+          </ul>
+
+          <div className="signrow flex justify-between mt-12 text-xs">
+            <div className="sign border-t pt-1 w-[200px] text-center">
+              Patient / Attendant
+            </div>
+            <div className="sign border-t pt-1 w-[200px] text-center">Admitting Officer</div>
           </div>
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            Close
           </Button>
-          <Button
-            onClick={() => admitMutation.mutate()}
-            disabled={
-              admitMutation.isPending ||
-              !selectedPatientId ||
-              !selectedDoctorId ||
-              !selectedWardId ||
-              !selectedBedId
-            }
-          >
-            {admitMutation.isPending ? 'Admitting...' : 'Admit Patient'}
+          <Button onClick={handlePrint}>
+            <Printer className="mr-2 h-4 w-4" />
+            Print Slip
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -374,14 +680,14 @@ function TransferDialog({
 
   const { data: wardsData } = useQuery({
     queryKey: ['wards-list'],
-    queryFn: () => apiGet<Ward[]>('/infrastructure/wards'),
+    queryFn: () => apiGet<Ward[]>('/infrastructure/wards', { params: { limit: 200 } }),
   });
 
   const { data: bedsData } = useQuery({
     queryKey: ['beds-available', targetWardId],
     queryFn: () =>
       apiGet<BedWithStatus[]>('/infrastructure/beds', {
-        params: { wardId: targetWardId, status: 'available' },
+        params: { wardId: targetWardId, status: 'available', limit: 200 },
       }),
     enabled: !!targetWardId,
   });
@@ -393,23 +699,25 @@ function TransferDialog({
   const wards = wardsData?.data ?? [];
   const beds = bedsData?.data ?? [];
 
-  const transferType =
+  const transferType: 'ward_to_ward' | 'bed_to_bed' =
     targetWardId && targetWardId !== admission.wardId ? 'ward_to_ward' : 'bed_to_bed';
 
   const transferMutation = useMutation({
     mutationFn: () =>
       apiPost('/clinical/transfers', {
-        admissionId: admission.id,
+        patientId: admission.patientId,
+        visitId: admission.visitId,
+        transferType,
         fromWardId: admission.wardId,
-        fromBedId: admission.bedId,
         toWardId: targetWardId,
+        fromBedId: admission.bedId,
         toBedId: targetBedId,
-        type: transferType,
         reason: reason || undefined,
       }),
     onSuccess: () => {
-      toast.success('Patient transferred successfully');
+      toast.success('Transfer request created. Awaiting approval.');
       queryClient.invalidateQueries({ queryKey: ['hospital', 'admissions'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'beds'] });
       onOpenChange(false);
       setTargetWardId('');
       setTargetBedId('');
@@ -442,7 +750,6 @@ function TransferDialog({
         </div>
 
         <div className="grid gap-4 py-2">
-          {/* Target ward */}
           <div className="grid gap-1.5">
             <Label>Target Ward *</Label>
             <Select value={targetWardId} onValueChange={(v) => setTargetWardId(v ?? '')}>
@@ -459,7 +766,6 @@ function TransferDialog({
             </Select>
           </div>
 
-          {/* Target bed */}
           <div className="grid gap-1.5">
             <Label>Target Bed *</Label>
             <Select
@@ -486,7 +792,6 @@ function TransferDialog({
             </Select>
           </div>
 
-          {/* Reason */}
           <div className="grid gap-1.5">
             <Label>Reason</Label>
             <Textarea
@@ -515,7 +820,7 @@ function TransferDialog({
 }
 
 // ---------------------------------------------------------------------------
-// DischargeDialog — Confirm discharge of a patient
+// DischargeDialog
 // ---------------------------------------------------------------------------
 function DischargeDialog({
   admission,
@@ -528,15 +833,19 @@ function DischargeDialog({
 }) {
   const queryClient = useQueryClient();
   const [dischargeDate, setDischargeDate] = useState(toInputDateStr());
+  const [notes, setNotes] = useState('');
 
   const dischargeMutation = useMutation({
     mutationFn: () =>
       apiPatch(`/clinical/admissions/${admission.id}/discharge`, {
         dischargeDate,
+        notes: notes || undefined,
       }),
     onSuccess: () => {
       toast.success('Patient discharged successfully');
       queryClient.invalidateQueries({ queryKey: ['hospital', 'admissions'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'beds'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'occupancy'] });
       onOpenChange(false);
     },
     onError: (err: Error) => {
@@ -550,7 +859,7 @@ function DischargeDialog({
         <DialogHeader>
           <DialogTitle>Discharge Patient</DialogTitle>
           <DialogDescription>
-            Are you sure you want to discharge{' '}
+            Discharge{' '}
             <strong>
               {admission.patient?.firstName} {admission.patient?.lastName}
             </strong>
@@ -581,6 +890,16 @@ function DischargeDialog({
               onChange={(e) => setDischargeDate(e.target.value)}
             />
           </div>
+
+          <div className="grid gap-1.5">
+            <Label>Notes</Label>
+            <Textarea
+              placeholder="Discharge notes..."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+            />
+          </div>
         </div>
 
         <DialogFooter>
@@ -601,7 +920,134 @@ function DischargeDialog({
 }
 
 // ---------------------------------------------------------------------------
-// RowActionsMenu — Dropdown for each admission row
+// ViewAdmissionDialog — read-only summary + slip / checklist tabs
+// ---------------------------------------------------------------------------
+function ViewAdmissionDialog({
+  admission,
+  open,
+  onOpenChange,
+}: {
+  admission: Admission | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [slipOpen, setSlipOpen] = useState(false);
+
+  if (!admission) return null;
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>
+              {admission.patient?.firstName} {admission.patient?.lastName}
+              <span
+                className={cn(
+                  'ml-2 inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full capitalize',
+                  admission.status === 'admitted' && 'bg-blue-100 text-blue-700',
+                  admission.status === 'discharged' && 'bg-green-100 text-green-700',
+                  admission.status === 'transferred' && 'bg-cyan-100 text-cyan-700',
+                  admission.status === 'absconded' && 'bg-red-100 text-red-700',
+                )}
+              >
+                {admission.status}
+              </span>
+            </DialogTitle>
+            <DialogDescription>
+              MRN: {admission.patient?.mrn} · IP No: {admission.id?.slice(0, 8).toUpperCase()}
+            </DialogDescription>
+          </DialogHeader>
+
+          <Tabs defaultValue="overview">
+            <TabsList variant="line">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="checklist">Checklist</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="overview" className="pt-4">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <DetailRow label="Consultant"
+                  value={`Dr. ${admission.doctor?.user?.firstName ?? ''} ${admission.doctor?.user?.lastName ?? ''}`} />
+                <DetailRow label="Ward" value={admission.ward?.name ?? '-'} />
+                <DetailRow label="Bed" value={admission.bed?.bedNumber ?? '-'} />
+                <DetailRow label="Admitted" value={formatDate(admission.admissionDate)} />
+                <DetailRow
+                  label="Expected Discharge"
+                  value={
+                    admission.expectedDischargeDate
+                      ? formatDate(admission.expectedDischargeDate)
+                      : '-'
+                  }
+                />
+                <DetailRow
+                  label="Deposit"
+                  value={`₹${Number(admission.depositAmount ?? 0).toLocaleString('en-IN')}`}
+                />
+                <div className="col-span-2">
+                  <DetailRow
+                    label="Diagnosis / Reason"
+                    value={admission.admissionReason ?? '-'}
+                  />
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="checklist" className="pt-4">
+              <ul className="space-y-2">
+                {ADMISSION_CHECKLIST.map((item) => (
+                  <li
+                    key={item.key}
+                    className="flex items-start gap-3 rounded-lg border bg-card px-3 py-2 text-sm"
+                  >
+                    <CheckCircle2 className="h-4 w-4 mt-0.5 text-muted-foreground" />
+                    <span>
+                      {item.label}
+                      {item.required && <span className="text-destructive ml-1">*</span>}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Print the admission slip for the patient&apos;s record.
+              </p>
+            </TabsContent>
+          </Tabs>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
+            <Button onClick={() => setSlipOpen(true)}>
+              <Printer className="mr-2 h-4 w-4" />
+              Admission Slip
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AdmissionSlipDialog
+        admission={admission}
+        open={slipOpen}
+        onOpenChange={setSlipOpen}
+      />
+    </>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="font-label text-[10px] text-on-surface-variant uppercase tracking-widest">
+        {label}
+      </span>
+      <span className="font-medium">{value}</span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// RowActionsMenu
 // ---------------------------------------------------------------------------
 function RowActionsMenu({
   admission,
@@ -612,6 +1058,7 @@ function RowActionsMenu({
 }) {
   const [transferOpen, setTransferOpen] = useState(false);
   const [dischargeOpen, setDischargeOpen] = useState(false);
+  const [slipOpen, setSlipOpen] = useState(false);
 
   const isActive = admission.status === 'admitted';
 
@@ -634,6 +1081,10 @@ function RowActionsMenu({
             <Eye className="mr-2 h-4 w-4" />
             View Details
           </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setSlipOpen(true)}>
+            <Printer className="mr-2 h-4 w-4" />
+            Print Admission Slip
+          </DropdownMenuItem>
           {isActive && (
             <>
               <DropdownMenuSeparator />
@@ -641,10 +1092,7 @@ function RowActionsMenu({
                 <ArrowRightLeft className="mr-2 h-4 w-4" />
                 Transfer
               </DropdownMenuItem>
-              <DropdownMenuItem
-                variant="destructive"
-                onClick={() => setDischargeOpen(true)}
-              >
+              <DropdownMenuItem variant="destructive" onClick={() => setDischargeOpen(true)}>
                 <LogOut className="mr-2 h-4 w-4" />
                 Discharge
               </DropdownMenuItem>
@@ -653,31 +1101,62 @@ function RowActionsMenu({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* Transfer dialog */}
       <TransferDialog
         admission={admission}
         open={transferOpen}
         onOpenChange={setTransferOpen}
       />
-
-      {/* Discharge dialog */}
       <DischargeDialog
         admission={admission}
         open={dischargeOpen}
         onOpenChange={setDischargeOpen}
+      />
+      <AdmissionSlipDialog
+        admission={admission}
+        open={slipOpen}
+        onOpenChange={setSlipOpen}
       />
     </>
   );
 }
 
 // ---------------------------------------------------------------------------
-// InPatientList — Main component (preserved + enhanced)
+// useAdmissionStats — fetch counts per status (limit=1 + meta.total)
+// ---------------------------------------------------------------------------
+function useAdmissionStats() {
+  return useQuery({
+    queryKey: ['hospital', 'admission-stats'],
+    queryFn: async () => {
+      const fetchCount = async (status?: string) => {
+        const params: Record<string, unknown> = { limit: 1, page: 1 };
+        if (status) params.status = status;
+        const res = await apiGet<unknown[]>('/clinical/admissions', { params });
+        return res.meta?.total ?? 0;
+      };
+      const [all, admitted, discharged, absconded] = await Promise.all([
+        fetchCount(),
+        fetchCount('admitted'),
+        fetchCount('discharged'),
+        fetchCount('absconded'),
+      ]);
+      return { all, admitted, discharged, absconded } as Record<string, number>;
+    },
+    staleTime: 15_000,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// InPatientList — Main component
 // ---------------------------------------------------------------------------
 export function InPatientList() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [admitOpen, setAdmitOpen] = useState(false);
+  const [viewAdmission, setViewAdmission] = useState<Admission | null>(null);
+  const [postAdmitSlip, setPostAdmitSlip] = useState<Admission | null>(null);
+
+  const { data: stats } = useAdmissionStats();
 
   const { data, isLoading } = useQuery({
     queryKey: ['hospital', 'admissions', { status: statusFilter, search, page }],
@@ -692,11 +1171,6 @@ export function InPatientList() {
 
   const admissions = data?.data ?? [];
 
-  const handleView = (adm: Admission) => {
-    // TODO: navigate to admission detail or open a sheet
-    toast.info(`Viewing admission for ${adm.patient?.firstName} ${adm.patient?.lastName}`);
-  };
-
   return (
     <div className="space-y-4">
       {/* Stats row */}
@@ -704,16 +1178,23 @@ export function InPatientList() {
         {statItems.map((item) => (
           <button
             key={item.key}
-            onClick={() => { setStatusFilter(item.key); setPage(1); }}
+            onClick={() => {
+              setStatusFilter(item.key);
+              setPage(1);
+            }}
             className={cn(
-              'flex flex-col items-center rounded-xl border-2 px-4 py-3 min-w-[90px] transition-all',
+              'flex flex-col items-center rounded-xl border-2 px-4 py-3 min-w-[100px] transition-all',
               statusFilter === item.key
                 ? 'border-primary bg-primary/5'
-                : 'border-transparent bg-surface-container-lowest hover:border-surface-container'
+                : 'border-transparent bg-surface-container-lowest hover:border-surface-container',
             )}
           >
-            <span className={cn('text-xl font-bold', item.color)}>-</span>
-            <span className="font-label text-xs text-on-surface-variant uppercase tracking-widest mt-1">{item.label}</span>
+            <span className={cn('text-xl font-bold', item.color)}>
+              {stats ? stats[item.key] ?? 0 : '–'}
+            </span>
+            <span className="font-label text-xs text-on-surface-variant uppercase tracking-widest mt-1">
+              {item.label}
+            </span>
           </button>
         ))}
       </div>
@@ -725,14 +1206,14 @@ export function InPatientList() {
           <Input
             placeholder="Search patient, IP number..."
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
             className="bg-surface-container-low border-none rounded-xl pl-12 pr-6 py-2.5 font-label text-sm focus:ring-2 focus:ring-primary/20 transition-all outline-none placeholder:text-on-surface-variant/60"
           />
         </div>
-        <Button
-          className="rounded-xl gap-1.5"
-          onClick={() => setAdmitOpen(true)}
-        >
+        <Button className="rounded-xl gap-1.5" onClick={() => setAdmitOpen(true)}>
           <Plus className="h-4 w-4" />
           Admit Patient
         </Button>
@@ -745,10 +1226,11 @@ export function InPatientList() {
             <thead>
               <tr className="text-on-surface-variant font-label text-[10px] uppercase tracking-widest border-b border-surface-container">
                 <th className="px-4 pb-4 pt-5 text-left font-semibold">Patient Details</th>
-                <th className="px-4 pb-4 pt-5 text-left font-semibold">IP Records</th>
+                <th className="px-4 pb-4 pt-5 text-left font-semibold">IP Number</th>
+                <th className="px-4 pb-4 pt-5 text-left font-semibold">Diagnosis</th>
                 <th className="px-4 pb-4 pt-5 text-left font-semibold">Consultant</th>
-                <th className="px-4 pb-4 pt-5 text-left font-semibold">Bed / Ward</th>
-                <th className="px-4 pb-4 pt-5 text-left font-semibold">Advance</th>
+                <th className="px-4 pb-4 pt-5 text-left font-semibold">Ward / Bed</th>
+                <th className="px-4 pb-4 pt-5 text-right font-semibold">Advance</th>
                 <th className="px-4 pb-4 pt-5 text-left font-semibold">Status</th>
                 <th className="px-4 pb-4 pt-5 text-right font-semibold">Actions</th>
               </tr>
@@ -756,59 +1238,89 @@ export function InPatientList() {
             <tbody className="divide-y divide-surface-container/50">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center font-label text-on-surface-variant">
+                  <td
+                    colSpan={8}
+                    className="px-4 py-8 text-center font-label text-on-surface-variant"
+                  >
                     <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                   </td>
                 </tr>
               ) : admissions.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center font-label text-on-surface-variant">
+                  <td
+                    colSpan={8}
+                    className="px-4 py-8 text-center font-label text-on-surface-variant"
+                  >
                     No admissions found.
                   </td>
                 </tr>
               ) : (
                 admissions.map((adm) => {
-                  const initials = `${adm.patient?.firstName?.[0] || ''}${adm.patient?.lastName?.[0] || ''}`.toUpperCase();
+                  const initials = `${adm.patient?.firstName?.[0] || ''}${
+                    adm.patient?.lastName?.[0] || ''
+                  }`.toUpperCase();
                   return (
-                    <tr key={adm.id} className="group hover:bg-surface-container-low transition-colors">
+                    <tr
+                      key={adm.id}
+                      className="group hover:bg-surface-container-low transition-colors"
+                    >
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <Avatar className="h-8 w-8">
-                            <AvatarFallback className="text-xs bg-primary/10 text-primary">{initials}</AvatarFallback>
+                            <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                              {initials}
+                            </AvatarFallback>
                           </Avatar>
                           <div>
-                            <p className="font-label text-sm font-bold">{adm.patient?.firstName} {adm.patient?.lastName}</p>
-                            <p className="font-label text-[10px] text-on-surface-variant">{adm.patient?.mrn} | {adm.patient?.phone}</p>
+                            <p className="font-label text-sm font-bold">
+                              {adm.patient?.firstName} {adm.patient?.lastName}
+                            </p>
+                            <p className="font-label text-[10px] text-on-surface-variant">
+                              {adm.patient?.mrn} | {adm.patient?.phone}
+                            </p>
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3">
-                        <p className="font-label text-[10px] text-on-surface-variant">{adm.admissionReason || '-'}</p>
+                      <td className="px-4 py-3 font-mono text-xs">
+                        {adm.id?.slice(0, 8).toUpperCase()}
                       </td>
                       <td className="px-4 py-3">
-                        <p className="font-label text-sm">
-                          {adm.doctor ? `Dr. ${adm.doctor.user?.firstName || ''} ${adm.doctor.user?.lastName || ''}` : '-'}
+                        <p className="font-label text-xs text-on-surface-variant truncate max-w-[180px]">
+                          {adm.admissionReason || '-'}
                         </p>
                       </td>
                       <td className="px-4 py-3">
-                        <p className="font-label text-sm">{adm.bed?.bedNumber || '-'} / {adm.ward?.name || '-'}</p>
+                        <p className="font-label text-sm">
+                          {adm.doctor
+                            ? `Dr. ${adm.doctor.user?.firstName || ''} ${
+                                adm.doctor.user?.lastName || ''
+                              }`
+                            : '-'}
+                        </p>
                       </td>
                       <td className="px-4 py-3">
-                        <p className="font-label text-sm font-bold">{adm.depositAmount?.toLocaleString() ?? 0}</p>
+                        <p className="font-label text-sm">
+                          {adm.ward?.name || '-'} / {adm.bed?.bedNumber || '-'}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3 text-right font-label text-sm font-bold">
+                        ₹{Number(adm.depositAmount ?? 0).toLocaleString('en-IN')}
                       </td>
                       <td className="px-4 py-3">
-                        <span className={cn(
-                          'inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full capitalize',
-                          adm.status === 'admitted' && 'bg-primary/10 text-primary',
-                          adm.status === 'discharged' && 'bg-primary/10 text-primary',
-                          adm.status === 'transferred' && 'bg-secondary/10 text-secondary',
-                          adm.status === 'absconded' && 'bg-error-container text-on-error-container',
-                        )}>
+                        <span
+                          className={cn(
+                            'inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full capitalize',
+                            adm.status === 'admitted' && 'bg-blue-100 text-blue-700',
+                            adm.status === 'discharged' && 'bg-green-100 text-green-700',
+                            adm.status === 'transferred' && 'bg-cyan-100 text-cyan-700',
+                            adm.status === 'absconded' && 'bg-red-100 text-red-700',
+                          )}
+                        >
                           {adm.status}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <RowActionsMenu admission={adm} onView={handleView} />
+                        <RowActionsMenu admission={adm} onView={setViewAdmission} />
                       </td>
                     </tr>
                   );
@@ -824,15 +1336,47 @@ export function InPatientList() {
               Page {page} of {data?.meta?.totalPages} ({data?.meta?.total} total)
             </p>
             <div className="flex gap-1">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</Button>
-              <Button variant="outline" size="sm" disabled={page >= (data?.meta?.totalPages ?? 1)} onClick={() => setPage(page + 1)}>Next</Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page <= 1}
+                onClick={() => setPage(page - 1)}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= (data?.meta?.totalPages ?? 1)}
+                onClick={() => setPage(page + 1)}
+              >
+                Next
+              </Button>
             </div>
           </div>
         )}
       </div>
 
       {/* Admission dialog */}
-      <AdmissionDialog open={admitOpen} onOpenChange={setAdmitOpen} />
+      <AdmissionDialog
+        open={admitOpen}
+        onOpenChange={setAdmitOpen}
+        onAdmitted={(adm) => setPostAdmitSlip(adm)}
+      />
+
+      {/* Auto-open admission slip after admit */}
+      <AdmissionSlipDialog
+        admission={postAdmitSlip}
+        open={!!postAdmitSlip}
+        onOpenChange={(o) => !o && setPostAdmitSlip(null)}
+      />
+
+      {/* View details dialog */}
+      <ViewAdmissionDialog
+        admission={viewAdmission}
+        open={!!viewAdmission}
+        onOpenChange={(o) => !o && setViewAdmission(null)}
+      />
     </div>
   );
 }

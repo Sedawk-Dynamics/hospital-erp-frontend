@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { toInputDateStr } from '@/lib/date-utils';
-import { Search, Plus, Eye, X } from 'lucide-react';
+import { Search, Plus } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -77,7 +77,6 @@ export function ReservationTab() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
     queryKey: ['hospital', 'reservations', { status: statusFilter, search, page }],
@@ -256,7 +255,7 @@ function CreateReservationDialog({ open, onOpenChange }: { open: boolean; onOpen
   const { data: doctorsData } = useQuery({
     queryKey: ['doctors', 'list'],
     queryFn: async () => {
-      const res = await apiGet<Doctor[]>('/users', { params: { role: 'doctor', limit: 100 } });
+      const res = await apiGet<Doctor[]>('/appointments/doctors', { params: { limit: 100 } });
       return res.data;
     },
     enabled: open,

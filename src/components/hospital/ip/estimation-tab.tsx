@@ -197,7 +197,7 @@ function CreateEstimationDialog({ open, onOpenChange }: { open: boolean; onOpenC
   const { data: doctorsData } = useQuery({
     queryKey: ['doctors', 'list'],
     queryFn: async () => {
-      const res = await apiGet<any[]>('/users', { params: { role: 'doctor', limit: 100 } });
+      const res = await apiGet<any[]>('/appointments/doctors', { params: { limit: 100 } });
       return res.data;
     },
     enabled: open,

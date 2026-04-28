@@ -352,13 +352,19 @@ export interface LabOrder {
 export interface BedWithStatus {
   id: string;
   bedNumber: string;
-  wardId: string;
-  ward: { id: string; name: string };
+  bedType?: 'standard' | 'electric' | 'icu' | 'pediatric' | 'bariatric';
+  wardId?: string;
+  ward?: { id: string; name: string };
   roomId?: string;
-  room?: { id: string; roomNumber: string };
+  room?: {
+    id: string;
+    roomNumber: string;
+    ward?: { id: string; name: string };
+  };
   floor?: string;
   block?: string;
-  status: 'available' | 'occupied' | 'under_cleaning' | 'under_maintenance';
+  status: 'available' | 'occupied' | 'maintenance' | 'reserved';
+  currentPatientId?: string | null;
   currentPatient?: Pick<Patient, 'id' | 'mrn' | 'firstName' | 'lastName'>;
 }
 
