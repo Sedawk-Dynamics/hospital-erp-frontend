@@ -83,18 +83,12 @@ export const DOSAGE_FORM_LABELS: Record<string, string> = {
 };
 
 // ── Zod schema ─────────────────────────────────────────────
-
-const vitalsSchema = z.object({
-  temperature: z.coerce.number().min(25, 'Min 25°C').max(50, 'Max 50°C').optional(),
-  bloodPressureSystolic: z.coerce.number().int().min(0).max(400, 'Max 400').optional(),
-  bloodPressureDiastolic: z.coerce.number().int().min(0).max(300, 'Max 300').optional(),
-  pulseRate: z.coerce.number().int().min(0).max(300, 'Max 300 bpm').optional(),
-  respiratoryRate: z.coerce.number().int().min(0).max(100, 'Max 100/min').optional(),
-  oxygenSaturation: z.coerce.number().min(0).max(100, 'Max 100%').optional(),
-  weightKg: z.coerce.number().min(0).max(700, 'Max 700 kg').optional(),
-  heightCm: z.coerce.number().min(0).max(300, 'Max 300 cm').optional(),
-  bloodSugar: z.coerce.number().min(0).max(2000, 'Max 2000').optional(),
-});
+//
+// Note: a `vitals` schema once lived here so doctors could record vital signs
+// inline during a consultation. Vitals are now nursing-owned — only nurses
+// (and the supervisory nurse roles) can write — so the field is removed from
+// the form. The Examination step renders the latest nurse-recorded reading
+// read-only via `useLatestVitals`.
 
 const diagnosisRowSchema = z.object({
   icdCode: z.string().optional(),
@@ -157,7 +151,8 @@ export const consultationCompletionSchema = z.object({
   chiefComplaint: z.string().min(1, 'Chief complaint is required'),
   generalExamination: z.string().optional(),
   systemicExamination: z.string().optional(),
-  vitals: vitalsSchema,
+  // Vitals are recorded by the nursing team and only displayed read-only on
+  // this step — they are not part of the consultation form payload.
   diagnoses: z.array(diagnosisRowSchema).min(1, 'At least one diagnosis is required'),
 
   // Step 2 — Prescription (optional — doctor may not prescribe)
@@ -302,17 +297,6 @@ export const defaultFormValues: ConsultationFormData = {
   chiefComplaint: '',
   generalExamination: '',
   systemicExamination: '',
-  vitals: {
-    temperature: undefined,
-    bloodPressureSystolic: undefined,
-    bloodPressureDiastolic: undefined,
-    pulseRate: undefined,
-    respiratoryRate: undefined,
-    oxygenSaturation: undefined,
-    weightKg: undefined,
-    heightCm: undefined,
-    bloodSugar: undefined,
-  },
   diagnoses: [{ icdCode: '', diagnosisName: '', diagnosisType: 'primary' }],
   medicines: [],
   advice: '',

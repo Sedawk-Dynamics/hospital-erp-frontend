@@ -372,7 +372,8 @@ export default function DoctorIPHomePage() {
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem>View Full Record</DropdownMenuItem>
                               <DropdownMenuItem>Add Prescription</DropdownMenuItem>
-                              <DropdownMenuItem>Record Vitals</DropdownMenuItem>
+                              {/* Vitals are nurse-recorded; the doctor sees them
+                                   read-only on the consultation/IP record. */}
                               <DropdownMenuItem
                                 onClick={() =>
                                   router.push(`/doctor/discharge-summary?admissionId=${admission.id}`)

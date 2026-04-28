@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
-  Activity, Thermometer, Heart, Wind, Droplets, Weight, Ruler,
+  Activity, Lock,
   Stethoscope, Search, Plus, Trash2, Pill, AlertTriangle,
   GripVertical, FlaskConical, ClipboardList, StickyNote,
   UserCheck, CalendarDays, MessageSquare, Eye,
@@ -36,34 +36,6 @@ import { VoiceInputButton } from '../voice-input-button';
 import { PhysicalObservationsPicker } from '../physical-observations-picker';
 import { DischargePinEditor } from '../discharge-pin-editor';
 import { SmartSuggestionsCard } from '../smart-suggestions-card';
-
-/** Format a Vital record into a single-line summary for carry-forward. */
-function formatVitalForCarryForward(v: any): {
-  bloodPressureSystolic?: number;
-  bloodPressureDiastolic?: number;
-  pulseRate?: number;
-  temperature?: number;
-  respiratoryRate?: number;
-  oxygenSaturation?: number;
-  weightKg?: number;
-  heightCm?: number;
-  bloodSugar?: number;
-} {
-  if (!v) return {};
-  const pick = (x: unknown) =>
-    typeof x === 'number' ? x : typeof x === 'string' && x !== '' ? Number(x) : undefined;
-  return {
-    bloodPressureSystolic: pick(v.bloodPressureSystolic),
-    bloodPressureDiastolic: pick(v.bloodPressureDiastolic),
-    pulseRate: pick(v.pulseRate ?? v.heartRate),
-    temperature: pick(v.temperature),
-    respiratoryRate: pick(v.respiratoryRate),
-    oxygenSaturation: pick(v.oxygenSaturation),
-    weightKg: pick(v.weightKg ?? v.weight),
-    heightCm: pick(v.heightCm ?? v.height),
-    bloodSugar: pick(v.bloodSugar),
-  };
-}
 
 /** Build the localStorage key where the consultation draft is stored. */
 export function getConsultationDraftKey(appointmentId: string, visitId?: string): string {
@@ -163,7 +135,6 @@ export function PrescriptionPad({
     defaultValues: {
       ...defaultFormValues,
       ...(seed ?? {}),
-      vitals: { ...defaultFormValues.vitals, ...(seed?.vitals ?? {}) },
       diagnoses:
         seed?.diagnoses && seed.diagnoses.length > 0
           ? seed.diagnoses
@@ -219,7 +190,9 @@ export function PrescriptionPad({
   const { data: pastDiagnoses } = usePatientDiagnoses(patientId);
   const { data: pastPrescriptions } = usePrescriptions({ patientId, limit: 5 });
   const { data: pastNotes } = useProgressNotes({ patientId, limit: 5 });
-  // Latest recorded vitals → used for the "Carry forward" action.
+  // Latest nurse-recorded vitals → displayed read-only in the Objective
+  // section. The doctor cannot edit them; if a fresh reading is needed they
+  // ask the assigned nurse to capture it from the Nursing module.
   const { data: latestVitalsResp } = useLatestVitals(patientId);
   const latestVital = (latestVitalsResp as any)?.data ?? null;
 
@@ -228,15 +201,6 @@ export function PrescriptionPad({
   const physicalObservations = watch('physicalObservations') ?? [];
   const impression = watch('impression') ?? '';
   const pins = watch('pins') ?? [];
-
-  const carryForwardLastVitals = useCallback(() => {
-    const mapped = formatVitalForCarryForward(latestVital);
-    if (Object.values(mapped).every((v) => v === undefined)) return false;
-    Object.entries(mapped).forEach(([k, v]) => {
-      if (v !== undefined) setValue(`vitals.${k}` as any, v, { shouldDirty: true });
-    });
-    return true;
-  }, [latestVital, setValue]);
 
   // SOAP-letter badge shown next to each section title. Keeps the
   // doctor oriented inside a flat vertical scroll without forcing a
@@ -356,44 +320,16 @@ export function PrescriptionPad({
               Objective · what you measure & observe
             </span>
           </div>
-            {/* VITALS */}
+            {/* VITALS — read-only · recorded by nursing team */}
             <PadSection
               icon={<Activity className="h-4 w-4" />}
               title="Vitals"
               collapsed={collapsed.vitals}
               onToggle={() => toggleSection('vitals')}
               color="text-primary"
-              actions={
-                latestVital ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-6 text-[10px] gap-1"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      carryForwardLastVitals();
-                    }}
-                    title="Re-use the last recorded vitals for this patient"
-                  >
-                    <Activity className="h-3 w-3" />
-                    Carry forward last
-                  </Button>
-                ) : undefined
-              }
+              badge="Nurse-recorded"
             >
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-3">
-                <VitalInput icon={<Heart className="h-3.5 w-3.5 text-error" />} label="Systolic BP" unit="mmHg" {...register('vitals.bloodPressureSystolic')} error={(errors.vitals as any)?.bloodPressureSystolic?.message} />
-                <VitalInput icon={<Heart className="h-3.5 w-3.5 text-error" />} label="Diastolic BP" unit="mmHg" {...register('vitals.bloodPressureDiastolic')} error={(errors.vitals as any)?.bloodPressureDiastolic?.message} />
-                <VitalInput icon={<Thermometer className="h-3.5 w-3.5 text-secondary" />} label="Temperature" unit="°C" {...register('vitals.temperature')} error={(errors.vitals as any)?.temperature?.message} />
-                <VitalInput icon={<Droplets className="h-3.5 w-3.5 text-primary-container" />} label="SpO2" unit="%" {...register('vitals.oxygenSaturation')} error={(errors.vitals as any)?.oxygenSaturation?.message} />
-                <VitalInput icon={<Activity className="h-3.5 w-3.5 text-tertiary" />} label="Pulse" unit="/min" {...register('vitals.pulseRate')} error={(errors.vitals as any)?.pulseRate?.message} />
-                <VitalInput icon={<Wind className="h-3.5 w-3.5 text-primary-container" />} label="Respiratory Rate" unit="/min" {...register('vitals.respiratoryRate')} error={(errors.vitals as any)?.respiratoryRate?.message} />
-                <VitalInput icon={<Ruler className="h-3.5 w-3.5 text-tertiary" />} label="Height" unit="cm" {...register('vitals.heightCm')} error={(errors.vitals as any)?.heightCm?.message} />
-                <VitalInput icon={<Weight className="h-3.5 w-3.5 text-secondary" />} label="Weight" unit="kg" {...register('vitals.weightKg')} error={(errors.vitals as any)?.weightKg?.message} />
-                <BMIField heightCm={watch('vitals.heightCm')} weightKg={watch('vitals.weightKg')} />
-                <VitalInput icon={<Droplets className="h-3.5 w-3.5 text-error" />} label="Blood Sugar" unit="mg/dL" {...register('vitals.bloodSugar')} error={(errors.vitals as any)?.bloodSugar?.message} />
-              </div>
+              <VitalsReadOnlyDisplay vital={latestVital} />
             </PadSection>
 
             {/* PHYSICAL OBSERVATIONS */}
@@ -533,11 +469,15 @@ export function PrescriptionPad({
                       .filter(Boolean)
                       .join('\n') || undefined,
                   vitalsSummary: (() => {
-                    const v = watch('vitals') ?? {};
+                    // Pull from the latest nurse-recorded reading. The doctor
+                    // no longer captures vitals inline.
+                    const v = latestVital;
+                    if (!v) return undefined;
                     const parts: string[] = [];
                     if (v.bloodPressureSystolic && v.bloodPressureDiastolic)
                       parts.push(`BP ${v.bloodPressureSystolic}/${v.bloodPressureDiastolic}`);
-                    if (v.pulseRate) parts.push(`HR ${v.pulseRate}`);
+                    const hr = v.pulseRate ?? v.heartRate;
+                    if (hr) parts.push(`HR ${hr}`);
                     if (v.temperature) parts.push(`T ${v.temperature}`);
                     if (v.respiratoryRate) parts.push(`RR ${v.respiratoryRate}`);
                     if (v.oxygenSaturation) parts.push(`SpO2 ${v.oxygenSaturation}%`);
@@ -733,58 +673,96 @@ function PadSection({
 }
 
 // ═══════════════════════════════════════════════════════════
-// Vital Input (eka.care-style: icon + label + input + unit)
+// Vitals (read-only, recorded by nursing team)
 // ═══════════════════════════════════════════════════════════
+//
+// Doctors cannot record or correct vitals from the prescription pad. The
+// section now renders the latest nurse-recorded reading. If the doctor wants
+// a fresh measurement, they ask the assigned nurse to capture it from the
+// nursing module.
 
-import { forwardRef } from 'react';
-
-interface VitalInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
-  icon: React.ReactNode;
-  label: string;
-  unit: string;
-  error?: string;
-}
-
-const VitalInput = forwardRef<HTMLInputElement, VitalInputProps>(
-  ({ icon, label, unit, error, ...props }, ref) => (
-    <div className="flex items-center gap-2">
-      <div className="shrink-0">{icon}</div>
-      <span className="text-xs font-medium text-muted-foreground w-24 shrink-0">{label}</span>
-      <div className="relative flex-1">
-        <Input
-          ref={ref}
-          type="number"
-          step="any"
-          className={cn('h-8 text-sm pr-12', error && 'ring-2 ring-red-300')}
-          {...props}
-        />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground pointer-events-none">
-          {unit}
-        </span>
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function VitalsReadOnlyDisplay({ vital }: { vital: any | null }) {
+  if (!vital) {
+    return (
+      <div className="flex items-start gap-2 rounded-lg border border-dashed border-outline-variant/60 bg-muted/30 px-3 py-2.5">
+        <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <p className="text-xs text-muted-foreground">
+          No vitals on record. Vitals are recorded by the nursing team — ask the assigned nurse to
+          capture them from the Nursing module before completing this consultation.
+        </p>
       </div>
-    </div>
-  ),
-);
-VitalInput.displayName = 'VitalInput';
+    );
+  }
 
-// ── BMI auto-calculation field ──
-function BMIField({ heightCm, weightKg }: { heightCm?: number; weightKg?: number }) {
-  const bmi = useMemo(() => {
-    if (!heightCm || !weightKg || heightCm <= 0) return '';
-    const heightM = Number(heightCm) / 100;
-    return (Number(weightKg) / (heightM * heightM)).toFixed(1);
-  }, [heightCm, weightKg]);
+  const recorder = vital.recorder as { firstName?: string; lastName?: string } | undefined;
+  const recorderName = recorder
+    ? [recorder.firstName, recorder.lastName].filter(Boolean).join(' ').trim() || 'Nurse'
+    : 'Nursing team';
+
+  const heightCm = Number(vital.heightCm ?? vital.height) || 0;
+  const weightKg = Number(vital.weightKg ?? vital.weight) || 0;
+  const bmi =
+    heightCm > 0 && weightKg > 0
+      ? (weightKg / Math.pow(heightCm / 100, 2)).toFixed(1)
+      : null;
+
+  const tiles = [
+    {
+      label: 'BP',
+      value:
+        vital.bloodPressureSystolic && vital.bloodPressureDiastolic
+          ? `${vital.bloodPressureSystolic}/${vital.bloodPressureDiastolic}`
+          : null,
+      unit: 'mmHg',
+    },
+    { label: 'Pulse', value: vital.pulseRate ?? vital.heartRate ?? null, unit: 'bpm' },
+    { label: 'Temp', value: vital.temperature ?? null, unit: '°C' },
+    { label: 'SpO₂', value: vital.oxygenSaturation ?? null, unit: '%' },
+    { label: 'RR', value: vital.respiratoryRate ?? null, unit: '/min' },
+    { label: 'Weight', value: weightKg > 0 ? weightKg : null, unit: 'kg' },
+    { label: 'Height', value: heightCm > 0 ? heightCm : null, unit: 'cm' },
+    { label: 'BMI', value: bmi, unit: 'kg/m²' },
+    { label: 'BGL', value: vital.bloodSugar ?? null, unit: 'mg/dL' },
+  ].filter((t) => t.value !== null && t.value !== undefined && t.value !== '');
+
+  if (tiles.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        The latest reading has no numeric values on file.
+      </p>
+    );
+  }
 
   return (
-    <div className="flex items-center gap-2">
-      <div className="shrink-0"><Activity className="h-3.5 w-3.5 text-primary" /></div>
-      <span className="text-xs font-medium text-muted-foreground w-24 shrink-0">BMI</span>
-      <div className="relative flex-1">
-        <Input type="text" className="h-8 text-sm pr-12 bg-muted/30" value={bmi} readOnly />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground pointer-events-none">
-          kg/m²
-        </span>
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-outline-variant/40 bg-muted/40 p-3">
+        {tiles.map((t) => (
+          <div
+            key={t.label}
+            className="flex items-baseline gap-1 rounded-md bg-background/70 px-2.5 py-1.5"
+          >
+            <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
+              {t.label}
+            </span>
+            <span className="text-sm font-bold">{String(t.value)}</span>
+            <span className="text-[10px] text-muted-foreground">{t.unit}</span>
+          </div>
+        ))}
       </div>
+      <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+        <Lock className="h-3 w-3" />
+        Recorded by {recorderName}
+        {vital.recordedAt
+          ? ` · ${new Date(vital.recordedAt).toLocaleString('en-IN', {
+              day: '2-digit',
+              month: 'short',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            })}`
+          : ''}
+      </p>
     </div>
   );
 }

@@ -171,7 +171,9 @@ function VitalsStrip({ patientId }: { patientId: string }) {
   }
   if (!v) {
     return (
-      <p className="text-xs text-muted-foreground">No vitals recorded yet. Enter them below.</p>
+      <p className="text-xs text-muted-foreground">
+        No vitals recorded yet. Vitals are recorded by the nursing team — ask the assigned nurse to capture them.
+      </p>
     );
   }
 

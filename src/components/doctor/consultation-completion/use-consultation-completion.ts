@@ -91,38 +91,11 @@ export function useConsultationCompletion() {
           }
         }
 
-        // ── 2. Record vitals (if any filled) ──
-        const v = formData.vitals;
-        // Filter: only send values that are real positive numbers within DB column limits
-        const num = (val: unknown, max = 999.9): number | undefined => {
-          const n = Number(val);
-          return n > 0 && !isNaN(n) && n <= max ? n : undefined;
-        };
-        const int = (val: unknown, max = 999): number | undefined => {
-          const n = Number(val);
-          return n > 0 && !isNaN(n) && n <= max ? Math.round(n) : undefined;
-        };
-        const vitalsPayload = {
-          temperature: num(v.temperature, 999.9),         // Decimal(4,1)
-          bloodPressureSystolic: int(v.bloodPressureSystolic, 400),
-          bloodPressureDiastolic: int(v.bloodPressureDiastolic, 300),
-          pulseRate: int(v.pulseRate, 300),
-          respiratoryRate: int(v.respiratoryRate, 100),
-          oxygenSaturation: num(v.oxygenSaturation, 100), // Decimal(4,1), max 100%
-          weightKg: num(v.weightKg, 999.99),              // Decimal(5,2)
-          heightCm: num(v.heightCm, 300),                 // Decimal(5,1), max 300cm
-          bloodSugar: num(v.bloodSugar, 9999.99),         // Decimal(6,2)
-        };
-        const hasVitals = Object.values(vitalsPayload).some((val) => val !== undefined);
-
-        if (hasVitals) {
-          setCurrentStep('Recording vital signs...');
-          const vitalsBody = { patientId, visitId, ...vitalsPayload };
-          const cleanVitals = Object.fromEntries(
-            Object.entries(vitalsBody).filter(([, val]) => val !== undefined),
-          );
-          await apiPost('/clinical/vitals', cleanVitals);
-        }
+        // ── 2. Vitals — intentionally NOT recorded here. ──
+        // Vitals are owned by the nursing team; the doctor's consultation flow
+        // displays the latest nurse-recorded reading read-only and never POSTs
+        // to /clinical/vitals. The backend also rejects writes from the doctor
+        // role as defense-in-depth.
 
         // ── 3. Diagnoses ──
         // In edit mode we replace: delete existing for this visit, then re-insert.
@@ -207,10 +180,9 @@ export function useConsultationCompletion() {
           plan: soap.plan,
           impressions: formData.impression || null,
           pins: cleanPins.length > 0 ? cleanPins : undefined,
-          weightKgAtEntry:
-            typeof formData.vitals?.weightKg === 'number' && formData.vitals.weightKg > 0
-              ? formData.vitals.weightKg
-              : undefined,
+          // weightKgAtEntry was previously sourced from the doctor's own vitals
+          // input. Vitals are now nurse-only, so we omit it here. The progress
+          // note backend treats it as optional.
         };
         let progressNoteId: string | undefined = editMode?.progressNoteId;
         if (editMode?.progressNoteId) {
@@ -279,21 +251,9 @@ function buildProgressNoteContent(data: ConsultationFormData): string {
     sections.push(`**Systemic Examination:**\n${data.systemicExamination}`);
   }
 
-  // Vitals summary
-  const v = data.vitals;
-  const vitalLines: string[] = [];
-  if (v.temperature) vitalLines.push(`Temperature: ${v.temperature}°C`);
-  if (v.bloodPressureSystolic || v.bloodPressureDiastolic)
-    vitalLines.push(`BP: ${v.bloodPressureSystolic || '-'}/${v.bloodPressureDiastolic || '-'} mmHg`);
-  if (v.pulseRate) vitalLines.push(`Pulse: ${v.pulseRate} bpm`);
-  if (v.respiratoryRate) vitalLines.push(`RR: ${v.respiratoryRate}/min`);
-  if (v.oxygenSaturation) vitalLines.push(`SpO₂: ${v.oxygenSaturation}%`);
-  if (v.weightKg) vitalLines.push(`Weight: ${v.weightKg} kg`);
-  if (v.heightCm) vitalLines.push(`Height: ${v.heightCm} cm`);
-  if (v.bloodSugar) vitalLines.push(`Blood Sugar: ${v.bloodSugar} mg/dL`);
-  if (vitalLines.length > 0) {
-    sections.push(`**Vitals:**\n${vitalLines.join('\n')}`);
-  }
+  // Vitals are recorded separately by the nursing team and surfaced in the
+  // patient's vitals history. They are intentionally not duplicated into the
+  // doctor's progress-note narrative.
 
   // Diagnoses
   if (data.diagnoses.length > 0) {

@@ -5,15 +5,19 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { Plus, Trash2, Thermometer, Heart, Wind, Droplets, Weight, Ruler, Activity } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Plus, Trash2, Activity, Lock, Loader2 } from 'lucide-react';
+import { useLatestVitals } from '@/hooks/use-nurse';
+import { formatDateTimeAmPm } from '@/lib/date-utils';
 import type { ConsultationFormData } from './consultation-completion-schema';
 
 interface StepExaminationProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   form: UseFormReturn<ConsultationFormData, any, any>;
+  patientId?: string;
 }
 
-export function StepExamination({ form }: StepExaminationProps) {
+export function StepExamination({ form, patientId }: StepExaminationProps) {
   const { register, formState: { errors }, control } = form;
 
   const { fields, append, remove } = useFieldArray({
@@ -70,78 +74,8 @@ export function StepExamination({ form }: StepExaminationProps) {
 
       <Separator />
 
-      {/* ── Vital Signs ── */}
-      <div className="space-y-3">
-        <h3 className="text-sm font-semibold flex items-center gap-2">
-          <Activity className="h-4 w-4 text-primary" />
-          Vital Signs
-        </h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          <VitalField
-            icon={<Thermometer className="h-3.5 w-3.5" />}
-            label="Temp (°C)"
-            placeholder="37"
-            error={(errors.vitals as any)?.temperature?.message}
-            {...register('vitals.temperature')}
-          />
-          <VitalField
-            icon={<Heart className="h-3.5 w-3.5" />}
-            label="BP Systolic"
-            placeholder="120"
-            error={(errors.vitals as any)?.bloodPressureSystolic?.message}
-            {...register('vitals.bloodPressureSystolic')}
-          />
-          <VitalField
-            icon={<Heart className="h-3.5 w-3.5" />}
-            label="BP Diastolic"
-            placeholder="80"
-            error={(errors.vitals as any)?.bloodPressureDiastolic?.message}
-            {...register('vitals.bloodPressureDiastolic')}
-          />
-          <VitalField
-            icon={<Activity className="h-3.5 w-3.5" />}
-            label="Pulse (bpm)"
-            placeholder="72"
-            error={(errors.vitals as any)?.pulseRate?.message}
-            {...register('vitals.pulseRate')}
-          />
-          <VitalField
-            icon={<Wind className="h-3.5 w-3.5" />}
-            label="RR (/min)"
-            placeholder="16"
-            error={(errors.vitals as any)?.respiratoryRate?.message}
-            {...register('vitals.respiratoryRate')}
-          />
-          <VitalField
-            icon={<Droplets className="h-3.5 w-3.5" />}
-            label="SpO₂ (%)"
-            placeholder="98"
-            error={(errors.vitals as any)?.oxygenSaturation?.message}
-            {...register('vitals.oxygenSaturation')}
-          />
-          <VitalField
-            icon={<Weight className="h-3.5 w-3.5" />}
-            label="Weight (kg)"
-            placeholder="70"
-            error={(errors.vitals as any)?.weightKg?.message}
-            {...register('vitals.weightKg')}
-          />
-          <VitalField
-            icon={<Ruler className="h-3.5 w-3.5" />}
-            label="Height (cm)"
-            placeholder="170"
-            error={(errors.vitals as any)?.heightCm?.message}
-            {...register('vitals.heightCm')}
-          />
-          <VitalField
-            icon={<Droplets className="h-3.5 w-3.5" />}
-            label="Blood Sugar"
-            placeholder="100"
-            error={(errors.vitals as any)?.bloodSugar?.message}
-            {...register('vitals.bloodSugar')}
-          />
-        </div>
-      </div>
+      {/* ── Vital Signs (read-only — recorded by nursing team) ── */}
+      <VitalsReadOnlyPanel patientId={patientId} />
 
       <Separator />
 
@@ -220,34 +154,103 @@ export function StepExamination({ form }: StepExaminationProps) {
   );
 }
 
-// ── Vital input field component ────────────────────────────
+// ── Vital signs read-only panel ────────────────────────────
+//
+// Vitals are owned by the nursing team. Doctors can only view the latest
+// reading on this step — recording or correcting requires a nurse to do it
+// from the nursing module. This panel pulls `/clinical/vitals/:patientId/latest`
+// and renders a tile strip plus a "recorded by …" attribution line.
 
-import { forwardRef } from 'react';
+function VitalsReadOnlyPanel({ patientId }: { patientId?: string }) {
+  const { data: latestResp, isLoading } = useLatestVitals(patientId ?? '');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const v = (latestResp as any)?.data ?? null;
 
-interface VitalFieldProps extends React.InputHTMLAttributes<HTMLInputElement> {
-  icon: React.ReactNode;
-  label: string;
-  error?: string;
-}
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recorder = v?.recorder as { firstName?: string; lastName?: string } | undefined;
+  const recorderName = recorder
+    ? [recorder.firstName, recorder.lastName].filter(Boolean).join(' ').trim() || 'Nurse'
+    : null;
 
-const VitalField = forwardRef<HTMLInputElement, VitalFieldProps>(
-  ({ icon, label, error, ...props }, ref) => {
-    return (
-      <div className="space-y-1">
-        <Label className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-          {icon} {label}
-        </Label>
-        <Input
-          ref={ref}
-          type="number"
-          step="any"
-          className={`h-8 text-xs ${error ? 'ring-2 ring-error/30' : ''}`}
-          {...props}
-        />
-        {error && <p className="text-[10px] text-error">{error}</p>}
+  const tiles = v
+    ? [
+        {
+          label: 'Temp',
+          value: v.temperature ?? null,
+          unit: '°C',
+        },
+        {
+          label: 'BP',
+          value:
+            v.bloodPressureSystolic && v.bloodPressureDiastolic
+              ? `${v.bloodPressureSystolic}/${v.bloodPressureDiastolic}`
+              : null,
+          unit: 'mmHg',
+        },
+        { label: 'Pulse', value: v.pulseRate ?? v.heartRate ?? null, unit: 'bpm' },
+        { label: 'RR', value: v.respiratoryRate ?? null, unit: '/min' },
+        { label: 'SpO₂', value: v.oxygenSaturation ?? null, unit: '%' },
+        { label: 'Weight', value: v.weightKg ?? v.weight ?? null, unit: 'kg' },
+        { label: 'Height', value: v.heightCm ?? v.height ?? null, unit: 'cm' },
+        { label: 'BGL', value: v.bloodSugar ?? null, unit: 'mg/dL' },
+      ].filter((t) => t.value !== null && t.value !== undefined && t.value !== '')
+    : [];
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="text-sm font-semibold flex items-center gap-2">
+          <Activity className="h-4 w-4 text-primary" />
+          Vital Signs
+        </h3>
+        <Badge
+          variant="outline"
+          className="gap-1 border-secondary/40 bg-secondary/10 text-secondary text-[10px]"
+        >
+          <Lock className="h-3 w-3" />
+          Nurse-recorded · read only
+        </Badge>
       </div>
-    );
-  },
-);
 
-VitalField.displayName = 'VitalField';
+      {!patientId ? (
+        <p className="text-xs text-muted-foreground">
+          Patient context is required to load vitals.
+        </p>
+      ) : isLoading ? (
+        <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Loading latest vitals…
+        </div>
+      ) : !v ? (
+        <p className="text-xs text-muted-foreground">
+          No vitals recorded yet. Ask the assigned nurse to record vitals from the Nursing module.
+        </p>
+      ) : tiles.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          The latest reading has no numeric values on file.
+        </p>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-outline-variant/40 bg-muted/40 p-3">
+            {tiles.map((t) => (
+              <div
+                key={t.label}
+                className="flex items-baseline gap-1 rounded-md bg-background/70 px-2.5 py-1.5"
+              >
+                <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                  {t.label}
+                </span>
+                <span className="text-sm font-bold">{String(t.value)}</span>
+                <span className="text-[10px] text-muted-foreground">{t.unit}</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            {recorderName ? `Recorded by ${recorderName}` : 'Recorded by nursing team'}
+            {v.recordedAt ? ` · ${formatDateTimeAmPm(v.recordedAt)}` : ''}
+          </p>
+        </>
+      )}
+    </div>
+  );
+}

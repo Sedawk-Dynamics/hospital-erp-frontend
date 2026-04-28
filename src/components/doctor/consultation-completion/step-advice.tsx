@@ -4,7 +4,7 @@ import { type UseFormReturn } from 'react-hook-form';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { Stethoscope, Pill, Activity, CalendarDays, ClipboardList } from 'lucide-react';
+import { Stethoscope, Pill, CalendarDays, ClipboardList } from 'lucide-react';
 import type { ConsultationFormData } from './consultation-completion-schema';
 
 interface StepAdviceProps {
@@ -16,10 +16,7 @@ export function StepAdvice({ form }: StepAdviceProps) {
   const { register, watch } = form;
   const diagnoses = watch('diagnoses');
   const medicines = watch('medicines');
-  const vitals = watch('vitals');
 
-  // Count filled vitals
-  const vitalsCount = Object.values(vitals).filter((v) => v !== undefined && v !== null && v !== 0).length;
   const diagnosisCount = diagnoses.filter((d) => d.diagnosisName).length;
 
   return (
@@ -87,13 +84,7 @@ export function StepAdvice({ form }: StepAdviceProps) {
           <ClipboardList className="h-4 w-4 text-primary" />
           Consultation Summary
         </h3>
-        <div className="grid grid-cols-3 gap-3">
-          <SummaryCard
-            icon={<Activity className="h-4 w-4" />}
-            label="Vitals Recorded"
-            value={vitalsCount}
-            color="text-primary-container bg-primary-container/10"
-          />
+        <div className="grid grid-cols-2 gap-3">
           <SummaryCard
             icon={<Stethoscope className="h-4 w-4" />}
             label="Diagnoses"

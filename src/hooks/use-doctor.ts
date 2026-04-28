@@ -704,45 +704,10 @@ export function usePatientVitals(patientId: string) {
   });
 }
 
-export function useRecordVitals() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (data: {
-      patientId: string;
-      visitId: string;
-      temperature?: number;
-      bloodPressureSystolic?: number;
-      bloodPressureDiastolic?: number;
-      heartRate?: number;
-      respiratoryRate?: number;
-      oxygenSaturation?: number;
-      weight?: number;
-      height?: number;
-      bloodSugar?: number;
-      notes?: string;
-    }) => {
-      // Map frontend field names to backend field names
-      const response = await apiPost<Vital>('/clinical/vitals', {
-        patientId: data.patientId,
-        visitId: data.visitId,
-        temperature: data.temperature,
-        bloodPressureSystolic: data.bloodPressureSystolic,
-        bloodPressureDiastolic: data.bloodPressureDiastolic,
-        pulseRate: data.heartRate,
-        respiratoryRate: data.respiratoryRate,
-        oxygenSaturation: data.oxygenSaturation,
-        weightKg: data.weight,
-        heightCm: data.height,
-        bloodSugar: data.bloodSugar,
-        notes: data.notes,
-      });
-      return response.data;
-    },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: doctorKeys.vitals.patient(variables.patientId) });
-    },
-  });
-}
+// `useRecordVitals` was intentionally removed: vitals are nursing-owned and
+// the backend rejects writes from the doctor role. Doctor pages should read
+// vitals via `usePatientVitals` / `useLatestVitals` and surface them as
+// read-only. If a doctor needs a reading captured they ask the assigned nurse.
 
 // ============================================================
 // Diagnosis Hooks

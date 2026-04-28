@@ -59,7 +59,8 @@ export function ConsultationCompletionInline({
   // ── Step navigation ──
   const goNext = async () => {
     let valid = true;
-    if (step === 1) valid = await form.trigger(['chiefComplaint', 'diagnoses', 'vitals']);
+    // Vitals are nurse-recorded; not part of the doctor's form anymore.
+    if (step === 1) valid = await form.trigger(['chiefComplaint', 'diagnoses']);
     if (valid && step < 3) setStep(step + 1);
   };
 
@@ -133,7 +134,7 @@ export function ConsultationCompletionInline({
 
       {/* ── Step Content ── */}
       <div className="p-5">
-        {step === 1 && <StepExamination form={form} />}
+        {step === 1 && <StepExamination form={form} patientId={patientId} />}
         {step === 2 && <StepPrescription form={form} patientId={patientId} />}
         {step === 3 && <StepAdvice form={form} />}
       </div>
