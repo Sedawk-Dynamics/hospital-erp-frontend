@@ -8,22 +8,36 @@ import { apiGet, apiPost, apiPut, apiDelete, apiPatch } from '@/lib/api';
 export interface LabDepartment {
   id: string;
   name: string;
+  /** @deprecated retained for legacy callers; backend ignores */
   description?: string;
+  /** @deprecated retained for legacy callers; backend ignores */
   headOfDepartment?: string;
   isActive: boolean;
   createdAt: string;
-  updatedAt: string;
+  updatedAt?: string;
 }
 
 export interface LabTestCatalog {
   id: string;
-  name: string;
+  testName: string;
+  testCode?: string;
+  labDepartmentId?: string;
+  labDepartment?: { id: string; name: string };
+  /** @deprecated alias for testName */
+  name?: string;
+  /** @deprecated alias for testCode */
   code?: string;
+  /** @deprecated alias for labDepartmentId */
   departmentId?: string;
-  department?: LabDepartment;
+  /** @deprecated alias for labDepartment */
+  department?: { id: string; name: string };
   category?: string;
   sampleType?: string;
   description?: string;
+  normalRange?: string;
+  unit?: string;
+  turnaroundHours?: number;
+  /** @deprecated alias for turnaroundHours */
   turnaroundTime?: string;
   price: number;
   isActive: boolean;
@@ -42,7 +56,7 @@ export interface LabTestParameter {
 
 export interface LabOrder {
   id: string;
-  orderNumber: string;
+  orderNumber?: string;
   patientId: string;
   patient: {
     id: string;
@@ -54,15 +68,41 @@ export interface LabOrder {
     gender?: string;
     dateOfBirth?: string;
   };
-  doctorId: string;
-  doctor: {
+  doctorId?: string;
+  doctor?: {
     id: string;
     userId: string;
     user?: { firstName: string; lastName: string };
   };
-  tests: { id: string; name: string; code?: string; category?: string; price?: number }[];
-  priority: 'routine' | 'urgent' | 'stat';
-  status: 'pending' | 'sample_collected' | 'in_progress' | 'completed' | 'cancelled';
+  orderer?: { id: string; firstName: string; lastName: string };
+  assignedToId?: string | null;
+  assignedTo?: { id: string; firstName: string; lastName: string } | null;
+  assignedDeptId?: string | null;
+  assignedDept?: { id: string; name: string } | null;
+  acceptedAt?: string | null;
+  acceptedBy?: string | null;
+  visitId?: string;
+  isThirdParty?: boolean;
+  thirdPartyLabName?: string | null;
+  tests?: { id: string; name: string; code?: string; category?: string; price?: number }[];
+  labOrderItems?: Array<{
+    id: string;
+    testId: string;
+    status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+    test: { id: string; testName: string; testCode?: string };
+  }>;
+  labSamples?: Array<{ id: string; status: string; sampleType: string }>;
+  priority?: 'routine' | 'urgent' | 'stat';
+  urgency?: 'routine' | 'urgent' | 'stat';
+  status:
+    | 'pending'
+    | 'ordered'
+    | 'sample_collected'
+    | 'in_transit'
+    | 'received'
+    | 'in_progress'
+    | 'completed'
+    | 'cancelled';
   totalAmount?: number;
   paidAmount?: number;
   paymentStatus?: 'unpaid' | 'partial' | 'paid';
@@ -106,8 +146,11 @@ export interface LabResult {
 export interface LabReport {
   id: string;
   reportNumber?: string;
-  orderId: string;
+  /** legacy alias — backend returns labOrderId */
+  orderId?: string;
+  labOrderId?: string;
   order?: LabOrder;
+  labOrder?: LabOrder;
   patient?: {
     id: string;
     mrn: string;
@@ -117,8 +160,20 @@ export interface LabReport {
   tests?: { id: string; name: string }[];
   generatedAt?: string;
   generatedBy?: string;
-  status: 'draft' | 'generated' | 'delivered' | 'printed';
+  /** Lab report state machine */
+  status: 'draft' | 'generated' | 'delivered' | 'printed' | 'review' | 'approved' | 'published' | 'corrected';
   fileUrl?: string;
+  pdfUrl?: string;
+  qrCodeUrl?: string;
+  reportContent?: string | null;
+  hospitalBranding?: any;
+  version?: number;
+  signedBy?: string;
+  signedAt?: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  publishedAt?: string;
+  correctionNotes?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -254,8 +309,12 @@ export function useLabDepartments(params?: PaginatedParams) {
 export function useCreateLabDepartment() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: { name: string; description?: string; headOfDepartment?: string }) => {
-      const response = await apiPost<LabDepartment>('/lab/departments', data);
+    mutationFn: async (data: { name: string; description?: string; headOfDepartment?: string; isActive?: boolean }) => {
+      // Backend only stores name + isActive
+      const response = await apiPost<LabDepartment>('/lab/departments', {
+        name: data.name,
+        isActive: data.isActive ?? true,
+      });
       return response.data;
     },
     onSuccess: () => {
@@ -267,8 +326,8 @@ export function useCreateLabDepartment() {
 export function useUpdateLabDepartment() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...data }: { id: string; name?: string; description?: string; headOfDepartment?: string; isActive?: boolean }) => {
-      const response = await apiPut<LabDepartment>(`/lab/departments/${id}`, data);
+    mutationFn: async ({ id, name, isActive }: { id: string; name?: string; description?: string; headOfDepartment?: string; isActive?: boolean }) => {
+      const response = await apiPut<LabDepartment>(`/lab/departments/${id}`, { name, isActive });
       return response.data;
     },
     onSuccess: () => {
@@ -315,20 +374,46 @@ export function useLabTest(id: string) {
   });
 }
 
+type LabTestPayload = {
+  testName: string;
+  testCode?: string;
+  labDepartmentId: string;
+  description?: string;
+  normalRange?: string;
+  unit?: string;
+  price?: number;
+  turnaroundHours?: number;
+  sampleType?: string;
+  isActive?: boolean;
+};
+
+type LegacyLabTestPayload = {
+  name?: string;
+  code?: string;
+  departmentId?: string;
+  category?: string;
+  turnaroundTime?: string;
+};
+
+function normalizeTestPayload(data: Partial<LabTestPayload> & LegacyLabTestPayload) {
+  const out: any = { ...data };
+  if (data.name && !data.testName) out.testName = data.name;
+  if (data.code && !data.testCode) out.testCode = data.code;
+  if (data.departmentId && !data.labDepartmentId) out.labDepartmentId = data.departmentId;
+  if (data.turnaroundTime && !data.turnaroundHours) {
+    const m = String(data.turnaroundTime).match(/(\d+)/);
+    if (m) out.turnaroundHours = Number(m[1]);
+  }
+  delete out.name; delete out.code; delete out.departmentId;
+  delete out.category; delete out.turnaroundTime;
+  return out;
+}
+
 export function useCreateLabTest() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: {
-      name: string;
-      code?: string;
-      departmentId?: string;
-      category?: string;
-      sampleType?: string;
-      description?: string;
-      turnaroundTime?: string;
-      price: number;
-    }) => {
-      const response = await apiPost<LabTestCatalog>('/lab/tests', data);
+    mutationFn: async (data: Partial<LabTestPayload> & LegacyLabTestPayload) => {
+      const response = await apiPost<LabTestCatalog>('/lab/tests', normalizeTestPayload(data));
       return response.data;
     },
     onSuccess: () => {
@@ -340,19 +425,8 @@ export function useCreateLabTest() {
 export function useUpdateLabTest() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...data }: {
-      id: string;
-      name?: string;
-      code?: string;
-      departmentId?: string;
-      category?: string;
-      sampleType?: string;
-      description?: string;
-      turnaroundTime?: string;
-      price?: number;
-      isActive?: boolean;
-    }) => {
-      const response = await apiPut<LabTestCatalog>(`/lab/tests/${id}`, data);
+    mutationFn: async ({ id, ...data }: { id: string } & Partial<LabTestPayload> & LegacyLabTestPayload) => {
+      const response = await apiPut<LabTestCatalog>(`/lab/tests/${id}`, normalizeTestPayload(data));
       return response.data;
     },
     onSuccess: (_data, variables) => {
@@ -379,12 +453,54 @@ export function useDeleteLabTest() {
 // Lab Order Hooks
 // ============================================================
 
-export function useLabOrders(params?: PaginatedParams & { status?: string; priority?: string }) {
+export type LabOrdersFilters = PaginatedParams & {
+  status?: string;
+  priority?: string;
+  urgency?: string;
+  assignedTo?: string;
+  assignedDeptId?: string;
+  outsourced?: boolean;
+  isThirdParty?: boolean;
+  accepted?: boolean;
+  date?: string;
+  fromDate?: string;
+  toDate?: string;
+  patientId?: string;
+};
+
+export function useLabOrders(params?: LabOrdersFilters) {
   return useQuery({
     queryKey: labKeys.orders.list(params),
     queryFn: async () => {
       const response = await apiGet<LabOrder[]>('/lab/orders', { params });
       return { data: response.data, meta: response.meta as PaginationMeta };
+    },
+  });
+}
+
+export function useAcceptLabOrder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      assignedToId,
+      assignedDeptId,
+      notes,
+    }: {
+      id: string;
+      assignedToId?: string;
+      assignedDeptId?: string;
+      notes?: string;
+    }) => {
+      const response = await apiPatch<LabOrder>(`/lab/orders/${id}/accept`, {
+        assignedToId,
+        assignedDeptId,
+        notes,
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: labKeys.orders.all });
     },
   });
 }
@@ -511,12 +627,18 @@ export function useEnterResults() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: {
-      orderId: string;
-      testId: string;
-      parameters: { name: string; value: string; unit?: string; normalRange?: string; isAbnormal?: boolean }[];
-      remarks?: string;
+      labOrderItemId: string;
+      labOrderId: string;
+      patientId: string;
+      results: {
+        parameterName: string;
+        value?: string;
+        unit?: string;
+        normalRange?: string;
+        isAbnormal?: boolean;
+      }[];
     }) => {
-      const response = await apiPost<LabResult>('/lab/results', data);
+      const response = await apiPost<LabResult[]>('/lab/results', data);
       return response.data;
     },
     onSuccess: () => {
@@ -529,12 +651,24 @@ export function useEnterResults() {
 export function useVerifyResults() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id }: { id: string }) => {
-      const response = await apiPatch<LabResult>(`/lab/results/${id}/verify`);
+    mutationFn: async ({
+      id,
+      action,
+      correctionNotes,
+    }: {
+      id: string;
+      action?: 'approve' | 'request_correction';
+      correctionNotes?: string;
+    }) => {
+      const response = await apiPatch<LabResult>(`/lab/results/${id}/verify`, {
+        action: action ?? 'approve',
+        correctionNotes,
+      });
       return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: labKeys.results.all });
+      queryClient.invalidateQueries({ queryKey: labKeys.orders.all });
     },
   });
 }
@@ -567,13 +701,103 @@ export function useLabReport(id: string) {
 export function useGenerateLabReport() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (orderId: string) => {
-      const response = await apiPost<LabReport>(`/lab/reports/${orderId}/generate`);
+    mutationFn: async ({
+      orderId,
+      hospitalBranding,
+      reportContent,
+    }: {
+      orderId: string;
+      hospitalBranding?: Record<string, unknown>;
+      reportContent?: string;
+    }) => {
+      const response = await apiPost<LabReport>(`/lab/reports/${orderId}/generate`, {
+        hospitalBranding,
+        reportContent,
+      });
       return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: labKeys.reports.all });
       queryClient.invalidateQueries({ queryKey: labKeys.orders.all });
+    },
+  });
+}
+
+export function useSignLabReport() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiPatch<LabReport>(`/lab/reports/${id}/sign`);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: labKeys.reports.all });
+    },
+  });
+}
+
+export function usePublishLabReport() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, notify }: { id: string; notify?: boolean }) => {
+      const response = await apiPatch<LabReport>(`/lab/reports/${id}/publish`, {
+        notify: notify ?? true,
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: labKeys.reports.all });
+      queryClient.invalidateQueries({ queryKey: labKeys.orders.all });
+    },
+  });
+}
+
+export function useCorrectLabReport() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      correctionNotes,
+      reportContent,
+      notify,
+    }: {
+      id: string;
+      correctionNotes: string;
+      reportContent?: string;
+      notify?: boolean;
+    }) => {
+      const response = await apiPatch<LabReport>(`/lab/reports/${id}/correct`, {
+        correctionNotes,
+        reportContent,
+        notify: notify ?? true,
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: labKeys.reports.all });
+    },
+  });
+}
+
+export interface LabReportAnalytics {
+  summary: {
+    totalOrders: number;
+    completedOrders: number;
+    openOrders: number;
+    totalSamples: number;
+    avgTatHours: number;
+    medianTatHours: number;
+  };
+  testVolume: { testId: string; testName: string; count: number; labDepartmentId: string }[];
+  departmentWorkload: { departmentId: string; departmentName: string; count: number }[];
+}
+
+export function useLabReportAnalytics(params?: { fromDate?: string; toDate?: string }) {
+  return useQuery({
+    queryKey: ['lab', 'reports', 'analytics', params],
+    queryFn: async () => {
+      const response = await apiGet<LabReportAnalytics>('/lab/reports/analytics', { params });
+      return response.data;
     },
   });
 }

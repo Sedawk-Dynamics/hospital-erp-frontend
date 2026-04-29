@@ -165,13 +165,13 @@ export default function LabBillingPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="max-w-[180px]">
-                          {order.tests?.length > 0 ? (
+                          {(order.tests?.length ?? 0) > 0 ? (
                             <div className="text-xs">
-                              {order.tests.slice(0, 2).map((t, i) => (
+                              {(order.tests ?? []).slice(0, 2).map((t, i) => (
                                 <div key={i} className="truncate">{t.name}</div>
                               ))}
-                              {order.tests.length > 2 && (
-                                <span className="text-muted-foreground">+{order.tests.length - 2} more</span>
+                              {(order.tests?.length ?? 0) > 2 && (
+                                <span className="text-muted-foreground">+{(order.tests?.length ?? 0) - 2} more</span>
                               )}
                             </div>
                           ) : (

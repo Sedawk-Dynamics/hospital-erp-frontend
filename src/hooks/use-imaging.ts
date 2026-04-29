@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPost, apiPatch } from '@/lib/api';
+import { apiGet, apiPost, apiPatch, apiPut } from '@/lib/api';
 
 // ============================================================
 // Types
@@ -12,49 +12,64 @@ export interface ImagingRequest {
     id: string;
     firstName: string;
     lastName: string;
+    mrn?: string;
     uhid?: string;
+    phone?: string;
   };
+  visitId?: string;
   imagingType: string;
   bodyPart?: string;
-  priority: string;
+  /** legacy alias for `urgency` */
+  priority?: string;
+  urgency?: 'routine' | 'urgent' | 'stat';
   status: string;
-  requestedById?: string;
-  requestedBy?: {
-    id: string;
-    firstName: string;
-    lastName: string;
-  };
+  orderedBy?: string;
+  orderer?: { id: string; firstName: string; lastName: string };
+  /** legacy alias for `orderer` */
+  requestedBy?: { id: string; firstName: string; lastName: string };
+  assignedTechnicianId?: string | null;
+  assignedTechnician?: { id: string; firstName: string; lastName: string } | null;
+  room?: string | null;
+  scheduledAt?: string | null;
+  /** legacy alias derived from scheduledAt */
   scheduledDate?: string;
   scheduledTime?: string;
+  clinicalIndication?: string;
   clinicalNotes?: string;
   reason?: string;
+  notes?: string;
+  imagingResult?: { id: string; status: string } | null;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface ImagingResult {
   id: string;
-  requestId: string;
+  imagingRequestId: string;
+  imagingRequest?: ImagingRequest;
+  /** legacy alias for imagingRequestId */
+  requestId?: string;
   request?: ImagingRequest;
+  patientId?: string;
   findings?: string;
   impression?: string;
   conclusion?: string;
+  pdfReportUrl?: string;
+  /** legacy alias */
   reportUrl?: string;
   imageUrls?: string[];
-  reportedById?: string;
-  reportedBy?: {
-    id: string;
-    firstName: string;
-    lastName: string;
-  };
-  verifiedById?: string;
-  verifiedBy?: {
-    id: string;
-    firstName: string;
-    lastName: string;
-  };
+  pacsReferenceId?: string;
+  radiologistId?: string;
+  radiologist?: { id: string; firstName: string; lastName: string };
+  /** legacy alias */
+  reportedBy?: { id: string; firstName: string; lastName: string };
+  signedBy?: string;
+  signer?: { id: string; firstName: string; lastName: string };
+  /** legacy alias for signer */
+  verifiedBy?: { id: string; firstName: string; lastName: string };
   status: string;
-  isVerified: boolean;
+  /** legacy convenience */
+  isVerified?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -72,7 +87,13 @@ interface ImagingRequestParams {
   search?: string;
   status?: string;
   priority?: string;
+  urgency?: string;
+  imagingType?: string;
   date?: string;
+  patientId?: string;
+  assignedTechnicianId?: string;
+  fromDate?: string;
+  toDate?: string;
   sortOrder?: 'asc' | 'desc';
 }
 
@@ -164,12 +185,57 @@ export function useCancelImagingRequest() {
 export function useScheduleImaging() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...data }: {
+    mutationFn: async ({
+      id,
+      scheduledAt,
+      scheduledDate,
+      scheduledTime,
+      assignedTechnicianId,
+      room,
+    }: {
       id: string;
-      scheduledDate: string;
-      scheduledTime?: string;
+      scheduledAt?: string; // preferred ISO datetime
+      scheduledDate?: string; // legacy
+      scheduledTime?: string; // legacy
+      assignedTechnicianId?: string;
+      room?: string;
     }) => {
-      const response = await apiPatch<ImagingRequest>(`/imaging/requests/${id}/schedule`, data);
+      // Compose ISO datetime when only date+time provided
+      const at = scheduledAt
+        || (scheduledDate
+          ? new Date(`${scheduledDate}T${scheduledTime ?? '09:00'}`).toISOString()
+          : undefined);
+      const response = await apiPatch<ImagingRequest>(`/imaging/requests/${id}/schedule`, {
+        scheduledAt: at,
+        assignedTechnicianId,
+        room,
+      });
+      return response.data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: imagingKeys.requests.all });
+      queryClient.invalidateQueries({ queryKey: imagingKeys.requests.detail(variables.id) });
+    },
+  });
+}
+
+export function useUpdateImagingRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      ...data
+    }: {
+      id: string;
+      bodyPart?: string;
+      urgency?: 'routine' | 'urgent' | 'stat';
+      clinicalIndication?: string;
+      notes?: string;
+      scheduledAt?: string;
+      assignedTechnicianId?: string;
+      room?: string;
+    }) => {
+      const response = await apiPut<ImagingRequest>(`/imaging/requests/${id}`, data);
       return response.data;
     },
     onSuccess: (_data, variables) => {
@@ -208,12 +274,12 @@ export function useUploadImagingResult() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: {
-      requestId: string;
+      imagingRequestId: string;
+      patientId: string;
       findings?: string;
       impression?: string;
-      conclusion?: string;
-      reportUrl?: string;
       imageUrls?: string[];
+      pacsReferenceId?: string;
     }) => {
       const response = await apiPost<ImagingResult>('/imaging/results', data);
       return response.data;
@@ -221,6 +287,28 @@ export function useUploadImagingResult() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: imagingKeys.results.all });
       queryClient.invalidateQueries({ queryKey: imagingKeys.requests.all });
+    },
+  });
+}
+
+export function useAddImagingReport() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      ...data
+    }: {
+      id: string;
+      findings: string;
+      impression?: string;
+      recommendation?: string;
+      pdfReportUrl?: string;
+    }) => {
+      const response = await apiPost<ImagingResult>(`/imaging/results/${id}/report`, data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: imagingKeys.results.all });
     },
   });
 }

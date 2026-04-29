@@ -144,9 +144,9 @@ function DepartmentsSection() {
                   <tr key={dept.id} className="group hover:bg-surface-container-low transition-colors">
                     <td className="px-4 py-3 font-medium">{dept.name}</td>
                     <td className="px-4 py-3 text-muted-foreground max-w-[250px] truncate">
-                      {dept.description || '-'}
+                      {dept.description ?? '-'}
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">{dept.headOfDepartment || '-'}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{dept.headOfDepartment ?? '-'}</td>
                     <td className="px-4 py-3">
                       <span className={cn(
                         'text-[10px] font-bold px-2 py-0.5 rounded-full',
@@ -390,15 +390,15 @@ function TestCatalogSection() {
                 tests.map((test: LabTestCatalog) => (
                   <tr key={test.id} className="group hover:bg-surface-container-low transition-colors">
                     <td className="px-4 py-3">
-                      <div className="font-medium">{test.name}</div>
-                      {test.category && (
-                        <div className="text-xs text-muted-foreground">{test.category}</div>
+                      <div className="font-medium">{test.testName ?? test.name}</div>
+                      {test.normalRange && (
+                        <div className="text-xs text-muted-foreground">Range: {test.normalRange}{test.unit ? ` ${test.unit}` : ''}</div>
                       )}
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{test.code || '-'}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{test.department?.name || '-'}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{test.testCode ?? test.code ?? '-'}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{(test.labDepartment ?? test.department)?.name ?? '-'}</td>
                     <td className="px-4 py-3 text-muted-foreground">{test.sampleType || '-'}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{test.turnaroundTime || '-'}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{test.turnaroundHours ? `${test.turnaroundHours}h` : test.turnaroundTime || '-'}</td>
                     <td className="px-4 py-3 text-right font-medium">
                       {test.price?.toLocaleString('en-IN', { style: 'currency', currency: 'INR' }) || '-'}
                     </td>
@@ -433,7 +433,7 @@ function TestCatalogSection() {
                           variant="ghost"
                           size="sm"
                           className="text-destructive hover:text-destructive"
-                          onClick={() => handleDelete(test.id, test.name)}
+                          onClick={() => handleDelete(test.id, test.testName ?? test.name ?? 'Test')}
                           disabled={deleteTest.isPending}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -469,14 +469,15 @@ function TestFormDialog({
 }) {
   const isEdit = !!test;
   const [formData, setFormData] = useState({
-    name: test?.name || '',
-    code: test?.code || '',
-    departmentId: test?.departmentId || '',
-    category: test?.category || '',
-    sampleType: test?.sampleType || '',
-    description: test?.description || '',
-    turnaroundTime: test?.turnaroundTime || '',
-    price: test?.price || 0,
+    testName: test?.testName ?? test?.name ?? '',
+    testCode: test?.testCode ?? test?.code ?? '',
+    labDepartmentId: test?.labDepartmentId ?? test?.departmentId ?? '',
+    sampleType: test?.sampleType ?? '',
+    description: test?.description ?? '',
+    normalRange: test?.normalRange ?? '',
+    unit: test?.unit ?? '',
+    turnaroundHours: test?.turnaroundHours ?? 0,
+    price: Number(test?.price ?? 0),
   });
 
   const createTest = useCreateLabTest();
@@ -486,39 +487,35 @@ function TestFormDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name.trim()) {
+    if (!formData.testName.trim()) {
       toast.error('Test name is required');
+      return;
+    }
+    if (!formData.labDepartmentId) {
+      toast.error('Department is required');
       return;
     }
     if (!formData.price || formData.price <= 0) {
       toast.error('Please enter a valid price');
       return;
     }
+    const payload = {
+      testName: formData.testName,
+      testCode: formData.testCode || undefined,
+      labDepartmentId: formData.labDepartmentId,
+      sampleType: formData.sampleType || undefined,
+      description: formData.description || undefined,
+      normalRange: formData.normalRange || undefined,
+      unit: formData.unit || undefined,
+      turnaroundHours: formData.turnaroundHours || undefined,
+      price: formData.price,
+    };
     try {
       if (isEdit && test) {
-        await updateTest.mutateAsync({
-          id: test.id,
-          name: formData.name,
-          code: formData.code || undefined,
-          departmentId: formData.departmentId || undefined,
-          category: formData.category || undefined,
-          sampleType: formData.sampleType || undefined,
-          description: formData.description || undefined,
-          turnaroundTime: formData.turnaroundTime || undefined,
-          price: formData.price,
-        });
+        await updateTest.mutateAsync({ id: test.id, ...payload });
         toast.success('Test updated');
       } else {
-        await createTest.mutateAsync({
-          name: formData.name,
-          code: formData.code || undefined,
-          departmentId: formData.departmentId || undefined,
-          category: formData.category || undefined,
-          sampleType: formData.sampleType || undefined,
-          description: formData.description || undefined,
-          turnaroundTime: formData.turnaroundTime || undefined,
-          price: formData.price,
-        });
+        await createTest.mutateAsync(payload);
         toast.success('Test created');
       }
       onClose();
@@ -543,8 +540,8 @@ function TestFormDialog({
             <Label htmlFor="test-name">Test Name *</Label>
             <Input
               id="test-name"
-              value={formData.name}
-              onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
+              value={formData.testName}
+              onChange={(e) => setFormData((p) => ({ ...p, testName: e.target.value }))}
               placeholder="e.g. Complete Blood Count"
             />
           </div>
@@ -552,17 +549,17 @@ function TestFormDialog({
             <Label htmlFor="test-code">Code</Label>
             <Input
               id="test-code"
-              value={formData.code}
-              onChange={(e) => setFormData((p) => ({ ...p, code: e.target.value }))}
+              value={formData.testCode}
+              onChange={(e) => setFormData((p) => ({ ...p, testCode: e.target.value }))}
               placeholder="e.g. CBC"
             />
           </div>
           <div>
-            <Label htmlFor="test-dept">Department</Label>
+            <Label htmlFor="test-dept">Department *</Label>
             <select
               id="test-dept"
-              value={formData.departmentId}
-              onChange={(e) => setFormData((p) => ({ ...p, departmentId: e.target.value }))}
+              value={formData.labDepartmentId}
+              onChange={(e) => setFormData((p) => ({ ...p, labDepartmentId: e.target.value }))}
               className="flex h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm shadow-xs transition-all outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             >
               <option value="">Select department</option>
@@ -570,15 +567,6 @@ function TestFormDialog({
                 <option key={d.id} value={d.id}>{d.name}</option>
               ))}
             </select>
-          </div>
-          <div>
-            <Label htmlFor="test-category">Category</Label>
-            <Input
-              id="test-category"
-              value={formData.category}
-              onChange={(e) => setFormData((p) => ({ ...p, category: e.target.value }))}
-              placeholder="e.g. Hematology"
-            />
           </div>
           <div>
             <Label htmlFor="test-sample">Sample Type</Label>
@@ -590,12 +578,32 @@ function TestFormDialog({
             />
           </div>
           <div>
-            <Label htmlFor="test-tat">Turnaround Time</Label>
+            <Label htmlFor="test-range">Reference Range</Label>
+            <Input
+              id="test-range"
+              value={formData.normalRange}
+              onChange={(e) => setFormData((p) => ({ ...p, normalRange: e.target.value }))}
+              placeholder="e.g. 12-16, <5, >100"
+            />
+          </div>
+          <div>
+            <Label htmlFor="test-unit">Unit</Label>
+            <Input
+              id="test-unit"
+              value={formData.unit}
+              onChange={(e) => setFormData((p) => ({ ...p, unit: e.target.value }))}
+              placeholder="e.g. g/dL"
+            />
+          </div>
+          <div>
+            <Label htmlFor="test-tat">TAT Hours</Label>
             <Input
               id="test-tat"
-              value={formData.turnaroundTime}
-              onChange={(e) => setFormData((p) => ({ ...p, turnaroundTime: e.target.value }))}
-              placeholder="e.g. 4 hours"
+              type="number"
+              min={0}
+              value={formData.turnaroundHours}
+              onChange={(e) => setFormData((p) => ({ ...p, turnaroundHours: parseInt(e.target.value, 10) || 0 }))}
+              placeholder="e.g. 4"
             />
           </div>
           <div>

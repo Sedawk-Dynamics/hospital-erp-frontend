@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { formatDate, formatDateTime } from '@/lib/date-utils';
-import { useLabReports, useGenerateLabReport } from '@/hooks/use-lab';
+import { useLabReports, useGenerateLabReport, useLabReportAnalytics } from '@/hooks/use-lab';
 import type { LabReport } from '@/hooks/use-lab';
 
 const statusConfig: Record<string, { label: string; className: string }> = {
@@ -57,13 +57,15 @@ export default function LabReportsPage() {
   });
 
   const generateReport = useGenerateLabReport();
+  const analyticsQ = useLabReportAnalytics();
 
   const reports = data?.data ?? [];
   const meta = data?.meta;
+  const analytics = analyticsQ.data;
 
   const handleGenerate = async (orderId: string) => {
     try {
-      await generateReport.mutateAsync(orderId);
+      await generateReport.mutateAsync({ orderId });
       toast.success('Report generated successfully');
     } catch {
       toast.error('Failed to generate report');
@@ -79,6 +81,45 @@ export default function LabReportsPage() {
           Refresh
         </Button>
       </div>
+
+      {/* Analytics summary */}
+      {analytics && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <SummaryStat label="Total Orders" value={analytics.summary.totalOrders} />
+          <SummaryStat label="Completed" value={analytics.summary.completedOrders} />
+          <SummaryStat label="Open" value={analytics.summary.openOrders} />
+          <SummaryStat label="Avg TAT" value={`${analytics.summary.avgTatHours}h`} />
+        </div>
+      )}
+
+      {analytics && (analytics.testVolume.length > 0 || analytics.departmentWorkload.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant mb-2">Top Tests</h3>
+            <div className="space-y-1">
+              {analytics.testVolume.slice(0, 8).map((t) => (
+                <div key={t.testId} className="flex items-center justify-between text-sm">
+                  <span className="truncate">{t.testName}</span>
+                  <span className="text-muted-foreground">{t.count}</span>
+                </div>
+              ))}
+              {analytics.testVolume.length === 0 && <p className="text-xs text-muted-foreground">No data yet.</p>}
+            </div>
+          </div>
+          <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant mb-2">Department Workload</h3>
+            <div className="space-y-1">
+              {analytics.departmentWorkload.map((d) => (
+                <div key={d.departmentId} className="flex items-center justify-between text-sm">
+                  <span className="truncate">{d.departmentName}</span>
+                  <span className="text-muted-foreground">{d.count}</span>
+                </div>
+              ))}
+              {analytics.departmentWorkload.length === 0 && <p className="text-xs text-muted-foreground">No data yet.</p>}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Report Category Cards */}
       <div>
@@ -233,7 +274,7 @@ export default function LabReportsPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => handleGenerate(report.orderId)}
+                                onClick={() => handleGenerate(report.orderId!)}
                                 disabled={generateReport.isPending}
                               >
                                 Generate
@@ -270,6 +311,15 @@ export default function LabReportsPage() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function SummaryStat({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4">
+      <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="font-headline text-2xl font-bold mt-1">{value}</p>
     </div>
   );
 }
