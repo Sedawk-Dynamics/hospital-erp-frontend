@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Search, Plus, Pill, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Plus, Pill, ChevronLeft, ChevronRight, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -26,11 +26,17 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Textarea } from '@/components/ui/textarea';
 import { EmptyState } from '@/components/shared/empty-state';
 import {
   useFormulary,
   useCreateFormularyItem,
+  useUpdateFormularyItem,
+  useDeleteFormularyItem,
   usePharmacyCategories,
+  type FormularyItem,
+  type DosageForm,
+  type CreateFormularyInput,
 } from '@/hooks/use-pharmacy';
 import {
   Select,
@@ -40,87 +46,169 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-const EMPTY_FORM = {
+const DOSAGE_FORMS: DosageForm[] = [
+  'tablet',
+  'capsule',
+  'syrup',
+  'injection',
+  'cream',
+  'drops',
+  'inhaler',
+  'other',
+];
+
+interface FormState {
+  drugName: string;
+  genericName: string;
+  categoryId: string;
+  manufacturer: string;
+  dosageForm: string;
+  strength: string;
+  unitOfMeasurement: string;
+  price: string;
+  indications: string;
+  contraindications: string;
+}
+
+const EMPTY_FORM: FormState = {
   drugName: '',
   genericName: '',
   categoryId: '',
+  manufacturer: '',
   dosageForm: '',
   strength: '',
-  unit: '',
-  manufacturer: '',
-  hsnCode: '',
-  gstRate: '',
-  mrp: '',
-  purchasePrice: '',
-  sellingPrice: '',
-  reorderLevel: '',
+  unitOfMeasurement: '',
+  price: '',
+  indications: '',
+  contraindications: '',
 };
+
+function formStateFromItem(item: FormularyItem): FormState {
+  return {
+    drugName: item.drugName,
+    genericName: item.genericName ?? '',
+    categoryId: item.categoryId ?? '',
+    manufacturer: item.manufacturer ?? '',
+    dosageForm: item.dosageForm ?? '',
+    strength: item.strength ?? '',
+    unitOfMeasurement: item.unitOfMeasurement ?? '',
+    price: item.price != null ? String(item.price) : '',
+    indications: item.indications ?? '',
+    contraindications: item.contraindications ?? '',
+  };
+}
+
+function formStateToInput(form: FormState): CreateFormularyInput {
+  const out: CreateFormularyInput = { drugName: form.drugName.trim() };
+  if (form.genericName.trim()) out.genericName = form.genericName.trim();
+  if (form.categoryId) out.categoryId = form.categoryId;
+  if (form.manufacturer.trim()) out.manufacturer = form.manufacturer.trim();
+  if (form.dosageForm) out.dosageForm = form.dosageForm as DosageForm;
+  if (form.strength.trim()) out.strength = form.strength.trim();
+  if (form.unitOfMeasurement.trim()) out.unitOfMeasurement = form.unitOfMeasurement.trim();
+  if (form.price && !isNaN(parseFloat(form.price))) out.price = parseFloat(form.price);
+  if (form.indications.trim()) out.indications = form.indications.trim();
+  if (form.contraindications.trim()) out.contraindications = form.contraindications.trim();
+  return out;
+}
 
 export default function PharmacyInventoryPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [formData, setFormData] = useState(EMPTY_FORM);
+  const [editingItem, setEditingItem] = useState<FormularyItem | null>(null);
+  const [formData, setFormData] = useState<FormState>(EMPTY_FORM);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const { data, isLoading } = useFormulary({ page, limit: 20, search: search || undefined });
   const { data: categoriesData } = usePharmacyCategories();
   const createItem = useCreateFormularyItem();
+  const updateItem = useUpdateFormularyItem();
+  const deleteItem = useDeleteFormularyItem();
 
   const items = data?.data ?? [];
   const meta = data?.meta;
   const categories = categoriesData?.data ?? [];
 
-  const handleCreate = async () => {
+  const updateField = (field: keyof FormState, value: string) =>
+    setFormData((prev) => ({ ...prev, [field]: value }));
+
+  const handleSubmit = async () => {
     if (!formData.drugName.trim()) {
       toast.error('Drug name is required');
       return;
     }
     try {
-      await createItem.mutateAsync({
-        drugName: formData.drugName,
-        genericName: formData.genericName || undefined,
-        categoryId: formData.categoryId || undefined,
-        dosageForm: formData.dosageForm || undefined,
-        strength: formData.strength || undefined,
-        unit: formData.unit || undefined,
-        manufacturer: formData.manufacturer || undefined,
-        hsnCode: formData.hsnCode || undefined,
-        gstRate: formData.gstRate ? parseFloat(formData.gstRate) : undefined,
-        mrp: formData.mrp ? parseFloat(formData.mrp) : undefined,
-        purchasePrice: formData.purchasePrice ? parseFloat(formData.purchasePrice) : undefined,
-        sellingPrice: formData.sellingPrice ? parseFloat(formData.sellingPrice) : undefined,
-        reorderLevel: formData.reorderLevel ? parseInt(formData.reorderLevel) : undefined,
-      });
-      toast.success('Drug added to formulary');
+      const payload = formStateToInput(formData);
+      if (editingItem) {
+        await updateItem.mutateAsync({ id: editingItem.id, ...payload });
+        toast.success('Drug updated');
+      } else {
+        await createItem.mutateAsync(payload);
+        toast.success('Drug added to formulary');
+      }
       setDialogOpen(false);
+      setEditingItem(null);
       setFormData(EMPTY_FORM);
-    } catch {
-      toast.error('Failed to add drug');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to save drug';
+      toast.error(msg);
     }
   };
 
-  const updateField = (field: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+  const startEdit = (item: FormularyItem) => {
+    setEditingItem(item);
+    setFormData(formStateFromItem(item));
+    setDialogOpen(true);
+  };
+
+  const startCreate = () => {
+    setEditingItem(null);
+    setFormData(EMPTY_FORM);
+    setDialogOpen(true);
+  };
+
+  const handleDelete = async () => {
+    if (!deleteId) return;
+    try {
+      await deleteItem.mutateAsync(deleteId);
+      toast.success('Drug removed');
+      setDeleteId(null);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to delete drug';
+      toast.error(msg);
+    }
   };
 
   return (
     <div className="space-y-4 animate-fade-in-up">
       <div className="flex items-center justify-between">
-        <h1 className="font-headline text-xl font-bold">Drug Formulary</h1>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <div>
+          <h1 className="font-headline text-xl font-bold">Drug Formulary</h1>
+          <p className="text-sm text-muted-foreground">Master list of drugs available for prescribing and dispensing.</p>
+        </div>
+        <Dialog open={dialogOpen} onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) {
+            setEditingItem(null);
+            setFormData(EMPTY_FORM);
+          }
+        }}>
           <DialogTrigger
             render={
-              <Button size="sm">
+              <Button size="sm" onClick={startCreate}>
                 <Plus className="mr-1.5 h-4 w-4" />
                 Add Drug
               </Button>
             }
           />
-          <DialogContent className="sm:max-w-lg">
+          <DialogContent className="sm:max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Add Drug to Formulary</DialogTitle>
+              <DialogTitle>{editingItem ? 'Edit Drug' : 'Add Drug to Formulary'}</DialogTitle>
               <DialogDescription>
-                Enter the drug details below. Fields marked with * are required.
+                {editingItem
+                  ? 'Update the drug details. Fields marked with * are required.'
+                  : 'Enter the drug details. Fields marked with * are required.'}
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-3 py-2 max-h-[60vh] overflow-y-auto pr-1">
@@ -156,21 +244,26 @@ export default function PharmacyInventoryPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {categories.map((cat) => (
-                        <SelectItem key={cat.id} value={cat.id}>
-                          {cat.name}
-                        </SelectItem>
+                        <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="dosageForm">Dosage Form</Label>
-                  <Input
-                    id="dosageForm"
+                  <Label>Dosage Form</Label>
+                  <Select
                     value={formData.dosageForm}
-                    onChange={(e) => updateField('dosageForm', e.target.value)}
-                    placeholder="e.g. Tablet, Syrup"
-                  />
+                    onValueChange={(value) => updateField('dosageForm', value ?? '')}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select form" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DOSAGE_FORMS.map((form) => (
+                        <SelectItem key={form} value={form} className="capitalize">{form}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-3">
@@ -184,92 +277,65 @@ export default function PharmacyInventoryPage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="unit">Unit</Label>
+                  <Label htmlFor="unitOfMeasurement">Unit</Label>
                   <Input
-                    id="unit"
-                    value={formData.unit}
-                    onChange={(e) => updateField('unit', e.target.value)}
+                    id="unitOfMeasurement"
+                    value={formData.unitOfMeasurement}
+                    onChange={(e) => updateField('unitOfMeasurement', e.target.value)}
                     placeholder="e.g. Strip"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="manufacturer">Manufacturer</Label>
+                  <Label htmlFor="price">Cost (₹)</Label>
                   <Input
-                    id="manufacturer"
-                    value={formData.manufacturer}
-                    onChange={(e) => updateField('manufacturer', e.target.value)}
-                    placeholder="Company name"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="hsnCode">HSN Code</Label>
-                  <Input
-                    id="hsnCode"
-                    value={formData.hsnCode}
-                    onChange={(e) => updateField('hsnCode', e.target.value)}
-                    placeholder="e.g. 3004"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="gstRate">GST Rate (%)</Label>
-                  <Input
-                    id="gstRate"
+                    id="price"
                     type="number"
-                    value={formData.gstRate}
-                    onChange={(e) => updateField('gstRate', e.target.value)}
-                    placeholder="e.g. 12"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="mrp">MRP</Label>
-                  <Input
-                    id="mrp"
-                    type="number"
-                    value={formData.mrp}
-                    onChange={(e) => updateField('mrp', e.target.value)}
-                    placeholder="0.00"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="purchasePrice">Purchase Price</Label>
-                  <Input
-                    id="purchasePrice"
-                    type="number"
-                    value={formData.purchasePrice}
-                    onChange={(e) => updateField('purchasePrice', e.target.value)}
-                    placeholder="0.00"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="sellingPrice">Selling Price</Label>
-                  <Input
-                    id="sellingPrice"
-                    type="number"
-                    value={formData.sellingPrice}
-                    onChange={(e) => updateField('sellingPrice', e.target.value)}
+                    step="0.01"
+                    value={formData.price}
+                    onChange={(e) => updateField('price', e.target.value)}
                     placeholder="0.00"
                   />
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="reorderLevel">Reorder Level</Label>
+                <Label htmlFor="manufacturer">Manufacturer</Label>
                 <Input
-                  id="reorderLevel"
-                  type="number"
-                  value={formData.reorderLevel}
-                  onChange={(e) => updateField('reorderLevel', e.target.value)}
-                  placeholder="Minimum stock quantity"
+                  id="manufacturer"
+                  value={formData.manufacturer}
+                  onChange={(e) => updateField('manufacturer', e.target.value)}
+                  placeholder="Company name"
                 />
               </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="indications">Indications</Label>
+                <Textarea
+                  id="indications"
+                  value={formData.indications}
+                  onChange={(e) => updateField('indications', e.target.value)}
+                  placeholder="Conditions this drug treats..."
+                  rows={2}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="contraindications">Contraindications</Label>
+                <Textarea
+                  id="contraindications"
+                  value={formData.contraindications}
+                  onChange={(e) => updateField('contraindications', e.target.value)}
+                  placeholder="When this drug should NOT be used..."
+                  rows={2}
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Supplier and batch-level info (mfg date, expiry, batch qty) are managed under Batches.
+              </p>
             </div>
             <DialogFooter>
               <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
-              <Button onClick={handleCreate} disabled={createItem.isPending}>
-                {createItem.isPending ? 'Adding...' : 'Add Drug'}
+              <Button onClick={handleSubmit} disabled={createItem.isPending || updateItem.isPending}>
+                {(createItem.isPending || updateItem.isPending)
+                  ? 'Saving...'
+                  : editingItem ? 'Save Changes' : 'Add Drug'}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -305,7 +371,7 @@ export default function PharmacyInventoryPage() {
             description={search ? 'Try adjusting your search query.' : 'Add drugs to your formulary to get started.'}
             action={
               !search ? (
-                <Button size="sm" onClick={() => setDialogOpen(true)}>
+                <Button size="sm" onClick={startCreate}>
                   <Plus className="mr-1.5 h-4 w-4" />
                   Add Drug
                 </Button>
@@ -320,10 +386,12 @@ export default function PharmacyInventoryPage() {
                   <TableHead>Drug Name</TableHead>
                   <TableHead>Generic Name</TableHead>
                   <TableHead>Category</TableHead>
-                  <TableHead>Dosage Form</TableHead>
+                  <TableHead>Form</TableHead>
                   <TableHead>Strength</TableHead>
-                  <TableHead className="text-right">Price</TableHead>
+                  <TableHead>Manufacturer</TableHead>
+                  <TableHead className="text-right">Cost</TableHead>
                   <TableHead className="text-center">Status</TableHead>
+                  <TableHead className="text-right w-[120px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -332,18 +400,37 @@ export default function PharmacyInventoryPage() {
                     <TableCell className="font-medium">{item.drugName}</TableCell>
                     <TableCell className="text-muted-foreground">{item.genericName || '-'}</TableCell>
                     <TableCell>{item.category?.name || '-'}</TableCell>
-                    <TableCell>{item.dosageForm || '-'}</TableCell>
+                    <TableCell className="capitalize">{item.dosageForm || '-'}</TableCell>
                     <TableCell>{item.strength || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">{item.manufacturer || '-'}</TableCell>
                     <TableCell className="text-right font-mono">
-                      {item.sellingPrice != null ? `₹${item.sellingPrice.toFixed(2)}` : '-'}
+                      {item.price != null ? `₹${Number(item.price).toFixed(2)}` : '-'}
                     </TableCell>
                     <TableCell className="text-center">
                       <Badge
-                        variant={item.isActive ? 'default' : 'destructive'}
-                        className={item.isActive ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : ''}
+                        className={
+                          item.isRecalled
+                            ? 'bg-red-500/10 text-red-600 border-red-500/20'
+                            : item.isActive
+                            ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
+                            : 'bg-muted text-muted-foreground'
+                        }
                       >
-                        {item.isActive ? 'Active' : 'Inactive'}
+                        {item.isRecalled ? 'Recalled' : item.isActive ? 'Active' : 'Inactive'}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="sm" onClick={() => startEdit(item)} className="h-8 w-8 p-0">
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setDeleteId(item.id)}
+                        className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -369,6 +456,24 @@ export default function PharmacyInventoryPage() {
           </>
         )}
       </div>
+
+      {/* Delete confirmation */}
+      <Dialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete drug?</DialogTitle>
+            <DialogDescription>
+              This will permanently remove the drug from the formulary. Drugs that have batches attached cannot be deleted.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleteItem.isPending}>
+              {deleteItem.isPending ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

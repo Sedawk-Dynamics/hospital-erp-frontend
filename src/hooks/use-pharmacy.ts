@@ -2,16 +2,25 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiPut, apiDelete, apiPatch } from '@/lib/api';
 
 // ============================================================
-// Types
+// Types — mirror Prisma schema (drug_formulary, drug_batches,
+// dispensing_records, drug_returns) so the UI matches reality.
 // ============================================================
+
+export type DosageForm =
+  | 'tablet'
+  | 'capsule'
+  | 'syrup'
+  | 'injection'
+  | 'cream'
+  | 'drops'
+  | 'inhaler'
+  | 'other';
 
 export interface DrugCategory {
   id: string;
   name: string;
   description: string | null;
-  isActive: boolean;
   createdAt: string;
-  updatedAt: string;
 }
 
 export interface FormularyItem {
@@ -19,92 +28,75 @@ export interface FormularyItem {
   drugName: string;
   genericName: string | null;
   categoryId: string | null;
-  category?: DrugCategory;
-  dosageForm: string | null;
-  strength: string | null;
-  unit: string | null;
+  category?: { id: string; name: string } | null;
   manufacturer: string | null;
-  hsnCode: string | null;
-  gstRate: number | null;
-  mrp: number | null;
-  purchasePrice: number | null;
-  sellingPrice: number | null;
-  reorderLevel: number | null;
+  dosageForm: DosageForm | null;
+  strength: string | null;
+  unitOfMeasurement: string | null;
+  price: number | string | null;
+  indications: string | null;
+  contraindications: string | null;
   isActive: boolean;
+  isRecalled: boolean;
   createdAt: string;
   updatedAt: string;
+  drugBatches?: Array<Pick<DrugBatch, 'id' | 'batchNumber' | 'expiryDate' | 'quantityInStock' | 'sellingPrice'>>;
 }
 
 export interface DrugBatch {
   id: string;
-  formularyItemId: string;
-  formularyItem?: FormularyItem;
+  drugId: string;
+  tenantId?: string;
   batchNumber: string;
   manufacturingDate: string | null;
   expiryDate: string;
-  quantity: number;
-  availableQuantity: number;
-  purchasePrice: number | null;
-  sellingPrice: number | null;
-  mrp: number | null;
-  hsnCode: string | null;
-  gstRate: number | null;
+  supplierId: string | null;
+  purchasePrice: number | string | null;
+  sellingPrice: number | string | null;
+  quantityReceived: number;
+  quantityInStock: number;
+  isExpired: boolean;
+  isRecalled: boolean;
+  recallReason: string | null;
   createdAt: string;
   updatedAt: string;
+  drug?: Pick<FormularyItem, 'id' | 'drugName' | 'genericName' | 'strength' | 'dosageForm'>;
+  supplier?: { id: string; name: string } | null;
 }
 
 export interface DispenseRecord {
   id: string;
-  patientId: string | null;
-  patient?: { id: string; firstName: string; lastName: string; uhid?: string };
-  prescriptionId: string | null;
-  dispensedBy: string | null;
+  tenantId?: string;
+  prescriptionId: string;
+  prescriptionItemId: string;
+  patientId: string;
+  drugBatchId: string;
+  quantityDispensed: number;
+  dispensedBy: string;
   dispensedAt: string;
-  status: 'pending' | 'dispensed' | 'verified' | 'cancelled';
-  totalAmount: number | null;
+  verifiedBy: string | null;
   notes: string | null;
-  items?: DispenseItem[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface DispenseItem {
-  id: string;
-  dispenseId: string;
-  formularyItemId: string;
-  formularyItem?: FormularyItem;
-  batchId: string | null;
-  batch?: DrugBatch;
-  quantity: number;
-  unitPrice: number | null;
-  totalPrice: number | null;
+  patient?: { id: string; firstName: string; lastName: string };
+  drugBatch?: { id: string; batchNumber: string; drug?: { id: string; drugName: string; genericName?: string | null } };
+  dispenser?: { id: string; firstName: string; lastName: string };
+  verifier?: { id: string; firstName: string; lastName: string } | null;
 }
 
 export interface PharmacyReturn {
   id: string;
-  dispenseId: string | null;
-  dispense?: DispenseRecord;
+  returnType: 'patient_return' | 'vendor_return';
+  drugBatchId: string;
   patientId: string | null;
-  patient?: { id: string; firstName: string; lastName: string };
+  supplierId: string | null;
+  quantity: number;
   reason: string | null;
   status: 'pending' | 'processed' | 'rejected';
-  totalRefund: number | null;
   processedBy: string | null;
-  processedAt: string | null;
-  items?: ReturnItem[];
   createdAt: string;
-  updatedAt: string;
-}
-
-export interface ReturnItem {
-  id: string;
-  returnId: string;
-  formularyItemId: string;
-  formularyItem?: FormularyItem;
-  batchId: string | null;
-  quantity: number;
-  unitPrice: number | null;
-  totalPrice: number | null;
+  drugBatch?: { id: string; batchNumber: string; drug?: { id: string; drugName: string } };
+  patient?: { id: string; firstName: string; lastName: string };
+  supplier?: { id: string; name: string };
+  processor?: { id: string; firstName: string; lastName: string } | null;
 }
 
 interface PaginationMeta {
@@ -121,6 +113,18 @@ interface PaginatedParams {
   sortOrder?: 'asc' | 'desc';
 }
 
+export interface FormularyQueryParams extends PaginatedParams {
+  categoryId?: string;
+  dosageForm?: DosageForm;
+  isActive?: boolean | string;
+}
+
+export interface BatchQueryParams extends PaginatedParams {
+  drugId?: string | null;
+  isExpired?: boolean | string;
+  availableOnly?: boolean | string;
+}
+
 // ============================================================
 // Query Keys
 // ============================================================
@@ -132,17 +136,17 @@ export const pharmacyKeys = {
   },
   formulary: {
     all: ['pharmacy', 'formulary'] as const,
-    list: (params?: PaginatedParams) => ['pharmacy', 'formulary', 'list', params] as const,
+    list: (params?: FormularyQueryParams) => ['pharmacy', 'formulary', 'list', params] as const,
     detail: (id: string) => ['pharmacy', 'formulary', 'detail', id] as const,
   },
   batches: {
     all: ['pharmacy', 'batches'] as const,
-    list: (params?: PaginatedParams) => ['pharmacy', 'batches', 'list', params] as const,
+    list: (params?: BatchQueryParams) => ['pharmacy', 'batches', 'list', params] as const,
     expiring: (params?: Record<string, unknown>) => ['pharmacy', 'batches', 'expiring', params] as const,
   },
   dispensing: {
     all: ['pharmacy', 'dispensing'] as const,
-    list: (params?: PaginatedParams) => ['pharmacy', 'dispensing', 'list', params] as const,
+    list: (params?: Record<string, unknown>) => ['pharmacy', 'dispensing', 'list', params] as const,
     detail: (id: string) => ['pharmacy', 'dispensing', 'detail', id] as const,
   },
   returns: {
@@ -181,7 +185,7 @@ export function useCreateCategory() {
 export function useUpdateCategory() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...data }: { id: string; name?: string; description?: string; isActive?: boolean }) => {
+    mutationFn: async ({ id, ...data }: { id: string; name?: string; description?: string | null }) => {
       const response = await apiPut<DrugCategory>(`/pharmacy/categories/${id}`, data);
       return response.data;
     },
@@ -208,7 +212,7 @@ export function useDeleteCategory() {
 // Formulary Hooks
 // ============================================================
 
-export function useFormulary(params?: PaginatedParams) {
+export function useFormulary(params?: FormularyQueryParams) {
   return useQuery({
     queryKey: pharmacyKeys.formulary.list(params),
     queryFn: async () => {
@@ -218,9 +222,9 @@ export function useFormulary(params?: PaginatedParams) {
   });
 }
 
-export function useFormularyItem(id: string) {
+export function useFormularyItem(id: string | null) {
   return useQuery({
-    queryKey: pharmacyKeys.formulary.detail(id),
+    queryKey: pharmacyKeys.formulary.detail(id ?? ''),
     queryFn: async () => {
       const response = await apiGet<FormularyItem>(`/pharmacy/formulary/${id}`);
       return response.data;
@@ -229,24 +233,24 @@ export function useFormularyItem(id: string) {
   });
 }
 
+export interface CreateFormularyInput {
+  drugName: string;
+  genericName?: string;
+  categoryId?: string;
+  manufacturer?: string;
+  dosageForm?: DosageForm;
+  strength?: string;
+  unitOfMeasurement?: string;
+  price?: number;
+  indications?: string;
+  contraindications?: string;
+  isActive?: boolean;
+}
+
 export function useCreateFormularyItem() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: {
-      drugName: string;
-      genericName?: string;
-      categoryId?: string;
-      dosageForm?: string;
-      strength?: string;
-      unit?: string;
-      manufacturer?: string;
-      hsnCode?: string;
-      gstRate?: number;
-      mrp?: number;
-      purchasePrice?: number;
-      sellingPrice?: number;
-      reorderLevel?: number;
-    }) => {
+    mutationFn: async (data: CreateFormularyInput) => {
       const response = await apiPost<FormularyItem>('/pharmacy/formulary', data);
       return response.data;
     },
@@ -259,7 +263,7 @@ export function useCreateFormularyItem() {
 export function useUpdateFormularyItem() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...data }: { id: string } & Partial<Omit<FormularyItem, 'id' | 'createdAt' | 'updatedAt' | 'category'>>) => {
+    mutationFn: async ({ id, ...data }: { id: string } & Partial<CreateFormularyInput> & { isRecalled?: boolean }) => {
       const response = await apiPut<FormularyItem>(`/pharmacy/formulary/${id}`, data);
       return response.data;
     },
@@ -270,11 +274,24 @@ export function useUpdateFormularyItem() {
   });
 }
 
+export function useDeleteFormularyItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiDelete(`/pharmacy/formulary/${id}`);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
+    },
+  });
+}
+
 // ============================================================
 // Batch Hooks
 // ============================================================
 
-export function useBatches(params?: PaginatedParams) {
+export function useBatches(params?: BatchQueryParams) {
   return useQuery({
     queryKey: pharmacyKeys.batches.list(params),
     queryFn: async () => {
@@ -289,7 +306,7 @@ export function useBatchesByDrug(drugId: string | null) {
     queryKey: ['pharmacy', 'batches', 'byDrug', drugId],
     queryFn: async () => {
       const response = await apiGet<DrugBatch[]>('/pharmacy/batches', {
-        params: { drugId, limit: 50 },
+        params: { drugId, availableOnly: true, limit: 50 },
       });
       return response.data;
     },
@@ -307,22 +324,49 @@ export function useExpiringBatches(params?: { days?: number; page?: number; limi
   });
 }
 
+export interface CreateBatchInput {
+  drugId: string;
+  batchNumber: string;
+  manufacturingDate?: string;
+  expiryDate: string;
+  supplierId?: string;
+  purchasePrice?: number;
+  sellingPrice?: number;
+  quantityReceived: number;
+}
+
 export function useCreateBatch() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: {
-      formularyItemId: string;
-      batchNumber: string;
-      manufacturingDate?: string;
-      expiryDate: string;
-      quantity: number;
-      purchasePrice?: number;
-      sellingPrice?: number;
-      mrp?: number;
-      hsnCode?: string;
-      gstRate?: number;
-    }) => {
+    mutationFn: async (data: CreateBatchInput) => {
       const response = await apiPost<DrugBatch>('/pharmacy/batches', data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
+    },
+  });
+}
+
+export interface UpdateBatchInput {
+  batchNumber?: string;
+  manufacturingDate?: string | null;
+  expiryDate?: string;
+  supplierId?: string | null;
+  purchasePrice?: number | null;
+  sellingPrice?: number | null;
+  quantityInStock?: number;
+  isExpired?: boolean;
+  isRecalled?: boolean;
+  recallReason?: string | null;
+}
+
+export function useUpdateBatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...data }: { id: string } & UpdateBatchInput) => {
+      const response = await apiPut<DrugBatch>(`/pharmacy/batches/${id}`, data);
       return response.data;
     },
     onSuccess: () => {
@@ -335,9 +379,15 @@ export function useCreateBatch() {
 // Dispensing Hooks
 // ============================================================
 
-export function useDispenseRecords(params?: PaginatedParams) {
+export interface DispenseQueryParams extends PaginatedParams {
+  patientId?: string;
+  fromDate?: string;
+  toDate?: string;
+}
+
+export function useDispenseRecords(params?: DispenseQueryParams) {
   return useQuery({
-    queryKey: pharmacyKeys.dispensing.list(params),
+    queryKey: pharmacyKeys.dispensing.list(params as Record<string, unknown>),
     queryFn: async () => {
       const response = await apiGet<DispenseRecord[]>('/pharmacy/dispensing', { params });
       return { data: response.data, meta: response.meta as PaginationMeta | undefined };
@@ -345,26 +395,32 @@ export function useDispenseRecords(params?: PaginatedParams) {
   });
 }
 
+export interface CreateDispenseItem {
+  prescriptionItemId: string;
+  drugBatchId: string;
+  quantity: number;
+}
+
+export interface CreateDispenseInput {
+  patientId: string;
+  prescriptionId: string;
+  items: CreateDispenseItem[];
+  notes?: string;
+}
+
 export function useCreateDispense() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: {
-      patientId: string;
-      prescriptionId?: string;
-      prescriptionItemId?: string;
-      items: Array<{
-        drugBatchId: string;
-        quantity: number;
-      }>;
-      notes?: string;
-    }) => {
-      // Backend expects single-item dispense per call, so we dispatch each item
+    mutationFn: async (data: CreateDispenseInput) => {
+      // Backend dispenses one prescription-item ↔ batch pair at a time.
+      // Loop the cart and POST one record per item, all under the same
+      // prescription so the queue can mark it dispensed afterward.
       const results: DispenseRecord[] = [];
       for (const item of data.items) {
         const response = await apiPost<DispenseRecord>('/pharmacy/dispensing', {
           patientId: data.patientId,
-          prescriptionId: data.prescriptionId || undefined,
-          prescriptionItemId: data.prescriptionItemId || undefined,
+          prescriptionId: data.prescriptionId,
+          prescriptionItemId: item.prescriptionItemId,
           drugBatchId: item.drugBatchId,
           quantityDispensed: item.quantity,
           notes: data.notes,
@@ -376,6 +432,7 @@ export function useCreateDispense() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.dispensing.all });
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: ['prescriptions'] });
     },
   });
 }
@@ -384,7 +441,7 @@ export function useCreateDispense() {
 // Returns Hooks
 // ============================================================
 
-export function useReturns(params?: PaginatedParams) {
+export function useReturns(params?: PaginatedParams & { status?: string; returnType?: string }) {
   return useQuery({
     queryKey: pharmacyKeys.returns.list(params),
     queryFn: async () => {
@@ -398,22 +455,19 @@ export function useCreateReturn() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: {
-      dispenseId?: string;
+      returnType: 'patient_return' | 'vendor_return';
+      drugBatchId: string;
       patientId?: string;
+      supplierId?: string;
+      quantity: number;
       reason?: string;
-      items: Array<{
-        formularyItemId: string;
-        batchId?: string;
-        quantity: number;
-        unitPrice?: number;
-      }>;
     }) => {
       const response = await apiPost<PharmacyReturn>('/pharmacy/returns', data);
       return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.returns.all });
-      queryClient.invalidateQueries({ queryKey: pharmacyKeys.dispensing.all });
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
     },
   });
 }
@@ -421,13 +475,77 @@ export function useCreateReturn() {
 export function useProcessReturn() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, action }: { id: string; action: 'approve' | 'reject' }) => {
-      const response = await apiPatch<PharmacyReturn>(`/pharmacy/returns/${id}/process`, { action });
+    mutationFn: async ({ id, status }: { id: string; status: 'processed' | 'rejected' }) => {
+      const response = await apiPatch<PharmacyReturn>(`/pharmacy/returns/${id}/process`, { status });
       return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.returns.all });
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
     },
+  });
+}
+
+// ============================================================
+// Prescription Queue (incoming e-prescriptions for the pharmacy)
+// ============================================================
+
+export interface PrescriptionListItem {
+  id: string;
+  status: 'active' | 'dispensed' | 'partially_dispensed' | 'cancelled';
+  prescriptionType: 'op' | 'ip';
+  notes: string | null;
+  followUpDate: string | null;
+  createdAt: string;
+  patient: { id: string; mrn: string; firstName: string; lastName: string };
+  doctor?: {
+    id: string;
+    user?: { firstName: string; lastName: string };
+  };
+  visit?: { id: string; visitDate: string; visitType: string };
+  prescriptionItems: Array<{
+    id: string;
+    drugId: string | null;
+    drugName: string;
+    dosage: string;
+    frequency: string;
+    duration: string | null;
+    route: string;
+    instructions: string | null;
+    quantity: number | null;
+    isPrn: boolean;
+  }>;
+}
+
+export interface PrescriptionQueueParams extends PaginatedParams {
+  patientId?: string;
+  doctorId?: string;
+  status?: 'active' | 'dispensed' | 'partially_dispensed' | 'cancelled' | 'pending';
+  prescriptionType?: 'op' | 'ip';
+  dispensed?: boolean | string;
+  fromDate?: string;
+  toDate?: string;
+}
+
+export function usePrescriptionQueue(params?: PrescriptionQueueParams) {
+  return useQuery({
+    queryKey: ['prescriptions', 'queue', params],
+    queryFn: async () => {
+      const response = await apiGet<PrescriptionListItem[]>('/prescriptions', {
+        params: { status: 'pending', dispensed: false, limit: 25, ...params },
+      });
+      return { data: response.data, meta: response.meta as PaginationMeta | undefined };
+    },
+  });
+}
+
+export function usePrescriptionDetail(id: string | null) {
+  return useQuery({
+    queryKey: ['prescriptions', 'detail', id],
+    queryFn: async () => {
+      const response = await apiGet<PrescriptionListItem>(`/prescriptions/${id}`);
+      return response.data;
+    },
+    enabled: !!id,
   });
 }

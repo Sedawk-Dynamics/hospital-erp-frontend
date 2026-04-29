@@ -109,8 +109,10 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
     baseRoute: '/pharmacy',
     sidebarItems: [
       { label: 'Billing', href: '/pharmacy', icon: Receipt },
+      { label: 'Prescription Queue', href: '/pharmacy/queue', icon: ClipboardList },
       { label: 'Billing Transaction', href: '/pharmacy/transactions', icon: ArrowLeftRight },
-      { label: 'Inventory', href: '/pharmacy/inventory', icon: Package },
+      { label: 'Drug Formulary', href: '/pharmacy/inventory', icon: Pill },
+      { label: 'Batches', href: '/pharmacy/batches', icon: PillBottle },
       { label: 'Purchase', href: '/pharmacy/purchase', icon: ShoppingCart },
       { label: 'Reports', href: '/pharmacy/reports', icon: BarChart3 },
       { label: 'Stock Transfer', href: '/pharmacy/stock-transfer', icon: Truck },

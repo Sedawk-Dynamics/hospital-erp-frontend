@@ -1,8 +1,20 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Search, Plus, Minus, Trash2, User, Package, ChevronDown } from 'lucide-react';
+import {
+  Search,
+  Plus,
+  Minus,
+  Trash2,
+  User,
+  Package,
+  ChevronDown,
+  ClipboardList,
+  Stethoscope,
+  X,
+} from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -14,8 +26,11 @@ import {
   useFormulary,
   useBatchesByDrug,
   useCreateDispense,
+  usePrescriptionQueue,
+  usePrescriptionDetail,
   type FormularyItem,
   type DrugBatch,
+  type PrescriptionListItem,
 } from '@/hooks/use-pharmacy';
 import { PatientFormSubmissionsPanel } from '@/components/forms/patient-form-submissions-panel';
 
@@ -42,7 +57,6 @@ export default function PharmacyBillingPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Forms assigned by admin to pharmacy_home view location appear here */}
       <PatientFormSubmissionsPanel
         title="Pharmacy Forms Submissions"
         viewLocation="pharmacy_home"
@@ -52,22 +66,30 @@ export default function PharmacyBillingPage() {
 }
 
 // ============================================================
-// Cart Item type
+// Cart row — one entry per prescription-item / batch pair
 // ============================================================
 
 interface CartItem {
+  // Stable key (`<prescriptionItemId>::<formularyItemId>` for rx items, or
+  // `walk::<formularyItemId>` for walk-in dispenses). Stays stable across
+  // batch/qty edits, unique per row.
+  rowKey: string;
+  prescriptionItemId: string | null;
   formularyItemId: string;
   drugName: string;
   genericName: string | null;
-  batchNumber: string;
+  // Selected batch (null until the cashier picks one)
   batchId: string | null;
-  quantity: number;
-  mrp: number;
-  sellingPrice: number;
-  discount: number; // percentage
-  gstRate: number;
-  availableQty: number;
+  batchNumber: string;
   expiryDate: string | null;
+  // Pricing — pulled from the chosen batch (or formulary fallback)
+  sellingPrice: number;
+  purchasePrice: number;
+  // User-editable
+  quantity: number;
+  discount: number;
+  // Stock check
+  availableQty: number;
 }
 
 interface PatientResult {
@@ -75,6 +97,7 @@ interface PatientResult {
   firstName: string;
   lastName: string;
   uhid?: string;
+  mrn?: string;
   mobile?: string;
   phone?: string;
   email?: string;
@@ -82,42 +105,58 @@ interface PatientResult {
   dateOfBirth?: string;
 }
 
-function computeItemAmount(item: CartItem): number {
+const toNum = (n: number | string | null | undefined): number => {
+  if (n == null) return 0;
+  return typeof n === 'string' ? Number(n) : n;
+};
+
+function computeItemNet(item: CartItem): number {
   const base = item.sellingPrice * item.quantity;
-  const discounted = base - base * (item.discount / 100);
-  return discounted;
+  return base - base * (item.discount / 100);
+}
+
+function computeItemMargin(item: CartItem): number {
+  const cost = item.purchasePrice * item.quantity;
+  return computeItemNet(item) - cost;
 }
 
 // ============================================================
-// PharmacyPOS — fully wired billing tab
+// PharmacyPOS — wired to /pharmacy/dispensing
 // ============================================================
 
 function PharmacyPOS() {
-  // --- Patient search state ---
+  const searchParams = useSearchParams();
+  const initialPrescriptionId = searchParams.get('prescriptionId');
+
+  // --- Patient state ---
   const [patientSearch, setPatientSearch] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<PatientResult | null>(null);
   const [showPatientDropdown, setShowPatientDropdown] = useState(false);
   const patientDropdownRef = useRef<HTMLDivElement>(null);
+  const [debouncedPatient, setDebouncedPatient] = useState('');
 
-  // --- Medicine search state ---
+  // --- Prescription state ---
+  const [activePrescriptionId, setActivePrescriptionId] = useState<string | null>(initialPrescriptionId);
+  const [prescriptionPickerOpen, setPrescriptionPickerOpen] = useState(false);
+  const prescriptionPickerRef = useRef<HTMLDivElement>(null);
+
+  // --- Walk-in medicine search ---
   const [medicineSearch, setMedicineSearch] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [debouncedMedicine, setDebouncedMedicine] = useState('');
 
-  // --- Cart state ---
+  // --- Cart + payment state ---
   const [cart, setCart] = useState<CartItem[]>([]);
   const [paymentModes, setPaymentModes] = useState<string[]>([]);
 
-  // --- Batch picker state ---
-  const [batchPickerForItem, setBatchPickerForItem] = useState<string | null>(null);
+  // --- Batch picker ---
+  const [batchPickerForRow, setBatchPickerForRow] = useState<string | null>(null);
   const [batchPickerDrugId, setBatchPickerDrugId] = useState<string | null>(null);
   const batchPickerRef = useRef<HTMLDivElement>(null);
 
-  // --- Debounced search terms ---
-  const [debouncedMedicine, setDebouncedMedicine] = useState('');
-  const [debouncedPatient, setDebouncedPatient] = useState('');
-
+  // --- Debounces ---
   useEffect(() => {
     const t = setTimeout(() => setDebouncedMedicine(medicineSearch), 300);
     return () => clearTimeout(t);
@@ -139,29 +178,73 @@ function PharmacyPOS() {
     },
     enabled: debouncedPatient.length >= 2,
   });
-
   const patientResults = patientData ?? [];
 
-  // --- Medicine search query (formulary) ---
+  // --- Pending prescriptions for the selected patient (for the picker) ---
+  const { data: pendingForPatient } = usePrescriptionQueue(
+    selectedPatient
+      ? { patientId: selectedPatient.id, status: 'pending', dispensed: false, limit: 20 }
+      : undefined,
+  );
+
+  // --- Active prescription detail (when chosen via deep-link or picker) ---
+  const { data: activePrescription } = usePrescriptionDetail(activePrescriptionId);
+
+  // --- Walk-in formulary search ---
   const { data: formularyData, isLoading: searchLoading } = useFormulary({
     search: debouncedMedicine || undefined,
     limit: 15,
+    isActive: true,
   });
-
   const searchResults = formularyData?.data ?? [];
 
-  // --- Batch fetch for batch picker ---
+  // --- Batch fetch for picker ---
   const { data: batchesForDrug, isLoading: batchesLoading } = useBatchesByDrug(batchPickerDrugId);
+  const availableBatches = (batchesForDrug ?? []).filter((b) => b.quantityInStock > 0);
 
-  // Filter out expired / zero-stock batches
-  const availableBatches = (batchesForDrug ?? []).filter(
-    (b) => b.availableQuantity > 0 && new Date(b.expiryDate) > new Date()
-  );
-
-  // --- Create dispense mutation ---
+  // --- Mutation ---
   const createDispense = useCreateDispense();
 
-  // --- Close dropdowns on outside click ---
+  // --- Auto-load patient + cart when prescription detail arrives ---
+  useEffect(() => {
+    if (!activePrescription) return;
+    // Hydrate selected patient from the prescription if needed.
+    if (!selectedPatient || selectedPatient.id !== activePrescription.patient.id) {
+      setSelectedPatient({
+        id: activePrescription.patient.id,
+        firstName: activePrescription.patient.firstName,
+        lastName: activePrescription.patient.lastName,
+        mrn: activePrescription.patient.mrn,
+      });
+      setPatientSearch(`${activePrescription.patient.firstName} ${activePrescription.patient.lastName}`);
+    }
+    // Replace the cart with the prescription's items (only those with a
+    // formulary link — free-text rows can be searched and added manually).
+    const newCart: CartItem[] = activePrescription.prescriptionItems
+      .filter((it) => it.drugId)
+      .map((it) => ({
+        rowKey: `${it.id}::${it.drugId}`,
+        prescriptionItemId: it.id,
+        formularyItemId: it.drugId as string,
+        drugName: it.drugName,
+        genericName: null,
+        batchId: null,
+        batchNumber: '-',
+        expiryDate: null,
+        sellingPrice: 0,
+        purchasePrice: 0,
+        quantity: it.quantity ?? 1,
+        discount: 0,
+        availableQty: 0,
+      }));
+    setCart(newCart);
+    if (activePrescription.prescriptionItems.some((it) => !it.drugId)) {
+      toast.info('Some items lack a formulary link and need to be selected manually.');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePrescription?.id]);
+
+  // --- Outside-click handlers ---
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -171,15 +254,18 @@ function PharmacyPOS() {
         setShowPatientDropdown(false);
       }
       if (batchPickerRef.current && !batchPickerRef.current.contains(e.target as Node)) {
-        setBatchPickerForItem(null);
+        setBatchPickerForRow(null);
         setBatchPickerDrugId(null);
+      }
+      if (prescriptionPickerRef.current && !prescriptionPickerRef.current.contains(e.target as Node)) {
+        setPrescriptionPickerOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // --- Select patient ---
+  // --- Patient handlers ---
   const selectPatient = useCallback((patient: PatientResult) => {
     setSelectedPatient(patient);
     setPatientSearch(`${patient.firstName} ${patient.lastName}`);
@@ -189,77 +275,88 @@ function PharmacyPOS() {
   const clearPatient = useCallback(() => {
     setSelectedPatient(null);
     setPatientSearch('');
+    setActivePrescriptionId(null);
+    setCart([]);
   }, []);
 
-  // --- Add medicine to cart ---
-  const addToCart = useCallback((item: FormularyItem) => {
+  // --- Prescription handlers ---
+  const selectPrescription = useCallback((rx: PrescriptionListItem) => {
+    setActivePrescriptionId(rx.id);
+    setPrescriptionPickerOpen(false);
+  }, []);
+
+  const clearPrescription = useCallback(() => {
+    setActivePrescriptionId(null);
+    setCart([]);
+  }, []);
+
+  // --- Walk-in cart helpers ---
+  const addWalkInItem = useCallback((item: FormularyItem) => {
+    if (activePrescriptionId) {
+      toast.warning('This bill is linked to a prescription. Clear it first to dispense walk-in items.');
+      return;
+    }
     setCart((prev) => {
-      const existing = prev.find((c) => c.formularyItemId === item.id);
+      const rowKey = `walk::${item.id}`;
+      const existing = prev.find((c) => c.rowKey === rowKey);
       if (existing) {
         if (existing.availableQty > 0 && existing.quantity >= existing.availableQty) {
           toast.warning(`Max available stock: ${existing.availableQty}`);
           return prev;
         }
         return prev.map((c) =>
-          c.formularyItemId === item.id
-            ? { ...c, quantity: c.quantity + 1 }
-            : c
+          c.rowKey === rowKey ? { ...c, quantity: c.quantity + 1 } : c,
         );
       }
       return [
         ...prev,
         {
+          rowKey,
+          prescriptionItemId: null,
           formularyItemId: item.id,
           drugName: item.drugName,
           genericName: item.genericName,
-          batchNumber: '-',
           batchId: null,
-          quantity: 1,
-          mrp: item.mrp != null ? Number(item.mrp) : item.sellingPrice != null ? Number(item.sellingPrice) : 0,
-          sellingPrice: item.sellingPrice != null ? Number(item.sellingPrice) : item.mrp != null ? Number(item.mrp) : 0,
-          discount: 0,
-          gstRate: item.gstRate != null ? Number(item.gstRate) : 0,
-          availableQty: 0, // will be set when batch is selected
+          batchNumber: '-',
           expiryDate: null,
+          sellingPrice: toNum(item.price),
+          purchasePrice: 0,
+          quantity: 1,
+          discount: 0,
+          availableQty: 0,
         },
       ];
     });
     setMedicineSearch('');
     setShowDropdown(false);
     searchInputRef.current?.focus();
-  }, []);
+  }, [activePrescriptionId]);
 
-  // --- Select batch for a cart item ---
-  const selectBatch = useCallback((formularyItemId: string, batch: DrugBatch) => {
+  const selectBatch = useCallback((rowKey: string, batch: DrugBatch) => {
     setCart((prev) =>
       prev.map((c) => {
-        if (c.formularyItemId !== formularyItemId) return c;
-        const sp = batch.sellingPrice != null ? Number(batch.sellingPrice) : c.sellingPrice;
-        const mrp = batch.mrp != null ? Number(batch.mrp) : c.mrp;
-        const gst = batch.gstRate != null ? Number(batch.gstRate) : c.gstRate;
+        if (c.rowKey !== rowKey) return c;
         return {
           ...c,
           batchId: batch.id,
           batchNumber: batch.batchNumber,
-          sellingPrice: sp,
-          mrp,
-          gstRate: gst,
-          availableQty: batch.availableQuantity,
+          sellingPrice: toNum(batch.sellingPrice) || c.sellingPrice,
+          purchasePrice: toNum(batch.purchasePrice),
+          availableQty: batch.quantityInStock,
           expiryDate: batch.expiryDate,
-          quantity: Math.min(c.quantity, batch.availableQuantity),
+          quantity: Math.min(c.quantity || 1, batch.quantityInStock || 1),
         };
-      })
+      }),
     );
-    setBatchPickerForItem(null);
+    setBatchPickerForRow(null);
     setBatchPickerDrugId(null);
   }, []);
 
-  // --- Quantity helpers ---
-  const updateQty = (formularyItemId: string, delta: number) => {
+  const updateQty = (rowKey: string, delta: number) => {
     setCart((prev) =>
       prev
         .map((c) => {
-          if (c.formularyItemId !== formularyItemId) return c;
+          if (c.rowKey !== rowKey) return c;
           const newQty = Math.max(0, c.quantity + delta);
           if (c.availableQty > 0 && newQty > c.availableQty) {
             toast.warning(`Max available stock: ${c.availableQty}`);
@@ -267,109 +364,96 @@ function PharmacyPOS() {
           }
           return { ...c, quantity: newQty };
         })
-        .filter((c) => c.quantity > 0)
+        .filter((c) => c.quantity > 0),
     );
   };
 
-  const removeItem = (formularyItemId: string) => {
-    setCart((prev) => prev.filter((c) => c.formularyItemId !== formularyItemId));
+  const removeItem = (rowKey: string) => {
+    setCart((prev) => prev.filter((c) => c.rowKey !== rowKey));
   };
 
-  const updateDiscount = (formularyItemId: string, discount: number) => {
+  const updateDiscount = (rowKey: string, discount: number) => {
     setCart((prev) =>
       prev.map((c) =>
-        c.formularyItemId === formularyItemId
-          ? { ...c, discount: Math.min(100, Math.max(0, discount)) }
-          : c
-      )
+        c.rowKey === rowKey ? { ...c, discount: Math.min(100, Math.max(0, discount)) } : c,
+      ),
     );
   };
 
-  // --- Toggle payment mode ---
   const togglePaymentMode = (mode: string) => {
     setPaymentModes((prev) =>
-      prev.includes(mode) ? prev.filter((m) => m !== mode) : [...prev, mode]
+      prev.includes(mode) ? prev.filter((m) => m !== mode) : [...prev, mode],
     );
   };
 
-  // --- Summary calculations ---
-  const subtotal = cart.reduce((sum, item) => sum + item.sellingPrice * item.quantity, 0);
-  const totalDiscount = cart.reduce((sum, item) => {
-    const base = item.sellingPrice * item.quantity;
-    return sum + base * (item.discount / 100);
-  }, 0);
-  const afterDiscount = subtotal - totalDiscount;
-  const totalTax = cart.reduce((sum, item) => {
-    const amount = computeItemAmount(item);
-    return sum + amount * (item.gstRate / 100);
-  }, 0);
-  const grandTotal = afterDiscount + totalTax;
-  const roundedTotal = Math.round(grandTotal * 100) / 100;
-  const roundOff = Math.round((roundedTotal - grandTotal) * 100) / 100;
+  // --- Summary ---
+  const summary = useMemo(() => {
+    const subtotal = cart.reduce((s, c) => s + c.sellingPrice * c.quantity, 0);
+    const totalDiscount = cart.reduce(
+      (s, c) => s + c.sellingPrice * c.quantity * (c.discount / 100),
+      0,
+    );
+    const afterDiscount = subtotal - totalDiscount;
+    const rounded = Math.round(afterDiscount);
+    const roundOff = Math.round((rounded - afterDiscount) * 100) / 100;
+    const margin = cart.reduce((s, c) => s + computeItemMargin(c), 0);
+    return { subtotal, totalDiscount, afterDiscount, rounded, roundOff, margin };
+  }, [cart]);
 
-  const fmt = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmt = (n: number) =>
+    n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  // --- Validation helpers ---
-  const cartHasAllBatches = cart.every((c) => c.batchId !== null);
-  const canCreateBill = cart.length > 0 && selectedPatient !== null && cartHasAllBatches;
+  const cartHasAllBatches = cart.length > 0 && cart.every((c) => c.batchId !== null);
+  const linkedToPrescription = !!activePrescriptionId && !!activePrescription;
+  const prescriptionItemsHaveLinks = !linkedToPrescription
+    || cart.every((c) => c.prescriptionItemId !== null);
+  const canCreateBill =
+    cart.length > 0
+    && selectedPatient !== null
+    && cartHasAllBatches
+    && linkedToPrescription
+    && prescriptionItemsHaveLinks;
 
-  // --- Create bill handler ---
   const handleCreateBill = async () => {
-    if (cart.length === 0) {
-      toast.error('Add at least one medicine to the cart');
-      return;
-    }
-    if (!selectedPatient) {
-      toast.error('Please select a patient first');
-      return;
-    }
-    if (!cartHasAllBatches) {
-      toast.error('Please select a batch for each medicine');
-      return;
-    }
-    if (paymentModes.length === 0) {
-      toast.error('Please select at least one payment mode');
-      return;
-    }
+    if (cart.length === 0) return toast.error('Add at least one medicine to the cart');
+    if (!selectedPatient) return toast.error('Please select a patient first');
+    if (!cartHasAllBatches) return toast.error('Please select a batch for each medicine');
+    if (!linkedToPrescription) return toast.error('Pick a prescription — dispensing requires a doctor order');
+    if (paymentModes.length === 0) return toast.error('Please select at least one payment mode');
 
     try {
       await createDispense.mutateAsync({
         patientId: selectedPatient.id,
+        prescriptionId: activePrescriptionId as string,
         items: cart.map((c) => ({
-          drugBatchId: c.batchId!,
+          prescriptionItemId: c.prescriptionItemId as string,
+          drugBatchId: c.batchId as string,
           quantity: c.quantity,
         })),
-        notes: paymentModes.length > 0 ? `Payment: ${paymentModes.join(', ')}` : undefined,
+        notes: `Payment: ${paymentModes.join(', ')}`,
       });
-      toast.success('Bill created successfully');
+      toast.success(`Dispensed ${cart.length} item${cart.length > 1 ? 's' : ''}`);
       setCart([]);
       setPaymentModes([]);
+      setActivePrescriptionId(null);
       clearPatient();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to create bill';
+      const message = err instanceof Error ? err.message : 'Failed to dispense';
       toast.error(message);
     }
   };
 
-  // --- Save draft handler ---
   const handleSaveDraft = async () => {
-    if (cart.length === 0) {
-      toast.error('Add at least one medicine to the cart');
-      return;
-    }
-
-    // Save draft to localStorage for now (backend doesn't have a draft status)
+    if (cart.length === 0) return toast.error('Add at least one medicine to the cart');
     const draft = {
       id: crypto.randomUUID(),
       patient: selectedPatient,
+      prescriptionId: activePrescriptionId,
       items: cart,
       paymentModes,
-      subtotal,
-      totalDiscount,
-      grandTotal: roundedTotal,
+      summary,
       createdAt: new Date().toISOString(),
     };
-
     try {
       const existingRaw = localStorage.getItem('pharmacy_drafts');
       const existing = existingRaw ? JSON.parse(existingRaw) : [];
@@ -383,12 +467,12 @@ function PharmacyPOS() {
 
   return (
     <div className="space-y-4">
-      {/* Patient search bar */}
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-md" ref={patientDropdownRef}>
+      {/* Patient + prescription selectors */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 max-w-md min-w-[260px]" ref={patientDropdownRef}>
           <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search patient by name, mobile, UHID..."
+            placeholder="Search patient by name, mobile, MRN..."
             value={patientSearch}
             onChange={(e) => {
               setPatientSearch(e.target.value);
@@ -401,22 +485,21 @@ function PharmacyPOS() {
             className="pl-9"
           />
 
-          {/* Selected patient chip */}
           {selectedPatient && (
             <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
               <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                {selectedPatient.uhid && <span className="text-primary/70">{selectedPatient.uhid}</span>}
+                {selectedPatient.mrn && <span className="text-primary/70">{selectedPatient.mrn}</span>}
                 <button
                   onClick={clearPatient}
                   className="ml-0.5 text-primary/60 hover:text-primary transition-colors"
+                  aria-label="Clear patient"
                 >
-                  &times;
+                  <X className="h-3 w-3" />
                 </button>
               </span>
             </div>
           )}
 
-          {/* Patient search dropdown */}
           {showPatientDropdown && patientSearch.length >= 2 && !selectedPatient && (
             <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-60 overflow-y-auto rounded-lg border bg-popover shadow-lg">
               {patientLoading ? (
@@ -425,9 +508,7 @@ function PharmacyPOS() {
                   Searching patients...
                 </div>
               ) : patientResults.length === 0 ? (
-                <div className="px-4 py-3 text-sm text-muted-foreground text-center">
-                  No patients found
-                </div>
+                <div className="px-4 py-3 text-sm text-muted-foreground text-center">No patients found</div>
               ) : (
                 patientResults.map((p) => (
                   <button
@@ -441,10 +522,14 @@ function PharmacyPOS() {
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-foreground">
                         {p.firstName} {p.lastName}
-                        {p.uhid && <span className="ml-2 text-xs text-muted-foreground">({p.uhid})</span>}
+                        {(p.mrn || p.uhid) && (
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            ({p.mrn ?? p.uhid})
+                          </span>
+                        )}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {p.mobile || p.phone || ''}{p.gender ? ` \u00b7 ${p.gender}` : ''}
+                        {p.mobile || p.phone || ''}{p.gender ? ` · ${p.gender}` : ''}
                       </p>
                     </div>
                   </button>
@@ -453,16 +538,89 @@ function PharmacyPOS() {
             </div>
           )}
         </div>
-        <Button variant="outline" size="sm">IP List</Button>
-        <Button variant="outline" size="sm">Prescription</Button>
+
+        {/* Prescription picker — visible once a patient is selected */}
+        <div className="relative" ref={prescriptionPickerRef}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPrescriptionPickerOpen((o) => !o)}
+            disabled={!selectedPatient}
+          >
+            <ClipboardList className="h-4 w-4 mr-1.5" />
+            {activePrescription
+              ? `Rx: ${activePrescription.id.slice(0, 8)} (${activePrescription.prescriptionItems.length} items)`
+              : 'Select Prescription'}
+            <ChevronDown className="h-3 w-3 ml-1" />
+          </Button>
+          {activePrescriptionId && (
+            <button
+              type="button"
+              onClick={clearPrescription}
+              className="ml-1 text-xs text-muted-foreground hover:text-destructive"
+              aria-label="Clear prescription"
+            >
+              <X className="inline h-3 w-3" />
+            </button>
+          )}
+          {prescriptionPickerOpen && selectedPatient && (
+            <div className="absolute top-full left-0 z-50 mt-1 w-[420px] rounded-lg border bg-popover shadow-lg overflow-hidden">
+              <div className="px-3 py-2 border-b bg-muted/30 flex items-center justify-between">
+                <p className="text-xs font-medium">
+                  Pending prescriptions for {selectedPatient.firstName} {selectedPatient.lastName}
+                </p>
+              </div>
+              <div className="max-h-72 overflow-y-auto">
+                {(pendingForPatient?.data ?? []).length === 0 ? (
+                  <div className="px-4 py-6 text-sm text-muted-foreground text-center">
+                    No pending prescriptions for this patient.
+                  </div>
+                ) : (
+                  (pendingForPatient?.data ?? []).map((rx) => (
+                    <button
+                      key={rx.id}
+                      onClick={() => selectPrescription(rx)}
+                      className="flex w-full flex-col items-start gap-1 px-3 py-2.5 text-left hover:bg-muted/50 transition-colors border-b last:border-0"
+                    >
+                      <div className="flex w-full items-center justify-between">
+                        <span className="text-xs font-mono text-muted-foreground">
+                          {rx.id.slice(0, 8)}
+                        </span>
+                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                          {rx.prescriptionType} · {rx.status.replace('_', ' ')}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        <Stethoscope className="inline h-3 w-3 mr-1" />
+                        {rx.doctor?.user
+                          ? `Dr. ${rx.doctor.user.firstName} ${rx.doctor.user.lastName}`
+                          : 'Doctor'}
+                      </p>
+                      <p className="text-xs text-foreground line-clamp-2">
+                        {rx.prescriptionItems.map((it) => it.drugName).join(', ') || '—'}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {formatDate(rx.createdAt)} · {rx.prescriptionItems.length} item{rx.prescriptionItems.length > 1 ? 's' : ''}
+                      </p>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Medicine search */}
+      {/* Walk-in medicine search (disabled when prescription is loaded) */}
       <div className="relative max-w-lg" ref={dropdownRef}>
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground z-10" />
         <Input
           ref={searchInputRef}
-          placeholder="Search medicine by name..."
+          placeholder={
+            activePrescriptionId
+              ? 'Cart locked to prescription items — clear Rx to add walk-in items'
+              : 'Search medicine to add (walk-in)...'
+          }
           value={medicineSearch}
           onChange={(e) => {
             setMedicineSearch(e.target.value);
@@ -472,9 +630,9 @@ function PharmacyPOS() {
             if (medicineSearch.length > 0) setShowDropdown(true);
           }}
           className="pl-9"
+          disabled={!!activePrescriptionId}
         />
-        {/* Search results dropdown */}
-        {showDropdown && medicineSearch.length > 0 && (
+        {showDropdown && medicineSearch.length > 0 && !activePrescriptionId && (
           <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-72 overflow-y-auto rounded-lg border bg-popover shadow-lg">
             {searchLoading ? (
               <div className="px-4 py-3 text-sm text-muted-foreground text-center">
@@ -482,34 +640,27 @@ function PharmacyPOS() {
                 Searching...
               </div>
             ) : searchResults.length === 0 ? (
-              <div className="px-4 py-3 text-sm text-muted-foreground text-center">
-                No medicines found
-              </div>
+              <div className="px-4 py-3 text-sm text-muted-foreground text-center">No medicines found</div>
             ) : (
               searchResults.map((item) => (
                 <button
                   key={item.id}
-                  onClick={() => addToCart(item)}
+                  onClick={() => addWalkInItem(item)}
                   className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left hover:bg-muted/50 transition-colors border-b last:border-0"
                 >
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground truncate">{item.drugName}</p>
                     <p className="text-xs text-muted-foreground truncate">
-                      {item.genericName && `${item.genericName} \u00b7 `}
+                      {item.genericName && `${item.genericName} · `}
                       {item.dosageForm && `${item.dosageForm} `}
                       {item.strength && `${item.strength}`}
-                      {item.manufacturer && ` \u00b7 ${item.manufacturer}`}
+                      {item.manufacturer && ` · ${item.manufacturer}`}
                     </p>
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className="text-sm font-semibold text-foreground">
-                      {item.mrp != null ? `\u20B9${Number(item.mrp).toFixed(2)}` : '-'}
+                      {item.price != null ? `₹${toNum(item.price).toFixed(2)}` : '-'}
                     </p>
-                    {item.sellingPrice != null && item.sellingPrice !== item.mrp && (
-                      <p className="text-xs text-muted-foreground">
-                        Sell: \u20B9{Number(item.sellingPrice).toFixed(2)}
-                      </p>
-                    )}
                   </div>
                 </button>
               ))
@@ -518,18 +669,17 @@ function PharmacyPOS() {
         )}
       </div>
 
-      {/* POS-style billing area */}
+      {/* Cart + summary */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3 lg:grid-cols-3">
-        {/* Line items */}
         <div className="lg:col-span-2 bg-surface-container-lowest rounded-xl shadow-sanctuary overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-surface-container">
-                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">Medicine Name</th>
+                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">Medicine</th>
                   <th className="px-3 py-2 text-left font-medium text-muted-foreground">Batch</th>
                   <th className="px-3 py-2 text-center font-medium text-muted-foreground">Qty</th>
-                  <th className="px-3 py-2 text-right font-medium text-muted-foreground">MRP</th>
+                  <th className="px-3 py-2 text-right font-medium text-muted-foreground">Price</th>
                   <th className="px-3 py-2 text-center font-medium text-muted-foreground">Disc %</th>
                   <th className="px-3 py-2 text-right font-medium text-muted-foreground">Amount</th>
                   <th className="px-3 py-2 text-center font-medium text-muted-foreground w-10"></th>
@@ -539,26 +689,31 @@ function PharmacyPOS() {
                 {cart.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-3 py-12 text-center text-muted-foreground">
-                      Search for medicines to add to bill
+                      {activePrescriptionId
+                        ? 'Loading prescription items...'
+                        : 'Search for medicines to add to bill, or pick a prescription'}
                     </td>
                   </tr>
                 ) : (
                   cart.map((item) => (
-                    <tr key={item.formularyItemId} className="group hover:bg-surface-container-low transition-colors">
+                    <tr key={item.rowKey} className="group hover:bg-surface-container-low transition-colors">
                       <td className="px-3 py-2.5">
                         <p className="font-medium text-foreground">{item.drugName}</p>
                         {item.genericName && (
                           <p className="text-xs text-muted-foreground">{item.genericName}</p>
                         )}
+                        {item.prescriptionItemId && (
+                          <p className="text-[10px] uppercase tracking-wide text-emerald-600">From Rx</p>
+                        )}
                       </td>
                       <td className="px-3 py-2.5 relative">
                         <button
                           onClick={() => {
-                            if (batchPickerForItem === item.formularyItemId) {
-                              setBatchPickerForItem(null);
+                            if (batchPickerForRow === item.rowKey) {
+                              setBatchPickerForRow(null);
                               setBatchPickerDrugId(null);
                             } else {
-                              setBatchPickerForItem(item.formularyItemId);
+                              setBatchPickerForRow(item.rowKey);
                               setBatchPickerDrugId(item.formularyItemId);
                             }
                           }}
@@ -566,7 +721,7 @@ function PharmacyPOS() {
                             'inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors',
                             item.batchId
                               ? 'bg-muted/50 hover:bg-muted text-foreground'
-                              : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
+                              : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200',
                           )}
                         >
                           {item.batchId ? (
@@ -586,16 +741,14 @@ function PharmacyPOS() {
                             </>
                           )}
                         </button>
-
-                        {/* Batch picker dropdown */}
-                        {batchPickerForItem === item.formularyItemId && (
+                        {batchPickerForRow === item.rowKey && (
                           <div
                             ref={batchPickerRef}
                             className="absolute top-full left-0 z-50 mt-1 w-72 rounded-lg border bg-popover shadow-lg"
                           >
                             <div className="px-3 py-2 border-b bg-muted/30">
                               <p className="text-xs font-medium text-muted-foreground">
-                                Available Batches for {item.drugName}
+                                Batches for {item.drugName}
                               </p>
                             </div>
                             {batchesLoading ? (
@@ -612,25 +765,22 @@ function PharmacyPOS() {
                                 {availableBatches.map((batch) => (
                                   <button
                                     key={batch.id}
-                                    onClick={() => selectBatch(item.formularyItemId, batch)}
+                                    onClick={() => selectBatch(item.rowKey, batch)}
                                     className={cn(
                                       'flex w-full items-center justify-between px-3 py-2 text-left hover:bg-muted/50 transition-colors border-b last:border-0 text-xs',
-                                      item.batchId === batch.id && 'bg-primary/5'
+                                      item.batchId === batch.id && 'bg-primary/5',
                                     )}
                                   >
                                     <div>
                                       <p className="font-medium text-foreground">{batch.batchNumber}</p>
                                       <p className="text-muted-foreground">
                                         Exp: {formatDate(batch.expiryDate)}
-                                        {' \u00b7 '}Stock: {batch.availableQuantity}
+                                        {' · '}Stock: {batch.quantityInStock}
                                       </p>
                                     </div>
                                     <div className="text-right">
                                       {batch.sellingPrice != null && (
-                                        <p className="font-semibold text-foreground">{`\u20B9${Number(batch.sellingPrice).toFixed(2)}`}</p>
-                                      )}
-                                      {batch.mrp != null && (
-                                        <p className="text-muted-foreground">MRP: {`\u20B9${Number(batch.mrp).toFixed(2)}`}</p>
+                                        <p className="font-semibold text-foreground">{`₹${toNum(batch.sellingPrice).toFixed(2)}`}</p>
                                       )}
                                     </div>
                                   </button>
@@ -643,14 +793,14 @@ function PharmacyPOS() {
                       <td className="px-3 py-2.5">
                         <div className="flex items-center justify-center gap-1">
                           <button
-                            onClick={() => updateQty(item.formularyItemId, -1)}
+                            onClick={() => updateQty(item.rowKey, -1)}
                             className="flex h-6 w-6 items-center justify-center rounded border bg-muted/50 hover:bg-muted transition-colors"
                           >
                             <Minus className="h-3 w-3" />
                           </button>
                           <span className="w-8 text-center font-medium">{item.quantity}</span>
                           <button
-                            onClick={() => updateQty(item.formularyItemId, 1)}
+                            onClick={() => updateQty(item.rowKey, 1)}
                             className="flex h-6 w-6 items-center justify-center rounded border bg-muted/50 hover:bg-muted transition-colors"
                           >
                             <Plus className="h-3 w-3" />
@@ -662,24 +812,25 @@ function PharmacyPOS() {
                           </p>
                         )}
                       </td>
-                      <td className="px-3 py-2.5 text-right">{`\u20B9${fmt(item.mrp)}`}</td>
+                      <td className="px-3 py-2.5 text-right">{`₹${fmt(item.sellingPrice)}`}</td>
                       <td className="px-3 py-2.5">
                         <Input
                           type="number"
                           min={0}
                           max={100}
                           value={item.discount}
-                          onChange={(e) => updateDiscount(item.formularyItemId, Number(e.target.value))}
+                          onChange={(e) => updateDiscount(item.rowKey, Number(e.target.value))}
                           className="h-7 w-16 text-center text-xs mx-auto"
                         />
                       </td>
                       <td className="px-3 py-2.5 text-right font-medium">
-                        {`\u20B9${fmt(computeItemAmount(item))}`}
+                        {`₹${fmt(computeItemNet(item))}`}
                       </td>
                       <td className="px-3 py-2.5 text-center">
                         <button
-                          onClick={() => removeItem(item.formularyItemId)}
+                          onClick={() => removeItem(item.rowKey)}
                           className="text-muted-foreground hover:text-destructive transition-colors"
+                          aria-label="Remove item"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
@@ -690,7 +841,6 @@ function PharmacyPOS() {
               </tbody>
             </table>
           </div>
-          {/* Cart item count */}
           {cart.length > 0 && (
             <div className="border-t px-3 py-2 bg-muted/20 flex justify-between items-center text-xs text-muted-foreground">
               <span>{cart.length} item{cart.length !== 1 ? 's' : ''} in cart</span>
@@ -703,57 +853,81 @@ function PharmacyPOS() {
         <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-6 space-y-4">
           <h3 className="font-semibold text-foreground">Bill Summary</h3>
 
-          {/* Patient info */}
           {selectedPatient && (
             <div className="rounded-md border bg-muted/20 px-3 py-2">
               <p className="text-xs text-muted-foreground">Patient</p>
               <p className="text-sm font-medium text-foreground">
                 {selectedPatient.firstName} {selectedPatient.lastName}
               </p>
-              {selectedPatient.uhid && (
-                <p className="text-xs text-muted-foreground">UHID: {selectedPatient.uhid}</p>
+              {selectedPatient.mrn && (
+                <p className="text-xs text-muted-foreground">MRN: {selectedPatient.mrn}</p>
               )}
             </div>
           )}
 
+          {activePrescription && (
+            <div className="rounded-md border bg-emerald-50 border-emerald-200 px-3 py-2">
+              <p className="text-xs text-emerald-700">Linked Prescription</p>
+              <p className="text-sm font-medium text-emerald-900 font-mono">
+                {activePrescription.id.slice(0, 12)}
+              </p>
+              <p className="text-xs text-emerald-700">
+                {activePrescription.doctor?.user
+                  ? `Dr. ${activePrescription.doctor.user.firstName} ${activePrescription.doctor.user.lastName}`
+                  : 'Doctor'}
+              </p>
+            </div>
+          )}
+
           {/* Validation warnings */}
+          {cart.length > 0 && !linkedToPrescription && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+              <p className="text-xs text-amber-700">
+                Pick a prescription — drugs can only be dispensed against a doctor order.
+              </p>
+            </div>
+          )}
           {cart.length > 0 && !cartHasAllBatches && (
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
               <p className="text-xs text-amber-700">
-                Select a batch for each medicine before creating the bill.
+                Select a batch for each medicine before billing.
               </p>
             </div>
           )}
           {cart.length > 0 && !selectedPatient && (
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
-              <p className="text-xs text-amber-700">
-                Search and select a patient to create the bill.
-              </p>
+              <p className="text-xs text-amber-700">Select a patient to create the bill.</p>
             </div>
           )}
 
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Subtotal</span>
-              <span className="font-medium">{`\u20B9${fmt(subtotal)}`}</span>
+              <span className="text-muted-foreground">Sub Amount</span>
+              <span className="font-medium">{`₹${fmt(summary.subtotal)}`}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Discount</span>
-              <span className="font-medium text-green-600">{totalDiscount > 0 ? `-\u20B9${fmt(totalDiscount)}` : '0.00'}</span>
+              <span className="font-medium text-green-600">
+                {summary.totalDiscount > 0 ? `-₹${fmt(summary.totalDiscount)}` : '0.00'}
+              </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Tax (GST)</span>
-              <span className="font-medium">{`\u20B9${fmt(totalTax)}`}</span>
-            </div>
-            {roundOff !== 0 && (
+            {summary.roundOff !== 0 && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Round Off</span>
-                <span className="font-medium">{roundOff > 0 ? `+${fmt(roundOff)}` : fmt(roundOff)}</span>
+                <span className="font-medium">
+                  {summary.roundOff > 0 ? `+${fmt(summary.roundOff)}` : fmt(summary.roundOff)}
+                </span>
               </div>
             )}
             <div className="border-t pt-2 flex justify-between text-base">
-              <span className="font-semibold">Grand Total</span>
-              <span className="font-bold text-primary">{`\u20B9${fmt(roundedTotal)}`}</span>
+              <span className="font-semibold">Payable Amount</span>
+              <span className="font-bold text-primary">{`₹${fmt(summary.rounded)}`}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Margin / Profit</span>
+              <span className={cn('font-medium', summary.margin >= 0 ? 'text-emerald-600' : 'text-red-600')}>
+                {`₹${fmt(summary.margin)}`}
+              </span>
             </div>
           </div>
 
@@ -789,7 +963,7 @@ function PharmacyPOS() {
               disabled={!canCreateBill || createDispense.isPending}
               onClick={handleCreateBill}
             >
-              {createDispense.isPending ? 'Creating...' : 'Create Bill'}
+              {createDispense.isPending ? 'Dispensing...' : 'Dispense'}
             </Button>
           </div>
         </div>
@@ -799,7 +973,7 @@ function PharmacyPOS() {
 }
 
 // ============================================================
-// Return Bills Tab (unchanged)
+// Return Bills Tab
 // ============================================================
 
 function ReturnBillsTab() {
@@ -809,9 +983,12 @@ function ReturnBillsTab() {
     queryKey: ['pharmacy', 'returns', search],
     queryFn: async () => {
       const response = await apiGet<Array<{
-        id: string; returnNumber?: string; status: string; reason?: string; createdAt: string;
+        id: string;
+        status: string;
+        reason?: string;
+        quantity?: number;
+        createdAt: string;
         drugBatch?: { drug?: { drugName: string }; batchNumber: string };
-        quantity?: number; amount?: number;
         patient?: { firstName: string; lastName: string };
       }>>('/pharmacy/returns', { params: { search: search || undefined, limit: 50 } });
       return response.data;
@@ -837,7 +1014,6 @@ function ReturnBillsTab() {
               <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Drug</th>
               <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Batch</th>
               <th className="px-4 pb-4 pt-5 text-right font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Qty</th>
-              <th className="px-4 pb-4 pt-5 text-right font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Amount</th>
               <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Reason</th>
               <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Date</th>
               <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Status</th>
@@ -845,23 +1021,22 @@ function ReturnBillsTab() {
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={8} className="px-4 py-8 text-center"><div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" /></td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center"><div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" /></td></tr>
             ) : returns.length === 0 ? (
-              <tr><td colSpan={8} className="px-4 py-8 text-center font-label text-on-surface-variant">No return bills found.</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center font-label text-on-surface-variant">No return bills found.</td></tr>
             ) : (
               returns.map((r) => (
                 <tr key={r.id} className="group hover:bg-surface-container-low transition-colors">
-                  <td className="px-4 py-3 font-medium">{r.returnNumber ?? r.id.slice(0, 8)}</td>
+                  <td className="px-4 py-3 font-medium">{r.id.slice(0, 8)}</td>
                   <td className="px-4 py-3">{r.drugBatch?.drug?.drugName ?? '-'}</td>
                   <td className="px-4 py-3 text-muted-foreground">{r.drugBatch?.batchNumber ?? '-'}</td>
                   <td className="px-4 py-3 text-right">{r.quantity ?? '-'}</td>
-                  <td className="px-4 py-3 text-right font-medium">{r.amount != null ? `\u20B9${Number(r.amount).toLocaleString()}` : '-'}</td>
                   <td className="px-4 py-3 text-muted-foreground">{r.reason || '-'}</td>
                   <td className="px-4 py-3 text-muted-foreground">{formatDate(r.createdAt)}</td>
                   <td className="px-4 py-3">
                     <span className={cn(
                       'text-[10px] font-bold px-2 py-0.5 rounded-full capitalize',
-                      r.status === 'approved' && 'bg-green-100 text-green-800',
+                      r.status === 'processed' && 'bg-green-100 text-green-800',
                       r.status === 'pending' && 'bg-amber-100 text-amber-800',
                       r.status === 'rejected' && 'bg-red-100 text-red-800',
                     )}>{r.status?.replace('_', ' ')}</span>
@@ -877,7 +1052,7 @@ function ReturnBillsTab() {
 }
 
 // ============================================================
-// Cash Counter Tab (unchanged)
+// Cash Counter Tab
 // ============================================================
 
 function PharmacyCashCounterTab() {
@@ -886,18 +1061,24 @@ function PharmacyCashCounterTab() {
     queryFn: async () => {
       const today = toInputDateStr();
       const response = await apiGet<Array<{
-        id: string; quantity: number; totalCost?: number; status: string; createdAt: string;
-        drugBatch?: { drug?: { drugName: string }; batchNumber: string; sellingPrice?: number };
+        id: string;
+        quantityDispensed: number;
+        dispensedAt: string;
+        verifiedBy: string | null;
+        notes?: string | null;
+        drugBatch?: { drug?: { drugName: string }; batchNumber: string; sellingPrice?: number | string };
         patient?: { firstName: string; lastName: string };
-        prescription?: { id: string };
-      }>>('/pharmacy/dispensing', { params: { startDate: today, limit: 100 } });
+      }>>('/pharmacy/dispensing', { params: { fromDate: today, limit: 100 } });
       return response.data;
     },
   });
 
   const records = dispensing ?? [];
-  const total = records.reduce((sum, r) => sum + (Number(r.totalCost) || 0), 0);
-  const fmt = (n: number) => `\u20B9${n.toLocaleString('en-IN')}`;
+  const total = records.reduce((sum, r) => {
+    const price = r.drugBatch?.sellingPrice ? Number(r.drugBatch.sellingPrice) : 0;
+    return sum + price * (r.quantityDispensed || 0);
+  }, 0);
+  const fmt = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
   return (
     <div className="space-y-4">
@@ -909,11 +1090,15 @@ function PharmacyCashCounterTab() {
         </div>
         <div className="rounded-lg border p-4">
           <p className="text-xs font-medium text-muted-foreground uppercase">Items Dispensed</p>
-          <p className="font-headline text-3xl font-extrabold mt-1">{records.reduce((s, r) => s + (r.quantity || 0), 0)}</p>
+          <p className="font-headline text-3xl font-extrabold mt-1">
+            {records.reduce((s, r) => s + (r.quantityDispensed || 0), 0)}
+          </p>
         </div>
         <div className="rounded-lg border p-4">
           <p className="text-xs font-medium text-muted-foreground uppercase">Verified</p>
-          <p className="text-2xl font-bold text-emerald-600 mt-1">{records.filter((r) => r.status === 'verified').length}</p>
+          <p className="text-2xl font-bold text-emerald-600 mt-1">
+            {records.filter((r) => r.verifiedBy).length}
+          </p>
         </div>
       </div>
 
@@ -936,24 +1121,28 @@ function PharmacyCashCounterTab() {
             ) : records.length === 0 ? (
               <tr><td colSpan={7} className="px-4 py-8 text-center font-label text-on-surface-variant">No dispensing records today.</td></tr>
             ) : (
-              records.map((r) => (
-                <tr key={r.id} className="group hover:bg-surface-container-low transition-colors">
-                  <td className="px-4 py-3 font-medium">{r.drugBatch?.drug?.drugName ?? '-'}</td>
-                  <td className="px-4 py-3">{r.patient ? `${r.patient.firstName} ${r.patient.lastName}` : '-'}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{r.drugBatch?.batchNumber ?? '-'}</td>
-                  <td className="px-4 py-3 text-right">{r.quantity}</td>
-                  <td className="px-4 py-3 text-right font-medium">{r.totalCost != null ? fmt(Number(r.totalCost)) : '-'}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{formatTime24(r.createdAt)}</td>
-                  <td className="px-4 py-3">
-                    <span className={cn(
-                      'text-[10px] font-bold px-2 py-0.5 rounded-full capitalize',
-                      r.status === 'dispensed' && 'bg-blue-100 text-blue-800',
-                      r.status === 'verified' && 'bg-green-100 text-green-800',
-                      r.status === 'pending' && 'bg-amber-100 text-amber-800',
-                    )}>{r.status}</span>
-                  </td>
-                </tr>
-              ))
+              records.map((r) => {
+                const price = r.drugBatch?.sellingPrice ? Number(r.drugBatch.sellingPrice) : 0;
+                const lineAmount = price * (r.quantityDispensed || 0);
+                return (
+                  <tr key={r.id} className="group hover:bg-surface-container-low transition-colors">
+                    <td className="px-4 py-3 font-medium">{r.drugBatch?.drug?.drugName ?? '-'}</td>
+                    <td className="px-4 py-3">{r.patient ? `${r.patient.firstName} ${r.patient.lastName}` : '-'}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{r.drugBatch?.batchNumber ?? '-'}</td>
+                    <td className="px-4 py-3 text-right">{r.quantityDispensed}</td>
+                    <td className="px-4 py-3 text-right font-medium">{lineAmount > 0 ? fmt(lineAmount) : '-'}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{formatTime24(r.dispensedAt)}</td>
+                    <td className="px-4 py-3">
+                      <span className={cn(
+                        'text-[10px] font-bold px-2 py-0.5 rounded-full capitalize',
+                        r.verifiedBy ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800',
+                      )}>
+                        {r.verifiedBy ? 'verified' : 'dispensed'}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

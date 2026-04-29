@@ -5,7 +5,6 @@ import { Plus, Pencil, Trash2, Tags, Check, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import {
   Table,
   TableHeader,
@@ -198,7 +197,6 @@ export default function PharmacySettingsPage() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Description</TableHead>
-                  <TableHead className="text-center">Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -222,7 +220,6 @@ export default function PharmacySettingsPage() {
                             placeholder="Description..."
                           />
                         </TableCell>
-                        <TableCell />
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
                             <Button
@@ -250,17 +247,6 @@ export default function PharmacySettingsPage() {
                         <TableCell className="font-medium">{cat.name}</TableCell>
                         <TableCell className="text-muted-foreground">
                           {cat.description || '-'}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge
-                            className={
-                              cat.isActive
-                                ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
-                                : 'bg-red-500/10 text-red-600 border-red-500/20'
-                            }
-                          >
-                            {cat.isActive ? 'Active' : 'Inactive'}
-                          </Badge>
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
