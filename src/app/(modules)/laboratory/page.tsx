@@ -24,7 +24,6 @@ import {
 import { useUsersList } from '@/hooks/use-users';
 import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/lib/date-utils';
-import { PatientFormSubmissionsPanel } from '@/components/forms/patient-form-submissions-panel';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -67,11 +66,6 @@ export default function LaboratoryHomePage() {
           <IncomingOrderTab />
         </TabsContent>
       </Tabs>
-
-      <PatientFormSubmissionsPanel
-        title="Lab Forms Submissions"
-        viewLocation="lab_home"
-      />
     </div>
   );
 }

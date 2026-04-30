@@ -43,7 +43,6 @@ import {
 import { apiGet } from '@/lib/api';
 import { toast } from 'sonner';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
-import { TriggerFormsGate } from '@/components/forms/trigger-forms-gate';
 import { PrescriptionPad, clearConsultationDraft } from '@/components/doctor/prescription-pad';
 import { DrugHistoryPanel } from '@/components/doctor/drug-history-panel';
 import { CurrentMedicationsPanel } from '@/components/doctor/current-medications-panel';
@@ -519,11 +518,6 @@ export default function PatientConsultationPage({
             </p>
           </div>
         )}
-        <TriggerFormsGate
-          trigger="pre_consultation"
-          context={{ patientId: patient.id, appointmentId }}
-          bannerHeading="Pre-consultation forms required"
-        />
 
         {/* Allergies — inline flash */}
         {patient.allergies && patient.allergies.length > 0 && (

@@ -15,9 +15,6 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
-import { useActionFormsTrigger } from '@/hooks/use-action-forms-trigger';
-import { IntakeFormsModal } from '@/components/forms/intake-forms-modal';
-import { PatientFormSubmissionsPanel } from '@/components/forms/patient-form-submissions-panel';
 import {
   useHandovers,
   useCreateHandover,
@@ -259,7 +256,6 @@ function CreateHandoverForm({ currentShift }: { currentShift: ShiftType }) {
   const [specialInstructions, setSpecialInstructions] = useState('');
 
   const createHandover = useCreateHandover();
-  const formsTrigger = useActionFormsTrigger();
 
   const handlePatientNoteChange = useCallback(
     (index: number, field: keyof PatientNote, value: string) => {
@@ -318,13 +314,10 @@ function CreateHandoverForm({ currentShift }: { currentShift: ShiftType }) {
       setTasks([]);
       setSpecialInstructions('');
       setIsOpen(false);
-
-      // Fire any forms assigned to the shift_handover trigger
-      formsTrigger.fire('shift_handover', undefined, {});
     } catch {
       toast.error('Failed to submit handover');
     }
-  }, [summary, shiftType, patientNotes, tasks, specialInstructions, createHandover, formsTrigger]);
+  }, [summary, shiftType, patientNotes, tasks, specialInstructions, createHandover]);
 
   return (
     <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary overflow-hidden">
@@ -479,15 +472,6 @@ function CreateHandoverForm({ currentShift }: { currentShift: ShiftType }) {
           </div>
         </div>
       )}
-
-      {/* Forms assigned to shift_handover trigger fire after submission */}
-      <IntakeFormsModal
-        open={formsTrigger.isOpen}
-        trigger="shift_handover"
-        tenantId={formsTrigger.tenantId}
-        context={formsTrigger.context}
-        onComplete={formsTrigger.close}
-      />
     </div>
   );
 }
@@ -1083,12 +1067,6 @@ export default function ShiftHandoverPage() {
       )}
 
       {activeTab === 'roster' && <DutyRosterView />}
-
-      {/* Forms assigned by admin to nurse_handover view location appear here */}
-      <PatientFormSubmissionsPanel
-        title="Handover Forms Submissions"
-        viewLocation="nurse_handover"
-      />
     </div>
   );
 }

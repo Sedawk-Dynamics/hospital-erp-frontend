@@ -19,8 +19,6 @@ import {
 } from '@/hooks/use-doctor';
 import { apiGet } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
-import { useActionFormsTrigger } from '@/hooks/use-action-forms-trigger';
-import { IntakeFormsModal } from '@/components/forms/intake-forms-modal';
 import { formatDate, formatDateTimeAmPm, toInputDateStr } from '@/lib/date-utils';
 import { printPrescription } from '@/lib/print-prescription';
 import { cn } from '@/lib/utils';
@@ -481,7 +479,6 @@ function CreatePrescriptionDialog({
   userId: string;
 }) {
   const createMutation = useCreatePrescription();
-  const formsTrigger = useActionFormsTrigger();
 
   // Wizard step
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -645,15 +642,10 @@ function CreatePrescriptionDialog({
       });
       toast.success('Prescription created successfully');
       handleOpenChange(false);
-      // Fire any forms assigned to prescription_created trigger
-      formsTrigger.fire('prescription_created', undefined, {
-        patientId: selectedPatient.id,
-        visitId: selectedVisitId,
-      });
     } catch {
       toast.error('Failed to create prescription');
     }
-  }, [selectedPatient, selectedVisitId, drugItems, notes, prescriptionType, userId, createMutation, handleOpenChange, formsTrigger]);
+  }, [selectedPatient, selectedVisitId, drugItems, notes, prescriptionType, userId, createMutation, handleOpenChange]);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -1153,15 +1145,6 @@ function CreatePrescriptionDialog({
           </div>
         </DialogFooter>
       </DialogContent>
-
-      {/* Forms assigned to prescription_created trigger fire after creation */}
-      <IntakeFormsModal
-        open={formsTrigger.isOpen}
-        trigger="prescription_created"
-        tenantId={formsTrigger.tenantId}
-        context={formsTrigger.context}
-        onComplete={formsTrigger.close}
-      />
     </Dialog>
   );
 }

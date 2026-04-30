@@ -4,7 +4,6 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
 import type { CreditSettlement } from '@/types';
-import { PatientFormSubmissionsPanel } from '@/components/forms/patient-form-submissions-panel';
 
 export default function CreditSettlementPage() {
   return (
@@ -30,12 +29,6 @@ export default function CreditSettlementPage() {
           </TabsContent>
         </Tabs>
       </div>
-
-      {/* Forms assigned by admin to insurance_home view location appear here */}
-      <PatientFormSubmissionsPanel
-        title="Insurance Forms Submissions"
-        viewLocation="insurance_home"
-      />
     </div>
   );
 }

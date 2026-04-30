@@ -14,7 +14,6 @@ import { PageLoading } from '@/components/shared/loading';
 import { ArrowLeft, Calendar, Clock, User, Stethoscope, CheckCircle2, XCircle, PlayCircle } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import type { Appointment } from '@/types';
-import { PatientFormSubmissionsPanel } from '@/components/forms/patient-form-submissions-panel';
 
 export default function AppointmentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -209,15 +208,6 @@ export default function AppointmentDetailPage({ params }: { params: Promise<{ id
           </CardContent>
         </Card>
       </div>
-
-      {/* Form Submissions */}
-      {appointment.patientId && (
-        <PatientFormSubmissionsPanel
-          patientId={appointment.patientId}
-          appointmentId={appointment.id}
-          title="Submitted Forms"
-        />
-      )}
 
       <ConfirmDialog
         open={cancelDialogOpen}

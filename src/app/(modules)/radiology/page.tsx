@@ -29,7 +29,6 @@ import {
 } from '@/hooks/use-imaging';
 import { useUsersList } from '@/hooks/use-users';
 import { cn } from '@/lib/utils';
-import { PatientFormSubmissionsPanel } from '@/components/forms/patient-form-submissions-panel';
 import { toast } from 'sonner';
 
 export default function RadiologyHomePage() {
@@ -55,11 +54,6 @@ export default function RadiologyHomePage() {
         <TabsContent value="completed" className="pt-4"><RequestList status="completed" /></TabsContent>
         <TabsContent value="results" className="pt-4"><ResultsTab /></TabsContent>
       </Tabs>
-
-      <PatientFormSubmissionsPanel
-        title="Radiology Forms Submissions"
-        viewLocation="radiology_home"
-      />
     </div>
   );
 }

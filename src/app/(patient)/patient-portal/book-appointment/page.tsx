@@ -16,7 +16,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
 import { toInputDateStr, formatTime24, getCurrentISTTime, isToday } from '@/lib/date-utils';
-import { IntakeFormsModal } from '@/components/forms/intake-forms-modal';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -106,8 +105,6 @@ export default function BookAppointmentPage() {
   const [paymentComplete, setPaymentComplete] = useState(false);
   const [paymentProcessing, setPaymentProcessing] = useState(false);
 
-  const [showIntakeForms, setShowIntakeForms] = useState(false);
-  const [postFormsRedirect, setPostFormsRedirect] = useState<string | null>(null);
 
   // ── Data Queries ───────────────────────────────────────
 
@@ -980,10 +977,7 @@ export default function BookAppointmentPage() {
               <Button
                 className="w-full"
                 size="lg"
-                onClick={() => {
-                  setPostFormsRedirect('/patient-portal/appointments');
-                  setShowIntakeForms(true);
-                }}
+                onClick={() => router.push('/patient-portal/appointments')}
               >
                 View My Appointments
               </Button>
@@ -1064,8 +1058,7 @@ export default function BookAppointmentPage() {
                       }
                     }
                     toast.success('Appointment booked! Please pay at the hospital front desk.');
-                    setPostFormsRedirect('/patient-portal/appointments');
-                    setShowIntakeForms(true);
+                    router.push('/patient-portal/appointments');
                   }}
                   className={cn(
                     'flex w-full items-center gap-4 rounded-xl border border-outline-variant/30 p-4 text-left transition-colors hover:bg-surface-container-low',
@@ -1099,17 +1092,6 @@ export default function BookAppointmentPage() {
           )}
         </div>
       )}
-
-      <IntakeFormsModal
-        open={showIntakeForms}
-        trigger="appointment_booking"
-        tenantId={selectedHospital?.id}
-        context={{ appointmentId: bookedAppointmentId ?? undefined }}
-        onComplete={() => {
-          setShowIntakeForms(false);
-          if (postFormsRedirect) router.push(postFormsRedirect);
-        }}
-      />
     </div>
   );
 }

@@ -37,13 +37,7 @@ import {
 } from '@/hooks/use-doctor';
 import { apiGet } from '@/lib/api';
 import { formatDate } from '@/lib/date-utils';
-import { PatientFormSubmissionsPanel } from '@/components/forms/patient-form-submissions-panel';
-import { TriggerFormsGate } from '@/components/forms/trigger-forms-gate';
-import { useFormSubmissions, useSystemForm } from '@/hooks/use-forms';
-import { FormRenderer } from '@/components/forms/form-renderer';
-import { TRIGGER_LABELS } from '@/types/forms';
-import type { FormSubmission } from '@/types/forms';
-import { ClipboardList, ChevronDown, ChevronRight, History, Stethoscope, HeartPulse } from 'lucide-react';
+import { ClipboardList, History, Stethoscope, HeartPulse } from 'lucide-react';
 import { DrugHistoryPanel } from './drug-history-panel';
 import { MedicalHistoryPanel } from './medical-history-panel';
 import { InvestigationHistoryPanel } from './investigation-history-panel';
@@ -534,83 +528,6 @@ function DocumentsTab({ patient }: { patient: Patient }) {
   );
 }
 
-// ============================================================
-// Latest Form Submissions (inline with patient details)
-// ============================================================
-
-function LatestFormSubmissions({ patientId, appointmentId }: { patientId: string; appointmentId?: string | null }) {
-  const { data, isLoading } = useFormSubmissions({
-    patientId,
-    appointmentId: appointmentId ?? undefined,
-    limit: 5,
-  });
-  const submissions = data?.data ?? [];
-
-  if (isLoading || submissions.length === 0) return null;
-
-  return (
-    <div className="space-y-1.5">
-      <h3 className="text-xs font-label font-semibold uppercase tracking-wide text-on-surface-variant">
-        Submitted Forms
-      </h3>
-      <div className="space-y-1">
-        {submissions.map((sub) => (
-          <InlineSubmission key={sub.id} submission={sub} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function InlineSubmission({ submission }: { submission: FormSubmission }) {
-  const [expanded, setExpanded] = useState(false);
-  const formId = submission.formId ?? undefined;
-  const { data: systemForm } = useSystemForm(expanded ? formId : undefined);
-  const formName = submission.systemForm?.name || submission.instance?.name || 'Form';
-  const triggerLabel = submission.trigger ? TRIGGER_LABELS[submission.trigger] : '';
-
-  return (
-    <div className="rounded-lg border bg-card overflow-hidden">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/40 transition-colors"
-      >
-        {expanded ? (
-          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-        ) : (
-          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-        )}
-        <ClipboardList className="h-3.5 w-3.5 text-primary shrink-0" />
-        <span className="text-sm font-medium flex-1 truncate">{formName}</span>
-        {triggerLabel && (
-          <Badge variant="outline" className="text-[9px] px-1.5 py-0 shrink-0">
-            {triggerLabel}
-          </Badge>
-        )}
-        <Badge
-          className={`text-[9px] px-1.5 py-0 shrink-0 ${
-            submission.status === 'verified' ? 'bg-primary/10 text-primary' :
-            submission.status === 'submitted' ? 'bg-primary-container/10 text-primary-container' :
-            submission.status === 'rejected' ? 'bg-error/10 text-error' :
-            'bg-muted text-muted-foreground'
-          }`}
-        >
-          {submission.status}
-        </Badge>
-      </button>
-      {expanded && systemForm && (
-        <div className="px-3 pb-3 pt-1 border-t bg-muted/20">
-          <FormRenderer schema={systemForm.schema} initialValues={submission.responses} readOnly />
-        </div>
-      )}
-      {expanded && !systemForm && formId && (
-        <div className="px-3 py-2 border-t">
-          <Loader2 className="h-3.5 w-3.5 animate-spin text-primary mx-auto" />
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ============================================================
 // Main Component
@@ -640,15 +557,6 @@ export function PatientConsultationView({
           <EmptyState message="Patient not found" />
         ) : (
           <div className="flex flex-col gap-4 px-5 pb-5">
-            {/* Pending pre-consultation forms gate — auto-prompts the doctor
-                to fill any forms the hospital admin has assigned to the
-                pre_consultation trigger for this patient. Sticky across refreshes. */}
-            <TriggerFormsGate
-              trigger="pre_consultation"
-              context={{ patientId: patient.id, appointmentId }}
-              bannerHeading="Pre-consultation forms required"
-            />
-
             {/* ----- Profile Header ----- */}
             <div className="space-y-3 pt-2">
               <PatientDemographics patient={patient} />
@@ -666,9 +574,6 @@ export function PatientConsultationView({
             </div>
 
             {/* Active medications moved to the "Current Meds" tab below to avoid duplication. */}
-
-            {/* Latest Form Submissions — inline with patient details */}
-            <LatestFormSubmissions patientId={patient.id} appointmentId={appointmentId} />
 
             <Separator />
 
@@ -715,10 +620,6 @@ export function PatientConsultationView({
                   <HeartPulse className="size-3.5" />
                   Medical History
                 </TabsTrigger>
-                <TabsTrigger value="forms" className="gap-1">
-                  <ClipboardList className="size-3.5" />
-                  All Forms
-                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="visits" className="pt-3">
@@ -759,13 +660,6 @@ export function PatientConsultationView({
 
               <TabsContent value="medical-history" className="pt-3">
                 <MedicalHistoryPanel patientId={patient.id} />
-              </TabsContent>
-
-              <TabsContent value="forms" className="pt-3">
-                <PatientFormSubmissionsPanel
-                  patientId={patient.id}
-                  title="All Patient Forms (All Visits)"
-                />
               </TabsContent>
             </Tabs>
           </div>

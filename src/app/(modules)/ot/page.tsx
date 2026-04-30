@@ -6,7 +6,6 @@ import { z } from 'zod/v4';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { formatDate as formatDateUtil, formatTime as formatTimeUtil, toInputDateStr } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
-import { PatientFormSubmissionsPanel } from '@/components/forms/patient-form-submissions-panel';
 import {
   Search,
   Plus,
@@ -521,12 +520,6 @@ export default function OTHomePage() {
           }}
         />
       )}
-
-      {/* Forms assigned by admin to ot_home view location appear here */}
-      <PatientFormSubmissionsPanel
-        title="OT Forms Submissions"
-        viewLocation="ot_home"
-      />
     </div>
   );
 }

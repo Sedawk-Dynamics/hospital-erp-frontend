@@ -23,9 +23,6 @@ import {
 import { toast } from 'sonner';
 import type { Appointment } from '@/types';
 import { useUpdateAppointmentStatus } from '@/hooks/use-hospital';
-import { useActionFormsTrigger } from '@/hooks/use-action-forms-trigger';
-import { IntakeFormsModal } from '@/components/forms/intake-forms-modal';
-import type { FormTrigger } from '@/types/forms';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,14 +30,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-
-// Map status transitions to form triggers — when this status change happens,
-// fire the IntakeFormsModal for the matching workflow trigger.
-const STATUS_TO_TRIGGER: Record<string, FormTrigger> = {
-  checked_in: 'visit_check_in',
-  in_consultation: 'pre_consultation',
-  completed: 'feedback',
-};
 
 interface AppointmentTableProps {
   appointments: Appointment[];
@@ -86,7 +75,6 @@ export function AppointmentTable({
   onPageChange,
 }: AppointmentTableProps) {
   const updateStatus = useUpdateAppointmentStatus();
-  const formsTrigger = useActionFormsTrigger();
   const [cancelTarget, setCancelTarget] = useState<Appointment | null>(null);
   const [rescheduleTarget, setRescheduleTarget] = useState<Appointment | null>(null);
   const [viewPatientId, setViewPatientId] = useState<string | null>(null);
@@ -108,15 +96,6 @@ export function AppointmentTable({
     try {
       await updateStatus.mutateAsync({ id: apt.id, status });
       toast.success(`Status updated to ${status.replace('_', ' ')}`);
-
-      // After the status change succeeds, fire any forms assigned to the matching trigger.
-      const trigger = STATUS_TO_TRIGGER[status];
-      if (trigger) {
-        formsTrigger.fire(trigger, apt.tenantId, {
-          appointmentId: apt.id,
-          patientId: apt.patientId,
-        });
-      }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Failed to update status';
       toast.error(message);
@@ -400,17 +379,6 @@ export function AppointmentTable({
         onOpenChange={(open) => { if (!open) setCollectPayTarget(null); }}
         appointment={collectPayTarget}
         onConfirmed={handlePaymentConfirmed}
-      />
-
-      {/* After-action forms modal — fires after Confirm/Check In/etc.
-          Picks up any forms the hospital has assigned to the matching trigger
-          (visit_check_in, pre_consultation, feedback, etc.). */}
-      <IntakeFormsModal
-        open={formsTrigger.isOpen}
-        trigger={formsTrigger.trigger ?? 'manual'}
-        tenantId={formsTrigger.tenantId}
-        context={formsTrigger.context}
-        onComplete={formsTrigger.close}
       />
     </>
   );

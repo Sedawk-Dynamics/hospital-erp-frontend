@@ -13,18 +13,10 @@ import { PatientCategoryIndicators } from '@/components/doctor/patient-category-
 import { DoctorActionButtons } from '@/components/doctor/doctor-action-buttons';
 import { useDoctorAppointments, useDoctorAppointmentStats, useUpdateAppointmentStatus, useLabOrders, useDoctorOTRequests } from '@/hooks/use-doctor';
 import { useAuthStore } from '@/stores/auth-store';
-import { useActionFormsTrigger } from '@/hooks/use-action-forms-trigger';
-import { IntakeFormsModal } from '@/components/forms/intake-forms-modal';
-import type { FormTrigger } from '@/types/forms';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import type { Appointment } from '@/types';
 
-// Map doctor status transitions to form triggers
-const DOCTOR_STATUS_TO_TRIGGER: Record<string, FormTrigger> = {
-  in_consultation: 'pre_consultation',
-  completed: 'feedback',
-};
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -428,7 +420,6 @@ function DoctorAppointmentTable({
   onViewDetails: (patientId: string, appointmentId?: string) => void;
 }) {
   const statusMutation = useUpdateAppointmentStatus();
-  const formsTrigger = useActionFormsTrigger();
 
   const handleStatusChange = (apt: Appointment, newStatus: string) => {
     // Intercept "completed" → navigate to consultation page instead
@@ -442,15 +433,6 @@ function DoctorAppointmentTable({
       {
         onSuccess: () => {
           toast.success(`Appointment ${newStatus.replace('_', ' ')} successfully`);
-
-          // After Start Consultation, fire any matching forms
-          const trigger = DOCTOR_STATUS_TO_TRIGGER[newStatus];
-          if (trigger) {
-            formsTrigger.fire(trigger, apt.tenantId, {
-              appointmentId: apt.id,
-              patientId: apt.patientId,
-            });
-          }
         },
         onError: (err: any) => {
           toast.error(err?.response?.data?.message || `Failed to update status`);
@@ -673,15 +655,6 @@ function DoctorAppointmentTable({
           </Button>
         </div>
       </div>
-
-      {/* After-action forms modal — fires after Start Consultation */}
-      <IntakeFormsModal
-        open={formsTrigger.isOpen}
-        trigger={formsTrigger.trigger ?? 'manual'}
-        tenantId={formsTrigger.tenantId}
-        context={formsTrigger.context}
-        onComplete={formsTrigger.close}
-      />
     </div>
   );
 }

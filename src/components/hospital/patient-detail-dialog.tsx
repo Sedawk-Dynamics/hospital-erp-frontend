@@ -27,10 +27,6 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { usePatient, useUpdatePatient } from '@/hooks/use-hospital';
 import { formatDate, toInputDateStr } from '@/lib/date-utils';
-import { PatientFormSubmissionsPanel } from '@/components/forms/patient-form-submissions-panel';
-import { useActionFormsTrigger } from '@/hooks/use-action-forms-trigger';
-import { IntakeFormsModal } from '@/components/forms/intake-forms-modal';
-import { ClipboardPlus } from 'lucide-react';
 
 // ============================================================
 // Schema
@@ -143,7 +139,6 @@ export function PatientDetailDialog({
   appointmentId,
 }: PatientDetailDialogProps) {
   const [isEditing, setIsEditing] = useState(false);
-  const formsTrigger = useActionFormsTrigger();
 
   const { data: patient, isLoading } = usePatient(patientId ?? '');
   const updatePatient = useUpdatePatient();
@@ -651,33 +646,6 @@ export function PatientDetailDialog({
 
                 {/* Status & timestamps */}
                 <Separator />
-
-                {/* Submitted forms (intake, consent, history, etc.) */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <SectionHeader title="Submitted Forms" />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        formsTrigger.fire('manual', patient.tenantId, {
-                          patientId: patient.id,
-                        })
-                      }
-                    >
-                      <ClipboardPlus className="h-3.5 w-3.5 mr-1.5" />
-                      Fill a Form
-                    </Button>
-                  </div>
-                  <PatientFormSubmissionsPanel
-                    patientId={patient.id}
-                    appointmentId={appointmentId ?? undefined}
-                    title={appointmentId ? 'Appointment Forms' : 'Patient Forms'}
-                    viewLocation="patient_detail"
-                  />
-                </div>
-
-                <Separator />
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <div className="flex items-center gap-2">
                     <span>Status:</span>
@@ -692,16 +660,6 @@ export function PatientDetailDialog({
           </>
         )}
       </DialogContent>
-
-      {/* On-demand forms — staff can pick any manual-trigger form
-          to fill for this patient (e.g. consent forms, ad-hoc surveys). */}
-      <IntakeFormsModal
-        open={formsTrigger.isOpen}
-        trigger="manual"
-        tenantId={formsTrigger.tenantId}
-        context={formsTrigger.context}
-        onComplete={formsTrigger.close}
-      />
     </Dialog>
   );
 }

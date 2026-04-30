@@ -27,8 +27,6 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { apiPost } from '@/lib/api';
-import { useActionFormsTrigger } from '@/hooks/use-action-forms-trigger';
-import { IntakeFormsModal } from '@/components/forms/intake-forms-modal';
 import type { Patient } from '@/types';
 
 // ============================================================
@@ -127,7 +125,6 @@ export function CreatePatientDialog({
   onSuccess,
 }: CreatePatientDialogProps) {
   const queryClient = useQueryClient();
-  const formsTrigger = useActionFormsTrigger();
 
   const {
     register,
@@ -230,12 +227,6 @@ export function CreatePatientDialog({
       queryClient.invalidateQueries({ queryKey: ['hospital'] });
       onOpenChange(false);
       onSuccess?.(patient);
-
-      // Fire any forms the hospital has assigned to the patient_registration trigger.
-      // The patient.tenantId is the hospital where they were just registered.
-      formsTrigger.fire('patient_registration', patient.tenantId, {
-        patientId: patient.id,
-      });
     },
     onError: (error: any) => {
       const msg =
@@ -624,16 +615,6 @@ export function CreatePatientDialog({
           </DialogFooter>
         </form>
       </DialogContent>
-
-      {/* Patient registration forms — fires after a successful patient creation
-          to capture intake info, consents, etc. assigned to the patient_registration trigger. */}
-      <IntakeFormsModal
-        open={formsTrigger.isOpen}
-        trigger="patient_registration"
-        tenantId={formsTrigger.tenantId}
-        context={formsTrigger.context}
-        onComplete={formsTrigger.close}
-      />
     </Dialog>
   );
 }

@@ -11,7 +11,6 @@ import {
   ShieldAlert, CalendarDays,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { PatientFormSubmissionsPanel } from '@/components/forms/patient-form-submissions-panel';
 
 interface StaffStats {
   total: number;
@@ -359,12 +358,6 @@ export function HRDashboard() {
           </div>
         </div>
       </div>
-
-      {/* Forms assigned by admin to hr_home view location appear here */}
-      <PatientFormSubmissionsPanel
-        title="HR Forms Submissions"
-        viewLocation="hr_home"
-      />
     </div>
   );
 }
