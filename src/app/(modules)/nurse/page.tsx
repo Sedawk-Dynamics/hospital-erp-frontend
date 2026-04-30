@@ -53,6 +53,8 @@ import {
   type ShiftHandover,
   type DutyRoster,
 } from '@/hooks/use-nurse';
+import { useMyAssignedDoctors } from '@/hooks/use-nurse-doctor-assignments';
+import { Stethoscope, Info } from 'lucide-react';
 
 // ── Shift Detection ───────────────────────────────────────
 
@@ -151,6 +153,43 @@ function QuickStatCard({
         <p className="font-label text-[10px] text-on-surface-variant truncate">{label}</p>
         {sublabel && <p className="text-[9px] text-muted-foreground">{sublabel}</p>}
       </div>
+    </div>
+  );
+}
+
+// ── Assigned Doctors Banner ───────────────────────────────
+
+function AssignedDoctorsBanner({
+  doctors,
+}: {
+  doctors: Array<{
+    assignmentId: string;
+    doctor: { id: string; user: { firstName: string; lastName: string | null } };
+  }>;
+}) {
+  if (doctors.length === 0) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        <Info className="h-3.5 w-3.5" />
+        <span>
+          You are not assigned to any doctor yet. Ask your nurse admin to assign you so you can see
+          patients in this dashboard.
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+      <Stethoscope className="h-3.5 w-3.5 text-primary" />
+      <span className="font-medium text-muted-foreground">Assigned to:</span>
+      {doctors.map((d) => (
+        <span
+          key={d.assignmentId}
+          className="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary"
+        >
+          Dr. {d.doctor.user.firstName} {d.doctor.user.lastName ?? ''}
+        </span>
+      ))}
     </div>
   );
 }
@@ -852,10 +891,26 @@ export default function NurseDashboardPage() {
   // Today's roster for all shifts
   const { data: rosterData, isLoading: rosterLoading } = useDutyRoster({ date: today });
 
+  // Doctors I'm currently assigned to. Per SOW, a nurse only handles patients
+  // under their assigned doctors. Empty list ⇒ unassigned ⇒ show no patients.
+  const { data: myDoctorsData } = useMyAssignedDoctors();
+  const myDoctors = myDoctorsData?.data ?? [];
+  const myDoctorIds = useMemo(
+    () => new Set(myDoctors.map((d) => d.doctor.id)),
+    [myDoctors],
+  );
+
   // ── Derive state ─────────────────────────────────────────
-  const admissions = admissionsData?.data ?? [];
-  const totalAdmissions = admissionsData?.meta?.total ?? admissions.length;
-  const totalPages = admissionsData?.meta?.totalPages ?? 1;
+  const allAdmissions = admissionsData?.data ?? [];
+  const admissions = useMemo(
+    () =>
+      myDoctorIds.size === 0
+        ? []
+        : allAdmissions.filter((a) => a.doctorId && myDoctorIds.has(a.doctorId)),
+    [allAdmissions, myDoctorIds],
+  );
+  const totalAdmissions = admissions.length;
+  const totalPages = 1;
 
   const pendingMedsCount =
     prescriptionsData?.meta?.total ?? prescriptionsData?.data?.length ?? 0;
@@ -968,6 +1023,9 @@ export default function NurseDashboardPage() {
           {formatDate(new Date())}
         </div>
       </div>
+
+      {/* Assigned doctors banner — defines which patients this nurse handles */}
+      <AssignedDoctorsBanner doctors={myDoctors} />
 
       {/* Critical Alerts Banner */}
       <CriticalAlertsBanner

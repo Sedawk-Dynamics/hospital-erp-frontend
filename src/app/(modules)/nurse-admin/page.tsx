@@ -48,6 +48,13 @@ export default function NurseAdminDashboard() {
           </CardHeader>
           <CardContent className="space-y-2">
             <Link
+              href="/nurse-admin/nurse-doctor"
+              className={cn(buttonVariants({ variant: 'outline' }), 'w-full justify-start')}
+            >
+              <Users className="mr-2 h-4 w-4" />
+              Assign nurse to doctor(s)
+            </Link>
+            <Link
               href="/nurse-admin/assignments"
               className={cn(buttonVariants({ variant: 'outline' }), 'w-full justify-start')}
             >

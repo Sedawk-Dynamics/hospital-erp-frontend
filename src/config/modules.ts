@@ -33,6 +33,7 @@ import {
   ArrowRightLeft,
   ClipboardCheck,
   ShieldCheck,
+  UserCog,
   type LucideIcon,
 } from 'lucide-react';
 import type { ModuleKey } from '@/stores/module-store';
@@ -212,6 +213,7 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
     baseRoute: '/nurse-admin',
     sidebarItems: [
       { label: 'Dashboard', href: '/nurse-admin', icon: Home },
+      { label: 'Nurse ↔ Doctor', href: '/nurse-admin/nurse-doctor', icon: UserCog },
       { label: 'Patient Assignments', href: '/nurse-admin/assignments', icon: ClipboardCheck },
       { label: 'Shift Handover', href: '/nurse-admin/handover', icon: ArrowRightLeft },
       { label: 'Ward Orders', href: '/nurse-admin/orders', icon: ClipboardPlus },
