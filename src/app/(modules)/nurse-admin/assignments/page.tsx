@@ -41,7 +41,7 @@ const SHIFTS: Array<{ value: ShiftType; label: string; hours: string }> = [
 
 const todayIso = () => format(new Date(), 'yyyy-MM-dd');
 
-export default function NurseInchargeAssignmentsPage() {
+export default function NurseAdminAssignmentsPage() {
   const [shiftDate, setShiftDate] = useState<string>(todayIso());
   const [shiftType, setShiftType] = useState<ShiftType>('morning');
   const [wardId, setWardId] = useState<string>('all');
@@ -68,7 +68,6 @@ export default function NurseInchargeAssignmentsPage() {
     return map;
   }, [assignments]);
 
-  // All active users — we filter client-side to roles starting with "nurse".
   const { data: usersRes, isLoading: usersLoading } = useUsersList({
     limit: 500,
     isActive: 'true',
@@ -76,7 +75,7 @@ export default function NurseInchargeAssignmentsPage() {
   const nurseUsers = useMemo(() => {
     const items = (usersRes?.data ?? []) as UserListItem[];
     return items.filter((u) =>
-      u.userRoles.some((ur) => /^nurse(_|$)/i.test(ur.role.name) || ur.role.name === 'nurse_incharge'),
+      u.userRoles.some((ur) => /^nurse(_|$)/i.test(ur.role.name)),
     );
   }, [usersRes]);
 
@@ -123,7 +122,7 @@ export default function NurseInchargeAssignmentsPage() {
 
   async function handleUnassign(assignmentId: string) {
     try {
-      await endMut.mutateAsync({ id: assignmentId, reason: 'Removed by in-charge' });
+      await endMut.mutateAsync({ id: assignmentId, reason: 'Removed by nurse admin' });
       toast.success('Assignment ended');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to end assignment';

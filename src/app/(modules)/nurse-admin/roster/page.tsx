@@ -93,7 +93,7 @@ export default function RosterPlanningPage() {
         <div>
           <h1 className="text-2xl font-semibold">Roster Planning</h1>
           <p className="text-sm text-muted-foreground">
-            Weekly nursing roster. Add entries then publish to release them to Nurse In-Charge.
+            Weekly nursing roster. Add entries then publish to release them to bedside nurses.
           </p>
         </div>
         <CreateRosterDialog />
@@ -379,8 +379,7 @@ function CreateRosterDialog() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="nurse">nurse</SelectItem>
-                <SelectItem value="nurse_incharge">nurse_incharge</SelectItem>
-                <SelectItem value="head_nurse">head_nurse</SelectItem>
+                <SelectItem value="nurse_admin">nurse_admin</SelectItem>
               </SelectContent>
             </Select>
           </div>

@@ -40,7 +40,6 @@ export default function WardOrdersPage() {
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [admissions]);
 
-  // Default to the first ward once known.
   const effectiveWardId = wardId || wards[0]?.id || '';
 
   const { data, isLoading } = useOrderAcknowledgements(
@@ -56,7 +55,7 @@ export default function WardOrdersPage() {
       <div>
         <h1 className="text-2xl font-semibold">Ward Orders</h1>
         <p className="text-sm text-muted-foreground">
-          Doctor-ordered lab tests and imaging for patients in your ward, with live acknowledgement
+          Doctor-ordered lab tests and imaging across the hospital, with live acknowledgement
           status.
         </p>
       </div>

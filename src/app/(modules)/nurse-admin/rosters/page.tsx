@@ -84,7 +84,7 @@ export default function RosterApprovalsPage() {
         <div>
           <h1 className="text-2xl font-semibold">Roster Approvals</h1>
           <p className="text-sm text-muted-foreground">
-            Review head-nurse-submitted rosters and publish them to release shifts to Nurse In-Charge.
+            Review submitted rosters and publish them to release shifts to bedside nurses.
           </p>
         </div>
         <div className="flex items-center gap-2">

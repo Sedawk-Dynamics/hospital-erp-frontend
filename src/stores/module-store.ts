@@ -11,8 +11,6 @@ export type ModuleKey =
   | 'ward'
   | 'doctor'
   | 'nurse'
-  | 'nurse-incharge'
-  | 'head-nurse'
   | 'nurse-admin';
 
 function loadPersistedModule(): ModuleKey | null {

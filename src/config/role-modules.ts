@@ -26,8 +26,6 @@ export const ALL_MODULES: ModuleKey[] = [
   'ward',
   'doctor',
   'nurse',
-  'nurse-incharge',
-  'head-nurse',
   'nurse-admin',
 ];
 
@@ -81,10 +79,8 @@ const ROLE_MODULE_MAP: Record<string, ModuleKey[]> = {
   // Nursing staff → dedicated nurse module
   nurse: ['nurse'],
 
-  // Nurse hierarchy — each role gets its own module plus inherited visibility
-  nurse_incharge: ['nurse-incharge', 'nurse', 'ward'],
-  head_nurse: ['head-nurse', 'nurse-incharge', 'nurse', 'ward'],
-  nurse_admin: ['nurse-admin', 'head-nurse', 'nurse-incharge', 'ward'],
+  // Single nursing-management role: assignment, ward setup, rosters, handover
+  nurse_admin: ['nurse-admin', 'ward'],
 
   // Front desk → hospital (OP/IP, billing, appointments)
   front_desk: ['hospital'],

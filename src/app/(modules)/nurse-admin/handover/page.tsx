@@ -39,7 +39,7 @@ const NEXT_SHIFT: Record<ShiftType, ShiftType> = {
 
 const todayIso = () => format(new Date(), 'yyyy-MM-dd');
 
-export default function NurseInchargeHandoverPage() {
+export default function NurseAdminHandoverPage() {
   const [shiftDate, setShiftDate] = useState<string>(todayIso());
   const [fromShift, setFromShift] = useState<ShiftType>('morning');
   const toShift = NEXT_SHIFT[fromShift];
@@ -87,7 +87,7 @@ export default function NurseInchargeHandoverPage() {
   const nurseUsers = useMemo(() => {
     const items = (usersRes?.data ?? []) as UserListItem[];
     return items.filter((u) =>
-      u.userRoles.some((ur) => /^nurse(_|$)/i.test(ur.role.name) || ur.role.name === 'nurse_incharge'),
+      u.userRoles.some((ur) => /^nurse(_|$)/i.test(ur.role.name)),
     );
   }, [usersRes]);
 
