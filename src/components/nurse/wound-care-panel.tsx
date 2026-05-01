@@ -162,7 +162,7 @@ export function WoundCarePanel({
           </Field>
 
           <Field label="Wound Type">
-            <Select value={form.woundType || undefined} onValueChange={(v) => update('woundType', (v ?? '') as WoundType | '')}>
+            <Select value={form.woundType || null} onValueChange={(v) => update('woundType', (v ?? '') as WoundType | '')}>
               <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
               <SelectContent>
                 {WOUND_TYPES.map((t) => (
@@ -173,7 +173,7 @@ export function WoundCarePanel({
           </Field>
 
           <Field label="Stage">
-            <Select value={form.woundStage || undefined} onValueChange={(v) => update('woundStage', (v ?? '') as WoundStage | '')}>
+            <Select value={form.woundStage || null} onValueChange={(v) => update('woundStage', (v ?? '') as WoundStage | '')}>
               <SelectTrigger><SelectValue placeholder="Select stage" /></SelectTrigger>
               <SelectContent>
                 {WOUND_STAGES.map((s) => (
@@ -209,7 +209,7 @@ export function WoundCarePanel({
           </Field>
 
           <Field label="Exudate Type">
-            <Select value={form.exudateType || undefined} onValueChange={(v) => update('exudateType', (v ?? '') as ExudateType | '')}>
+            <Select value={form.exudateType || null} onValueChange={(v) => update('exudateType', (v ?? '') as ExudateType | '')}>
               <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
               <SelectContent>
                 {EXUDATE_TYPES.map((t) => (
@@ -219,7 +219,7 @@ export function WoundCarePanel({
             </Select>
           </Field>
           <Field label="Exudate Amount">
-            <Select value={form.exudateAmount || undefined} onValueChange={(v) => update('exudateAmount', (v ?? '') as ExudateAmount | '')}>
+            <Select value={form.exudateAmount || null} onValueChange={(v) => update('exudateAmount', (v ?? '') as ExudateAmount | '')}>
               <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
               <SelectContent>
                 {EXUDATE_AMOUNTS.map((a) => (

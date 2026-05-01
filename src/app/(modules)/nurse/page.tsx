@@ -53,7 +53,7 @@ import {
   type ShiftHandover,
   type DutyRoster,
 } from '@/hooks/use-nurse';
-import { useMyAssignedDoctors } from '@/hooks/use-nurse-doctor-assignments';
+import { useMyAssignedDoctors, useMyPatients } from '@/hooks/use-nurse-doctor-assignments';
 import { Stethoscope, Info } from 'lucide-react';
 
 // ── Shift Detection ───────────────────────────────────────
@@ -608,6 +608,128 @@ function PendingTasksSection({
   );
 }
 
+// ── OPD Confirmed List ────────────────────────────────────
+
+const APPT_STATUS_LABELS: Record<string, { label: string; bg: string; text: string }> = {
+  confirmed: { label: 'Confirmed', bg: 'bg-cyan-100', text: 'text-cyan-700' },
+  checked_in: { label: 'Checked In', bg: 'bg-blue-100', text: 'text-blue-700' },
+  waiting: { label: 'Waiting', bg: 'bg-amber-100', text: 'text-amber-700' },
+  in_consultation: { label: 'In Consult', bg: 'bg-violet-100', text: 'text-violet-700' },
+};
+
+interface OpdRecord {
+  id: string;
+  appointmentId?: string;
+  visitId?: string | null;
+  patientId: string;
+  patient: {
+    id: string;
+    mrn: string | null;
+    firstName: string;
+    lastName: string | null;
+    gender?: string | null;
+    phone?: string | null;
+  };
+  doctor: {
+    id: string;
+    user: { firstName: string; lastName: string | null };
+  };
+  status: string;
+  appointmentDate?: string;
+  startTime?: string;
+}
+
+function OpdConfirmedList({
+  records,
+  isLoading,
+}: {
+  records: OpdRecord[];
+  isLoading: boolean;
+}) {
+  return (
+    <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary overflow-hidden">
+      <div className="flex items-center justify-between border-b px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Stethoscope className="h-4 w-4 text-primary" />
+          <h2 className="font-headline text-sm font-bold">OPD · Frontdesk-confirmed</h2>
+          <span className="text-[10px] text-muted-foreground">
+            ({records.length} patient{records.length !== 1 ? 's' : ''})
+          </span>
+        </div>
+        <Link
+          href="/nurse/forms"
+          className="text-[10px] text-primary hover:underline font-medium"
+        >
+          Open forms →
+        </Link>
+      </div>
+
+      {isLoading ? (
+        <div className="p-6 text-center">
+          <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        </div>
+      ) : records.length === 0 ? (
+        <p className="px-4 py-6 text-center text-xs text-muted-foreground">
+          No frontdesk-confirmed OPD bookings under your assigned doctors today.
+        </p>
+      ) : (
+        <ul className="divide-y">
+          {records.map((r) => {
+            const initials = `${r.patient.firstName?.[0] ?? ''}${r.patient.lastName?.[0] ?? ''}`.toUpperCase();
+            const fullName = `${r.patient.firstName} ${r.patient.lastName ?? ''}`.trim();
+            const statusCfg = APPT_STATUS_LABELS[r.status] ?? {
+              label: r.status,
+              bg: 'bg-gray-100',
+              text: 'text-gray-700',
+            };
+            const targetParam = r.visitId
+              ? `visitId=${r.visitId}`
+              : `appointmentId=${r.appointmentId ?? r.id}`;
+            return (
+              <li key={r.id}>
+                <Link
+                  href={`/nurse/forms/${r.patientId}?${targetParam}`}
+                  className="flex items-center gap-3 px-4 py-2.5 hover:bg-surface-container-low transition-colors"
+                >
+                  <Avatar className="h-9 w-9">
+                    <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                      {initials || '?'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-foreground truncate">
+                      {fullName}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      {[
+                        r.patient.mrn ? `MRN ${r.patient.mrn}` : null,
+                        `Dr. ${r.doctor.user.firstName} ${r.doctor.user.lastName ?? ''}`.trim(),
+                        r.startTime ? formatTime(r.startTime) : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </p>
+                  </div>
+                  <span
+                    className={cn(
+                      'text-[10px] font-bold px-2 py-0.5 rounded-full',
+                      statusCfg.bg,
+                      statusCfg.text,
+                    )}
+                  >
+                    {statusCfg.label}
+                  </span>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 // ── Patient List Table ────────────────────────────────────
 
 function PatientListTable({
@@ -900,6 +1022,18 @@ export default function NurseDashboardPage() {
     [myDoctors],
   );
 
+  // OPD appointments where front-desk has confirmed the booking (status one
+  // of confirmed | checked_in | waiting | in_consultation), scoped to the
+  // nurse's assigned doctors. Server-side filter; the empty-doctors case
+  // returns an empty list.
+  const { data: opdData, isLoading: opdLoading } = useMyPatients({
+    type: 'op',
+    date: fromDate,
+    search: searchQuery || undefined,
+    limit: 50,
+  });
+  const opdRecords = opdData?.data ?? [];
+
   // ── Derive state ─────────────────────────────────────────
   const allAdmissions = admissionsData?.data ?? [];
   const admissions = useMemo(
@@ -1034,12 +1168,19 @@ export default function NurseDashboardPage() {
       />
 
       {/* Quick Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <QuickStatCard
           icon={<Users className="h-4 w-4" />}
-          label="Assigned Patients"
+          label="IPD Patients"
           value={totalAdmissions}
           color="bg-primary/10 text-primary"
+        />
+        <QuickStatCard
+          icon={<Stethoscope className="h-4 w-4" />}
+          label="OPD Confirmed"
+          value={opdRecords.length}
+          color="bg-teal-50 text-teal-600"
+          sublabel="Frontdesk confirmed"
         />
         <QuickStatCard
           icon={<Pill className="h-4 w-4" />}
@@ -1142,7 +1283,7 @@ export default function NurseDashboardPage() {
         </div>
       </div>
 
-      {/* Assigned Patient List Table */}
+      {/* Assigned IPD Patient List Table */}
       <PatientListTable
         admissions={admissions}
         isLoading={admissionsLoading}
@@ -1151,6 +1292,9 @@ export default function NurseDashboardPage() {
         total={totalAdmissions}
         onPageChange={setPage}
       />
+
+      {/* OPD: today's frontdesk-confirmed bookings under my assigned doctors. */}
+      <OpdConfirmedList records={opdRecords as OpdRecord[]} isLoading={opdLoading} />
     </div>
   );
 }

@@ -51,14 +51,15 @@ import {
 
 // ── Shared context for all dialogs ────────────────────────
 //
-// Either visitId or admissionId must be present — the backend resolves the
-// missing side from the Admission ↔ Visit join. The nurse list page passes
-// admissionId from the assigned-patients query, since visitId is not exposed
-// on that endpoint's response.
+// Pass at least one of visitId / admissionId / appointmentId. The backend
+// resolves the missing pieces (Admission ↔ Visit join for IPD, Appointment →
+// Visit lookup/auto-create for OPD). The nurse list page hands over
+// admissionId for IPD rows, visitId-or-appointmentId for OPD rows.
 export interface FormDialogContext {
   patientId: string;
   visitId?: string;
   admissionId?: string;
+  appointmentId?: string;
 }
 
 interface BaseDialogProps {
@@ -175,7 +176,7 @@ export function AdmissionAssessmentDialog({ open, onOpenChange, ctx, onSuccess }
         <div className="space-y-3">
           <FieldRow>
             <Field label="Arrival mode">
-              <Select value={arrivalMode || undefined} onValueChange={(v) => setArrivalMode((v ?? '') as ArrivalMode | '')}>
+              <Select value={arrivalMode || null} onValueChange={(v) => setArrivalMode((v ?? '') as ArrivalMode | '')}>
                 <SelectTrigger className="h-9 w-full"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ambulance">Ambulance</SelectItem>
@@ -187,7 +188,7 @@ export function AdmissionAssessmentDialog({ open, onOpenChange, ctx, onSuccess }
               </Select>
             </Field>
             <Field label="Consciousness level">
-              <Select value={consciousnessLevel || undefined} onValueChange={(v) => setConsciousnessLevel((v ?? '') as ConsciousnessLevel | '')}>
+              <Select value={consciousnessLevel || null} onValueChange={(v) => setConsciousnessLevel((v ?? '') as ConsciousnessLevel | '')}>
                 <SelectTrigger className="h-9 w-full"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="alert">Alert</SelectItem>
@@ -634,6 +635,7 @@ export function IntakeOutputDialog({ open, onOpenChange, ctx, onSuccess }: BaseD
       await mutate.mutateAsync({
         visitId: ctx.visitId,
         admissionId: ctx.admissionId,
+        appointmentId: ctx.appointmentId,
         patientId: ctx.patientId,
         entryType,
         category,
@@ -765,6 +767,7 @@ export function WoundCareDialog({ open, onOpenChange, ctx, onSuccess }: BaseDial
       await mutate.mutateAsync({
         visitId: ctx.visitId,
         admissionId: ctx.admissionId,
+        appointmentId: ctx.appointmentId,
         patientId: ctx.patientId,
         woundLocation: woundLocation.trim(),
         woundType: woundType || undefined,
@@ -802,7 +805,7 @@ export function WoundCareDialog({ open, onOpenChange, ctx, onSuccess }: BaseDial
               <Input value={woundLocation} onChange={(e) => setWoundLocation(e.target.value)} placeholder="e.g. Sacrum" />
             </Field>
             <Field label="Type">
-              <Select value={woundType || undefined} onValueChange={(v) => setWoundType((v ?? '') as WoundType | '')}>
+              <Select value={woundType || null} onValueChange={(v) => setWoundType((v ?? '') as WoundType | '')}>
                 <SelectTrigger className="h-9 w-full"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="surgical">Surgical</SelectItem>
@@ -818,7 +821,7 @@ export function WoundCareDialog({ open, onOpenChange, ctx, onSuccess }: BaseDial
 
           <FieldRow>
             <Field label="Stage">
-              <Select value={woundStage || undefined} onValueChange={(v) => setWoundStage((v ?? '') as WoundStage | '')}>
+              <Select value={woundStage || null} onValueChange={(v) => setWoundStage((v ?? '') as WoundStage | '')}>
                 <SelectTrigger className="h-9 w-full"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="stage_1">Stage 1</SelectItem>
@@ -856,7 +859,7 @@ export function WoundCareDialog({ open, onOpenChange, ctx, onSuccess }: BaseDial
 
           <FieldRow>
             <Field label="Exudate type">
-              <Select value={exudateType || undefined} onValueChange={(v) => setExudateType((v ?? '') as ExudateType | '')}>
+              <Select value={exudateType || null} onValueChange={(v) => setExudateType((v ?? '') as ExudateType | '')}>
                 <SelectTrigger className="h-9 w-full"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">None</SelectItem>
@@ -867,7 +870,7 @@ export function WoundCareDialog({ open, onOpenChange, ctx, onSuccess }: BaseDial
               </Select>
             </Field>
             <Field label="Exudate amount">
-              <Select value={exudateAmount || undefined} onValueChange={(v) => setExudateAmount((v ?? '') as ExudateAmount | '')}>
+              <Select value={exudateAmount || null} onValueChange={(v) => setExudateAmount((v ?? '') as ExudateAmount | '')}>
                 <SelectTrigger className="h-9 w-full"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">None</SelectItem>
@@ -935,6 +938,7 @@ export function NursingNoteDialog({ open, onOpenChange, ctx, onSuccess }: BaseDi
         visitId: ctx.visitId,
         patientId: ctx.patientId,
         admissionId: ctx.admissionId,
+        appointmentId: ctx.appointmentId,
         noteType,
         content: content.trim(),
       });

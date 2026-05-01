@@ -95,16 +95,22 @@ export default function NurseFormsLandingPage() {
               const subline = [
                 r.patient.mrn ? `MRN ${r.patient.mrn}` : null,
                 r.recordType === 'admission' ? 'IP' : 'OP',
+                r.recordType === 'appointment' ? r.status : null,
                 r.ward?.name,
                 r.bed?.bedNumber ? `Bed ${r.bed.bedNumber}` : null,
               ]
                 .filter(Boolean)
                 .join(' · ');
-              // Prefer admission id (richer context, gets us visit + admission server-side)
+              // Admission rows get richer context via admissionId. OPD rows
+              // are now appointment-driven; if the visit already exists we
+              // pass that for direct form attach, otherwise pass the
+              // appointmentId so the form workspace can create one on save.
               const targetParam =
                 r.recordType === 'admission'
                   ? `admissionId=${r.id}`
-                  : `visitId=${r.id}`;
+                  : r.visitId
+                    ? `visitId=${r.visitId}`
+                    : `appointmentId=${r.appointmentId ?? r.id}`;
               return (
                 <li key={`${r.recordType}-${r.id}`}>
                   <Link

@@ -3,17 +3,15 @@
 // ───────────────────────────────────────────────────────────────────────
 // Consultation workspace
 //
-// Layout:
+// Layout (80 / 20):
 //   [ Sticky top bar: patient strip + primary actions                   ]
-//   [ Banner: edit window / pre-consult / locked                        ]
-//   [ Allergy flash (only when present)                                 ]
-//   [ Latest Vitals — compact strip                                     ]
-//   [ Clinical Record quick-cards (4 tiles)                             ]
-//   [ ┌─ main column (8) ──────────┐ ┌─ sidebar (4) ─┐                 ]
-//   [ │ PrescriptionPad / SOAP     │ │ Session       │                 ]
-//   [ │ Orders (live status)       │ │ checklist     │                 ]
-//   [ │ Visit timeline (compact)   │ │ Amendment hx  │                 ]
-//   [ └────────────────────────────┘ └──────────────┘                 ]
+//   [ ┌─ main column (4/5 = 80%) ─────┐ ┌─ aside (1/5 = 20%) ─┐         ]
+//   [ │ Banner: edit window / locked  │ │ Vitals (compact)    │         ]
+//   [ │ Clinical Record quick-cards   │ │ Family Hx           │         ]
+//   [ │ Nursing forms summary         │ │ Allergies           │         ]
+//   [ │ PrescriptionPad / SOAP        │ │  (sticky scroll)    │         ]
+//   [ │ Orders (live status)          │ │                     │         ]
+//   [ └───────────────────────────────┘ └─────────────────────┘         ]
 // ───────────────────────────────────────────────────────────────────────
 
 import { use, useState, useEffect, useMemo } from 'react';
@@ -31,8 +29,8 @@ import {
   Pill,
   Printer,
   Stethoscope,
+  Users,
 } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -156,28 +154,66 @@ function TopBar({
   );
 }
 
-// ── Latest Vitals strip ───────────────────────────────────────────────
+// ── Compact sidebar card shell ────────────────────────────────────────
 
-function VitalsStrip({ patientId }: { patientId: string }) {
+function SidebarCard({
+  title,
+  icon: Icon,
+  accent = 'border-primary',
+  iconAccent = 'text-primary',
+  children,
+  trailing,
+}: {
+  title: string;
+  icon: React.ElementType;
+  accent?: string;
+  iconAccent?: string;
+  children: React.ReactNode;
+  trailing?: React.ReactNode;
+}) {
+  return (
+    <section
+      className={cn(
+        'rounded-xl bg-surface-container-lowest shadow-sanctuary border-l-4 p-3',
+        accent,
+      )}
+    >
+      <div className="flex items-center gap-2 mb-2">
+        <Icon className={cn('h-3.5 w-3.5', iconAccent)} />
+        <h3 className="font-headline text-xs font-bold uppercase tracking-wide">{title}</h3>
+        {trailing && <span className="ml-auto">{trailing}</span>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+// ── Sidebar: Vitals (vertical, compact) ───────────────────────────────
+
+function VitalsSidebar({ patientId }: { patientId: string }) {
   const { data: latestResp, isLoading } = useLatestVitalsNurse(patientId);
   const v = (latestResp as any)?.data ?? null;
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-3">
-        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-      </div>
+      <SidebarCard title="Vitals" icon={Activity}>
+        <div className="flex items-center justify-center py-3">
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        </div>
+      </SidebarCard>
     );
   }
   if (!v) {
     return (
-      <p className="text-xs text-muted-foreground">
-        No vitals recorded yet. Vitals are recorded by the nursing team — ask the assigned nurse to capture them.
-      </p>
+      <SidebarCard title="Vitals" icon={Activity}>
+        <p className="text-[11px] text-muted-foreground italic leading-snug">
+          No vitals recorded yet. Nursing team captures these.
+        </p>
+      </SidebarCard>
     );
   }
 
-  const tiles = [
+  const rows = [
     {
       label: 'BP',
       value:
@@ -187,72 +223,157 @@ function VitalsStrip({ patientId }: { patientId: string }) {
       unit: 'mmHg',
       accent: 'text-error',
     },
-    {
-      label: 'Pulse',
-      value: v.pulseRate ?? v.heartRate ?? null,
-      unit: 'bpm',
-      accent: 'text-tertiary',
-    },
-    {
-      label: 'Temp',
-      value: v.temperature ?? null,
-      unit: '°C',
-      accent: 'text-secondary',
-    },
-    {
-      label: 'SpO₂',
-      value: v.oxygenSaturation ?? null,
-      unit: '%',
-      accent: 'text-primary-container',
-    },
-    {
-      label: 'RR',
-      value: v.respiratoryRate ?? null,
-      unit: '/min',
-      accent: 'text-primary-container',
-    },
-    {
-      label: 'Weight',
-      value: v.weightKg ?? v.weight ?? null,
-      unit: 'kg',
-      accent: 'text-secondary',
-    },
-    {
-      label: 'BGL',
-      value: v.bloodSugar ?? null,
-      unit: 'mg/dL',
-      accent: 'text-error',
-    },
+    { label: 'Pulse', value: v.pulseRate ?? v.heartRate ?? null, unit: 'bpm', accent: 'text-tertiary' },
+    { label: 'Temp', value: v.temperature ?? null, unit: '°C', accent: 'text-secondary' },
+    { label: 'SpO₂', value: v.oxygenSaturation ?? null, unit: '%', accent: 'text-primary' },
+    { label: 'RR', value: v.respiratoryRate ?? null, unit: '/min', accent: 'text-primary' },
+    { label: 'Weight', value: v.weightKg ?? v.weight ?? null, unit: 'kg', accent: 'text-secondary' },
+    { label: 'BGL', value: v.bloodSugar ?? null, unit: 'mg/dL', accent: 'text-error' },
   ].filter((t) => t.value !== null && t.value !== undefined && t.value !== '');
 
-  if (tiles.length === 0) {
-    return (
-      <p className="text-xs text-muted-foreground">
-        No numeric vitals on record.
-      </p>
-    );
-  }
+  return (
+    <SidebarCard
+      title="Vitals"
+      icon={Activity}
+      trailing={
+        v.recordedAt ? (
+          <span className="text-[9px] text-muted-foreground font-normal normal-case tracking-normal">
+            {formatDateTimeAmPm(v.recordedAt)}
+          </span>
+        ) : null
+      }
+    >
+      {rows.length === 0 ? (
+        <p className="text-[11px] text-muted-foreground italic">No numeric vitals on record.</p>
+      ) : (
+        <ul className="divide-y divide-outline-variant/30">
+          {rows.map((t, i) => (
+            <li key={i} className="flex items-baseline justify-between py-1">
+              <span className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
+                {t.label}
+              </span>
+              <span className="flex items-baseline gap-1">
+                <span className={cn('text-xs font-bold', t.accent)}>{String(t.value)}</span>
+                <span className="text-[9px] text-muted-foreground">{t.unit}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </SidebarCard>
+  );
+}
+
+// ── Sidebar: Family Medical History (read-only, compact) ──────────────
+
+function FamilyHistorySidebar({ patientId }: { patientId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['doctor', 'family-history', patientId],
+    queryFn: async () => {
+      const res = await apiGet<any[]>(`/medical-history/${patientId}/family`);
+      return res.data ?? [];
+    },
+  });
+  const entries = data ?? [];
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      {tiles.map((t, i) => (
-        <div
-          key={i}
-          className="flex items-baseline gap-1 rounded-lg bg-background/60 px-3 py-1.5"
-        >
-          <span className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
-            {t.label}
+    <SidebarCard
+      title="Family History"
+      icon={Users}
+      accent="border-secondary"
+      iconAccent="text-secondary"
+      trailing={
+        entries.length > 0 ? (
+          <span className="rounded-full bg-secondary/10 text-secondary px-1.5 py-0.5 text-[9px] font-bold">
+            {entries.length}
           </span>
-          <span className={cn('text-sm font-bold', t.accent)}>{String(t.value)}</span>
-          <span className="text-[10px] text-muted-foreground">{t.unit}</span>
+        ) : null
+      }
+    >
+      {isLoading ? (
+        <div className="flex items-center justify-center py-2">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
         </div>
-      ))}
-      {v.recordedAt && (
-        <span className="ml-auto text-[10px] text-muted-foreground">
-          {formatDateTimeAmPm(v.recordedAt)}
-        </span>
+      ) : entries.length === 0 ? (
+        <p className="text-[11px] text-muted-foreground italic">No family history recorded.</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {entries.map((e: any) => (
+            <li key={e.id} className="rounded-md bg-background/60 px-2 py-1.5">
+              <p className="text-[11px] font-semibold leading-tight truncate">{e.conditionName}</p>
+              <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                {e.relationSide && (
+                  <span className="font-label text-[9px] uppercase tracking-wider text-on-surface-variant rounded-full bg-secondary/10 text-secondary px-1.5 py-0.5">
+                    {e.relationSide}
+                  </span>
+                )}
+                {e.relationship && (
+                  <span className="text-[10px] text-muted-foreground">{e.relationship}</span>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
       )}
-    </div>
+    </SidebarCard>
+  );
+}
+
+// ── Sidebar: Allergies (read-only, compact) ───────────────────────────
+
+function AllergiesSidebar({ patient }: { patient: Patient }) {
+  const allergies = (patient.allergies ?? []) as any[];
+  const hasAny = allergies.length > 0;
+
+  return (
+    <SidebarCard
+      title="Allergies"
+      icon={AlertTriangle}
+      accent={hasAny ? 'border-error' : 'border-outline-variant'}
+      iconAccent={hasAny ? 'text-error' : 'text-muted-foreground'}
+      trailing={
+        hasAny ? (
+          <span className="rounded-full bg-error/10 text-error px-1.5 py-0.5 text-[9px] font-bold">
+            {allergies.length}
+          </span>
+        ) : null
+      }
+    >
+      {!hasAny ? (
+        <p className="text-[11px] text-muted-foreground italic">No known allergies.</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {allergies.map((a: any, i: number) => (
+            <li
+              key={a.id ?? i}
+              className="rounded-md border border-error/20 bg-error/5 px-2 py-1.5"
+            >
+              <div className="flex items-start gap-1.5">
+                <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-error" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-bold text-error leading-tight">{a.allergen}</p>
+                  <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                    {a.allergyType && (
+                      <span className="font-label text-[9px] uppercase tracking-wider rounded-full bg-error/10 text-error px-1.5 py-0.5">
+                        {a.allergyType}
+                      </span>
+                    )}
+                    {a.severity && (
+                      <span className="text-[10px] text-error/80 capitalize">{a.severity}</span>
+                    )}
+                  </div>
+                  {a.reaction && (
+                    <p className="text-[10px] text-foreground/70 mt-0.5 leading-snug">
+                      {a.reaction}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </SidebarCard>
   );
 }
 
@@ -500,106 +621,77 @@ export default function PatientConsultationPage({
         onCancelEdit={isEditing ? cancelEdit : undefined}
       />
 
-      <div className="px-4 py-4 lg:px-6 space-y-4">
-        {/* Banners */}
-        {canEdit && completedAt !== null && (
-          <EditBanner
-            isEditing={isEditing}
-            completedAt={completedAt}
-            onStartEdit={startEdit}
-            onCancelEdit={cancelEdit}
-          />
-        )}
-        {editWindowClosed && (
-          <div className="flex items-center gap-3 rounded-xl border-2 border-muted bg-muted/30 px-4 py-3">
-            <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <p className="flex-1 text-xs text-muted-foreground">
-              <span className="font-semibold text-foreground">Edit window closed.</span> OP notes
-              can be amended for 24 hours after completion — older notes are now part of the MRD.
-            </p>
-          </div>
-        )}
+      <div className="px-4 py-4 lg:px-6">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+          {/* ── Main column (80%) ─────────────────────────────────── */}
+          <div className="space-y-4 min-w-0 lg:col-span-4">
+            {/* Banners */}
+            {canEdit && completedAt !== null && (
+              <EditBanner
+                isEditing={isEditing}
+                completedAt={completedAt}
+                onStartEdit={startEdit}
+                onCancelEdit={cancelEdit}
+              />
+            )}
+            {editWindowClosed && (
+              <div className="flex items-center gap-3 rounded-xl border-2 border-muted bg-muted/30 px-4 py-3">
+                <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <p className="flex-1 text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground">Edit window closed.</span> OP
+                  notes can be amended for 24 hours after completion — older notes are now part of
+                  the MRD.
+                </p>
+              </div>
+            )}
 
-        {/* Allergies — inline flash */}
-        {patient.allergies && patient.allergies.length > 0 && (
-          <div className="flex items-start gap-2 rounded-xl border-l-4 border-error bg-error/5 px-4 py-2">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-error" />
-            <div className="flex flex-wrap gap-1.5 items-center">
-              <span className="text-[11px] font-semibold text-error mr-1">Allergies:</span>
-              {patient.allergies.map((a: any, i: number) => (
-                <span
-                  key={a.id ?? i}
-                  className="font-label text-[10px] font-bold text-error bg-background rounded-full px-2 py-0.5 border border-error/20"
-                >
-                  {a.allergen}
-                  {a.severity && <span className="ml-1 opacity-70">· {a.severity}</span>}
+            {/* Clinical Record quick cards */}
+            <section>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Stethoscope className="h-4 w-4 text-primary" />
+                  <h2 className="font-headline text-sm font-bold">Clinical Record</h2>
+                </div>
+                <span className="text-[10px] text-muted-foreground">
+                  Click any card for details
                 </span>
-              ))}
-            </div>
-          </div>
-        )}
+              </div>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <ClinicalCard
+                  label="Current Medications"
+                  subtitle="Active prescriptions"
+                  icon={Pill}
+                  accent="border-primary"
+                  onClick={() => openClinical('medications')}
+                />
+                <ClinicalCard
+                  label="Medical History"
+                  subtitle="Conditions & surgeries"
+                  icon={Heart}
+                  accent="border-secondary"
+                  onClick={() => openClinical('history')}
+                />
+                <ClinicalCard
+                  label="Investigations"
+                  subtitle="Past labs & imaging"
+                  icon={FlaskConical}
+                  accent="border-primary-container"
+                  onClick={() => openClinical('investigations')}
+                />
+                <ClinicalCard
+                  label="Drug History"
+                  subtitle="Past meds & adherence"
+                  icon={Pill}
+                  accent="border-tertiary"
+                  onClick={() => openClinical('drugs')}
+                />
+              </div>
+            </section>
 
-        {/* Latest Vitals strip */}
-        <section className="rounded-xl bg-surface-container-lowest shadow-sanctuary border-l-4 border-primary p-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <Activity className="h-4 w-4 text-primary" />
-              <h2 className="font-headline text-sm font-bold">Latest Vitals</h2>
-            </div>
-            <Badge variant="outline" className="text-[10px]">
-              Most recent snapshot
-            </Badge>
-          </div>
-          <VitalsStrip patientId={patient.id} />
-        </section>
+            {/* Nursing Forms — read-only summary captured by the nursing team */}
+            <NursingFormsPanel patientId={patient.id} />
 
-        {/* Nursing Forms — read-only summary captured by the nursing team */}
-        <NursingFormsPanel patientId={patient.id} />
-
-        {/* Clinical Record quick cards */}
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Stethoscope className="h-4 w-4 text-primary" />
-              <h2 className="font-headline text-sm font-bold">Clinical Record</h2>
-            </div>
-            <span className="text-[10px] text-muted-foreground">Click any card for details</span>
-          </div>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <ClinicalCard
-              label="Current Medications"
-              subtitle="Active prescriptions"
-              icon={Pill}
-              accent="border-primary"
-              onClick={() => openClinical('medications')}
-            />
-            <ClinicalCard
-              label="Medical History"
-              subtitle="Conditions & surgeries"
-              icon={Heart}
-              accent="border-secondary"
-              onClick={() => openClinical('history')}
-            />
-            <ClinicalCard
-              label="Investigations"
-              subtitle="Past labs & imaging"
-              icon={FlaskConical}
-              accent="border-primary-container"
-              onClick={() => openClinical('investigations')}
-            />
-            <ClinicalCard
-              label="Drug History"
-              subtitle="Past meds & adherence"
-              icon={Pill}
-              accent="border-tertiary"
-              onClick={() => openClinical('drugs')}
-            />
-          </div>
-        </section>
-
-        {/* Main column — full width; sidebar removed per user feedback */}
-        <div className="grid grid-cols-1 gap-4">
-          <div className="space-y-4 min-w-0">
+            {/* Active consultation form */}
             {showForm ? (
               <section className="overflow-hidden rounded-xl bg-surface-container-lowest shadow-sanctuary border-l-4 border-primary">
                 <div className="flex items-center gap-3 border-b border-outline-variant/30 px-5 py-3">
@@ -677,6 +769,15 @@ export default function PatientConsultationPage({
               <OrdersPanel patientId={patient.id} visitId={activeVisitId || undefined} />
             </section>
           </div>
+
+          {/* ── Right aside (20%) ─────────────────────────────────── */}
+          <aside className="lg:col-span-1 lg:sticky lg:top-14 lg:self-start lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto print:hidden">
+            <div className="space-y-3">
+              <VitalsSidebar patientId={patient.id} />
+              <FamilyHistorySidebar patientId={patient.id} />
+              <AllergiesSidebar patient={patient} />
+            </div>
+          </aside>
         </div>
       </div>
 

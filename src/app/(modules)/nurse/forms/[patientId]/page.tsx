@@ -100,6 +100,7 @@ export default function NursePatientFormsPage(props: { params: Promise<{ patient
   const searchParams = useSearchParams();
   const visitId = searchParams.get('visitId') ?? undefined;
   const admissionId = searchParams.get('admissionId') ?? undefined;
+  const appointmentId = searchParams.get('appointmentId') ?? undefined;
 
   const { data: patient, isLoading: patientLoading } = usePatientDetail(patientId);
 
@@ -107,6 +108,7 @@ export default function NursePatientFormsPage(props: { params: Promise<{ patient
     patientId,
     visitId,
     admissionId,
+    appointmentId,
   };
 
   // Lists per form type
@@ -147,7 +149,7 @@ export default function NursePatientFormsPage(props: { params: Promise<{ patient
 
   const initials = `${patient.firstName?.[0] ?? ''}${patient.lastName?.[0] ?? ''}`.toUpperCase();
   const fullName = `${patient.firstName} ${patient.lastName ?? ''}`.trim();
-  const hasContext = !!(visitId || admissionId);
+  const hasContext = !!(visitId || admissionId || appointmentId);
 
   return (
     <div className="space-y-4 animate-fade-in-up">

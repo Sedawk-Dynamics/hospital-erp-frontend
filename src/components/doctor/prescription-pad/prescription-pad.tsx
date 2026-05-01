@@ -7,10 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
-  Activity, Lock,
   Stethoscope, Search, Plus, Trash2, Pill, AlertTriangle,
   GripVertical, FlaskConical, ClipboardList, StickyNote,
-  UserCheck, CalendarDays, MessageSquare, Eye,
+  UserCheck, CalendarDays, Eye,
   Printer, CheckCircle2, RotateCcw, ChevronDown,
   Clock, Eye as ObservationIcon, Sparkles, Pin,
 } from 'lucide-react';
@@ -320,17 +319,7 @@ export function PrescriptionPad({
               Objective · what you measure & observe
             </span>
           </div>
-            {/* VITALS — read-only · recorded by nursing team */}
-            <PadSection
-              icon={<Activity className="h-4 w-4" />}
-              title="Vitals"
-              collapsed={collapsed.vitals}
-              onToggle={() => toggleSection('vitals')}
-              color="text-primary"
-              badge="Nurse-recorded"
-            >
-              <VitalsReadOnlyDisplay vital={latestVital} />
-            </PadSection>
+            {/* Vitals are shown in the right-hand sidebar (read-only, nurse-recorded). */}
 
             {/* PHYSICAL OBSERVATIONS */}
             <PadSection
@@ -532,16 +521,6 @@ export function PrescriptionPad({
               />
             </PadSection>
 
-            <PadSection
-              icon={<MessageSquare className="h-4 w-4" />}
-              title="Advices"
-              collapsed={collapsed.advices}
-              onToggle={() => toggleSection('advices')}
-              color="text-primary-container"
-            >
-              <AdvicesSection form={form} />
-            </PadSection>
-
             <FollowUpSection form={form} />
 
             <PadSection
@@ -672,100 +651,6 @@ function PadSection({
   );
 }
 
-// ═══════════════════════════════════════════════════════════
-// Vitals (read-only, recorded by nursing team)
-// ═══════════════════════════════════════════════════════════
-//
-// Doctors cannot record or correct vitals from the prescription pad. The
-// section now renders the latest nurse-recorded reading. If the doctor wants
-// a fresh measurement, they ask the assigned nurse to capture it from the
-// nursing module.
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function VitalsReadOnlyDisplay({ vital }: { vital: any | null }) {
-  if (!vital) {
-    return (
-      <div className="flex items-start gap-2 rounded-lg border border-dashed border-outline-variant/60 bg-muted/30 px-3 py-2.5">
-        <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <p className="text-xs text-muted-foreground">
-          No vitals on record. Vitals are recorded by the nursing team — ask the assigned nurse to
-          capture them from the Nursing module before completing this consultation.
-        </p>
-      </div>
-    );
-  }
-
-  const recorder = vital.recorder as { firstName?: string; lastName?: string } | undefined;
-  const recorderName = recorder
-    ? [recorder.firstName, recorder.lastName].filter(Boolean).join(' ').trim() || 'Nurse'
-    : 'Nursing team';
-
-  const heightCm = Number(vital.heightCm ?? vital.height) || 0;
-  const weightKg = Number(vital.weightKg ?? vital.weight) || 0;
-  const bmi =
-    heightCm > 0 && weightKg > 0
-      ? (weightKg / Math.pow(heightCm / 100, 2)).toFixed(1)
-      : null;
-
-  const tiles = [
-    {
-      label: 'BP',
-      value:
-        vital.bloodPressureSystolic && vital.bloodPressureDiastolic
-          ? `${vital.bloodPressureSystolic}/${vital.bloodPressureDiastolic}`
-          : null,
-      unit: 'mmHg',
-    },
-    { label: 'Pulse', value: vital.pulseRate ?? vital.heartRate ?? null, unit: 'bpm' },
-    { label: 'Temp', value: vital.temperature ?? null, unit: '°C' },
-    { label: 'SpO₂', value: vital.oxygenSaturation ?? null, unit: '%' },
-    { label: 'RR', value: vital.respiratoryRate ?? null, unit: '/min' },
-    { label: 'Weight', value: weightKg > 0 ? weightKg : null, unit: 'kg' },
-    { label: 'Height', value: heightCm > 0 ? heightCm : null, unit: 'cm' },
-    { label: 'BMI', value: bmi, unit: 'kg/m²' },
-    { label: 'BGL', value: vital.bloodSugar ?? null, unit: 'mg/dL' },
-  ].filter((t) => t.value !== null && t.value !== undefined && t.value !== '');
-
-  if (tiles.length === 0) {
-    return (
-      <p className="text-xs text-muted-foreground">
-        The latest reading has no numeric values on file.
-      </p>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-outline-variant/40 bg-muted/40 p-3">
-        {tiles.map((t) => (
-          <div
-            key={t.label}
-            className="flex items-baseline gap-1 rounded-md bg-background/70 px-2.5 py-1.5"
-          >
-            <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
-              {t.label}
-            </span>
-            <span className="text-sm font-bold">{String(t.value)}</span>
-            <span className="text-[10px] text-muted-foreground">{t.unit}</span>
-          </div>
-        ))}
-      </div>
-      <p className="text-[11px] text-muted-foreground flex items-center gap-1">
-        <Lock className="h-3 w-3" />
-        Recorded by {recorderName}
-        {vital.recordedAt
-          ? ` · ${new Date(vital.recordedAt).toLocaleString('en-IN', {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-            })}`
-          : ''}
-      </p>
-    </div>
-  );
-}
 
 // ═══════════════════════════════════════════════════════════
 // Diagnosis Section (with ICD-10 badge)
@@ -1039,26 +924,6 @@ function MedRow({ index, med, patientId, onUpdate, onRemove }: {
           </Button>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════
-// Advices Section (preset checkboxes + rich text)
-// ═══════════════════════════════════════════════════════════
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function AdvicesSection({ form }: { form: any }) {
-  const { register } = form;
-
-  return (
-    <div className="space-y-3">
-      <textarea
-        {...register('advice')}
-        placeholder="Add custom advice..."
-        rows={3}
-        className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-y"
-      />
     </div>
   );
 }

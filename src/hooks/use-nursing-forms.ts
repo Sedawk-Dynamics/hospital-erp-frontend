@@ -215,6 +215,7 @@ function invalidateForPatient(qc: ReturnType<typeof useQueryClient>, patientId?:
 export interface CreateAdmissionAssessmentInput {
   visitId?: string;
   admissionId?: string;
+  appointmentId?: string;
   patientId: string;
   arrivalMode?: ArrivalMode;
   consciousnessLevel?: ConsciousnessLevel;
@@ -249,6 +250,7 @@ export function useCreateAdmissionAssessment() {
 export interface CreatePainInput {
   visitId?: string;
   admissionId?: string;
+  appointmentId?: string;
   patientId: string;
   painScore: number;
   painScale?: PainScale;
@@ -277,6 +279,7 @@ export function useCreatePainAssessment() {
 export interface CreateFallRiskInput {
   visitId?: string;
   admissionId?: string;
+  appointmentId?: string;
   patientId: string;
   historyOfFalling: 0 | 25;
   secondaryDiagnosis: 0 | 15;
@@ -303,6 +306,7 @@ export function useCreateFallRisk() {
 export interface CreateIntakeOutputInput {
   visitId?: string;
   admissionId?: string;
+  appointmentId?: string;
   patientId: string;
   recordDatetime: string;
   entryType: IOEntryType;
@@ -327,6 +331,7 @@ export function useCreateIntakeOutput() {
 export interface CreateWoundCareInput {
   visitId?: string;
   admissionId?: string;
+  appointmentId?: string;
   patientId: string;
   woundLocation: string;
   woundType?: WoundType;
@@ -359,6 +364,7 @@ export interface CreateNursingNoteInput {
   visitId?: string;
   patientId: string;
   admissionId?: string;
+  appointmentId?: string;
   noteType?: NursingNoteType;
   content: string;
   metadata?: Record<string, unknown>;

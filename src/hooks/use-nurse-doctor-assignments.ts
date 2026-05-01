@@ -44,8 +44,21 @@ export interface MyDoctorEntry {
 }
 
 export interface MyPatientRecord {
-  recordType: 'admission' | 'visit';
+  // 'admission' = IPD admission row.
+  // 'appointment' = OPD appointment row that front-desk has confirmed (status
+  //   one of confirmed | checked_in | waiting | in_consultation). The OPD list
+  //   no longer surfaces raw Visit rows; visits are derived from appointments.
+  recordType: 'admission' | 'appointment';
   id: string;
+  /** Set when recordType='appointment'. Same value as `id` in that case. */
+  appointmentId?: string;
+  /**
+   * The current visit for the appointment, if one already exists. Forms +
+   * vitals creation requires a visitId — when this is null, the nurse UI
+   * should pass appointmentId to the creation endpoint so the server can
+   * resolve / create the visit.
+   */
+  visitId?: string | null;
   patientId: string;
   patient: {
     id: string;
@@ -65,7 +78,8 @@ export interface MyPatientRecord {
   status: string;
   admissionDate?: string;
   dischargeDate?: string | null;
-  visitDate?: string;
+  appointmentDate?: string;
+  startTime?: string;
   visitType?: 'op' | 'ip';
 }
 
@@ -73,6 +87,8 @@ export interface MyPatientsQuery {
   status?: 'admitted' | 'discharged' | 'all';
   type?: 'ip' | 'op' | 'all';
   search?: string;
+  /** OPD only — defaults to today on the server. yyyy-MM-dd. */
+  date?: string;
   page?: number;
   limit?: number;
 }

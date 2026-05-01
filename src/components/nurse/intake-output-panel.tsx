@@ -305,7 +305,7 @@ function EntryForm({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
         <Field label="Category *">
-          <Select value={category || undefined} onValueChange={(v) => setCategory((v ?? '') as IOCategory | '')}>
+          <Select value={category || null} onValueChange={(v) => setCategory((v ?? '') as IOCategory | '')}>
             <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
             <SelectContent>
               {categories.map((c) => (
@@ -340,7 +340,7 @@ function EntryForm({
 
         {entryType === 'intake' && category === 'iv_fluid' && ivLineOptions.length > 0 && (
           <Field label="IV Line (optional)">
-            <Select value={ivLineId || undefined} onValueChange={(v) => setIvLineId(v ?? '')}>
+            <Select value={ivLineId || null} onValueChange={(v) => setIvLineId(v ?? '')}>
               <SelectTrigger><SelectValue placeholder="Link to IV line" /></SelectTrigger>
               <SelectContent>
                 {ivLineOptions.map((l) => (

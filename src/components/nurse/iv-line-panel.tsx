@@ -143,7 +143,7 @@ export function IvLinePanel({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
           <Field label="Line Type *">
-            <Select value={form.lineType || undefined} onValueChange={(v) => update('lineType', (v ?? '') as IVLineType | '')}>
+            <Select value={form.lineType || null} onValueChange={(v) => update('lineType', (v ?? '') as IVLineType | '')}>
               <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
               <SelectContent>
                 {LINE_TYPES.map((t) => (
@@ -417,7 +417,7 @@ function RemoveLineDialog({ line }: { line: IVLineRecord }) {
             <label className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant mb-1 block">
               Removal Reason *
             </label>
-            <Select value={reason || undefined} onValueChange={(v) => setReason((v ?? '') as IVRemovalReason | '')}>
+            <Select value={reason || null} onValueChange={(v) => setReason((v ?? '') as IVRemovalReason | '')}>
               <SelectTrigger><SelectValue placeholder="Select reason" /></SelectTrigger>
               <SelectContent>
                 {REMOVAL_REASONS.map((r) => (
