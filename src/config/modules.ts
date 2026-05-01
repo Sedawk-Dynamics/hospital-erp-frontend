@@ -200,6 +200,7 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Dashboard', href: '/nurse', icon: Home },
       { label: 'Clinical Charting', href: '/nurse/charting', icon: ClipboardList },
       { label: 'eMAR', href: '/nurse/emar', icon: PillBottle },
+      { label: 'Patient Forms', href: '/nurse/forms', icon: FileText },
       { label: 'Shift Handover', href: '/nurse/handover', icon: ArrowRightLeft },
       { label: 'Orders & Ward', href: '/nurse/orders', icon: ClipboardCheck },
       { label: 'Settings', href: '/nurse/settings', icon: Settings },

@@ -55,6 +55,7 @@ import { AmendmentHistoryDialog } from '@/components/doctor/progress-notes-amend
 import { cn } from '@/lib/utils';
 import { usePatientDetail, useProgressNotes } from '@/hooks/use-doctor';
 import { useLatestVitals as useLatestVitalsNurse } from '@/hooks/use-nurse';
+import { NursingFormsPanel } from '@/components/doctor/nursing-forms-panel';
 import type { Patient, Appointment } from '@/types';
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -551,6 +552,9 @@ export default function PatientConsultationPage({
           </div>
           <VitalsStrip patientId={patient.id} />
         </section>
+
+        {/* Nursing Forms — read-only summary captured by the nursing team */}
+        <NursingFormsPanel patientId={patient.id} />
 
         {/* Clinical Record quick cards */}
         <section>
