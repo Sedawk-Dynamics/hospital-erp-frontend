@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useCallback } from 'react';
-import { toInputDateStr, formatDate, formatTime } from '@/lib/date-utils';
+import { toInputDateStr, formatTime, formatDateTime } from '@/lib/date-utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -22,20 +22,30 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { useAuthStore } from '@/stores/auth-store';
 import {
   useNurseAdmissions,
   useActivePrescriptions,
-  useAdministrationRecords,
-  useRecordAdministration,
   useDrugInteractions,
   type NurseAdmission,
   type Prescription,
-  type AdministrationRecord,
-  type InteractionCheckResult,
   type InteractionPair,
   type InteractionSeverity,
+  type InteractionCheckResult,
 } from '@/hooks/use-nurse';
+import {
+  useEmarSchedules,
+  useEmarTimeSlots,
+  useGiveDose,
+  useHoldDose,
+  useRefuseDose,
+  useAmendDose,
+  useTriggerPrn,
+  useRegenerateSchedules,
+  useEmarAudit,
+  type EmarSchedule,
+  type EmarDoseStatus,
+} from '@/hooks/use-emar';
+import Link from 'next/link';
 import {
   AlertTriangle,
   Check,
@@ -50,145 +60,80 @@ import {
   Ban,
   RefreshCw,
   Info,
+  History,
+  Edit3,
+  CheckCircle2,
+  AlertCircle,
+  Settings as SettingsIcon,
 } from 'lucide-react';
 
-// ── Constants ────────────────────────────────────────────────
+// ── Status presentation ──────────────────────────────────────
 
-const TIME_SLOTS = [
-  { label: '6 AM', hour: 6 },
-  { label: '8 AM', hour: 8 },
-  { label: '10 AM', hour: 10 },
-  { label: '12 PM', hour: 12 },
-  { label: '2 PM', hour: 14 },
-  { label: '4 PM', hour: 16 },
-  { label: '6 PM', hour: 18 },
-  { label: '8 PM', hour: 20 },
-  { label: '10 PM', hour: 22 },
-  { label: '12 AM', hour: 0 },
-] as const;
-
-const STATUS_OPTIONS = [
-  { value: 'administered', label: 'Administered', icon: Check, color: 'text-green-600' },
-  { value: 'missed', label: 'Missed', icon: X, color: 'text-red-600' },
-  { value: 'held', label: 'Held', icon: Pause, color: 'text-amber-600' },
-  { value: 'refused', label: 'Refused', icon: Ban, color: 'text-orange-600' },
-] as const;
-
-const CELL_STYLES: Record<string, string> = {
-  scheduled: 'bg-gray-100 text-gray-500 hover:bg-gray-200',
-  administered: 'bg-green-100 text-green-700',
-  missed: 'bg-red-100 text-red-700',
-  held: 'bg-amber-100 text-amber-700',
-  refused: 'bg-orange-100 text-orange-700',
+const STATUS_META: Record<EmarDoseStatus, {
+  label: string;
+  icon: typeof Check;
+  cellClass: string;
+  badgeClass: string;
+}> = {
+  pending:    { label: 'Pending',    icon: CircleDot,   cellClass: 'bg-gray-100 text-gray-600 hover:bg-gray-200',                badgeClass: 'bg-gray-100 text-gray-700' },
+  due:        { label: 'Due',        icon: Clock,       cellClass: 'bg-blue-100 text-blue-700 hover:bg-blue-200',                 badgeClass: 'bg-blue-100 text-blue-800' },
+  overdue:    { label: 'Overdue',    icon: AlertCircle, cellClass: 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200 ring-1 ring-yellow-400', badgeClass: 'bg-yellow-100 text-yellow-800' },
+  given:      { label: 'Given',      icon: Check,       cellClass: 'bg-green-100 text-green-700',                                 badgeClass: 'bg-green-100 text-green-800' },
+  given_late: { label: 'Given Late', icon: CheckCircle2,cellClass: 'bg-emerald-100 text-emerald-800 ring-1 ring-amber-400',       badgeClass: 'bg-emerald-100 text-emerald-800' },
+  missed:     { label: 'Missed',     icon: X,           cellClass: 'bg-red-100 text-red-700',                                     badgeClass: 'bg-red-100 text-red-800' },
+  held:       { label: 'Held',       icon: Pause,       cellClass: 'bg-amber-100 text-amber-800',                                 badgeClass: 'bg-amber-100 text-amber-800' },
+  refused:    { label: 'Refused',    icon: Ban,         cellClass: 'bg-orange-100 text-orange-800',                               badgeClass: 'bg-orange-100 text-orange-800' },
+  cancelled:  { label: 'Cancelled',  icon: X,           cellClass: 'bg-gray-100 text-gray-400 line-through',                      badgeClass: 'bg-gray-100 text-gray-500' },
 };
 
-const CELL_ICONS: Record<string, typeof Check> = {
-  scheduled: CircleDot,
-  administered: Check,
-  missed: X,
-  held: Pause,
-  refused: Ban,
-};
-
-const BADGE_STYLES: Record<string, string> = {
-  administered: 'bg-green-100 text-green-800',
-  missed: 'bg-red-100 text-red-800',
-  held: 'bg-amber-100 text-amber-800',
-  refused: 'bg-orange-100 text-orange-800',
-  scheduled: 'bg-gray-100 text-gray-700',
-};
-
-/** Map frequency strings to the hour slots the dose is expected */
-function frequencyToSlotHours(frequency: string): number[] {
-  const f = frequency.toLowerCase().replace(/\s+/g, ' ').trim();
-  if (f.includes('once daily') || f === 'od' || f === 'qd') return [8];
-  if (f.includes('twice') || f === 'bd' || f === 'bid') return [8, 20];
-  if (f.includes('thrice') || f === 'tid' || f === 'tds') return [8, 14, 22];
-  if (f.includes('four') || f === 'qid' || f === 'qds') return [6, 12, 18, 0];
-  if (f.includes('every 4') || f === 'q4h') return [6, 10, 14, 18, 22];
-  if (f.includes('every 6') || f === 'q6h') return [6, 12, 18, 0];
-  if (f.includes('every 8') || f === 'q8h') return [6, 14, 22];
-  if (f.includes('every 12') || f === 'q12h') return [8, 20];
-  if (f.includes('morning') || f.includes('am') || f === 'mane') return [8];
-  if (f.includes('night') || f.includes('bedtime') || f === 'hs' || f === 'nocte') return [22];
-  if (f.includes('stat')) return []; // one-time, no recurring slots
-  if (f.includes('prn') || f.includes('as needed') || f.includes('sos')) return []; // PRN
-  return [8]; // fallback: once daily
-}
-
-function isPRN(frequency: string): boolean {
-  const f = frequency.toLowerCase();
-  return f.includes('prn') || f.includes('as needed') || f.includes('sos') || f.includes('when required');
-}
+const ACTIONABLE: EmarDoseStatus[] = ['pending', 'due', 'overdue'];
 
 function nowTimeStr(): string {
   const d = new Date();
-  const h = d.getHours().toString().padStart(2, '0');
-  const m = d.getMinutes().toString().padStart(2, '0');
-  return `${h}:${m}`;
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-// ── Types ────────────────────────────────────────────────────
-
-interface ScheduleCell {
-  hour: number;
-  status: 'scheduled' | 'administered' | 'missed' | 'held' | 'refused' | 'none';
-  administrationId?: string;
-  administeredTime?: string;
-  reason?: string;
-  notes?: string;
+function nowIso(): string {
+  return new Date().toISOString();
 }
 
-interface DrugRow {
-  prescriptionId: string;
-  prescriptionItemId: string;
-  drugName: string;
-  genericName?: string;
-  dosage: string;
-  frequency: string;
-  route?: string;
-  instructions?: string;
-  isPRN: boolean;
-  interactions?: string[];
-  cells: ScheduleCell[];
-  lastAdminTime?: string;
+function buildIso(dateStr: string, timeStr: string): string {
+  return new Date(`${dateStr}T${timeStr}:00`).toISOString();
 }
 
-interface AdminDialogState {
-  open: boolean;
-  drugRow: DrugRow | null;
-  cell: ScheduleCell | null;
-  slotIndex: number;
-}
-
-// ── Page Component ───────────────────────────────────────────
+// ── Page component ───────────────────────────────────────────
 
 export default function EmarPage() {
-  const user = useAuthStore((s) => s.user);
-
-  // Selection state
   const [selectedAdmissionId, setSelectedAdmissionId] = useState('');
   const [selectedDate, setSelectedDate] = useState(toInputDateStr());
 
-  // Administration dialog
-  const [adminDialog, setAdminDialog] = useState<AdminDialogState>({
-    open: false,
-    drugRow: null,
-    cell: null,
-    slotIndex: -1,
-  });
-  const [adminStatus, setAdminStatus] = useState<'administered' | 'missed' | 'held' | 'refused'>('administered');
-  const [adminTime, setAdminTime] = useState(nowTimeStr());
-  const [adminReason, setAdminReason] = useState('');
-  const [adminNotes, setAdminNotes] = useState('');
+  // Action dialog state
+  type ActionMode = 'give' | 'hold' | 'refuse' | 'missed' | 'amend';
+  const [actionDialog, setActionDialog] = useState<{
+    open: boolean;
+    mode: ActionMode;
+    schedule: EmarSchedule | null;
+  }>({ open: false, mode: 'give', schedule: null });
 
-  // PRN dialog
-  const [prnDialogOpen, setPrnDialogOpen] = useState(false);
-  const [prnDrug, setPrnDrug] = useState<DrugRow | null>(null);
+  const [actualGivenTime, setActualGivenTime] = useState(nowTimeStr());
+  const [actionReason, setActionReason] = useState('');
+  const [actionNotes, setActionNotes] = useState('');
+  const [amendTargetStatus, setAmendTargetStatus] = useState<'given_late' | 'given' | 'missed' | 'held' | 'refused'>('given_late');
+
+  // PRN dialog state
+  const [prnDialog, setPrnDialog] = useState<{ open: boolean; itemId: string; drugName: string; dosage: string; frequency: string }>({
+    open: false, itemId: '', drugName: '', dosage: '', frequency: '',
+  });
   const [prnTime, setPrnTime] = useState(nowTimeStr());
   const [prnNotes, setPrnNotes] = useState('');
 
-  // ── Data fetching ────────────────────────────────────────
+  // Audit drawer
+  const [auditScheduleId, setAuditScheduleId] = useState<string | null>(null);
+
+  // Interaction detail
+  const [interactionDialog, setInteractionDialog] = useState<{ drugName: string; pairs: InteractionPair[] } | null>(null);
+
+  // ── Data ────────────────────────────────────────────────
   const { data: admissionsRaw, isLoading: admissionsLoading } = useNurseAdmissions({
     status: 'admitted',
     limit: 200,
@@ -197,17 +142,35 @@ export default function EmarPage() {
     if (!admissionsRaw) return [];
     return Array.isArray(admissionsRaw) ? admissionsRaw : (admissionsRaw as any).data ?? [];
   }, [admissionsRaw]);
-
   const selectedAdmission = useMemo(
     () => admissions.find((a) => a.id === selectedAdmissionId),
     [admissions, selectedAdmissionId],
   );
-
   const patientId = selectedAdmission?.patientId ?? '';
   const allergies = selectedAdmission?.patient?.allergies ?? [];
 
-  const { data: prescriptionsRaw, isLoading: prescriptionsLoading } = useActivePrescriptions({
-    // admissionId scopes to the current admission; patientId is fallback for tests/older data.
+  const { data: timeSlotsRaw } = useEmarTimeSlots();
+  const timeSlots = useMemo(() => {
+    if (!timeSlotsRaw) return [];
+    const arr = Array.isArray(timeSlotsRaw) ? timeSlotsRaw : (timeSlotsRaw as any).data ?? [];
+    return arr.filter((s: any) => s.isActive);
+  }, [timeSlotsRaw]);
+
+  const dayStart = `${selectedDate}T00:00:00.000Z`;
+  const dayEnd = `${selectedDate}T23:59:59.999Z`;
+
+  const { data: schedulesRaw, isLoading: schedulesLoading } = useEmarSchedules({
+    admissionId: selectedAdmissionId || undefined,
+    fromDate: dayStart,
+    toDate: dayEnd,
+    limit: 500,
+  });
+  const schedules: EmarSchedule[] = useMemo(() => {
+    if (!schedulesRaw) return [];
+    return Array.isArray(schedulesRaw) ? schedulesRaw : (schedulesRaw as any).data ?? [];
+  }, [schedulesRaw]);
+
+  const { data: prescriptionsRaw } = useActivePrescriptions({
     admissionId: selectedAdmissionId || undefined,
     patientId: !selectedAdmissionId ? patientId || undefined : undefined,
     prescriptionType: 'ip',
@@ -218,264 +181,239 @@ export default function EmarPage() {
     return Array.isArray(prescriptionsRaw) ? prescriptionsRaw : (prescriptionsRaw as any).data ?? [];
   }, [prescriptionsRaw]);
 
-  const { data: adminRecordsRaw, isLoading: adminRecordsLoading } = useAdministrationRecords({
-    patientId: patientId || undefined,
-    fromDate: selectedDate,
-    toDate: selectedDate,
-  });
-  const adminRecords: AdministrationRecord[] = useMemo(() => {
-    if (!adminRecordsRaw) return [];
-    return Array.isArray(adminRecordsRaw) ? adminRecordsRaw : (adminRecordsRaw as any).data ?? [];
-  }, [adminRecordsRaw]);
-
-  const recordAdmin = useRecordAdministration();
-
-  // ── Drug Interaction Check ────────────────────────────────
-  // Collect unique drug names across all prescription items → query once per set.
-  const allDrugNames = useMemo(() => {
-    const names = new Set<string>();
+  // PRN items come from the prescription, not from generated schedules
+  const prnItems = useMemo(() => {
+    const out: Array<{ prescriptionId: string; itemId: string; drugName: string; dosage: string; frequency: string; route?: string; instructions?: string }> = [];
     for (const rx of prescriptions) {
       for (const item of rx.items) {
-        if (item.drugName) names.add(item.drugName);
+        if (item.isPrn) {
+          out.push({
+            prescriptionId: rx.id,
+            itemId: item.id ?? '',
+            drugName: item.drugName,
+            dosage: item.dosage,
+            frequency: item.frequency,
+            route: item.route,
+            instructions: item.instructions,
+          });
+        }
       }
     }
-    return Array.from(names);
+    return out;
   }, [prescriptions]);
 
+  // ── Drug interactions ───────────────────────────────────
+  const allDrugNames = useMemo(() => {
+    const set = new Set<string>();
+    for (const rx of prescriptions) for (const item of rx.items) if (item.drugName) set.add(item.drugName);
+    return Array.from(set);
+  }, [prescriptions]);
   const { data: interactionsData } = useDrugInteractions(allDrugNames);
-  const interactions: InteractionCheckResult | undefined = interactionsData?.data;
-
-  // Build a drug → [pairs involving that drug] map for quick row-level lookup.
+  const interactions: InteractionCheckResult | undefined = (interactionsData as any)?.data;
   const interactionsByDrug = useMemo(() => {
     const map = new Map<string, InteractionPair[]>();
     if (!interactions?.pairs) return map;
     for (const pair of interactions.pairs) {
       for (const d of pair.drugs) {
-        const key = d.toLowerCase().trim();
-        const existing = map.get(key) ?? [];
-        existing.push(pair);
-        map.set(key, existing);
+        const k = d.toLowerCase().trim();
+        const prev = map.get(k) ?? [];
+        prev.push(pair);
+        map.set(k, prev);
       }
     }
     return map;
   }, [interactions]);
 
-  const contraindicationsByDrug = useMemo(() => {
-    const map = new Map<string, string>();
-    if (!interactions?.perDrug) return map;
-    for (const entry of interactions.perDrug) {
-      if (entry.contraindications) {
-        map.set(entry.drugName.toLowerCase().trim(), entry.contraindications);
-      }
-    }
-    return map;
-  }, [interactions]);
-
-  // Interaction detail dialog state
-  const [interactionDialog, setInteractionDialog] = useState<{
+  // ── Group schedules into rows by drug ───────────────────
+  type DrugRow = {
+    prescriptionItemId: string;
     drugName: string;
-    pairs: InteractionPair[];
-    contraindications?: string;
-  } | null>(null);
-
-  const openInteractionDialog = useCallback(
-    (drugName: string) => {
-      const pairs = interactionsByDrug.get(drugName.toLowerCase().trim()) ?? [];
-      const contraindications = contraindicationsByDrug.get(drugName.toLowerCase().trim());
-      setInteractionDialog({ drugName, pairs, contraindications });
-    },
-    [interactionsByDrug, contraindicationsByDrug],
-  );
-
-  // ── Build drug rows ──────────────────────────────────────
-  const { regularDrugs, prnDrugs } = useMemo(() => {
-    const regular: DrugRow[] = [];
-    const prn: DrugRow[] = [];
-
-    for (const rx of prescriptions) {
-      for (const item of rx.items) {
-        const itemId = item.id ?? `${rx.id}-${item.drugName}`;
-        const prn_ = isPRN(item.frequency);
-        const slotHours = prn_ ? [] : frequencyToSlotHours(item.frequency);
-
-        // Build cells for this drug across time slots
-        const cells: ScheduleCell[] = TIME_SLOTS.map((slot) => {
-          const isScheduled = slotHours.includes(slot.hour);
-          if (!isScheduled) {
-            return { hour: slot.hour, status: 'none' as const };
-          }
-          // Find matching admin record
-          const record = adminRecords.find(
-            (r) =>
-              r.prescriptionId === rx.id &&
-              (r.prescriptionItemId === itemId || r.drugName === item.drugName) &&
-              matchHour(r.scheduledTime, slot.hour),
-          );
-          if (record) {
-            return {
-              hour: slot.hour,
-              status: record.status,
-              administrationId: record.id,
-              administeredTime: record.administeredTime,
-              reason: record.reason,
-              notes: record.notes,
-            };
-          }
-          return { hour: slot.hour, status: 'scheduled' as const };
-        });
-
-        // For PRN, find last administration time
-        const prnRecords = prn_
-          ? adminRecords
-              .filter((r) => r.prescriptionId === rx.id && (r.prescriptionItemId === itemId || r.drugName === item.drugName))
-              .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-          : [];
-
-        const pairsForDrug = interactionsByDrug.get(item.drugName.toLowerCase().trim()) ?? [];
-        const row: DrugRow = {
-          prescriptionId: rx.id,
-          prescriptionItemId: itemId,
-          drugName: item.drugName,
-          genericName: item.genericName,
-          dosage: item.dosage,
-          frequency: item.frequency,
-          route: item.route,
-          instructions: item.instructions,
-          isPRN: prn_,
-          interactions: pairsForDrug.map((p) => {
-            const other = p.drugs.find((d) => d.toLowerCase().trim() !== item.drugName.toLowerCase().trim()) ?? '';
-            return `${other} — ${p.severity}`;
-          }),
-          cells,
-          lastAdminTime: prnRecords.length > 0 ? prnRecords[0].administeredTime ?? prnRecords[0].createdAt : undefined,
+    dosage: string;
+    route: string;
+    frequency: string;
+    instructions?: string;
+    isPrn: boolean;
+    cellsBySlot: Map<string, EmarSchedule[]>;          // slotCode → schedules at that slot
+    untimed: EmarSchedule[];                            // schedules with no slotCode (interval/once)
+    interactions: InteractionPair[];
+  };
+  const drugRows: DrugRow[] = useMemo(() => {
+    const byItem = new Map<string, DrugRow>();
+    for (const s of schedules) {
+      if (s.isPrn) continue;
+      const key = s.prescriptionItemId;
+      let row = byItem.get(key);
+      if (!row) {
+        row = {
+          prescriptionItemId: s.prescriptionItemId,
+          drugName: s.drugName,
+          dosage: s.dosage,
+          route: s.route,
+          frequency: s.prescriptionItem?.frequency ?? s.frequencyCode ?? '',
+          instructions: s.prescriptionItem?.instructions ?? undefined,
+          isPrn: s.prescriptionItem?.isPrn ?? false,
+          cellsBySlot: new Map(),
+          untimed: [],
+          interactions: interactionsByDrug.get(s.drugName.toLowerCase().trim()) ?? [],
         };
-
-        if (prn_) {
-          prn.push(row);
-        } else {
-          regular.push(row);
-        }
+        byItem.set(key, row);
+      }
+      if (s.slotCode) {
+        const arr = row.cellsBySlot.get(s.slotCode) ?? [];
+        arr.push(s);
+        row.cellsBySlot.set(s.slotCode, arr);
+      } else {
+        row.untimed.push(s);
       }
     }
+    return Array.from(byItem.values()).sort((a, b) => a.drugName.localeCompare(b.drugName));
+  }, [schedules, interactionsByDrug]);
 
-    return { regularDrugs: regular, prnDrugs: prn };
-  }, [prescriptions, adminRecords, interactionsByDrug]);
+  // Stats
+  const stats = useMemo(() => {
+    let total = 0, given = 0, missed = 0, due = 0, overdue = 0, held = 0, refused = 0;
+    for (const s of schedules) {
+      if (s.status === 'cancelled') continue;
+      total++;
+      if (s.status === 'given' || s.status === 'given_late') given++;
+      else if (s.status === 'missed') missed++;
+      else if (s.status === 'due') due++;
+      else if (s.status === 'overdue') overdue++;
+      else if (s.status === 'held') held++;
+      else if (s.status === 'refused') refused++;
+    }
+    return { total, given, missed, due, overdue, held, refused };
+  }, [schedules]);
 
-  const isLoading = admissionsLoading || prescriptionsLoading || adminRecordsLoading;
+  // ── Mutations ───────────────────────────────────────────
+  const giveDose = useGiveDose();
+  const holdDose = useHoldDose();
+  const refuseDose = useRefuseDose();
+  const amendDose = useAmendDose();
+  const triggerPrn = useTriggerPrn();
+  const regenerate = useRegenerateSchedules();
 
-  // ── Handlers ─────────────────────────────────────────────
-  const openAdminDialog = useCallback(
-    (drug: DrugRow, cell: ScheduleCell, slotIndex: number) => {
-      if (cell.status === 'none') return;
-      setAdminDialog({ open: true, drugRow: drug, cell, slotIndex });
-      setAdminStatus(cell.status === 'scheduled' ? 'administered' : cell.status as any);
-      setAdminTime(cell.administeredTime ? formatTimeForInput(cell.administeredTime) : nowTimeStr());
-      setAdminReason(cell.reason ?? '');
-      setAdminNotes(cell.notes ?? '');
-    },
-    [],
-  );
-
-  const closeAdminDialog = useCallback(() => {
-    setAdminDialog({ open: false, drugRow: null, cell: null, slotIndex: -1 });
-    setAdminReason('');
-    setAdminNotes('');
+  // ── Handlers ────────────────────────────────────────────
+  const openActionDialog = useCallback((schedule: EmarSchedule, mode: ActionMode) => {
+    setActionDialog({ open: true, mode, schedule });
+    setActualGivenTime(nowTimeStr());
+    setActionReason(schedule.reason ?? '');
+    setActionNotes('');
+    setAmendTargetStatus('given_late');
   }, []);
 
-  const submitAdministration = useCallback(async () => {
-    const { drugRow, cell, slotIndex } = adminDialog;
-    if (!drugRow || !cell) return;
-    if ((adminStatus === 'missed' || adminStatus === 'held' || adminStatus === 'refused') && !adminReason.trim()) {
-      toast.error('Reason is required when status is missed, held, or refused.');
+  const closeActionDialog = useCallback(() => {
+    setActionDialog({ open: false, mode: 'give', schedule: null });
+    setActionReason('');
+    setActionNotes('');
+  }, []);
+
+  const submitAction = useCallback(async () => {
+    const { mode, schedule } = actionDialog;
+    if (!schedule) return;
+
+    const requiresReason = mode === 'hold' || mode === 'refuse';
+    if (requiresReason && !actionReason.trim()) {
+      toast.error('Reason is required.');
       return;
     }
 
-    const scheduledTime = buildISOFromDateAndHour(selectedDate, cell.hour);
-    const administeredTime =
-      adminStatus === 'administered' ? buildISOFromDateAndTime(selectedDate, adminTime) : undefined;
-
     try {
-      const statusMap: Record<string, 'given' | 'missed' | 'refused' | 'held'> = {
-        administered: 'given',
-        given: 'given',
-        missed: 'missed',
-        refused: 'refused',
-        held: 'held',
-      };
-      await recordAdmin.mutateAsync({
-        prescriptionItemId: drugRow.prescriptionItemId,
-        patientId,
-        administeredAt: administeredTime ?? scheduledTime,
-        doseGiven: drugRow.dosage,
-        status: statusMap[adminStatus] ?? 'given',
-        notes: [adminReason.trim(), adminNotes.trim()].filter(Boolean).join(' — ') || undefined,
-      });
-      toast.success(`${drugRow.drugName} marked as ${adminStatus}`);
-      closeAdminDialog();
-    } catch {
-      toast.error('Failed to record administration');
+      if (mode === 'give') {
+        const iso = buildIso(selectedDate, actualGivenTime);
+        await giveDose.mutateAsync({ id: schedule.id, actualGivenTime: iso, notes: actionNotes.trim() || undefined });
+        toast.success(`${schedule.drugName} marked as given`);
+      } else if (mode === 'hold') {
+        await holdDose.mutateAsync({ id: schedule.id, reason: actionReason.trim(), notes: actionNotes.trim() || undefined });
+        toast.success(`${schedule.drugName} held`);
+      } else if (mode === 'refuse') {
+        await refuseDose.mutateAsync({ id: schedule.id, reason: actionReason.trim(), notes: actionNotes.trim() || undefined });
+        toast.success(`${schedule.drugName} marked as refused`);
+      } else if (mode === 'amend') {
+        const iso = (amendTargetStatus === 'given' || amendTargetStatus === 'given_late')
+          ? buildIso(selectedDate, actualGivenTime)
+          : undefined;
+        await amendDose.mutateAsync({
+          id: schedule.id,
+          toStatus: amendTargetStatus,
+          actualGivenTime: iso,
+          reason: actionReason.trim() || undefined,
+          notes: actionNotes.trim() || undefined,
+        });
+        toast.success(`${schedule.drugName} amended → ${amendTargetStatus}`);
+      }
+      closeActionDialog();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Action failed');
     }
-  }, [adminDialog, adminStatus, adminTime, adminReason, adminNotes, selectedDate, patientId, recordAdmin, closeAdminDialog]);
+  }, [actionDialog, actionReason, actionNotes, actualGivenTime, amendTargetStatus, selectedDate, giveDose, holdDose, refuseDose, amendDose, closeActionDialog]);
 
-  const openPrnDialog = useCallback((drug: DrugRow) => {
-    setPrnDrug(drug);
-    setPrnTime(nowTimeStr());
-    setPrnNotes('');
-    setPrnDialogOpen(true);
-  }, []);
-
-  const submitPrnAdmin = useCallback(async () => {
-    if (!prnDrug) return;
-    const administeredTime = buildISOFromDateAndTime(selectedDate, prnTime);
+  const submitPrn = useCallback(async () => {
+    if (!prnDialog.itemId) return;
     try {
-      await recordAdmin.mutateAsync({
-        prescriptionItemId: prnDrug.prescriptionItemId,
-        patientId,
-        administeredAt: administeredTime,
-        doseGiven: prnDrug.dosage,
-        status: 'given',
+      const iso = buildIso(selectedDate, prnTime);
+      await triggerPrn.mutateAsync({
+        prescriptionItemId: prnDialog.itemId,
+        actualGivenTime: iso,
         notes: prnNotes.trim() || undefined,
       });
-      toast.success(`PRN ${prnDrug.drugName} recorded`);
-      setPrnDialogOpen(false);
-      setPrnDrug(null);
-    } catch {
-      toast.error('Failed to record PRN administration');
+      toast.success(`${prnDialog.drugName} (PRN) recorded`);
+      setPrnDialog({ open: false, itemId: '', drugName: '', dosage: '', frequency: '' });
+      setPrnNotes('');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'PRN failed');
     }
-  }, [prnDrug, prnTime, prnNotes, selectedDate, patientId, recordAdmin]);
+  }, [prnDialog, prnTime, prnNotes, selectedDate, triggerPrn]);
 
-  // ── Summary stats ────────────────────────────────────────
-  const stats = useMemo(() => {
-    let total = 0;
-    let administered = 0;
-    let missed = 0;
-    let pending = 0;
-    for (const drug of regularDrugs) {
-      for (const cell of drug.cells) {
-        if (cell.status === 'none') continue;
-        total++;
-        if (cell.status === 'administered') administered++;
-        else if (cell.status === 'missed') missed++;
-        else if (cell.status === 'scheduled') pending++;
-      }
-    }
-    return { total, administered, missed, pending };
-  }, [regularDrugs]);
-
-  // ── Render ───────────────────────────────────────────────
+  // ── Render ──────────────────────────────────────────────
   return (
     <div className="space-y-4 animate-fade-in-up">
-      <h1 className="font-headline text-xl font-bold">eMAR — Medication Administration Record</h1>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="font-headline text-xl font-bold">eMAR — Medication Administration Record</h1>
+          <p className="text-xs text-on-surface-variant mt-0.5">
+            Dose-level execution: each scheduled dose is its own row, tracked independently.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {selectedAdmissionId && prescriptions.length > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 text-xs"
+              onClick={async () => {
+                try {
+                  let total = 0;
+                  for (const rx of prescriptions) {
+                    const r = await regenerate.mutateAsync({ prescriptionId: rx.id });
+                    total += (r as any)?.data?.rowsCreated ?? 0;
+                  }
+                  toast.success(`Regenerated ${total} dose row(s)`);
+                } catch {
+                  toast.error('Regenerate failed');
+                }
+              }}
+              disabled={regenerate.isPending}
+            >
+              {regenerate.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+              Regenerate doses
+            </Button>
+          )}
+          <Link href="/nurse/emar/settings">
+            <Button size="sm" variant="ghost" className="gap-1.5 text-xs">
+              <SettingsIcon className="h-3 w-3" />
+              Settings
+            </Button>
+          </Link>
+        </div>
+      </div>
 
-      {/* ── Patient Selector + Date ───────────────────────── */}
+      {/* Patient + Date */}
       <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4">
         <div className="flex flex-wrap items-end gap-4">
           <div className="flex-1 min-w-[240px]">
             <Label className="text-xs font-medium text-on-surface-variant mb-1 block">Admitted Patient</Label>
-            <Select
-              value={selectedAdmissionId}
-              onValueChange={(v) => setSelectedAdmissionId(v ?? '')}
-            >
+            <Select value={selectedAdmissionId} onValueChange={(v) => setSelectedAdmissionId(v ?? '')}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select patient..." />
               </SelectTrigger>
@@ -494,42 +432,26 @@ export default function EmarPage() {
           </div>
           <div className="w-44">
             <Label className="text-xs font-medium text-on-surface-variant mb-1 block">Date</Label>
-            <Input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="w-full"
-            />
-          </div>
-          <div className="text-xs text-on-surface-variant self-center">
-            {selectedDate && formatDate(selectedDate + 'T00:00:00')}
+            <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
           </div>
         </div>
       </div>
 
-      {/* ── Allergy Alert Banner ─────────────────────────── */}
+      {/* Allergy banner */}
       {selectedAdmissionId && allergies.length > 0 && (
         <div className="flex items-start gap-3 rounded-xl border-2 border-red-300 bg-red-50 px-4 py-3 shadow-sm">
           <ShieldAlert className="h-5 w-5 text-red-600 mt-0.5 shrink-0" />
           <div>
             <p className="text-sm font-bold text-red-800">Allergy Alert</p>
             <p className="text-xs text-red-700 mt-0.5">
-              Known allergies:{' '}
-              {allergies.map((a, i) => (
-                <span key={a}>
-                  <span className="font-semibold uppercase">{a}</span>
-                  {i < allergies.length - 1 && ', '}
-                </span>
-              ))}
+              Known allergies: <span className="font-bold uppercase">{allergies.join(', ')}</span>
             </p>
-            <p className="text-[10px] text-red-600 mt-1">
-              Verify all medications against patient allergy profile before administration.
-            </p>
+            <p className="text-[10px] text-red-600 mt-1">Verify all medications against patient allergy profile before administration.</p>
           </div>
         </div>
       )}
 
-      {/* ── Drug Interaction Banner ──────────────────────── */}
+      {/* Interactions banner */}
       {selectedAdmissionId && interactions && interactions.pairs.length > 0 && (
         <InteractionBanner result={interactions} />
       )}
@@ -543,112 +465,97 @@ export default function EmarPage() {
 
       {selectedAdmissionId && (
         <>
-          {/* ── Stats Row ─────────────────────────────────── */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <StatCard label="Total Doses" value={stats.total} color="text-on-surface" />
-            <StatCard label="Administered" value={stats.administered} color="text-green-700" />
+          {/* Stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+            <StatCard label="Total" value={stats.total} color="text-on-surface" />
+            <StatCard label="Given" value={stats.given} color="text-green-700" />
+            <StatCard label="Due" value={stats.due} color="text-blue-700" />
+            <StatCard label="Overdue" value={stats.overdue} color="text-yellow-700" />
             <StatCard label="Missed" value={stats.missed} color="text-red-700" />
-            <StatCard label="Pending" value={stats.pending} color="text-amber-700" />
+            <StatCard label="Held" value={stats.held} color="text-amber-700" />
+            <StatCard label="Refused" value={stats.refused} color="text-orange-700" />
           </div>
 
-          {/* ── Medication Schedule Grid ──────────────────── */}
+          {/* Schedule grid */}
           <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary">
             <div className="px-4 py-3 border-b border-outline-variant flex items-center justify-between">
-              <h2 className="font-headline text-sm font-bold">Medication Schedule</h2>
-              {isLoading && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
+              <h2 className="font-headline text-sm font-bold">Scheduled Medications</h2>
+              {schedulesLoading && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
             </div>
 
-            {regularDrugs.length === 0 && !isLoading ? (
+            {drugRows.length === 0 && !schedulesLoading ? (
               <div className="p-8 text-center text-sm text-on-surface-variant">
-                No scheduled medications found for this date.
+                No scheduled doses for this date. {prescriptions.length > 0 && 'If you just added a prescription, click "Regenerate doses" above.'}
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[900px]">
                   <thead>
                     <tr className="border-b border-outline-variant">
-                      <th className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant text-left px-4 py-2.5 w-[260px] sticky left-0 bg-surface-container-lowest z-10">
+                      <th className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant text-left px-4 py-2.5 w-[280px] sticky left-0 bg-surface-container-lowest z-10">
                         Medication
                       </th>
-                      {TIME_SLOTS.map((slot) => (
-                        <th
-                          key={slot.hour}
-                          className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant text-center px-1 py-2.5 w-[72px]"
-                        >
-                          {slot.label}
+                      {timeSlots.map((slot: any) => (
+                        <th key={slot.code} className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant text-center px-1 py-2.5 w-[80px]">
+                          <div>{slot.label}</div>
+                          <div className="text-[9px] text-on-surface-variant/70">{slot.time}</div>
                         </th>
                       ))}
+                      <th className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant text-center px-1 py-2.5 w-[120px]">
+                        Other doses
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {regularDrugs.map((drug) => (
-                      <tr
-                        key={`${drug.prescriptionId}-${drug.prescriptionItemId}`}
-                        className="border-b border-outline-variant/50 hover:bg-surface-container-low/40 transition-colors"
-                      >
+                    {drugRows.map((drug) => (
+                      <tr key={drug.prescriptionItemId} className="border-b border-outline-variant/50 hover:bg-surface-container-low/40 transition-colors">
                         <td className="px-4 py-2.5 sticky left-0 bg-surface-container-lowest z-10">
-                          <div className="flex items-start gap-2">
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="text-sm font-semibold text-on-surface truncate">
-                                  {drug.drugName}
-                                </span>
-                                {drug.interactions && drug.interactions.length > 0 && (
-                                  <button
-                                    type="button"
-                                    onClick={() => openInteractionDialog(drug.drugName)}
-                                    className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 hover:bg-orange-200 whitespace-nowrap"
-                                    title="View drug interactions"
-                                  >
-                                    <AlertTriangle className="h-2.5 w-2.5 inline -mt-0.5 mr-0.5" />
-                                    {drug.interactions.length} Interaction{drug.interactions.length !== 1 ? 's' : ''}
-                                  </button>
-                                )}
-                              </div>
-                              {drug.genericName && (
-                                <p className="text-[10px] text-on-surface-variant">{drug.genericName}</p>
-                              )}
-                              <p className="text-[10px] text-on-surface-variant mt-0.5">
-                                {drug.dosage} &middot; {drug.frequency}
-                                {drug.route ? ` &middot; ${drug.route}` : ''}
-                              </p>
-                              {drug.instructions && (
-                                <p className="text-[10px] text-on-surface-variant italic mt-0.5 truncate max-w-[220px]">
-                                  {drug.instructions}
-                                </p>
+                          <div className="flex flex-col min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-sm font-semibold text-on-surface truncate">{drug.drugName}</span>
+                              {drug.interactions.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setInteractionDialog({ drugName: drug.drugName, pairs: drug.interactions })}
+                                  className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 hover:bg-orange-200"
+                                >
+                                  <AlertTriangle className="h-2.5 w-2.5 inline -mt-0.5 mr-0.5" />
+                                  {drug.interactions.length} Interaction{drug.interactions.length !== 1 ? 's' : ''}
+                                </button>
                               )}
                             </div>
+                            <p className="text-[10px] text-on-surface-variant mt-0.5">
+                              {drug.dosage} &middot; {drug.frequency}
+                              {drug.route ? ` &middot; ${drug.route}` : ''}
+                            </p>
+                            {drug.instructions && (
+                              <p className="text-[10px] text-on-surface-variant italic mt-0.5 truncate max-w-[260px]">{drug.instructions}</p>
+                            )}
                           </div>
                         </td>
-                        {drug.cells.map((cell, idx) => (
-                          <td key={TIME_SLOTS[idx].hour} className="text-center px-1 py-2">
-                            {cell.status === 'none' ? (
+                        {timeSlots.map((slot: any) => {
+                          const cells = drug.cellsBySlot.get(slot.code) ?? [];
+                          return (
+                            <td key={slot.code} className="text-center px-1 py-2 align-top">
+                              <div className="flex flex-col items-center gap-1">
+                                {cells.length === 0 ? (
+                                  <span className="text-gray-200">&mdash;</span>
+                                ) : (
+                                  cells.map((c) => <DoseButton key={c.id} schedule={c} onClick={(m) => openActionDialog(c, m)} onAudit={(id) => setAuditScheduleId(id)} />)
+                                )}
+                              </div>
+                            </td>
+                          );
+                        })}
+                        <td className="text-center px-1 py-2 align-top">
+                          <div className="flex flex-col items-center gap-1">
+                            {drug.untimed.length === 0 ? (
                               <span className="text-gray-200">&mdash;</span>
                             ) : (
-                              <button
-                                type="button"
-                                onClick={() => openAdminDialog(drug, cell, idx)}
-                                className={cn(
-                                  'inline-flex items-center justify-center w-8 h-8 rounded-full transition-all',
-                                  'focus:outline-none focus:ring-2 focus:ring-primary/40',
-                                  CELL_STYLES[cell.status],
-                                  cell.status === 'scheduled' && 'cursor-pointer',
-                                  cell.status !== 'scheduled' && 'cursor-pointer opacity-90 hover:opacity-100',
-                                )}
-                                title={
-                                  cell.status === 'scheduled'
-                                    ? `Scheduled — click to record`
-                                    : `${cell.status}${cell.administeredTime ? ` at ${formatTime(cell.administeredTime)}` : ''}`
-                                }
-                              >
-                                {(() => {
-                                  const Icon = CELL_ICONS[cell.status];
-                                  return <Icon className="h-3.5 w-3.5" />;
-                                })()}
-                              </button>
+                              drug.untimed.map((c) => <DoseButton key={c.id} schedule={c} showTime onClick={(m) => openActionDialog(c, m)} onAudit={(id) => setAuditScheduleId(id)} />)
                             )}
-                          </td>
-                        ))}
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -657,323 +564,215 @@ export default function EmarPage() {
             )}
 
             {/* Legend */}
-            <div className="px-4 py-2.5 border-t border-outline-variant/50 flex flex-wrap gap-4">
-              {[
-                { status: 'scheduled', label: 'Scheduled' },
-                { status: 'administered', label: 'Administered' },
-                { status: 'missed', label: 'Missed' },
-                { status: 'held', label: 'Held' },
-                { status: 'refused', label: 'Refused' },
-              ].map(({ status, label }) => {
-                const Icon = CELL_ICONS[status];
+            <div className="px-4 py-2.5 border-t border-outline-variant/50 flex flex-wrap gap-3">
+              {(['pending', 'due', 'overdue', 'given', 'given_late', 'missed', 'held', 'refused'] as EmarDoseStatus[]).map((s) => {
+                const meta = STATUS_META[s];
+                const Icon = meta.icon;
                 return (
-                  <span key={status} className="inline-flex items-center gap-1.5 text-[10px] text-on-surface-variant">
-                    <span
-                      className={cn(
-                        'inline-flex items-center justify-center w-5 h-5 rounded-full',
-                        CELL_STYLES[status],
-                      )}
-                    >
+                  <span key={s} className="inline-flex items-center gap-1.5 text-[10px] text-on-surface-variant">
+                    <span className={cn('inline-flex items-center justify-center w-5 h-5 rounded-full', meta.cellClass)}>
                       <Icon className="h-2.5 w-2.5" />
                     </span>
-                    {label}
+                    {meta.label}
                   </span>
                 );
               })}
             </div>
           </div>
 
-          {/* ── PRN Medications ───────────────────────────── */}
+          {/* PRN section */}
           <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary">
             <div className="px-4 py-3 border-b border-outline-variant">
               <h2 className="font-headline text-sm font-bold">PRN Medications (As Needed)</h2>
+              <p className="text-[10px] text-on-surface-variant mt-0.5">
+                PRN doses are not pre-scheduled. The system enforces a minimum interval since the last administration.
+              </p>
             </div>
-
-            {prnDrugs.length === 0 ? (
-              <div className="p-6 text-center text-sm text-on-surface-variant">
-                No PRN medications prescribed.
-              </div>
+            {prnItems.length === 0 ? (
+              <div className="p-6 text-center text-sm text-on-surface-variant">No PRN orders.</div>
             ) : (
               <div className="divide-y divide-outline-variant/50">
-                {prnDrugs.map((drug) => (
-                  <div
-                    key={`${drug.prescriptionId}-${drug.prescriptionItemId}`}
-                    className="flex items-center justify-between px-4 py-3 hover:bg-surface-container-low/40 transition-colors"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-semibold text-on-surface">{drug.drugName}</span>
-                        {drug.interactions && drug.interactions.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => openInteractionDialog(drug.drugName)}
-                            className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 hover:bg-orange-200"
-                            title="View drug interactions"
-                          >
-                            <AlertTriangle className="h-2.5 w-2.5 inline -mt-0.5 mr-0.5" />
-                            {drug.interactions.length} Interaction{drug.interactions.length !== 1 ? 's' : ''}
-                          </button>
-                        )}
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
-                          PRN
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-on-surface-variant mt-0.5">
-                        {drug.dosage} &middot; {drug.frequency}
-                        {drug.route ? ` &middot; ${drug.route}` : ''}
-                      </p>
-                      {drug.instructions && (
-                        <p className="text-[10px] text-on-surface-variant italic mt-0.5">{drug.instructions}</p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3 shrink-0 ml-4">
-                      {drug.lastAdminTime && (
-                        <div className="text-right">
-                          <p className="text-[10px] text-on-surface-variant">Last given</p>
-                          <p className="text-xs font-medium text-on-surface">{formatTime(drug.lastAdminTime)}</p>
+                {prnItems.map((p) => {
+                  const lastPrn = schedules
+                    .filter((s) => s.isPrn && s.prescriptionItemId === p.itemId && (s.status === 'given' || s.status === 'given_late'))
+                    .sort((a, b) => new Date(b.actualGivenTime ?? b.createdAt ?? '').getTime() - new Date(a.actualGivenTime ?? a.createdAt ?? '').getTime())[0];
+                  return (
+                    <div key={p.itemId} className="flex items-center justify-between px-4 py-3 hover:bg-surface-container-low/40 transition-colors">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-semibold text-on-surface">{p.drugName}</span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">PRN</span>
                         </div>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1.5 text-xs"
-                        onClick={() => openPrnDialog(drug)}
-                      >
-                        <Plus className="h-3 w-3" />
-                        Record
-                      </Button>
+                        <p className="text-[10px] text-on-surface-variant mt-0.5">
+                          {p.dosage} &middot; {p.frequency}{p.route ? ` &middot; ${p.route}` : ''}
+                        </p>
+                        {p.instructions && <p className="text-[10px] text-on-surface-variant italic mt-0.5">{p.instructions}</p>}
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0 ml-4">
+                        {lastPrn && (
+                          <div className="text-right">
+                            <p className="text-[10px] text-on-surface-variant">Last given</p>
+                            <p className="text-xs font-medium text-on-surface">{formatTime(lastPrn.actualGivenTime ?? '')}</p>
+                          </div>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5 text-xs"
+                          onClick={() => {
+                            setPrnDialog({ open: true, itemId: p.itemId, drugName: p.drugName, dosage: p.dosage, frequency: p.frequency });
+                            setPrnTime(nowTimeStr());
+                            setPrnNotes('');
+                          }}
+                        >
+                          <Plus className="h-3 w-3" />
+                          Record
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
         </>
       )}
 
-      {/* ── Administration Dialog ─────────────────────────── */}
-      <Dialog open={adminDialog.open} onOpenChange={(open) => !open && closeAdminDialog()}>
+      {/* Action dialog */}
+      <Dialog open={actionDialog.open} onOpenChange={(open) => !open && closeActionDialog()}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Pill className="h-4 w-4 text-primary" />
-              Record Administration
+              {actionDialog.mode === 'give' && 'Give Dose'}
+              {actionDialog.mode === 'hold' && 'Hold Dose'}
+              {actionDialog.mode === 'refuse' && 'Refuse Dose'}
+              {actionDialog.mode === 'missed' && 'Mark Missed'}
+              {actionDialog.mode === 'amend' && 'Amend Dose'}
             </DialogTitle>
           </DialogHeader>
 
-          {adminDialog.drugRow && adminDialog.cell && (
+          {actionDialog.schedule && (
             <div className="space-y-4">
-              {/* Drug info */}
               <div className="rounded-lg bg-surface-container-low p-3 space-y-1">
-                <p className="text-sm font-semibold">{adminDialog.drugRow.drugName}</p>
+                <p className="text-sm font-semibold">{actionDialog.schedule.drugName}</p>
                 <p className="text-xs text-on-surface-variant">
-                  Dose: <span className="font-medium text-on-surface">{adminDialog.drugRow.dosage}</span>
-                  {adminDialog.drugRow.route && (
-                    <>
-                      {' '}&middot; Route: <span className="font-medium text-on-surface">{adminDialog.drugRow.route}</span>
-                    </>
+                  Dose: <span className="font-medium text-on-surface">{actionDialog.schedule.dosage}</span>
+                  {actionDialog.schedule.route && (
+                    <> &middot; Route: <span className="font-medium text-on-surface">{actionDialog.schedule.route}</span></>
                   )}
                 </p>
                 <p className="text-xs text-on-surface-variant">
-                  Scheduled: <span className="font-medium text-on-surface">{TIME_SLOTS[adminDialog.slotIndex]?.label}</span>
+                  Scheduled: <span className="font-medium text-on-surface">{formatDateTime(actionDialog.schedule.scheduledAt)}</span>
+                </p>
+                <p className="text-xs">
+                  Current status:{' '}
+                  <span className={cn('inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full', STATUS_META[actionDialog.schedule.status].badgeClass)}>
+                    {STATUS_META[actionDialog.schedule.status].label}
+                  </span>
                 </p>
               </div>
 
-              {/* Allergy warning within dialog */}
               {allergies.length > 0 && (
                 <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
                   <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                  <p className="text-[10px] text-amber-800">
-                    Patient allergies: <span className="font-bold">{allergies.join(', ')}</span>
+                  <p className="text-[10px] text-amber-800">Patient allergies: <span className="font-bold">{allergies.join(', ')}</span></p>
+                </div>
+              )}
+
+              {/* Amend mode: pick target status */}
+              {actionDialog.mode === 'amend' && (
+                <div>
+                  <Label className="text-xs font-medium mb-1.5 block">Amend to</Label>
+                  <Select value={amendTargetStatus} onValueChange={(v) => v && setAmendTargetStatus(v as any)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="given_late">Given Late (with delay)</SelectItem>
+                      <SelectItem value="given">Given (within grace)</SelectItem>
+                      <SelectItem value="missed">Missed</SelectItem>
+                      <SelectItem value="held">Held</SelectItem>
+                      <SelectItem value="refused">Refused</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-on-surface-variant mt-1">
+                    Delay (minutes) is calculated from <code className="text-[10px]">actual given time − scheduled time</code>, not from log entry time.
                   </p>
                 </div>
               )}
 
-              {/* Per-drug interaction warning in the administration dialog */}
-              {adminDialog.drugRow && adminDialog.drugRow.interactions && adminDialog.drugRow.interactions.length > 0 && (
-                <div className="flex items-start gap-2 rounded-lg bg-orange-50 border border-orange-200 px-3 py-2">
-                  <AlertTriangle className="h-3.5 w-3.5 text-orange-600 mt-0.5 shrink-0" />
-                  <div className="text-[10px] text-orange-800 flex-1">
-                    <p className="font-bold mb-0.5">Interactions detected</p>
-                    <ul className="space-y-0.5">
-                      {adminDialog.drugRow.interactions.map((s, i) => (
-                        <li key={i}>• {s}</li>
-                      ))}
-                    </ul>
-                    <button
-                      type="button"
-                      onClick={() => adminDialog.drugRow && openInteractionDialog(adminDialog.drugRow.drugName)}
-                      className="mt-1 underline font-semibold"
-                    >
-                      View details
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Status */}
-              <div>
-                <Label className="text-xs font-medium mb-1.5 block">Status</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {STATUS_OPTIONS.map((opt) => {
-                    const Icon = opt.icon;
-                    const selected = adminStatus === opt.value;
-                    return (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => setAdminStatus(opt.value as typeof adminStatus)}
-                        className={cn(
-                          'flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition-all',
-                          selected
-                            ? 'border-primary bg-primary/5 text-primary ring-1 ring-primary/30'
-                            : 'border-outline-variant text-on-surface-variant hover:bg-surface-container-low',
-                        )}
-                      >
-                        <Icon className={cn('h-3.5 w-3.5', selected ? 'text-primary' : opt.color)} />
-                        {opt.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Time */}
-              {adminStatus === 'administered' && (
+              {/* Time when give/amend-to-given */}
+              {(actionDialog.mode === 'give' ||
+                (actionDialog.mode === 'amend' && (amendTargetStatus === 'given' || amendTargetStatus === 'given_late'))) && (
                 <div>
-                  <Label className="text-xs font-medium mb-1.5 block">Time Administered</Label>
-                  <Input
-                    type="time"
-                    value={adminTime}
-                    onChange={(e) => setAdminTime(e.target.value)}
-                    className="w-40"
-                  />
+                  <Label className="text-xs font-medium mb-1.5 block">Actual time given</Label>
+                  <Input type="time" value={actualGivenTime} onChange={(e) => setActualGivenTime(e.target.value)} className="w-40" />
                 </div>
               )}
 
-              {/* Reason (required for non-administered) */}
-              {adminStatus !== 'administered' && (
+              {/* Reason */}
+              {(actionDialog.mode === 'hold' || actionDialog.mode === 'refuse' ||
+                (actionDialog.mode === 'amend' && (amendTargetStatus === 'held' || amendTargetStatus === 'refused'))) && (
                 <div>
                   <Label className="text-xs font-medium mb-1.5 block">
                     Reason <span className="text-red-500">*</span>
                   </Label>
-                  <Textarea
-                    placeholder={`Reason for ${adminStatus} status...`}
-                    value={adminReason}
-                    onChange={(e) => setAdminReason(e.target.value)}
-                    rows={2}
-                  />
+                  <Textarea value={actionReason} onChange={(e) => setActionReason(e.target.value)} rows={2} placeholder="Reason..." />
                 </div>
               )}
 
-              {/* Notes */}
               <div>
                 <Label className="text-xs font-medium mb-1.5 block">Notes</Label>
-                <Textarea
-                  placeholder="Optional notes..."
-                  value={adminNotes}
-                  onChange={(e) => setAdminNotes(e.target.value)}
-                  rows={2}
-                />
+                <Textarea value={actionNotes} onChange={(e) => setActionNotes(e.target.value)} rows={2} placeholder="Optional notes..." />
               </div>
             </div>
           )}
 
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" size="sm" onClick={closeAdminDialog}>
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              onClick={submitAdministration}
-              disabled={recordAdmin.isPending}
-              className="gap-1.5"
-            >
-              {recordAdmin.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            <Button variant="outline" size="sm" onClick={closeActionDialog}>Cancel</Button>
+            <Button size="sm" onClick={submitAction} disabled={giveDose.isPending || holdDose.isPending || refuseDose.isPending || amendDose.isPending} className="gap-1.5">
+              {(giveDose.isPending || holdDose.isPending || refuseDose.isPending || amendDose.isPending) && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               Confirm
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* ── PRN Administration Dialog ────────────────────── */}
-      <Dialog open={prnDialogOpen} onOpenChange={(open) => !open && setPrnDialogOpen(false)}>
+      {/* PRN dialog */}
+      <Dialog open={prnDialog.open} onOpenChange={(open) => !open && setPrnDialog({ ...prnDialog, open: false })}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Plus className="h-4 w-4 text-primary" />
-              Record PRN Administration
-            </DialogTitle>
+            <DialogTitle className="flex items-center gap-2"><Plus className="h-4 w-4 text-primary" />Record PRN Dose</DialogTitle>
           </DialogHeader>
-
-          {prnDrug && (
-            <div className="space-y-4">
-              <div className="rounded-lg bg-surface-container-low p-3 space-y-1">
-                <p className="text-sm font-semibold">{prnDrug.drugName}</p>
-                <p className="text-xs text-on-surface-variant">
-                  Dose: <span className="font-medium text-on-surface">{prnDrug.dosage}</span>
-                  {prnDrug.route && (
-                    <>
-                      {' '}&middot; Route: <span className="font-medium text-on-surface">{prnDrug.route}</span>
-                    </>
-                  )}
-                </p>
-                <p className="text-xs text-on-surface-variant">Frequency: {prnDrug.frequency}</p>
-              </div>
-
-              {allergies.length > 0 && (
-                <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
-                  <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                  <p className="text-[10px] text-amber-800">
-                    Patient allergies: <span className="font-bold">{allergies.join(', ')}</span>
-                  </p>
-                </div>
-              )}
-
-              <div>
-                <Label className="text-xs font-medium mb-1.5 block">Time Administered</Label>
-                <Input
-                  type="time"
-                  value={prnTime}
-                  onChange={(e) => setPrnTime(e.target.value)}
-                  className="w-40"
-                />
-              </div>
-
-              <div>
-                <Label className="text-xs font-medium mb-1.5 block">Notes</Label>
-                <Textarea
-                  placeholder="Reason for PRN administration, patient complaint, etc."
-                  value={prnNotes}
-                  onChange={(e) => setPrnNotes(e.target.value)}
-                  rows={3}
-                />
-              </div>
+          <div className="space-y-4">
+            <div className="rounded-lg bg-surface-container-low p-3 space-y-1">
+              <p className="text-sm font-semibold">{prnDialog.drugName}</p>
+              <p className="text-xs text-on-surface-variant">Dose: <span className="font-medium text-on-surface">{prnDialog.dosage}</span></p>
+              <p className="text-xs text-on-surface-variant">Frequency: {prnDialog.frequency}</p>
             </div>
-          )}
-
+            <div>
+              <Label className="text-xs font-medium mb-1.5 block">Time given</Label>
+              <Input type="time" value={prnTime} onChange={(e) => setPrnTime(e.target.value)} className="w-40" />
+            </div>
+            <div>
+              <Label className="text-xs font-medium mb-1.5 block">Notes</Label>
+              <Textarea rows={3} value={prnNotes} onChange={(e) => setPrnNotes(e.target.value)} placeholder="Reason for PRN dose, patient complaint, etc." />
+            </div>
+          </div>
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" size="sm" onClick={() => setPrnDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              onClick={submitPrnAdmin}
-              disabled={recordAdmin.isPending}
-              className="gap-1.5"
-            >
-              {recordAdmin.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            <Button variant="outline" size="sm" onClick={() => setPrnDialog({ ...prnDialog, open: false })}>Cancel</Button>
+            <Button size="sm" onClick={submitPrn} disabled={triggerPrn.isPending} className="gap-1.5">
+              {triggerPrn.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               Record
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* ── Drug Interaction Detail Dialog ────────────────── */}
-      <Dialog
-        open={!!interactionDialog}
-        onOpenChange={(open) => !open && setInteractionDialog(null)}
-      >
+      {/* Audit drawer */}
+      <AuditDialog scheduleId={auditScheduleId} onClose={() => setAuditScheduleId(null)} />
+
+      {/* Interaction dialog */}
+      <Dialog open={!!interactionDialog} onOpenChange={(open) => !open && setInteractionDialog(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -982,79 +781,144 @@ export default function EmarPage() {
             </DialogTitle>
           </DialogHeader>
           {interactionDialog && (
-            <div className="space-y-3 max-h-[60vh] overflow-y-auto">
-              {interactionDialog.pairs.length === 0 && !interactionDialog.contraindications ? (
-                <p className="text-sm text-on-surface-variant">
-                  No interactions or contraindications found.
-                </p>
-              ) : (
-                <>
-                  {interactionDialog.pairs.length > 0 && (
-                    <div>
-                      <p className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant mb-2">
-                        Interactions with co-prescribed drugs
-                      </p>
-                      <div className="space-y-2">
-                        {interactionDialog.pairs.map((p, i) => {
-                          const other =
-                            p.drugs.find(
-                              (d) =>
-                                d.toLowerCase().trim() !==
-                                interactionDialog.drugName.toLowerCase().trim(),
-                            ) ?? '';
-                          return (
-                            <div
-                              key={i}
-                              className={cn(
-                                'rounded-lg border p-3',
-                                severityStyles(p.severity),
-                              )}
-                            >
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-sm font-semibold">with {other}</span>
-                                <span
-                                  className={cn(
-                                    'text-[10px] font-bold uppercase px-2 py-0.5 rounded-full',
-                                    severityBadge(p.severity),
-                                  )}
-                                >
-                                  {p.severity}
-                                </span>
-                              </div>
-                              <p className="text-xs">{p.description}</p>
-                            </div>
-                          );
-                        })}
-                      </div>
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+              {interactionDialog.pairs.map((p, i) => {
+                const other = p.drugs.find((d) => d.toLowerCase().trim() !== interactionDialog.drugName.toLowerCase().trim()) ?? '';
+                return (
+                  <div key={i} className={cn('rounded-lg border p-3', severityClass(p.severity))}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-semibold">with {other}</span>
+                      <span className={cn('text-[10px] font-bold uppercase px-2 py-0.5 rounded-full', severityBadge(p.severity))}>{p.severity}</span>
                     </div>
-                  )}
-
-                  {interactionDialog.contraindications && (
-                    <div>
-                      <p className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant mb-2">
-                        Formulary contraindications
-                      </p>
-                      <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 whitespace-pre-wrap">
-                        {interactionDialog.contraindications}
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
+                    <p className="text-xs">{p.description}</p>
+                  </div>
+                );
+              })}
             </div>
           )}
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setInteractionDialog(null)}>
-              Close
-            </Button>
-          </DialogFooter>
+          <DialogFooter><Button variant="outline" size="sm" onClick={() => setInteractionDialog(null)}>Close</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
   );
 }
 
-// ── Helper Components ──────────────────────────────────────────
+// ── DoseButton ───────────────────────────────────────────────
+
+function DoseButton({
+  schedule,
+  showTime,
+  onClick,
+  onAudit,
+}: {
+  schedule: EmarSchedule;
+  showTime?: boolean;
+  onClick: (mode: 'give' | 'hold' | 'refuse' | 'missed' | 'amend') => void;
+  onAudit: (id: string) => void;
+}) {
+  const meta = STATUS_META[schedule.status];
+  const Icon = meta.icon;
+
+  // Default click target depends on whether the dose is actionable
+  const isActionable = ACTIONABLE.includes(schedule.status);
+  const isCompleted = !isActionable && schedule.status !== 'cancelled';
+
+  return (
+    <div className="relative group">
+      <button
+        type="button"
+        onClick={() => onClick(isActionable ? 'give' : 'amend')}
+        className={cn(
+          'inline-flex items-center justify-center w-9 h-9 rounded-full transition-all',
+          'focus:outline-none focus:ring-2 focus:ring-primary/40',
+          meta.cellClass,
+          'hover:scale-110',
+        )}
+        title={`${meta.label}${schedule.actualGivenTime ? ` at ${formatTime(schedule.actualGivenTime)}` : ''}${schedule.delayMinutes != null ? ` (delay ${schedule.delayMinutes}m)` : ''}`}
+      >
+        <Icon className="h-4 w-4" />
+      </button>
+      {showTime && (
+        <div className="text-[9px] text-on-surface-variant mt-0.5">{formatTime(schedule.scheduledAt)}</div>
+      )}
+      {schedule.status === 'given_late' && schedule.delayMinutes != null && (
+        <div className="text-[9px] text-emerald-700 font-bold mt-0.5">+{schedule.delayMinutes}m</div>
+      )}
+
+      {/* Hover actions for actionable doses */}
+      {isActionable && (
+        <div className="hidden group-hover:flex absolute z-20 -bottom-1 left-1/2 -translate-x-1/2 translate-y-full bg-surface-container-low shadow-lg rounded-lg border border-outline-variant overflow-hidden">
+          <button onClick={() => onClick('give')} className="px-2 py-1 text-[10px] text-green-700 hover:bg-green-50">Give</button>
+          <button onClick={() => onClick('hold')} className="px-2 py-1 text-[10px] text-amber-700 hover:bg-amber-50">Hold</button>
+          <button onClick={() => onClick('refuse')} className="px-2 py-1 text-[10px] text-orange-700 hover:bg-orange-50">Refuse</button>
+        </div>
+      )}
+      {isCompleted && (
+        <div className="hidden group-hover:flex absolute z-20 -bottom-1 left-1/2 -translate-x-1/2 translate-y-full bg-surface-container-low shadow-lg rounded-lg border border-outline-variant overflow-hidden">
+          <button onClick={() => onClick('amend')} className="px-2 py-1 text-[10px] text-primary hover:bg-primary/5 inline-flex items-center gap-1">
+            <Edit3 className="h-2.5 w-2.5" />
+            Amend
+          </button>
+          <button onClick={() => onAudit(schedule.id)} className="px-2 py-1 text-[10px] text-on-surface-variant hover:bg-surface-container-high inline-flex items-center gap-1">
+            <History className="h-2.5 w-2.5" />
+            Audit
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── AuditDialog ──────────────────────────────────────────────
+
+function AuditDialog({ scheduleId, onClose }: { scheduleId: string | null; onClose: () => void }) {
+  const { data, isLoading } = useEmarAudit(scheduleId);
+  const entries = useMemo(() => {
+    if (!data) return [];
+    return Array.isArray(data) ? data : (data as any).data ?? [];
+  }, [data]);
+
+  return (
+    <Dialog open={!!scheduleId} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <History className="h-4 w-4 text-primary" />
+            Audit Trail
+          </DialogTitle>
+        </DialogHeader>
+        {isLoading ? (
+          <div className="p-6 text-center"><Loader2 className="h-5 w-5 animate-spin text-primary mx-auto" /></div>
+        ) : entries.length === 0 ? (
+          <div className="p-6 text-center text-sm text-on-surface-variant">No audit entries.</div>
+        ) : (
+          <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+            {entries.map((e: any) => (
+              <div key={e.id} className="rounded-lg border border-outline-variant p-3 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold uppercase text-[10px] text-primary">{e.action}</span>
+                  <span className="text-[10px] text-on-surface-variant">{formatDateTime(e.performedAt)}</span>
+                </div>
+                <p className="mt-1">
+                  Status: {e.fromStatus ? <span className="font-mono">{e.fromStatus}</span> : <span className="italic text-on-surface-variant">—</span>} → <span className="font-mono font-bold">{e.toStatus}</span>
+                </p>
+                {e.delayMinutes != null && <p className="mt-1 text-amber-700">Delay: {e.delayMinutes} min</p>}
+                {e.reason && <p className="mt-1"><span className="text-on-surface-variant">Reason:</span> {e.reason}</p>}
+                {e.notes && <p className="mt-1"><span className="text-on-surface-variant">Notes:</span> {e.notes}</p>}
+                {e.performedBy && (
+                  <p className="mt-1 text-on-surface-variant">By {e.performedBy.firstName} {e.performedBy.lastName}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        <DialogFooter><Button variant="outline" size="sm" onClick={onClose}>Close</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── helpers ─────────────────────────────────────────────────
 
 function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
   return (
@@ -1073,21 +937,16 @@ function InteractionBanner({ result }: { result: InteractionCheckResult }) {
     minor: 'Minor',
   };
   const highest = result.highestSeverity;
-  const borderClass =
-    highest === 'contraindicated' || highest === 'major'
-      ? 'border-red-300 bg-red-50'
-      : 'border-orange-300 bg-orange-50';
-  const iconClass =
-    highest === 'contraindicated' || highest === 'major' ? 'text-red-600' : 'text-orange-600';
-  const textClass =
-    highest === 'contraindicated' || highest === 'major' ? 'text-red-800' : 'text-orange-800';
+  const borderClass = highest === 'contraindicated' || highest === 'major' ? 'border-red-300 bg-red-50' : 'border-orange-300 bg-orange-50';
+  const iconClass = highest === 'contraindicated' || highest === 'major' ? 'text-red-600' : 'text-orange-600';
+  const textClass = highest === 'contraindicated' || highest === 'major' ? 'text-red-800' : 'text-orange-800';
   return (
     <div className={cn('flex items-start gap-3 rounded-xl border-2 px-4 py-3 shadow-sm', borderClass)}>
       <AlertTriangle className={cn('h-5 w-5 mt-0.5 shrink-0', iconClass)} />
       <div className="flex-1">
         <p className={cn('text-sm font-bold', textClass)}>
-          Drug Interaction Warning — {result.pairs.length} {result.pairs.length === 1 ? 'pair' : 'pairs'}{' '}
-          detected{highest ? ` (highest: ${sevLabel[highest]})` : ''}
+          Drug Interaction Warning — {result.pairs.length} {result.pairs.length === 1 ? 'pair' : 'pairs'} detected
+          {highest ? ` (highest: ${sevLabel[highest]})` : ''}
         </p>
         <ul className={cn('text-xs mt-1 space-y-0.5', textClass)}>
           {result.pairs.slice(0, 3).map((p, i) => (
@@ -1096,69 +955,22 @@ function InteractionBanner({ result }: { result: InteractionCheckResult }) {
               <span className="opacity-80"> — {p.description}</span>
             </li>
           ))}
-          {result.pairs.length > 3 && (
-            <li className="opacity-80">…and {result.pairs.length - 3} more. Click a drug's interaction badge for details.</li>
-          )}
+          {result.pairs.length > 3 && <li className="opacity-80">…and {result.pairs.length - 3} more.</li>}
         </ul>
       </div>
     </div>
   );
 }
 
-function severityStyles(s: InteractionSeverity): string {
-  switch (s) {
-    case 'contraindicated':
-      return 'bg-red-50 border-red-300';
-    case 'major':
-      return 'bg-red-50 border-red-200';
-    case 'moderate':
-      return 'bg-orange-50 border-orange-200';
-    case 'minor':
-    default:
-      return 'bg-amber-50 border-amber-200';
-  }
+function severityClass(s: InteractionSeverity): string {
+  if (s === 'contraindicated') return 'bg-red-50 border-red-300';
+  if (s === 'major') return 'bg-red-50 border-red-200';
+  if (s === 'moderate') return 'bg-orange-50 border-orange-200';
+  return 'bg-amber-50 border-amber-200';
 }
-
 function severityBadge(s: InteractionSeverity): string {
-  switch (s) {
-    case 'contraindicated':
-      return 'bg-red-200 text-red-900';
-    case 'major':
-      return 'bg-red-100 text-red-800';
-    case 'moderate':
-      return 'bg-orange-100 text-orange-800';
-    case 'minor':
-    default:
-      return 'bg-amber-100 text-amber-800';
-  }
-}
-
-// ── Utility Helpers ────────────────────────────────────────────
-
-function matchHour(isoStr: string, hour: number): boolean {
-  try {
-    const d = new Date(isoStr);
-    return d.getHours() === hour;
-  } catch {
-    return false;
-  }
-}
-
-function formatTimeForInput(isoStr: string): string {
-  try {
-    const d = new Date(isoStr);
-    const h = d.getHours().toString().padStart(2, '0');
-    const m = d.getMinutes().toString().padStart(2, '0');
-    return `${h}:${m}`;
-  } catch {
-    return nowTimeStr();
-  }
-}
-
-function buildISOFromDateAndHour(dateStr: string, hour: number): string {
-  return `${dateStr}T${hour.toString().padStart(2, '0')}:00:00`;
-}
-
-function buildISOFromDateAndTime(dateStr: string, timeStr: string): string {
-  return `${dateStr}T${timeStr}:00`;
+  if (s === 'contraindicated') return 'bg-red-200 text-red-900';
+  if (s === 'major') return 'bg-red-100 text-red-800';
+  if (s === 'moderate') return 'bg-orange-100 text-orange-800';
+  return 'bg-amber-100 text-amber-800';
 }

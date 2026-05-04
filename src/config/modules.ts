@@ -224,6 +224,7 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Policies', href: '/nurse-admin/policies', icon: FileText },
       { label: 'Compliance', href: '/nurse-admin/compliance', icon: ShieldCheck },
       { label: 'Reports', href: '/nurse-admin/reports', icon: FileBarChart },
+      { label: 'eMAR Settings', href: '/nurse/emar/settings', icon: PillBottle },
       { label: 'Settings', href: '/nurse-admin/settings', icon: Settings },
     ],
   },

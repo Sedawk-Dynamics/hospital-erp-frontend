@@ -82,6 +82,7 @@ export interface PrescriptionItem {
   route?: string;
   instructions?: string;
   quantity?: number;
+  isPrn?: boolean;
 }
 
 export interface Prescription {
