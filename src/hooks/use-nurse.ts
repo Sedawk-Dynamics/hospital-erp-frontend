@@ -10,6 +10,9 @@ export interface NurseAdmission {
   id: string;
   ipNumber?: string;
   patientId: string;
+  // Visit FK on the admission row. Vitals creation requires visitId, so we
+  // pass the admission's visitId straight through.
+  visitId?: string;
   patient?: Pick<Patient, 'id' | 'mrn' | 'firstName' | 'lastName' | 'phone' | 'gender' | 'dateOfBirth'> & { uhid?: string; allergies?: string[] };
   doctorId?: string;
   doctor?: {
@@ -476,8 +479,12 @@ export function useRecordVitals() {
   return useMutation({
     mutationFn: async (data: {
       patientId: string;
+      // One of visitId, admissionId, or appointmentId must be set. The
+      // backend resolves to a Visit and auto-creates one for confirmed OPD
+      // appointments that don't yet have a Visit row.
       visitId?: string;
       admissionId?: string;
+      appointmentId?: string;
       temperature?: number;
       bloodPressureSystolic?: number;
       bloodPressureDiastolic?: number;

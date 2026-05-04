@@ -236,9 +236,14 @@ export default function ClinicalChartingPage() {
       return;
     }
 
+    if (!selectedAdmission?.visitId) {
+      toast.error('Cannot record vitals: this admission has no associated visit');
+      return;
+    }
+
     const payload = {
       patientId: selectedPatientId,
-      admissionId: selectedAdmission?.id,
+      visitId: selectedAdmission.visitId,
       bloodPressureSystolic: parseNum(vitalsForm.bloodPressureSystolic),
       bloodPressureDiastolic: parseNum(vitalsForm.bloodPressureDiastolic),
       temperature: parseNum(vitalsForm.temperature),

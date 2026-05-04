@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { toInputDateStr, formatDate, formatTime } from '@/lib/date-utils';
 import {
   Search,
@@ -529,7 +530,7 @@ function PendingTasksSection({
         patient: p.name,
         time: 'Due now',
         priority: 'high',
-        href: '/nurse/charting',
+        href: `/nurse/vitals?patientId=${p.id}`,
       });
     });
 
@@ -656,12 +657,20 @@ function OpdConfirmedList({
             ({records.length} patient{records.length !== 1 ? 's' : ''})
           </span>
         </div>
-        <Link
-          href="/nurse/forms"
-          className="text-[10px] text-primary hover:underline font-medium"
-        >
-          Open forms →
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/nurse/vitals?kind=opd"
+            className="text-[10px] text-primary hover:underline font-medium"
+          >
+            Record vitals →
+          </Link>
+          <Link
+            href="/nurse/forms"
+            className="text-[10px] text-primary hover:underline font-medium"
+          >
+            Open forms →
+          </Link>
+        </div>
       </div>
 
       {isLoading ? (
@@ -739,6 +748,7 @@ function PatientListTable({
   totalPages,
   total,
   onPageChange,
+  onRecordVitals,
 }: {
   admissions: NurseAdmission[];
   isLoading: boolean;
@@ -746,6 +756,7 @@ function PatientListTable({
   totalPages: number;
   total: number;
   onPageChange: (page: number) => void;
+  onRecordVitals: (patientId: string) => void;
 }) {
   if (isLoading) {
     return (
@@ -899,7 +910,7 @@ function PatientListTable({
                           <MoreVertical className="h-3.5 w-3.5" />
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => onRecordVitals(adm.patientId)}>
                             <HeartPulse className="mr-2 h-4 w-4" />
                             Record Vitals
                           </DropdownMenuItem>
@@ -965,6 +976,7 @@ function PatientListTable({
 const VITALS_DUE_THRESHOLD_MS = 4 * 60 * 60 * 1000; // 4h
 
 export default function NurseDashboardPage() {
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedWard, setSelectedWard] = useState('all');
   const [fromDate, setFromDate] = useState(toInputDateStr());
@@ -1189,12 +1201,14 @@ export default function NurseDashboardPage() {
           color="bg-amber-50 text-amber-600"
           sublabel={pendingMedsCount > 0 ? `${pendingMedsCount} upcoming` : undefined}
         />
-        <QuickStatCard
-          icon={<HeartPulse className="h-4 w-4" />}
-          label="Vitals Due"
-          value={vitalsDueCount}
-          color="bg-red-50 text-red-600"
-        />
+        <Link href="/nurse/vitals" className="block">
+          <QuickStatCard
+            icon={<HeartPulse className="h-4 w-4" />}
+            label="Vitals Due"
+            value={vitalsDueCount}
+            color="bg-red-50 text-red-600"
+          />
+        </Link>
         <QuickStatCard
           icon={<ClipboardList className="h-4 w-4" />}
           label="Pending Orders"
@@ -1291,6 +1305,9 @@ export default function NurseDashboardPage() {
         totalPages={totalPages}
         total={totalAdmissions}
         onPageChange={setPage}
+        onRecordVitals={(patientId) =>
+          router.push(`/nurse/vitals?patientId=${patientId}`)
+        }
       />
 
       {/* OPD: today's frontdesk-confirmed bookings under my assigned doctors. */}
