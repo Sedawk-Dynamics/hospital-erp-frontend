@@ -18,7 +18,7 @@ interface OccupancyRow {
   wardName: string;
   wardType?: string;
   department?: string | null;
-  floor?: string | null;
+  floor?: { id: string; name: string; level: number } | null;
   totalBeds: number;
   occupied: number;
   available: number;
@@ -61,7 +61,7 @@ export function OccupancyTab() {
   const byBlock = useMemo(() => {
     const groups: Record<string, OccupancyRow[]> = {};
     occupancy.forEach((row) => {
-      const key = row.department || row.floor || 'General';
+      const key = row.department || row.floor?.name || 'General';
       if (!groups[key]) groups[key] = [];
       groups[key].push(row);
     });
@@ -214,7 +214,7 @@ export function OccupancyTab() {
                           {row.wardType ?? '-'}
                         </td>
                         <td className="px-4 py-2 font-label text-xs text-on-surface-variant">
-                          {row.floor ?? '-'}
+                          {row.floor?.name ?? '-'}
                         </td>
                         <td className="px-4 py-2 text-center font-label text-sm">
                           {row.totalBeds}

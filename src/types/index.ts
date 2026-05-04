@@ -353,16 +353,12 @@ export interface BedWithStatus {
   id: string;
   bedNumber: string;
   bedType?: 'standard' | 'electric' | 'icu' | 'pediatric' | 'bariatric';
-  wardId?: string;
-  ward?: { id: string; name: string };
-  roomId?: string;
-  room?: {
+  wardId: string;
+  ward?: {
     id: string;
-    roomNumber: string;
-    ward?: { id: string; name: string };
+    name: string;
+    floor?: { id: string; name: string; level: number } | null;
   };
-  floor?: string;
-  block?: string;
   status: 'available' | 'occupied' | 'maintenance' | 'reserved';
   currentPatientId?: string | null;
   currentPatient?: Pick<Patient, 'id' | 'mrn' | 'firstName' | 'lastName'>;
@@ -376,9 +372,11 @@ export interface Reservation {
   doctorId: string;
   doctor: DoctorProfile;
   wardId: string;
-  ward: { id: string; name: string };
-  block?: string;
-  floor?: string;
+  ward: {
+    id: string;
+    name: string;
+    floor?: { id: string; name: string; level: number } | null;
+  };
   diagnosis?: string;
   speciality?: string;
   advanceAmount: number;

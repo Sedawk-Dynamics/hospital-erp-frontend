@@ -66,6 +66,16 @@ export interface Visit {
   updatedAt: string;
 }
 
+export interface Floor {
+  id: string;
+  name: string;
+  level: number;
+  description?: string | null;
+  isActive: boolean;
+  _count?: { wards: number };
+  wards?: Ward[];
+}
+
 export interface BedAvailability {
   id: string;
   bedNumber: string;
@@ -73,22 +83,24 @@ export interface BedAvailability {
   ward?: {
     id: string;
     name: string;
+    floor?: { id: string; name: string; level: number } | null;
   };
   status: string;
   bedType?: string;
-  floor?: string;
 }
 
 export interface Ward {
   id: string;
   name: string;
   description?: string;
-  floor?: string;
+  floorId?: string | null;
+  floor?: { id: string; name: string; level: number } | null;
   totalBeds: number;
   occupiedBeds?: number;
   availableBeds?: number;
   wardType?: string;
   status?: string;
+  isActive?: boolean;
   beds?: BedAvailability[];
   _count?: {
     beds: number;
@@ -145,6 +157,10 @@ export const clinicalKeys = {
   wards: {
     all: ['clinical', 'wards'] as const,
     detail: (id: string) => ['clinical', 'wards', 'detail', id] as const,
+  },
+  floors: {
+    all: ['clinical', 'floors'] as const,
+    detail: (id: string) => ['clinical', 'floors', 'detail', id] as const,
   },
 };
 
@@ -283,7 +299,9 @@ export function useBeds() {
   return useQuery({
     queryKey: clinicalKeys.beds.all,
     queryFn: async () => {
-      const response = await apiGet<BedAvailability[]>('/infrastructure/beds');
+      const response = await apiGet<BedAvailability[]>('/infrastructure/beds', {
+        params: { limit: 500 },
+      });
       return response.data;
     },
   });
@@ -293,7 +311,9 @@ export function useWards() {
   return useQuery({
     queryKey: clinicalKeys.wards.all,
     queryFn: async () => {
-      const response = await apiGet<Ward[]>('/infrastructure/wards');
+      const response = await apiGet<Ward[]>('/infrastructure/wards', {
+        params: { limit: 500 },
+      });
       return response.data;
     },
   });
@@ -304,6 +324,29 @@ export function useWard(id: string) {
     queryKey: clinicalKeys.wards.detail(id),
     queryFn: async () => {
       const response = await apiGet<Ward>(`/infrastructure/wards/${id}`);
+      return response.data;
+    },
+    enabled: !!id,
+  });
+}
+
+export function useFloors() {
+  return useQuery({
+    queryKey: clinicalKeys.floors.all,
+    queryFn: async () => {
+      const response = await apiGet<Floor[]>('/infrastructure/floors', {
+        params: { limit: 500 },
+      });
+      return response.data;
+    },
+  });
+}
+
+export function useFloor(id: string) {
+  return useQuery({
+    queryKey: clinicalKeys.floors.detail(id),
+    queryFn: async () => {
+      const response = await apiGet<Floor>(`/infrastructure/floors/${id}`);
       return response.data;
     },
     enabled: !!id,

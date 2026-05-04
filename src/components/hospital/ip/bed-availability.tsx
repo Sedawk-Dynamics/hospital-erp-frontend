@@ -86,12 +86,12 @@ export function BedAvailability() {
     },
   });
 
-  // Group beds by ward (using nested room.ward.name OR direct ward.name as fallback)
+  // Group beds by ward (ward owns the bed directly now)
   const grouped = useMemo(() => {
     const map: Record<string, { wardId?: string; beds: BedWithStatus[] }> = {};
     (beds ?? []).forEach((bed) => {
-      const wardName = bed.room?.ward?.name ?? bed.ward?.name ?? 'Unassigned';
-      const wardId = bed.room?.ward?.id ?? bed.ward?.id;
+      const wardName = bed.ward?.name ?? 'Unassigned';
+      const wardId = bed.ward?.id ?? bed.wardId;
       if (!map[wardName]) map[wardName] = { wardId, beds: [] };
       map[wardName].beds.push(bed);
     });
@@ -292,8 +292,8 @@ function BedDetailsDialog({
             </span>
           </DialogTitle>
           <DialogDescription>
-            {bed.room?.ward?.name ?? bed.ward?.name ?? 'Unassigned ward'}
-            {bed.room?.roomNumber ? ` · Room ${bed.room.roomNumber}` : ''}
+            {bed.ward?.name ?? 'Unassigned ward'}
+            {bed.ward?.floor?.name ? ` · ${bed.ward.floor.name}` : ''}
             {bed.bedType ? ` · ${bed.bedType.toUpperCase()}` : ''}
           </DialogDescription>
         </DialogHeader>

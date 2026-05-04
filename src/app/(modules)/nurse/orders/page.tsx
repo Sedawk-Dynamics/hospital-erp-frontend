@@ -612,8 +612,8 @@ function BedAvailabilityTab() {
               >
                 <BedDouble className="mx-auto mb-1 h-5 w-5 opacity-60" />
                 <p className="text-xs font-bold">{bed.bedNumber}</p>
-                {bed.room?.roomNumber && (
-                  <p className="text-[10px] opacity-70">Room {bed.room.roomNumber}</p>
+                {bed.ward?.name && (
+                  <p className="text-[10px] opacity-70 truncate">{bed.ward.name}</p>
                 )}
                 {bed.status === 'occupied' && bed.currentPatient && (
                   <p className="mt-1 text-[10px] font-medium truncate">
@@ -791,7 +791,7 @@ function PatientTransferTab() {
               <SelectItem value="">None</SelectItem>
               {targetBeds.map((bed) => (
                 <SelectItem key={bed.id} value={bed.id}>
-                  Bed {bed.bedNumber} {bed.room?.roomNumber ? `(Room ${bed.room.roomNumber})` : ''}
+                  Bed {bed.bedNumber} {bed.ward?.name ? `· ${bed.ward.name}` : ''}
                 </SelectItem>
               ))}
             </SelectContent>

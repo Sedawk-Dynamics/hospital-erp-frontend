@@ -355,7 +355,6 @@ function AdmissionDialog({
                     {beds.map((b) => (
                       <SelectItem key={b.id} value={b.id}>
                         Bed {b.bedNumber}
-                        {b.room ? ` (Room ${b.room.roomNumber})` : ''}
                         {b.bedType ? ` · ${b.bedType.toUpperCase()}` : ''}
                       </SelectItem>
                     ))}
@@ -780,7 +779,6 @@ function TransferDialog({
                 {beds.map((b) => (
                   <SelectItem key={b.id} value={b.id}>
                     Bed {b.bedNumber}
-                    {b.room ? ` (Room ${b.room.roomNumber})` : ''}
                   </SelectItem>
                 ))}
                 {beds.length === 0 && targetWardId && (

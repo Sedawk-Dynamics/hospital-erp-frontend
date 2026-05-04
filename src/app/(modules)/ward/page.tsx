@@ -147,7 +147,7 @@ export default function WardHomePage() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">{ward.floor || '-'}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{ward.floor?.name || '-'}</td>
                     <td className="px-4 py-3 text-center font-medium">{ward.total}</td>
                     <td className="px-4 py-3 text-center">
                       <span className="font-medium text-purple-600">{ward.occupied}</span>

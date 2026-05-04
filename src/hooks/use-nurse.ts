@@ -178,10 +178,12 @@ export interface DutyRoster {
 export interface BedInfo {
   id: string;
   bedNumber: string;
-  roomId?: string;
-  room?: { id: string; roomNumber: string };
   wardId: string;
-  ward?: { id: string; name: string };
+  ward?: {
+    id: string;
+    name: string;
+    floor?: { id: string; name: string; level: number } | null;
+  };
   status: 'available' | 'occupied' | 'maintenance' | 'reserved';
   currentPatient?: Pick<Patient, 'id' | 'firstName' | 'lastName' | 'mrn'>;
 }
