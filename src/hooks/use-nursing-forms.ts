@@ -412,3 +412,392 @@ export const FALL_RISK_BAND_LABEL: Record<FallRiskLevel, string> = {
   moderate: 'Moderate (25–44)',
   high: 'High (≥ 45)',
 };
+
+// ──────────────────────────────────────────────────────────
+// Clinical Charting — Observation, Device/Line, Procedure
+// ──────────────────────────────────────────────────────────
+
+export type AvpuLevel = 'alert' | 'voice' | 'pain' | 'unresponsive';
+export type GeneralCondition = 'stable' | 'critical' | 'improving' | 'deteriorating';
+export type MobilityLevel = 'bedridden' | 'assisted' | 'independent';
+
+export type ClinicalDeviceType =
+  | 'iv_cannula'
+  | 'central_line'
+  | 'urinary_catheter'
+  | 'oxygen_device'
+  | 'drain'
+  | 'ng_tube'
+  | 'other';
+export type ClinicalDeviceStatus = 'active' | 'removed' | 'replaced';
+export type DevicePatency = 'patent' | 'blocked';
+export type DeviceSiteCondition = 'normal' | 'redness' | 'swelling' | 'infection' | 'leakage';
+export type DeviceSecurement = 'secure' | 'loose';
+export type DeviceFlowStatus = 'running' | 'stopped';
+export type UrineFlow = 'adequate' | 'reduced' | 'none';
+export type UrineColor = 'clear' | 'yellow' | 'amber' | 'dark' | 'bloody';
+export type OxygenMode = 'nasal_cannula' | 'mask' | 'venturi' | 'rebreather' | 'high_flow' | 'none';
+
+export type ProcedureStatus = 'successful' | 'failed' | 'partial';
+export type ProcedureSide = 'left' | 'right' | 'midline';
+export type ProcedureTolerance = 'well_tolerated' | 'poorly_tolerated';
+export type ProcedureComplication = 'none' | 'bleeding' | 'pain' | 'infection_risk' | 'other';
+
+export interface ClinicalObservation extends NurseRef {
+  id: string;
+  visitId: string;
+  admissionId?: string | null;
+  patientId: string;
+  observedAt: string;
+  painScore?: number | null;
+  painLocation?: string | null;
+  consciousnessAvpu?: AvpuLevel | null;
+  generalCondition?: GeneralCondition | null;
+  mobility?: MobilityLevel | null;
+  fluidIntakeMl?: number | null;
+  foodIntakeNotes?: string | null;
+  urineOutputMl?: number | null;
+  stoolPassed?: boolean | null;
+  stoolCount?: number | null;
+  notes?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface ClinicalDeviceCheck extends NurseRef {
+  id: string;
+  deviceId: string;
+  visitId: string;
+  patientId: string;
+  checkedAt: string;
+  patency?: DevicePatency | null;
+  siteCondition?: DeviceSiteCondition | null;
+  painPresent?: boolean | null;
+  securement?: DeviceSecurement | null;
+  flowStatus?: DeviceFlowStatus | null;
+  urineFlow?: UrineFlow | null;
+  urineColor?: UrineColor | null;
+  infectionSuspected?: boolean | null;
+  dislodged?: boolean | null;
+  blocked?: boolean | null;
+  remarks?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface ClinicalDevice {
+  id: string;
+  visitId: string;
+  admissionId?: string | null;
+  patientId: string;
+  deviceType: ClinicalDeviceType;
+  deviceSubtype?: string | null;
+  site: string;
+  insertionTime: string;
+  insertedBy: string;
+  inserter?: { id: string; firstName: string; lastName: string | null };
+  removalTime?: string | null;
+  removedBy?: string | null;
+  remover?: { id: string; firstName: string; lastName: string | null } | null;
+  status: ClinicalDeviceStatus;
+  flowStatus?: DeviceFlowStatus | null;
+  fluidType?: string | null;
+  flowRateMlPerHr?: number | null;
+  oxygenMode?: OxygenMode | null;
+  oxygenFlowRate?: number | null;
+  createdByProcedureId?: string | null;
+  notes?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+  checks?: ClinicalDeviceCheck[];
+}
+
+export interface ClinicalProcedure extends NurseRef {
+  id: string;
+  visitId: string;
+  admissionId?: string | null;
+  patientId: string;
+  procedureType: string;
+  procedureSubtype?: string | null;
+  performedAt: string;
+  site?: string | null;
+  side?: ProcedureSide | null;
+  status: ProcedureStatus;
+  attemptCount?: number | null;
+  asepticTechnique?: boolean | null;
+  equipmentUsed?: string | null;
+  complications?: ProcedureComplication | null;
+  complicationNotes?: string | null;
+  tolerance?: ProcedureTolerance | null;
+  painScore?: number | null;
+  deviceCreated: boolean;
+  notes?: string | null;
+  metadata?: Record<string, unknown> | null;
+  devices?: { id: string; deviceType: ClinicalDeviceType; status: ClinicalDeviceStatus }[];
+  createdAt: string;
+}
+
+export interface IntakeOutputTotals {
+  totalIntake: number;
+  totalOutput: number;
+  balance: number;
+  byCategory: Record<string, number>;
+}
+
+// ── Reads ────────────────────────────────────────────────
+
+export const useClinicalObservations = makeListHook<ClinicalObservation>('observations');
+
+export function useClinicalDevices(
+  params?: ListParams & { status?: ClinicalDeviceStatus; deviceType?: ClinicalDeviceType },
+  opts?: { enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: nursingFormsKeys.list('devices', params as Record<string, unknown> | undefined),
+    queryFn: async () => {
+      const res = await apiGet<ClinicalDevice[]>('/nursing-forms/devices', { params });
+      return res as ApiResponse<ClinicalDevice[]>;
+    },
+    enabled: opts?.enabled ?? true,
+  });
+}
+
+export function useDeviceChecks(deviceId: string | undefined, opts?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: nursingFormsKeys.list('device-checks', { deviceId }),
+    queryFn: async () => {
+      const res = await apiGet<ClinicalDeviceCheck[]>(`/nursing-forms/devices/${deviceId}/checks`);
+      return res as ApiResponse<ClinicalDeviceCheck[]>;
+    },
+    enabled: !!deviceId && (opts?.enabled ?? true),
+  });
+}
+
+export const useClinicalProcedures = makeListHook<ClinicalProcedure>('procedures');
+
+export function useIntakeOutputTotals(
+  params: { patientId: string; visitId?: string; admissionId?: string; fromDate?: string; toDate?: string },
+  opts?: { enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: nursingFormsKeys.list('intake-output-totals', params as Record<string, unknown>),
+    queryFn: async () => {
+      const res = await apiGet<IntakeOutputTotals>('/nursing-forms/intake-output/totals', { params });
+      return res;
+    },
+    enabled: !!params.patientId && (opts?.enabled ?? true),
+  });
+}
+
+export function useChartingTimeline(patientId: string | undefined, opts?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: nursingFormsKeys.list('timeline', { patientId }),
+    queryFn: async () => {
+      const res = await apiGet<Array<{ kind: string; at: string; payload: unknown }>>(
+        `/nursing-forms/timeline/${patientId}`,
+      );
+      return res;
+    },
+    enabled: !!patientId && (opts?.enabled ?? true),
+  });
+}
+
+// ── Mutations ────────────────────────────────────────────
+
+export interface CreateObservationInput {
+  visitId?: string;
+  admissionId?: string;
+  appointmentId?: string;
+  patientId: string;
+  observedAt?: string;
+  painScore?: number;
+  painLocation?: string;
+  consciousnessAvpu?: AvpuLevel;
+  generalCondition?: GeneralCondition;
+  mobility?: MobilityLevel;
+  fluidIntakeMl?: number;
+  foodIntakeNotes?: string;
+  urineOutputMl?: number;
+  stoolPassed?: boolean;
+  stoolCount?: number;
+  notes?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export function useCreateObservation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: CreateObservationInput) => {
+      const res = await apiPost<ClinicalObservation>('/nursing-forms/observations', data);
+      return res;
+    },
+    onSuccess: (_d, vars) => invalidateForPatient(qc, vars.patientId),
+  });
+}
+
+export interface CreateDeviceInput {
+  visitId?: string;
+  admissionId?: string;
+  appointmentId?: string;
+  patientId: string;
+  deviceType: ClinicalDeviceType;
+  deviceSubtype?: string;
+  site: string;
+  insertionTime: string;
+  flowStatus?: DeviceFlowStatus;
+  fluidType?: string;
+  flowRateMlPerHr?: number;
+  oxygenMode?: OxygenMode;
+  oxygenFlowRate?: number;
+  createdByProcedureId?: string;
+  notes?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export function useCreateClinicalDevice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: CreateDeviceInput) => {
+      const res = await apiPost<ClinicalDevice>('/nursing-forms/devices', data);
+      return res;
+    },
+    onSuccess: (_d, vars) => invalidateForPatient(qc, vars.patientId),
+  });
+}
+
+export function useRemoveClinicalDevice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      ...data
+    }: {
+      id: string;
+      removalTime?: string;
+      status?: 'removed' | 'replaced';
+      notes?: string;
+    }) => {
+      const res = await apiPost<ClinicalDevice>(`/nursing-forms/devices/${id}/remove`, data);
+      return res;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: nursingFormsKeys.all }),
+  });
+}
+
+export interface CreateDeviceCheckInput {
+  deviceId: string;
+  checkedAt?: string;
+  patency?: DevicePatency;
+  siteCondition?: DeviceSiteCondition;
+  painPresent?: boolean;
+  securement?: DeviceSecurement;
+  flowStatus?: DeviceFlowStatus;
+  urineFlow?: UrineFlow;
+  urineColor?: UrineColor;
+  infectionSuspected?: boolean;
+  dislodged?: boolean;
+  blocked?: boolean;
+  remarks?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export function useCreateDeviceCheck() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ deviceId, ...data }: CreateDeviceCheckInput) => {
+      const res = await apiPost<ClinicalDeviceCheck>(
+        `/nursing-forms/devices/${deviceId}/checks`,
+        data,
+      );
+      return res;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: nursingFormsKeys.all }),
+  });
+}
+
+export interface CreateProcedureInput {
+  visitId?: string;
+  admissionId?: string;
+  appointmentId?: string;
+  patientId: string;
+  procedureType: string;
+  procedureSubtype?: string;
+  performedAt: string;
+  site?: string;
+  side?: ProcedureSide;
+  status?: ProcedureStatus;
+  attemptCount?: number;
+  asepticTechnique?: boolean;
+  equipmentUsed?: string;
+  complications?: ProcedureComplication;
+  complicationNotes?: string;
+  tolerance?: ProcedureTolerance;
+  painScore?: number;
+  device?: {
+    deviceType: ClinicalDeviceType;
+    deviceSubtype?: string;
+    site: string;
+    flowStatus?: DeviceFlowStatus;
+    fluidType?: string;
+    flowRateMlPerHr?: number;
+    oxygenMode?: OxygenMode;
+    oxygenFlowRate?: number;
+  };
+  notes?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export function useCreateProcedure() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: CreateProcedureInput) => {
+      const res = await apiPost<{ procedure: ClinicalProcedure; device: ClinicalDevice | null }>(
+        '/nursing-forms/procedures',
+        data,
+      );
+      return res;
+    },
+    onSuccess: (_d, vars) => invalidateForPatient(qc, vars.patientId),
+  });
+}
+
+// ── Label maps for the UI ────────────────────────────────
+
+export const CLINICAL_DEVICE_TYPE_LABELS: Record<ClinicalDeviceType, string> = {
+  iv_cannula: 'IV Cannula',
+  central_line: 'Central Line',
+  urinary_catheter: 'Urinary Catheter',
+  oxygen_device: 'Oxygen Device',
+  drain: 'Drain',
+  ng_tube: 'NG / PEG Tube',
+  other: 'Other',
+};
+
+export const AVPU_LABELS: Record<AvpuLevel, string> = {
+  alert: 'Alert',
+  voice: 'Responds to Voice',
+  pain: 'Responds to Pain',
+  unresponsive: 'Unresponsive',
+};
+
+export const GENERAL_CONDITION_LABELS: Record<GeneralCondition, string> = {
+  stable: 'Stable',
+  critical: 'Critical',
+  improving: 'Improving',
+  deteriorating: 'Deteriorating',
+};
+
+export const MOBILITY_LABELS: Record<MobilityLevel, string> = {
+  bedridden: 'Bedridden',
+  assisted: 'Assisted',
+  independent: 'Independent',
+};
+
+export const PROCEDURE_COMPLICATION_LABELS: Record<ProcedureComplication, string> = {
+  none: 'None',
+  bleeding: 'Bleeding',
+  pain: 'Pain',
+  infection_risk: 'Infection risk',
+  other: 'Other',
+};

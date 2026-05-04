@@ -31,6 +31,9 @@ import { VitalTrendChart } from '@/components/nurse/vital-trend-chart';
 import { WoundCarePanel } from '@/components/nurse/wound-care-panel';
 import { IvLinePanel } from '@/components/nurse/iv-line-panel';
 import { IntakeOutputPanel } from '@/components/nurse/intake-output-panel';
+import { ObservationsPanel } from '@/components/nurse/observations-panel';
+import { ClinicalDevicesPanel } from '@/components/nurse/clinical-devices-panel';
+import { ProceduresPanel } from '@/components/nurse/procedures-panel';
 import {
   Search,
   Activity,
@@ -48,6 +51,8 @@ import {
   Clipboard,
   Syringe,
   GlassWater,
+  Stethoscope,
+  ListChecks,
 } from 'lucide-react';
 
 // ── Abnormal-value helpers ─────────────────────────────────
@@ -106,9 +111,12 @@ const NORMAL_RANGES: Record<string, string> = {
 
 const NOTE_TABS = [
   { key: 'observation', label: 'Observations', icon: Clipboard },
+  { key: 'devices', label: 'Devices / Lines', icon: Stethoscope },
+  { key: 'procedures', label: 'Procedures', icon: ListChecks },
   { key: 'wound_care', label: 'Wound Care', icon: FileText },
   { key: 'iv_line', label: 'IV Line', icon: Syringe },
   { key: 'intake_output', label: 'Intake / Output', icon: GlassWater },
+  { key: 'general', label: 'Daily Note', icon: FileText },
 ] as const;
 
 type NoteTabKey = (typeof NOTE_TABS)[number]['key'];
@@ -189,9 +197,13 @@ export default function ClinicalChartingPage() {
     return (latestVitalsRaw as unknown as { data: Vital }).data ?? latestVitalsRaw;
   }, [latestVitalsRaw]);
 
+  // Only fetch nursing notes for tabs that map onto a stored note type —
+  // the new "devices" / "procedures" tabs render their own panels.
+  const noteTypeForFetch =
+    activeNoteTab === 'observation' ? 'observation' : 'general';
   const { data: notesRaw, isLoading: notesLoading } = useNursingNotes({
     patientId: selectedPatientId || undefined,
-    noteType: activeNoteTab,
+    noteType: noteTypeForFetch,
     limit: 50,
   });
   const notes: NursingNote[] = useMemo(() => {
@@ -1007,21 +1019,68 @@ export default function ClinicalChartingPage() {
               })}
             </div>
 
-            {/* Observations: free-text nursing notes */}
+            {/* Observations: structured pain/AVPU/condition/mobility + intake/output snapshot */}
             {activeNoteTab === 'observation' && (
+              <ObservationsPanel
+                patientId={selectedPatientId}
+                admissionId={selectedAdmission?.id}
+              />
+            )}
+
+            {/* Devices / Lines: ongoing items with periodic checks */}
+            {activeNoteTab === 'devices' && (
+              <ClinicalDevicesPanel
+                patientId={selectedPatientId}
+                admissionId={selectedAdmission?.id}
+              />
+            )}
+
+            {/* Procedures: one-time clinical actions */}
+            {activeNoteTab === 'procedures' && (
+              <ProceduresPanel
+                patientId={selectedPatientId}
+                admissionId={selectedAdmission?.id}
+              />
+            )}
+
+            {/* Wound Care: structured form + records list */}
+            {activeNoteTab === 'wound_care' && (
+              <WoundCarePanel
+                patientId={selectedPatientId}
+                admissionId={selectedAdmission?.id}
+              />
+            )}
+
+            {/* IV Line: structured form + active lines */}
+            {activeNoteTab === 'iv_line' && (
+              <IvLinePanel
+                patientId={selectedPatientId}
+                admissionId={selectedAdmission?.id}
+              />
+            )}
+
+            {/* Intake / Output: dual-entry + 24h summary */}
+            {activeNoteTab === 'intake_output' && (
+              <IntakeOutputPanel
+                patientId={selectedPatientId}
+                admissionId={selectedAdmission?.id}
+              />
+            )}
+
+            {/* Daily Note: free-text */}
+            {activeNoteTab === 'general' && (
               <>
                 <div className="mb-4 rounded-lg border border-outline-variant/30 p-3">
                   <label className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant mb-1 block">
-                    New Observation Note
+                    New Daily Note
                   </label>
                   <p className="text-[10px] text-on-surface-variant mb-2">
-                    General nursing observations, patient condition, pain
-                    assessment, mobility status, etc.
+                    Free-text shift note for anything not covered by structured tabs.
                   </p>
                   <Textarea
                     value={noteContent}
                     onChange={(e) => setNoteContent(e.target.value)}
-                    placeholder="Enter observation note..."
+                    placeholder="Enter note..."
                     rows={3}
                   />
                   <div className="mt-2 flex justify-end">
@@ -1047,7 +1106,7 @@ export default function ClinicalChartingPage() {
                   </div>
                 ) : notes.length === 0 ? (
                   <p className="text-sm text-on-surface-variant text-center py-8">
-                    No observation notes recorded
+                    No daily notes recorded
                   </p>
                 ) : (
                   <div className="space-y-2">
@@ -1081,30 +1140,6 @@ export default function ClinicalChartingPage() {
                   </div>
                 )}
               </>
-            )}
-
-            {/* Wound Care: structured form + records list */}
-            {activeNoteTab === 'wound_care' && (
-              <WoundCarePanel
-                patientId={selectedPatientId}
-                admissionId={selectedAdmission?.id}
-              />
-            )}
-
-            {/* IV Line: structured form + active lines */}
-            {activeNoteTab === 'iv_line' && (
-              <IvLinePanel
-                patientId={selectedPatientId}
-                admissionId={selectedAdmission?.id}
-              />
-            )}
-
-            {/* Intake / Output: dual-entry + 24h summary */}
-            {activeNoteTab === 'intake_output' && (
-              <IntakeOutputPanel
-                patientId={selectedPatientId}
-                admissionId={selectedAdmission?.id}
-              />
             )}
           </div>
         </>
