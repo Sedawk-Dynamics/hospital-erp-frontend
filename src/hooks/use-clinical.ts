@@ -124,6 +124,15 @@ interface AdmissionParams {
   sortOrder?: 'asc' | 'desc';
 }
 
+interface BedListParams {
+  wardId?: string;
+  floorId?: string;
+  status?: 'available' | 'occupied' | 'reserved' | 'maintenance';
+  bedType?: string;
+  forPatientId?: string;
+  limit?: number;
+}
+
 interface VisitParams {
   page?: number;
   limit?: number;
@@ -152,7 +161,9 @@ export const clinicalKeys = {
   },
   beds: {
     all: ['clinical', 'beds'] as const,
+    list: (params?: BedListParams) => ['clinical', 'beds', 'list', params] as const,
     availability: ['clinical', 'beds', 'availability'] as const,
+    occupancy: ['clinical', 'beds', 'occupancy'] as const,
   },
   wards: {
     all: ['clinical', 'wards'] as const,
@@ -295,13 +306,24 @@ export function useBedAvailability() {
   });
 }
 
-export function useBeds() {
+export function useBeds(params?: BedListParams) {
   return useQuery({
-    queryKey: clinicalKeys.beds.all,
+    queryKey: clinicalKeys.beds.list(params),
     queryFn: async () => {
       const response = await apiGet<BedAvailability[]>('/infrastructure/beds', {
-        params: { limit: 500 },
+        params: { limit: 500, ...params },
       });
+      return response.data;
+    },
+    enabled: params?.wardId !== undefined ? Boolean(params.wardId) : true,
+  });
+}
+
+export function useOccupancy() {
+  return useQuery({
+    queryKey: clinicalKeys.beds.occupancy,
+    queryFn: async () => {
+      const response = await apiGet<unknown>('/infrastructure/occupancy');
       return response.data;
     },
   });

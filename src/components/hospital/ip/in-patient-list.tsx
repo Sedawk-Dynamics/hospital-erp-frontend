@@ -57,9 +57,27 @@ const statItems = [
   { key: 'absconded', label: 'Cancelled', color: 'text-red-600' },
 ];
 
+interface Floor {
+  id: string;
+  name: string;
+  level: number;
+}
+
 interface Ward {
   id: string;
   name: string;
+  wardType?: string;
+  totalBeds?: number;
+  floorId?: string | null;
+  floor?: { id: string; name: string; level: number } | null;
+}
+
+interface WardAvailability {
+  wardId: string;
+  available: number;
+  occupied: number;
+  reserved: number;
+  totalBeds: number;
 }
 
 // Standard admission checklist (used both during admission and on detail view)
@@ -92,7 +110,10 @@ function AdmissionDialog({
   // Form state
   const [patientSearch, setPatientSearch] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState('');
+  // Hold on to the picked patient so the display survives search changes.
+  const [selectedPatientSnapshot, setSelectedPatientSnapshot] = useState<Patient | null>(null);
   const [selectedDoctorId, setSelectedDoctorId] = useState('');
+  const [selectedFloorId, setSelectedFloorId] = useState('');
   const [selectedWardId, setSelectedWardId] = useState('');
   const [selectedBedId, setSelectedBedId] = useState('');
   const [admissionDate, setAdmissionDate] = useState(toInputDateStr());
@@ -124,16 +145,41 @@ function AdmissionDialog({
       apiGet<DoctorProfile[]>('/appointments/doctors', { params: { limit: 100 } }),
   });
 
+  const { data: floorsData } = useQuery({
+    queryKey: ['floors-list'],
+    queryFn: () =>
+      apiGet<Floor[]>('/infrastructure/floors', { params: { limit: 200 } }),
+  });
+
   const { data: wardsData } = useQuery({
-    queryKey: ['wards-list'],
-    queryFn: () => apiGet<Ward[]>('/infrastructure/wards', { params: { limit: 200 } }),
+    queryKey: ['wards-list', selectedFloorId],
+    queryFn: () =>
+      apiGet<Ward[]>('/infrastructure/wards', {
+        params: { limit: 200, ...(selectedFloorId && { floorId: selectedFloorId }) },
+      }),
+  });
+
+  // Per-ward availability (available/occupied/reserved/total) for dropdown badges
+  const { data: availabilityData } = useQuery({
+    queryKey: ['beds-availability-summary', selectedFloorId],
+    queryFn: () =>
+      apiGet<{ summary: unknown; wards: WardAvailability[] }>(
+        '/infrastructure/beds/availability',
+        { params: { ...(selectedFloorId && { floorId: selectedFloorId }) } },
+      ),
   });
 
   const { data: bedsData } = useQuery({
-    queryKey: ['beds-available', selectedWardId],
+    queryKey: ['beds-available', selectedWardId, selectedPatientId],
     queryFn: () =>
       apiGet<BedWithStatus[]>('/infrastructure/beds', {
-        params: { wardId: selectedWardId, status: 'available', limit: 200 },
+        params: {
+          wardId: selectedWardId,
+          status: 'available',
+          // Include this patient's already-reserved bed in the picker.
+          ...(selectedPatientId ? { forPatientId: selectedPatientId } : {}),
+          limit: 200,
+        },
       }),
     enabled: !!selectedWardId,
   });
@@ -143,15 +189,30 @@ function AdmissionDialog({
     setSelectedBedId('');
   }, [selectedWardId]);
 
+  // Reset ward + bed when floor changes
+  useEffect(() => {
+    setSelectedWardId('');
+    setSelectedBedId('');
+  }, [selectedFloorId]);
+
   const patients = patientsData?.data ?? [];
   const doctors = doctorsData?.data ?? [];
+  const floors = floorsData?.data ?? [];
   const wards = wardsData?.data ?? [];
   const beds = bedsData?.data ?? [];
+  const availabilityByWard = new Map(
+    (availabilityData?.data?.wards ?? []).map((w) => [w.wardId, w]),
+  );
 
-  const selectedPatient = patients.find((p) => p.id === selectedPatientId);
+  const selectedPatient =
+    selectedPatientSnapshot ?? patients.find((p) => p.id === selectedPatientId);
   const selectedDoctor = doctors.find((d) => d.id === selectedDoctorId);
+  const selectedFloor = floors.find((f) => f.id === selectedFloorId);
   const selectedWard = wards.find((w) => w.id === selectedWardId);
   const selectedBed = beds.find((b) => b.id === selectedBedId);
+
+  const doctorName = (d?: typeof doctors[number]) =>
+    d ? `Dr. ${d.user?.firstName ?? ''} ${d.user?.lastName ?? ''}`.trim() : '';
 
   // Mutation: create visit then admission
   const admitMutation = useMutation({
@@ -184,6 +245,9 @@ function AdmissionDialog({
       queryClient.invalidateQueries({ queryKey: ['hospital', 'admissions'] });
       queryClient.invalidateQueries({ queryKey: ['hospital', 'beds'] });
       queryClient.invalidateQueries({ queryKey: ['hospital', 'occupancy'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'reservations'] });
+      queryClient.invalidateQueries({ queryKey: ['infrastructure', 'beds'] });
+      queryClient.invalidateQueries({ queryKey: ['beds-available'] });
       onAdmitted(admission);
       resetForm();
       onOpenChange(false);
@@ -196,7 +260,9 @@ function AdmissionDialog({
   const resetForm = useCallback(() => {
     setPatientSearch('');
     setSelectedPatientId('');
+    setSelectedPatientSnapshot(null);
     setSelectedDoctorId('');
+    setSelectedFloorId('');
     setSelectedWardId('');
     setSelectedBedId('');
     setAdmissionDate(toInputDateStr());
@@ -263,9 +329,19 @@ function AdmissionDialog({
               {selectedPatientId ? (
                 <div className="flex items-center justify-between rounded-lg border px-3 py-2">
                   <span className="text-sm">
-                    {selectedPatient?.firstName} {selectedPatient?.lastName} ({selectedPatient?.mrn})
+                    {selectedPatient
+                      ? `${selectedPatient.firstName} ${selectedPatient.lastName}${selectedPatient.mrn ? ` (${selectedPatient.mrn})` : ''}`
+                      : 'Loading patient…'}
                   </span>
-                  <Button variant="ghost" size="sm" onClick={() => setSelectedPatientId('')}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedPatientId('');
+                      setSelectedPatientSnapshot(null);
+                      setPatientSearch('');
+                    }}
+                  >
                     Change
                   </Button>
                 </div>
@@ -285,6 +361,7 @@ function AdmissionDialog({
                           className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent text-left"
                           onClick={() => {
                             setSelectedPatientId(p.id);
+                            setSelectedPatientSnapshot(p);
                             setPatientSearch(`${p.firstName} ${p.lastName}`);
                           }}
                         >
@@ -308,12 +385,14 @@ function AdmissionDialog({
                 <Label>Consultant Doctor *</Label>
                 <Select value={selectedDoctorId} onValueChange={(v) => setSelectedDoctorId(v ?? '')}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select doctor" />
+                    <SelectValue placeholder="Select doctor">
+                      {() => (selectedDoctor ? doctorName(selectedDoctor) : 'Select doctor')}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {doctors.map((d) => (
                       <SelectItem key={d.id} value={d.id}>
-                        Dr. {d.user?.firstName} {d.user?.lastName}
+                        {doctorName(d)}
                         {d.specialization ? ` — ${d.specialization}` : ''}
                       </SelectItem>
                     ))}
@@ -321,19 +400,59 @@ function AdmissionDialog({
                 </Select>
               </div>
 
-              {/* Ward */}
+              {/* Floor (optional pre-filter) */}
+              <div className="grid gap-1.5">
+                <Label>Floor</Label>
+                <Select
+                  value={selectedFloorId || null}
+                  onValueChange={(v) => setSelectedFloorId(v ?? '')}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="All floors">
+                      {() =>
+                        selectedFloor
+                          ? `L${selectedFloor.level} — ${selectedFloor.name}`
+                          : 'All floors'
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {floors.map((f) => (
+                      <SelectItem key={f.id} value={f.id}>
+                        L{f.level} — {f.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Ward (filtered by floor when set) */}
               <div className="grid gap-1.5">
                 <Label>Ward *</Label>
                 <Select value={selectedWardId} onValueChange={(v) => setSelectedWardId(v ?? '')}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select ward" />
+                    <SelectValue placeholder="Select ward">
+                      {() => (selectedWard ? selectedWard.name : 'Select ward')}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {wards.map((w) => (
-                      <SelectItem key={w.id} value={w.id}>
-                        {w.name}
-                      </SelectItem>
-                    ))}
+                    {wards.map((w) => {
+                      const a = availabilityByWard.get(w.id);
+                      const floorPart = w.floor ? `L${w.floor.level}` : null;
+                      const typePart = w.wardType ? w.wardType.toUpperCase() : null;
+                      const availPart = a ? `${a.available}/${a.totalBeds} free` : null;
+                      const meta = [floorPart, typePart, availPart].filter(Boolean).join(' · ');
+                      const noBeds = a?.available === 0;
+                      return (
+                        <SelectItem key={w.id} value={w.id} disabled={noBeds}>
+                          <span>
+                            {w.name}
+                            {meta ? <span className="text-muted-foreground"> · {meta}</span> : null}
+                            {noBeds ? <span className="text-destructive"> (full)</span> : null}
+                          </span>
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -349,15 +468,35 @@ function AdmissionDialog({
                   <SelectTrigger className="w-full">
                     <SelectValue
                       placeholder={selectedWardId ? 'Select available bed' : 'Select ward first'}
-                    />
+                    >
+                      {() =>
+                        selectedBed
+                          ? `Bed ${selectedBed.bedNumber}${selectedBed.bedType ? ` · ${selectedBed.bedType.toUpperCase()}` : ''}`
+                          : selectedWardId
+                            ? 'Select available bed'
+                            : 'Select ward first'
+                      }
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {beds.map((b) => (
-                      <SelectItem key={b.id} value={b.id}>
-                        Bed {b.bedNumber}
-                        {b.bedType ? ` · ${b.bedType.toUpperCase()}` : ''}
-                      </SelectItem>
-                    ))}
+                    {beds.map((b) => {
+                      const heldForThisPatient =
+                        selectedPatientId && b.status !== 'available' &&
+                        b.currentPatientId === selectedPatientId;
+                      return (
+                        <SelectItem key={b.id} value={b.id}>
+                          <span>
+                            Bed {b.bedNumber}
+                            {b.bedType ? (
+                              <span className="text-muted-foreground"> · {b.bedType.toUpperCase()}</span>
+                            ) : null}
+                            {heldForThisPatient ? (
+                              <span className="text-primary"> · reserved for patient</span>
+                            ) : null}
+                          </span>
+                        </SelectItem>
+                      );
+                    })}
                     {beds.length === 0 && selectedWardId && (
                       <div className="px-3 py-2 text-sm text-muted-foreground">
                         No available beds in this ward
@@ -431,6 +570,11 @@ function AdmissionDialog({
                 <span className="text-muted-foreground">Bed:</span>{' '}
                 <strong>{selectedBed?.bedNumber}</strong> in{' '}
                 <strong>{selectedWard?.name}</strong>
+                {selectedWard?.floor ? (
+                  <span className="text-muted-foreground">
+                    {' '}· Floor {selectedWard.floor.level} ({selectedWard.floor.name})
+                  </span>
+                ) : null}
               </p>
               <p>
                 <span className="text-muted-foreground">Deposit:</span>{' '}
@@ -844,6 +988,8 @@ function DischargeDialog({
       queryClient.invalidateQueries({ queryKey: ['hospital', 'admissions'] });
       queryClient.invalidateQueries({ queryKey: ['hospital', 'beds'] });
       queryClient.invalidateQueries({ queryKey: ['hospital', 'occupancy'] });
+      queryClient.invalidateQueries({ queryKey: ['infrastructure', 'beds'] });
+      queryClient.invalidateQueries({ queryKey: ['beds-available'] });
       onOpenChange(false);
     },
     onError: (err: Error) => {

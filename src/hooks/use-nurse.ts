@@ -840,6 +840,9 @@ export function useDutyRoster(params?: {
   toDate?: string;
   departmentId?: string;
   staffId?: string;
+  // Backend resolves to the user's StaffProfile; lets a nurse view "my
+  // shifts" without first fetching their staff record.
+  userId?: string;
   shiftType?: 'morning' | 'afternoon' | 'night' | 'general';
 }) {
   // Backend supports fromDate/toDate ranges; convenience-map a single `date` to both.

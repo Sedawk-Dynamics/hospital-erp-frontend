@@ -21,7 +21,7 @@ export interface DutyRoster {
   createdAt: string;
   staff?: {
     id: string;
-    user?: { firstName: string; lastName: string | null };
+    user?: { id: string; firstName: string; lastName: string | null };
   };
   department?: { id: string; name: string };
   ward?: { id: string; name: string } | null;
@@ -29,6 +29,9 @@ export interface DutyRoster {
 
 export interface ListRostersQuery {
   staffId?: string;
+  // Resolved server-side to the user's StaffProfile; lets a nurse fetch their
+  // own roster without first looking up the staffId.
+  userId?: string;
   departmentId?: string;
   wardId?: string;
   role?: string;
@@ -41,8 +44,11 @@ export interface ListRostersQuery {
 }
 
 export interface CreateRosterInput {
-  staffId: string;
-  departmentId: string;
+  // Either staffId (HR profile id) or userId (the backend will find or create
+  // a StaffProfile for the user, picking a sensible default department).
+  staffId?: string;
+  userId?: string;
+  departmentId?: string;
   wardId?: string;
   role?: string;
   shiftDate: string;
@@ -63,10 +69,11 @@ export function useDutyRosters(query: ListRostersQuery = {}) {
   return useQuery({
     queryKey: ['duty-rosters', query],
     queryFn: async () => {
-      const res = await apiGet<{ items: DutyRoster[]; total: number }>(
-        `/hr/rosters${qs ? `?${qs}` : ''}`,
-      );
-      return res.data;
+      const res = await apiGet<DutyRoster[]>(`/hr/rosters${qs ? `?${qs}` : ''}`);
+      return {
+        items: (res.data ?? []) as DutyRoster[],
+        total: res.meta?.total ?? 0,
+      };
     },
   });
 }

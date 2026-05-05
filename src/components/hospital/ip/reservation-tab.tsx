@@ -240,6 +240,19 @@ function CreateReservationDialog({ open, onOpenChange }: { open: boolean; onOpen
     enabled: open,
   });
 
+  // Fetch available beds for the selected ward
+  const { data: bedsData, isFetching: bedsLoading } = useQuery({
+    queryKey: ['infrastructure', 'beds', { wardId: form.wardId, status: 'available' }],
+    queryFn: async () => {
+      const res = await apiGet<Array<{ id: string; bedNumber: string; bedType?: string }>>(
+        '/infrastructure/beds',
+        { params: { wardId: form.wardId, status: 'available', limit: 200 } },
+      );
+      return res.data;
+    },
+    enabled: open && Boolean(form.wardId),
+  });
+
   // Fetch patients for search
   const [patientSearch, setPatientSearch] = useState('');
   const { data: patientsData } = useQuery({
@@ -280,6 +293,9 @@ function CreateReservationDialog({ open, onOpenChange }: { open: boolean; onOpen
     onSuccess: () => {
       toast.success('Reservation created successfully');
       qc.invalidateQueries({ queryKey: ['hospital', 'reservations'] });
+      qc.invalidateQueries({ queryKey: ['hospital', 'beds'] });
+      qc.invalidateQueries({ queryKey: ['hospital', 'occupancy'] });
+      qc.invalidateQueries({ queryKey: ['infrastructure', 'beds'] });
       onOpenChange(false);
       setForm({
         patientId: '', doctorId: '', wardId: '', bedId: '',
@@ -307,6 +323,11 @@ function CreateReservationDialog({ open, onOpenChange }: { open: boolean; onOpen
   const patients = patientsData ?? [];
   const wards = wardsData ?? [];
   const doctors = doctorsData ?? [];
+  const beds = bedsData ?? [];
+
+  const selectedDoctor = doctors.find((d: any) => d.id === form.doctorId);
+  const selectedWard = wards.find((w: any) => w.id === form.wardId);
+  const selectedBed = beds.find((b) => b.id === form.bedId);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -348,7 +369,15 @@ function CreateReservationDialog({ open, onOpenChange }: { open: boolean; onOpen
             <div>
               <label className="text-xs font-medium text-foreground">Doctor *</label>
               <Select value={form.doctorId} onValueChange={(v) => handleChange('doctorId', v ?? '')}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Select doctor" /></SelectTrigger>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Select doctor">
+                    {() =>
+                      selectedDoctor
+                        ? `Dr. ${selectedDoctor.user?.firstName ?? (selectedDoctor as any).firstName ?? ''} ${selectedDoctor.user?.lastName ?? (selectedDoctor as any).lastName ?? ''}`.trim()
+                        : 'Select doctor'
+                    }
+                  </SelectValue>
+                </SelectTrigger>
                 <SelectContent>
                   {doctors.map((d: any) => (
                     <SelectItem key={d.id} value={d.id}>
@@ -362,11 +391,65 @@ function CreateReservationDialog({ open, onOpenChange }: { open: boolean; onOpen
             {/* Ward */}
             <div>
               <label className="text-xs font-medium text-foreground">Ward *</label>
-              <Select value={form.wardId} onValueChange={(v) => handleChange('wardId', v ?? '')}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Select ward" /></SelectTrigger>
+              <Select
+                value={form.wardId}
+                onValueChange={(v) =>
+                  setForm((prev) => ({ ...prev, wardId: v ?? '', bedId: '' }))
+                }
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Select ward">
+                    {() => (selectedWard ? selectedWard.name : 'Select ward')}
+                  </SelectValue>
+                </SelectTrigger>
                 <SelectContent>
                   {wards.map((w: any) => (
                     <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Bed (optional — blocks the bed when set) */}
+            <div>
+              <label className="text-xs font-medium text-foreground">
+                Bed {form.wardId ? '(optional)' : ''}
+              </label>
+              <Select
+                value={form.bedId || null}
+                onValueChange={(v) => handleChange('bedId', v ?? '')}
+                disabled={!form.wardId || bedsLoading}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue
+                    placeholder={
+                      !form.wardId
+                        ? 'Select a ward first'
+                        : bedsLoading
+                          ? 'Loading...'
+                          : beds.length === 0
+                            ? 'No beds available'
+                            : 'Select bed'
+                    }
+                  >
+                    {() =>
+                      selectedBed
+                        ? `${selectedBed.bedNumber}${selectedBed.bedType ? ` — ${selectedBed.bedType}` : ''}`
+                        : !form.wardId
+                          ? 'Select a ward first'
+                          : bedsLoading
+                            ? 'Loading...'
+                            : beds.length === 0
+                              ? 'No beds available'
+                              : 'Select bed'
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {beds.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.bedNumber}{b.bedType ? ` — ${b.bedType}` : ''}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>

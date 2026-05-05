@@ -35,19 +35,69 @@ import {
 import {
   useDutyRosters,
   useCreateDutyRoster,
-  usePublishDutyRoster,
+  useCreateDutyRostersBulk,
+  type CreateRosterInput,
   type DutyRoster,
   type DutyRosterStatus,
 } from '@/hooks/use-duty-rosters';
+import { useWards } from '@/hooks/use-clinical';
 import { useUsersList, type UserListItem } from '@/hooks/use-users';
 
-const SHIFTS = ['morning', 'afternoon', 'night'] as const;
+const SHIFTS = ['morning', 'afternoon', 'night', 'general'] as const;
 type Shift = (typeof SHIFTS)[number];
+
+// Nurse-admin scope: this page only schedules nursing staff. Other roles'
+// rosters live in the HR module.
+const NURSE_ROLES = ['nurse', 'nurse_admin'] as const;
+type NurseRole = (typeof NURSE_ROLES)[number];
+
+const ROLE_LABEL: Record<string, string> = {
+  nurse: 'Nurse',
+  nurse_admin: 'Nurse admin',
+};
+
+const SHIFT_DEFAULT_TIMES: Record<Shift, { start: string; end: string }> = {
+  morning: { start: '07:00', end: '15:00' },
+  afternoon: { start: '15:00', end: '23:00' },
+  night: { start: '23:00', end: '07:00' },
+  general: { start: '09:00', end: '17:00' },
+};
+
+// Date.getDay(): 0 = Sunday … 6 = Saturday. Stored as a Set of numbers.
+const WEEKDAY_LABELS: { day: number; short: string }[] = [
+  { day: 1, short: 'Mon' },
+  { day: 2, short: 'Tue' },
+  { day: 3, short: 'Wed' },
+  { day: 4, short: 'Thu' },
+  { day: 5, short: 'Fri' },
+  { day: 6, short: 'Sat' },
+  { day: 0, short: 'Sun' },
+];
+
+function expandDates(fromIso: string, toIso: string, weekdays: Set<number>): string[] {
+  const start = parseISO(fromIso);
+  const end = parseISO(toIso);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return [];
+  const dates: string[] = [];
+  for (let d = start; d <= end; d = addDays(d, 1)) {
+    if (weekdays.has(d.getDay())) {
+      dates.push(format(d, 'yyyy-MM-dd'));
+    }
+  }
+  return dates;
+}
+
+function roleLabel(role?: string | null) {
+  if (!role) return '—';
+  return ROLE_LABEL[role] ?? role;
+}
+
 
 export default function RosterPlanningPage() {
   const [weekStartIso, setWeekStartIso] = useState<string>(
     format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'),
   );
+  const [roleFilter, setRoleFilter] = useState<string>('all');
 
   const weekStart = parseISO(weekStartIso);
   const weekEnd = addDays(weekStart, 6);
@@ -57,12 +107,16 @@ export default function RosterPlanningPage() {
   const { data, isLoading } = useDutyRosters({
     fromDate,
     toDate,
-    role: 'nurse',
+    role: roleFilter === 'all' ? undefined : roleFilter,
     limit: 500,
   });
-  const rosters = (data?.items ?? (data as any)?.data ?? []) as DutyRoster[];
-
-  const publishMut = usePublishDutyRoster();
+  // Nurse-admin only owns nursing rosters; ignore any rows tagged with other
+  // roles even if they leak through the unfiltered query.
+  const rosters = useMemo(() => {
+    const items = data?.items ?? [];
+    if (roleFilter !== 'all') return items;
+    return items.filter((r) => !r.role || (NURSE_ROLES as readonly string[]).includes(r.role));
+  }, [data, roleFilter]);
 
   const byDateAndShift = useMemo(() => {
     const map = new Map<string, DutyRoster[]>();
@@ -77,31 +131,22 @@ export default function RosterPlanningPage() {
 
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
-  async function handlePublish(id: string) {
-    try {
-      await publishMut.mutateAsync(id);
-      toast.success('Roster published');
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to publish';
-      toast.error(msg);
-    }
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Roster Planning</h1>
+          <h1 className="text-2xl font-semibold">Nursing Roster Planning</h1>
           <p className="text-sm text-muted-foreground">
-            Weekly nursing roster. Add entries then publish to release them to bedside nurses.
+            Weekly nursing shift roster. Entries are published immediately and visible to bedside
+            nurses. Other roles' rosters are managed in HR.
           </p>
         </div>
         <CreateRosterDialog />
       </div>
 
       <Card>
-        <CardHeader className="flex flex-row items-center gap-3">
-          <div className="flex items-center gap-2">
+        <CardHeader className="flex flex-row flex-wrap items-end gap-4">
+          <div>
             <Label htmlFor="week" className="text-xs font-medium text-muted-foreground">
               Week starting
             </Label>
@@ -110,10 +155,36 @@ export default function RosterPlanningPage() {
               type="date"
               value={weekStartIso}
               onChange={(e) => setWeekStartIso(e.target.value)}
-              className="w-40"
+              className="mt-1 w-40"
             />
           </div>
-          <div className="text-xs text-muted-foreground">
+          <div>
+            <Label className="text-xs font-medium text-muted-foreground">Role</Label>
+            <Select
+              value={roleFilter}
+              onValueChange={(value) => {
+                if (value) setRoleFilter(value);
+              }}
+            >
+              <SelectTrigger className="mt-1 w-48">
+                <SelectValue>
+                  {(value) => {
+                    if (!value || value === 'all') return 'All nursing';
+                    return ROLE_LABEL[value as string] ?? (value as string);
+                  }}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All nursing</SelectItem>
+                {NURSE_ROLES.map((r) => (
+                  <SelectItem key={r} value={r}>
+                    {ROLE_LABEL[r]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="ml-auto text-xs text-muted-foreground">
             {format(weekStart, 'dd/MM')} – {format(weekEnd, 'dd/MM/yyyy')}
           </div>
         </CardHeader>
@@ -152,7 +223,7 @@ export default function RosterPlanningPage() {
                             ) : (
                               <div className="space-y-1">
                                 {entries.map((r) => (
-                                  <RosterChip key={r.id} r={r} onPublish={handlePublish} />
+                                  <RosterChip key={r.id} r={r} />
                                 ))}
                               </div>
                             )}
@@ -179,10 +250,10 @@ export default function RosterPlanningPage() {
                 <TableHead>Date</TableHead>
                 <TableHead>Shift</TableHead>
                 <TableHead>Staff</TableHead>
-                <TableHead>Ward</TableHead>
                 <TableHead>Role</TableHead>
+                <TableHead>Department</TableHead>
+                <TableHead>Ward</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="w-32"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -195,29 +266,20 @@ export default function RosterPlanningPage() {
               ) : (
                 rosters.map((r) => {
                   const staffName = r.staff?.user
-                    ? `${r.staff.user.firstName} ${r.staff.user.lastName ?? ''}`
+                    ? `${r.staff.user.firstName} ${r.staff.user.lastName ?? ''}`.trim()
                     : '—';
                   return (
                     <TableRow key={r.id}>
-                      <TableCell className="text-sm">{format(parseISO(r.shiftDate), 'dd/MM/yyyy')}</TableCell>
+                      <TableCell className="text-sm">
+                        {format(parseISO(r.shiftDate), 'dd/MM/yyyy')}
+                      </TableCell>
                       <TableCell className="text-sm capitalize">{r.shiftType}</TableCell>
                       <TableCell className="text-sm">{staffName}</TableCell>
+                      <TableCell className="text-sm">{roleLabel(r.role)}</TableCell>
+                      <TableCell className="text-sm">{r.department?.name ?? '—'}</TableCell>
                       <TableCell className="text-sm">{r.ward?.name ?? '—'}</TableCell>
-                      <TableCell className="text-sm">{r.role ?? '—'}</TableCell>
                       <TableCell>
                         <StatusBadge status={r.status} />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {r.status === 'scheduled' ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handlePublish(r.id)}
-                            disabled={publishMut.isPending}
-                          >
-                            Publish
-                          </Button>
-                        ) : null}
                       </TableCell>
                     </TableRow>
                   );
@@ -231,33 +293,25 @@ export default function RosterPlanningPage() {
   );
 }
 
-function RosterChip({ r, onPublish }: { r: DutyRoster; onPublish: (id: string) => void }) {
+function RosterChip({ r }: { r: DutyRoster }) {
   const staffName = r.staff?.user
-    ? `${r.staff.user.firstName} ${r.staff.user.lastName ?? ''}`
+    ? `${r.staff.user.firstName} ${r.staff.user.lastName ?? ''}`.trim()
     : 'Staff';
   return (
     <div
       className={`rounded-md border px-1.5 py-1 text-xs ${
-        r.status === 'published'
-          ? 'border-emerald-200 bg-emerald-50'
-          : r.status === 'scheduled'
-            ? 'border-amber-200 bg-amber-50'
-            : 'border-muted bg-muted/40'
+        r.status === 'cancelled'
+          ? 'border-muted bg-muted/40'
+          : r.status === 'completed'
+            ? 'border-primary/20 bg-primary/10'
+            : 'border-emerald-200 bg-emerald-50'
       }`}
     >
       <div className="font-medium">{staffName}</div>
       <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-        {r.ward?.name ?? '—'}
-        {r.role ? ` · ${r.role}` : ''}
+        {roleLabel(r.role)}
+        {r.ward?.name ? ` · ${r.ward.name}` : ''}
       </div>
-      {r.status === 'scheduled' ? (
-        <button
-          className="mt-0.5 text-[10px] font-medium text-primary hover:underline"
-          onClick={() => onPublish(r.id)}
-        >
-          Publish
-        </button>
-      ) : null}
     </div>
   );
 }
@@ -277,46 +331,123 @@ function StatusBadge({ status }: { status: DutyRosterStatus }) {
   );
 }
 
+function primaryNursingRoleOf(u: UserListItem): NurseRole | undefined {
+  const names = u.userRoles?.map((r) => r.role.name) ?? [];
+  return NURSE_ROLES.find((opt) => names.includes(opt));
+}
+
+function isNursingUser(u: UserListItem): boolean {
+  return primaryNursingRoleOf(u) !== undefined;
+}
+
 function CreateRosterDialog() {
+  const today = format(new Date(), 'yyyy-MM-dd');
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<'single' | 'range'>('single');
   const [form, setForm] = useState({
-    staffId: '',
-    departmentId: '',
+    userId: '',
     wardId: '',
     role: 'nurse',
-    shiftDate: format(new Date(), 'yyyy-MM-dd'),
+    shiftDate: today,
+    rangeFrom: today,
+    rangeTo: format(addDays(new Date(), 6), 'yyyy-MM-dd'),
+    weekdays: new Set<number>([1, 2, 3, 4, 5, 6, 0]),
     shiftType: 'morning' as Shift,
-    startTime: '07:00',
-    endTime: '15:00',
+    startTime: SHIFT_DEFAULT_TIMES.morning.start,
+    endTime: SHIFT_DEFAULT_TIMES.morning.end,
   });
 
-  const { data: usersRes } = useUsersList({ limit: 500, isActive: 'true' });
-  const staffUsers = (usersRes?.data ?? []) as UserListItem[];
+  const { data: usersRes, isLoading: usersLoading } = useUsersList({
+    limit: 500,
+    isActive: 'true',
+  });
+  const users = useMemo(
+    () => ((usersRes?.data ?? []) as UserListItem[]).filter(isNursingUser),
+    [usersRes],
+  );
+  const { data: wards = [] } = useWards();
 
   const createMut = useCreateDutyRoster();
+  const bulkMut = useCreateDutyRostersBulk();
+  const isPending = createMut.isPending || bulkMut.isPending;
+
+  const expandedDates = useMemo(
+    () => (mode === 'range' ? expandDates(form.rangeFrom, form.rangeTo, form.weekdays) : []),
+    [mode, form.rangeFrom, form.rangeTo, form.weekdays],
+  );
+
+  function toggleWeekday(day: number) {
+    setForm((f) => {
+      const next = new Set(f.weekdays);
+      if (next.has(day)) next.delete(day);
+      else next.add(day);
+      return { ...f, weekdays: next };
+    });
+  }
+
+  function resetForm() {
+    setForm((f) => ({ ...f, userId: '', wardId: '' }));
+  }
 
   async function handleSave() {
-    if (!form.staffId || !form.departmentId) {
-      toast.error('Staff and department are required');
+    if (!form.userId) {
+      toast.error('Please select a staff member');
       return;
     }
+
+    const baseEntry: Omit<CreateRosterInput, 'shiftDate'> = {
+      userId: form.userId,
+      wardId: form.wardId || undefined,
+      role: form.role || undefined,
+      shiftType: form.shiftType,
+      startTime: form.startTime,
+      endTime: form.endTime,
+    };
+
     try {
-      await createMut.mutateAsync({
-        staffId: form.staffId,
-        departmentId: form.departmentId,
-        wardId: form.wardId || undefined,
-        role: form.role || undefined,
-        shiftDate: form.shiftDate,
-        shiftType: form.shiftType,
-        startTime: form.startTime,
-        endTime: form.endTime,
-      });
-      toast.success('Roster entry added');
+      if (mode === 'single') {
+        await createMut.mutateAsync({ ...baseEntry, shiftDate: form.shiftDate });
+        toast.success('Roster entry added');
+      } else {
+        if (form.weekdays.size === 0) {
+          toast.error('Pick at least one weekday');
+          return;
+        }
+        if (expandedDates.length === 0) {
+          toast.error('Date range produced no shifts — check the dates and weekdays');
+          return;
+        }
+        const entries = expandedDates.map((d) => ({ ...baseEntry, shiftDate: d }));
+        const result = await bulkMut.mutateAsync(entries);
+        const created = result?.created?.length ?? 0;
+        const skipped = result?.skipped?.length ?? 0;
+        toast.success(
+          skipped > 0
+            ? `Created ${created} roster entries (${skipped} skipped — likely duplicates)`
+            : `Created ${created} roster entries`,
+        );
+      }
       setOpen(false);
+      resetForm();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to create roster entry';
       toast.error(msg);
     }
+  }
+
+  function onUserChange(userId: string) {
+    const u = users.find((x) => x.id === userId);
+    const inferredRole = u ? primaryNursingRoleOf(u) : undefined;
+    setForm((f) => ({
+      ...f,
+      userId,
+      role: inferredRole ?? 'nurse',
+    }));
+  }
+
+  function onShiftChange(value: Shift) {
+    const def = SHIFT_DEFAULT_TIMES[value];
+    setForm((f) => ({ ...f, shiftType: value, startTime: def.start, endTime: def.end }));
   }
 
   return (
@@ -333,70 +464,189 @@ function CreateRosterDialog() {
           <div className="col-span-2">
             <Label className="text-xs">Staff</Label>
             <Select
-              value={form.staffId}
+              value={form.userId || null}
               onValueChange={(value) => {
-                if (value) setForm((f) => ({ ...f, staffId: value }));
+                if (value) onUserChange(value);
               }}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Select staff" />
+                <SelectValue placeholder={usersLoading ? 'Loading staff…' : 'Select staff'}>
+                  {(value) => {
+                    const u = users.find((x) => x.id === value);
+                    if (!u) return usersLoading ? 'Loading staff…' : 'Select staff';
+                    const name = `${u.firstName} ${u.lastName ?? ''}`.trim();
+                    const role = primaryNursingRoleOf(u);
+                    const tail = role ? ` · ${ROLE_LABEL[role] ?? role}` : '';
+                    return `${name}${tail}`;
+                  }}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                {staffUsers.map((u) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {u.firstName} {u.lastName ?? ''}
-                  </SelectItem>
-                ))}
+                {users.length === 0 ? (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">
+                    No active nursing staff. Assign the nurse or nurse_admin role to users in
+                    Settings → Users first.
+                  </div>
+                ) : (
+                  users.map((u) => {
+                    const name = `${u.firstName} ${u.lastName ?? ''}`.trim();
+                    const role = primaryNursingRoleOf(u);
+                    const sub = role ? ROLE_LABEL[role] ?? role : '';
+                    return (
+                      <SelectItem key={u.id} value={u.id}>
+                        <div className="flex flex-col">
+                          <span>{name}</span>
+                          {sub ? (
+                            <span className="text-[10px] text-muted-foreground">{sub}</span>
+                          ) : null}
+                        </div>
+                      </SelectItem>
+                    );
+                  })
+                )}
               </SelectContent>
             </Select>
           </div>
-          <div>
-            <Label className="text-xs">Department ID</Label>
-            <Input
-              placeholder="UUID"
-              value={form.departmentId}
-              onChange={(e) => setForm((f) => ({ ...f, departmentId: e.target.value }))}
-            />
-          </div>
-          <div>
-            <Label className="text-xs">Ward ID (optional)</Label>
-            <Input
-              placeholder="UUID"
-              value={form.wardId}
-              onChange={(e) => setForm((f) => ({ ...f, wardId: e.target.value }))}
-            />
-          </div>
+
           <div>
             <Label className="text-xs">Role tag</Label>
             <Select
-              value={form.role}
+              value={form.role || null}
               onValueChange={(value) => {
                 if (value) setForm((f) => ({ ...f, role: value }));
               }}
             >
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue>
+                  {(value) =>
+                    typeof value === 'string' && value ? (ROLE_LABEL[value] ?? value) : 'Select role'
+                  }
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="nurse">nurse</SelectItem>
-                <SelectItem value="nurse_admin">nurse_admin</SelectItem>
+                {NURSE_ROLES.map((r) => (
+                  <SelectItem key={r} value={r}>
+                    {ROLE_LABEL[r]}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
+
           <div>
-            <Label className="text-xs">Date</Label>
-            <Input
-              type="date"
-              value={form.shiftDate}
-              onChange={(e) => setForm((f) => ({ ...f, shiftDate: e.target.value }))}
-            />
+            <Label className="text-xs">Ward (optional)</Label>
+            <Select
+              value={form.wardId || null}
+              onValueChange={(value) => {
+                setForm((f) => ({ ...f, wardId: value ?? '' }));
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="No ward">
+                  {(value) => {
+                    if (!value) return 'No ward';
+                    const w = wards.find((x) => x.id === value);
+                    return w ? w.name : 'No ward';
+                  }}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">No ward</SelectItem>
+                {wards.map((w) => (
+                  <SelectItem key={w.id} value={w.id}>
+                    {w.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
+
+          <div className="col-span-2">
+            <Label className="text-xs">Repeat</Label>
+            <div className="mt-1 inline-flex rounded-md border bg-muted/40 p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => setMode('single')}
+                className={`rounded-sm px-3 py-1 ${
+                  mode === 'single' ? 'bg-background shadow-sm' : 'text-muted-foreground'
+                }`}
+              >
+                Single day
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode('range')}
+                className={`rounded-sm px-3 py-1 ${
+                  mode === 'range' ? 'bg-background shadow-sm' : 'text-muted-foreground'
+                }`}
+              >
+                Date range
+              </button>
+            </div>
+          </div>
+
+          {mode === 'single' ? (
+            <div>
+              <Label className="text-xs">Date</Label>
+              <Input
+                type="date"
+                value={form.shiftDate}
+                onChange={(e) => setForm((f) => ({ ...f, shiftDate: e.target.value }))}
+              />
+            </div>
+          ) : (
+            <>
+              <div>
+                <Label className="text-xs">From</Label>
+                <Input
+                  type="date"
+                  value={form.rangeFrom}
+                  onChange={(e) => setForm((f) => ({ ...f, rangeFrom: e.target.value }))}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">To</Label>
+                <Input
+                  type="date"
+                  value={form.rangeTo}
+                  onChange={(e) => setForm((f) => ({ ...f, rangeTo: e.target.value }))}
+                />
+              </div>
+              <div className="col-span-2">
+                <Label className="text-xs">Days of week</Label>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {WEEKDAY_LABELS.map(({ day, short }) => {
+                    const active = form.weekdays.has(day);
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => toggleWeekday(day)}
+                        className={`rounded-md border px-2.5 py-1 text-xs ${
+                          active
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'bg-background text-muted-foreground hover:bg-muted'
+                        }`}
+                      >
+                        {short}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  {expandedDates.length} shift{expandedDates.length === 1 ? '' : 's'} will be
+                  created. Existing entries on the same date/shift are skipped.
+                </p>
+              </div>
+            </>
+          )}
+
           <div>
             <Label className="text-xs">Shift</Label>
             <Select
               value={form.shiftType}
               onValueChange={(value) => {
-                if (value) setForm((f) => ({ ...f, shiftType: value as Shift }));
+                if (value) onShiftChange(value as Shift);
               }}
             >
               <SelectTrigger>
@@ -411,20 +661,22 @@ function CreateRosterDialog() {
               </SelectContent>
             </Select>
           </div>
+
           <div>
-            <Label className="text-xs">Start time (HH:mm)</Label>
+            <Label className="text-xs">Start time</Label>
             <Input
+              type="time"
               value={form.startTime}
               onChange={(e) => setForm((f) => ({ ...f, startTime: e.target.value }))}
-              placeholder="07:00"
             />
           </div>
+
           <div>
-            <Label className="text-xs">End time (HH:mm)</Label>
+            <Label className="text-xs">End time</Label>
             <Input
+              type="time"
               value={form.endTime}
               onChange={(e) => setForm((f) => ({ ...f, endTime: e.target.value }))}
-              placeholder="15:00"
             />
           </div>
         </div>
@@ -432,8 +684,10 @@ function CreateRosterDialog() {
           <Button variant="ghost" onClick={() => setOpen(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={createMut.isPending}>
-            Add
+          <Button onClick={handleSave} disabled={isPending}>
+            {mode === 'range' && expandedDates.length > 0
+              ? `Add ${expandedDates.length} shifts`
+              : 'Add'}
           </Button>
         </DialogFooter>
       </DialogContent>

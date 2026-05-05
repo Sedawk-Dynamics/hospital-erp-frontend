@@ -56,6 +56,12 @@ import {
 } from '@/hooks/use-nurse';
 import { useMyAssignedDoctors, useMyPatients } from '@/hooks/use-nurse-doctor-assignments';
 import { Stethoscope, Info } from 'lucide-react';
+import { MyShiftAssignments } from '@/components/nurse/my-shift-assignments';
+import {
+  useNurseAssignments,
+  type ShiftType as AssignmentShiftType,
+} from '@/hooks/use-nurse-assignments';
+import { useAuthStore } from '@/stores/auth-store';
 
 // ── Shift Detection ───────────────────────────────────────
 
@@ -162,19 +168,33 @@ function QuickStatCard({
 
 function AssignedDoctorsBanner({
   doctors,
+  hasShiftAssignments,
 }: {
   doctors: Array<{
     assignmentId: string;
     doctor: { id: string; user: { firstName: string; lastName: string | null } };
   }>;
+  hasShiftAssignments: boolean;
 }) {
-  if (doctors.length === 0) {
+  if (doctors.length === 0 && !hasShiftAssignments) {
     return (
       <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
         <Info className="h-3.5 w-3.5" />
         <span>
-          You are not assigned to any doctor yet. Ask your nurse admin to assign you so you can see
-          patients in this dashboard.
+          You haven&apos;t been assigned any doctors or shift beds yet. Nurse admin will hand
+          patients over to you when the shift is set up.
+        </span>
+      </div>
+    );
+  }
+  if (doctors.length === 0) {
+    // Nurse has bed assignments but no doctor assignments — that's fine, just
+    // let them know they're working off shift handovers only.
+    return (
+      <div className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+        <Stethoscope className="h-3.5 w-3.5 text-primary" />
+        <span className="text-muted-foreground">
+          Working from shift handover assignments — see beds assigned to you below.
         </span>
       </div>
     );
@@ -1027,12 +1047,28 @@ export default function NurseDashboardPage() {
 
   // Doctors I'm currently assigned to. Per SOW, a nurse only handles patients
   // under their assigned doctors. Empty list ⇒ unassigned ⇒ show no patients.
+  const { user: authUser } = useAuthStore();
   const { data: myDoctorsData } = useMyAssignedDoctors();
   const myDoctors = myDoctorsData?.data ?? [];
   const myDoctorIds = useMemo(
     () => new Set(myDoctors.map((d) => d.doctor.id)),
     [myDoctors],
   );
+
+  // Bed-level assignments handed to me by nurse_admin for the current shift.
+  // The dashboard surfaces these alongside doctor-based admissions so a nurse
+  // who's just received a handover sees those patients without further setup.
+  const { data: myShiftAssignmentsData } = useNurseAssignments({
+    nurseId: authUser?.id,
+    shiftDate: today,
+    shiftType: currentShift as AssignmentShiftType,
+    status: 'active',
+    limit: 200,
+  });
+  const myAssignedAdmissionIds = useMemo(() => {
+    const items = myShiftAssignmentsData?.items ?? [];
+    return new Set(items.map((a) => a.admissionId));
+  }, [myShiftAssignmentsData]);
 
   // OPD appointments where front-desk has confirmed the booking (status one
   // of confirmed | checked_in | waiting | in_consultation), scoped to the
@@ -1050,10 +1086,12 @@ export default function NurseDashboardPage() {
   const allAdmissions = admissionsData?.data ?? [];
   const admissions = useMemo(
     () =>
-      myDoctorIds.size === 0
-        ? []
-        : allAdmissions.filter((a) => a.doctorId && myDoctorIds.has(a.doctorId)),
-    [allAdmissions, myDoctorIds],
+      allAdmissions.filter((a) => {
+        const byDoctor = a.doctorId && myDoctorIds.has(a.doctorId);
+        const byShift = myAssignedAdmissionIds.has(a.id);
+        return byDoctor || byShift;
+      }),
+    [allAdmissions, myDoctorIds, myAssignedAdmissionIds],
   );
   const totalAdmissions = admissions.length;
   const totalPages = 1;
@@ -1171,7 +1209,10 @@ export default function NurseDashboardPage() {
       </div>
 
       {/* Assigned doctors banner — defines which patients this nurse handles */}
-      <AssignedDoctorsBanner doctors={myDoctors} />
+      <AssignedDoctorsBanner
+        doctors={myDoctors}
+        hasShiftAssignments={myAssignedAdmissionIds.size > 0}
+      />
 
       {/* Critical Alerts Banner */}
       <CriticalAlertsBanner
@@ -1230,6 +1271,11 @@ export default function NurseDashboardPage() {
         </div>
 
         <div className="space-y-4">
+          <MyShiftAssignments
+            shiftDate={today}
+            shiftType={currentShift as AssignmentShiftType}
+            variant="compact"
+          />
           <HandoverStatusCard
             currentShift={currentShift}
             pendingIncoming={pendingIncoming}

@@ -2,16 +2,13 @@
 
 import Link from 'next/link';
 import {
-  ShieldCheck,
   Users,
-  FileCheck,
   ClipboardCheck,
   ArrowRightLeft,
   CalendarClock,
   ClipboardPlus,
   BedDouble,
   AlertTriangle,
-  BarChart3,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { buttonVariants } from '@/components/ui/button';
@@ -24,11 +21,11 @@ export default function NurseAdminDashboard() {
         <h1 className="text-2xl font-semibold">Nursing Administration</h1>
         <p className="text-sm text-muted-foreground">
           Hospital-wide view of nursing: nurse-to-doctor assignment, ward / floor management, shift
-          planning, handover, and compliance.
+          planning, and handover.
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard icon={Users} label="Active nursing staff" value="—" hint="Across all wards" />
         <StatCard icon={BedDouble} label="Occupied IPD beds" value="—" hint="Awaiting coverage" />
         <StatCard
@@ -38,7 +35,6 @@ export default function NurseAdminDashboard() {
           hint="Need a nurse this shift"
           accent
         />
-        <StatCard icon={FileCheck} label="Rosters pending" value="—" hint="Awaiting approval" />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -91,32 +87,11 @@ export default function NurseAdminDashboard() {
               Plan weekly roster
             </Link>
             <Link
-              href="/nurse-admin/rosters"
-              className={cn(buttonVariants({ variant: 'outline' }), 'w-full justify-start')}
-            >
-              <FileCheck className="mr-2 h-4 w-4" />
-              Approve rosters
-            </Link>
-            <Link
               href="/nurse-admin/staffing"
               className={cn(buttonVariants({ variant: 'outline' }), 'w-full justify-start')}
             >
               <Users className="mr-2 h-4 w-4" />
               Hospital-wide staffing
-            </Link>
-            <Link
-              href="/nurse-admin/compliance"
-              className={cn(buttonVariants({ variant: 'outline' }), 'w-full justify-start')}
-            >
-              <ShieldCheck className="mr-2 h-4 w-4" />
-              Compliance & audit
-            </Link>
-            <Link
-              href="/nurse-admin/reports"
-              className={cn(buttonVariants({ variant: 'outline' }), 'w-full justify-start')}
-            >
-              <BarChart3 className="mr-2 h-4 w-4" />
-              Reports
             </Link>
           </CardContent>
         </Card>

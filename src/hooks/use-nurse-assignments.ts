@@ -95,10 +95,15 @@ export function useNurseAssignments(query: ListNurseAssignmentsQuery = {}) {
   return useQuery({
     queryKey: ['nurse-assignments', query],
     queryFn: async () => {
-      const res = await apiGet<{ items: NurseAssignment[]; total: number; page: number; limit: number }>(
+      const res = await apiGet<NurseAssignment[]>(
         `/clinical/nurse-assignments${qs ? `?${qs}` : ''}`,
       );
-      return res.data;
+      return {
+        items: (res.data ?? []) as NurseAssignment[],
+        total: res.meta?.total ?? 0,
+        page: res.meta?.page ?? 1,
+        limit: res.meta?.limit ?? 0,
+      };
     },
   });
 }

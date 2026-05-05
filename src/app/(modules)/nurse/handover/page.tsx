@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
+import { addDays, format, parseISO } from 'date-fns';
 import { toInputDateStr, formatDate, formatDateTime, formatTime } from '@/lib/date-utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -24,6 +25,12 @@ import {
   useShiftSummary,
   type ShiftHandover,
 } from '@/hooks/use-nurse';
+import { MyShiftAssignments } from '@/components/nurse/my-shift-assignments';
+import {
+  useNurseAssignments,
+  type ShiftType as AssignmentShiftType,
+} from '@/hooks/use-nurse-assignments';
+import { useDutyRosters } from '@/hooks/use-duty-rosters';
 import {
   Sun,
   Sunset,
@@ -71,6 +78,23 @@ function detectCurrentShift(): ShiftType {
   if (hour >= 6 && hour < 14) return 'morning';
   if (hour >= 14 && hour < 22) return 'afternoon';
   return 'night';
+}
+
+// Sequential rotation: morning → afternoon → night → next-day morning. Used to
+// suggest the receiving shift when an outgoing nurse files a handover.
+const NEXT_SHIFT: Record<ShiftType, ShiftType> = {
+  morning: 'afternoon',
+  afternoon: 'night',
+  night: 'morning',
+};
+
+function nextShiftDate(fromShift: ShiftType, fromDateIso: string): string {
+  // The night shift wraps past midnight, so the receiving morning shift sits
+  // on the following calendar day. All other transitions stay on today.
+  if (fromShift === 'night') {
+    return format(addDays(parseISO(fromDateIso), 1), 'yyyy-MM-dd');
+  }
+  return fromDateIso;
 }
 
 // ── Patient Note Row ─────────────────────────────────────────
@@ -247,13 +271,85 @@ function ShiftSummaryPanel({ currentShift }: { currentShift: ShiftType }) {
 // ── Create Handover Form ─────────────────────────────────────
 
 function CreateHandoverForm({ currentShift }: { currentShift: ShiftType }) {
+  const { user } = useAuthStore();
   const [isOpen, setIsOpen] = useState(false);
-  const [shiftType, setShiftType] = useState<string>(currentShift);
+  const [shiftType, setShiftType] = useState<ShiftType>(currentShift);
+  const [wardId, setWardId] = useState('');
+  const [toNurseId, setToNurseId] = useState('');
   const [summary, setSummary] = useState('');
   const [patientNotes, setPatientNotes] = useState<PatientNote[]>([]);
   const [tasks, setTasks] = useState<string[]>([]);
   const [newTask, setNewTask] = useState('');
   const [specialInstructions, setSpecialInstructions] = useState('');
+
+  const todayIso = toInputDateStr();
+  const toShift = NEXT_SHIFT[shiftType];
+  const toShiftDateIso = nextShiftDate(shiftType, todayIso);
+
+  // The wards this nurse currently covers — derived from their active
+  // assignments for the shift they're closing out. The form pre-fills the
+  // first ward; the nurse can override if they're handing over a different
+  // ward they've been floating to.
+  const { data: myAssignments } = useNurseAssignments({
+    nurseId: user?.id,
+    shiftDate: todayIso,
+    shiftType,
+    status: 'active',
+    limit: 200,
+  });
+  const myWards = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const a of myAssignments?.items ?? []) {
+      if (a.wardId && a.ward?.name) map.set(a.wardId, a.ward.name);
+    }
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [myAssignments]);
+
+  // Nurses rostered to take the next shift on the chosen ward. The receiving
+  // nurse dropdown is built off this list so handovers always go to someone
+  // the duty roster says is actually coming on.
+  const { data: rosterRes } = useDutyRosters({
+    fromDate: toShiftDateIso,
+    toDate: toShiftDateIso,
+    shiftType: toShift,
+    role: 'nurse',
+    wardId: wardId || undefined,
+    status: 'published',
+    limit: 100,
+  });
+  const incomingNurses = useMemo(() => {
+    const seen = new Map<string, { id: string; name: string }>();
+    for (const r of rosterRes?.items ?? []) {
+      const u = r.staff?.user;
+      if (!u?.id) continue;
+      const name = `${u.firstName} ${u.lastName ?? ''}`.trim();
+      if (!seen.has(u.id)) seen.set(u.id, { id: u.id, name });
+    }
+    return Array.from(seen.values());
+  }, [rosterRes]);
+
+  // Pre-fill ward from the nurse's own coverage when the form opens or when
+  // the chosen shift changes (the assignment query keys off shiftType). If
+  // the previously-picked ward isn't in the new coverage list, clear it so
+  // the nurse re-picks rather than filing a handover for the wrong ward.
+  useEffect(() => {
+    if (myWards.length === 0) return;
+    if (wardId && !myWards.some((w) => w.id === wardId)) {
+      setWardId(myWards[0]!.id);
+      return;
+    }
+    if (!wardId) {
+      setWardId(myWards[0]!.id);
+    }
+  }, [myWards, wardId]);
+
+  // If exactly one nurse is rostered to receive this ward+shift, prefill them
+  // so the common case is a single click. The user can override.
+  useEffect(() => {
+    if (!toNurseId && incomingNurses.length === 1) {
+      setToNurseId(incomingNurses[0]!.id);
+    }
+  }, [incomingNurses, toNurseId]);
 
   const createHandover = useCreateHandover();
 
@@ -291,6 +387,10 @@ function CreateHandoverForm({ currentShift }: { currentShift: ShiftType }) {
   }, []);
 
   const handleSubmit = useCallback(async () => {
+    if (!wardId) {
+      toast.error('Please pick the ward you are handing over');
+      return;
+    }
     if (!summary.trim()) {
       toast.error('Please enter a handover summary');
       return;
@@ -298,12 +398,21 @@ function CreateHandoverForm({ currentShift }: { currentShift: ShiftType }) {
 
     const validNotes = patientNotes.filter((n) => n.patientName.trim() && n.note.trim());
 
+    // Backend stores summary + special instructions in a single `content`
+    // column; fold the instructions in at the bottom so they're not lost.
+    const trimmedSummary = summary.trim();
+    const trimmedInstructions = specialInstructions.trim();
+    const content = trimmedInstructions
+      ? `${trimmedSummary}\n\nSpecial instructions:\n${trimmedInstructions}`
+      : trimmedSummary;
+
     try {
       await createHandover.mutateAsync({
-        wardId: '', // TODO: fill from nurse's assigned ward
-        shiftDate: new Date().toISOString(),
+        wardId,
+        toNurseId: toNurseId || undefined,
+        shiftDate: todayIso,
         shiftType,
-        content: summary.trim(),
+        content,
         patientStatuses: validNotes.length > 0 ? validNotes : undefined,
         outstandingTasks: tasks.length > 0 ? tasks : undefined,
       });
@@ -313,11 +422,23 @@ function CreateHandoverForm({ currentShift }: { currentShift: ShiftType }) {
       setPatientNotes([]);
       setTasks([]);
       setSpecialInstructions('');
+      setToNurseId('');
       setIsOpen(false);
-    } catch {
-      toast.error('Failed to submit handover');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to submit handover';
+      toast.error(msg);
     }
-  }, [summary, shiftType, patientNotes, tasks, specialInstructions, createHandover]);
+  }, [
+    wardId,
+    toNurseId,
+    todayIso,
+    shiftType,
+    summary,
+    specialInstructions,
+    patientNotes,
+    tasks,
+    createHandover,
+  ]);
 
   return (
     <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary overflow-hidden">
@@ -341,21 +462,93 @@ function CreateHandoverForm({ currentShift }: { currentShift: ShiftType }) {
       {/* Form Body */}
       {isOpen && (
         <div className="space-y-4 border-t border-outline-variant/20 p-4">
-          {/* Shift Type */}
-          <div>
-            <label className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant mb-1 block">
-              Shift Type
-            </label>
-            <Select value={shiftType} onValueChange={(value) => { if (value) setShiftType(value); }}>
-              <SelectTrigger className="h-9 w-48 text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="morning">Morning (06:00 - 14:00)</SelectItem>
-                <SelectItem value="afternoon">Afternoon (14:00 - 22:00)</SelectItem>
-                <SelectItem value="night">Night (22:00 - 06:00)</SelectItem>
-              </SelectContent>
-            </Select>
+          {/* Shift / Ward / Receiving Nurse */}
+          <div className="grid gap-3 md:grid-cols-3">
+            <div>
+              <label className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant mb-1 block">
+                Shift Type
+              </label>
+              <Select
+                value={shiftType}
+                onValueChange={(value) => {
+                  if (value) setShiftType(value as ShiftType);
+                }}
+              >
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="morning">Morning (06:00 - 14:00)</SelectItem>
+                  <SelectItem value="afternoon">Afternoon (14:00 - 22:00)</SelectItem>
+                  <SelectItem value="night">Night (22:00 - 06:00)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <label className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant mb-1 block">
+                Ward *
+              </label>
+              <Select
+                value={wardId || null}
+                onValueChange={(value) => setWardId(value ?? '')}
+              >
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue placeholder={myWards.length === 0 ? 'No active assignments' : 'Select ward'}>
+                    {(value) => {
+                      if (!value) return myWards.length === 0 ? 'No active assignments' : 'Select ward';
+                      return myWards.find((w) => w.id === value)?.name ?? 'Selected ward';
+                    }}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {myWards.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-muted-foreground">
+                      You are not assigned to any ward this shift.
+                    </div>
+                  ) : (
+                    myWards.map((w) => (
+                      <SelectItem key={w.id} value={w.id}>
+                        {w.name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <label className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant mb-1 block">
+                Hand over to ({SHIFT_CONFIG[toShift].label})
+              </label>
+              <Select
+                value={toNurseId || null}
+                onValueChange={(value) => setToNurseId(value ?? '')}
+              >
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue placeholder="Anyone on the next shift">
+                    {(value) => {
+                      if (!value) return 'Anyone on the next shift';
+                      return incomingNurses.find((n) => n.id === value)?.name ?? 'Selected nurse';
+                    }}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Anyone on the next shift</SelectItem>
+                  {incomingNurses.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-muted-foreground">
+                      No nurse rostered for {SHIFT_CONFIG[toShift].label} on this ward yet.
+                    </div>
+                  ) : (
+                    incomingNurses.map((n) => (
+                      <SelectItem key={n.id} value={n.id}>
+                        {n.name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {/* Summary */}
@@ -859,14 +1052,20 @@ function HandoverHistoryList() {
 // ── Duty Roster View ─────────────────────────────────────────
 
 function DutyRosterView() {
+  const { user } = useAuthStore();
   const [date, setDate] = useState(toInputDateStr());
   const [shiftFilter, setShiftFilter] = useState<string>('');
   const [departmentFilter, setDepartmentFilter] = useState<string>('');
+  // Default to "my shifts only" — the typical use is a nurse checking their
+  // own week. Toggle off to see the rest of the team's coverage.
+  const [mineOnly, setMineOnly] = useState<boolean>(true);
 
-  // Fetch the full roster for this date, unfiltered by department, so we can
-  // derive the department list for the filter dropdown. Department filter is
-  // applied client-side.
-  const { data: roster, isLoading } = useDutyRoster({ date });
+  // Server-side filter to the current user's StaffProfile when "Mine only" is
+  // on; full roster otherwise. Department filter stays client-side.
+  const { data: roster, isLoading } = useDutyRoster({
+    date,
+    userId: mineOnly ? user?.id : undefined,
+  });
 
   const allRoster = useMemo(() => (Array.isArray(roster) ? roster : []), [roster]);
 
@@ -896,6 +1095,18 @@ function DutyRosterView() {
           Duty Roster
         </h3>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setMineOnly((v) => !v)}
+            className={cn(
+              'rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
+              mineOnly
+                ? 'border-primary bg-primary text-primary-foreground'
+                : 'border-outline-variant/40 bg-surface-container-low text-on-surface-variant hover:bg-muted',
+            )}
+          >
+            {mineOnly ? 'My shifts' : 'All shifts'}
+          </button>
           <Input
             type="date"
             value={date}
@@ -941,7 +1152,11 @@ function DutyRosterView() {
         ) : filteredRoster.length === 0 ? (
           <div className="p-8 text-center">
             <Users className="mx-auto h-8 w-8 text-on-surface-variant/40 mb-2" />
-            <p className="text-sm text-on-surface-variant">No roster entries for today</p>
+            <p className="text-sm text-on-surface-variant">
+              {mineOnly
+                ? 'You have no roster entries for this date.'
+                : 'No roster entries for this date.'}
+            </p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -1061,6 +1276,10 @@ export default function ShiftHandoverPage() {
       {/* Tab Content */}
       {activeTab === 'handover' && (
         <div className="space-y-4">
+          <MyShiftAssignments
+            shiftDate={toInputDateStr()}
+            shiftType={currentShift as AssignmentShiftType}
+          />
           <CreateHandoverForm currentShift={currentShift} />
           <HandoverHistoryList />
         </div>
