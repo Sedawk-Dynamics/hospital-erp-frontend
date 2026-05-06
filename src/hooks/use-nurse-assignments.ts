@@ -176,6 +176,92 @@ export function useHandoverNurseAssignment() {
   });
 }
 
+// ── Handover feed (per-nurse incoming/outgoing) ──────────
+
+export interface HandoverFeedAdmissionPatient {
+  id: string;
+  mrn: string;
+  firstName: string;
+  lastName: string | null;
+}
+
+export interface HandoverFeedItemBase {
+  sourceAssignmentId: string;
+  handedOverAt: string | null;
+  ward: { id: string; name: string } | null;
+  bed: { id: string; bedNumber: string } | null;
+  admission: {
+    id: string;
+    status: string;
+    bedId: string;
+    wardId: string;
+    patient: HandoverFeedAdmissionPatient;
+  } | null;
+  note: {
+    id: string;
+    content: string;
+    shiftDate: string;
+    shiftType: string;
+  } | null;
+}
+
+export interface HandoverFeedIncoming extends HandoverFeedItemBase {
+  fromShiftDate: string;
+  fromShiftType: ShiftType;
+  fromNurse: { id: string; firstName: string; lastName: string | null; email?: string };
+  successor: {
+    id: string;
+    shiftDate: string;
+    shiftType: ShiftType;
+    assignedAt: string;
+    ward: { id: string; name: string } | null;
+    bed: { id: string; bedNumber: string } | null;
+  } | null;
+}
+
+export interface HandoverFeedOutgoing extends HandoverFeedItemBase {
+  shiftDate: string;
+  shiftType: ShiftType;
+  toNurse: { id: string; firstName: string; lastName: string | null } | null;
+}
+
+export interface HandoverFeedResponse {
+  nurseId: string;
+  incoming: HandoverFeedIncoming[];
+  outgoing: HandoverFeedOutgoing[];
+  counts: { incoming: number; outgoing: number };
+}
+
+/**
+ * "What did nurse_admin set up for me?" — incoming patients to receive,
+ * outgoing patients I just handed off. Defaults to the current user; admin
+ * tooling can pass `userId` to look at any nurse's feed.
+ */
+export function useHandoverFeed(query: {
+  shiftDate?: string;
+  shiftType?: ShiftType;
+  lookbackHours?: number;
+  userId?: string;
+} = {}) {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== null && value !== '') {
+      search.set(key, String(value));
+    }
+  }
+  const qs = search.toString();
+  return useQuery({
+    queryKey: ['nurse-assignments', 'handover-feed', query],
+    queryFn: async () => {
+      const res = await apiGet<HandoverFeedResponse>(
+        `/clinical/nurse-assignments/handover-feed${qs ? `?${qs}` : ''}`,
+      );
+      return res.data;
+    },
+    refetchInterval: 60_000,
+  });
+}
+
 export function useBulkHandover() {
   const qc = useQueryClient();
   return useMutation({

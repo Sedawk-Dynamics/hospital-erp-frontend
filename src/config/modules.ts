@@ -198,6 +198,7 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
     baseRoute: '/nurse',
     sidebarItems: [
       { label: 'Dashboard', href: '/nurse', icon: Home },
+      { label: 'My Schedule', href: '/nurse/schedule', icon: CalendarClock },
       { label: 'Patient Vitals', href: '/nurse/vitals', icon: HeartPulse },
       { label: 'Clinical Charting', href: '/nurse/charting', icon: ClipboardList },
       { label: 'eMAR', href: '/nurse/emar', icon: PillBottle },

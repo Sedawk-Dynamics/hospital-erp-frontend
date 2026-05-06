@@ -57,10 +57,12 @@ import {
 import { useMyAssignedDoctors, useMyPatients } from '@/hooks/use-nurse-doctor-assignments';
 import { Stethoscope, Info } from 'lucide-react';
 import { MyShiftAssignments } from '@/components/nurse/my-shift-assignments';
+import { AdminHandoverBanner } from '@/components/nurse/admin-handover-banner';
 import {
   useNurseAssignments,
   type ShiftType as AssignmentShiftType,
 } from '@/hooks/use-nurse-assignments';
+import { useActiveRoster } from '@/hooks/use-duty-rosters';
 import { useAuthStore } from '@/stores/auth-store';
 
 // ── Shift Detection ───────────────────────────────────────
@@ -306,12 +308,16 @@ function HandoverStatusCard({
   currentShift,
   pendingIncoming,
   currentShiftHandover,
+  shiftStyle,
+  isRostered,
 }: {
   currentShift: ShiftType;
   pendingIncoming: ShiftHandover[];
   currentShiftHandover: ShiftHandover | null;
+  shiftStyle: typeof SHIFT_CONFIG[ShiftType];
+  isRostered: boolean;
 }) {
-  const cfg = SHIFT_CONFIG[currentShift];
+  const cfg = shiftStyle;
   const Icon = cfg.icon;
 
   return (
@@ -335,8 +341,22 @@ function HandoverStatusCard({
           <Icon className={cn('h-3.5 w-3.5', cfg.text)} />
         </div>
         <div>
-          <p className="font-medium text-foreground">{cfg.label} Shift</p>
-          <p className="text-[10px] text-muted-foreground">{cfg.start} – {cfg.end}</p>
+          <p className="font-medium text-foreground">
+            {cfg.label} Shift
+            {isRostered ? (
+              <span className="ml-1 rounded bg-emerald-100 px-1 py-0.5 text-[9px] font-semibold text-emerald-700">
+                ROSTERED
+              </span>
+            ) : (
+              <span className="ml-1 rounded bg-muted px-1 py-0.5 text-[9px] font-semibold text-muted-foreground">
+                OFF DUTY
+              </span>
+            )}
+          </p>
+          <p className="text-[10px] text-muted-foreground">
+            {cfg.start} – {cfg.end}
+            {isRostered ? ' · per nurse_admin roster' : ''}
+          </p>
         </div>
       </div>
 
@@ -1003,9 +1023,36 @@ export default function NurseDashboardPage() {
   const [toDate, setToDate] = useState(toInputDateStr());
   const [page, setPage] = useState(1);
 
-  const currentShift = useMemo(() => getCurrentShift(), []);
+  // Source of truth = nurse_admin's roster. We fetch the nurse's currently
+  // active row from /hr/rosters/active and use its shiftType + start/end
+  // times. If the nurse isn't rostered right now, fall back to clock-based
+  // detection so the page still renders (just labelled "off duty").
+  const { user: authUserForShift } = useAuthStore();
+  const { data: myActive } = useActiveRoster(
+    authUserForShift?.id ? { userId: authUserForShift.id } : {},
+  );
+  const rosteredShift = (myActive?.mine?.shiftType ?? null) as ShiftType | 'general' | null;
+  const clockShift = useMemo(() => getCurrentShift(), []);
+  // The hardcoded SHIFT_CONFIG only knows morning/afternoon/night, so fall
+  // back to the clock label for "general" rostered shifts.
+  const currentShift =
+    rosteredShift === 'morning' || rosteredShift === 'afternoon' || rosteredShift === 'night'
+      ? rosteredShift
+      : clockShift;
   const prevShift = useMemo(() => getPreviousShift(currentShift), [currentShift]);
-  const shiftStyle = SHIFT_CONFIG[currentShift];
+  const baseShiftStyle = SHIFT_CONFIG[currentShift];
+  const isRostered = Boolean(myActive?.mine);
+  // When rostered, surface the *actual* start/end stored on the roster row
+  // (HH:MM in UTC). Otherwise fall back to the SHIFT_CONFIG defaults.
+  const shiftStyle = useMemo(() => {
+    if (!isRostered) return baseShiftStyle;
+    const m = myActive!.mine!;
+    const s = new Date(m.startTime);
+    const e = new Date(m.endTime);
+    const fmt = (d: Date) =>
+      `${d.getUTCHours().toString().padStart(2, '0')}:${d.getUTCMinutes().toString().padStart(2, '0')}`;
+    return { ...baseShiftStyle, start: fmt(s), end: fmt(e) };
+  }, [isRostered, myActive, baseShiftStyle]);
   const today = useMemo(() => toInputDateStr(), []);
 
   // ── Core queries ─────────────────────────────────────────
@@ -1200,8 +1247,17 @@ export default function NurseDashboardPage() {
               shiftStyle.text,
             )}
           >
-            {shiftStyle.label} Shift
+            {shiftStyle.label} · {shiftStyle.start}–{shiftStyle.end}
           </span>
+          {isRostered ? (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+              On Duty
+            </span>
+          ) : (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+              Off Duty
+            </span>
+          )}
         </div>
         <div className="text-xs text-muted-foreground">
           {formatDate(new Date())}
@@ -1213,6 +1269,11 @@ export default function NurseDashboardPage() {
         doctors={myDoctors}
         hasShiftAssignments={myAssignedAdmissionIds.size > 0}
       />
+
+      {/* Auto-populated handover plan from nurse_admin's roster-driven bulk
+          handover. Shows incoming patients ("from Nurse X") and outgoing
+          ("you handed off to Nurse Y") so the nurse never has to ask. */}
+      <AdminHandoverBanner />
 
       {/* Critical Alerts Banner */}
       <CriticalAlertsBanner
@@ -1280,6 +1341,8 @@ export default function NurseDashboardPage() {
             currentShift={currentShift}
             pendingIncoming={pendingIncoming}
             currentShiftHandover={currentShiftHandover}
+            shiftStyle={shiftStyle}
+            isRostered={isRostered}
           />
           <RosterCard
             currentShift={currentShift}

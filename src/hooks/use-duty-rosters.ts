@@ -132,3 +132,82 @@ export function usePublishDutyRoster() {
     },
   });
 }
+
+// ── Live coverage helpers ────────────────────────────────
+
+export interface ActiveRosterResponse {
+  at: string;
+  entries: DutyRoster[];
+  byShiftType: Partial<Record<ShiftType, number>>;
+  // When the request specified userId, this is *that user's* active row,
+  // or null if they're off duty at `at`.
+  mine: DutyRoster | null;
+}
+
+/**
+ * Who's on duty right now per the published roster. Pass `userId` to find
+ * out if the logged-in nurse is currently in a rostered shift (so the
+ * dashboard can surface the rostered start/end instead of guessing from
+ * the wall clock).
+ *
+ * Caller-controlled refresh: defaults to a 60s interval so dashboards
+ * roll over correctly across shift changes.
+ */
+export function useActiveRoster(
+  query: { at?: string; wardId?: string; role?: string; userId?: string } = {},
+  options: { refetchIntervalMs?: number } = {},
+) {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== null && value !== '') {
+      search.set(key, String(value));
+    }
+  }
+  const qs = search.toString();
+  return useQuery({
+    queryKey: ['duty-rosters', 'active', query],
+    queryFn: async () => {
+      const res = await apiGet<ActiveRosterResponse>(
+        `/hr/rosters/active${qs ? `?${qs}` : ''}`,
+      );
+      return res.data;
+    },
+    refetchInterval: options.refetchIntervalMs ?? 60_000,
+  });
+}
+
+export interface CoverageRow {
+  shiftDate: string;
+  shiftType: ShiftType;
+  rostered: number;
+}
+
+export interface CoverageResponse {
+  fromDate: string;
+  toDate: string;
+  coverage: CoverageRow[];
+}
+
+export function useRosterCoverage(query: {
+  fromDate: string;
+  toDate: string;
+  wardId?: string;
+  role?: string;
+}) {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== null && value !== '') {
+      search.set(key, String(value));
+    }
+  }
+  return useQuery({
+    queryKey: ['duty-rosters', 'coverage', query],
+    queryFn: async () => {
+      const res = await apiGet<CoverageResponse>(
+        `/hr/rosters/coverage?${search.toString()}`,
+      );
+      return res.data;
+    },
+    enabled: Boolean(query.fromDate && query.toDate),
+  });
+}
