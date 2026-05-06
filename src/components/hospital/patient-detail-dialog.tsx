@@ -27,6 +27,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { usePatient, useUpdatePatient } from '@/hooks/use-hospital';
 import { formatDate, toInputDateStr } from '@/lib/date-utils';
+import { NursingFormsPanel } from '@/components/doctor/nursing-forms-panel';
 
 // ============================================================
 // Schema
@@ -643,6 +644,11 @@ export function PatientDetailDialog({
                     </div>
                   </>
                 )}
+
+                {/* Patient form submissions — visible to anyone with patient
+                    detail access (doctor, nurse, nurse_admin, admin). */}
+                <Separator />
+                <NursingFormsPanel patientId={patient.id} />
 
                 {/* Status & timestamps */}
                 <Separator />

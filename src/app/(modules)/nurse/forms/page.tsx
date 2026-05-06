@@ -1,9 +1,9 @@
 'use client';
 
-// /nurse/forms — landing page for the nurse Forms tab.
-// Shows the calling nurse's currently-assigned patients so they can pick one
-// to record forms against. Patient selection scopes to "patients of doctors
-// I'm assigned to" (same rule the nurse dashboard uses).
+// /nurse/forms — landing page for the dynamic Patient Forms tab.
+// Shows the calling nurse's currently-assigned patients so they can pick
+// one to record forms against. Patient selection scopes to "patients of
+// doctors I'm assigned to" (same rule the nurse dashboard uses).
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
@@ -11,11 +11,14 @@ import { ChevronRight, FileText, Search, Users } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useMyPatients } from '@/hooks/use-nurse-doctor-assignments';
-import { FORM_TYPES } from '@/hooks/use-nursing-forms';
+import { useHospitalForms, FORM_CATEGORIES } from '@/hooks/use-forms';
 
 export default function NurseFormsLandingPage() {
   const [search, setSearch] = useState('');
   const { data, isLoading } = useMyPatients({ status: 'all', type: 'all' });
+  // Show a quick preview of the hospital's form catalogue so nurses know
+  // what's available before they pick a patient.
+  const formsQ = useHospitalForms({ status: 'active', limit: 100 });
 
   const records = data?.data ?? [];
   const filtered = useMemo(() => {
@@ -27,36 +30,62 @@ export default function NurseFormsLandingPage() {
     });
   }, [records, search]);
 
+  const forms = (formsQ.data?.data ?? []).filter((f) => f.isPublished);
+  const formsByCat = useMemo(() => {
+    const map = new Map<string, typeof forms>();
+    for (const f of forms) {
+      const arr = map.get(f.category) ?? [];
+      arr.push(f);
+      map.set(f.category, arr);
+    }
+    return map;
+  }, [forms]);
+
   return (
     <div className="space-y-4 animate-fade-in-up">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-headline text-xl font-bold flex items-center gap-2">
-            <FileText className="h-5 w-5 text-primary" />
-            Patient Forms
-          </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Record nursing assessments and notes for assigned patients.
-          </p>
-        </div>
+      <div>
+        <h1 className="font-headline text-xl font-bold flex items-center gap-2">
+          <FileText className="h-5 w-5 text-primary" />
+          Patient Forms
+        </h1>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Record assessments and notes using forms set up by your hospital admin.
+        </p>
       </div>
 
-      {/* Form catalogue (descriptive only — actual entry happens per-patient) */}
+      {/* Form catalogue — descriptive only */}
       <section className="rounded-xl bg-surface-container-lowest p-4 shadow-sanctuary">
         <h2 className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant font-semibold mb-3">
           Available forms
         </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-          {FORM_TYPES.map((f) => (
-            <div
-              key={f.key}
-              className="rounded-lg border bg-surface-container-low px-3 py-2"
-            >
-              <p className="text-sm font-semibold text-foreground">{f.label}</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">{f.description}</p>
-            </div>
-          ))}
-        </div>
+        {formsQ.isLoading ? (
+          <p className="text-xs text-muted-foreground">Loading…</p>
+        ) : forms.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            Your hospital admin hasn't published any forms yet. Ask them to set them up under{' '}
+            <span className="font-semibold">Settings → Patient Forms</span>.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {FORM_CATEGORIES.filter((c) => formsByCat.has(c.value)).map((c) => (
+              <div key={c.value}>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">
+                  {c.label}
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {(formsByCat.get(c.value) ?? []).map((f) => (
+                    <span
+                      key={f.id}
+                      className="rounded-full bg-surface-container-low border px-2.5 py-1 text-xs"
+                    >
+                      {f.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Patient list */}
@@ -101,10 +130,6 @@ export default function NurseFormsLandingPage() {
               ]
                 .filter(Boolean)
                 .join(' · ');
-              // Admission rows get richer context via admissionId. OPD rows
-              // are now appointment-driven; if the visit already exists we
-              // pass that for direct form attach, otherwise pass the
-              // appointmentId so the form workspace can create one on save.
               const targetParam =
                 r.recordType === 'admission'
                   ? `admissionId=${r.id}`

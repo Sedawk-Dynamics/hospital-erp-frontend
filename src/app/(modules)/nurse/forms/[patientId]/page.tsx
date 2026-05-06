@@ -1,98 +1,42 @@
 'use client';
 
-// /nurse/forms/[patientId] — per-patient form workspace.
-// Tabs across the six form types. Each tab shows the running history table
-// plus a "+ New" button that opens the matching dialog. The visit/admission
-// id from the query string scopes new entries to the current encounter.
+// /nurse/forms/[patientId] — per-patient dynamic form workspace.
+// Tabs by category: each tab shows the hospital's published forms in that
+// category with a "+ New submission" button. Below: this patient's recent
+// submissions across all forms; click to open a read-only view.
 
-import { use, useState } from 'react';
+import { use, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
 import {
   ArrowLeft,
   ClipboardList,
-  Droplets,
   FileText,
-  HeartPulse,
   Loader2,
   Plus,
-  ShieldAlert,
-  Stethoscope,
-  Bandage,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
-import { cn } from '@/lib/utils';
 import { usePatientDetail } from '@/hooks/use-doctor';
 import {
-  useAdmissionAssessments,
-  usePainAssessments,
-  useFallRiskAssessments,
-  useIntakeOutputRecords,
-  useWoundCareRecords,
-  useNursingNotes,
-  type FallRiskLevel,
-} from '@/hooks/use-nursing-forms';
-import {
-  AdmissionAssessmentDialog,
-  PainAssessmentDialog,
-  FallRiskDialog,
-  IntakeOutputDialog,
-  WoundCareDialog,
-  NursingNoteDialog,
-  type FormDialogContext,
-} from '@/components/nurse/nursing-form-dialogs';
-
-const FALL_RISK_BG: Record<FallRiskLevel, string> = {
-  low: 'bg-emerald-100 text-emerald-700',
-  moderate: 'bg-amber-100 text-amber-700',
-  high: 'bg-red-100 text-red-700',
-};
-
-function nurseName(n?: { firstName: string; lastName: string | null } | null) {
-  if (!n) return '—';
-  return `${n.firstName} ${n.lastName ?? ''}`.trim();
-}
-
-function EmptyRow({ label }: { label: string }) {
-  return (
-    <p className="py-6 text-center text-xs text-muted-foreground">{label}</p>
-  );
-}
-
-function SectionHeader({
-  title,
-  subtitle,
-  onNew,
-  count,
-}: {
-  title: string;
-  subtitle?: string;
-  onNew: () => void;
-  count?: number;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-3 mb-3">
-      <div>
-        <p className="text-sm font-semibold text-foreground">
-          {title}
-          {typeof count === 'number' && (
-            <span className="ml-2 text-[10px] font-bold rounded-full bg-primary/10 text-primary px-1.5 py-0.5">
-              {count}
-            </span>
-          )}
-        </p>
-        {subtitle && <p className="text-[11px] text-muted-foreground">{subtitle}</p>}
-      </div>
-      <Button size="sm" onClick={onNew} className="h-8 gap-1">
-        <Plus className="h-3.5 w-3.5" />
-        New
-      </Button>
-    </div>
-  );
-}
+  useHospitalForms,
+  useFormSubmissions,
+  useCreateSubmission,
+  FORM_CATEGORIES,
+  type HospitalForm,
+  type FormSubmission,
+} from '@/hooks/use-forms';
+import { FormRenderer } from '@/components/forms/form-renderer';
+import { FormSubmissionView } from '@/components/forms/form-submission-view';
 
 export default function NursePatientFormsPage(props: { params: Promise<{ patientId: string }> }) {
   const router = useRouter();
@@ -103,29 +47,36 @@ export default function NursePatientFormsPage(props: { params: Promise<{ patient
   const appointmentId = searchParams.get('appointmentId') ?? undefined;
 
   const { data: patient, isLoading: patientLoading } = usePatientDetail(patientId);
+  const formsQ = useHospitalForms({ status: 'active', limit: 200 });
+  const submissionsQ = useFormSubmissions({ patientId, limit: 100 });
 
-  const dialogCtx: FormDialogContext = {
-    patientId,
-    visitId,
-    admissionId,
-    appointmentId,
-  };
+  const [openFill, setOpenFill] = useState<HospitalForm | null>(null);
+  const [openView, setOpenView] = useState<FormSubmission | null>(null);
 
-  // Lists per form type
-  const admissions = useAdmissionAssessments({ patientId, limit: 20 });
-  const pains = usePainAssessments({ patientId, limit: 50 });
-  const falls = useFallRiskAssessments({ patientId, limit: 20 });
-  const ios = useIntakeOutputRecords({ patientId, limit: 100 });
-  const wounds = useWoundCareRecords({ patientId, limit: 30 });
-  const notes = useNursingNotes({ patientId, limit: 50 });
+  const forms = useMemo(
+    () => (formsQ.data?.data ?? []).filter((f) => f.isPublished && !f.archivedAt),
+    [formsQ.data],
+  );
+  const formsByCategory = useMemo(() => {
+    const map = new Map<string, HospitalForm[]>();
+    for (const f of forms) {
+      const arr = map.get(f.category) ?? [];
+      arr.push(f);
+      map.set(f.category, arr);
+    }
+    return map;
+  }, [forms]);
+  const visibleCats = FORM_CATEGORIES.filter((c) => formsByCategory.has(c.value));
 
-  // Open-state per dialog
-  const [openAdmission, setOpenAdmission] = useState(false);
-  const [openPain, setOpenPain] = useState(false);
-  const [openFall, setOpenFall] = useState(false);
-  const [openIO, setOpenIO] = useState(false);
-  const [openWound, setOpenWound] = useState(false);
-  const [openNote, setOpenNote] = useState(false);
+  const submissionsByFormId = useMemo(() => {
+    const map = new Map<string, FormSubmission[]>();
+    for (const s of submissionsQ.data?.data ?? []) {
+      const arr = map.get(s.formId) ?? [];
+      arr.push(s);
+      map.set(s.formId, arr);
+    }
+    return map;
+  }, [submissionsQ.data]);
 
   if (patientLoading) {
     return (
@@ -150,6 +101,7 @@ export default function NursePatientFormsPage(props: { params: Promise<{ patient
   const initials = `${patient.firstName?.[0] ?? ''}${patient.lastName?.[0] ?? ''}`.toUpperCase();
   const fullName = `${patient.firstName} ${patient.lastName ?? ''}`.trim();
   const hasContext = !!(visitId || admissionId || appointmentId);
+  const defaultTab = visibleCats[0]?.value ?? 'recent';
 
   return (
     <div className="space-y-4 animate-fade-in-up">
@@ -188,321 +140,171 @@ export default function NursePatientFormsPage(props: { params: Promise<{ patient
         </div>
       )}
 
-      {/* Tabs */}
-      <Tabs defaultValue="admission">
+      {/* Tabs by category + a Recent submissions tab */}
+      <Tabs defaultValue={defaultTab} key={defaultTab}>
         <TabsList variant="line" className="w-full justify-start overflow-x-auto">
-          <TabsTrigger value="admission" className="gap-1.5">
-            <Stethoscope className="h-3.5 w-3.5" /> Admission
-          </TabsTrigger>
-          <TabsTrigger value="pain" className="gap-1.5">
-            <HeartPulse className="h-3.5 w-3.5" /> Pain
-          </TabsTrigger>
-          <TabsTrigger value="fall" className="gap-1.5">
-            <ShieldAlert className="h-3.5 w-3.5" /> Fall risk
-          </TabsTrigger>
-          <TabsTrigger value="io" className="gap-1.5">
-            <Droplets className="h-3.5 w-3.5" /> I/O
-          </TabsTrigger>
-          <TabsTrigger value="wound" className="gap-1.5">
-            <Bandage className="h-3.5 w-3.5" /> Wound
-          </TabsTrigger>
-          <TabsTrigger value="note" className="gap-1.5">
-            <ClipboardList className="h-3.5 w-3.5" /> Note
+          {visibleCats.map((c) => (
+            <TabsTrigger key={c.value} value={c.value} className="gap-1.5">
+              <FileText className="h-3.5 w-3.5" />
+              {c.label}
+            </TabsTrigger>
+          ))}
+          <TabsTrigger value="recent" className="gap-1.5">
+            <ClipboardList className="h-3.5 w-3.5" />
+            Recent submissions
           </TabsTrigger>
         </TabsList>
 
-        {/* Admission Assessment */}
-        <TabsContent value="admission" className="mt-3">
-          <div className="rounded-xl bg-surface-container-lowest p-4 shadow-sanctuary">
-            <SectionHeader
-              title="Admission Assessment"
-              subtitle="Initial nursing intake on arrival/admission."
-              onNew={() => setOpenAdmission(true)}
-              count={admissions.data?.meta?.total}
-            />
-            {admissions.isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin text-primary mx-auto my-4" />
-            ) : (admissions.data?.data ?? []).length === 0 ? (
-              <EmptyRow label="No admission assessments yet." />
-            ) : (
-              <div className="space-y-2">
-                {(admissions.data?.data ?? []).map((row) => (
-                  <div key={row.id} className="rounded-md border bg-surface-container-low p-3 text-xs">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-semibold">{formatDateTimeAmPm(row.assessedAt)}</span>
-                      <span className="text-muted-foreground">{nurseName(row.nurse)}</span>
-                    </div>
-                    {row.chiefComplaint && (
-                      <p>
-                        <span className="text-muted-foreground">Chief complaint:</span>{' '}
-                        {row.chiefComplaint}
-                      </p>
-                    )}
-                    <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1">
-                      {row.arrivalMode && (
-                        <span>
-                          <span className="text-muted-foreground">Arrival:</span> {row.arrivalMode}
-                        </span>
-                      )}
-                      {row.consciousnessLevel && (
-                        <span>
-                          <span className="text-muted-foreground">LOC:</span> {row.consciousnessLevel}
-                        </span>
-                      )}
-                      {row.mobility && (
-                        <span>
-                          <span className="text-muted-foreground">Mobility:</span> {row.mobility}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </TabsContent>
-
-        {/* Pain */}
-        <TabsContent value="pain" className="mt-3">
-          <div className="rounded-xl bg-surface-container-lowest p-4 shadow-sanctuary">
-            <SectionHeader
-              title="Pain Assessment"
-              subtitle="0–10 score, location, and intervention."
-              onNew={() => setOpenPain(true)}
-              count={pains.data?.meta?.total}
-            />
-            {pains.isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin text-primary mx-auto my-4" />
-            ) : (pains.data?.data ?? []).length === 0 ? (
-              <EmptyRow label="No pain assessments yet." />
-            ) : (
-              <div className="space-y-2">
-                {(pains.data?.data ?? []).map((row) => {
-                  const sev = row.painScore >= 7 ? 'bg-red-100 text-red-700'
-                    : row.painScore >= 4 ? 'bg-amber-100 text-amber-700'
-                    : 'bg-emerald-100 text-emerald-700';
+        {visibleCats.map((c) => (
+          <TabsContent key={c.value} value={c.value} className="mt-3">
+            <div className="rounded-xl bg-surface-container-lowest p-4 shadow-sanctuary">
+              <p className="text-xs text-muted-foreground mb-3">
+                Forms in <span className="font-semibold">{c.label}</span>. Click any form to fill a new submission.
+              </p>
+              <ul className="divide-y">
+                {(formsByCategory.get(c.value) ?? []).map((f) => {
+                  const subs = submissionsByFormId.get(f.id) ?? [];
                   return (
-                    <div key={row.id} className="rounded-md border bg-surface-container-low p-3 text-xs">
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-2">
-                          <span className={cn('font-bold rounded-full px-2 py-0.5', sev)}>
-                            {row.painScore}/10
-                          </span>
-                          <span className="font-semibold">{formatDateTimeAmPm(row.assessedAt)}</span>
+                    <li key={f.id} className="py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-foreground">{f.name}</p>
+                          {f.description && (
+                            <p className="text-[11px] text-muted-foreground line-clamp-2">{f.description}</p>
+                          )}
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                            v{f.version} · {subs.length} submission(s) for this patient
+                          </p>
                         </div>
-                        <span className="text-muted-foreground">{nurseName(row.nurse)}</span>
+                        <Button size="sm" onClick={() => setOpenFill(f)} className="gap-1">
+                          <Plus className="h-3.5 w-3.5" />
+                          New
+                        </Button>
                       </div>
-                      <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1">
-                        <span><span className="text-muted-foreground">Scale:</span> {row.painScale}</span>
-                        {row.painLocation && (
-                          <span>
-                            <span className="text-muted-foreground">Location:</span> {row.painLocation}
-                          </span>
-                        )}
-                        {row.painCharacter && (
-                          <span>
-                            <span className="text-muted-foreground">Character:</span> {row.painCharacter}
-                          </span>
-                        )}
-                      </div>
-                      {row.intervention && (
-                        <p className="mt-1">
-                          <span className="text-muted-foreground">Intervention:</span> {row.intervention}
-                        </p>
+                      {subs.length > 0 && (
+                        <ul className="mt-2 space-y-1 pl-3 border-l-2 border-border">
+                          {subs.slice(0, 3).map((s) => (
+                            <li key={s.id}>
+                              <button
+                                onClick={() => setOpenView(s)}
+                                className="text-left w-full text-[11px] text-muted-foreground hover:text-primary"
+                              >
+                                {formatDateTimeAmPm(s.createdAt)} · by{' '}
+                                {s.submittedBy ? `${s.submittedBy.firstName} ${s.submittedBy.lastName ?? ''}` : '—'}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
                       )}
-                    </div>
+                    </li>
                   );
                 })}
-              </div>
-            )}
-          </div>
-        </TabsContent>
+              </ul>
+            </div>
+          </TabsContent>
+        ))}
 
-        {/* Fall risk */}
-        <TabsContent value="fall" className="mt-3">
+        {/* Recent submissions tab — chronological feed across all forms */}
+        <TabsContent value="recent" className="mt-3">
           <div className="rounded-xl bg-surface-container-lowest p-4 shadow-sanctuary">
-            <SectionHeader
-              title="Fall Risk (Morse)"
-              subtitle="Morse Fall Scale screening."
-              onNew={() => setOpenFall(true)}
-              count={falls.data?.meta?.total}
-            />
-            {falls.isLoading ? (
+            {submissionsQ.isLoading ? (
               <Loader2 className="h-4 w-4 animate-spin text-primary mx-auto my-4" />
-            ) : (falls.data?.data ?? []).length === 0 ? (
-              <EmptyRow label="No fall-risk screenings yet." />
+            ) : (submissionsQ.data?.data ?? []).length === 0 ? (
+              <p className="py-6 text-center text-xs text-muted-foreground">
+                No form submissions yet for this patient.
+              </p>
             ) : (
-              <div className="space-y-2">
-                {(falls.data?.data ?? []).map((row) => (
-                  <div key={row.id} className="rounded-md border bg-surface-container-low p-3 text-xs">
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-2">
-                        <span className={cn('font-bold rounded-full px-2 py-0.5', FALL_RISK_BG[row.riskLevel])}>
-                          {row.riskLevel} ({row.totalScore})
+              <ul className="divide-y">
+                {(submissionsQ.data?.data ?? []).map((s) => (
+                  <li key={s.id}>
+                    <button
+                      onClick={() => setOpenView(s)}
+                      className="block w-full text-left py-2 -mx-2 px-2 rounded-md hover:bg-surface-container-low"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-semibold text-foreground">{s.form?.name ?? '—'}</span>
+                        <span className="text-[11px] text-muted-foreground">
+                          {formatDateTimeAmPm(s.createdAt)}
                         </span>
-                        <span className="font-semibold">{formatDateTimeAmPm(row.assessedAt)}</span>
                       </div>
-                      <span className="text-muted-foreground">{nurseName(row.nurse)}</span>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-0.5 mt-1 text-[11px]">
-                      <span>Hist: {row.historyOfFalling}</span>
-                      <span>2nd Dx: {row.secondaryDiagnosis}</span>
-                      <span>Aid: {row.ambulatoryAid}</span>
-                      <span>IV: {row.ivOrSalineLock}</span>
-                      <span>Gait: {row.gait}</span>
-                      <span>Mental: {row.mentalStatus}</span>
-                    </div>
-                    {row.intervention && (
-                      <p className="mt-1">
-                        <span className="text-muted-foreground">Plan:</span> {row.intervention}
+                      <p className="text-[11px] text-muted-foreground">
+                        v{s.formVersion} · by{' '}
+                        {s.submittedBy ? `${s.submittedBy.firstName} ${s.submittedBy.lastName ?? ''}` : '—'}
+                        {s.form?.archivedAt && (
+                          <span className="ml-1 text-amber-700">(form deleted)</span>
+                        )}
                       </p>
-                    )}
-                  </div>
+                    </button>
+                  </li>
                 ))}
-              </div>
-            )}
-          </div>
-        </TabsContent>
-
-        {/* I/O */}
-        <TabsContent value="io" className="mt-3">
-          <div className="rounded-xl bg-surface-container-lowest p-4 shadow-sanctuary">
-            <SectionHeader
-              title="Intake / Output"
-              subtitle="Fluid balance entries."
-              onNew={() => setOpenIO(true)}
-              count={ios.data?.meta?.total}
-            />
-            {ios.isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin text-primary mx-auto my-4" />
-            ) : (ios.data?.data ?? []).length === 0 ? (
-              <EmptyRow label="No intake/output records yet." />
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                    <tr>
-                      <th className="text-left py-1">Time</th>
-                      <th className="text-left py-1">Type</th>
-                      <th className="text-left py-1">Category</th>
-                      <th className="text-right py-1">Volume (ml)</th>
-                      <th className="text-left py-1">By</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(ios.data?.data ?? []).map((row) => (
-                      <tr key={row.id} className="border-t">
-                        <td className="py-1.5">{formatDateTimeAmPm(row.recordDatetime)}</td>
-                        <td className="py-1.5">
-                          <span
-                            className={cn(
-                              'rounded-full px-1.5 py-0.5 text-[10px] font-bold',
-                              row.entryType === 'intake'
-                                ? 'bg-blue-100 text-blue-700'
-                                : 'bg-purple-100 text-purple-700',
-                            )}
-                          >
-                            {row.entryType}
-                          </span>
-                        </td>
-                        <td className="py-1.5 capitalize">{row.category.replaceAll('_', ' ')}</td>
-                        <td className="py-1.5 text-right font-semibold">{row.volumeMl}</td>
-                        <td className="py-1.5 text-muted-foreground">{nurseName(row.nurse)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </TabsContent>
-
-        {/* Wound */}
-        <TabsContent value="wound" className="mt-3">
-          <div className="rounded-xl bg-surface-container-lowest p-4 shadow-sanctuary">
-            <SectionHeader
-              title="Wound Care"
-              subtitle="Wound assessment & dressing changes."
-              onNew={() => setOpenWound(true)}
-              count={wounds.data?.meta?.total}
-            />
-            {wounds.isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin text-primary mx-auto my-4" />
-            ) : (wounds.data?.data ?? []).length === 0 ? (
-              <EmptyRow label="No wound care entries yet." />
-            ) : (
-              <div className="space-y-2">
-                {(wounds.data?.data ?? []).map((row) => (
-                  <div key={row.id} className="rounded-md border bg-surface-container-low p-3 text-xs">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-semibold">{row.woundLocation}</span>
-                      <span className="text-muted-foreground">
-                        {formatDateTimeAmPm(row.assessedAt)} · {nurseName(row.nurse)}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-0.5">
-                      {row.woundType && (
-                        <span><span className="text-muted-foreground">Type:</span> {row.woundType}</span>
-                      )}
-                      {row.woundStage && (
-                        <span><span className="text-muted-foreground">Stage:</span> {row.woundStage}</span>
-                      )}
-                      <span>
-                        <span className="text-muted-foreground">Status:</span>{' '}
-                        <span className="font-semibold">{row.status}</span>
-                      </span>
-                    </div>
-                    {row.dressingApplied && (
-                      <p>
-                        <span className="text-muted-foreground">Dressing:</span> {row.dressingApplied}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </TabsContent>
-
-        {/* Notes */}
-        <TabsContent value="note" className="mt-3">
-          <div className="rounded-xl bg-surface-container-lowest p-4 shadow-sanctuary">
-            <SectionHeader
-              title="Nursing Daily Note"
-              subtitle="Free-text shift observations."
-              onNew={() => setOpenNote(true)}
-              count={notes.data?.meta?.total}
-            />
-            {notes.isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin text-primary mx-auto my-4" />
-            ) : (notes.data?.data ?? []).length === 0 ? (
-              <EmptyRow label="No nursing notes yet." />
-            ) : (
-              <div className="space-y-2">
-                {(notes.data?.data ?? []).map((row) => (
-                  <div key={row.id} className="rounded-md border bg-surface-container-low p-3 text-xs">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-semibold capitalize">{row.noteType.replaceAll('_', ' ')}</span>
-                      <span className="text-muted-foreground">
-                        {formatDateTimeAmPm(row.createdAt)} · {nurseName(row.nurse)}
-                      </span>
-                    </div>
-                    <p className="whitespace-pre-wrap">{row.content}</p>
-                  </div>
-                ))}
-              </div>
+              </ul>
             )}
           </div>
         </TabsContent>
       </Tabs>
 
-      {/* Dialogs */}
-      <AdmissionAssessmentDialog open={openAdmission} onOpenChange={setOpenAdmission} ctx={dialogCtx} />
-      <PainAssessmentDialog open={openPain} onOpenChange={setOpenPain} ctx={dialogCtx} />
-      <FallRiskDialog open={openFall} onOpenChange={setOpenFall} ctx={dialogCtx} />
-      <IntakeOutputDialog open={openIO} onOpenChange={setOpenIO} ctx={dialogCtx} />
-      <WoundCareDialog open={openWound} onOpenChange={setOpenWound} ctx={dialogCtx} />
-      <NursingNoteDialog open={openNote} onOpenChange={setOpenNote} ctx={dialogCtx} />
+      {/* Fill dialog */}
+      {openFill && (
+        <FillFormDialog
+          form={openFill}
+          patientId={patientId}
+          ctx={{ visitId, admissionId, appointmentId }}
+          onClose={() => setOpenFill(null)}
+        />
+      )}
+
+      {/* View submission dialog */}
+      <Dialog open={!!openView} onOpenChange={(open) => !open && setOpenView(null)}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{openView?.form?.name ?? 'Submission'}</DialogTitle>
+            <DialogDescription>
+              {openView ? `Submitted ${formatDateTimeAmPm(openView.createdAt)}` : null}
+            </DialogDescription>
+          </DialogHeader>
+          {openView && <FormSubmissionView schema={openView.formSnapshot} data={openView.data} />}
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+function FillFormDialog({
+  form,
+  patientId,
+  ctx,
+  onClose,
+}: {
+  form: HospitalForm;
+  patientId: string;
+  ctx: { visitId?: string; admissionId?: string; appointmentId?: string };
+  onClose: () => void;
+}) {
+  const create = useCreateSubmission(form.id);
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{form.name}</DialogTitle>
+          {form.description && <DialogDescription>{form.description}</DialogDescription>}
+        </DialogHeader>
+        <FormRenderer
+          schema={form.schema}
+          isSubmitting={create.isPending}
+          submitLabel="Save submission"
+          onCancel={onClose}
+          onSubmit={async (values) => {
+            try {
+              await create.mutateAsync({ patientId, ...ctx, data: values });
+              toast.success('Submission saved');
+              onClose();
+            } catch (e: unknown) {
+              const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Save failed';
+              toast.error(msg);
+            }
+          }}
+        />
+      </DialogContent>
+    </Dialog>
   );
 }
