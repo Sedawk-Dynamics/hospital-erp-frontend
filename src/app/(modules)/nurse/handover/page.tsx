@@ -24,7 +24,7 @@ import {
   type ShiftHandover,
 } from '@/hooks/use-nurse';
 import { useNurseAssignments } from '@/hooks/use-nurse-assignments';
-import { useDutyRosters } from '@/hooks/use-duty-rosters';
+import { useDutyRosters, useActiveRoster } from '@/hooks/use-duty-rosters';
 import { AdminHandoverBanner } from '@/components/nurse/admin-handover-banner';
 import {
   Sun,
@@ -62,14 +62,25 @@ const SHIFT_CONFIG = {
     end: '06:00',
     color: 'bg-indigo-100 text-indigo-700',
   },
+  general: {
+    label: 'General',
+    icon: Clock,
+    start: '09:00',
+    end: '17:00',
+    color: 'bg-sky-100 text-sky-700',
+  },
 } as const;
 
 type ShiftType = keyof typeof SHIFT_CONFIG;
 
+// Cycle: morning → afternoon → night → (next-day) morning. General shifts
+// don't form a cycle — pair against themselves so the form still has a
+// sensible "next shift" target.
 const NEXT_SHIFT: Record<ShiftType, ShiftType> = {
   morning: 'afternoon',
   afternoon: 'night',
   night: 'morning',
+  general: 'general',
 };
 
 function detectCurrentShift(): ShiftType {
@@ -90,14 +101,59 @@ function nextShiftDate(fromShift: ShiftType, fromDateIso: string): string {
 // ── Page ─────────────────────────────────────────────────────
 
 export default function ShiftHandoverPage() {
-  const currentShift = useMemo(() => detectCurrentShift(), []);
+  // Source of truth: the logged-in nurse's active roster row. Falls back to
+  // clock-based detection only when off-duty so the page still renders.
+  const { user } = useAuthStore();
+  const { data: myActive } = useActiveRoster(
+    user?.id ? { userId: user.id } : {},
+  );
+  const rosteredShift = (myActive?.mine?.shiftType ?? null) as ShiftType | null;
+  const currentShift = useMemo<ShiftType>(() => {
+    if (rosteredShift && rosteredShift in SHIFT_CONFIG) return rosteredShift;
+    return detectCurrentShift();
+  }, [rosteredShift]);
+  const isRostered = Boolean(myActive?.mine);
+  // Pull the actual rostered start/end (stored against 1970-01-01 UTC) so the
+  // chip shows the nurse's real times, not the SHIFT_CONFIG default.
+  const shiftTimes = useMemo(() => {
+    const fallback = SHIFT_CONFIG[currentShift];
+    if (!isRostered || !myActive?.mine) {
+      return { start: fallback.start, end: fallback.end };
+    }
+    const fmt = (iso: string) => {
+      const d = new Date(iso);
+      return `${d.getUTCHours().toString().padStart(2, '0')}:${d
+        .getUTCMinutes()
+        .toString()
+        .padStart(2, '0')}`;
+    };
+    return { start: fmt(myActive.mine.startTime), end: fmt(myActive.mine.endTime) };
+  }, [isRostered, myActive, currentShift]);
+  const shiftCfg = SHIFT_CONFIG[currentShift];
   return (
     <div className="space-y-4 p-4">
       {/* Title + Schedule link */}
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Clock className="h-5 w-5 text-primary" />
           <h1 className="font-headline text-lg font-bold">Shift Handover</h1>
+          <span
+            className={cn(
+              'rounded-full px-2 py-0.5 text-[10px] font-bold',
+              shiftCfg.color,
+            )}
+          >
+            {shiftCfg.label} · {shiftTimes.start}–{shiftTimes.end}
+          </span>
+          {isRostered ? (
+            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+              On Duty
+            </span>
+          ) : (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">
+              Off Duty
+            </span>
+          )}
         </div>
         <Link
           href="/nurse/schedule"
@@ -238,6 +294,7 @@ function CreateHandoverForm({ currentShift }: { currentShift: ShiftType }) {
               <SelectItem value="morning">Morning · 06:00–14:00</SelectItem>
               <SelectItem value="afternoon">Afternoon · 14:00–22:00</SelectItem>
               <SelectItem value="night">Night · 22:00–06:00</SelectItem>
+              <SelectItem value="general">General · 09:00–17:00</SelectItem>
             </SelectContent>
           </Select>
         </div>

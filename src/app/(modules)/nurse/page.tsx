@@ -66,8 +66,13 @@ import { useActiveRoster } from '@/hooks/use-duty-rosters';
 import { useAuthStore } from '@/stores/auth-store';
 
 // ── Shift Detection ───────────────────────────────────────
+//
+// The nurse_admin's published DutyRoster is the source of truth. We pull the
+// logged-in user's currently-active row from /hr/rosters/active and surface
+// its shiftType + start/end. SHIFT_CONFIG is just a fallback for visual
+// styling when the user is off-duty (clock-based detection).
 
-type ShiftType = 'morning' | 'afternoon' | 'night';
+type ShiftType = 'morning' | 'afternoon' | 'night' | 'general';
 
 const SHIFT_CONFIG: Record<ShiftType, {
   label: string;
@@ -80,7 +85,10 @@ const SHIFT_CONFIG: Record<ShiftType, {
   morning: { label: 'Morning', icon: Sun, start: '06:00', end: '14:00', bg: 'bg-amber-100', text: 'text-amber-700' },
   afternoon: { label: 'Afternoon', icon: Sunset, start: '14:00', end: '22:00', bg: 'bg-orange-100', text: 'text-orange-700' },
   night: { label: 'Night', icon: Moon, start: '22:00', end: '06:00', bg: 'bg-indigo-100', text: 'text-indigo-700' },
+  general: { label: 'General', icon: Clock, start: '09:00', end: '17:00', bg: 'bg-sky-100', text: 'text-sky-700' },
 };
+
+const CLOCK_SHIFTS: ReadonlyArray<ShiftType> = ['morning', 'afternoon', 'night'];
 
 function getCurrentShift(): ShiftType {
   const hour = new Date().getHours();
@@ -89,11 +97,13 @@ function getCurrentShift(): ShiftType {
   return 'night';
 }
 
-// Prior shift in cycle: morning ← night ← afternoon ← morning
+// Prior shift in cycle: morning ← night ← afternoon ← morning. General shifts
+// don't form a cycle, so they pair against themselves.
 function getPreviousShift(current: ShiftType): ShiftType {
   if (current === 'morning') return 'night';
   if (current === 'afternoon') return 'morning';
-  return 'afternoon';
+  if (current === 'night') return 'afternoon';
+  return 'general';
 }
 
 // ── Vital Abnormality Detection ───────────────────────────
@@ -1041,12 +1051,13 @@ export default function NurseDashboardPage() {
   const { data: myActive } = useActiveRoster(
     authUserForShift?.id ? { userId: authUserForShift.id } : {},
   );
-  const rosteredShift = (myActive?.mine?.shiftType ?? null) as ShiftType | 'general' | null;
+  const rosteredShift = (myActive?.mine?.shiftType ?? null) as ShiftType | null;
   const clockShift = useMemo(() => getCurrentShift(), []);
-  // The hardcoded SHIFT_CONFIG only knows morning/afternoon/night, so fall
-  // back to the clock label for "general" rostered shifts.
-  const currentShift =
-    rosteredShift === 'morning' || rosteredShift === 'afternoon' || rosteredShift === 'night'
+  // Source of truth: rostered shiftType if the nurse is currently on duty.
+  // Otherwise fall back to clock-based detection so the page still has a
+  // sensible "where in the day are we" anchor while off duty.
+  const currentShift: ShiftType =
+    rosteredShift && (rosteredShift in SHIFT_CONFIG)
       ? rosteredShift
       : clockShift;
   const prevShift = useMemo(() => getPreviousShift(currentShift), [currentShift]);
