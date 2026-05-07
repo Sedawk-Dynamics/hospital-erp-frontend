@@ -13,6 +13,7 @@ import {
   ArchiveRestore,
   ChevronRight,
   Copy,
+  Eye,
   FileText,
   Loader2,
   MoreVertical,
@@ -48,8 +49,10 @@ import {
   FORM_CATEGORIES,
   type HospitalForm,
   type FormCategory,
+  type FormSchema,
   type FormTemplate,
 } from '@/hooks/use-forms';
+import { FormPreviewDialog } from '@/components/forms/form-preview-dialog';
 
 function categoryLabel(c: FormCategory): string {
   return FORM_CATEGORIES.find((x) => x.value === c)?.label ?? c;
@@ -72,6 +75,23 @@ export default function HospitalFormsSettingsPage() {
   const [newName, setNewName] = useState('');
   const [archiveTarget, setArchiveTarget] = useState<HospitalForm | null>(null);
   const [archiveReason, setArchiveReason] = useState('');
+  const [preview, setPreview] = useState<{
+    name: string;
+    description: string | null;
+    category: FormCategory;
+    version: number;
+    schema: FormSchema;
+  } | null>(null);
+
+  function openPreview(item: HospitalForm | FormTemplate) {
+    setPreview({
+      name: item.name,
+      description: item.description,
+      category: item.category,
+      version: item.version,
+      schema: item.schema,
+    });
+  }
 
   function filterByName<T extends { name: string }>(arr: T[]): T[] {
     if (!search.trim()) return arr;
@@ -211,6 +231,15 @@ export default function HospitalFormsSettingsPage() {
                         )}
                       </p>
                     </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => openPreview(f)}
+                      className="h-7 gap-1 px-2 text-xs"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      Preview
+                    </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger
                         render={
@@ -228,6 +257,10 @@ export default function HospitalFormsSettingsPage() {
                             </Link>
                           }
                         />
+                        <DropdownMenuItem onClick={() => openPreview(f)}>
+                          <Eye className="h-3.5 w-3.5 mr-2" />
+                          Preview
+                        </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => setArchiveTarget(f)}
                           className="text-destructive focus:text-destructive"
@@ -268,6 +301,15 @@ export default function HospitalFormsSettingsPage() {
                         {t.description && ` · ${t.description}`}
                       </p>
                     </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => openPreview(t)}
+                      className="gap-1.5"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      Preview
+                    </Button>
                     <Button
                       size="sm"
                       variant="outline"
@@ -311,6 +353,15 @@ export default function HospitalFormsSettingsPage() {
                     </div>
                     <Button
                       size="sm"
+                      variant="ghost"
+                      onClick={() => openPreview(f)}
+                      className="gap-1.5"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      Preview
+                    </Button>
+                    <Button
+                      size="sm"
                       variant="outline"
                       onClick={() => handleRestore(f)}
                       disabled={restoreForm.isPending}
@@ -326,6 +377,17 @@ export default function HospitalFormsSettingsPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Preview */}
+      <FormPreviewDialog
+        open={!!preview}
+        onOpenChange={(open) => !open && setPreview(null)}
+        name={preview?.name ?? ''}
+        description={preview?.description}
+        category={preview?.category ?? 'other'}
+        version={preview?.version}
+        schema={preview?.schema}
+      />
 
       {/* New form */}
       <Dialog open={openNew} onOpenChange={setOpenNew}>

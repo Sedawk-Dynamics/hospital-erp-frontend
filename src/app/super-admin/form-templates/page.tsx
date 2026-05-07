@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   Copy,
+  Eye,
   FileText,
   Loader2,
   MoreVertical,
@@ -41,6 +42,7 @@ import {
   type FormTemplate,
   type FormCategory,
 } from '@/hooks/use-forms';
+import { FormPreviewDialog } from '@/components/forms/form-preview-dialog';
 
 function categoryLabel(c: FormCategory): string {
   return FORM_CATEGORIES.find((x) => x.value === c)?.label ?? c;
@@ -56,6 +58,7 @@ export default function SuperAdminFormTemplatesPage() {
   const [openNew, setOpenNew] = useState(false);
   const [newName, setNewName] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<FormTemplate | null>(null);
+  const [previewTpl, setPreviewTpl] = useState<FormTemplate | null>(null);
 
   const templates = data?.data ?? [];
   const filtered = templates.filter((t) =>
@@ -185,32 +188,49 @@ export default function SuperAdminFormTemplatesPage() {
                       {new Date(t.updatedAt).toLocaleDateString()}
                     </td>
                     <td className="py-2 px-2 text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          render={
-                            <button className="p-1 rounded hover:bg-surface-container-high">
-                              <MoreVertical className="h-4 w-4" />
-                            </button>
-                          }
-                        />
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setPreviewTpl(t)}
+                          className="h-7 gap-1 px-2 text-xs"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          Preview
+                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
                             render={
-                              <Link href={`/super-admin/form-templates/${t.id}`}>
-                                <Copy className="h-3.5 w-3.5 mr-2" />
-                                Open builder
-                              </Link>
+                              <button className="p-1 rounded hover:bg-surface-container-high">
+                                <MoreVertical className="h-4 w-4" />
+                              </button>
                             }
                           />
-                          <DropdownMenuItem
-                            onClick={() => setConfirmDelete(t)}
-                            className="text-destructive focus:text-destructive"
-                          >
-                            <Trash2 className="h-3.5 w-3.5 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              render={
+                                <Link href={`/super-admin/form-templates/${t.id}`}>
+                                  <Copy className="h-3.5 w-3.5 mr-2" />
+                                  Open builder
+                                </Link>
+                              }
+                            />
+                            <DropdownMenuItem
+                              onClick={() => setPreviewTpl(t)}
+                            >
+                              <Eye className="h-3.5 w-3.5 mr-2" />
+                              Preview
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => setConfirmDelete(t)}
+                              className="text-destructive focus:text-destructive"
+                            >
+                              <Trash2 className="h-3.5 w-3.5 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -246,6 +266,17 @@ export default function SuperAdminFormTemplatesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Preview */}
+      <FormPreviewDialog
+        open={!!previewTpl}
+        onOpenChange={(open) => !open && setPreviewTpl(null)}
+        name={previewTpl?.name ?? ''}
+        description={previewTpl?.description}
+        category={previewTpl?.category ?? 'other'}
+        version={previewTpl?.version}
+        schema={previewTpl?.schema}
+      />
 
       {/* Delete confirmation */}
       <Dialog open={!!confirmDelete} onOpenChange={(open) => !open && setConfirmDelete(null)}>
