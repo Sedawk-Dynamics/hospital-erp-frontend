@@ -15,6 +15,7 @@ import {
   ClipboardCheck,
   CheckCircle2,
   ExternalLink,
+  UserPlus,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -97,24 +98,44 @@ const ADMISSION_CHECKLIST = [
 
 // ---------------------------------------------------------------------------
 // AdmissionDialog — Create a new admission (multi-step: details → checklist)
+// Supports two patient modes:
+//   - 'existing': search the registry and pick a patient (default)
+//   - 'new':      register a new patient inline before admitting
 // ---------------------------------------------------------------------------
 function AdmissionDialog({
   open,
   onOpenChange,
   onAdmitted,
+  initialMode = 'existing',
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAdmitted: (admission: Admission) => void;
+  initialMode?: 'existing' | 'new';
 }) {
   const queryClient = useQueryClient();
   const [step, setStep] = useState<'details' | 'checklist'>('details');
+
+  // Patient mode toggle — switches between search and inline registration
+  const [patientMode, setPatientMode] = useState<'existing' | 'new'>(initialMode);
 
   // Form state
   const [patientSearch, setPatientSearch] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState('');
   // Hold on to the picked patient so the display survives search changes.
   const [selectedPatientSnapshot, setSelectedPatientSnapshot] = useState<Patient | null>(null);
+
+  // New-patient inline registration fields (used when patientMode === 'new')
+  const [newPatient, setNewPatient] = useState({
+    firstName: '',
+    lastName: '',
+    gender: 'male' as 'male' | 'female' | 'other',
+    dateOfBirth: '',
+    phone: '',
+    email: '',
+    address: '',
+  });
+
   const [selectedDoctorId, setSelectedDoctorId] = useState('');
   const [selectedFloorId, setSelectedFloorId] = useState('');
   const [selectedWardId, setSelectedWardId] = useState('');
@@ -139,7 +160,7 @@ function AdmissionDialog({
       apiGet<Patient[]>('/patients', {
         params: { search: debouncedPatientSearch, limit: 10 },
       }),
-    enabled: debouncedPatientSearch.length >= 2,
+    enabled: patientMode === 'existing' && debouncedPatientSearch.length >= 2,
   });
 
   const { data: doctorsData } = useQuery({
@@ -217,12 +238,31 @@ function AdmissionDialog({
   const doctorName = (d?: typeof doctors[number]) =>
     d ? `Dr. ${d.user?.firstName ?? ''} ${d.user?.lastName ?? ''}`.trim() : '';
 
-  // Mutation: create visit then admission
+  // Mutation: optionally register patient → create visit → create admission
   const admitMutation = useMutation({
     mutationFn: async () => {
+      let patientId = selectedPatientId;
+
+      // Step 0 (new mode only): register the patient first
+      if (patientMode === 'new') {
+        const payload: Record<string, unknown> = {
+          firstName: newPatient.firstName.trim(),
+          lastName: newPatient.lastName.trim(),
+          gender: newPatient.gender,
+          phone: newPatient.phone.trim(),
+        };
+        if (newPatient.dateOfBirth) payload.dateOfBirth = newPatient.dateOfBirth;
+        if (newPatient.email.trim()) payload.email = newPatient.email.trim();
+        if (newPatient.address.trim()) payload.address = newPatient.address.trim();
+
+        const patientRes = await apiPost<Patient>('/patients', payload);
+        if (!patientRes.data?.id) throw new Error('Failed to register patient');
+        patientId = patientRes.data.id;
+      }
+
       // Step 1: create an IP visit
       const visitRes = await apiPost<{ id: string }>('/clinical/visits', {
-        patientId: selectedPatientId,
+        patientId,
         doctorId: selectedDoctorId,
         visitType: 'ip',
         visitDate: admissionDate,
@@ -232,7 +272,7 @@ function AdmissionDialog({
       // Step 2: create admission
       const admissionRes = await apiPost<Admission>('/clinical/admissions', {
         visitId,
-        patientId: selectedPatientId,
+        patientId,
         doctorId: selectedDoctorId,
         wardId: selectedWardId,
         bedId: selectedBedId,
@@ -244,13 +284,18 @@ function AdmissionDialog({
       return admissionRes.data;
     },
     onSuccess: (admission) => {
-      toast.success('Patient admitted successfully');
+      toast.success(
+        patientMode === 'new'
+          ? 'Patient registered and admitted successfully'
+          : 'Patient admitted successfully',
+      );
       queryClient.invalidateQueries({ queryKey: ['hospital', 'admissions'] });
       queryClient.invalidateQueries({ queryKey: ['hospital', 'beds'] });
       queryClient.invalidateQueries({ queryKey: ['hospital', 'occupancy'] });
       queryClient.invalidateQueries({ queryKey: ['hospital', 'reservations'] });
       queryClient.invalidateQueries({ queryKey: ['infrastructure', 'beds'] });
       queryClient.invalidateQueries({ queryKey: ['beds-available'] });
+      queryClient.invalidateQueries({ queryKey: ['patients'] });
       onAdmitted(admission);
       resetForm();
       onOpenChange(false);
@@ -264,6 +309,16 @@ function AdmissionDialog({
     setPatientSearch('');
     setSelectedPatientId('');
     setSelectedPatientSnapshot(null);
+    setNewPatient({
+      firstName: '',
+      lastName: '',
+      gender: 'male',
+      dateOfBirth: '',
+      phone: '',
+      email: '',
+      address: '',
+    });
+    setPatientMode(initialMode);
     setSelectedDoctorId('');
     setSelectedFloorId('');
     setSelectedWardId('');
@@ -274,10 +329,18 @@ function AdmissionDialog({
     setDepositAmount('');
     setChecklist({});
     setStep('details');
-  }, []);
+  }, [initialMode]);
+
+  const newPatientValid =
+    newPatient.firstName.trim().length > 0 &&
+    newPatient.lastName.trim().length > 0 &&
+    /^[+]?[\d\s()-]{7,15}$/.test(newPatient.phone.trim());
+
+  const patientValid =
+    patientMode === 'existing' ? !!selectedPatientId : newPatientValid;
 
   const detailsValid =
-    !!selectedPatientId && !!selectedDoctorId && !!selectedWardId && !!selectedBedId;
+    patientValid && !!selectedDoctorId && !!selectedWardId && !!selectedBedId;
 
   const requiredChecklistDone = ADMISSION_CHECKLIST.filter((c) => c.required).every(
     (c) => checklist[c.key],
@@ -293,10 +356,21 @@ function AdmissionDialog({
     >
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Admit Patient</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            {patientMode === 'new' ? (
+              <>
+                <UserPlus className="h-5 w-5 text-primary" />
+                Register New Patient &amp; Admit
+              </>
+            ) : (
+              'Admit Patient'
+            )}
+          </DialogTitle>
           <DialogDescription>
             {step === 'details'
-              ? 'Fill in admission details (ward, bed, doctor, deposit).'
+              ? patientMode === 'new'
+                ? 'Register a new patient and admit them to a bed.'
+                : 'Fill in admission details (ward, bed, doctor, deposit).'
               : 'Verify the admission checklist before confirming.'}
           </DialogDescription>
         </DialogHeader>
@@ -326,10 +400,142 @@ function AdmissionDialog({
 
         {step === 'details' && (
           <div className="grid gap-4 py-2">
-            {/* Patient search */}
-            <div className="grid gap-1.5">
-              <Label>Patient *</Label>
-              {selectedPatientId ? (
+            {/* Patient mode toggle */}
+            <div className="flex gap-2 p-1 rounded-xl bg-surface-container">
+              <button
+                type="button"
+                onClick={() => {
+                  setPatientMode('existing');
+                }}
+                className={cn(
+                  'flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all',
+                  patientMode === 'existing'
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-on-surface-variant hover:text-on-surface',
+                )}
+              >
+                Existing Patient
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPatientMode('new');
+                  setSelectedPatientId('');
+                  setSelectedPatientSnapshot(null);
+                  setPatientSearch('');
+                }}
+                className={cn(
+                  'flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-1.5',
+                  patientMode === 'new'
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-on-surface-variant hover:text-on-surface',
+                )}
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+                Register New Patient
+              </button>
+            </div>
+
+            {/* New-patient registration form */}
+            {patientMode === 'new' ? (
+              <div className="rounded-lg border border-dashed border-muted-foreground/30 p-3 space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <UserPlus className="h-3.5 w-3.5" />
+                  New Patient Details
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-1.5">
+                    <Label>First Name *</Label>
+                    <Input
+                      placeholder="First name"
+                      value={newPatient.firstName}
+                      onChange={(e) =>
+                        setNewPatient((p) => ({ ...p, firstName: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label>Last Name *</Label>
+                    <Input
+                      placeholder="Last name"
+                      value={newPatient.lastName}
+                      onChange={(e) =>
+                        setNewPatient((p) => ({ ...p, lastName: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label>Gender *</Label>
+                    <Select
+                      value={newPatient.gender}
+                      onValueChange={(v) =>
+                        v &&
+                        setNewPatient((p) => ({
+                          ...p,
+                          gender: v as 'male' | 'female' | 'other',
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select gender" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="male">Male</SelectItem>
+                        <SelectItem value="female">Female</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label>Date of Birth</Label>
+                    <Input
+                      type="date"
+                      value={newPatient.dateOfBirth}
+                      onChange={(e) =>
+                        setNewPatient((p) => ({ ...p, dateOfBirth: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label>Phone *</Label>
+                    <Input
+                      placeholder="+91XXXXXXXXXX"
+                      value={newPatient.phone}
+                      onChange={(e) =>
+                        setNewPatient((p) => ({ ...p, phone: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label>Email</Label>
+                    <Input
+                      type="email"
+                      placeholder="Optional"
+                      value={newPatient.email}
+                      onChange={(e) =>
+                        setNewPatient((p) => ({ ...p, email: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="grid gap-1.5 col-span-2">
+                    <Label>Address</Label>
+                    <Input
+                      placeholder="Street, city (optional)"
+                      value={newPatient.address}
+                      onChange={(e) =>
+                        setNewPatient((p) => ({ ...p, address: e.target.value }))
+                      }
+                    />
+                  </div>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  An MRN will be auto-generated when the patient is registered.
+                </p>
+              </div>
+            ) : (
+              <div className="grid gap-1.5">
+                <Label>Patient *</Label>
+                {selectedPatientId ? (
                 <div className="flex items-center justify-between rounded-lg border px-3 py-2">
                   <span className="text-sm">
                     {selectedPatient
@@ -380,7 +586,8 @@ function AdmissionDialog({
                   )}
                 </div>
               )}
-            </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               {/* Doctor */}
@@ -559,9 +766,15 @@ function AdmissionDialog({
               <p>
                 <span className="text-muted-foreground">Patient:</span>{' '}
                 <strong>
-                  {selectedPatient?.firstName} {selectedPatient?.lastName}
+                  {patientMode === 'new'
+                    ? `${newPatient.firstName} ${newPatient.lastName}`.trim()
+                    : `${selectedPatient?.firstName ?? ''} ${selectedPatient?.lastName ?? ''}`.trim()}
                 </strong>{' '}
-                ({selectedPatient?.mrn})
+                {patientMode === 'new' ? (
+                  <span className="text-primary font-semibold">(New · MRN pending)</span>
+                ) : (
+                  <>({selectedPatient?.mrn})</>
+                )}
               </p>
               <p>
                 <span className="text-muted-foreground">Doctor:</span>{' '}
@@ -1305,6 +1518,7 @@ export function InPatientList() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [admitOpen, setAdmitOpen] = useState(false);
+  const [registerNewOpen, setRegisterNewOpen] = useState(false);
   const [viewAdmission, setViewAdmission] = useState<Admission | null>(null);
   const [postAdmitSlip, setPostAdmitSlip] = useState<Admission | null>(null);
 
@@ -1365,6 +1579,14 @@ export function InPatientList() {
             className="bg-surface-container-low border-none rounded-xl pl-12 pr-6 py-2.5 font-label text-sm focus:ring-2 focus:ring-primary/20 transition-all outline-none placeholder:text-on-surface-variant/60"
           />
         </div>
+        <Button
+          variant="outline"
+          className="rounded-xl gap-1.5"
+          onClick={() => setRegisterNewOpen(true)}
+        >
+          <UserPlus className="h-4 w-4" />
+          Register New Patient
+        </Button>
         <Button className="rounded-xl gap-1.5" onClick={() => setAdmitOpen(true)}>
           <Plus className="h-4 w-4" />
           Admit Patient
@@ -1512,11 +1734,19 @@ export function InPatientList() {
         )}
       </div>
 
-      {/* Admission dialog */}
+      {/* Admission dialog (existing patient) */}
       <AdmissionDialog
         open={admitOpen}
         onOpenChange={setAdmitOpen}
         onAdmitted={(adm) => setPostAdmitSlip(adm)}
+      />
+
+      {/* Admission dialog (new-patient registration + admission) */}
+      <AdmissionDialog
+        open={registerNewOpen}
+        onOpenChange={setRegisterNewOpen}
+        onAdmitted={(adm) => setPostAdmitSlip(adm)}
+        initialMode="new"
       />
 
       {/* Auto-open admission slip after admit */}
