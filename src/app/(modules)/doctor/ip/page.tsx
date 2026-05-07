@@ -277,14 +277,18 @@ export default function DoctorIPHomePage() {
                             </AvatarFallback>
                           </Avatar>
                           <div>
-                            <p className="font-semibold text-foreground">
+                            <button
+                              type="button"
+                              onClick={() => router.push(`/doctor/ip/${admission.id}`)}
+                              className="font-semibold text-foreground hover:text-primary text-left"
+                            >
                               {patientName}
                               {patient?.gender && (
                                 <span className="font-normal text-muted-foreground ml-1">
                                   {patient.gender === 'female' ? 'F' : patient.gender === 'male' ? 'M' : ''}
                                 </span>
                               )}
-                            </p>
+                            </button>
                             <div className="text-xs text-muted-foreground">
                               {patient?.mrn || patient?.uhid || '-'} | {patient?.phone || '-'}
                             </div>
@@ -343,6 +347,7 @@ export default function DoctorIPHomePage() {
                             size="icon"
                             className="h-7 w-7"
                             title="View Details"
+                            onClick={() => router.push(`/doctor/ip/${admission.id}`)}
                           >
                             <Eye className="h-3.5 w-3.5" />
                           </Button>
@@ -360,6 +365,11 @@ export default function DoctorIPHomePage() {
                             size="icon"
                             className="h-7 w-7"
                             title="Order Tests"
+                            onClick={() =>
+                              router.push(
+                                `/doctor/ip/${admission.id}?tab=orders`,
+                              )
+                            }
                           >
                             <FlaskConical className="h-3.5 w-3.5" />
                           </Button>
@@ -370,8 +380,18 @@ export default function DoctorIPHomePage() {
                               <MoreVertical className="h-3.5 w-3.5" />
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem>View Full Record</DropdownMenuItem>
-                              <DropdownMenuItem>Add Prescription</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => router.push(`/doctor/ip/${admission.id}`)}>
+                                View Full Record
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  router.push(
+                                    `/doctor/prescriptions?patientId=${admission.patientId}&admissionId=${admission.id}`,
+                                  )
+                                }
+                              >
+                                Add Prescription
+                              </DropdownMenuItem>
                               {/* Vitals are nurse-recorded; the doctor sees them
                                    read-only on the consultation/IP record. */}
                               <DropdownMenuItem

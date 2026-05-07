@@ -798,6 +798,7 @@ function PatientListTable({
   onPageChange: (page: number) => void;
   onRecordVitals: (patientId: string) => void;
 }) {
+  const router = useRouter();
   if (isLoading) {
     return (
       <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary">
@@ -936,6 +937,7 @@ function PatientListTable({
                         size="sm"
                         className="h-7 text-xs gap-1"
                         title="View patient"
+                        render={<Link href={`/nurse/ip/${adm.id}`} />}
                       >
                         <Eye className="h-3.5 w-3.5" />
                         View
@@ -954,17 +956,25 @@ function PatientListTable({
                             <HeartPulse className="mr-2 h-4 w-4" />
                             Record Vitals
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => router.push(`/nurse/emar?admissionId=${adm.id}`)}
+                          >
                             <Pill className="mr-2 h-4 w-4" />
-                            Medications
+                            eMAR / Medications
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() =>
+                              router.push(`/nurse/charting?admissionId=${adm.id}&patientId=${adm.patientId}`)
+                            }
+                          >
                             <ClipboardList className="mr-2 h-4 w-4" />
-                            Nursing Notes
+                            Clinical Charting
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <BedDouble className="mr-2 h-4 w-4" />
-                            Transfer
+                          <DropdownMenuItem
+                            onClick={() => router.push(`/nurse/ip/${adm.id}`)}
+                          >
+                            <Eye className="mr-2 h-4 w-4" />
+                            Open IP Workspace
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

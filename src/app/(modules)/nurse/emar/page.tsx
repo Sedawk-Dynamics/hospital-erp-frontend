@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { toInputDateStr, formatTime, formatDateTime } from '@/lib/date-utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -104,7 +105,12 @@ function buildIso(dateStr: string, timeStr: string): string {
 // ── Page component ───────────────────────────────────────────
 
 export default function EmarPage() {
-  const [selectedAdmissionId, setSelectedAdmissionId] = useState('');
+  const searchParams = useSearchParams();
+  const admissionIdParam = searchParams.get('admissionId') ?? '';
+
+  // Initialise from the URL but treat as plain local state thereafter so the
+  // user can change selection via the Select dropdown without a route change.
+  const [selectedAdmissionId, setSelectedAdmissionId] = useState(admissionIdParam);
   const [selectedDate, setSelectedDate] = useState(toInputDateStr());
 
   // Action dialog state

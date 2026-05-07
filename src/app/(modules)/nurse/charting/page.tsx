@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { formatDateTime } from '@/lib/date-utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -125,9 +126,12 @@ type NoteTabKey = (typeof NOTE_TABS)[number]['key'];
 
 export default function ClinicalChartingPage() {
   const user = useAuthStore((s) => s.user);
+  const searchParams = useSearchParams();
+  const admissionIdParam = searchParams.get('admissionId') ?? '';
+  const patientIdParam = searchParams.get('patientId') ?? '';
 
   // Patient selector state
-  const [selectedPatientId, setSelectedPatientId] = useState('');
+  const [selectedPatientId, setSelectedPatientId] = useState(patientIdParam);
   const [patientSearch, setPatientSearch] = useState('');
 
   // Vitals form state
@@ -158,11 +162,22 @@ export default function ClinicalChartingPage() {
       : (admissionsRaw as unknown as { data: NurseAdmission[] }).data ?? [];
   }, [admissionsRaw]);
 
-  // Find selected admission
-  const selectedAdmission = useMemo(
-    () => admissions.find((a) => a.patientId === selectedPatientId),
-    [admissions, selectedPatientId],
-  );
+  // Auto-select patient when ?admissionId= deep link is provided
+  useEffect(() => {
+    if (!admissionIdParam || selectedPatientId) return;
+    const match = admissions.find((a) => a.id === admissionIdParam);
+    if (match?.patientId) setSelectedPatientId(match.patientId);
+  }, [admissionIdParam, admissions, selectedPatientId]);
+
+  // Find selected admission — prefer the explicit ?admissionId= when given,
+  // otherwise fall back to first admission for the selected patient.
+  const selectedAdmission = useMemo(() => {
+    if (admissionIdParam) {
+      const byId = admissions.find((a) => a.id === admissionIdParam);
+      if (byId) return byId;
+    }
+    return admissions.find((a) => a.patientId === selectedPatientId);
+  }, [admissions, selectedPatientId, admissionIdParam]);
 
   // Filter admissions by search
   const filteredAdmissions = useMemo(() => {

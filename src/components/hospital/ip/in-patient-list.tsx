@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import {
   Search,
@@ -12,6 +14,7 @@ import {
   Printer,
   ClipboardCheck,
   CheckCircle2,
+  ExternalLink,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -1200,6 +1203,7 @@ function RowActionsMenu({
   admission: Admission;
   onView: (adm: Admission) => void;
 }) {
+  const router = useRouter();
   const [transferOpen, setTransferOpen] = useState(false);
   const [dischargeOpen, setDischargeOpen] = useState(false);
   const [slipOpen, setSlipOpen] = useState(false);
@@ -1221,9 +1225,13 @@ function RowActionsMenu({
           <MoreHorizontal className="h-4 w-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => router.push(`/hospital/ip/${admission.id}`)}>
+            <ExternalLink className="mr-2 h-4 w-4" />
+            Open IP Workspace
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => onView(admission)}>
             <Eye className="mr-2 h-4 w-4" />
-            View Details
+            Quick View
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setSlipOpen(true)}>
             <Printer className="mr-2 h-4 w-4" />
@@ -1416,9 +1424,12 @@ export function InPatientList() {
                             </AvatarFallback>
                           </Avatar>
                           <div>
-                            <p className="font-label text-sm font-bold">
+                            <Link
+                              href={`/hospital/ip/${adm.id}`}
+                              className="font-label text-sm font-bold hover:text-primary"
+                            >
                               {adm.patient?.firstName} {adm.patient?.lastName}
-                            </p>
+                            </Link>
                             <p className="font-label text-[10px] text-on-surface-variant">
                               {adm.patient?.mrn} | {adm.patient?.phone}
                             </p>

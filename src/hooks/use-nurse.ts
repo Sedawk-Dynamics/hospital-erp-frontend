@@ -13,7 +13,7 @@ export interface NurseAdmission {
   // Visit FK on the admission row. Vitals creation requires visitId, so we
   // pass the admission's visitId straight through.
   visitId?: string;
-  patient?: Pick<Patient, 'id' | 'mrn' | 'firstName' | 'lastName' | 'phone' | 'gender' | 'dateOfBirth'> & { uhid?: string; allergies?: string[] };
+  patient?: Pick<Patient, 'id' | 'mrn' | 'firstName' | 'lastName' | 'phone' | 'gender' | 'dateOfBirth' | 'bloodGroup' | 'email'> & { uhid?: string; allergies?: string[] };
   doctorId?: string;
   doctor?: {
     id: string;
