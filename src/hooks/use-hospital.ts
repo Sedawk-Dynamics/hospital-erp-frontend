@@ -322,6 +322,37 @@ export function useUpdateAppointmentStatus() {
   });
 }
 
+export interface FrontdeskBillCreation {
+  billId: string;
+  billNumber: string;
+  totalAmount: number;
+  amountPaid: number;
+  balanceDue: number;
+  status: string;
+}
+
+/**
+ * Staff-side: turns a `pending_payment` appointment into a booked one with a
+ * pending front-desk Bill, so the cashier can collect on the spot. The
+ * returned bill is then handed to the CollectFrontdeskPaymentDialog.
+ */
+export function useInitiateFrontdeskPayment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (appointmentId: string) => {
+      const response = await apiPost<FrontdeskBillCreation>(
+        `/appointments/${appointmentId}/frontdesk-payment`,
+      );
+      return response.data ?? null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'op-appointments'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'appointment-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['front-desk'] });
+    },
+  });
+}
+
 export function useCancelAppointment() {
   const queryClient = useQueryClient();
   return useMutation({

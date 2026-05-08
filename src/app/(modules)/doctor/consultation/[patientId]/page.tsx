@@ -54,6 +54,7 @@ import { cn } from '@/lib/utils';
 import { usePatientDetail, useProgressNotes } from '@/hooks/use-doctor';
 import { useLatestVitals as useLatestVitalsNurse } from '@/hooks/use-nurse';
 import { NursingFormsPanel } from '@/components/doctor/nursing-forms-panel';
+import { ConsultationSummaryPanel } from '@/components/doctor/consultation-summary-panel';
 import type { Patient, Appointment } from '@/types';
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -556,9 +557,13 @@ export default function PatientConsultationPage({
   });
   const prefill = prefillResponse?.prefill;
 
-  // Latest progress note for this patient — used for amendment history link
-  // + session checklist badges when viewing a saved consultation.
-  const { data: recentNotes } = useProgressNotes({ patientId, limit: 1 });
+  // Progress note for the active visit — drives the amendment-history link,
+  // session-checklist badges, and (after the appointment is completed) the
+  // Consultation Summary panel + sign action. Falls back to the most recent
+  // note for this patient when the active visit hasn't been resolved yet.
+  const { data: recentNotes } = useProgressNotes(
+    activeVisitId ? { visitId: activeVisitId, limit: 1 } : { patientId, limit: 1 },
+  );
   const latestNote = recentNotes?.data?.[0] ?? null;
 
   const showForm = isInConsultation || isEditing;
@@ -756,6 +761,13 @@ export default function PatientConsultationPage({
                   </div>
                 )}
               </section>
+            ) : null}
+
+            {/* Consultation Summary — shows for completed appointments and
+                lets the doctor sign the note (which finalizes it and opens
+                it up to the patient via the portal). */}
+            {isCompleted && !isEditing && latestNote ? (
+              <ConsultationSummaryPanel note={latestNote} canSign />
             ) : null}
 
             <section className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4">

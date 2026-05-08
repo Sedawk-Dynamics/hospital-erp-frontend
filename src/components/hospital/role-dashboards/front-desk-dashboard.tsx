@@ -8,13 +8,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   CalendarCheck, UserPlus, Search, Users, CheckCircle2,
-  Clock, CircleCheck, LogIn, Footprints,
+  Clock, CircleCheck, LogIn, Footprints, Banknote, Loader2,
 } from 'lucide-react';
 import { toInputDateStr, formatTime24, formatDate } from '@/lib/date-utils';
 import { toast } from 'sonner';
 import { CreateAppointmentDialog } from '@/components/hospital/create-appointment-dialog';
 import { FrontDeskRegisterDialog } from '@/components/hospital/frontdesk-register-dialog';
 import { CollectFrontdeskPaymentDialog } from '@/components/hospital/collect-frontdesk-payment-dialog';
+import { useInitiateFrontdeskPayment } from '@/hooks/use-hospital';
 import type { Appointment } from '@/types';
 
 /** Normalize @db.Time() or plain "HH:mm" values into a parseable ISO string */
@@ -65,6 +66,8 @@ export function FrontDeskDashboard() {
   const today = toInputDateStr();
   const queryClient = useQueryClient();
 
+  const initiateFrontdeskPayment = useInitiateFrontdeskPayment();
+
   const needsFrontdeskPayment = (apt: QueueAppointment) =>
     apt.paymentInfo?.paymentStatus === 'pay_at_frontdesk' && apt.paymentInfo.balanceDue > 0;
 
@@ -74,6 +77,37 @@ export function FrontDeskDashboard() {
       return;
     }
     confirmMutation.mutate(apt.id);
+  };
+
+  // Pending-payment row → create the front-desk bill on the server, then
+  // open the existing collect dialog seeded with the freshly minted bill.
+  // After the dialog records the payment it will also flip the appointment
+  // booked → confirmed via useUpdateAppointmentStatus, matching the normal
+  // pay_at_frontdesk → confirmed path.
+  const handleStartFrontdeskPayment = async (apt: QueueAppointment) => {
+    try {
+      const bill = await initiateFrontdeskPayment.mutateAsync(apt.id);
+      if (!bill) {
+        toast.error('Failed to create front-desk bill');
+        return;
+      }
+      setCollectPayTarget({
+        ...apt,
+        status: 'booked',
+        paymentInfo: {
+          billId: bill.billId,
+          billNumber: bill.billNumber,
+          billStatus: bill.status,
+          totalAmount: bill.totalAmount,
+          amountPaid: bill.amountPaid,
+          balanceDue: bill.balanceDue,
+          paymentStatus: 'pay_at_frontdesk',
+        },
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to start front-desk payment';
+      toast.error(message);
+    }
   };
 
   const { data: queueData, isLoading: queueLoading } = useQuery({
@@ -351,6 +385,26 @@ export function FrontDeskDashboard() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">
+                      {appt.status === 'pending_payment' && (
+                        <Button
+                          size="sm"
+                          className="gap-1.5 text-xs bg-amber-600 hover:bg-amber-700 text-white"
+                          disabled={
+                            initiateFrontdeskPayment.isPending &&
+                            initiateFrontdeskPayment.variables === appt.id
+                          }
+                          onClick={() => handleStartFrontdeskPayment(appt)}
+                          title="Patient chose Pay at Front Desk — collect cash/UPI now"
+                        >
+                          {initiateFrontdeskPayment.isPending &&
+                          initiateFrontdeskPayment.variables === appt.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Banknote className="h-3.5 w-3.5" />
+                          )}
+                          Collect Payment
+                        </Button>
+                      )}
                       {appt.status === 'booked' && (() => {
                         const payFirst = needsFrontdeskPayment(appt);
                         return (

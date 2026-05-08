@@ -3,7 +3,7 @@ import { apiGet, apiPost, apiPatch, apiPut, apiDelete } from '@/lib/api';
 import { useQueryClient } from '@tanstack/react-query';
 import { doctorKeys } from '@/hooks/use-doctor';
 import { clinicalKeys } from '@/hooks/use-clinical';
-import type { ConsultationFormData } from './consultation-completion-schema';
+import type { ConsultationFormData, ConsultationPinSection } from './consultation-completion-schema';
 import { encodeFrequency, encodeDuration } from './consultation-completion-schema';
 
 interface SubmitParams {
@@ -170,7 +170,13 @@ export function useConsultationCompletion() {
         // ── 5. Progress note (with SOAP JSON + impressions + pins) ──
         const noteContent = buildProgressNoteContent(formData);
         const soap = buildSoapPayload(formData);
-        const cleanPins = (formData.pins ?? []).filter((p) => p.content && p.content.trim());
+        // Compose consultation-summary pins from the per-section pin toggles
+        // the doctor flipped during the visit. Each pinned section captures
+        // the current field text — manually-added pins from the legacy bulk
+        // editor (if any leaked in via prefill) are layered on top.
+        const composedPins = composeConsultationPins(formData);
+        const allPins = [...composedPins, ...(formData.pins ?? [])];
+        const cleanPins = allPins.filter((p) => p.content && p.content.trim());
         const notePayload: any = {
           noteType: 'general',
           content: noteContent,
@@ -332,7 +338,7 @@ function buildSoapPayload(data: ConsultationFormData) {
       })),
       generalExamination: data.generalExamination || '',
       systemicExamination: data.systemicExamination || '',
-      investigations: '',
+      investigations: data.investigationsSummary || '',
     },
     assessment: {
       diagnoses: (data.diagnoses ?? []).map((d) => ({
@@ -351,4 +357,73 @@ function buildSoapPayload(data: ConsultationFormData) {
       referralNotes: data.referralNotes || '',
     },
   };
+}
+
+// ── Consultation Summary pin composer ─────────────────────
+//
+// The consultation form tracks per-section pin toggles in `pinnedSections`.
+// At submit time we snapshot the current text for each pinned section and
+// emit a pin entry — this becomes the Consultation Summary the patient sees
+// after the doctor signs the note.
+export function getConsultationSectionText(
+  data: ConsultationFormData,
+  section: ConsultationPinSection,
+): string {
+  switch (section) {
+    case 'chief_complaint':
+      return data.chiefComplaint?.trim() || '';
+    case 'examination': {
+      const parts = [
+        data.generalExamination?.trim(),
+        data.systemicExamination?.trim(),
+        ...(data.physicalObservations ?? [])
+          .map((po) => po.value?.trim())
+          .filter(Boolean),
+      ].filter(Boolean);
+      return parts.join('\n');
+    }
+    case 'investigation':
+      return data.investigationsSummary?.trim() || '';
+    case 'diagnosis': {
+      const lines = (data.diagnoses ?? [])
+        .filter((d) => d.diagnosisName?.trim())
+        .map((d) => {
+          const name = d.diagnosisName.trim();
+          const icd = d.icdCode?.trim();
+          return icd ? `${name} (${icd}) [${d.diagnosisType}]` : `${name} [${d.diagnosisType}]`;
+        });
+      return lines.join('\n');
+    }
+    case 'impression':
+      return data.impression?.trim() || '';
+    case 'advice':
+      return data.advice?.trim() || '';
+    case 'follow_up': {
+      const parts: string[] = [];
+      if (data.followUpDuration && data.followUpDurationUnit) {
+        parts.push(`After ${data.followUpDuration} ${data.followUpDurationUnit}`);
+      }
+      if (data.followUpDate) {
+        parts.push(data.followUpDate);
+      }
+      if (data.followUpNotes) {
+        parts.push(data.followUpNotes);
+      }
+      return parts.join(' — ');
+    }
+    default:
+      return '';
+  }
+}
+
+function composeConsultationPins(
+  data: ConsultationFormData,
+): Array<{ dischargeSection: ConsultationPinSection; content: string }> {
+  const sections = data.pinnedSections ?? [];
+  return sections
+    .map((section) => ({
+      dischargeSection: section,
+      content: getConsultationSectionText(data, section),
+    }))
+    .filter((p) => p.content.length > 0);
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { useForm, useFieldArray } from 'react-hook-form';
+import { useForm, useFieldArray, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -26,14 +26,19 @@ import {
   DURATION_UNITS,
   ROUTE_OPTIONS,
   FOLLOW_UP_PRESETS,
+  CONSULTATION_PIN_SECTIONS,
+  CONSULTATION_PIN_SECTION_LABELS,
   getDosageFormBadge,
   type ConsultationFormData,
+  type ConsultationPinSection,
   type MedicineFormData,
 } from '../consultation-completion/consultation-completion-schema';
-import { useConsultationCompletion } from '../consultation-completion/use-consultation-completion';
+import {
+  useConsultationCompletion,
+  getConsultationSectionText,
+} from '../consultation-completion/use-consultation-completion';
 import { VoiceInputButton } from '../voice-input-button';
 import { PhysicalObservationsPicker } from '../physical-observations-picker';
-import { DischargePinEditor } from '../discharge-pin-editor';
 import { SmartSuggestionsCard } from '../smart-suggestions-card';
 
 /** Build the localStorage key where the consultation draft is stored. */
@@ -128,6 +133,22 @@ export function PrescriptionPad({
   // responses) doesn't overwrite sensible defaults with undefined.
   const seed = editMode?.visitId ? initialValues : (draft ?? initialValues);
 
+  // Derive pinned-section toggles from a seed's persisted pins (when editing
+  // an existing consultation, the backend returns the pin rows; we surface
+  // each row's section as a toggled-on switch in the form).
+  const seedPinnedSections: ConsultationPinSection[] =
+    Array.isArray(seed?.pinnedSections) && seed!.pinnedSections!.length > 0
+      ? (seed!.pinnedSections as ConsultationPinSection[])
+      : Array.from(
+          new Set(
+            (seed?.pins ?? [])
+              .map((p: any) => p.dischargeSection as ConsultationPinSection)
+              .filter((s: any): s is ConsultationPinSection =>
+                CONSULTATION_PIN_SECTIONS.includes(s),
+              ),
+          ),
+        );
+
   const form = useForm<ConsultationFormData>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(consultationCompletionSchema) as any,
@@ -146,8 +167,12 @@ export function PrescriptionPad({
         seed?.physicalObservations && seed.physicalObservations.length > 0
           ? seed.physicalObservations
           : defaultFormValues.physicalObservations,
-      pins:
-        seed?.pins && seed.pins.length > 0 ? seed.pins : defaultFormValues.pins,
+      investigationsSummary: (seed as any)?.investigationsSummary ?? '',
+      pinnedSections: seedPinnedSections,
+      // Drop the legacy bulk pins from prefill — the consultation summary
+      // is now driven by per-section toggles, which are composed back into
+      // pin rows on submit.
+      pins: defaultFormValues.pins,
     },
   });
 
@@ -199,7 +224,23 @@ export function PrescriptionPad({
   // render in sync without subscribing the whole form to every keystroke.
   const physicalObservations = watch('physicalObservations') ?? [];
   const impression = watch('impression') ?? '';
-  const pins = watch('pins') ?? [];
+  const investigationsSummary = watch('investigationsSummary') ?? '';
+  const pinnedSections = (watch('pinnedSections') ?? []) as ConsultationPinSection[];
+
+  const isPinned = useCallback(
+    (section: ConsultationPinSection) => pinnedSections.includes(section),
+    [pinnedSections],
+  );
+  const togglePin = useCallback(
+    (section: ConsultationPinSection) => {
+      const current = (form.getValues('pinnedSections') ?? []) as ConsultationPinSection[];
+      const next = current.includes(section)
+        ? current.filter((s) => s !== section)
+        : [...current, section];
+      setValue('pinnedSections', next, { shouldDirty: true });
+    },
+    [form, setValue],
+  );
 
   // SOAP-letter badge shown next to each section title. Keeps the
   // doctor oriented inside a flat vertical scroll without forcing a
@@ -290,6 +331,11 @@ export function PrescriptionPad({
               color="text-primary-container"
               actions={
                 <div onClick={(e) => e.stopPropagation()} className="contents">
+                  <PinToggle
+                    pinned={isPinned('chief_complaint')}
+                    onToggle={() => togglePin('chief_complaint')}
+                    sectionLabel="Chief Complaints"
+                  />
                   <VoiceInputButton
                     value={watch('chiefComplaint') ?? ''}
                     onChange={(v) => setValue('chiefComplaint', v, { shouldDirty: true })}
@@ -344,6 +390,15 @@ export function PrescriptionPad({
               collapsed={collapsed.exam}
               onToggle={() => toggleSection('exam')}
               color="text-primary"
+              actions={
+                <div onClick={(e) => e.stopPropagation()} className="contents">
+                  <PinToggle
+                    pinned={isPinned('examination')}
+                    onToggle={() => togglePin('examination')}
+                    sectionLabel="Examination Findings"
+                  />
+                </div>
+              }
             >
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
@@ -381,17 +436,39 @@ export function PrescriptionPad({
               </div>
             </PadSection>
 
-            {/* LAB INVESTIGATIONS — placeholder; real orders happen via Order Lab/Imaging */}
+            {/* LAB INVESTIGATIONS — short narrative summary; real orders are
+                placed via Order Lab / Order Imaging in the top bar. */}
             <PadSection
               icon={<FlaskConical className="h-4 w-4" />}
               title="Investigations Summary"
               collapsed={collapsed.lab}
               onToggle={() => toggleSection('lab')}
               color="text-tertiary"
+              actions={
+                <div onClick={(e) => e.stopPropagation()} className="contents">
+                  <PinToggle
+                    pinned={isPinned('investigation')}
+                    onToggle={() => togglePin('investigation')}
+                    sectionLabel="Investigations Summary"
+                  />
+                  <VoiceInputButton
+                    value={investigationsSummary}
+                    onChange={(v) =>
+                      setValue('investigationsSummary', v, { shouldDirty: true })
+                    }
+                    fieldLabel="Investigations Summary"
+                  />
+                </div>
+              }
             >
-              <Input
-                placeholder="Notable labs / imaging already done…"
-                className="h-10 text-sm"
+              <textarea
+                value={investigationsSummary}
+                onChange={(e) =>
+                  setValue('investigationsSummary', e.target.value, { shouldDirty: true })
+                }
+                placeholder="Notable labs / imaging already done — key results, dates, who interpreted…"
+                rows={3}
+                className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-y"
               />
               <p className="text-xs text-muted-foreground mt-2">
                 Use <strong>Order Lab</strong> / <strong>Order Imaging</strong> in the top bar to
@@ -409,7 +486,16 @@ export function PrescriptionPad({
               Assessment · diagnosis & clinical judgement
             </span>
           </div>
-            <DiagnosisSection form={form} />
+            <DiagnosisSection
+              form={form}
+              pinSlot={
+                <PinToggle
+                  pinned={isPinned('diagnosis')}
+                  onToggle={() => togglePin('diagnosis')}
+                  sectionLabel="Diagnosis"
+                />
+              }
+            />
 
             <PadSection
               icon={<StickyNote className="h-4 w-4" />}
@@ -420,6 +506,11 @@ export function PrescriptionPad({
               color="text-secondary"
               actions={
                 <div onClick={(e) => e.stopPropagation()} className="contents">
+                  <PinToggle
+                    pinned={isPinned('impression')}
+                    onToggle={() => togglePin('impression')}
+                    sectionLabel="Impression"
+                  />
                   <VoiceInputButton
                     value={impression}
                     onChange={(v) => setValue('impression', v, { shouldDirty: true })}
@@ -505,6 +596,11 @@ export function PrescriptionPad({
               color="text-primary"
               actions={
                 <div onClick={(e) => e.stopPropagation()} className="contents">
+                  <PinToggle
+                    pinned={isPinned('advice')}
+                    onToggle={() => togglePin('advice')}
+                    sectionLabel="Notes / Advice"
+                  />
                   <VoiceInputButton
                     value={watch('advice') ?? ''}
                     onChange={(v) => setValue('advice', v, { shouldDirty: true })}
@@ -521,7 +617,16 @@ export function PrescriptionPad({
               />
             </PadSection>
 
-            <FollowUpSection form={form} />
+            <FollowUpSection
+              form={form}
+              pinSlot={
+                <PinToggle
+                  pinned={isPinned('follow_up')}
+                  onToggle={() => togglePin('follow_up')}
+                  sectionLabel="Follow-up"
+                />
+              }
+            />
 
             <PadSection
               icon={<UserCheck className="h-4 w-4" />}
@@ -547,19 +652,12 @@ export function PrescriptionPad({
               />
             </PadSection>
 
-            <PadSection
-              icon={<Pin className="h-4 w-4" />}
-              title="Pin to Discharge Summary"
-              badge={pins.length > 0 ? `${pins.length} pinned` : 'IP only'}
-              collapsed={collapsed.pins}
-              onToggle={() => toggleSection('pins')}
-              color="text-primary"
-            >
-              <DischargePinEditor
-                value={pins}
-                onChange={(next) => setValue('pins', next, { shouldDirty: true })}
-              />
-            </PadSection>
+            {/* Consultation Summary roll-up — surfaces every pinned section
+                so the doctor can audit what the patient will actually see. */}
+            <ConsultationSummaryPreview
+              pinnedSections={pinnedSections}
+              form={form}
+            />
         </div>
       </div>
 
@@ -598,6 +696,51 @@ export function PrescriptionPad({
         </Button>
       </div>
     </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// Pin toggle — used inside section headers to flag a section
+// as "include in the Consultation Summary the patient sees"
+// ═══════════════════════════════════════════════════════════
+
+function PinToggle({
+  pinned,
+  onToggle,
+  sectionLabel,
+}: {
+  pinned: boolean;
+  onToggle: () => void;
+  sectionLabel: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      title={
+        pinned
+          ? `Pinned to consultation summary — click to unpin`
+          : `Pin "${sectionLabel}" to consultation summary`
+      }
+      aria-pressed={pinned}
+      className={cn(
+        'inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11px] font-semibold transition-all border',
+        pinned
+          ? 'bg-primary/10 text-primary border-primary/30 hover:bg-primary/15'
+          : 'border-transparent text-muted-foreground hover:bg-muted hover:text-primary',
+      )}
+    >
+      <Pin
+        className={cn(
+          'h-3.5 w-3.5 transition-transform',
+          pinned ? 'fill-current rotate-0' : '-rotate-45',
+        )}
+      />
+      {pinned ? 'Pinned' : 'Pin'}
+    </button>
   );
 }
 
@@ -657,7 +800,7 @@ function PadSection({
 // ═══════════════════════════════════════════════════════════
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function DiagnosisSection({ form }: { form: any }) {
+function DiagnosisSection({ form, pinSlot }: { form: any; pinSlot?: React.ReactNode }) {
   const { register, control, formState: { errors } } = form;
   const { fields, append, remove } = useFieldArray({ control, name: 'diagnoses' });
 
@@ -667,6 +810,7 @@ function DiagnosisSection({ form }: { form: any }) {
         <ClipboardList className="h-4 w-4 text-error shrink-0" />
         <h3 className="text-sm font-bold flex-1">Diagnosis</h3>
         <Badge variant="secondary" className="text-[10px] font-medium">ICD-10</Badge>
+        {pinSlot}
         <Button
           type="button"
           variant="ghost"
@@ -933,7 +1077,7 @@ function MedRow({ index, med, patientId, onUpdate, onRemove }: {
 // ═══════════════════════════════════════════════════════════
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function FollowUpSection({ form }: { form: any }) {
+function FollowUpSection({ form, pinSlot }: { form: any; pinSlot?: React.ReactNode }) {
   const { watch, setValue, register } = form;
   const followUpDate = watch('followUpDate');
   const followUpDuration = watch('followUpDuration');
@@ -1021,15 +1165,18 @@ function FollowUpSection({ form }: { form: any }) {
       collapsed={false}
       color="text-secondary"
       actions={
-        hasFollowUp ? (
-          <button
-            type="button"
-            className="text-[10px] text-muted-foreground hover:text-error transition-colors mr-1"
-            onClick={(e) => { e.stopPropagation(); handleClear(); }}
-          >
-            Clear
-          </button>
-        ) : undefined
+        <div onClick={(e) => e.stopPropagation()} className="contents">
+          {pinSlot}
+          {hasFollowUp ? (
+            <button
+              type="button"
+              className="text-[10px] text-muted-foreground hover:text-error transition-colors mr-1"
+              onClick={(e) => { e.stopPropagation(); handleClear(); }}
+            >
+              Clear
+            </button>
+          ) : null}
+        </div>
       }
     >
       <div className="space-y-3">
@@ -1443,6 +1590,76 @@ function DiagnosisList({ content }: { content: string }) {
           </span>
         );
       })}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// Consultation Summary live preview
+// ═══════════════════════════════════════════════════════════
+//
+// Mirrors what the patient will see once the doctor signs the note. Built
+// from the per-section pin toggles + the latest field text. Shown inline at
+// the bottom of the consultation form so the doctor can audit before saving.
+function ConsultationSummaryPreview({
+  pinnedSections,
+  form,
+}: {
+  pinnedSections: ConsultationPinSection[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  form: any;
+}) {
+  // useWatch subscribes the preview to every form field so pinned-section
+  // text stays in sync as the doctor types — `form.watch()` from a child
+  // does not subscribe, so we wire `useWatch` against `form.control`.
+  const all = useWatch({ control: form.control }) as ConsultationFormData;
+  const ordered = CONSULTATION_PIN_SECTIONS.filter((s) => pinnedSections.includes(s));
+
+  return (
+    <div className="rounded-xl border-2 border-dashed border-primary/30 bg-primary/5 overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-primary/15 bg-primary/10">
+        <Pin className="h-4 w-4 text-primary fill-current" />
+        <h3 className="text-sm font-bold text-primary flex-1">Consultation Summary</h3>
+        <Badge variant="secondary" className="text-[10px] font-medium">
+          {ordered.length} pinned
+        </Badge>
+      </div>
+      <div className="px-4 py-3 space-y-3">
+        <p className="text-[11px] text-muted-foreground">
+          Pin sections above to compose the summary the patient will see after you sign and
+          finalize this consultation.
+        </p>
+        {ordered.length === 0 ? (
+          <p className="text-xs italic text-muted-foreground">
+            No sections pinned yet.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {ordered.map((section) => {
+              const text = getConsultationSectionText(all, section);
+              return (
+                <li
+                  key={section}
+                  className="rounded-lg bg-background/70 border border-primary/20 p-3"
+                >
+                  <p className="font-label text-[10px] uppercase tracking-widest text-primary font-bold mb-1">
+                    {CONSULTATION_PIN_SECTION_LABELS[section]}
+                  </p>
+                  {text ? (
+                    <p className="text-xs whitespace-pre-wrap leading-relaxed text-foreground/90">
+                      {text}
+                    </p>
+                  ) : (
+                    <p className="text-[11px] italic text-muted-foreground">
+                      Section is pinned but currently empty — fill it in above.
+                    </p>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

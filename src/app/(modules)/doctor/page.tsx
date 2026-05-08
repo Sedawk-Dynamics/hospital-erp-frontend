@@ -16,6 +16,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import type { Appointment } from '@/types';
+import { ConsultationFormSheet } from '@/components/doctor/consultation-form-sheet';
 
 import {
   DropdownMenu,
@@ -23,7 +24,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Eye, Edit, XCircle, MoreVertical, CheckCircle, LogIn, Stethoscope, UserCheck } from 'lucide-react';
+import { Eye, Edit, XCircle, MoreVertical, CheckCircle, LogIn, Stethoscope, UserCheck, ClipboardList } from 'lucide-react';
 
 // Status filter mapping for doctor panel
 const statusFilterMap: Record<string, string | undefined> = {
@@ -153,6 +154,12 @@ export default function DoctorHomePage() {
   const router = useRouter();
   const [viewMode, setViewMode] = useState<ViewMode>('today');
   const [telemedicineActive, setTelemedicineActive] = useState(false);
+  // Inline consultation sheet — opens the PrescriptionPad (with the new
+  // per-section pin functionality) without navigating away from the queue.
+  const [consultationTarget, setConsultationTarget] = useState<{
+    patientId: string;
+    appointmentId: string;
+  } | null>(null);
 
   const statusFilter = statusFilterMap[activeStatFilter];
 
@@ -372,6 +379,18 @@ export default function DoctorHomePage() {
           const params = appointmentId ? `?appointmentId=${appointmentId}` : '';
           router.push(`/doctor/consultation/${patientId}${params}`);
         }}
+        onOpenConsultation={(patientId, appointmentId) => {
+          setConsultationTarget({ patientId, appointmentId });
+        }}
+      />
+
+      <ConsultationFormSheet
+        open={!!consultationTarget}
+        onOpenChange={(o) => {
+          if (!o) setConsultationTarget(null);
+        }}
+        patientId={consultationTarget?.patientId ?? null}
+        appointmentId={consultationTarget?.appointmentId ?? null}
       />
     </div>
   );
@@ -410,6 +429,7 @@ function DoctorAppointmentTable({
   total,
   onPageChange,
   onViewDetails,
+  onOpenConsultation,
 }: {
   appointments: Appointment[];
   isLoading: boolean;
@@ -418,13 +438,36 @@ function DoctorAppointmentTable({
   total: number;
   onPageChange: (page: number) => void;
   onViewDetails: (patientId: string, appointmentId?: string) => void;
+  /** Open the inline consultation sheet over the current page. */
+  onOpenConsultation: (patientId: string, appointmentId: string) => void;
 }) {
   const statusMutation = useUpdateAppointmentStatus();
 
   const handleStatusChange = (apt: Appointment, newStatus: string) => {
-    // Intercept "completed" → navigate to consultation page instead
+    // Start Consultation → flip the appointment status THEN open the
+    // inline consultation sheet so the doctor can record the SOAP note,
+    // pin sections, and sign without leaving the queue.
+    if (newStatus === 'in_consultation') {
+      statusMutation.mutate(
+        { id: apt.id, status: newStatus },
+        {
+          onSuccess: () => {
+            toast.success('Consultation started');
+            if (apt.patientId) onOpenConsultation(apt.patientId, apt.id);
+          },
+          onError: (err: any) => {
+            toast.error(err?.response?.data?.message || 'Failed to start consultation');
+          },
+        },
+      );
+      return;
+    }
+
+    // "Complete" → open the inline consultation sheet so the doctor can
+    // finalize SOAP + sign before the system flips the appointment to
+    // completed (the PrescriptionPad submit handles that flip).
     if (newStatus === 'completed') {
-      onViewDetails(apt.patientId, apt.id);
+      if (apt.patientId) onOpenConsultation(apt.patientId, apt.id);
       return;
     }
 
@@ -486,11 +529,25 @@ function DoctorAppointmentTable({
               const st = statusLabels[apt.status] ?? statusLabels.booked;
               const PrimaryIcon = transitions.length > 0 ? transitions[0].icon : null;
 
+              // Pre-consultation rows open the inline sheet on row click;
+              // completed/cancelled rows fall through to the full page.
+              const inlineRowOpen =
+                apt.status === 'confirmed' ||
+                apt.status === 'checked_in' ||
+                apt.status === 'in_consultation';
+
               return (
                 <tr
                   key={apt.id}
                   className="group hover:bg-surface-container-low transition-colors cursor-pointer"
-                  onClick={() => apt.patientId && onViewDetails(apt.patientId, apt.id)}
+                  onClick={() => {
+                    if (!apt.patientId) return;
+                    if (inlineRowOpen) {
+                      onOpenConsultation(apt.patientId, apt.id);
+                    } else {
+                      onViewDetails(apt.patientId, apt.id);
+                    }
+                  }}
                 >
                   {/* Patient Details */}
                   <td className="px-4 py-3">
@@ -611,9 +668,15 @@ function DoctorAppointmentTable({
                                 </DropdownMenuItem>
                               );
                             })}
+                            <DropdownMenuItem
+                              onClick={() => apt.patientId && onOpenConsultation(apt.patientId, apt.id)}
+                            >
+                              <ClipboardList className="mr-2 h-4 w-4" />
+                              Open Consultation
+                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => apt.patientId && onViewDetails(apt.patientId, apt.id)}>
                               <Eye className="mr-2 h-4 w-4" />
-                              View Details
+                              Open Full Page
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>

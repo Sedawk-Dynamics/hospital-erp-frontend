@@ -41,7 +41,11 @@ export interface ProgressNotePinEntry {
     | 'medication'
     | 'follow_up'
     | 'advice'
-    | 'general';
+    | 'general'
+    | 'chief_complaint'
+    | 'examination'
+    | 'investigation'
+    | 'impression';
   content: string;
   createdAt: string;
 }
@@ -501,6 +505,8 @@ interface ProgressNotesParams {
   page?: number;
   limit?: number;
   patientId?: string;
+  visitId?: string;
+  admissionId?: string;
   doctorId?: string;
   search?: string;
 }

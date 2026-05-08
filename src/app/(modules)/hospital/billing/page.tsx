@@ -5,11 +5,12 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Search, Banknote, CreditCard, Smartphone, Building2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
 import { formatDate, formatTime24, toInputDateStr } from '@/lib/date-utils';
 import type { Bill } from '@/types';
 import { cn } from '@/lib/utils';
+import { CollectBillPaymentDialog } from '@/components/hospital/billing/collect-bill-payment-dialog';
 
 export default function HospitalBillingPage() {
   return (
@@ -142,6 +143,9 @@ function BillingTab() {
 }
 
 function PendingListTab() {
+  const queryClient = useQueryClient();
+  const [collectTarget, setCollectTarget] = useState<Bill | null>(null);
+
   const { data, isLoading } = useQuery({
     queryKey: ['hospital', 'billing-pending'],
     queryFn: async () => {
@@ -149,6 +153,14 @@ function PendingListTab() {
       return response.data;
     },
   });
+
+  const handleCollected = () => {
+    queryClient.invalidateQueries({ queryKey: ['hospital', 'billing-pending'] });
+    queryClient.invalidateQueries({ queryKey: ['hospital', 'billing'] });
+    queryClient.invalidateQueries({ queryKey: ['hospital', 'cash-counter'] });
+    queryClient.invalidateQueries({ queryKey: ['hospital', 'collection-summary'] });
+    setCollectTarget(null);
+  };
 
   return (
     <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary overflow-hidden">
@@ -160,18 +172,19 @@ function PendingListTab() {
               <th className="px-4 pb-4 pt-5 font-semibold">Patient</th>
               <th className="px-4 pb-4 pt-5 font-semibold text-right">Amount</th>
               <th className="px-4 pb-4 pt-5 font-semibold text-right">Balance</th>
+              <th className="px-4 pb-4 pt-5 font-semibold text-center">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-surface-container/50">
             {isLoading ? (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center">
+                <td colSpan={5} className="px-4 py-8 text-center">
                   <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                 </td>
               </tr>
             ) : (data || []).length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center font-label text-on-surface-variant">No pending bills.</td>
+                <td colSpan={5} className="px-4 py-8 text-center font-label text-on-surface-variant">No pending bills.</td>
               </tr>
             ) : (
               (data || []).map((bill) => (
@@ -180,12 +193,42 @@ function PendingListTab() {
                   <td className="px-4 py-4 font-label text-sm">{bill.patient ? `${bill.patient.firstName} ${bill.patient.lastName}` : '-'}</td>
                   <td className="px-4 py-4 text-right font-label text-sm">{bill.total?.toLocaleString()}</td>
                   <td className="px-4 py-4 text-right font-label text-sm text-error font-bold">{bill.balanceAmount?.toLocaleString()}</td>
+                  <td className="px-4 py-4 text-center">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 text-xs"
+                      disabled={!bill.balanceAmount || bill.balanceAmount <= 0}
+                      onClick={() => setCollectTarget(bill)}
+                    >
+                      <Banknote className="h-3.5 w-3.5" />
+                      Accept Payment
+                    </Button>
+                  </td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
       </div>
+
+      <CollectBillPaymentDialog
+        open={!!collectTarget}
+        onOpenChange={(open) => { if (!open) setCollectTarget(null); }}
+        bill={
+          collectTarget
+            ? {
+                id: collectTarget.id,
+                billNumber: collectTarget.billNumber,
+                balanceDue: Number(collectTarget.balanceAmount ?? 0),
+                patientName: collectTarget.patient
+                  ? `${collectTarget.patient.firstName} ${collectTarget.patient.lastName}`
+                  : undefined,
+              }
+            : null
+        }
+        onCollected={handleCollected}
+      />
     </div>
   );
 }

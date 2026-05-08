@@ -133,6 +133,33 @@ const physicalObservationEntrySchema = z.object({
   system: z.string().optional(),
 });
 
+// ── Consultation Summary section keys ─────────────────────
+//
+// The consultation form lets the doctor pin individual SOAP sections so they
+// flow into the Consultation Summary that the patient eventually sees. The
+// section keys reuse the existing `DischargeSection` Prisma enum (which now
+// also carries the OP-flow values) so we don't fork persistence.
+export const CONSULTATION_PIN_SECTIONS = [
+  'chief_complaint',
+  'examination',
+  'investigation',
+  'diagnosis',
+  'impression',
+  'advice',
+  'follow_up',
+] as const;
+export type ConsultationPinSection = (typeof CONSULTATION_PIN_SECTIONS)[number];
+
+export const CONSULTATION_PIN_SECTION_LABELS: Record<ConsultationPinSection, string> = {
+  chief_complaint: 'Chief Complaints',
+  examination: 'Examination Findings',
+  investigation: 'Investigations Summary',
+  diagnosis: 'Diagnosis',
+  impression: 'Impression',
+  advice: 'Notes / Advice',
+  follow_up: 'Follow-up',
+};
+
 const dischargePinSchema = z.object({
   dischargeSection: z.enum([
     'diagnosis',
@@ -142,6 +169,10 @@ const dischargePinSchema = z.object({
     'follow_up',
     'advice',
     'general',
+    'chief_complaint',
+    'examination',
+    'investigation',
+    'impression',
   ]),
   content: z.string().min(1),
 });
@@ -170,6 +201,14 @@ export const consultationCompletionSchema = z.object({
   // JSON columns + pins table by use-consultation-completion.ts)
   physicalObservations: z.array(physicalObservationEntrySchema).default([]),
   impression: z.string().optional(),
+  // Notable labs / imaging already done by the patient — flows into
+  // objective.investigations on the SOAP payload and into the Consultation
+  // Summary when the doctor pins this section.
+  investigationsSummary: z.string().optional(),
+  // Set of section keys the doctor has pinned. The pins[] array is composed
+  // from these on submit, picking up the latest section text. Stored in the
+  // form draft so toggle state survives back-navigation / reload.
+  pinnedSections: z.array(z.enum(CONSULTATION_PIN_SECTIONS)).default([]),
   pins: z.array(dischargePinSchema).default([]),
 });
 
@@ -307,5 +346,7 @@ export const defaultFormValues: ConsultationFormData = {
   referralNotes: '',
   physicalObservations: [],
   impression: '',
+  investigationsSummary: '',
+  pinnedSections: [],
   pins: [],
 };

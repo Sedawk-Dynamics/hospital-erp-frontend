@@ -19,10 +19,12 @@ import {
   XCircle,
   CalendarClock,
   ShieldCheck,
+  Banknote,
+  Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Appointment } from '@/types';
-import { useUpdateAppointmentStatus } from '@/hooks/use-hospital';
+import { useUpdateAppointmentStatus, useInitiateFrontdeskPayment } from '@/hooks/use-hospital';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -75,6 +77,7 @@ export function AppointmentTable({
   onPageChange,
 }: AppointmentTableProps) {
   const updateStatus = useUpdateAppointmentStatus();
+  const initiateFrontdeskPayment = useInitiateFrontdeskPayment();
   const [cancelTarget, setCancelTarget] = useState<Appointment | null>(null);
   const [rescheduleTarget, setRescheduleTarget] = useState<Appointment | null>(null);
   const [viewPatientId, setViewPatientId] = useState<string | null>(null);
@@ -98,6 +101,34 @@ export function AppointmentTable({
       toast.success(`Status updated to ${status.replace('_', ' ')}`);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Failed to update status';
+      toast.error(message);
+    }
+  };
+
+  // Pending-payment row → create the front-desk bill on the server, then
+  // open the existing collect dialog seeded with the freshly minted bill.
+  const handleStartFrontdeskPayment = async (apt: Appointment) => {
+    try {
+      const bill = await initiateFrontdeskPayment.mutateAsync(apt.id);
+      if (!bill) {
+        toast.error('Failed to create front-desk bill');
+        return;
+      }
+      setCollectPayTarget({
+        ...apt,
+        status: 'booked',
+        paymentInfo: {
+          billId: bill.billId,
+          billNumber: bill.billNumber,
+          billStatus: bill.status,
+          totalAmount: bill.totalAmount,
+          amountPaid: bill.amountPaid,
+          balanceDue: bill.balanceDue,
+          paymentStatus: 'pay_at_frontdesk',
+        },
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to start front-desk payment';
       toast.error(message);
     }
   };
@@ -246,6 +277,26 @@ export function AppointmentTable({
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-2">
                         <StatusProgression status={apt.status} />
+                        {apt.status === 'pending_payment' && (
+                          <Button
+                            size="sm"
+                            className="h-7 px-2.5 text-[11px] font-bold gap-1 shrink-0 bg-amber-600 hover:bg-amber-700 text-white"
+                            onClick={() => handleStartFrontdeskPayment(apt)}
+                            disabled={
+                              initiateFrontdeskPayment.isPending &&
+                              initiateFrontdeskPayment.variables === apt.id
+                            }
+                            title="Patient chose Pay at Front Desk — collect cash/UPI now"
+                          >
+                            {initiateFrontdeskPayment.isPending &&
+                            initiateFrontdeskPayment.variables === apt.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Banknote className="h-3 w-3" />
+                            )}
+                            Collect Payment
+                          </Button>
+                        )}
                         {statusActions.length > 0 && (() => {
                           const action = statusActions[0];
                           const payFirst = action.status === 'confirmed' && needsFrontdeskPayment(apt);
