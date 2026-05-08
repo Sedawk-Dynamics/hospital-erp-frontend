@@ -121,7 +121,7 @@ export interface LabSample {
   collectedBy?: string;
   collectedAt?: string;
   barcode?: string;
-  status: 'collected' | 'received' | 'processing' | 'completed' | 'rejected';
+  status: 'collected' | 'in_transit' | 'received' | 'processing' | 'completed' | 'rejected';
   rejectionReason?: string;
   createdAt: string;
   updatedAt: string;

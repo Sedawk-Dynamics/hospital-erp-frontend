@@ -243,23 +243,24 @@ function TechniciansTab() {
 
   const [selectedTech, setSelectedTech] = useState<string | undefined>(undefined);
 
-  // Fetch all in-flight orders, group by assignedToId
-  const { data, isLoading } = useLabOrders({
-    limit: 100,
-  });
-  const orders = data?.data ?? [];
-
+  // When a tech is selected, use the server-side `assignedTo` filter (matches SOW: GET /lab/orders?assignedTo=)
+  const visibleQuery = useLabOrders(
+    selectedTech ? { assignedTo: selectedTech, limit: 50 } : { limit: 50 },
+  );
   const visible = selectedTech
-    ? orders.filter((o) => o.assignedToId === selectedTech)
-    : orders.filter((o) => o.assignedToId);
+    ? visibleQuery.data?.data ?? []
+    : (visibleQuery.data?.data ?? []).filter((o) => o.assignedToId);
 
+  // Per-technician workload counts (separate query, all assigned orders, lightweight)
+  const workloadQuery = useLabOrders({ limit: 200 });
   const workloadMap = useMemo(() => {
     const m = new Map<string, number>();
-    for (const o of orders) {
+    for (const o of workloadQuery.data?.data ?? []) {
       if (o.assignedToId) m.set(o.assignedToId, (m.get(o.assignedToId) ?? 0) + 1);
     }
     return m;
-  }, [orders]);
+  }, [workloadQuery.data]);
+  const totalAssigned = (workloadQuery.data?.data ?? []).filter((o) => o.assignedToId).length;
 
   return (
     <div className="space-y-4">
@@ -271,7 +272,7 @@ function TechniciansTab() {
             !selectedTech ? 'bg-primary text-white border-primary' : 'bg-surface-container-low',
           )}
         >
-          All ({orders.filter((o) => o.assignedToId).length})
+          All ({totalAssigned})
         </button>
         {labStaff.map((u) => (
           <button
@@ -289,7 +290,7 @@ function TechniciansTab() {
 
       <OrderTable
         orders={visible}
-        loading={isLoading || usersQ.isLoading}
+        loading={visibleQuery.isLoading || usersQ.isLoading}
         emptyMsg={selectedTech ? 'No orders assigned to this technician.' : 'No orders are currently assigned.'}
         showAssignee
       />
@@ -397,6 +398,7 @@ function OrderTable({
   onCollect?: (o: LabOrder) => void;
   showAssignee?: boolean;
 }) {
+  const colCount = 8 + (showAssignee ? 1 : 0);
   return (
     <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary overflow-hidden">
       <div className="overflow-x-auto">
@@ -407,6 +409,7 @@ function OrderTable({
               <Th>MRN</Th>
               <Th>Order #</Th>
               <Th>Tests</Th>
+              <Th>Specimens</Th>
               <Th>Priority</Th>
               <Th>Status</Th>
               {showAssignee && <Th>Assigned</Th>}
@@ -415,9 +418,9 @@ function OrderTable({
           </thead>
           <tbody>
             {loading ? (
-              <LoadingRow span={showAssignee ? 8 : 7} />
+              <LoadingRow span={colCount} />
             ) : orders.length === 0 ? (
-              <EmptyRow span={showAssignee ? 8 : 7} message={emptyMsg} />
+              <EmptyRow span={colCount} message={emptyMsg} />
             ) : (
               orders.map((o) => (
                 <tr key={o.id} className="hover:bg-surface-container-low transition-colors">
@@ -427,6 +430,9 @@ function OrderTable({
                   <td className="px-4 py-3 text-muted-foreground">{o.patient.mrn}</td>
                   <td className="px-4 py-3 font-mono text-xs">{o.id.slice(0, 8)}</td>
                   <td className="px-4 py-3">{o.labOrderItems?.length ?? 0}</td>
+                  <td className="px-4 py-3">
+                    <SpecimensCell samples={o.labSamples} />
+                  </td>
                   <td className="px-4 py-3"><PriorityBadge priority={(o.urgency ?? o.priority) as string} /></td>
                   <td className="px-4 py-3"><StatusBadge status={o.status} /></td>
                   {showAssignee && (
@@ -974,6 +980,27 @@ function EmptyRow({ span, message }: { span: number; message: string }) {
     <tr>
       <td colSpan={span} className="px-4 py-8 text-center font-label text-on-surface-variant">{message}</td>
     </tr>
+  );
+}
+
+function SpecimensCell({ samples }: { samples?: LabOrder['labSamples'] }) {
+  const total = samples?.length ?? 0;
+  if (total === 0) {
+    return <span className="text-xs text-muted-foreground">-</span>;
+  }
+  // Tally by status so the Status tab surfaces sample lifecycle alongside the count
+  const tally = new Map<string, number>();
+  for (const s of samples ?? []) {
+    tally.set(s.status, (tally.get(s.status) ?? 0) + 1);
+  }
+  const summary = Array.from(tally.entries())
+    .map(([status, n]) => `${n} ${status.replace(/_/g, ' ')}`)
+    .join(', ');
+  return (
+    <span className="text-xs" title={summary}>
+      <span className="font-medium">{total}</span>
+      <span className="ml-1 text-muted-foreground">({summary})</span>
+    </span>
   );
 }
 
