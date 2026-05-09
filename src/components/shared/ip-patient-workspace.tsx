@@ -56,7 +56,7 @@ import { cn } from '@/lib/utils';
 type LinkButtonProps = React.ComponentProps<typeof Button> & { href: string };
 function LinkButton({ href, children, ...props }: LinkButtonProps) {
   return (
-    <Button render={<Link href={href} />} {...props}>
+    <Button nativeButton={false} render={<Link href={href} />} {...props}>
       {children}
     </Button>
   );

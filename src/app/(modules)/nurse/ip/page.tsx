@@ -192,6 +192,7 @@ export default function NurseIPListPage() {
                           size="icon"
                           className="h-7 w-7"
                           title="View patient"
+                          nativeButton={false}
                           render={<Link href={`/nurse/ip/${a.id}`} />}
                         >
                           <Eye className="h-3.5 w-3.5" />
@@ -201,6 +202,7 @@ export default function NurseIPListPage() {
                           size="icon"
                           className="h-7 w-7"
                           title="Vitals"
+                          nativeButton={false}
                           render={<Link href={`/nurse/vitals?patientId=${a.patientId}&kind=ipd`} />}
                         >
                           <HeartPulse className="h-3.5 w-3.5" />
@@ -210,6 +212,7 @@ export default function NurseIPListPage() {
                           size="icon"
                           className="h-7 w-7"
                           title="Clinical charting"
+                          nativeButton={false}
                           render={<Link href={`/nurse/charting?admissionId=${a.id}&patientId=${a.patientId}`} />}
                         >
                           <ClipboardList className="h-3.5 w-3.5" />
@@ -219,6 +222,7 @@ export default function NurseIPListPage() {
                           size="icon"
                           className="h-7 w-7"
                           title="eMAR"
+                          nativeButton={false}
                           render={<Link href={`/nurse/emar?admissionId=${a.id}`} />}
                         >
                           <PillBottle className="h-3.5 w-3.5" />

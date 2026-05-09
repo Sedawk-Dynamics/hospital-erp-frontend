@@ -947,6 +947,7 @@ function PatientListTable({
                         size="sm"
                         className="h-7 text-xs gap-1"
                         title="View patient"
+                        nativeButton={false}
                         render={<Link href={`/nurse/ip/${adm.id}`} />}
                       >
                         <Eye className="h-3.5 w-3.5" />
