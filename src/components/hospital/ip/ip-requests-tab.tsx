@@ -309,21 +309,29 @@ function AcceptRequestDialog({
   request: AdmissionRequest | null;
   onOpenChange: (open: boolean) => void;
 }) {
-  const [createReservation, setCreateReservation] = useState(true);
+  // Three actions front desk can take when accepting: just acknowledge, block
+  // a bed via Reservation, or admit on the spot. Service refuses both action
+  // flags at once, so we model it as a single radio.
+  type AcceptAction = 'reserve' | 'admit' | 'accept_only';
+  const [action, setAction] = useState<AcceptAction>('reserve');
   const [wardId, setWardId] = useState('');
   const [bedId, setBedId] = useState('');
   const [reservedDate, setReservedDate] = useState(toInputDateStr());
   const [expectedAdmission, setExpectedAdmission] = useState('');
+  const [admissionDate, setAdmissionDate] = useState(toInputDateStr());
+  const [expectedDischargeDate, setExpectedDischargeDate] = useState('');
+  const [depositAmount, setDepositAmount] = useState<number>(0);
   const [advanceAmount, setAdvanceAmount] = useState<number>(0);
   const [notes, setNotes] = useState('');
 
   const open = !!request;
   const accept = useAcceptAdmissionRequest();
+  const needsBed = action !== 'accept_only';
 
   // Reset on open
   useMemo(() => {
     if (open) {
-      setCreateReservation(true);
+      setAction('reserve');
       setWardId('');
       setBedId('');
       setReservedDate(toInputDateStr());
@@ -332,6 +340,9 @@ function AcceptRequestDialog({
           ? new Date(request.expectedAdmissionDate).toISOString().slice(0, 10)
           : '',
       );
+      setAdmissionDate(toInputDateStr());
+      setExpectedDischargeDate('');
+      setDepositAmount(0);
       setAdvanceAmount(0);
       setNotes('');
     }
@@ -343,7 +354,7 @@ function AcceptRequestDialog({
       const res = await apiGet<Ward[]>('/infrastructure/wards', { params: { limit: 100 } });
       return res.data;
     },
-    enabled: open && createReservation,
+    enabled: open && needsBed,
   });
 
   const { data: bedsData, isFetching: bedsLoading } = useQuery({
@@ -355,7 +366,7 @@ function AcceptRequestDialog({
       );
       return res.data;
     },
-    enabled: open && createReservation && Boolean(wardId),
+    enabled: open && needsBed && Boolean(wardId),
   });
 
   const wards = wardsData ?? [];
@@ -365,17 +376,27 @@ function AcceptRequestDialog({
 
   const handleSubmit = async () => {
     if (!request) return;
-    if (createReservation && !wardId) {
+    if (action === 'reserve' && !wardId) {
       toast.error('Pick a ward to create a reservation');
       return;
+    }
+    if (action === 'admit') {
+      if (!wardId) {
+        toast.error('Pick a ward to admit the patient');
+        return;
+      }
+      if (!bedId) {
+        toast.error('Pick a bed to admit the patient');
+        return;
+      }
     }
     try {
       await accept.mutateAsync({
         id: request.id,
         payload: {
-          createReservation,
-          ...(createReservation
+          ...(action === 'reserve'
             ? {
+                createReservation: true,
                 wardId,
                 ...(bedId ? { bedId } : {}),
                 ...(reservedDate
@@ -387,13 +408,29 @@ function AcceptRequestDialog({
                 ...(advanceAmount > 0 ? { advanceAmount } : {}),
                 ...(notes ? { notes } : {}),
               }
-            : {}),
+            : action === 'admit'
+              ? {
+                  directAdmit: true,
+                  wardId,
+                  bedId,
+                  ...(admissionDate
+                    ? { admissionDate: new Date(admissionDate).toISOString() }
+                    : {}),
+                  ...(expectedDischargeDate
+                    ? { expectedDischargeDate: new Date(expectedDischargeDate).toISOString() }
+                    : {}),
+                  ...(depositAmount > 0 ? { depositAmount } : {}),
+                  ...(notes ? { admissionReason: notes } : {}),
+                }
+              : {}),
         },
       });
       toast.success(
-        createReservation
+        action === 'reserve'
           ? 'Request accepted — reservation created'
-          : 'Request accepted',
+          : action === 'admit'
+            ? 'Patient admitted'
+            : 'Request accepted',
       );
       onOpenChange(false);
     } catch (err: any) {
@@ -450,19 +487,30 @@ function AcceptRequestDialog({
             </div>
           )}
 
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={createReservation}
-              onChange={(e) => setCreateReservation(e.target.checked)}
-              className="h-4 w-4 rounded"
-            />
-            <span className="text-sm">
-              Create a reservation now (block ward / bed)
-            </span>
-          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {([
+              { key: 'reserve', label: 'Reserve a bed', hint: 'Block ward/bed for later' },
+              { key: 'admit', label: 'Admit now', hint: 'Move straight into IP' },
+              { key: 'accept_only', label: 'Just accept', hint: 'Acknowledge for now' },
+            ] as Array<{ key: AcceptAction; label: string; hint: string }>).map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => setAction(opt.key)}
+                className={cn(
+                  'rounded-lg border px-3 py-2 text-left transition-colors',
+                  action === opt.key
+                    ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                    : 'border-outline-variant hover:bg-surface-container-low',
+                )}
+              >
+                <p className="text-xs font-bold">{opt.label}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">{opt.hint}</p>
+              </button>
+            ))}
+          </div>
 
-          {createReservation && (
+          {needsBed && (
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label className="text-xs font-medium">Ward *</Label>
@@ -490,7 +538,7 @@ function AcceptRequestDialog({
 
               <div>
                 <Label className="text-xs font-medium">
-                  Bed {wardId ? '(optional)' : ''}
+                  Bed {action === 'admit' ? '*' : wardId ? '(optional)' : ''}
                 </Label>
                 <Select
                   value={bedId || null}
@@ -533,46 +581,89 @@ function AcceptRequestDialog({
                 </Select>
               </div>
 
-              <div>
-                <Label className="text-xs font-medium">Reserved Date</Label>
-                <Input
-                  type="date"
-                  value={reservedDate}
-                  onChange={(e) => setReservedDate(e.target.value)}
-                  className="mt-1"
-                />
-              </div>
+              {action === 'reserve' ? (
+                <>
+                  <div>
+                    <Label className="text-xs font-medium">Reserved Date</Label>
+                    <Input
+                      type="date"
+                      value={reservedDate}
+                      onChange={(e) => setReservedDate(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
 
-              <div>
-                <Label className="text-xs font-medium">Expected Admission</Label>
-                <Input
-                  type="date"
-                  value={expectedAdmission}
-                  onChange={(e) => setExpectedAdmission(e.target.value)}
-                  className="mt-1"
-                />
-              </div>
+                  <div>
+                    <Label className="text-xs font-medium">Expected Admission</Label>
+                    <Input
+                      type="date"
+                      value={expectedAdmission}
+                      onChange={(e) => setExpectedAdmission(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
 
-              <div>
-                <Label className="text-xs font-medium">Advance Amount (₹)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={advanceAmount}
-                  onChange={(e) => setAdvanceAmount(Number(e.target.value) || 0)}
-                  className="mt-1"
-                />
-              </div>
+                  <div>
+                    <Label className="text-xs font-medium">Advance Amount (₹)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={advanceAmount}
+                      onChange={(e) => setAdvanceAmount(Number(e.target.value) || 0)}
+                      className="mt-1"
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <Label className="text-xs font-medium">Admission Date</Label>
+                    <Input
+                      type="date"
+                      value={admissionDate}
+                      onChange={(e) => setAdmissionDate(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+
+                  <div>
+                    <Label className="text-xs font-medium">Expected Discharge</Label>
+                    <Input
+                      type="date"
+                      value={expectedDischargeDate}
+                      onChange={(e) => setExpectedDischargeDate(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+
+                  <div>
+                    <Label className="text-xs font-medium">Deposit Amount (₹)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={depositAmount}
+                      onChange={(e) => setDepositAmount(Number(e.target.value) || 0)}
+                      className="mt-1"
+                    />
+                  </div>
+                </>
+              )}
             </div>
           )}
 
-          {createReservation && (
+          {needsBed && (
             <div>
-              <Label className="text-xs font-medium">Notes</Label>
+              <Label className="text-xs font-medium">
+                {action === 'reserve' ? 'Notes' : 'Admission Reason / Notes'}
+              </Label>
               <Textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Any extra notes for the reservation..."
+                placeholder={
+                  action === 'reserve'
+                    ? 'Any extra notes for the reservation...'
+                    : 'Defaults to the doctor\'s reason. Override if needed...'
+                }
                 rows={2}
                 className="mt-1"
               />
@@ -595,7 +686,11 @@ function AcceptRequestDialog({
             ) : (
               <Check className="h-3.5 w-3.5" />
             )}
-            Accept Request
+            {action === 'admit'
+              ? 'Accept & Admit'
+              : action === 'reserve'
+                ? 'Accept & Reserve'
+                : 'Accept Request'}
           </Button>
         </DialogFooter>
       </DialogContent>

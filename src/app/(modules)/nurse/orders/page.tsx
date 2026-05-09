@@ -43,6 +43,7 @@ import {
 } from '@/hooks/use-nurse';
 import type { BedInfo, SupplyRequest, InventoryItem, NurseClinicalOrder } from '@/hooks/use-nurse';
 import { useWards } from '@/hooks/use-clinical';
+import { LabOrderDetailDialog } from '@/components/shared/lab-order-detail-dialog';
 
 // ============================================================
 // Types
@@ -146,6 +147,7 @@ function DoctorOrdersTab() {
   const [typeFilter, setTypeFilter] = useState<'all' | 'lab' | 'imaging'>('all');
   const [wardFilter, setWardFilter] = useState<string>('');
   const [ackedIds, setAckedIds] = useState<Set<string>>(new Set());
+  const [openLabOrderId, setOpenLabOrderId] = useState<string | null>(null);
 
   const { data: wardsData } = useWards();
   const wards = (wardsData ?? []) as { id: string; name: string }[];
@@ -258,6 +260,11 @@ function DoctorOrdersTab() {
         </div>
       </div>
 
+      <LabOrderDetailDialog
+        orderId={openLabOrderId}
+        onOpenChange={(open) => !open && setOpenLabOrderId(null)}
+      />
+
       <div className="overflow-x-auto rounded-lg border border-outline-variant">
         <table className="w-full text-sm">
           <thead>
@@ -352,27 +359,39 @@ function DoctorOrdersTab() {
                       {formatDateTime(order.createdAt)}
                     </td>
                     <td className="px-4 py-3">
-                      {isAcked ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700">
-                          <CheckCircle2 className="h-3 w-3" />
-                          Acknowledged
-                        </span>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-xs"
-                          disabled={acknowledge.isPending}
-                          onClick={() => handleAcknowledge(order)}
-                        >
-                          {acknowledge.isPending ? (
-                            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                          ) : (
-                            <CheckCircle2 className="mr-1 h-3 w-3" />
-                          )}
-                          Acknowledge
-                        </Button>
-                      )}
+                      <div className="flex items-center gap-1">
+                        {order.orderType === 'lab' && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs"
+                            onClick={() => setOpenLabOrderId(order.id)}
+                          >
+                            View
+                          </Button>
+                        )}
+                        {isAcked ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Acknowledged
+                          </span>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            disabled={acknowledge.isPending}
+                            onClick={() => handleAcknowledge(order)}
+                          >
+                            {acknowledge.isPending ? (
+                              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                            ) : (
+                              <CheckCircle2 className="mr-1 h-3 w-3" />
+                            )}
+                            Acknowledge
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

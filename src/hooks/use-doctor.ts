@@ -441,6 +441,8 @@ interface DoctorAdmissionsParams {
   search?: string;
   status?: string;
   doctorId?: string;
+  /** Logged-in user's ID — backend resolves the matching DoctorProfile. */
+  doctorUserId?: string;
   wardId?: string;
   date?: string;
 }
@@ -1548,10 +1550,15 @@ export function useAcceptAdmissionRequest() {
       id: string;
       payload: {
         createReservation?: boolean;
+        directAdmit?: boolean;
         wardId?: string;
         bedId?: string;
         reservedDate?: string;
         expectedAdmission?: string;
+        admissionDate?: string;
+        expectedDischargeDate?: string;
+        admissionReason?: string;
+        depositAmount?: number;
         advanceAmount?: number;
         notes?: string;
       };
@@ -1565,7 +1572,41 @@ export function useAcceptAdmissionRequest() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admission-requests'] });
       queryClient.invalidateQueries({ queryKey: ['hospital', 'reservations'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'admissions'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'occupancy'] });
       queryClient.invalidateQueries({ queryKey: ['infrastructure', 'beds'] });
+    },
+  });
+}
+
+export function useAdmitReservation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      payload,
+    }: {
+      id: string;
+      payload: {
+        bedId?: string;
+        admissionDate?: string;
+        expectedDischargeDate?: string;
+        admissionReason?: string;
+        depositAmount?: number;
+      };
+    }) => {
+      const response = await apiPost<{ id: string }>(
+        `/clinical/reservations/${id}/admit`,
+        payload,
+      );
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'reservations'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'admissions'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'occupancy'] });
+      queryClient.invalidateQueries({ queryKey: ['infrastructure', 'beds'] });
+      queryClient.invalidateQueries({ queryKey: ['admission-requests'] });
     },
   });
 }

@@ -32,12 +32,20 @@ import {
   type NurseAssignment,
   type ShiftType,
 } from '@/hooks/use-nurse-assignments';
+import { NursePicker } from '@/components/nurse-admin/nurse-picker';
 
 const SHIFTS: Array<{ value: ShiftType; label: string; hours: string }> = [
   { value: 'morning', label: 'Morning', hours: '07:00 – 15:00' },
   { value: 'afternoon', label: 'Afternoon', hours: '15:00 – 23:00' },
   { value: 'night', label: 'Night', hours: '23:00 – 07:00' },
 ];
+
+const SHIFT_LABEL: Record<ShiftType, string> = {
+  morning: 'Morning',
+  afternoon: 'Afternoon',
+  night: 'Night',
+  general: 'General',
+};
 
 const todayIso = () => format(new Date(), 'yyyy-MM-dd');
 
@@ -54,17 +62,31 @@ export default function NurseAdminAssignmentsPage() {
   });
   const admissions = extractList<NurseAdmission>(admissionsRes);
 
+  // Fetch ALL active assignments for the admitted patients — not just the selected
+  // shift/date. The shift filter only drives the *new assignment* action; the
+  // "currently assigned nurse" column needs to show whoever is on the patient
+  // right now regardless of which shift the admin happens to be filtering on.
   const { data: assignmentsRes, isLoading: assignmentsLoading } = useNurseAssignments({
-    shiftDate,
-    shiftType,
     status: 'active',
     ...(wardId !== 'all' ? { wardId } : {}),
     limit: 500,
   });
   const assignments = extractList<NurseAssignment>(assignmentsRes);
+
+  // admissionId → all active assignments (one per shift). Sorted newest first
+  // so [0] is the latest-assigned, which we surface as the headline row.
   const assignmentsByAdmission = useMemo(() => {
-    const map = new Map<string, NurseAssignment>();
-    for (const a of assignments) map.set(a.admissionId, a);
+    const map = new Map<string, NurseAssignment[]>();
+    for (const a of assignments) {
+      const list = map.get(a.admissionId) ?? [];
+      list.push(a);
+      map.set(a.admissionId, list);
+    }
+    for (const list of map.values()) {
+      list.sort(
+        (a, b) => new Date(b.assignedAt).getTime() - new Date(a.assignedAt).getTime(),
+      );
+    }
     return map;
   }, [assignments]);
 
@@ -103,7 +125,19 @@ export default function NurseAdminAssignmentsPage() {
     });
   }, [admissions, search]);
 
-  const unassignedCount = filteredAdmissions.filter((a) => !assignmentsByAdmission.has(a.id)).length;
+  // "Needs coverage" = no assignment at all on the *currently selected* shift.
+  // The badge is about staffing the chosen shift, not whether the patient has
+  // any nurse at all (they might have one on a different shift).
+  const unassignedCount = useMemo(() => {
+    return filteredAdmissions.filter((a) => {
+      const list = assignmentsByAdmission.get(a.id) ?? [];
+      return !list.some(
+        (x) =>
+          x.shiftType === shiftType &&
+          isSameYmd(x.shiftDate, shiftDate),
+      );
+    }).length;
+  }, [filteredAdmissions, assignmentsByAdmission, shiftType, shiftDate]);
 
   async function handleAssign(admissionId: string, nurseId: string) {
     try {
@@ -136,25 +170,26 @@ export default function NurseAdminAssignmentsPage() {
         <div>
           <h1 className="text-2xl font-semibold">Patient Assignments</h1>
           <p className="text-sm text-muted-foreground">
-            Assign a nurse to every occupied IPD bed for the selected shift.
+            Assign a nurse to every occupied IPD bed. The shift filter below
+            controls which shift a new assignment is created for.
           </p>
         </div>
         {unassignedCount > 0 ? (
           <Badge variant="secondary" className="gap-1 text-amber-700">
             <AlertTriangle className="h-3.5 w-3.5" />
-            {unassignedCount} bed{unassignedCount === 1 ? '' : 's'} need coverage
+            {unassignedCount} bed{unassignedCount === 1 ? '' : 's'} need coverage on {SHIFT_LABEL[shiftType]}
           </Badge>
         ) : admissions.length > 0 ? (
           <Badge variant="secondary" className="gap-1 text-emerald-700">
             <CheckCircle2 className="h-3.5 w-3.5" />
-            Shift fully covered
+            {SHIFT_LABEL[shiftType]} fully covered
           </Badge>
         ) : null}
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Filter</CardTitle>
+          <CardTitle className="text-base">Assign for shift</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-4">
           <div>
@@ -240,22 +275,32 @@ export default function NurseAdminAssignmentsPage() {
                   <TableHead>MRN</TableHead>
                   <TableHead>Ward / Bed</TableHead>
                   <TableHead>Doctor</TableHead>
-                  <TableHead>Assigned nurse</TableHead>
-                  <TableHead className="w-28"></TableHead>
+                  <TableHead>Currently assigned</TableHead>
+                  <TableHead>Assign for {SHIFT_LABEL[shiftType]}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredAdmissions.map((adm) => {
-                  const current = assignmentsByAdmission.get(adm.id) ?? null;
+                  const allActive = assignmentsByAdmission.get(adm.id) ?? [];
+                  // Match the assignment for the selected shift+date so we can
+                  // hide the picker when one already exists for that slot.
+                  const sameSlot =
+                    allActive.find(
+                      (x) =>
+                        x.shiftType === shiftType &&
+                        isSameYmd(x.shiftDate, shiftDate),
+                    ) ?? null;
                   return (
                     <AssignmentRow
                       key={adm.id}
                       admission={adm}
-                      currentAssignment={current}
+                      activeAssignments={allActive}
+                      sameSlotAssignment={sameSlot}
+                      shiftLabel={SHIFT_LABEL[shiftType]}
                       nurseOptions={nurseUsers}
                       nurseOptionsLoading={usersLoading}
                       onAssign={(nurseId) => handleAssign(adm.id, nurseId)}
-                      onUnassign={current ? () => handleUnassign(current.id) : null}
+                      onUnassign={(assignmentId) => handleUnassign(assignmentId)}
                       busy={createMut.isPending || endMut.isPending}
                     />
                   );
@@ -271,7 +316,9 @@ export default function NurseAdminAssignmentsPage() {
 
 function AssignmentRow({
   admission,
-  currentAssignment,
+  activeAssignments,
+  sameSlotAssignment,
+  shiftLabel,
   nurseOptions,
   nurseOptionsLoading,
   onAssign,
@@ -279,11 +326,13 @@ function AssignmentRow({
   busy,
 }: {
   admission: NurseAdmission;
-  currentAssignment: NurseAssignment | null;
+  activeAssignments: NurseAssignment[];
+  sameSlotAssignment: NurseAssignment | null;
+  shiftLabel: string;
   nurseOptions: UserListItem[];
   nurseOptionsLoading: boolean;
   onAssign: (nurseId: string) => void;
-  onUnassign: (() => void) | null;
+  onUnassign: (assignmentId: string) => void;
   busy: boolean;
 }) {
   const [picked, setPicked] = useState<string>('');
@@ -305,63 +354,88 @@ function AssignmentRow({
       </TableCell>
       <TableCell className="text-sm">{doctor}</TableCell>
       <TableCell>
-        {currentAssignment ? (
-          <div className="flex items-center gap-2">
-            <div>
-              <div className="text-sm font-medium">
-                {currentAssignment.nurse
-                  ? `${currentAssignment.nurse.firstName} ${currentAssignment.nurse.lastName ?? ''}`
-                  : 'Unknown'}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                Since {format(parseISO(currentAssignment.assignedAt), 'dd/MM HH:mm')} IST
-              </div>
-            </div>
+        {activeAssignments.length === 0 ? (
+          <span className="text-xs text-muted-foreground">No nurse assigned</span>
+        ) : (
+          <div className="space-y-1.5">
+            {activeAssignments.map((a) => {
+              const nurseLabel = a.nurse
+                ? `${a.nurse.firstName} ${a.nurse.lastName ?? ''}`.trim()
+                : 'Unknown nurse';
+              return (
+                <div
+                  key={a.id}
+                  className="flex items-center gap-2 text-sm"
+                  title={`Assigned ${format(parseISO(a.assignedAt), 'dd/MM HH:mm')} IST`}
+                >
+                  <span className="font-medium">{nurseLabel}</span>
+                  <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-normal">
+                    {SHIFT_LABEL[a.shiftType]} · {fmtShiftDate(a.shiftDate)}
+                  </Badge>
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    onClick={() => onUnassign(a.id)}
+                    disabled={busy}
+                    title="End this assignment"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              );
+            })}
           </div>
+        )}
+      </TableCell>
+      <TableCell>
+        {sameSlotAssignment ? (
+          <span className="text-xs text-muted-foreground">
+            Already covered for {shiftLabel}
+          </span>
         ) : (
           <div className="flex items-center gap-2">
-            <Select
+            <NursePicker
+              users={nurseOptions}
               value={picked}
-              onValueChange={(value) => {
-                if (value) setPicked(value);
-              }}
-            >
-              <SelectTrigger className="h-8 w-48">
-                <SelectValue placeholder={nurseOptionsLoading ? 'Loading…' : 'Pick a nurse'} />
-              </SelectTrigger>
-              <SelectContent>
-                {nurseOptions.map((u) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {u.firstName} {u.lastName ?? ''}
-                    <span className="ml-1 text-xs text-muted-foreground">({primaryRole(u)})</span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              onChange={(id) => setPicked(id)}
+              placeholder={nurseOptionsLoading ? 'Loading…' : 'Pick a nurse'}
+              triggerSize="sm"
+              rolesShown={['nurse']}
+              clearable
+              className="w-48"
+            />
             <Button
               size="sm"
               disabled={!picked || busy}
-              onClick={() => picked && onAssign(picked)}
+              onClick={() => {
+                if (!picked) return;
+                onAssign(picked);
+                setPicked('');
+              }}
             >
               Assign
             </Button>
           </div>
         )}
       </TableCell>
-      <TableCell className="text-right">
-        {currentAssignment && onUnassign ? (
-          <Button size="icon-sm" variant="ghost" onClick={onUnassign} disabled={busy} title="End assignment">
-            <X className="h-4 w-4" />
-          </Button>
-        ) : null}
-      </TableCell>
     </TableRow>
   );
 }
 
-function primaryRole(u: UserListItem): string {
-  const nurseRole = u.userRoles.find((ur) => /^nurse(_|$)/i.test(ur.role.name));
-  return nurseRole?.role.name ?? u.userRoles[0]?.role.name ?? '';
+// `shiftDate` from the API is an ISO string like "2026-05-09T00:00:00.000Z"
+// (or just a date for `@db.Date` columns). Compare on the YYYY-MM-DD prefix
+// so timezone offsets on the wire don't break filter equality.
+function isSameYmd(apiDate: string, ymd: string): boolean {
+  if (!apiDate) return false;
+  return apiDate.slice(0, 10) === ymd;
+}
+
+function fmtShiftDate(apiDate: string): string {
+  if (!apiDate) return '';
+  const ymd = apiDate.slice(0, 10);
+  const [y, m, d] = ymd.split('-');
+  if (!y || !m || !d) return ymd;
+  return `${d}/${m}`;
 }
 
 function extractList<T>(res: any): T[] {

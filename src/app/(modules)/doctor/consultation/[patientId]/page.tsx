@@ -555,7 +555,12 @@ export default function PatientConsultationPage({
   }, []);
   const isEditing = canEdit && editRequested;
 
-  const { data: prefillResponse } = useQuery({
+  const {
+    data: prefillResponse,
+    isLoading: prefillLoading,
+    isFetching: prefillFetching,
+    error: prefillError,
+  } = useQuery({
     queryKey: ['doctor', 'consultation-form-data', appointmentId],
     queryFn: async () => {
       const res = await apiGet<{
@@ -567,8 +572,14 @@ export default function PatientConsultationPage({
       return res.data;
     },
     enabled: !!appointmentId && isEditing,
+    retry: 1,
   });
   const prefill = prefillResponse?.prefill;
+  const prefillReason = prefillResponse?.reason;
+  // Distinguish "fetch in flight" from "fetch finished but server has nothing"
+  // — the old `!prefill` check conflated the two and hung the form forever.
+  const prefillIsLoading = isEditing && (prefillLoading || (prefillFetching && !prefillResponse));
+  const prefillUnavailable = isEditing && !prefillIsLoading && !prefill;
 
   // Progress note for the active visit — drives the amendment-history link,
   // session-checklist badges, and (after the appointment is completed) the
@@ -740,12 +751,34 @@ export default function PatientConsultationPage({
                   ) : null}
                 </div>
 
-                {isEditing && !prefill ? (
+                {prefillIsLoading ? (
                   <div className="flex items-center justify-center py-20">
                     <Loader2 className="h-5 w-5 animate-spin text-primary" />
                     <span className="ml-2 text-sm text-muted-foreground">
                       Loading saved consultation…
                     </span>
+                  </div>
+                ) : prefillUnavailable ? (
+                  <div className="m-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">
+                    <p className="font-semibold text-amber-900">
+                      Couldn't load this consultation for editing.
+                    </p>
+                    <p className="text-amber-800 mt-1 text-xs">
+                      {prefillError
+                        ? (prefillError as any)?.response?.data?.message ||
+                          (prefillError as Error).message ||
+                          'The server returned an error.'
+                        : prefillReason ||
+                          'There is no saved progress note linked to this appointment yet — there is nothing to edit.'}
+                    </p>
+                    <div className="mt-3 flex gap-2">
+                      <Button size="sm" variant="outline" onClick={cancelEdit}>
+                        Exit edit mode
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => router.back()}>
+                        Back to queue
+                      </Button>
+                    </div>
                   </div>
                 ) : (
                   <div className="px-5 py-4">

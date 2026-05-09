@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { toInputDateStr } from '@/lib/date-utils';
-import { Search, Plus } from 'lucide-react';
+import { Search, Plus, BedDouble, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -19,11 +20,14 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
+  DialogFooter,
 } from '@/components/ui/dialog';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost } from '@/lib/api';
 import { formatDate } from '@/lib/date-utils';
 import { toast } from 'sonner';
+import { useAdmitReservation } from '@/hooks/use-doctor';
 
 interface Reservation {
   id: string;
@@ -77,6 +81,7 @@ export function ReservationTab() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [admitTarget, setAdmitTarget] = useState<Reservation | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['hospital', 'reservations', { status: statusFilter, search, page }],
@@ -143,24 +148,26 @@ export function ReservationTab() {
                 <th className="px-4 pb-4 pt-5 text-left font-semibold">Ward / Bed</th>
                 <th className="px-4 pb-4 pt-5 text-right font-semibold">Advance</th>
                 <th className="px-4 pb-4 pt-5 text-left font-semibold">Status</th>
+                <th className="px-4 pb-4 pt-5 text-right font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-container/50">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center">
+                  <td colSpan={8} className="px-4 py-8 text-center">
                     <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                   </td>
                 </tr>
               ) : reservations.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center font-label text-on-surface-variant">
+                  <td colSpan={8} className="px-4 py-8 text-center font-label text-on-surface-variant">
                     No reservations found.
                   </td>
                 </tr>
               ) : (
                 reservations.map((res) => {
                   const st = statusStyles[res.status] ?? statusStyles.reserved;
+                  const canAdmit = res.status === 'reserved' || res.status === 'confirmed';
                   return (
                     <tr key={res.id} className="group hover:bg-surface-container-low transition-colors">
                       <td className="px-4 py-3">
@@ -182,6 +189,20 @@ export function ReservationTab() {
                         <span className={cn('inline-flex text-[10px] font-bold px-2 py-0.5 rounded-full capitalize', st.bg, st.text)}>
                           {res.status}
                         </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {canAdmit ? (
+                          <Button
+                            size="sm"
+                            className="h-7 gap-1 text-xs"
+                            onClick={() => setAdmitTarget(res)}
+                          >
+                            <BedDouble className="h-3 w-3" />
+                            Admit
+                          </Button>
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground">—</span>
+                        )}
                       </td>
                     </tr>
                   );
@@ -209,7 +230,229 @@ export function ReservationTab() {
 
       {/* Create Reservation Dialog */}
       <CreateReservationDialog open={dialogOpen} onOpenChange={setDialogOpen} />
+
+      <AdmitReservationDialog
+        reservation={admitTarget}
+        onOpenChange={(o) => !o && setAdmitTarget(null)}
+      />
     </div>
+  );
+}
+
+// ── Admit Reservation Dialog ────────────────────────────────
+// Front desk presses "Admit" on a reserved/confirmed row. Bed defaults to the
+// reservation's blocked bed; can be overridden if a different one is now
+// preferred. Backend handles freeing the originally-blocked bed.
+function AdmitReservationDialog({
+  reservation,
+  onOpenChange,
+}: {
+  reservation: Reservation | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const open = !!reservation;
+  const admit = useAdmitReservation();
+  const [bedId, setBedId] = useState('');
+  const [admissionDate, setAdmissionDate] = useState(toInputDateStr());
+  const [expectedDischarge, setExpectedDischarge] = useState('');
+  const [depositAmount, setDepositAmount] = useState<number>(0);
+  const [admissionReason, setAdmissionReason] = useState('');
+
+  useEffect(() => {
+    if (open && reservation) {
+      setBedId(reservation.bedId ?? '');
+      setAdmissionDate(toInputDateStr());
+      setExpectedDischarge('');
+      setDepositAmount(Number(reservation.advanceAmount ?? 0));
+      setAdmissionReason(reservation.diagnosis ?? '');
+    }
+  }, [open, reservation]);
+
+  // Available beds in the reservation's ward — plus surface the reservation's
+  // own bed even if it's currently `reserved` (so the default selection
+  // resolves to a label, not "Loading…").
+  const { data: bedsData, isFetching: bedsLoading } = useQuery({
+    queryKey: ['infrastructure', 'beds', { wardId: reservation?.wardId, statusAny: 'available,reserved' }],
+    queryFn: async () => {
+      if (!reservation) return [];
+      const [available, reservedSelf] = await Promise.all([
+        apiGet<Array<{ id: string; bedNumber: string; bedType?: string; status: string }>>(
+          '/infrastructure/beds',
+          { params: { wardId: reservation.wardId, status: 'available', limit: 200 } },
+        ),
+        reservation.bedId
+          ? apiGet<Array<{ id: string; bedNumber: string; bedType?: string; status: string }>>(
+              '/infrastructure/beds',
+              { params: { wardId: reservation.wardId, limit: 200 } },
+            )
+          : Promise.resolve({ data: [] }),
+      ]);
+      const merged = new Map<string, { id: string; bedNumber: string; bedType?: string; status: string }>();
+      for (const b of available.data ?? []) merged.set(b.id, b);
+      // Always make the reservation's own bed selectable, even if 'reserved'.
+      if (reservation.bedId) {
+        const own = (reservedSelf.data ?? []).find((b) => b.id === reservation.bedId);
+        if (own) merged.set(own.id, own);
+      }
+      return Array.from(merged.values());
+    },
+    enabled: open && !!reservation,
+  });
+
+  const beds = bedsData ?? [];
+  const selectedBed = beds.find((b) => b.id === bedId);
+
+  const handleSubmit = async () => {
+    if (!reservation) return;
+    if (!bedId) {
+      toast.error('Pick a bed to admit the patient');
+      return;
+    }
+    try {
+      await admit.mutateAsync({
+        id: reservation.id,
+        payload: {
+          bedId,
+          ...(admissionDate ? { admissionDate: new Date(admissionDate).toISOString() } : {}),
+          ...(expectedDischarge
+            ? { expectedDischargeDate: new Date(expectedDischarge).toISOString() }
+            : {}),
+          ...(depositAmount > 0 ? { depositAmount } : {}),
+          ...(admissionReason ? { admissionReason } : {}),
+        },
+      });
+      toast.success('Patient admitted');
+      onOpenChange(false);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Failed to admit');
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[600px]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <BedDouble className="h-5 w-5 text-primary" />
+            Admit Reservation
+          </DialogTitle>
+          {reservation && (
+            <DialogDescription>
+              {reservation.patient?.firstName} {reservation.patient?.lastName}
+              {reservation.patient?.mrn ? ` · MRN ${reservation.patient.mrn}` : ''}
+              {reservation.doctor
+                ? ` · Dr. ${reservation.doctor.user?.firstName ?? ''} ${reservation.doctor.user?.lastName ?? ''}`.trim()
+                : ''}
+              {reservation.ward?.name ? ` · ${reservation.ward.name}` : ''}
+            </DialogDescription>
+          )}
+        </DialogHeader>
+
+        <div className="space-y-4 pt-2 max-h-[70vh] overflow-y-auto">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label className="text-xs font-medium">Bed *</Label>
+              <Select
+                value={bedId || null}
+                onValueChange={(v) => setBedId(v ?? '')}
+                disabled={bedsLoading}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue
+                    placeholder={
+                      bedsLoading
+                        ? 'Loading...'
+                        : beds.length === 0
+                          ? 'No beds available'
+                          : 'Select bed'
+                    }
+                  >
+                    {() =>
+                      selectedBed
+                        ? `${selectedBed.bedNumber}${selectedBed.bedType ? ` — ${selectedBed.bedType}` : ''}${selectedBed.status === 'reserved' ? ' (reserved)' : ''}`
+                        : bedsLoading
+                          ? 'Loading...'
+                          : beds.length === 0
+                            ? 'No beds available'
+                            : 'Select bed'
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {beds.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.bedNumber}{b.bedType ? ` — ${b.bedType}` : ''}
+                      {b.status === 'reserved' ? ' · (this reservation)' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="text-xs font-medium">Admission Date</Label>
+              <Input
+                type="date"
+                value={admissionDate}
+                onChange={(e) => setAdmissionDate(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+
+            <div>
+              <Label className="text-xs font-medium">Expected Discharge</Label>
+              <Input
+                type="date"
+                value={expectedDischarge}
+                onChange={(e) => setExpectedDischarge(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+
+            <div>
+              <Label className="text-xs font-medium">Deposit Amount (₹)</Label>
+              <Input
+                type="number"
+                min={0}
+                value={depositAmount}
+                onChange={(e) => setDepositAmount(Number(e.target.value) || 0)}
+                className="mt-1"
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-xs font-medium">Admission Reason</Label>
+            <Textarea
+              value={admissionReason}
+              onChange={(e) => setAdmissionReason(e.target.value)}
+              placeholder="Defaults to the reservation's diagnosis..."
+              rows={2}
+              className="mt-1"
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            className="gap-1.5"
+            onClick={handleSubmit}
+            disabled={admit.isPending}
+          >
+            {admit.isPending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <BedDouble className="h-3.5 w-3.5" />
+            )}
+            Admit Now
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

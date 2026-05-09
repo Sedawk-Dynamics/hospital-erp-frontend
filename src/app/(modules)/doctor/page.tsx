@@ -16,8 +16,6 @@ import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import type { Appointment } from '@/types';
-import { ConsultationFormSheet } from '@/components/doctor/consultation-form-sheet';
-
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -154,12 +152,6 @@ export default function DoctorHomePage() {
   const router = useRouter();
   const [viewMode, setViewMode] = useState<ViewMode>('today');
   const [telemedicineActive, setTelemedicineActive] = useState(false);
-  // Inline consultation sheet — opens the PrescriptionPad (with the new
-  // per-section pin functionality) without navigating away from the queue.
-  const [consultationTarget, setConsultationTarget] = useState<{
-    patientId: string;
-    appointmentId: string;
-  } | null>(null);
 
   const statusFilter = statusFilterMap[activeStatFilter];
 
@@ -380,17 +372,12 @@ export default function DoctorHomePage() {
           router.push(`/doctor/consultation/${patientId}${params}`);
         }}
         onOpenConsultation={(patientId, appointmentId) => {
-          setConsultationTarget({ patientId, appointmentId });
+          // Always open the full consultation page — the side-sheet variant
+          // was rolled back in favour of the dedicated /doctor/consultation
+          // workspace (vitals + allergies live in its 20% right aside).
+          const params = appointmentId ? `?appointmentId=${appointmentId}` : '';
+          router.push(`/doctor/consultation/${patientId}${params}`);
         }}
-      />
-
-      <ConsultationFormSheet
-        open={!!consultationTarget}
-        onOpenChange={(o) => {
-          if (!o) setConsultationTarget(null);
-        }}
-        patientId={consultationTarget?.patientId ?? null}
-        appointmentId={consultationTarget?.appointmentId ?? null}
       />
     </div>
   );

@@ -35,6 +35,8 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { LabAttachmentsViewer } from '@/components/shared/lab-attachments-viewer';
+import { useLabOrderAttachments } from '@/hooks/use-lab-attachments';
 
 export default function LaboratoryHomePage() {
   return (
@@ -875,6 +877,14 @@ function OrderDetailDialog({
           </section>
         )}
 
+        {/* Attachments (PDFs, images, scans) */}
+        <section className="space-y-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
+            Attachments
+          </h3>
+          <OrderAttachmentsSection orderId={order.id} />
+        </section>
+
         {/* Report controls */}
         <section className="space-y-2">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Report</h3>
@@ -1032,6 +1042,24 @@ function StatusBadge({ status }: { status?: string }) {
     )}>
       {status?.replace(/_/g, ' ')}
     </span>
+  );
+}
+
+// Loads + renders attachments tied to a single lab order. Lab roles can
+// upload (report PDFs, microscopy images, raw output) and delete; the same
+// list ships to doctors, nurses and patients via the order/report payload.
+function OrderAttachmentsSection({ orderId }: { orderId: string }) {
+  const { data, isLoading } = useLabOrderAttachments(orderId);
+  if (isLoading) {
+    return <p className="text-xs text-muted-foreground">Loading attachments…</p>;
+  }
+  return (
+    <LabAttachmentsViewer
+      attachments={data ?? []}
+      orderId={orderId}
+      canUpload
+      canDelete
+    />
   );
 }
 

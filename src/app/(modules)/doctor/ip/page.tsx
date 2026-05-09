@@ -60,7 +60,10 @@ export default function DoctorIPHomePage() {
   const { data: admissionsData, isLoading } = useDoctorAdmissions({
     page,
     limit: 10,
-    doctorId: user?.id,
+    // user.id is the User ID; the backend resolves the matching DoctorProfile
+    // before filtering Admission.doctorId. Passing user.id as doctorId here
+    // would compare against DoctorProfile.id and silently return nothing.
+    doctorUserId: user?.id,
     status: statusFilter,
     search: search || undefined,
     date: fromDate,

@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { FlaskConical, AlertCircle, CheckCircle2, Clock, ChevronDown, ChevronRight } from 'lucide-react';
+import { FlaskConical, AlertCircle, CheckCircle2, Clock, ChevronDown, ChevronRight, FileText, FileImage, Download } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { resolveAttachmentUrl, formatFileSize, isImageMime } from '@/hooks/use-lab-attachments';
 
 interface LabResult {
   id: string;
@@ -32,7 +33,17 @@ interface LabOrder {
   orderer?: { firstName: string; lastName: string } | null;
   visit?: { visitType: string; visitDate: string } | null;
   labOrderItems: LabOrderItem[];
-  labReport?: { id: string; status: string; signedAt?: string | null; publishedAt?: string | null } | null;
+  labReport?: { id: string; status: string; signedAt?: string | null; publishedAt?: string | null; pdfUrl?: string | null } | null;
+  attachments?: Array<{
+    id: string;
+    category: string;
+    fileName: string;
+    fileUrl: string;
+    mimeType: string;
+    sizeBytes: number;
+    description?: string | null;
+    createdAt: string;
+  }>;
 }
 
 interface AbnormalFlat {
@@ -204,6 +215,50 @@ function OrderCard({
               )}
             </div>
           ))}
+          {(order.attachments?.length ?? 0) > 0 && (
+            <div className="border-t pt-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+                Attachments ({order.attachments!.length})
+              </p>
+              <ul className="space-y-1">
+                {order.attachments!.map((a) => {
+                  const url = resolveAttachmentUrl(a.fileUrl);
+                  const isImg = isImageMime(a.mimeType);
+                  const Icon = isImg ? FileImage : FileText;
+                  return (
+                    <li key={a.id} className="flex items-center gap-2 text-[11px] rounded-md border bg-card px-2 py-1">
+                      {isImg ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <a href={url} target="_blank" rel="noopener noreferrer" className="h-8 w-8 shrink-0 overflow-hidden rounded border bg-muted">
+                          <img src={url} alt={a.fileName} className="h-full w-full object-cover" />
+                        </a>
+                      ) : (
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded border bg-muted">
+                          <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium">{a.fileName}</p>
+                        <p className="text-[10px] text-muted-foreground capitalize">
+                          {a.category.replace('_', ' ')} · {formatFileSize(a.sizeBytes)}
+                        </p>
+                      </div>
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        download={a.fileName}
+                        className="rounded-md p-1 hover:bg-muted text-muted-foreground hover:text-foreground"
+                        title="Open / download"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                      </a>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
         </div>
       )}
     </div>

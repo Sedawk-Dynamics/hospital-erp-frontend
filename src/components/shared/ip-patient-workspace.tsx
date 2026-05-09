@@ -18,7 +18,7 @@
 // discharge. Anyone can deep-link out to the dedicated pages with the
 // admissionId / patientId pre-filled.
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   Activity,
@@ -66,6 +66,7 @@ import { formatDate, formatDateTime, formatTime } from '@/lib/date-utils';
 import { useAdmissionDetail, usePatientVitals, useLatestVitals, useActivePrescriptions, useNursingNotes } from '@/hooks/use-nurse';
 import { useEmarSchedules, type EmarSchedule } from '@/hooks/use-emar';
 import { useProgressNotes, useLabOrders, useImagingRequests, usePatientDetail } from '@/hooks/use-doctor';
+import { LabOrderDetailDialog } from '@/components/shared/lab-order-detail-dialog';
 
 import type { NurseAdmission, NursingNote, Prescription, Vital } from '@/hooks/use-nurse';
 
@@ -635,8 +636,16 @@ function OrdersPanel({ admissionId, patientId, role }: { admissionId: string; pa
   const { data: labData, isLoading: labLoading } = useLabOrders({ patientId, limit: 10 });
   const { data: imagingData, isLoading: imgLoading } = useImagingRequests({ patientId, limit: 10 });
 
+  const [openOrderId, setOpenOrderId] = useState<string | null>(null);
+
   const labs = labData?.data ?? [];
   const imaging = imagingData?.data ?? [];
+
+  // Surface any lab order with at least one attachment so clinicians can spot
+  // a reportable file at a glance — the lab UI uploads against the order, not
+  // the report, so the count comes from the order list payload.
+  const attachmentCount = (o: any): number =>
+    Array.isArray(o?.attachments) ? o.attachments.length : 0;
 
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -659,19 +668,42 @@ function OrdersPanel({ admissionId, patientId, role }: { admissionId: string; pa
           <p className="text-xs text-muted-foreground">No lab orders.</p>
         ) : (
           <ul className="space-y-1.5 text-xs">
-            {labs.slice(0, 8).map((o) => (
-              <li key={o.id} className="flex items-center justify-between rounded border bg-card px-2 py-1.5">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium text-foreground">
-                    {o.tests?.map((t) => t.name).join(', ') || o.orderNumber || '—'}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">{formatDate(o.createdAt)}</p>
-                </div>
-                <Badge variant="outline" className="text-[10px] capitalize">{o.status}</Badge>
-              </li>
-            ))}
+            {labs.slice(0, 8).map((o) => {
+              const att = attachmentCount(o);
+              return (
+                <li key={o.id}>
+                  <button
+                    type="button"
+                    onClick={() => setOpenOrderId(o.id)}
+                    className="flex w-full items-center justify-between rounded border bg-card px-2 py-1.5 text-left hover:bg-muted/50"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium text-foreground">
+                        {o.tests?.map((t) => t.name).join(', ')
+                          || o.labOrderItems?.map((it) => it.test?.testName).filter(Boolean).join(', ')
+                          || o.orderNumber || '—'}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {formatDate(o.createdAt)}
+                        {att > 0 && (
+                          <span className="ml-1 inline-flex items-center gap-0.5 text-primary">
+                            · {att} file{att > 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="text-[10px] capitalize">{o.status}</Badge>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
+
+        <LabOrderDetailDialog
+          orderId={openOrderId}
+          onOpenChange={(open) => !open && setOpenOrderId(null)}
+        />
       </div>
 
       <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4">
