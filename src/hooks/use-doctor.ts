@@ -1471,6 +1471,138 @@ export function useCreateClinicalOTRequest() {
 }
 
 // ============================================================
+// Admission Request Hooks (doctor → front desk OP→IP handoff)
+// ============================================================
+
+export interface AdmissionRequest {
+  id: string;
+  patientId: string;
+  patient?: { id: string; mrn?: string; firstName: string; lastName: string; phone?: string };
+  doctorId: string;
+  doctor?: { id: string; user?: { firstName: string; lastName: string } };
+  visitId?: string | null;
+  visit?: { id: string; visitType: string; visitDate: string } | null;
+  reason: string;
+  provisionalDiagnosis?: string | null;
+  urgency: 'routine' | 'urgent' | 'emergency';
+  preferredWardType?: string | null;
+  expectedAdmissionDate?: string | null;
+  notes?: string | null;
+  status: 'pending' | 'accepted' | 'rejected' | 'cancelled';
+  reservationId?: string | null;
+  admissionId?: string | null;
+  rejectionReason?: string | null;
+  requestedBy?: { id: string; firstName: string; lastName?: string } | null;
+  processedBy?: { id: string; firstName: string; lastName?: string } | null;
+  processedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function useCreateAdmissionRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      patientId: string;
+      visitId?: string;
+      doctorId: string;
+      reason: string;
+      provisionalDiagnosis?: string;
+      urgency?: 'routine' | 'urgent' | 'emergency';
+      preferredWardType?: string;
+      expectedAdmissionDate?: string;
+      notes?: string;
+    }) => {
+      const response = await apiPost<AdmissionRequest>('/clinical/admission-requests', data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admission-requests'] });
+    },
+  });
+}
+
+export function useAdmissionRequests(params: {
+  status?: 'pending' | 'accepted' | 'rejected' | 'cancelled';
+  urgency?: 'routine' | 'urgent' | 'emergency';
+  search?: string;
+  page?: number;
+  limit?: number;
+}) {
+  return useQuery({
+    queryKey: ['admission-requests', params],
+    queryFn: async () => {
+      const response = await apiGet<AdmissionRequest[]>('/clinical/admission-requests', { params });
+      return { data: response.data, meta: response.meta as PaginationMeta };
+    },
+  });
+}
+
+export function useAcceptAdmissionRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      payload,
+    }: {
+      id: string;
+      payload: {
+        createReservation?: boolean;
+        wardId?: string;
+        bedId?: string;
+        reservedDate?: string;
+        expectedAdmission?: string;
+        advanceAmount?: number;
+        notes?: string;
+      };
+    }) => {
+      const response = await apiPost<AdmissionRequest>(
+        `/clinical/admission-requests/${id}/accept`,
+        payload,
+      );
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admission-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'reservations'] });
+      queryClient.invalidateQueries({ queryKey: ['infrastructure', 'beds'] });
+    },
+  });
+}
+
+export function useRejectAdmissionRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, rejectionReason }: { id: string; rejectionReason: string }) => {
+      const response = await apiPost<AdmissionRequest>(
+        `/clinical/admission-requests/${id}/reject`,
+        { rejectionReason },
+      );
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admission-requests'] });
+    },
+  });
+}
+
+export function useCancelAdmissionRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiPost<AdmissionRequest>(
+        `/clinical/admission-requests/${id}/cancel`,
+        {},
+      );
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admission-requests'] });
+    },
+  });
+}
+
+// ============================================================
 // Ticket Hooks
 // ============================================================
 

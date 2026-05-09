@@ -21,6 +21,7 @@ import {
   ArrowLeft,
   Activity,
   AlertTriangle,
+  BedDouble,
   Clock,
   FlaskConical,
   Heart,
@@ -48,6 +49,7 @@ import { MedicalHistoryPanel } from '@/components/doctor/medical-history-panel';
 import { InvestigationHistoryPanel } from '@/components/doctor/investigation-history-panel';
 import { LabOrderDialog } from '@/components/doctor/lab-order-dialog';
 import { ImagingRequestDialog } from '@/components/doctor/imaging-request-dialog';
+import { AdmissionRequestDialog } from '@/components/doctor/admission-request-dialog';
 import { OrdersPanel } from '@/components/doctor/orders-panel';
 import { AmendmentHistoryDialog } from '@/components/doctor/progress-notes-amendment-history';
 import { cn } from '@/lib/utils';
@@ -76,6 +78,7 @@ function TopBar({
   onBack,
   onOrderLab,
   onOrderImaging,
+  onRequestIp,
   canOrder,
   isEditing,
   onCancelEdit,
@@ -84,6 +87,7 @@ function TopBar({
   onBack: () => void;
   onOrderLab: () => void;
   onOrderImaging: () => void;
+  onRequestIp: () => void;
   canOrder: boolean;
   isEditing: boolean;
   onCancelEdit?: () => void;
@@ -146,6 +150,14 @@ function TopBar({
       >
         <Activity className="h-3.5 w-3.5" />
         Order Imaging
+      </Button>
+      <Button
+        size="sm"
+        className="h-8 gap-1 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
+        onClick={onRequestIp}
+      >
+        <BedDouble className="h-3.5 w-3.5" />
+        Request IP
       </Button>
       <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" onClick={() => window.print()}>
         <Printer className="h-3.5 w-3.5" />
@@ -493,6 +505,7 @@ export default function PatientConsultationPage({
   >(null);
   const [labDialogOpen, setLabDialogOpen] = useState(false);
   const [imagingDialogOpen, setImagingDialogOpen] = useState(false);
+  const [admissionRequestOpen, setAdmissionRequestOpen] = useState(false);
   const [amendmentOpen, setAmendmentOpen] = useState(false);
 
   const openClinical = (key: 'medications' | 'history' | 'investigations' | 'drugs') => {
@@ -621,6 +634,7 @@ export default function PatientConsultationPage({
         onBack={() => router.back()}
         onOrderLab={guardedOrderLab}
         onOrderImaging={guardedOrderImaging}
+        onRequestIp={() => setAdmissionRequestOpen(true)}
         canOrder={!!activeVisitId}
         isEditing={isEditing}
         onCancelEdit={isEditing ? cancelEdit : undefined}
@@ -885,6 +899,13 @@ export default function PatientConsultationPage({
         open={amendmentOpen}
         onOpenChange={setAmendmentOpen}
         noteId={latestNote?.id ?? null}
+      />
+      <AdmissionRequestDialog
+        open={admissionRequestOpen}
+        onOpenChange={setAdmissionRequestOpen}
+        patientId={patient.id}
+        patientName={`${patient.firstName} ${patient.lastName}`}
+        visitId={activeVisitId || undefined}
       />
 
     </div>
