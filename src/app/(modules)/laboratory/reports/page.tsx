@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { formatDate, formatDateTime } from '@/lib/date-utils';
 import { useLabReports, useGenerateLabReport, useLabReportAnalytics } from '@/hooks/use-lab';
 import type { LabReport } from '@/hooks/use-lab';
+import { SupervisorOnlyGuard } from '@/components/laboratory/supervisor-only-guard';
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   draft: { label: 'Draft', className: 'bg-gray-100 text-gray-800' },
@@ -45,6 +46,14 @@ const reportCategories = [
 ];
 
 export default function LabReportsPage() {
+  return (
+    <SupervisorOnlyGuard>
+      <LabReportsPageInner />
+    </SupervisorOnlyGuard>
+  );
+}
+
+function LabReportsPageInner() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<string>('');

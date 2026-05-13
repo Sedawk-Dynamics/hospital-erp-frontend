@@ -5,9 +5,23 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useSidebarStore } from '@/stores/sidebar-store';
-import { MODULE_REGISTRY, getModuleFromPathname } from '@/config/modules';
+import { MODULE_REGISTRY, getModuleFromPathname, type NavItem } from '@/config/modules';
 import { getModulesForRole } from '@/config/role-modules';
 import { useAuthStore } from '@/stores/auth-store';
+
+function normalizeRoleSlug(slug?: string | null): string {
+  return (slug ?? '').toLowerCase().replace(/[\s-]+/g, '_');
+}
+
+/**
+ * Drop sidebar items the current role isn't allowed to see. `admin` and
+ * `super_admin` always pass. Items without `restrictTo` are visible to all.
+ */
+function visibleSidebarItems(items: NavItem[], roleSlug?: string): NavItem[] {
+  const role = normalizeRoleSlug(roleSlug);
+  if (role === 'admin' || role === 'super_admin') return items;
+  return items.filter((it) => !it.restrictTo || it.restrictTo.includes(role));
+}
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ChevronDown, HeartPulse, PanelLeftClose, PanelLeft } from 'lucide-react';
 import type { ModuleKey } from '@/stores/module-store';
@@ -128,7 +142,7 @@ function SidebarContent({
           if (isSingleModule) {
             return (
               <div key={moduleKey} className="space-y-2">
-                {config.sidebarItems.map((item) => {
+                {visibleSidebarItems(config.sidebarItems, roleSlug).map((item) => {
                   const isActive =
                     pathname === item.href ||
                     (item.href !== config.baseRoute && pathname.startsWith(item.href));
@@ -203,7 +217,7 @@ function SidebarContent({
                   // When not pinned and hover-expand mode, hide sub-items until hover
                   !pinned && hoverExpand && 'hidden group-hover:block'
                 )}>
-                  {config.sidebarItems.map((item) => {
+                  {visibleSidebarItems(config.sidebarItems, roleSlug).map((item) => {
                     const isActive =
                       pathname === item.href ||
                       (item.href !== config.baseRoute && pathname.startsWith(item.href));

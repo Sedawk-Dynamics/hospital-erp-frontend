@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useLabOrders } from '@/hooks/use-lab';
 import type { LabOrder } from '@/hooks/use-lab';
+import { SupervisorOnlyGuard } from '@/components/laboratory/supervisor-only-guard';
 
 const paymentStatusConfig: Record<string, { label: string; className: string; icon: typeof Clock }> = {
   unpaid: { label: 'Unpaid', className: 'bg-red-100 text-red-800', icon: AlertCircle },
@@ -23,6 +24,14 @@ const orderStatusConfig: Record<string, { label: string; className: string }> = 
 };
 
 export default function LabBillingPage() {
+  return (
+    <SupervisorOnlyGuard>
+      <LabBillingPageInner />
+    </SupervisorOnlyGuard>
+  );
+}
+
+function LabBillingPageInner() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [paymentFilter, setPaymentFilter] = useState<string>('');

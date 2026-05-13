@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useInventoryItems, useCreateInventoryItem, useSuppliers } from '@/hooks/use-lab';
 import type { InventoryItem } from '@/hooks/use-lab';
+import { SupervisorOnlyGuard } from '@/components/laboratory/supervisor-only-guard';
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   in_stock: { label: 'In Stock', className: 'bg-green-100 text-green-800' },
@@ -18,6 +19,14 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 };
 
 export default function LabInventoryPage() {
+  return (
+    <SupervisorOnlyGuard>
+      <LabInventoryPageInner />
+    </SupervisorOnlyGuard>
+  );
+}
+
+function LabInventoryPageInner() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<string>('');

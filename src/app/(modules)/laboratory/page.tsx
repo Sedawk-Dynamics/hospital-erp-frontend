@@ -37,8 +37,12 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { LabAttachmentsViewer } from '@/components/shared/lab-attachments-viewer';
 import { useLabOrderAttachments } from '@/hooks/use-lab-attachments';
+import { useLabRole } from '@/hooks/use-lab-role';
 
 export default function LaboratoryHomePage() {
+  // Technicians get the worklist surface only: status, reports, order intake.
+  // Workload-by-tech and outsourced-orders dashboards are supervisor management views.
+  const { isSupervisor } = useLabRole();
   return (
     <div className="space-y-4 animate-fade-in-up">
       <h1 className="font-headline text-xl font-bold">Laboratory Home</h1>
@@ -47,8 +51,8 @@ export default function LaboratoryHomePage() {
         <TabsList variant="line">
           <TabsTrigger value="status">Status</TabsTrigger>
           <TabsTrigger value="test-report">Test Report</TabsTrigger>
-          <TabsTrigger value="technicians">For Technicians</TabsTrigger>
-          <TabsTrigger value="outsource">Outsource List</TabsTrigger>
+          {isSupervisor && <TabsTrigger value="technicians">For Technicians</TabsTrigger>}
+          {isSupervisor && <TabsTrigger value="outsource">Outsource List</TabsTrigger>}
           <TabsTrigger value="order">Order</TabsTrigger>
         </TabsList>
 
@@ -58,12 +62,16 @@ export default function LaboratoryHomePage() {
         <TabsContent value="test-report" className="pt-4">
           <TestReportTab />
         </TabsContent>
-        <TabsContent value="technicians" className="pt-4">
-          <TechniciansTab />
-        </TabsContent>
-        <TabsContent value="outsource" className="pt-4">
-          <OutsourceTab />
-        </TabsContent>
+        {isSupervisor && (
+          <TabsContent value="technicians" className="pt-4">
+            <TechniciansTab />
+          </TabsContent>
+        )}
+        {isSupervisor && (
+          <TabsContent value="outsource" className="pt-4">
+            <OutsourceTab />
+          </TabsContent>
+        )}
         <TabsContent value="order" className="pt-4">
           <IncomingOrderTab />
         </TabsContent>
@@ -664,8 +672,7 @@ function OrderDetailDialog({
   const enterResults = useEnterResults();
   const verifyResults = useVerifyResults();
   const generateReport = useGenerateLabReport();
-  const signReport = useSignLabReport();
-  const publishReport = usePublishLabReport();
+  const { canApprove } = useLabRole();
 
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
   const [resultRows, setResultRows] = useState<
@@ -823,8 +830,8 @@ function OrderDetailDialog({
           </div>
         </section>
 
-        {/* Result review (per-result approve / request correction) */}
-        {(order.labOrderItems ?? []).some((it) => (it as any).labResults?.length) && (
+        {/* Result review (per-result approve / request correction) — supervisor only */}
+        {canApprove && (order.labOrderItems ?? []).some((it) => (it as any).labResults?.length) && (
           <section className="space-y-2">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Result Review</h3>
             <div className="rounded-lg border divide-y">
@@ -920,6 +927,7 @@ function ReportSignPublish({ orderId }: { orderId: string }) {
   const reportsQ = useLabReports({ limit: 5 });
   const sign = useSignLabReport();
   const publish = usePublishLabReport();
+  const { canApprove } = useLabRole();
 
   const report = (reportsQ.data?.data ?? []).find((r) => r.orderId === orderId);
   if (!report) return null;
@@ -928,7 +936,7 @@ function ReportSignPublish({ orderId }: { orderId: string }) {
   return (
     <>
       <Badge>{status}</Badge>
-      {status !== 'approved' && status !== 'published' && (
+      {canApprove && status !== 'approved' && status !== 'published' && (
         <Button
           size="sm"
           onClick={async () => {
@@ -944,7 +952,7 @@ function ReportSignPublish({ orderId }: { orderId: string }) {
           Sign
         </Button>
       )}
-      {status === 'approved' && (
+      {canApprove && status === 'approved' && (
         <Button
           size="sm"
           onClick={async () => {

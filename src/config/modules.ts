@@ -42,6 +42,12 @@ export interface NavItem {
   label: string;
   href: string;
   icon: LucideIcon;
+  /**
+   * Optional allowlist of normalized role slugs (snake_case) permitted to see
+   * this item. When omitted, the item is visible to every role that can
+   * access the module. `admin` and `super_admin` always pass.
+   */
+  restrictTo?: string[];
 }
 
 export interface ModuleConfig {
@@ -77,12 +83,15 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
     icon: FlaskConical,
     baseRoute: '/laboratory',
     sidebarItems: [
+      // Home is the technician's primary surface: orders, samples, result entry.
       { label: 'Home', href: '/laboratory', icon: Home },
-      { label: 'Reports', href: '/laboratory/reports', icon: BarChart3 },
-      { label: 'Billing', href: '/laboratory/billing', icon: Receipt },
-      { label: 'Inventory', href: '/laboratory/inventory', icon: Package },
-      { label: 'Purchase', href: '/laboratory/purchase', icon: ShoppingCart },
-      { label: 'Settings', href: '/laboratory/settings', icon: Settings },
+      // Everything below is supervisor-only per SOW (review/approve/sign/publish,
+      // staff/outsource/test-catalog management, financials, analytics).
+      { label: 'Reports', href: '/laboratory/reports', icon: BarChart3, restrictTo: ['lab_supervisor', 'pathologist'] },
+      { label: 'Billing', href: '/laboratory/billing', icon: Receipt, restrictTo: ['lab_supervisor', 'pathologist'] },
+      { label: 'Inventory', href: '/laboratory/inventory', icon: Package, restrictTo: ['lab_supervisor', 'pathologist'] },
+      { label: 'Purchase', href: '/laboratory/purchase', icon: ShoppingCart, restrictTo: ['lab_supervisor', 'pathologist'] },
+      { label: 'Settings', href: '/laboratory/settings', icon: Settings, restrictTo: ['lab_supervisor', 'pathologist'] },
     ],
   },
 

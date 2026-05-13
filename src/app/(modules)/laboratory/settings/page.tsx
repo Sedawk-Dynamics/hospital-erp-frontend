@@ -23,8 +23,17 @@ import {
   useDeleteLabTest,
 } from '@/hooks/use-lab';
 import type { LabDepartment, LabTestCatalog } from '@/hooks/use-lab';
+import { SupervisorOnlyGuard } from '@/components/laboratory/supervisor-only-guard';
 
 export default function LabSettingsPage() {
+  return (
+    <SupervisorOnlyGuard>
+      <LabSettingsPageInner />
+    </SupervisorOnlyGuard>
+  );
+}
+
+function LabSettingsPageInner() {
   return (
     <div className="space-y-4 animate-fade-in-up">
       <div className="flex items-center justify-between">

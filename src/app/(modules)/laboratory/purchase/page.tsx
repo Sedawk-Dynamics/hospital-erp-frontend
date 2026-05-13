@@ -19,6 +19,7 @@ import {
   useInventoryItems,
 } from '@/hooks/use-lab';
 import type { PurchaseOrder } from '@/hooks/use-lab';
+import { SupervisorOnlyGuard } from '@/components/laboratory/supervisor-only-guard';
 
 const statusConfig: Record<string, { label: string; className: string; icon?: typeof Clock }> = {
   draft: { label: 'Draft', className: 'bg-gray-100 text-gray-800', icon: Clock },
@@ -30,6 +31,14 @@ const statusConfig: Record<string, { label: string; className: string; icon?: ty
 };
 
 export default function LabPurchasePage() {
+  return (
+    <SupervisorOnlyGuard>
+      <LabPurchasePageInner />
+    </SupervisorOnlyGuard>
+  );
+}
+
+function LabPurchasePageInner() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<string>('');
