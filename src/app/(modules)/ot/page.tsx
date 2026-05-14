@@ -42,6 +42,7 @@ import {
   useCreateOTRequest,
   useApproveOTRequest,
   useScheduleOT,
+  useOperatingTheaters,
   type OTRequest,
 } from '@/hooks/use-ot';
 import { useDoctorsList, usePatientSearch } from '@/hooks/use-hospital';
@@ -50,10 +51,12 @@ import { useDoctorsList, usePatientSearch } from '@/hooks/use-hospital';
 // Constants
 // ============================================================
 
+// Status keys match the backend OtRequestStatus enum. We surface
+// `requested` as "Pending" in the UI to align with the EmedHub vocabulary
+// the OT team uses verbally.
 const STAT_ITEMS = [
   { key: 'all', label: 'All', color: 'text-foreground' },
-  { key: 'pending', label: 'Pending', color: 'text-amber-600' },
-  { key: 'approved', label: 'Approved', color: 'text-green-600' },
+  { key: 'requested', label: 'Pending', color: 'text-amber-600' },
   { key: 'scheduled', label: 'Scheduled', color: 'text-blue-600' },
   { key: 'in_progress', label: 'In Progress', color: 'text-purple-600' },
   { key: 'completed', label: 'Completed', color: 'text-teal-600' },
@@ -61,8 +64,7 @@ const STAT_ITEMS = [
 ];
 
 const STATUS_BADGE_CLASSES: Record<string, string> = {
-  pending: 'bg-amber-100 text-amber-700 border-amber-300',
-  approved: 'bg-green-100 text-green-700 border-green-300',
+  requested: 'bg-amber-100 text-amber-700 border-amber-300',
   scheduled: 'bg-blue-100 text-blue-700 border-blue-300',
   in_progress: 'bg-purple-100 text-purple-700 border-purple-300',
   completed: 'bg-teal-100 text-teal-700 border-teal-300',
@@ -110,7 +112,10 @@ const scheduleSchema = z.object({
   scheduledDate: z.string().min(1, 'Date is required'),
   scheduledStartTime: z.string().min(1, 'Start time is required'),
   scheduledEndTime: z.string().optional(),
+  otId: z.string().optional(),
   otName: z.string().optional(),
+  surgeonId: z.string().optional(),
+  anaesthetistId: z.string().optional(),
 });
 
 type ScheduleFormValues = z.infer<typeof scheduleSchema>;
@@ -126,7 +131,7 @@ function formatPatientName(req: OTRequest): string {
   return req.patientId;
 }
 
-function formatDoctorName(doctor?: { user?: { firstName: string; lastName: string } }): string {
+function formatDoctorName(doctor?: { user?: { firstName: string; lastName: string } } | null): string {
   if (!doctor?.user) return '-';
   return `Dr. ${doctor.user.firstName} ${doctor.user.lastName}`.trim();
 }
@@ -157,6 +162,8 @@ function formatTime(timeStr?: string): string {
 }
 
 function statusLabel(status: string): string {
+  // `requested` is shown to the OT team as "Pending" to keep the EmedHub wording.
+  if (status === 'requested') return 'Pending';
   return status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
@@ -196,7 +203,7 @@ export default function OTHomePage() {
   const statCounts = useMemo(() => {
     const counts: Record<string, number> = { all: allRequests.length };
     for (const req of allRequests) {
-      const s = req.status?.toLowerCase() ?? 'unknown';
+      const s = (req.status ?? 'unknown').toLowerCase();
       counts[s] = (counts[s] || 0) + 1;
     }
     return counts;
@@ -204,7 +211,6 @@ export default function OTHomePage() {
 
   // Mutations
   const approveMutation = useApproveOTRequest();
-  const scheduleMutation = useScheduleOT();
 
   const handleApprove = useCallback(
     (id: string) => {
@@ -357,9 +363,9 @@ export default function OTHomePage() {
                     {/* Patient Details */}
                     <td className="px-4 py-3">
                       <div className="font-medium text-foreground">{formatPatientName(req)}</div>
-                      {req.patient?.uhid && (
+                      {(req.patient?.uhid || req.patient?.mrn) && (
                         <div className="text-xs text-muted-foreground">
-                          UHID: {req.patient.uhid}
+                          UHID: {req.patient.uhid ?? req.patient.mrn}
                         </div>
                       )}
                       {req.scheduledDate && (
@@ -426,23 +432,34 @@ export default function OTHomePage() {
                     {/* Action */}
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-1">
-                        {req.status === 'pending' && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-green-600 hover:text-green-700 hover:bg-green-50"
-                            onClick={() => handleApprove(req.id)}
-                            disabled={approveMutation.isPending}
-                          >
-                            {approveMutation.isPending ? (
-                              <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
-                            )}
-                            Approve
-                          </Button>
+                        {req.status === 'requested' && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                              onClick={() => handleApprove(req.id)}
+                              disabled={approveMutation.isPending}
+                            >
+                              {approveMutation.isPending ? (
+                                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                              )}
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                              onClick={() => openScheduleDialog(req)}
+                            >
+                              <CalendarClock className="mr-1 h-3.5 w-3.5" />
+                              Schedule
+                            </Button>
+                          </>
                         )}
-                        {req.status === 'approved' && (
+                        {req.status === 'scheduled' && (
                           <Button
                             size="sm"
                             variant="ghost"
@@ -450,7 +467,7 @@ export default function OTHomePage() {
                             onClick={() => openScheduleDialog(req)}
                           >
                             <CalendarClock className="mr-1 h-3.5 w-3.5" />
-                            Schedule
+                            Reschedule
                           </Button>
                         )}
                         <Button
@@ -889,10 +906,21 @@ function ScheduleOTDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const scheduleMutation = useScheduleOT();
+  const { data: theaters } = useOperatingTheaters();
+  const { data: doctorsRaw } = useDoctorsList();
+  const doctors = useMemo(
+    () => (doctorsRaw || []).map((d) => ({
+      id: d.id || d.userId,
+      name: `Dr. ${d.user?.firstName || ''} ${d.user?.lastName || ''}`.trim(),
+    })),
+    [doctorsRaw],
+  );
 
   const {
     register,
     handleSubmit,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<ScheduleFormValues>({
     resolver: zodResolver(scheduleSchema),
@@ -908,7 +936,10 @@ function ScheduleOTDialog({
         : '',
       scheduledStartTime: request.scheduledStartTime ?? '',
       scheduledEndTime: request.scheduledEndTime ?? '',
-      otName: request.otName ?? '',
+      otId: request.otId ?? '',
+      otName: request.otName ?? request.ot?.name ?? '',
+      surgeonId: request.surgeonId ?? '',
+      anaesthetistId: request.anaesthetistId ?? '',
     },
   });
 
@@ -919,7 +950,10 @@ function ScheduleOTDialog({
         scheduledDate: values.scheduledDate,
         scheduledStartTime: values.scheduledStartTime,
         scheduledEndTime: values.scheduledEndTime || undefined,
+        otId: values.otId || undefined,
         otName: values.otName || undefined,
+        surgeonId: values.surgeonId || undefined,
+        anaesthetistId: values.anaesthetistId || undefined,
       },
       {
         onSuccess: () => {
@@ -957,8 +991,63 @@ function ScheduleOTDialog({
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-1.5">
-            <Label>OT Name / Room</Label>
-            <Input {...register('otName')} placeholder="e.g., OT-1" />
+            <Label>Operating Theater</Label>
+            <Select
+              value={watch('otId') || 'none'}
+              onValueChange={(v) => {
+                if (v === 'none') {
+                  setValue('otId', '');
+                } else {
+                  setValue('otId', v ?? '');
+                  const t = theaters?.find((tt) => tt.id === v);
+                  if (t) setValue('otName', t.name);
+                }
+              }}
+            >
+              <SelectTrigger><SelectValue placeholder="Select OT room" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">— Manual entry —</SelectItem>
+                {(theaters ?? []).map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}{t.location ? ` · ${t.location}` : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input {...register('otName')} placeholder="Or enter OT name (e.g., OT-1)" className="mt-2" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>Surgeon</Label>
+              <Select
+                value={watch('surgeonId') || 'none'}
+                onValueChange={(v) => setValue('surgeonId', v === 'none' ? '' : (v ?? ''))}
+              >
+                <SelectTrigger><SelectValue placeholder="Pick surgeon" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— Unassigned —</SelectItem>
+                  {doctors.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Anaesthetist</Label>
+              <Select
+                value={watch('anaesthetistId') || 'none'}
+                onValueChange={(v) => setValue('anaesthetistId', v === 'none' ? '' : (v ?? ''))}
+              >
+                <SelectTrigger><SelectValue placeholder="Pick anaesthetist" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— Unassigned —</SelectItem>
+                  {doctors.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div className="space-y-1.5">

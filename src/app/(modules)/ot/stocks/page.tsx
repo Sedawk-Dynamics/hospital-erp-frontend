@@ -1,25 +1,36 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useMemo } from 'react';
 import { Boxes, Search, AlertTriangle, Package, CheckCircle2, XCircle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { DataTable, type Column } from '@/components/shared/data-table';
 import { PageHeader } from '@/components/shared/page-header';
-import { apiGet } from '@/lib/api';
+import {
+  useInventoryItems, useLowStockItems, type InventoryCategory, type InventoryItem,
+} from '@/hooks/use-inventory';
 
-interface InventoryItem extends Record<string, unknown> {
+// OT teams care primarily about surgical supplies + consumables. The dropdown
+// defaults to surgical_supply to cut noise; users can switch to "all" anytime.
+const OT_CATEGORIES: Array<{ value: InventoryCategory | 'all'; label: string }> = [
+  { value: 'surgical_supply', label: 'Surgical Supplies' },
+  { value: 'consumable', label: 'Consumables' },
+  { value: 'equipment', label: 'Equipment' },
+  { value: 'drug', label: 'Drugs' },
+  { value: 'all', label: 'All categories' },
+];
+
+interface StockRow extends Record<string, unknown> {
   id: string;
-  name: string;
-  category?: string;
-  sku?: string;
+  itemName: string;
+  itemCode: string | null;
+  category: string;
   currentStock: number;
-  minStock?: number;
-  reorderLevel?: number;
-  unit?: string;
-  expiryDate?: string;
-  status?: string;
+  minimumStockThreshold: number;
+  unitOfMeasurement: string | null;
 }
 
 const statCards = [
@@ -27,135 +38,123 @@ const statCards = [
   { label: 'In Stock', icon: CheckCircle2, color: 'text-emerald-600', bgColor: 'bg-emerald-50', key: 'inStock' },
   { label: 'Low Stock', icon: AlertTriangle, color: 'text-amber-600', bgColor: 'bg-amber-50', key: 'lowStock' },
   { label: 'Out of Stock', icon: XCircle, color: 'text-red-600', bgColor: 'bg-red-50', key: 'outOfStock' },
-];
+] as const;
 
-function getStockStatus(item: InventoryItem): string {
+function rowStatus(item: StockRow) {
   if (item.currentStock === 0) return 'out_of_stock';
-  if (item.reorderLevel && item.currentStock <= item.reorderLevel) return 'low_stock';
+  if (item.minimumStockThreshold && item.currentStock <= item.minimumStockThreshold) return 'low_stock';
   return 'in_stock';
 }
 
-function getExpiryStatus(expiryDate?: string): React.ReactNode {
-  if (!expiryDate) return <span className="text-muted-foreground">-</span>;
-  const expiry = new Date(expiryDate);
-  const now = new Date();
-  const daysUntilExpiry = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-
-  if (daysUntilExpiry < 0) return <StatusBadge status="expired" />;
-  if (daysUntilExpiry <= 30) return <StatusBadge status="critical" />;
-  if (daysUntilExpiry <= 90) return <StatusBadge status="warning" variant="warning" />;
-  return <StatusBadge status="valid" variant="success" />;
-}
-
-const columns: Column<InventoryItem>[] = [
+const columns: Column<StockRow>[] = [
   {
-    key: 'name',
-    label: 'Item Name',
+    key: 'itemName',
+    label: 'Item',
     sortable: true,
     render: (item) => (
       <div>
-        <p className="font-medium text-foreground">{item.name}</p>
-        {item.sku && <p className="text-xs text-muted-foreground">SKU: {item.sku}</p>}
+        <p className="font-medium text-foreground">{item.itemName}</p>
+        {item.itemCode && <p className="text-xs text-muted-foreground">{item.itemCode}</p>}
       </div>
     ),
   },
-  { key: 'category', label: 'Category', sortable: true },
+  {
+    key: 'category',
+    label: 'Category',
+    sortable: true,
+    render: (item) => <span className="capitalize text-muted-foreground">{item.category.replace('_', ' ')}</span>,
+  },
   {
     key: 'currentStock',
     label: 'Current Stock',
     sortable: true,
     render: (item) => (
-      <span className="font-medium">
-        {item.currentStock} {item.unit || 'units'}
-      </span>
+      <span className="font-medium">{item.currentStock} {item.unitOfMeasurement ?? 'units'}</span>
     ),
   },
   {
-    key: 'reorderLevel',
-    label: 'Reorder Level',
-    render: (item) => (item.reorderLevel != null ? `${item.reorderLevel} ${item.unit || 'units'}` : '-'),
+    key: 'minimumStockThreshold',
+    label: 'Reorder At',
+    render: (item) => `${item.minimumStockThreshold ?? '-'} ${item.unitOfMeasurement ?? ''}`,
   },
   {
     key: 'stockStatus',
-    label: 'Stock Status',
-    render: (item) => <StatusBadge status={getStockStatus(item)} />,
-  },
-  {
-    key: 'expiryDate',
-    label: 'Expiry Status',
-    render: (item) => getExpiryStatus(item.expiryDate as string | undefined),
+    label: 'Status',
+    render: (item) => <StatusBadge status={rowStatus(item)} />,
   },
 ];
 
 export default function OTStocksPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [category, setCategory] = useState<InventoryCategory | 'all'>('surgical_supply');
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['ot', 'stocks', { page, search }],
-    queryFn: async () => {
-      const response = await apiGet<InventoryItem[]>('/inventory/items', {
-        params: { page, limit: 20, search: search || undefined },
-      });
-      return { data: response.data, meta: response.meta };
-    },
+  const { data, isLoading } = useInventoryItems({
+    page,
+    limit: 20,
+    search: search.trim() || undefined,
+    category: category === 'all' ? undefined : category,
+    isActive: true,
   });
+  const items = (data?.data ?? []) as unknown as StockRow[];
 
-  const { data: lowStockData } = useQuery({
-    queryKey: ['ot', 'stocks', 'low-stock'],
-    queryFn: async () => {
-      const response = await apiGet<InventoryItem[]>('/inventory/items/low-stock');
-      return response.data;
-    },
-  });
+  const { data: lowStockData } = useLowStockItems({ limit: 500 });
+  const lowStockCount = useMemo(() => {
+    const rows = (lowStockData?.data ?? []) as unknown as StockRow[];
+    if (category === 'all') return rows.length;
+    return rows.filter((r) => r.category === category).length;
+  }, [lowStockData, category]);
 
-  const items = (data?.data ?? []) as InventoryItem[];
-  const lowStockCount = lowStockData?.length ?? 0;
   const totalItems = data?.meta?.total ?? 0;
   const outOfStock = items.filter((i) => i.currentStock === 0).length;
-  const inStock = totalItems - lowStockCount - outOfStock;
-
-  const stats = { total: totalItems, inStock, lowStock: lowStockCount, outOfStock };
+  const stats: Record<string, number> = {
+    total: totalItems,
+    inStock: Math.max(0, totalItems - lowStockCount - outOfStock),
+    lowStock: lowStockCount,
+    outOfStock,
+  };
 
   return (
-    <div className="space-y-6 animate-fade-in-up">
+    <div className="space-y-5 animate-fade-in-up">
       <PageHeader
         title="OT Consumable Stocks"
-        description="Monitor stock levels, reorder alerts, and expiry status for OT consumables"
+        description="Live view of surgical supplies, consumables and equipment with reorder + expiry alerts"
       />
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {statCards.map((card) => (
-          <div
-            key={card.key}
-            className={`bg-surface-container-lowest p-6 rounded-xl shadow-sanctuary border-l-4 border-primary ${card.bgColor} transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md`}
-          >
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-white/80 p-2">
-                <card.icon className={`h-5 w-5 ${card.color}`} />
-              </div>
-              <div>
-                <p className="font-headline text-3xl font-extrabold">{stats[card.key as keyof typeof stats]}</p>
-                <p className="text-xs text-muted-foreground">{card.label}</p>
-              </div>
+          <div key={card.key} className={`rounded-xl shadow-sanctuary p-4 ${card.bgColor}`}>
+            <div className="flex items-center gap-2">
+              <card.icon className={`h-4 w-4 ${card.color}`} />
+              <p className="text-xs text-muted-foreground">{card.label}</p>
             </div>
+            <p className="font-headline text-2xl font-extrabold mt-1">{stats[card.key].toLocaleString('en-IN')}</p>
           </div>
         ))}
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Search items..."
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-          className="pl-9"
-        />
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search by item name or code..."
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            className="pl-9"
+          />
+        </div>
+        <Select value={category} onValueChange={(v) => { setCategory((v ?? 'all') as InventoryCategory | 'all'); setPage(1); }}>
+          <SelectTrigger className="w-56">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {OT_CATEGORIES.map((c) => (
+              <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
-      {/* Table */}
       <DataTable
         columns={columns}
         data={items}
@@ -164,8 +163,12 @@ export default function OTStocksPage() {
         totalPages={data?.meta?.totalPages ?? 1}
         total={data?.meta?.total ?? 0}
         onPageChange={setPage}
-        emptyMessage="No stock items found."
+        emptyMessage={`No ${category === 'all' ? '' : category.replace('_', ' ') + ' '}items found.`}
       />
+
+      <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+        <Boxes className="h-3.5 w-3.5" /> To request more stock from pharmacy/warehouse, use OT → Stock Transfer.
+      </div>
     </div>
   );
 }

@@ -1,115 +1,256 @@
 'use client';
 
+import { useState } from 'react';
+import { formatDate, toInputDateStr } from '@/lib/date-utils';
 import {
-  BarChart3, Activity, UserCheck, Package, XCircle,
-  ArrowRight, Calendar, TrendingUp, Clock,
+  Activity, UserCheck, XCircle, Clock, TrendingUp, Calendar, BarChart3,
+  IndianRupee, ListChecks,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/shared/page-header';
+import { EmptyState } from '@/components/shared/empty-state';
+import { useOTAnalytics } from '@/hooks/use-ot';
 
-const reportCards = [
-  {
-    title: 'OT Utilization Report',
-    description: 'View operating theater utilization rates, peak hours, idle time analysis, and capacity planning metrics.',
-    icon: Activity,
-    color: 'text-blue-600',
-    bgColor: 'bg-blue-50',
-    borderColor: 'border-blue-200',
-    stats: [
-      { label: 'Avg Utilization', value: '-', icon: TrendingUp },
-      { label: 'Peak Hours', value: '-', icon: Clock },
-    ],
-  },
-  {
-    title: 'Surgeon Performance',
-    description: 'Analyze surgeon-wise surgery count, success rates, average duration, and complication rates.',
-    icon: UserCheck,
-    color: 'text-emerald-600',
-    bgColor: 'bg-emerald-50',
-    borderColor: 'border-emerald-200',
-    stats: [
-      { label: 'Total Surgeons', value: '-', icon: UserCheck },
-      { label: 'Surgeries Today', value: '-', icon: Calendar },
-    ],
-  },
-  {
-    title: 'Consumables Usage',
-    description: 'Track OT consumable usage patterns, cost analysis, wastage reports, and procurement forecasting.',
-    icon: Package,
-    color: 'text-purple-600',
-    bgColor: 'bg-purple-50',
-    borderColor: 'border-purple-200',
-    stats: [
-      { label: 'Items Consumed', value: '-', icon: Package },
-      { label: 'Total Cost', value: '-', icon: TrendingUp },
-    ],
-  },
-  {
-    title: 'Cancellation Report',
-    description: 'Review surgery cancellation trends, reasons analysis, rescheduling patterns, and impact assessment.',
-    icon: XCircle,
-    color: 'text-red-600',
-    bgColor: 'bg-red-50',
-    borderColor: 'border-red-200',
-    stats: [
-      { label: 'Cancellations', value: '-', icon: XCircle },
-      { label: 'This Month', value: '-', icon: Calendar },
-    ],
-  },
-];
+const STATUS_BADGE: Record<string, string> = {
+  requested: 'bg-amber-100 text-amber-700 border-amber-300',
+  scheduled: 'bg-blue-100 text-blue-700 border-blue-300',
+  in_progress: 'bg-purple-100 text-purple-700 border-purple-300',
+  completed: 'bg-emerald-100 text-emerald-700 border-emerald-300',
+  cancelled: 'bg-red-100 text-red-700 border-red-300',
+};
+
+function rupees(n: number) {
+  return `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+}
+
+function statusLabel(s: string) {
+  return s === 'requested' ? 'Pending' : s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 export default function OTReportsPage() {
+  const today = new Date();
+  const monthAgo = new Date(today);
+  monthAgo.setDate(monthAgo.getDate() - 30);
+
+  const [fromDate, setFromDate] = useState(toInputDateStr(monthAgo));
+  const [toDate, setToDate] = useState(toInputDateStr(today));
+
+  const { data, isLoading } = useOTAnalytics({ fromDate, toDate });
+
+  const totals = data?.totals ?? { total: 0, completed: 0, cancelled: 0, scheduled: 0, inProgress: 0, requested: 0 };
+  const surgeonWorkload = data?.surgeonWorkload ?? [];
+  const otUtilization = data?.otUtilization ?? [];
+  const surgeryList = data?.surgeryList ?? [];
+
   return (
-    <div className="space-y-6 animate-fade-in-up">
+    <div className="space-y-5 animate-fade-in-up">
       <PageHeader
         title="OT Reports"
-        description="Access comprehensive reports for OT operations, surgeon performance, and resource utilization"
+        description="Surgery list, OT utilization and surgeon workload over the chosen window"
       />
 
-      {/* Report Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {reportCards.map((report) => (
-          <div
-            key={report.title}
-            className={`bg-surface-container-lowest rounded-xl shadow-sanctuary border-l-4 border-primary ${report.borderColor} ${report.bgColor} p-6 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg group`}
-          >
-            <div className="flex items-start gap-4">
-              <div className="rounded-xl bg-muted p-3 shadow-sm">
-                <report.icon className={`h-6 w-6 ${report.color}`} />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-headline text-lg font-bold">{report.title}</h3>
-                <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
-                  {report.description}
-                </p>
-              </div>
-            </div>
+      <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+        <div>
+          <Label htmlFor="from">From</Label>
+          <Input id="from" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+        </div>
+        <div>
+          <Label htmlFor="to">To</Label>
+          <Input id="to" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+        </div>
+        <div className="text-xs text-muted-foreground">
+          Showing {formatDate(fromDate)} – {formatDate(toDate)}
+        </div>
+      </div>
 
-            {/* Mini stats */}
-            <div className="grid grid-cols-2 gap-3 mt-5">
-              {report.stats.map((stat) => (
-                <div
-                  key={stat.label}
-                  className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2"
-                >
-                  <stat.icon className="h-3.5 w-3.5 text-muted-foreground" />
-                  <div>
-                    <p className="text-xs text-muted-foreground">{stat.label}</p>
-                    <p className="text-sm font-semibold text-foreground">{stat.value}</p>
-                  </div>
-                </div>
-              ))}
+      {/* Totals tiles */}
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+        {[
+          { label: 'Total', value: totals.total, color: 'text-blue-700', bg: 'bg-blue-50', icon: BarChart3 },
+          { label: 'Pending', value: totals.requested, color: 'text-amber-700', bg: 'bg-amber-50', icon: Clock },
+          { label: 'Scheduled', value: totals.scheduled, color: 'text-blue-700', bg: 'bg-blue-50', icon: Calendar },
+          { label: 'In Progress', value: totals.inProgress, color: 'text-purple-700', bg: 'bg-purple-50', icon: Activity },
+          { label: 'Completed', value: totals.completed, color: 'text-emerald-700', bg: 'bg-emerald-50', icon: TrendingUp },
+          { label: 'Cancelled', value: totals.cancelled, color: 'text-red-700', bg: 'bg-red-50', icon: XCircle },
+        ].map((s) => (
+          <div key={s.label} className={`rounded-xl shadow-sanctuary p-3 ${s.bg}`}>
+            <div className="flex items-center gap-2">
+              <s.icon className={`h-4 w-4 ${s.color}`} />
+              <p className="text-xs text-muted-foreground">{s.label}</p>
             </div>
-
-            <Button
-              variant="ghost"
-              className="mt-4 gap-2 w-full justify-center group-hover:bg-muted"
-            >
-              View Report
-              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-            </Button>
+            <p className="font-headline text-2xl font-extrabold mt-1">{s.value.toLocaleString('en-IN')}</p>
           </div>
         ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Surgeon workload */}
+        <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary overflow-hidden">
+          <div className="px-5 py-3 border-b flex items-center gap-2">
+            <UserCheck className="h-4 w-4 text-emerald-600" />
+            <h2 className="font-headline text-base font-bold">Surgeon Workload</h2>
+            <span className="ml-2 text-xs text-muted-foreground">{surgeonWorkload.length} surgeons</span>
+          </div>
+          {isLoading ? (
+            <div className="p-4"><Skeleton className="h-24 w-full" /></div>
+          ) : surgeonWorkload.length === 0 ? (
+            <div className="p-6">
+              <EmptyState icon={UserCheck} title="No data" description="No surgeries in this window." />
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-[10px] uppercase tracking-widest font-label text-on-surface-variant">
+                    <th className="px-4 py-3">Surgeon</th>
+                    <th className="px-4 py-3 text-right">Total</th>
+                    <th className="px-4 py-3 text-right">Done</th>
+                    <th className="px-4 py-3 text-right">Cancelled</th>
+                    <th className="px-4 py-3 text-right">Avg Dur</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {surgeonWorkload.map((s) => (
+                    <tr key={s.surgeonId} className="border-b last:border-b-0 hover:bg-muted/30">
+                      <td className="px-4 py-2 font-medium">{s.surgeonName}</td>
+                      <td className="px-4 py-2 text-right">{s.total}</td>
+                      <td className="px-4 py-2 text-right text-emerald-700">{s.completed}</td>
+                      <td className="px-4 py-2 text-right text-red-700">{s.cancelled}</td>
+                      <td className="px-4 py-2 text-right text-muted-foreground">
+                        {s.avgDurationMin > 0 ? `${s.avgDurationMin} min` : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* OT Utilization */}
+        <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary overflow-hidden">
+          <div className="px-5 py-3 border-b flex items-center gap-2">
+            <Activity className="h-4 w-4 text-blue-600" />
+            <h2 className="font-headline text-base font-bold">OT Utilization</h2>
+            <span className="ml-2 text-xs text-muted-foreground">{otUtilization.length} theaters</span>
+          </div>
+          {isLoading ? (
+            <div className="p-4"><Skeleton className="h-24 w-full" /></div>
+          ) : otUtilization.length === 0 ? (
+            <div className="p-6">
+              <EmptyState icon={Activity} title="No data" description="No OT bookings in this window." />
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-[10px] uppercase tracking-widest font-label text-on-surface-variant">
+                    <th className="px-4 py-3">OT</th>
+                    <th className="px-4 py-3 text-right">Surgeries</th>
+                    <th className="px-4 py-3 text-right">Hours</th>
+                    <th className="px-4 py-3 text-right">Utilization</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {otUtilization.map((o) => (
+                    <tr key={o.otId} className="border-b last:border-b-0 hover:bg-muted/30">
+                      <td className="px-4 py-2 font-medium">{o.otName}</td>
+                      <td className="px-4 py-2 text-right">{o.total}</td>
+                      <td className="px-4 py-2 text-right">{(o.totalDuration / 60).toFixed(1)}h</td>
+                      <td className="px-4 py-2 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <div className="w-16 bg-muted rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className="h-full bg-primary"
+                              style={{ width: `${o.utilizationPercent}%` }}
+                            />
+                          </div>
+                          <span className="text-xs w-9 text-right">{o.utilizationPercent}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Surgery list */}
+      <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary overflow-hidden">
+        <div className="px-5 py-3 border-b flex items-center gap-2">
+          <ListChecks className="h-4 w-4 text-primary" />
+          <h2 className="font-headline text-base font-bold">Surgery List</h2>
+          <span className="ml-2 text-xs text-muted-foreground">{surgeryList.length} entries</span>
+        </div>
+        {isLoading ? (
+          <div className="p-4"><Skeleton className="h-32 w-full" /></div>
+        ) : surgeryList.length === 0 ? (
+          <div className="p-6">
+            <EmptyState icon={ListChecks} title="No surgeries" description="No OT bookings in this window." />
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-[10px] uppercase tracking-widest font-label text-on-surface-variant">
+                  <th className="px-4 py-3">Patient</th>
+                  <th className="px-4 py-3">Procedure</th>
+                  <th className="px-4 py-3">Surgeon</th>
+                  <th className="px-4 py-3">OT</th>
+                  <th className="px-4 py-3">Date</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3 text-right">Billing</th>
+                </tr>
+              </thead>
+              <tbody>
+                {surgeryList.map((s) => (
+                  <tr key={s.id} className="border-b last:border-b-0 hover:bg-muted/30">
+                    <td className="px-4 py-2">
+                      <div className="font-medium">{s.patient.firstName} {s.patient.lastName}</div>
+                      {s.patient.mrn && <div className="text-xs text-muted-foreground">{s.patient.mrn}</div>}
+                    </td>
+                    <td className="px-4 py-2">
+                      <div className="font-medium">{s.procedureName}</div>
+                      {(s.surgeryType || s.speciality) && (
+                        <div className="text-xs text-muted-foreground">
+                          {[s.surgeryType, s.speciality].filter(Boolean).join(' · ')}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-xs">{s.surgeonName}</td>
+                    <td className="px-4 py-2 text-xs">{s.otName ?? '-'}</td>
+                    <td className="px-4 py-2 text-xs text-muted-foreground">
+                      {s.scheduledDate ? formatDate(s.scheduledDate) : '-'}
+                      {s.scheduledStartTime && ` · ${s.scheduledStartTime}`}
+                    </td>
+                    <td className="px-4 py-2">
+                      <Badge variant="outline" className={`text-xs ${STATUS_BADGE[s.status] ?? ''}`}>
+                        {statusLabel(s.status)}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-2 text-right text-xs">
+                      {s.billingAmount != null ? rupees(s.billingAmount) : <span className="text-muted-foreground">-</span>}
+                      {s.billingStatus && (
+                        <div className="text-muted-foreground">{s.billingStatus}</div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Unused / placeholder secondary tile for design balance */}
+      <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+        <IndianRupee className="h-3.5 w-3.5" /> Billing totals shown per surgery; aggregate revenue is available in
+        Hospital → Billing → Transactions.
       </div>
     </div>
   );

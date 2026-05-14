@@ -189,6 +189,18 @@ export const inventoryKeys = {
     all: ['inventory', 'supply-requests'] as const,
     list: (params?: Record<string, unknown>) => ['inventory', 'supply-requests', 'list', params] as const,
   },
+  transfers: {
+    all: ['inventory', 'transfers'] as const,
+    list: (params?: Record<string, unknown>) => ['inventory', 'transfers', 'list', params] as const,
+    detail: (id: string) => ['inventory', 'transfers', 'detail', id] as const,
+  },
+  reports: {
+    stockBalance: (params?: Record<string, unknown>) => ['inventory', 'reports', 'stock-balance', params] as const,
+    deptConsumption: (params?: Record<string, unknown>) => ['inventory', 'reports', 'dept-consumption', params] as const,
+    reorderHistory: (params?: Record<string, unknown>) => ['inventory', 'reports', 'reorder-history', params] as const,
+    expiryWaste: (params?: Record<string, unknown>) => ['inventory', 'reports', 'expiry-waste', params] as const,
+    auditLogs: (params?: Record<string, unknown>) => ['inventory', 'reports', 'audit-logs', params] as const,
+  },
 };
 
 // ============================================================
@@ -609,6 +621,383 @@ export function useFulfillSupplyRequest() {
       queryClient.invalidateQueries({ queryKey: inventoryKeys.supplyRequests.all });
       queryClient.invalidateQueries({ queryKey: inventoryKeys.items.all });
       queryClient.invalidateQueries({ queryKey: inventoryKeys.transactions.all });
+    },
+  });
+}
+
+// ============================================================
+// Reports (Week 10)
+// ============================================================
+
+export interface StockBalanceParams {
+  fromDate?: string;
+  toDate?: string;
+  groupBy?: 'day' | 'month';
+  inventoryItemId?: string;
+  category?: InventoryCategory;
+}
+
+export interface StockBalanceItem {
+  itemId: string;
+  itemName: string;
+  itemCode: string | null;
+  category: string;
+  currentStock: number;
+  totalIn: number;
+  totalOut: number;
+  net: number;
+  unit: string | null;
+}
+
+export interface StockBalanceMovement {
+  itemId: string;
+  itemName: string;
+  itemCode: string | null;
+  category: string;
+  bucket: string;
+  stockIn: number;
+  stockOut: number;
+  adjustments: number;
+  expiredRemoval: number;
+  returns: number;
+  net: number;
+}
+
+export interface StockBalanceReport {
+  fromDate: string;
+  toDate: string;
+  groupBy: 'day' | 'month';
+  items: StockBalanceItem[];
+  movements: StockBalanceMovement[];
+  totals: { stockIn: number; stockOut: number; returns: number; expiredRemoval: number };
+}
+
+export function useStockBalanceReport(params?: StockBalanceParams) {
+  return useQuery({
+    queryKey: inventoryKeys.reports.stockBalance(params as Record<string, unknown>),
+    queryFn: async () => {
+      const response = await apiGet<StockBalanceReport>('/inventory/reports/stock-balance', { params });
+      return response.data;
+    },
+  });
+}
+
+export interface DeptConsumptionParams {
+  fromDate?: string;
+  toDate?: string;
+  departmentId?: string;
+  inventoryItemId?: string;
+}
+
+export interface DeptConsumptionDept {
+  departmentId: string;
+  departmentName: string;
+  totalQuantity: number;
+  totalCost: number;
+  items: Array<{
+    itemId: string;
+    itemName: string;
+    itemCode: string | null;
+    category: string;
+    unit: string | null;
+    quantity: number;
+    totalCost: number;
+  }>;
+}
+
+export interface DeptConsumptionReport {
+  fromDate: string;
+  toDate: string;
+  departments: DeptConsumptionDept[];
+  totals: { quantity: number; cost: number };
+}
+
+export function useDeptConsumptionReport(params?: DeptConsumptionParams) {
+  return useQuery({
+    queryKey: inventoryKeys.reports.deptConsumption(params as Record<string, unknown>),
+    queryFn: async () => {
+      const response = await apiGet<DeptConsumptionReport>('/inventory/reports/dept-consumption', { params });
+      return response.data;
+    },
+  });
+}
+
+export interface ReorderHistoryParams extends PaginatedParams {
+  fromDate?: string;
+  toDate?: string;
+  supplierId?: string;
+  inventoryItemId?: string;
+  status?: PurchaseOrderStatus;
+}
+
+export interface ReorderHistorySummaryRow {
+  supplierId: string;
+  supplierName: string;
+  orderCount: number;
+  totalAmount: number;
+}
+
+export function useReorderHistoryReport(params?: ReorderHistoryParams) {
+  return useQuery({
+    queryKey: inventoryKeys.reports.reorderHistory(params as Record<string, unknown>),
+    queryFn: async () => {
+      const response = await apiGet<PurchaseOrder[]>('/inventory/reports/reorder-history', { params });
+      return {
+        data: response.data,
+        meta: response.meta as PaginationMeta | undefined,
+        bySupplier:
+          (response as unknown as { bySupplier?: ReorderHistorySummaryRow[] }).bySupplier ?? [],
+      };
+    },
+  });
+}
+
+export interface ExpiryWasteParams {
+  fromDate?: string;
+  toDate?: string;
+  windowMonths?: number;
+  inventoryItemId?: string;
+}
+
+export interface ExpiryWasteReport {
+  fromDate: string;
+  toDate: string;
+  windowMonths: number;
+  expiringBatches: Array<{
+    transactionId: string;
+    item: {
+      id: string;
+      itemName: string;
+      itemCode: string | null;
+      unitOfMeasurement: string | null;
+      category: string;
+    };
+    batchNumber: string | null;
+    expiryDate: string;
+    receivedAt: string;
+    receivedQuantity: number;
+    remainingQuantity: number;
+    unitCost: number;
+  }>;
+  expiredRemovals: StockTransaction[];
+  returns: StockTransaction[];
+  summary: {
+    expiringCount: number;
+    expiredCount: number;
+    returnCount: number;
+    wasteValue: number;
+    expiredQuantity: number;
+    returnQuantity: number;
+  };
+}
+
+export function useExpiryWasteReport(params?: ExpiryWasteParams) {
+  return useQuery({
+    queryKey: inventoryKeys.reports.expiryWaste(params as Record<string, unknown>),
+    queryFn: async () => {
+      const response = await apiGet<ExpiryWasteReport>('/inventory/reports/expiry-waste', { params });
+      return response.data;
+    },
+  });
+}
+
+export interface AuditLogsParams extends PaginatedParams {
+  fromDate?: string;
+  toDate?: string;
+  userId?: string;
+  action?: 'create' | 'update' | 'delete';
+  entityType?: string;
+}
+
+export interface AuditLogRow {
+  id: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  description: string | null;
+  oldValues: unknown;
+  newValues: unknown;
+  createdAt: string;
+  user?: { id: string; firstName: string; lastName: string; email: string } | null;
+}
+
+export function useInventoryAuditLogs(params?: AuditLogsParams) {
+  return useQuery({
+    queryKey: inventoryKeys.reports.auditLogs(params as Record<string, unknown>),
+    queryFn: async () => {
+      const response = await apiGet<AuditLogRow[]>('/inventory/reports/audit-logs', { params });
+      return { data: response.data, meta: response.meta as PaginationMeta | undefined };
+    },
+  });
+}
+
+// ============================================================
+// Stock Transfers (Week 10)
+// ============================================================
+
+export type StockTransferStatus =
+  | 'pending'
+  | 'approved'
+  | 'dispatched'
+  | 'received'
+  | 'rejected'
+  | 'cancelled';
+
+export interface StockTransfer {
+  id: string;
+  transferNumber: string;
+  inventoryItemId: string;
+  fromDepartmentId: string | null;
+  toDepartmentId: string | null;
+  fromLocation: string | null;
+  toLocation: string | null;
+  quantityRequested: number;
+  quantityTransferred: number;
+  batchNumber: string | null;
+  status: StockTransferStatus;
+  reason: string | null;
+  notes: string | null;
+  requestedBy: string;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  dispatchedBy: string | null;
+  dispatchedAt: string | null;
+  receivedBy: string | null;
+  receivedAt: string | null;
+  rejectionReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  inventoryItem?: Pick<InventoryItem, 'id' | 'itemName' | 'itemCode' | 'unitOfMeasurement'> & {
+    currentStock?: number;
+  };
+  fromDepartment?: { id: string; name: string } | null;
+  toDepartment?: { id: string; name: string } | null;
+  requester?: { id: string; firstName: string; lastName: string };
+  approver?: { id: string; firstName: string; lastName: string } | null;
+}
+
+export interface CreateStockTransferInput {
+  inventoryItemId: string;
+  fromDepartmentId?: string;
+  toDepartmentId?: string;
+  fromLocation?: string;
+  toLocation?: string;
+  quantityRequested: number;
+  batchNumber?: string;
+  reason?: string;
+  notes?: string;
+}
+
+export interface StockTransferQueryParams extends PaginatedParams {
+  status?: StockTransferStatus;
+  fromDepartmentId?: string;
+  toDepartmentId?: string;
+  inventoryItemId?: string;
+  fromDate?: string;
+  toDate?: string;
+}
+
+export function useStockTransfers(params?: StockTransferQueryParams) {
+  return useQuery({
+    queryKey: inventoryKeys.transfers.list(params as Record<string, unknown>),
+    queryFn: async () => {
+      const response = await apiGet<StockTransfer[]>('/inventory/transfers', { params });
+      return { data: response.data, meta: response.meta as PaginationMeta | undefined };
+    },
+  });
+}
+
+export function useStockTransfer(id: string | null) {
+  return useQuery({
+    queryKey: inventoryKeys.transfers.detail(id ?? ''),
+    queryFn: async () => {
+      const response = await apiGet<StockTransfer>(`/inventory/transfers/${id}`);
+      return response.data;
+    },
+    enabled: !!id,
+  });
+}
+
+export function useCreateStockTransfer() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: CreateStockTransferInput) => {
+      const response = await apiPost<StockTransfer>('/inventory/transfers', data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.transfers.all });
+    },
+  });
+}
+
+export function useApproveStockTransfer() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, notes }: { id: string; notes?: string }) => {
+      const response = await apiPatch<StockTransfer>(`/inventory/transfers/${id}/approve`, { notes });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.transfers.all });
+    },
+  });
+}
+
+export function useRejectStockTransfer() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, rejectionReason }: { id: string; rejectionReason: string }) => {
+      const response = await apiPatch<StockTransfer>(`/inventory/transfers/${id}/reject`, {
+        rejectionReason,
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.transfers.all });
+    },
+  });
+}
+
+export function useDispatchStockTransfer() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, quantityDispatched }: { id: string; quantityDispatched?: number }) => {
+      const response = await apiPatch<StockTransfer>(`/inventory/transfers/${id}/dispatch`, {
+        quantityDispatched,
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.transfers.all });
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.items.all });
+    },
+  });
+}
+
+export function useReceiveStockTransfer() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiPatch<StockTransfer>(`/inventory/transfers/${id}/receive`);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.transfers.all });
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.items.all });
+    },
+  });
+}
+
+export function useCancelStockTransfer() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason?: string }) => {
+      const response = await apiPatch<StockTransfer>(`/inventory/transfers/${id}/cancel`, { reason });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.transfers.all });
     },
   });
 }
