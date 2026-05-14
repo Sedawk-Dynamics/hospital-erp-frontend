@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Search, ClipboardCheck, FlaskConical, FileSignature, AlertCircle } from 'lucide-react';
+import { Search, ClipboardCheck, FlaskConical, FileSignature, AlertCircle, Eye } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +39,7 @@ import { LabAttachmentsViewer } from '@/components/shared/lab-attachments-viewer
 import { useLabOrderAttachments } from '@/hooks/use-lab-attachments';
 import { useLabRole } from '@/hooks/use-lab-role';
 import { LabDashboardSummary } from '@/components/laboratory/lab-dashboard-summary';
+import { LabReportPrintDialog } from '@/components/laboratory/lab-report-print-view';
 
 export default function LaboratoryHomePage() {
   // Technicians get the worklist surface only: status, reports, order intake.
@@ -936,6 +937,7 @@ function ReportSignPublish({ orderId }: { orderId: string }) {
   const sign = useSignLabReport();
   const publish = usePublishLabReport();
   const { canApprove } = useLabRole();
+  const [previewId, setPreviewId] = useState<string | null>(null);
 
   const report = (reportsQ.data?.data ?? []).find((r) => r.orderId === orderId);
   if (!report) return null;
@@ -944,6 +946,9 @@ function ReportSignPublish({ orderId }: { orderId: string }) {
   return (
     <>
       <Badge>{status}</Badge>
+      <Button size="sm" variant="outline" onClick={() => setPreviewId(report.id)}>
+        <Eye className="size-3.5" /> Preview
+      </Button>
       {canApprove && status !== 'approved' && status !== 'published' && (
         <Button
           size="sm"
@@ -976,6 +981,12 @@ function ReportSignPublish({ orderId }: { orderId: string }) {
           Publish
         </Button>
       )}
+
+      <LabReportPrintDialog
+        reportId={previewId}
+        open={!!previewId}
+        onOpenChange={(next) => !next && setPreviewId(null)}
+      />
     </>
   );
 }

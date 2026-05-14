@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Search, FileText, RefreshCw, Download, BarChart3, Clock, TrendingUp, Building2, AlertCircle, Edit3 } from 'lucide-react';
+import { Search, FileText, RefreshCw, Download, BarChart3, Clock, TrendingUp, Building2, AlertCircle, Edit3, Eye } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -19,6 +19,7 @@ import {
 } from '@/hooks/use-lab';
 import type { LabReport } from '@/hooks/use-lab';
 import { SupervisorOnlyGuard } from '@/components/laboratory/supervisor-only-guard';
+import { LabReportPrintDialog } from '@/components/laboratory/lab-report-print-view';
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   draft: { label: 'Draft', className: 'bg-gray-100 text-gray-800' },
@@ -78,6 +79,7 @@ function LabReportsPageInner() {
   const analyticsQ = useLabReportAnalytics();
   const extendedQ = useLabAnalyticsExtended();
   const [correctFor, setCorrectFor] = useState<LabReport | null>(null);
+  const [previewFor, setPreviewFor] = useState<string | null>(null);
 
   const reports = data?.data ?? [];
   const meta = data?.meta;
@@ -347,6 +349,14 @@ function LabReportsPageInner() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setPreviewFor(report.id)}
+                              title="Preview branded report"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                            </Button>
                             {report.status === 'draft' && report.orderId && (
                               <Button
                                 variant="outline"
@@ -400,6 +410,12 @@ function LabReportsPageInner() {
       </div>
 
       <CorrectionDialog report={correctFor} onClose={() => setCorrectFor(null)} />
+
+      <LabReportPrintDialog
+        reportId={previewFor}
+        open={!!previewFor}
+        onOpenChange={(next) => !next && setPreviewFor(null)}
+      />
     </div>
   );
 }

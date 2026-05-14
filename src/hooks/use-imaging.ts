@@ -64,6 +64,7 @@ export interface ImagingResult {
   /** legacy alias */
   reportedBy?: { id: string; firstName: string; lastName: string };
   signedBy?: string;
+  signedAt?: string;
   signer?: { id: string; firstName: string; lastName: string };
   /** legacy alias for signer */
   verifiedBy?: { id: string; firstName: string; lastName: string };
@@ -309,6 +310,32 @@ export function useAddImagingReport() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: imagingKeys.results.all });
+    },
+  });
+}
+
+export interface ImagingAnalytics {
+  summary: {
+    totalRequests: number;
+    completedRequests: number;
+    openRequests: number;
+    publishedReports: number;
+    avgTatHours: number;
+    medianTatHours: number;
+  };
+  statusMix: Record<string, number>;
+  urgencyMix: Record<string, number>;
+  modalityVolume: { modality: string; count: number }[];
+  bodyPartVolume: { bodyPart: string; count: number }[];
+  technicianWorkload: { id: string; name: string; count: number }[];
+}
+
+export function useImagingAnalytics(params?: { fromDate?: string; toDate?: string }) {
+  return useQuery({
+    queryKey: ['imaging', 'analytics', params],
+    queryFn: async () => {
+      const response = await apiGet<ImagingAnalytics>('/imaging/analytics', { params });
+      return response.data;
     },
   });
 }

@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { formatDateTime, toInputDateStr } from '@/lib/date-utils';
 import {
   Search, Calendar, Activity, Clock, CheckCircle2, Loader2,
-  CalendarPlus, ImagePlus, ShieldCheck,
+  CalendarPlus, ImagePlus, ShieldCheck, Eye,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -30,6 +30,7 @@ import {
 import { useUsersList } from '@/hooks/use-users';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { RadiologyReportPrintDialog } from '@/components/radiology/radiology-report-print-view';
 
 export default function RadiologyHomePage() {
   return (
@@ -413,6 +414,7 @@ function ResultsTab() {
   const verify = useVerifyImagingResult();
 
   const [reportFor, setReportFor] = useState<ImagingResult | null>(null);
+  const [previewId, setPreviewId] = useState<string | null>(null);
 
   return (
     <div className="space-y-4">
@@ -447,6 +449,9 @@ function ResultsTab() {
                   <td className="px-4 py-3 text-xs">{formatDateTime(r.createdAt)}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-1">
+                      <Button size="sm" variant="outline" onClick={() => setPreviewId(r.id)} title="Preview branded report">
+                        <Eye className="size-3.5" />
+                      </Button>
                       {r.status === 'draft' && (
                         <Button size="sm" variant="outline" onClick={() => setReportFor(r)}>Add Report</Button>
                       )}
@@ -477,6 +482,12 @@ function ResultsTab() {
           </tbody>
         </table>
       </div>
+
+      <RadiologyReportPrintDialog
+        resultId={previewId}
+        open={!!previewId}
+        onOpenChange={(next) => !next && setPreviewId(null)}
+      />
 
       <AddReportDialog
         result={reportFor}
