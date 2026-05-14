@@ -549,3 +549,59 @@ export function usePrescriptionDetail(id: string | null) {
     enabled: !!id,
   });
 }
+
+// ============================================================
+// Analytics — Pharmacy Reports page
+// ============================================================
+
+export interface PharmacyAnalytics {
+  sales: {
+    today: number;
+    week: number;
+    month: number;
+    rangeRevenue: number;
+    rangeMargin: number;
+    rangeTransactions: number;
+    revenueByCategory: { categoryId: string; categoryName: string; revenue: number }[];
+  };
+  topDrugs: { drugId: string; drugName: string; qty: number; revenue: number }[];
+  expiry: {
+    soonCount: number;
+    expiredCount: number;
+    valueAtRisk: number;
+    upcoming: {
+      batchId: string;
+      drugName: string;
+      batchNumber: string;
+      quantityInStock: number;
+      expiryDate: string;
+      sellingPrice: number;
+    }[];
+  };
+  stockUsage: {
+    activeBatches: number;
+    slowMovers: {
+      batchId: string;
+      drugName: string;
+      batchNumber: string;
+      quantityInStock: number;
+      expiryDate: string;
+    }[];
+  };
+  batchSummary: {
+    activeBatches: number;
+    totalStockValue: number;
+    totalRetailValue: number;
+    potentialMargin: number;
+  };
+}
+
+export function usePharmacyAnalytics(params?: { fromDate?: string; toDate?: string }) {
+  return useQuery({
+    queryKey: ['pharmacy', 'analytics', params],
+    queryFn: async () => {
+      const response = await apiGet<PharmacyAnalytics>('/pharmacy/analytics', { params });
+      return response.data;
+    },
+  });
+}
