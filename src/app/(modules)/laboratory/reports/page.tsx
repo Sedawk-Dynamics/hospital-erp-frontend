@@ -1,13 +1,22 @@
 'use client';
 
 import { useState } from 'react';
-import { Search, FileText, RefreshCw, Download, BarChart3, Clock, TrendingUp, Building2 } from 'lucide-react';
+import { Search, FileText, RefreshCw, Download, BarChart3, Clock, TrendingUp, Building2, AlertCircle, Edit3 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { formatDate, formatDateTime } from '@/lib/date-utils';
-import { useLabReports, useGenerateLabReport, useLabReportAnalytics } from '@/hooks/use-lab';
+import {
+  useLabReports,
+  useGenerateLabReport,
+  useLabReportAnalytics,
+  useLabAnalyticsExtended,
+  useCorrectLabReport,
+} from '@/hooks/use-lab';
 import type { LabReport } from '@/hooks/use-lab';
 import { SupervisorOnlyGuard } from '@/components/laboratory/supervisor-only-guard';
 
@@ -67,10 +76,13 @@ function LabReportsPageInner() {
 
   const generateReport = useGenerateLabReport();
   const analyticsQ = useLabReportAnalytics();
+  const extendedQ = useLabAnalyticsExtended();
+  const [correctFor, setCorrectFor] = useState<LabReport | null>(null);
 
   const reports = data?.data ?? [];
   const meta = data?.meta;
   const analytics = analyticsQ.data;
+  const extended = extendedQ.data;
 
   const handleGenerate = async (orderId: string) => {
     try {
@@ -126,6 +138,62 @@ function LabReportsPageInner() {
               ))}
               {analytics.departmentWorkload.length === 0 && <p className="text-xs text-muted-foreground">No data yet.</p>}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Per-test TAT breach analysis — shown when at least one test has data */}
+      {extended && extended.perTestTat.length > 0 && (
+        <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
+              TAT vs SLA (per test)
+            </h3>
+            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+              <span>{extended.overallBreaches} breaches</span>
+              <span>·</span>
+              <span>
+                {extended.abnormalRate}% abnormal ({extended.abnormalResults}/{extended.totalResults})
+              </span>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="text-[10px] uppercase text-muted-foreground">
+                <tr>
+                  <th className="text-left pb-1.5">Test</th>
+                  <th className="text-right pb-1.5">N</th>
+                  <th className="text-right pb-1.5">Avg</th>
+                  <th className="text-right pb-1.5">Median</th>
+                  <th className="text-right pb-1.5">P95</th>
+                  <th className="text-right pb-1.5">SLA</th>
+                  <th className="text-right pb-1.5">Breaches</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {extended.perTestTat.slice(0, 12).map((t) => (
+                  <tr key={t.testId} className={cn(t.breachRate >= 25 && 'text-error')}>
+                    <td className="py-1.5 pr-2 truncate max-w-[180px]">{t.testName}</td>
+                    <td className="py-1.5 pr-2 text-right">{t.sampleCount}</td>
+                    <td className="py-1.5 pr-2 text-right">{t.avgTatHours}h</td>
+                    <td className="py-1.5 pr-2 text-right">{t.medianTatHours}h</td>
+                    <td className="py-1.5 pr-2 text-right">{t.p95TatHours}h</td>
+                    <td className="py-1.5 pr-2 text-right text-muted-foreground">
+                      {t.tatLimitHours ? `${t.tatLimitHours}h` : '—'}
+                    </td>
+                    <td className="py-1.5 pr-2 text-right">
+                      {t.breaches > 0 ? (
+                        <span className="font-semibold">
+                          {t.breaches} <span className="text-muted-foreground">({t.breachRate}%)</span>
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">0</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
@@ -289,6 +357,16 @@ function LabReportsPageInner() {
                                 Generate
                               </Button>
                             )}
+                            {(report.status === 'published' || report.status === 'corrected') && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setCorrectFor(report)}
+                                title="Issue a corrected version"
+                              >
+                                <Edit3 className="mr-1 h-3.5 w-3.5" /> Correct
+                              </Button>
+                            )}
                             {report.fileUrl && (
                               <Button
                                 variant="ghost"
@@ -320,7 +398,86 @@ function LabReportsPageInner() {
           )}
         </div>
       </div>
+
+      <CorrectionDialog report={correctFor} onClose={() => setCorrectFor(null)} />
     </div>
+  );
+}
+
+// Issue a corrected version of a published report. Bumps the version and
+// requires re-sign before the next publish; sends an email + portal
+// notification to the patient and ordering doctor.
+function CorrectionDialog({ report, onClose }: { report: LabReport | null; onClose: () => void }) {
+  const correct = useCorrectLabReport();
+  const [notes, setNotes] = useState('');
+  const [notify, setNotify] = useState(true);
+
+  const handle = async () => {
+    if (!report) return;
+    if (!notes.trim()) {
+      toast.error('Correction reason is required');
+      return;
+    }
+    try {
+      await correct.mutateAsync({
+        id: report.id,
+        correctionNotes: notes.trim(),
+        notify,
+      });
+      toast.success('Report corrected; re-sign required');
+      setNotes('');
+      setNotify(true);
+      onClose();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Failed to correct report');
+    }
+  };
+
+  return (
+    <Dialog open={!!report} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 text-amber-600" />
+            Correct Report
+          </DialogTitle>
+          <DialogDescription>
+            A new version will be created and the report will move back to draft. The
+            existing signature is cleared, so a supervisor must re-sign before the
+            corrected version is republished.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <div>
+            <Label>Reason for correction *</Label>
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={4}
+              placeholder="Describe what changed and why"
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={notify}
+              onChange={(e) => setNotify(e.target.checked)}
+            />
+            Notify patient and ordering doctor (email + portal)
+          </label>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={correct.isPending}>
+            Cancel
+          </Button>
+          <Button onClick={handle} disabled={correct.isPending}>
+            {correct.isPending ? 'Saving…' : 'Issue Correction'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

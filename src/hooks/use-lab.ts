@@ -91,7 +91,12 @@ export interface LabOrder {
     status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
     test: { id: string; testName: string; testCode?: string };
   }>;
-  labSamples?: Array<{ id: string; status: string; sampleType: string }>;
+  labSamples?: Array<{
+    id: string;
+    status: string;
+    sampleType: string;
+    barcode?: string | null;
+  }>;
   priority?: 'routine' | 'urgent' | 'stat';
   urgency?: 'routine' | 'urgent' | 'stat';
   status:
@@ -797,6 +802,88 @@ export function useLabReportAnalytics(params?: { fromDate?: string; toDate?: str
     queryKey: ['lab', 'reports', 'analytics', params],
     queryFn: async () => {
       const response = await apiGet<LabReportAnalytics>('/lab/reports/analytics', { params });
+      return response.data;
+    },
+  });
+}
+
+export interface LabDashboardData {
+  summary: {
+    incomingOrders: number;
+    inProgressOrders: number;
+    samplesCollected: number;
+    samplesInTransit: number;
+    samplesReceived: number;
+    samplesProcessing: number;
+    resultsAwaitingVerify: number;
+    reportsAwaitingSign: number;
+    reportsAwaitingPublish: number;
+    publishedToday: number;
+    correctedReports: number;
+    abnormalRecent: number;
+    overdueOrders: number;
+  };
+  recentOrders: Array<{
+    id: string;
+    createdAt: string;
+    status: string;
+    urgency?: string;
+    acceptedAt?: string | null;
+    patient: { id: string; mrn: string; firstName: string; lastName: string | null };
+    orderer?: { id: string; firstName: string; lastName: string };
+    labOrderItems?: { id: string }[];
+  }>;
+  recentPublishedReports: Array<{
+    id: string;
+    publishedAt: string;
+    version: number;
+    patient: { firstName: string; lastName: string | null; mrn: string };
+    labOrder: { id: string };
+  }>;
+  overdueOrders: Array<{
+    id: string;
+    createdAt: string;
+    status: string;
+    urgency?: string;
+    patient: { firstName: string; lastName: string | null; mrn: string };
+  }>;
+}
+
+export function useLabDashboard() {
+  return useQuery({
+    queryKey: ['lab', 'dashboard'],
+    queryFn: async () => {
+      const response = await apiGet<LabDashboardData>('/lab/dashboard');
+      return response.data;
+    },
+    refetchInterval: 60_000, // 1 min — keeps the worklist counts current without polling spam
+  });
+}
+
+export interface LabAnalyticsExtended {
+  perTestTat: Array<{
+    testId: string;
+    testName: string;
+    sampleCount: number;
+    avgTatHours: number;
+    medianTatHours: number;
+    p95TatHours: number;
+    tatLimitHours: number | null;
+    breaches: number;
+    breachRate: number;
+  }>;
+  overallBreaches: number;
+  dailyTrend: Array<{ date: string; count: number }>;
+  abnormalResults: number;
+  totalResults: number;
+  abnormalRate: number;
+}
+
+export function useLabAnalyticsExtended(params?: { fromDate?: string; toDate?: string }) {
+  return useQuery({
+    queryKey: ['lab', 'reports', 'analytics-extended', params],
+    queryFn: async () => {
+      const response = await apiGet<LabAnalyticsExtended>('/lab/reports/analytics-extended', { params });
       return response.data;
     },
   });

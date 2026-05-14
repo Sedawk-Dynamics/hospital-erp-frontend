@@ -38,6 +38,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { LabAttachmentsViewer } from '@/components/shared/lab-attachments-viewer';
 import { useLabOrderAttachments } from '@/hooks/use-lab-attachments';
 import { useLabRole } from '@/hooks/use-lab-role';
+import { LabDashboardSummary } from '@/components/laboratory/lab-dashboard-summary';
 
 export default function LaboratoryHomePage() {
   // Technicians get the worklist surface only: status, reports, order intake.
@@ -46,6 +47,8 @@ export default function LaboratoryHomePage() {
   return (
     <div className="space-y-4 animate-fade-in-up">
       <h1 className="font-headline text-xl font-bold">Laboratory Home</h1>
+
+      <LabDashboardSummary />
 
       <Tabs defaultValue="status">
         <TabsList variant="line">
@@ -741,6 +744,11 @@ function OrderDetailDialog({
                   <div>
                     <span className="font-medium">{s.sampleType}</span>
                     <Badge className="ml-2">{s.status.replace('_', ' ')}</Badge>
+                    {s.barcode && (
+                      <span className="ml-2 font-mono text-[10px] text-muted-foreground">
+                        {s.barcode}
+                      </span>
+                    )}
                   </div>
                   <div className="flex gap-1">
                     {s.status === 'collected' && <Button size="sm" variant="outline" onClick={() => advanceSample(s.id, 'in_transit')}>→ Transit</Button>}
