@@ -5,6 +5,7 @@ export type ModuleKey =
   | 'laboratory'
   | 'radiology'
   | 'pharmacy'
+  | 'inventory'
   | 'ot'
   | 'counsellor'
   | 'daycare'

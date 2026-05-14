@@ -33,6 +33,7 @@ import {
   ArrowRightLeft,
   ClipboardCheck,
   ShieldCheck,
+  ShieldAlert,
   UserCog,
   type LucideIcon,
 } from 'lucide-react';
@@ -102,6 +103,8 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
     baseRoute: '/radiology',
     sidebarItems: [
       { label: 'Home', href: '/radiology', icon: Home },
+      { label: 'DICOM Studies', href: '/radiology/studies', icon: ScanLine },
+      { label: 'Worklist', href: '/radiology/worklist', icon: ClipboardList },
       { label: 'Reports', href: '/radiology/reports', icon: BarChart3 },
       { label: 'Billing', href: '/radiology/billing', icon: Receipt },
       { label: 'Inventory', href: '/radiology/inventory', icon: Package },
@@ -121,6 +124,8 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Billing Transaction', href: '/pharmacy/transactions', icon: ArrowLeftRight },
       { label: 'Drug Formulary', href: '/pharmacy/inventory', icon: Pill },
       { label: 'Batches', href: '/pharmacy/batches', icon: PillBottle },
+      { label: 'Returns', href: '/pharmacy/returns', icon: ArrowLeftRight },
+      { label: 'Recalls', href: '/pharmacy/recalls', icon: ShieldAlert },
       { label: 'Purchase', href: '/pharmacy/purchase', icon: ShoppingCart },
       { label: 'Reports', href: '/pharmacy/reports', icon: BarChart3 },
       { label: 'Stock Transfer', href: '/pharmacy/stock-transfer', icon: Truck },
@@ -196,6 +201,7 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Registry', href: '/doctor/registry', icon: FileBarChart },
       { label: 'MRD', href: '/doctor/mrd', icon: FolderArchive },
       { label: 'OT List', href: '/doctor/ot-list', icon: HeartPulse },
+      { label: 'CDSS Alerts', href: '/doctor/cdss', icon: Activity },
       { label: 'Settings', href: '/doctor/settings', icon: Settings },
     ],
   },
@@ -216,6 +222,23 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Shift Handover', href: '/nurse/handover', icon: ArrowRightLeft },
       { label: 'Orders & Ward', href: '/nurse/orders', icon: ClipboardCheck },
       { label: 'Settings', href: '/nurse/settings', icon: Settings },
+    ],
+  },
+
+  inventory: {
+    key: 'inventory',
+    label: 'Inventory',
+    icon: Package,
+    baseRoute: '/inventory',
+    sidebarItems: [
+      { label: 'Stock Register', href: '/inventory', icon: ClipboardList },
+      { label: 'Stock In', href: '/inventory/stock-in', icon: Truck },
+      { label: 'Stock Out', href: '/inventory/stock-out', icon: ArrowRightLeft },
+      { label: 'Expiry Tracking', href: '/inventory/expiring', icon: Activity },
+      { label: 'Low Stock Alerts', href: '/inventory/low-stock', icon: HeartPulse },
+      { label: 'Purchase Orders', href: '/inventory/purchase-orders', icon: ShoppingCart },
+      { label: 'Suppliers', href: '/inventory/suppliers', icon: Users },
+      { label: 'Settings', href: '/inventory/settings', icon: Settings },
     ],
   },
 

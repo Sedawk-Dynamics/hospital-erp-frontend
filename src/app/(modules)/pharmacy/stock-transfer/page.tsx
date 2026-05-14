@@ -19,17 +19,19 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { useStockTransactions } from '@/hooks/use-inventory';
 
 const typeColors: Record<string, string> = {
-  in: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
-  out: 'bg-red-500/10 text-red-600 border-red-500/20',
+  stock_in: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
+  stock_out: 'bg-red-500/10 text-red-600 border-red-500/20',
+  return_stock: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
   adjustment: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
-  transfer: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+  expired_removal: 'bg-red-500/10 text-red-700 border-red-500/30',
 };
 
 const typeLabels: Record<string, string> = {
-  in: 'Stock In',
-  out: 'Stock Out',
+  stock_in: 'Stock In',
+  stock_out: 'Stock Out',
+  return_stock: 'Return',
   adjustment: 'Adjustment',
-  transfer: 'Transfer',
+  expired_removal: 'Expired',
 };
 
 export default function PharmacyStockTransferPage() {
@@ -90,19 +92,19 @@ export default function PharmacyStockTransferPage() {
                 {transactions.map((txn) => (
                   <TableRow key={txn.id}>
                     <TableCell className="font-medium">
-                      {txn.item?.name || txn.itemId}
+                      {txn.inventoryItem?.itemName || txn.inventoryItemId}
                     </TableCell>
                     <TableCell className="text-center">
-                      <Badge className={typeColors[txn.type] || ''}>
-                        {typeLabels[txn.type] || txn.type}
+                      <Badge className={typeColors[txn.transactionType] || ''}>
+                        {typeLabels[txn.transactionType] || txn.transactionType}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right font-mono">
-                      <span className={txn.type === 'in' ? 'text-emerald-600' : txn.type === 'out' ? 'text-red-600' : ''}>
-                        {txn.type === 'in' ? '+' : txn.type === 'out' ? '-' : ''}{txn.quantity}
+                      <span className={txn.transactionType === 'stock_in' ? 'text-emerald-600' : txn.transactionType === 'stock_out' ? 'text-red-600' : ''}>
+                        {txn.transactionType === 'stock_in' ? '+' : txn.transactionType === 'stock_out' ? '-' : ''}{txn.quantity}
                       </span>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{txn.department || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">{txn.department?.name || '-'}</TableCell>
                     <TableCell className="text-muted-foreground font-mono text-xs">
                       {txn.referenceType ? `${txn.referenceType}` : '-'}
                       {txn.referenceId ? ` #${txn.referenceId.slice(0, 8)}` : ''}

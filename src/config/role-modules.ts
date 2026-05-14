@@ -20,6 +20,7 @@ export const ALL_MODULES: ModuleKey[] = [
   'laboratory',
   'radiology',
   'pharmacy',
+  'inventory',
   'ot',
   'counsellor',
   'daycare',
@@ -35,6 +36,7 @@ export const ADMIN_MODULES: ModuleKey[] = [
   'laboratory',
   'radiology',
   'pharmacy',
+  'inventory',
   'ot',
   'counsellor',
   'daycare',
@@ -90,8 +92,8 @@ const ROLE_MODULE_MAP: Record<string, ModuleKey[]> = {
   cashier: ['hospital'],
   insurance_staff: ['hospital'],
 
-  // Inventory → pharmacy, laboratory, ot (stock management across modules)
-  inventory_manager: ['pharmacy', 'laboratory', 'ot'],
+  // Inventory → dedicated inventory module + cross-module read access
+  inventory_manager: ['inventory', 'pharmacy', 'laboratory', 'ot'],
 
   // Blood bank → hospital
   blood_bank_staff: ['hospital'],

@@ -605,3 +605,161 @@ export function usePharmacyAnalytics(params?: { fromDate?: string; toDate?: stri
     },
   });
 }
+
+// ============================================================
+// Recall Management
+// ============================================================
+
+export interface RecalledBatch {
+  id: string;
+  batchNumber: string;
+  expiryDate: string;
+  quantityInStock: number;
+  isRecalled: boolean;
+  recallReason: string | null;
+  drug: { id: string; drugName: string; genericName: string | null };
+  supplier?: { id: string; name: string } | null;
+  _count?: { dispensingRecords: number };
+}
+
+export interface RecalledDrug {
+  id: string;
+  drugName: string;
+  genericName: string | null;
+  isRecalled: boolean;
+  category?: { id: string; name: string } | null;
+  _count?: { drugBatches: number };
+}
+
+export interface RecallAffectedPatients {
+  batch: {
+    id: string;
+    batchNumber: string;
+    expiryDate: string;
+    isRecalled: boolean;
+    recallReason: string | null;
+    drug: { id: string; drugName: string; genericName: string | null };
+  };
+  totalPatients: number;
+  totalDispenses: number;
+  patients: Array<{
+    patientId: string;
+    mrn: string;
+    name: string;
+    phone: string | null;
+    email: string | null;
+    totalQuantity: number;
+    dispenses: Array<{
+      dispensedAt: string;
+      quantity: number;
+      prescriptionId: string;
+      doctorName: string | null;
+    }>;
+  }>;
+}
+
+export function useRecalledItems(type: 'batch' | 'drug' | 'all' = 'all') {
+  return useQuery({
+    queryKey: ['pharmacy', 'recalls', type],
+    queryFn: async () => {
+      const response = await apiGet<{
+        recalledBatches: RecalledBatch[];
+        recalledDrugs: RecalledDrug[];
+      }>('/pharmacy/recalls', { params: { type } });
+      return response.data;
+    },
+  });
+}
+
+export function useRecallAffectedPatients(batchId: string | null) {
+  return useQuery({
+    queryKey: ['pharmacy', 'recalls', 'affected', batchId],
+    queryFn: async () => {
+      const response = await apiGet<RecallAffectedPatients>(
+        `/pharmacy/recalls/batches/${batchId}/affected-patients`,
+      );
+      return response.data;
+    },
+    enabled: !!batchId,
+  });
+}
+
+export function useRecallBatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, recallReason }: { id: string; recallReason: string }) => {
+      const response = await apiPatch<RecalledBatch>(`/pharmacy/recalls/batches/${id}`, {
+        recallReason,
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pharmacy', 'recalls'] });
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+    },
+  });
+}
+
+export function useUnrecallBatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiDelete(`/pharmacy/recalls/batches/${id}`);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pharmacy', 'recalls'] });
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+    },
+  });
+}
+
+export function useRecallDrug() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, recallReason }: { id: string; recallReason: string }) => {
+      const response = await apiPatch(`/pharmacy/recalls/drugs/${id}`, { recallReason });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pharmacy', 'recalls'] });
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+    },
+  });
+}
+
+// ============================================================
+// GST Report
+// ============================================================
+
+export interface GstReport {
+  gstRate: number;
+  summary: {
+    totalSales: number;
+    taxableValue: number;
+    totalGst: number;
+    cgst: number;
+    sgst: number;
+    igst: number;
+    transactions: number;
+  };
+  byCategory: Array<{
+    categoryId: string;
+    categoryName: string;
+    taxableValue: number;
+    gstAmount: number;
+    totalAmount: number;
+    transactions: number;
+  }>;
+}
+
+export function useGstReport(params?: { fromDate?: string; toDate?: string; gstRate?: number }) {
+  return useQuery({
+    queryKey: ['pharmacy', 'gst', params],
+    queryFn: async () => {
+      const response = await apiGet<GstReport>('/pharmacy/gst', { params });
+      return response.data;
+    },
+  });
+}
