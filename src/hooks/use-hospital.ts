@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPost, apiPatch, apiPut } from '@/lib/api';
+import { apiGet, apiPost, apiPatch, apiPut, apiDelete } from '@/lib/api';
 import type { Appointment, Patient, DoctorProfile, QueueToken, Bill, Payment, CollectionSummary, CreditSettlement } from '@/types';
 
 // ============================================================
@@ -463,7 +463,7 @@ export function useUploadPatientDocument() {
 export function useCreateBill() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: { patientId: string; appointmentId?: string; items: { description: string; category: string; quantity: number; unitPrice: number; discount?: number; tax?: number }[]; notes?: string }) => {
+    mutationFn: async (data: { patientId: string; visitId?: string; admissionId?: string; appointmentId?: string; items?: { description: string; category: string; quantity: number; unitPrice: number; discount?: number; tax?: number }[]; notes?: string }) => {
       const response = await apiPost<Bill>('/billing', data);
       return response.data ?? null;
     },
@@ -533,6 +533,129 @@ export function useRecordPayment() {
       queryClient.invalidateQueries({ queryKey: ['hospital', 'bills'] });
       queryClient.invalidateQueries({ queryKey: ['hospital', 'collection-summary'] });
       queryClient.invalidateQueries({ queryKey: ['hospital', 'op-appointments'] });
+    },
+  });
+}
+
+// ============================================================
+// Auto-pull charges + Bill-level discount
+// ============================================================
+
+export type ChargeSource = 'consultation' | 'lab' | 'pharmacy' | 'imaging' | 'room' | 'all';
+
+export interface ChargeRow {
+  source: 'consultation' | 'lab' | 'pharmacy' | 'imaging' | 'room';
+  referenceType: string;
+  referenceId: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  totalAmount: number;
+  taxRate: number;
+  category: string;
+  occurredAt: string;
+  status: string;
+  alreadyBilled: boolean;
+  billItemId?: string;
+  billId?: string;
+}
+
+export interface ChargesResponse {
+  charges: ChargeRow[];
+  summary: {
+    consultation: number;
+    lab: number;
+    pharmacy: number;
+    imaging: number;
+    room: number;
+    grandTotal: number;
+    count: number;
+  };
+}
+
+export function usePatientCharges(params: { patientId: string; source?: ChargeSource; includeBilled?: boolean } | null) {
+  return useQuery({
+    queryKey: ['hospital', 'charges', params],
+    queryFn: async () => {
+      if (!params) return null;
+      const q: Record<string, unknown> = { patientId: params.patientId };
+      if (params.source) q.source = params.source;
+      if (params.includeBilled) q.includeBilled = 'true';
+      const response = await apiGet<ChargesResponse>('/billing/charges', { params: q });
+      return response.data ?? null;
+    },
+    enabled: !!params?.patientId,
+  });
+}
+
+export function usePullCharges() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ billId, charges }: { billId: string; charges: Array<Omit<ChargeRow, 'source' | 'occurredAt' | 'status' | 'alreadyBilled' | 'billItemId' | 'billId' | 'totalAmount'>> }) => {
+      const response = await apiPost<{ added: number; billId: string }>(
+        `/billing/${billId}/pull-charges`,
+        { charges },
+      );
+      return response.data ?? null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bills'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bill'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'charges'] });
+    },
+  });
+}
+
+export function useAddBillItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      billId,
+      data,
+    }: {
+      billId: string;
+      data: { description: string; quantity: number; unitPrice: number; discount?: number; taxRate?: number; serviceTariffId?: string };
+    }) => {
+      const response = await apiPost(`/billing/${billId}/items`, data);
+      return response.data ?? null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bills'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bill'] });
+    },
+  });
+}
+
+export function useRemoveBillItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ billId, itemId }: { billId: string; itemId: string }) => {
+      const response = await apiDelete(`/billing/${billId}/items/${itemId}`);
+      return response.data ?? null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bills'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bill'] });
+    },
+  });
+}
+
+export function useSetBillDiscount() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      billId,
+      data,
+    }: {
+      billId: string;
+      data: { discountType: 'percentage' | 'fixed'; discountValue: number; reason?: string };
+    }) => {
+      const response = await apiPatch(`/billing/${billId}/discount`, data);
+      return response.data ?? null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bills'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bill'] });
     },
   });
 }
