@@ -538,6 +538,347 @@ export function useRecordPayment() {
 }
 
 // ============================================================
+// Week 12: Split payment, Advance, Reversal, Cancel, Refund, Receipts, Day-end
+// ============================================================
+
+export type BillingPaymentMethod = FrontdeskPaymentMethod | 'bank_transfer' | 'insurance' | 'wallet';
+
+export interface SplitEntry {
+  amount: number;
+  paymentMethod: BillingPaymentMethod;
+  referenceNumber?: string;
+  notes?: string;
+}
+
+export function useCreateSplitPayment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { billId: string; splits: SplitEntry[] }) => {
+      // Map front-end synonyms to backend enum values.
+      const payload = {
+        billId: data.billId,
+        splits: data.splits.map((s) => ({
+          ...s,
+          paymentMethod: s.paymentMethod === 'net_banking' ? 'bank_transfer' : s.paymentMethod,
+        })),
+      };
+      const r = await apiPost('/billing/payments/split', payload);
+      return r.data ?? null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bills'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bill'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'payments'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'collection-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'receipts'] });
+    },
+  });
+}
+
+export function useCreateAdvancePayment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      patientId: string;
+      amount: number;
+      paymentMethod: BillingPaymentMethod;
+      referenceNumber?: string;
+      notes?: string;
+    }) => {
+      const payload = {
+        ...data,
+        paymentMethod: data.paymentMethod === 'net_banking' ? 'bank_transfer' : data.paymentMethod,
+      };
+      const r = await apiPost('/billing/payments/advance', payload);
+      return r.data ?? null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'payments'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'advance-balance'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'collection-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'receipts'] });
+    },
+  });
+}
+
+export function useAdjustAdvance() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { patientId: string; billId: string; amount: number }) => {
+      const r = await apiPost('/billing/payments/advance/adjust', data);
+      return r.data ?? null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bills'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bill'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'advance-balance'] });
+    },
+  });
+}
+
+export interface AdvanceBalance {
+  totalAdvanceCollected: number;
+  totalAdvanceAdjusted: number;
+  balance: number;
+  history: Array<{ id: string; amount: number; method: string; paymentDate: string; notes?: string | null }>;
+}
+
+export function useAdvanceBalance(patientId: string | null | undefined) {
+  return useQuery({
+    queryKey: ['hospital', 'advance-balance', patientId],
+    queryFn: async () => {
+      if (!patientId) return null;
+      const r = await apiGet<AdvanceBalance>(`/billing/payments/advance/${patientId}`);
+      return r.data ?? null;
+    },
+    enabled: !!patientId,
+  });
+}
+
+export function useReversePayment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { paymentId: string; reason: string }) => {
+      const r = await apiPost('/billing/reversals', data);
+      return r.data ?? null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bills'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'payments'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'collection-summary'] });
+    },
+  });
+}
+
+export function useCancelBill() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ billId, reason }: { billId: string; reason: string }) => {
+      const r = await apiPatch(`/billing/${billId}/cancel`, { reason });
+      return r.data ?? null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bills'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bill'] });
+    },
+  });
+}
+
+export interface RefundRow {
+  id: string;
+  amount: number | string;
+  reason: string;
+  status: 'requested' | 'approved' | 'processed' | 'rejected';
+  createdAt: string;
+  processedAt?: string | null;
+  bill?: { id: string; billNumber: string };
+  patient?: { id: string; firstName: string; lastName: string; mrn?: string };
+  payment?: { id: string; paymentMethod: string; paymentDate: string };
+  requester?: { firstName: string; lastName: string };
+  approver?: { firstName: string; lastName: string };
+}
+
+export function useRefunds(params?: { status?: string; patientId?: string; page?: number; limit?: number }) {
+  return useQuery({
+    queryKey: ['hospital', 'refunds', params],
+    queryFn: async () => {
+      const r = await apiGet<RefundRow[]>('/billing/refunds', { params });
+      return { data: r.data ?? [], meta: r.meta };
+    },
+  });
+}
+
+export function useCreateRefund() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { paymentId: string; amount: number; reason: string }) => {
+      const r = await apiPost('/billing/refunds', data);
+      return r.data ?? null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'refunds'] });
+    },
+  });
+}
+
+export function useApproveRefund() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (refundId: string) => {
+      const r = await apiPatch(`/billing/refunds/${refundId}/approve`);
+      return r.data ?? null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'refunds'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bills'] });
+    },
+  });
+}
+
+export function useRejectRefund() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ refundId, reason }: { refundId: string; reason: string }) => {
+      const r = await apiPatch(`/billing/refunds/${refundId}/reject`, { reason });
+      return r.data ?? null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'refunds'] });
+    },
+  });
+}
+
+export interface ReceiptRow {
+  id: string;
+  receiptNumber: string;
+  receiptDate: string;
+  amount: number | string;
+  payment?: {
+    id: string;
+    paymentMethod: string;
+    paymentType: string;
+    status: string;
+    bill?: { id: string; billNumber: string; totalAmount: number | string };
+    patient?: { id: string; firstName: string; lastName: string; mrn?: string };
+  };
+}
+
+export function useReceipts(params?: { patientId?: string; billId?: string; fromDate?: string; toDate?: string; search?: string; page?: number; limit?: number }) {
+  return useQuery({
+    queryKey: ['hospital', 'receipts', params],
+    queryFn: async () => {
+      const r = await apiGet<ReceiptRow[]>('/billing/receipts', { params });
+      return { data: r.data ?? [], meta: r.meta };
+    },
+  });
+}
+
+export interface DayEndReport {
+  date: string;
+  collected: number;
+  reversed: number;
+  billed: number;
+  byMethod: Record<string, number>;
+  byType: Record<string, number>;
+  byStatusBills: { generated: number; paid: number; pending: number; cancelled: number };
+  payments: Array<{
+    id: string;
+    billNumber: string | null;
+    patientName: string | null;
+    amount: number;
+    method: string;
+    type: string;
+    status: string;
+    paymentDate: string;
+    transactionId: string | null;
+  }>;
+}
+
+export function useDayEnd(date?: string) {
+  return useQuery({
+    queryKey: ['hospital', 'day-end', date],
+    queryFn: async () => {
+      const r = await apiGet<DayEndReport>('/billing/day-end', { params: date ? { date } : {} });
+      return r.data ?? null;
+    },
+  });
+}
+
+// Razorpay online payment
+export interface OnlineOrderResponse {
+  orderId: string;
+  amount: number;
+  currency: string;
+  keyId: string;
+  paymentId: string;
+}
+
+export function useCreateOnlineOrder() {
+  return useMutation({
+    mutationFn: async (data: { billId: string }) => {
+      const r = await apiPost<OnlineOrderResponse>('/online-payments/create-order', data);
+      return r.data ?? null;
+    },
+  });
+}
+
+export function useVerifyOnlinePayment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
+      const r = await apiPost('/online-payments/verify', data);
+      return r.data ?? null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bills'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'payments'] });
+    },
+  });
+}
+
+// ============================================================
+// Credit Settlement (Week 12 extension)
+// ============================================================
+
+export interface CreditSettlementRow {
+  id: string;
+  providerType: 'insurance' | 'corporate' | 'patient';
+  providerName: string;
+  providerContact?: string;
+  totalAdmissions: number;
+  claimAmount: number;
+  receivedAmount: number;
+  outstandingAmount: number;
+  ageDays: number;
+}
+
+export interface CreditSettlementResponse {
+  settlements: CreditSettlementRow[];
+  total: number;
+  page: number;
+  limit: number;
+  stats: {
+    totalProviders: number;
+    totalClaim: number;
+    totalReceived: number;
+    totalOutstanding: number;
+  };
+}
+
+export function useCreditSettlementList(params?: {
+  type?: 'insurance' | 'corporate' | 'patient';
+  search?: string;
+  page?: number;
+  limit?: number;
+}) {
+  return useQuery({
+    queryKey: ['hospital', 'credit-settlements', params],
+    queryFn: async () => {
+      const r = await apiGet<CreditSettlementResponse>('/billing/credit-settlements', { params });
+      return r.data ?? null;
+    },
+  });
+}
+
+export function useCreditSettlementBills(providerId: string | null) {
+  return useQuery({
+    queryKey: ['hospital', 'credit-settlement-bills', providerId],
+    queryFn: async () => {
+      if (!providerId) return [];
+      const r = await apiGet<Array<{
+        id: string; billNumber: string;
+        patient?: { id: string; firstName: string; lastName: string; mrn: string };
+        totalAmount: number; amountPaid: number; balanceDue: number;
+        createdAt: string; ageDays: number;
+        insurer?: string | null; tpa?: string | null;
+      }>>(`/billing/credit-settlements/${encodeURIComponent(providerId)}/bills`);
+      return r.data ?? [];
+    },
+    enabled: !!providerId,
+  });
+}
+
+// ============================================================
 // Auto-pull charges + Bill-level discount
 // ============================================================
 
