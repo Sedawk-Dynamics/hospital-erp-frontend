@@ -28,6 +28,7 @@ export const ALL_MODULES: ModuleKey[] = [
   'doctor',
   'nurse',
   'nurse-admin',
+  'insurance',
 ];
 
 // Standard admin modules (for admin — hospital subscription owner)
@@ -41,6 +42,7 @@ export const ADMIN_MODULES: ModuleKey[] = [
   'counsellor',
   'daycare',
   'ward',
+  'insurance',
 ];
 
 // Doctor specializations all map to the single 'doctor' module
@@ -90,7 +92,7 @@ const ROLE_MODULE_MAP: Record<string, ModuleKey[]> = {
   // Billing & finance → hospital (billing, transactions, credit settlement)
   billing_admin: ['hospital'],
   cashier: ['hospital'],
-  insurance_staff: ['hospital'],
+  insurance_staff: ['insurance', 'hospital'],
 
   // Inventory → dedicated inventory module + cross-module read access
   inventory_manager: ['inventory', 'pharmacy', 'laboratory', 'ot'],

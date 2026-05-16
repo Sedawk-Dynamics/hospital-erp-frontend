@@ -29,7 +29,9 @@ import {
   Contact,
   FileText,
   Stethoscope,
+  ShieldCheck,
 } from 'lucide-react';
+import { PatientPoliciesPanel } from '@/components/insurance/patient-policies-panel';
 import apiClient from '@/lib/api-client';
 import type { Patient } from '@/types';
 
@@ -133,6 +135,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
       <Tabs defaultValue="overview">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="insurance">Insurance</TabsTrigger>
           <TabsTrigger value="allergies">Allergies</TabsTrigger>
           <TabsTrigger value="emergency">Emergency Contacts</TabsTrigger>
           <TabsTrigger value="documents">Documents</TabsTrigger>
@@ -182,6 +185,10 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="insurance" className="mt-4">
+          <PatientPoliciesPanel patientId={id} />
         </TabsContent>
 
         <TabsContent value="allergies" className="mt-4">

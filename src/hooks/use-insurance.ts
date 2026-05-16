@@ -1,0 +1,876 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiGet, apiPost, apiPatch, apiPut, apiDelete } from '@/lib/api';
+
+// ============================================================
+// Types
+// ============================================================
+
+export type ClaimStatus =
+  | 'submitted'
+  | 'under_review'
+  | 'approved'
+  | 'partially_approved'
+  | 'rejected'
+  | 'resubmitted'
+  | 'settled'
+  | 'partially_settled'
+  | 'cancelled';
+
+export type PreAuthStatus =
+  | 'pending'
+  | 'approved'
+  | 'denied'
+  | 'expired'
+  | 'on_hold'
+  | 'cancelled';
+
+export type PolicyStatus = 'active' | 'expired' | 'cancelled';
+
+export interface Insurer {
+  id: string;
+  name: string;
+  contactPerson?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface TpaProvider {
+  id: string;
+  name: string;
+  contactPerson?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface InsurancePolicy {
+  id: string;
+  patientId: string;
+  insurerId: string;
+  tpaId?: string | null;
+  policyNumber: string;
+  groupNumber?: string | null;
+  planName?: string | null;
+  coverageAmount?: number | null;
+  coPayPercent: number;
+  deductibleAmount: number;
+  exclusions?: string | null;
+  validFrom: string;
+  validTo: string;
+  status: PolicyStatus;
+  createdAt: string;
+  patient?: { id: string; firstName: string; lastName?: string | null };
+  insurer?: { id: string; name: string };
+  tpa?: { id: string; name: string } | null;
+}
+
+export interface InsuranceClaim {
+  id: string;
+  tenantId: string;
+  patientId: string;
+  policyId: string;
+  billId: string;
+  claimNumber?: string | null;
+  claimAmount: number;
+  approvedAmount?: number | null;
+  patientShare?: number | null;
+  copayAmount?: number | null;
+  deductibleAmount?: number | null;
+  coveredAmount?: number | null;
+  paidAmount: number;
+  outstandingAmount?: number | null;
+  status: ClaimStatus;
+  submissionDate: string;
+  approvalDate?: string | null;
+  settlementDate?: string | null;
+  expiryDate?: string | null;
+  rejectionReason?: string | null;
+  notes?: string | null;
+  resubmissionCount: number;
+  previousClaimId?: string | null;
+  documentsUrl?: unknown;
+  patient?: { id: string; firstName: string; lastName?: string | null };
+  policy?: {
+    id: string;
+    policyNumber: string;
+    insurer?: { id: string; name: string };
+  };
+  bill?: { id: string; billNumber: string; totalAmount: number };
+  previousClaim?: { id: string; claimNumber?: string | null; status: ClaimStatus } | null;
+}
+
+export interface PreAuthRequest {
+  id: string;
+  patientId: string;
+  policyId: string;
+  procedureDescription: string;
+  estimatedCost?: number | null;
+  approvedAmount?: number | null;
+  status: PreAuthStatus;
+  approvalNumber?: string | null;
+  validFrom?: string | null;
+  validTo?: string | null;
+  holdReason?: string | null;
+  notes?: string | null;
+  createdAt: string;
+  patient?: { id: string; firstName: string; lastName?: string | null };
+  policy?: {
+    id: string;
+    policyNumber: string;
+    insurer?: { id: string; name: string };
+  };
+}
+
+export interface TpaLog {
+  id: string;
+  tenantId: string;
+  tpaId: string;
+  claimId?: string | null;
+  communicationType?: 'email' | 'phone' | 'portal' | 'letter' | null;
+  direction?: 'inbound' | 'outbound' | null;
+  subject?: string | null;
+  content?: string | null;
+  createdAt: string;
+  tpa?: { id: string; name: string };
+  claim?: { id: string; claimNumber?: string | null };
+  communicator?: { id: string; firstName: string; lastName?: string | null };
+}
+
+export interface DashboardData {
+  claims: {
+    pending: number;
+    underReview: number;
+    approved: number;
+    partiallyApproved: number;
+    rejected: number;
+    settled: number;
+    partiallySettled: number;
+    totalThisMonth: number;
+    approvalRate: number;
+  };
+  preAuth: { pending: number; onHold: number; approved: number };
+  settlement: {
+    totalClaimed: number;
+    totalApprovedAmount: number;
+    totalPaid: number;
+    totalOutstanding: number;
+  };
+  expiry: {
+    policiesIn7Days: number;
+    claimsIn7Days: number;
+    preAuthsIn7Days: number;
+  };
+  recentClaims: InsuranceClaim[];
+  recentPreAuths: PreAuthRequest[];
+}
+
+export interface ResponsibilitySplit {
+  claimAmount: number;
+  coPayPercent: number;
+  deductibleAmount: number;
+  coverageLimit: number;
+  coveredAmount: number;
+  copayAmount: number;
+  patientResponsibility: number;
+  insurancePortion: number;
+}
+
+// ============================================================
+// Query keys
+// ============================================================
+
+export const insuranceKeys = {
+  dashboard: ['insurance', 'dashboard'] as const,
+  insurers: (params?: Record<string, unknown>) => ['insurance', 'insurers', params] as const,
+  tpas: (params?: Record<string, unknown>) => ['insurance', 'tpas', params] as const,
+  policies: (params?: Record<string, unknown>) => ['insurance', 'policies', params] as const,
+  policy: (id: string) => ['insurance', 'policy', id] as const,
+  policiesByPatient: (patientId: string) =>
+    ['insurance', 'policies', 'by-patient', patientId] as const,
+  claims: (params?: Record<string, unknown>) => ['insurance', 'claims', params] as const,
+  claim: (id: string) => ['insurance', 'claim', id] as const,
+  preAuths: (params?: Record<string, unknown>) => ['insurance', 'pre-auth', params] as const,
+  preAuth: (id: string) => ['insurance', 'pre-auth', id] as const,
+  tpaLogs: (params?: Record<string, unknown>) => ['insurance', 'tpa-logs', params] as const,
+  reports: (kind: string, params?: Record<string, unknown>) =>
+    ['insurance', 'reports', kind, params] as const,
+  expiringClaims: (withinDays?: number) => ['insurance', 'claims', 'expiring', withinDays] as const,
+  calc: (policyId?: string, billId?: string) => ['insurance', 'calc', policyId, billId] as const,
+};
+
+// ============================================================
+// Dashboard
+// ============================================================
+
+export function useInsuranceDashboard() {
+  return useQuery({
+    queryKey: insuranceKeys.dashboard,
+    queryFn: async () => {
+      const res = await apiGet<DashboardData>('/insurance/dashboard');
+      return res.data;
+    },
+  });
+}
+
+// ============================================================
+// Insurers
+// ============================================================
+
+export function useInsurers(params?: { isActive?: boolean; search?: string; page?: number; limit?: number }) {
+  return useQuery({
+    queryKey: insuranceKeys.insurers(params as Record<string, unknown>),
+    queryFn: async () => {
+      const res = await apiGet<Insurer[]>('/insurance/insurers', { params });
+      return { data: res.data, meta: res.meta! };
+    },
+  });
+}
+
+export function useCreateInsurer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: Partial<Insurer>) => {
+      const res = await apiPost<Insurer>('/insurance/insurers', body);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance', 'insurers'] }),
+  });
+}
+
+export function useUpdateInsurer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, body }: { id: string; body: Partial<Insurer> }) => {
+      const res = await apiPut<Insurer>(`/insurance/insurers/${id}`, body);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance', 'insurers'] }),
+  });
+}
+
+export function useDeleteInsurer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await apiDelete(`/insurance/insurers/${id}`);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance', 'insurers'] }),
+  });
+}
+
+// ============================================================
+// TPA Providers
+// ============================================================
+
+export function useTpas(params?: { isActive?: boolean; search?: string; page?: number; limit?: number }) {
+  return useQuery({
+    queryKey: insuranceKeys.tpas(params as Record<string, unknown>),
+    queryFn: async () => {
+      const res = await apiGet<TpaProvider[]>('/insurance/tpa', { params });
+      return { data: res.data, meta: res.meta! };
+    },
+  });
+}
+
+export function useCreateTpa() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: Partial<TpaProvider>) => {
+      const res = await apiPost<TpaProvider>('/insurance/tpa', body);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance', 'tpas'] }),
+  });
+}
+
+export function useUpdateTpa() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, body }: { id: string; body: Partial<TpaProvider> }) => {
+      const res = await apiPut<TpaProvider>(`/insurance/tpa/${id}`, body);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance', 'tpas'] }),
+  });
+}
+
+export function useDeleteTpa() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await apiDelete(`/insurance/tpa/${id}`);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance', 'tpas'] }),
+  });
+}
+
+// ============================================================
+// Policies
+// ============================================================
+
+export function usePolicies(params?: {
+  patientId?: string;
+  insurerId?: string;
+  tpaId?: string;
+  status?: PolicyStatus;
+  search?: string;
+  page?: number;
+  limit?: number;
+}) {
+  return useQuery({
+    queryKey: insuranceKeys.policies(params as Record<string, unknown>),
+    queryFn: async () => {
+      const res = await apiGet<InsurancePolicy[]>('/insurance/policies', { params });
+      return { data: res.data, meta: res.meta! };
+    },
+  });
+}
+
+export function usePolicy(id: string | undefined) {
+  return useQuery({
+    queryKey: insuranceKeys.policy(id ?? ''),
+    enabled: !!id,
+    queryFn: async () => {
+      const res = await apiGet<InsurancePolicy>(`/insurance/policies/${id}`);
+      return res.data;
+    },
+  });
+}
+
+export function usePoliciesByPatient(patientId: string | undefined) {
+  return useQuery({
+    queryKey: insuranceKeys.policiesByPatient(patientId ?? ''),
+    enabled: !!patientId,
+    queryFn: async () => {
+      const res = await apiGet<InsurancePolicy[]>(`/insurance/policies/by-patient/${patientId}`);
+      return res.data;
+    },
+  });
+}
+
+export function useCreatePolicy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: Partial<InsurancePolicy>) => {
+      const res = await apiPost<InsurancePolicy>('/insurance/policies', body);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance', 'policies'] }),
+  });
+}
+
+export function useUpdatePolicy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, body }: { id: string; body: Partial<InsurancePolicy> }) => {
+      const res = await apiPut<InsurancePolicy>(`/insurance/policies/${id}`, body);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance', 'policies'] }),
+  });
+}
+
+export function useVerifyPolicy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiPatch<{ isValid: boolean; status: PolicyStatus }>(
+        `/insurance/policies/${id}/verify`,
+      );
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance', 'policies'] }),
+  });
+}
+
+// ============================================================
+// Claims
+// ============================================================
+
+export function useClaims(params?: {
+  patientId?: string;
+  policyId?: string;
+  status?: ClaimStatus;
+  search?: string;
+  fromDate?: string;
+  toDate?: string;
+  expiringWithinDays?: number;
+  page?: number;
+  limit?: number;
+}) {
+  return useQuery({
+    queryKey: insuranceKeys.claims(params as Record<string, unknown>),
+    queryFn: async () => {
+      const res = await apiGet<InsuranceClaim[]>('/insurance/claims', { params });
+      return { data: res.data, meta: res.meta! };
+    },
+  });
+}
+
+export function useClaim(id: string | undefined) {
+  return useQuery({
+    queryKey: insuranceKeys.claim(id ?? ''),
+    enabled: !!id,
+    queryFn: async () => {
+      const res = await apiGet<InsuranceClaim>(`/insurance/claims/${id}`);
+      return res.data;
+    },
+  });
+}
+
+export function useCreateClaim() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: {
+      policyId: string;
+      patientId: string;
+      billId: string;
+      claimAmount: number;
+      notes?: string;
+      expiryDays?: number;
+      documentsUrl?: unknown;
+    }) => {
+      const res = await apiPost<InsuranceClaim>('/insurance/claims', body);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance'] }),
+  });
+}
+
+export function useUpdateClaim() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, body }: { id: string; body: Record<string, unknown> }) => {
+      const res = await apiPut<InsuranceClaim>(`/insurance/claims/${id}`, body);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance'] }),
+  });
+}
+
+export function useSubmitClaim() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiPatch<InsuranceClaim>(`/insurance/claims/${id}/submit`);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance'] }),
+  });
+}
+
+export function useApproveClaim() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      approvedAmount,
+      notes,
+    }: { id: string; approvedAmount: number; notes?: string }) => {
+      const res = await apiPatch<InsuranceClaim>(`/insurance/claims/${id}/approve`, {
+        approvedAmount,
+        notes,
+      });
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance'] }),
+  });
+}
+
+export function usePartialApproveClaim() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      approvedAmount,
+      rejectionReason,
+      notes,
+    }: {
+      id: string;
+      approvedAmount: number;
+      rejectionReason?: string;
+      notes?: string;
+    }) => {
+      const res = await apiPatch<InsuranceClaim>(`/insurance/claims/${id}/partial-approve`, {
+        approvedAmount,
+        rejectionReason,
+        notes,
+      });
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance'] }),
+  });
+}
+
+export function useRejectClaim() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      rejectionReason,
+      notes,
+    }: { id: string; rejectionReason: string; notes?: string }) => {
+      const res = await apiPatch<InsuranceClaim>(`/insurance/claims/${id}/reject`, {
+        rejectionReason,
+        notes,
+      });
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance'] }),
+  });
+}
+
+export function useSettleClaim() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      paidAmount,
+      settlementDate,
+      notes,
+    }: {
+      id: string;
+      paidAmount: number;
+      settlementDate?: string;
+      notes?: string;
+    }) => {
+      const res = await apiPatch<InsuranceClaim>(`/insurance/claims/${id}/settle`, {
+        paidAmount,
+        settlementDate,
+        notes,
+      });
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance'] }),
+  });
+}
+
+export function useResubmitClaim() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      body,
+    }: {
+      id: string;
+      body: {
+        notes: string;
+        claimAmount?: number;
+        additionalDocumentsUrl?: unknown;
+        expiryDays?: number;
+      };
+    }) => {
+      const res = await apiPost<InsuranceClaim>(`/insurance/claims/${id}/resubmit`, body);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance'] }),
+  });
+}
+
+export function useCancelClaim() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      const res = await apiPatch<InsuranceClaim>(`/insurance/claims/${id}/cancel`, { reason });
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance'] }),
+  });
+}
+
+export function useExportClaim() {
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiGet<Record<string, unknown>>(`/insurance/claims/${id}/export`);
+      return res.data;
+    },
+  });
+}
+
+export function useExpiringClaims(withinDays = 7) {
+  return useQuery({
+    queryKey: insuranceKeys.expiringClaims(withinDays),
+    queryFn: async () => {
+      const res = await apiGet<InsuranceClaim[]>('/insurance/claims/expiring', {
+        params: { withinDays },
+      });
+      return res.data;
+    },
+  });
+}
+
+// ============================================================
+// Pre-Authorization
+// ============================================================
+
+export function usePreAuths(params?: {
+  patientId?: string;
+  policyId?: string;
+  status?: PreAuthStatus;
+  search?: string;
+  page?: number;
+  limit?: number;
+}) {
+  return useQuery({
+    queryKey: insuranceKeys.preAuths(params as Record<string, unknown>),
+    queryFn: async () => {
+      const res = await apiGet<PreAuthRequest[]>('/insurance/pre-auth', { params });
+      return { data: res.data, meta: res.meta! };
+    },
+  });
+}
+
+export function usePreAuth(id: string | undefined) {
+  return useQuery({
+    queryKey: insuranceKeys.preAuth(id ?? ''),
+    enabled: !!id,
+    queryFn: async () => {
+      const res = await apiGet<PreAuthRequest>(`/insurance/pre-auth/${id}`);
+      return res.data;
+    },
+  });
+}
+
+export function useCreatePreAuth() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: {
+      patientId: string;
+      policyId: string;
+      procedureDescription: string;
+      estimatedCost?: number;
+      validFrom?: string;
+      validTo?: string;
+      notes?: string;
+    }) => {
+      const res = await apiPost<PreAuthRequest>('/insurance/pre-auth', body);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance'] }),
+  });
+}
+
+export function useApprovePreAuth() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      body,
+    }: {
+      id: string;
+      body: {
+        approvalNumber?: string;
+        approvedAmount?: number;
+        validFrom?: string;
+        validTo?: string;
+        notes?: string;
+      };
+    }) => {
+      const res = await apiPatch<PreAuthRequest>(`/insurance/pre-auth/${id}/approve`, body);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance'] }),
+  });
+}
+
+export function useRejectPreAuth() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, notes }: { id: string; notes: string }) => {
+      const res = await apiPatch<PreAuthRequest>(`/insurance/pre-auth/${id}/reject`, { notes });
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance'] }),
+  });
+}
+
+export function useHoldPreAuth() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      const res = await apiPatch<PreAuthRequest>(`/insurance/pre-auth/${id}/hold`, { reason });
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance'] }),
+  });
+}
+
+export function useReleasePreAuthHold() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiPatch<PreAuthRequest>(`/insurance/pre-auth/${id}/release-hold`);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance'] }),
+  });
+}
+
+export function useCancelPreAuth() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiPatch<PreAuthRequest>(`/insurance/pre-auth/${id}/cancel`);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance'] }),
+  });
+}
+
+// ============================================================
+// TPA Logs
+// ============================================================
+
+export function useTpaLogs(params?: {
+  tpaId?: string;
+  claimId?: string;
+  direction?: 'inbound' | 'outbound';
+  fromDate?: string;
+  toDate?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+}) {
+  return useQuery({
+    queryKey: insuranceKeys.tpaLogs(params as Record<string, unknown>),
+    queryFn: async () => {
+      const res = await apiGet<TpaLog[]>('/insurance/tpa-logs', { params });
+      return { data: res.data, meta: res.meta! };
+    },
+  });
+}
+
+export function useCreateTpaLog() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: {
+      tpaId: string;
+      claimId?: string;
+      communicationType?: 'email' | 'phone' | 'portal' | 'letter';
+      direction?: 'inbound' | 'outbound';
+      subject?: string;
+      content?: string;
+    }) => {
+      const res = await apiPost<TpaLog>('/insurance/tpa-logs', body);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance'] }),
+  });
+}
+
+// ============================================================
+// Calc + Bill split
+// ============================================================
+
+export function useCalcResponsibility(policyId?: string, billId?: string) {
+  return useQuery({
+    queryKey: insuranceKeys.calc(policyId, billId),
+    enabled: !!policyId && !!billId,
+    queryFn: async () => {
+      const res = await apiGet<{ split: ResponsibilitySplit; policy: unknown; bill: unknown }>(
+        '/insurance/calc-responsibility',
+        { params: { policyId, billId } },
+      );
+      return res.data;
+    },
+  });
+}
+
+export function useSplitBill() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      billId,
+      policyId,
+      claimAmount,
+    }: { billId: string; policyId: string; claimAmount?: number }) => {
+      const res = await apiPatch<{ billId: string; split: ResponsibilitySplit }>(
+        `/insurance/bills/${billId}/split`,
+        { policyId, claimAmount },
+      );
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance'] }),
+  });
+}
+
+// ============================================================
+// Reports
+// ============================================================
+
+export interface ReportFilters {
+  fromDate?: string;
+  toDate?: string;
+  insurerId?: string;
+  tpaId?: string;
+}
+
+export function useClaimsSummaryReport(filters?: ReportFilters) {
+  return useQuery({
+    queryKey: insuranceKeys.reports('claims-summary', filters as Record<string, unknown>),
+    queryFn: async () => {
+      const res = await apiGet<{
+        total: { count: number; claimed: number; approved: number; paid: number; outstanding: number };
+        byStatus: { status: ClaimStatus; count: number; claimed: number; approved: number; paid: number }[];
+      }>('/insurance/reports/claims-summary', { params: filters });
+      return res.data;
+    },
+  });
+}
+
+export function useApprovalRateReport(filters?: ReportFilters) {
+  return useQuery({
+    queryKey: insuranceKeys.reports('approval-rate', filters as Record<string, unknown>),
+    queryFn: async () => {
+      const res = await apiGet<{
+        overall: { total: number; approved: number; rejected: number; approvalRate: number; claimedAmount: number; approvedAmount: number };
+        byInsurer: { insurerId: string; insurerName: string; total: number; approved: number; rejected: number; approvalRate: number; claimedAmount: number; approvedAmount: number }[];
+      }>('/insurance/reports/approval-rate', { params: filters });
+      return res.data;
+    },
+  });
+}
+
+export function useAgingReport(filters?: ReportFilters) {
+  return useQuery({
+    queryKey: insuranceKeys.reports('aging', filters as Record<string, unknown>),
+    queryFn: async () => {
+      const res = await apiGet<{
+        buckets: {
+          range: string;
+          count: number;
+          amount: number;
+          claims: {
+            id: string;
+            claimNumber: string | null;
+            patient: { id: string; firstName: string; lastName?: string | null };
+            insurer: { id: string; name: string };
+            status: ClaimStatus;
+            outstandingAmount: number;
+            submissionDate: string;
+          }[];
+        }[];
+      }>('/insurance/reports/aging', { params: filters });
+      return res.data;
+    },
+  });
+}
+
+export function useOutstandingReport(filters?: ReportFilters) {
+  return useQuery({
+    queryKey: insuranceKeys.reports('outstanding', filters as Record<string, unknown>),
+    queryFn: async () => {
+      const res = await apiGet<{
+        totalOutstanding: number;
+        count: number;
+        claims: InsuranceClaim[];
+      }>('/insurance/reports/outstanding', { params: filters });
+      return res.data;
+    },
+  });
+}

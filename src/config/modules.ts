@@ -245,6 +245,24 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
     ],
   },
 
+  insurance: {
+    key: 'insurance',
+    label: 'Insurance & TPA',
+    icon: ShieldCheck,
+    baseRoute: '/insurance',
+    sidebarItems: [
+      { label: 'Dashboard', href: '/insurance', icon: LayoutDashboard },
+      { label: 'Claims', href: '/insurance/claims', icon: FileCheck },
+      { label: 'Pre-Authorization', href: '/insurance/pre-auth', icon: ShieldAlert },
+      { label: 'Policies', href: '/insurance/policies', icon: ClipboardCheck },
+      { label: 'Insurers', href: '/insurance/insurers', icon: Building2 },
+      { label: 'TPA Providers', href: '/insurance/tpa', icon: Users },
+      { label: 'TPA Logs', href: '/insurance/tpa-logs', icon: FileText },
+      { label: 'Reports', href: '/insurance/reports', icon: BarChart3 },
+      { label: 'Settings', href: '/insurance/settings', icon: Settings },
+    ],
+  },
+
   'nurse-admin': {
     key: 'nurse-admin',
     label: 'Nursing Admin',
