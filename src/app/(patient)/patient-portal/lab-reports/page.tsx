@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { TestTube, Download, Eye, FileText, FileImage, AlertCircle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
@@ -34,6 +34,7 @@ interface PortalLabAttachment {
   sizeBytes: number;
   description?: string | null;
   createdAt: string;
+  labOrderItemId?: string | null;
 }
 
 interface PortalLabReport {
@@ -52,6 +53,7 @@ interface PortalLabReport {
     status: string;
     labOrderItems?: Array<{
       id: string;
+      status?: string;
       test?: { testName: string; testCode?: string };
       labResults?: PortalLabResult[];
     }>;
@@ -213,9 +215,28 @@ export default function PatientLabReportsPage() {
 // ── Detail dialog ─────────────────────────────────────────────────────────
 
 function ReportDialog({ report, onClose }: { report: PortalLabReport | null; onClose: () => void }) {
+  // Lab now produces results as uploaded files (PDF / image / scan) keyed to
+  // each test item — the uploaded file IS the result. Legacy parameter rows
+  // from the old manual-entry flow still render as a table if present.
+  const items = report?.labOrder?.labOrderItems ?? [];
+  const attachments = report?.attachments ?? [];
+
+  const { attachmentsByItem, orphanAttachments } = useMemo(() => {
+    const byItem = new Map<string, PortalLabAttachment[]>();
+    const orphans: PortalLabAttachment[] = [];
+    for (const a of attachments) {
+      if (a.labOrderItemId) {
+        const list = byItem.get(a.labOrderItemId) ?? [];
+        list.push(a);
+        byItem.set(a.labOrderItemId, list);
+      } else {
+        orphans.push(a);
+      }
+    }
+    return { attachmentsByItem: byItem, orphanAttachments: orphans };
+  }, [attachments]);
+
   if (!report) return null;
-  const items = report.labOrder?.labOrderItems ?? [];
-  const attachments = report.attachments ?? [];
 
   return (
     <Dialog open={!!report} onOpenChange={(open) => !open && onClose()}>
@@ -242,100 +263,127 @@ function ReportDialog({ report, onClose }: { report: PortalLabReport | null; onC
         <div className="space-y-5">
           <section className="space-y-2">
             <h3 className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Results
+              Tests &amp; Reports
             </h3>
             {items.length === 0 ? (
               <p className="text-xs text-muted-foreground">No tests on this report.</p>
             ) : (
               <div className="rounded-lg border divide-y">
-                {items.map((it) => (
-                  <div key={it.id} className="px-3 py-2.5">
-                    <p className="font-medium text-sm">{it.test?.testName ?? 'Test'}</p>
-                    {(it.labResults?.length ?? 0) === 0 ? (
-                      <p className="mt-1 text-[11px] italic text-muted-foreground">
-                        Result not yet released.
-                      </p>
-                    ) : (
-                      <table className="mt-1 w-full text-xs">
-                        <thead className="text-[10px] uppercase text-muted-foreground">
-                          <tr>
-                            <th className="text-left font-medium pb-1">Parameter</th>
-                            <th className="text-left font-medium pb-1">Value</th>
-                            <th className="text-left font-medium pb-1">Reference</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y">
-                          {it.labResults!.map((r) => (
-                            <tr key={r.id} className={cn(r.isAbnormal && 'text-error')}>
-                              <td className="py-1 pr-2">{r.parameterName}</td>
-                              <td className={cn('py-1 pr-2 font-medium', r.isAbnormal && 'text-error')}>
-                                {r.value ?? '-'} {r.unit ?? ''}
-                                {r.isAbnormal && (
-                                  <Badge className="ml-2 bg-error/10 text-error text-[9px]">abnormal</Badge>
-                                )}
-                              </td>
-                              <td className="py-1 pr-2 text-muted-foreground">
-                                {r.normalRange ?? '-'}
-                              </td>
+                {items.map((it) => {
+                  const files = attachmentsByItem.get(it.id) ?? [];
+                  const legacyResults = it.labResults ?? [];
+                  const isCompleted = it.status === 'completed' || files.length > 0;
+                  return (
+                    <div key={it.id} className="px-3 py-2.5 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-medium text-sm min-w-0">{it.test?.testName ?? 'Test'}</p>
+                        {it.status && (
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              'capitalize text-[10px]',
+                              isCompleted && 'bg-emerald-100 text-emerald-800 border-transparent',
+                            )}
+                          >
+                            {it.status.replace('_', ' ')}
+                          </Badge>
+                        )}
+                      </div>
+
+                      {legacyResults.length > 0 && (
+                        <table className="mt-1 w-full text-xs">
+                          <thead className="text-[10px] uppercase text-muted-foreground">
+                            <tr>
+                              <th className="text-left font-medium pb-1">Parameter</th>
+                              <th className="text-left font-medium pb-1">Value</th>
+                              <th className="text-left font-medium pb-1">Reference</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
-                ))}
+                          </thead>
+                          <tbody className="divide-y">
+                            {legacyResults.map((r) => (
+                              <tr key={r.id} className={cn(r.isAbnormal && 'text-error')}>
+                                <td className="py-1 pr-2">{r.parameterName}</td>
+                                <td className={cn('py-1 pr-2 font-medium', r.isAbnormal && 'text-error')}>
+                                  {r.value ?? '-'} {r.unit ?? ''}
+                                  {r.isAbnormal && (
+                                    <Badge className="ml-2 bg-error/10 text-error text-[9px]">abnormal</Badge>
+                                  )}
+                                </td>
+                                <td className="py-1 pr-2 text-muted-foreground">
+                                  {r.normalRange ?? '-'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+
+                      {files.length > 0 ? (
+                        <AttachmentList files={files} />
+                      ) : legacyResults.length === 0 ? (
+                        <p className="text-[11px] italic text-muted-foreground">
+                          Report not yet uploaded.
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </section>
 
-          <section className="space-y-2">
-            <h3 className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Files ({attachments.length})
-            </h3>
-            {attachments.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No files attached.</p>
-            ) : (
-              <ul className="space-y-1.5">
-                {attachments.map((a) => {
-                  const url = resolveAttachmentUrl(a.fileUrl);
-                  const isImg = isImageMime(a.mimeType);
-                  const Icon = isImg ? FileImage : FileText;
-                  return (
-                    <li key={a.id} className="flex items-center gap-2 rounded-md border bg-card px-2 py-1.5">
-                      {isImg ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <a href={url} target="_blank" rel="noopener noreferrer" className="h-12 w-12 shrink-0 overflow-hidden rounded border bg-muted">
-                          <img src={url} alt={a.fileName} className="h-full w-full object-cover" />
-                        </a>
-                      ) : (
-                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded border bg-muted">
-                          <Icon className="h-5 w-5 text-muted-foreground" />
-                        </div>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-medium text-foreground">{a.fileName}</p>
-                        <p className="text-[10px] text-muted-foreground capitalize">
-                          {a.category.replace('_', ' ')} · {formatFileSize(a.sizeBytes)}
-                          {a.description && ` · ${a.description}`}
-                        </p>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        nativeButton={false}
-                        render={<a href={url} target="_blank" rel="noopener noreferrer" download={a.fileName} />}
-                        aria-label="Open / download"
-                      >
-                        <Download className="h-4 w-4" />
-                      </Button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
+          {orphanAttachments.length > 0 && (
+            <section className="space-y-2">
+              <h3 className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Additional Files
+              </h3>
+              <AttachmentList files={orphanAttachments} />
+            </section>
+          )}
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function AttachmentList({ files }: { files: PortalLabAttachment[] }) {
+  return (
+    <ul className="space-y-1.5">
+      {files.map((a) => {
+        const url = resolveAttachmentUrl(a.fileUrl);
+        const isImg = isImageMime(a.mimeType);
+        const Icon = isImg ? FileImage : FileText;
+        return (
+          <li key={a.id} className="flex items-center gap-2 rounded-md border bg-card px-2 py-1.5">
+            {isImg ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <a href={url} target="_blank" rel="noopener noreferrer" className="h-12 w-12 shrink-0 overflow-hidden rounded border bg-muted">
+                <img src={url} alt={a.fileName} className="h-full w-full object-cover" />
+              </a>
+            ) : (
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded border bg-muted">
+                <Icon className="h-5 w-5 text-muted-foreground" />
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-medium text-foreground">{a.fileName}</p>
+              <p className="text-[10px] text-muted-foreground capitalize">
+                {a.category.replace('_', ' ')} · {formatFileSize(a.sizeBytes)}
+                {a.description && ` · ${a.description}`}
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              nativeButton={false}
+              render={<a href={url} target="_blank" rel="noopener noreferrer" download={a.fileName} />}
+              aria-label="Open / download"
+            >
+              <Download className="h-4 w-4" />
+            </Button>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
