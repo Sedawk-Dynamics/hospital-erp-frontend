@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { formatDate } from '@/lib/date-utils';
-import { FlaskConical, ScanLine, Plus, XCircle } from 'lucide-react';
+import { FlaskConical, ScanLine, Plus, XCircle, CheckCircle2, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { LabOrderDialog } from './lab-order-dialog';
 import { ImagingRequestDialog } from './imaging-request-dialog';
@@ -153,11 +153,18 @@ export function OrdersPanel({ patientId, visitId }: OrdersPanelProps) {
               {labOrders.map((order: LabOrder) => {
                 const statusInfo = labStatusConfig[order.status] ?? labStatusConfig.ordered;
                 const items = order.labOrderItems ?? [];
-                const isCancellable = order.status !== 'completed' && order.status !== 'cancelled';
+                const doneByPatient = !!order.completedExternallyAt;
+                const isCancellable =
+                  order.status !== 'completed' && order.status !== 'cancelled';
                 return (
                   <div
                     key={order.id}
-                    className="flex items-start justify-between rounded-lg border border-border/50 p-2.5 hover:bg-accent/30 transition-colors"
+                    className={cn(
+                      'flex items-start justify-between rounded-lg border p-2.5 transition-colors',
+                      doneByPatient
+                        ? 'border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50/70'
+                        : 'border-border/50 hover:bg-accent/30',
+                    )}
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -174,11 +181,11 @@ export function OrdersPanel({ patientId, visitId }: OrdersPanelProps) {
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 mt-1">
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <span className="text-xs text-muted-foreground">
                           {formatDate(order.createdAt)}
                         </span>
-                        {order.urgency && order.urgency !== 'routine' && (
+                        {order.urgency && order.urgency !== 'routine' && !doneByPatient && (
                           <Badge
                             variant="outline"
                             className={cn(
@@ -190,19 +197,42 @@ export function OrdersPanel({ patientId, visitId }: OrdersPanelProps) {
                             {order.urgency.toUpperCase()}
                           </Badge>
                         )}
+                        {doneByPatient && order.externalReportUrl && (
+                          <a
+                            href={order.externalReportUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 hover:underline"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                            Patient report
+                          </a>
+                        )}
+                        {doneByPatient && order.externalNotes && (
+                          <span className="text-[10px] italic text-emerald-700 truncate max-w-[220px]">
+                            {order.externalNotes}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-1 ml-2 shrink-0">
-                      <span
-                        className={cn(
-                          'text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap',
-                          statusInfo.bg,
-                          statusInfo.text
-                        )}
-                      >
-                        {statusInfo.label}
-                      </span>
-                      {isCancellable && (
+                      {doneByPatient ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 text-[10px] font-bold whitespace-nowrap">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Done by patient
+                        </span>
+                      ) : (
+                        <span
+                          className={cn(
+                            'text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap',
+                            statusInfo.bg,
+                            statusInfo.text,
+                          )}
+                        >
+                          {statusInfo.label}
+                        </span>
+                      )}
+                      {isCancellable && !doneByPatient && (
                         <Button
                           variant="ghost"
                           size="icon"
@@ -261,12 +291,20 @@ export function OrdersPanel({ patientId, visitId }: OrdersPanelProps) {
           ) : (
             <div className="space-y-2">
               {imagingRequests.map((request: ImagingRequest) => {
-                const statusInfo = imagingStatusConfig[request.status] ?? imagingStatusConfig.requested;
-                const isCancellable = request.status !== 'completed' && request.status !== 'cancelled';
+                const statusInfo =
+                  imagingStatusConfig[request.status] ?? imagingStatusConfig.requested;
+                const doneByPatient = !!request.completedExternallyAt;
+                const isCancellable =
+                  request.status !== 'completed' && request.status !== 'cancelled';
                 return (
                   <div
                     key={request.id}
-                    className="flex items-start justify-between rounded-lg border border-border/50 p-2.5 hover:bg-accent/30 transition-colors"
+                    className={cn(
+                      'flex items-start justify-between rounded-lg border p-2.5 transition-colors',
+                      doneByPatient
+                        ? 'border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50/70'
+                        : 'border-border/50 hover:bg-accent/30',
+                    )}
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
@@ -279,11 +317,11 @@ export function OrdersPanel({ patientId, visitId }: OrdersPanelProps) {
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 mt-1">
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <span className="text-xs text-muted-foreground">
                           {formatDate(request.createdAt)}
                         </span>
-                        {request.urgency && request.urgency !== 'routine' && (
+                        {request.urgency && request.urgency !== 'routine' && !doneByPatient && (
                           <Badge
                             variant="outline"
                             className={cn(
@@ -300,19 +338,42 @@ export function OrdersPanel({ patientId, visitId }: OrdersPanelProps) {
                             {request.clinicalIndication}
                           </span>
                         )}
+                        {doneByPatient && request.externalReportUrl && (
+                          <a
+                            href={request.externalReportUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 hover:underline"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                            Patient report
+                          </a>
+                        )}
+                        {doneByPatient && request.externalNotes && (
+                          <span className="text-[10px] italic text-emerald-700 truncate max-w-[220px]">
+                            {request.externalNotes}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-1 ml-2 shrink-0">
-                      <span
-                        className={cn(
-                          'text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap',
-                          statusInfo.bg,
-                          statusInfo.text
-                        )}
-                      >
-                        {statusInfo.label}
-                      </span>
-                      {isCancellable && (
+                      {doneByPatient ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 text-[10px] font-bold whitespace-nowrap">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Done by patient
+                        </span>
+                      ) : (
+                        <span
+                          className={cn(
+                            'text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap',
+                            statusInfo.bg,
+                            statusInfo.text,
+                          )}
+                        >
+                          {statusInfo.label}
+                        </span>
+                      )}
+                      {isCancellable && !doneByPatient && (
                         <Button
                           variant="ghost"
                           size="icon"

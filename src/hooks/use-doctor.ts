@@ -214,6 +214,10 @@ export interface LabOrder {
   clinicalNotes?: string;
   createdAt: string;
   updatedAt: string;
+  // Set by patient self-completion flow (got tested elsewhere).
+  completedExternallyAt?: string | null;
+  externalReportUrl?: string | null;
+  externalNotes?: string | null;
   // Legacy/denormalized fields surfaced by some list endpoints or consumers.
   tests?: { id: string; name: string; code?: string; category?: string }[];
   priority?: string;
@@ -1208,6 +1212,9 @@ export interface ImagingRequest {
   scheduledDate?: string;
   createdAt: string;
   updatedAt: string;
+  completedExternallyAt?: string | null;
+  externalReportUrl?: string | null;
+  externalNotes?: string | null;
 }
 
 interface ImagingRequestParams {

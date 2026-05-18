@@ -16,7 +16,7 @@
 
 import { use, useState, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   Activity,
@@ -39,7 +39,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { apiGet } from '@/lib/api';
+import { apiGet, apiPost } from '@/lib/api';
 import { toast } from 'sonner';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
 import { PrescriptionPad, clearConsultationDraft } from '@/components/doctor/prescription-pad';
@@ -524,6 +524,7 @@ export default function PatientConsultationPage({
     enabled: !!appointmentId,
   });
 
+  const queryClient = useQueryClient();
   const { data: activeVisitId } = useQuery({
     queryKey: ['doctor', 'active-visit', patientId],
     queryFn: async () => {
@@ -537,6 +538,32 @@ export default function PatientConsultationPage({
 
   const isInConsultation = appointment?.status === 'in_consultation';
   const isCompleted = appointment?.status === 'completed';
+
+  // Lab + imaging orders need a visit row. Visits historically only got
+  // created when the doctor finished writing the SOAP note, which left the
+  // "Order Lab" / "Order Imaging" buttons disabled for the entire
+  // consultation. Eagerly ensure a visit exists as soon as the appointment
+  // is in_consultation so the buttons work from the start.
+  useEffect(() => {
+    if (!appointmentId || !isInConsultation || activeVisitId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiPost<{ id: string }>(
+          '/clinical/visits/ensure-for-appointment',
+          { appointmentId },
+        );
+        if (!cancelled && res.data?.id) {
+          queryClient.setQueryData(['doctor', 'active-visit', patientId], res.data.id);
+        }
+      } catch {
+        /* surface via the existing toast on click; non-fatal */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [appointmentId, isInConsultation, activeVisitId, patientId, queryClient]);
 
   const completedAt = appointment?.updatedAt ? new Date(appointment.updatedAt).getTime() : null;
   const withinEditWindow = !!completedAt && Date.now() - completedAt < 24 * 60 * 60 * 1000;
@@ -592,25 +619,47 @@ export default function PatientConsultationPage({
 
   const showForm = isInConsultation || isEditing;
 
+  // Synchronously resolve a visit before opening the order dialog. The
+  // useEffect above is usually fast enough, but the user may click the
+  // button on the very first render — in that case we resolve here so the
+  // dialog opens with a valid visitId.
+  const ensureVisit = async (): Promise<string | null> => {
+    if (activeVisitId) return activeVisitId;
+    if (!appointmentId) {
+      toast.error('No appointment context — open this from the OP queue');
+      return null;
+    }
+    try {
+      const res = await apiPost<{ id: string }>(
+        '/clinical/visits/ensure-for-appointment',
+        { appointmentId },
+      );
+      const id = res.data?.id ?? null;
+      if (id) queryClient.setQueryData(['doctor', 'active-visit', patientId], id);
+      return id;
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Could not start a visit for this appointment');
+      return null;
+    }
+  };
+
   const guardedOrderLab = useMemo(
-    () => () => {
-      if (!activeVisitId) {
-        toast.error('No active visit — start or check-in an appointment first');
-        return;
-      }
+    () => async () => {
+      const id = await ensureVisit();
+      if (!id) return;
       setLabDialogOpen(true);
     },
-    [activeVisitId],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeVisitId, appointmentId],
   );
   const guardedOrderImaging = useMemo(
-    () => () => {
-      if (!activeVisitId) {
-        toast.error('No active visit — start or check-in an appointment first');
-        return;
-      }
+    () => async () => {
+      const id = await ensureVisit();
+      if (!id) return;
       setImagingDialogOpen(true);
     },
-    [activeVisitId],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeVisitId, appointmentId],
   );
 
   if (patientLoading) {
@@ -646,7 +695,7 @@ export default function PatientConsultationPage({
         onOrderLab={guardedOrderLab}
         onOrderImaging={guardedOrderImaging}
         onRequestIp={() => setAdmissionRequestOpen(true)}
-        canOrder={!!activeVisitId}
+        canOrder={!!activeVisitId || !!appointmentId}
         isEditing={isEditing}
         onCancelEdit={isEditing ? cancelEdit : undefined}
       />

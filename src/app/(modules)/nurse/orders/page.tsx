@@ -146,6 +146,10 @@ function DoctorOrdersTab() {
   );
   const [typeFilter, setTypeFilter] = useState<'all' | 'lab' | 'imaging'>('all');
   const [wardFilter, setWardFilter] = useState<string>('');
+  // Default to "mine" so nurses see only orders raised by doctors they are
+  // currently assigned to via NurseDoctorAssignment. Supervisors can flip
+  // this to "all" to see the tenant-wide queue.
+  const [scope, setScope] = useState<'mine' | 'all'>('mine');
   const [ackedIds, setAckedIds] = useState<Set<string>>(new Set());
   const [openLabOrderId, setOpenLabOrderId] = useState<string | null>(null);
 
@@ -156,6 +160,7 @@ function DoctorOrdersTab() {
     status: statusFilter,
     type: typeFilter,
     wardId: wardFilter || undefined,
+    scope,
   });
 
   const orders = (data?.data ?? []) as NurseClinicalOrder[];
@@ -212,6 +217,20 @@ function DoctorOrdersTab() {
         <h2 className="font-headline text-base font-semibold">Doctor Orders</h2>
         <div className="flex items-center gap-2 flex-wrap">
           <Filter className="h-4 w-4 text-on-surface-variant" />
+          <Select
+            value={scope}
+            onValueChange={(val) => {
+              if (val) setScope(val as 'mine' | 'all');
+            }}
+          >
+            <SelectTrigger className="w-[170px] h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="mine">My Doctors</SelectItem>
+              <SelectItem value="all">All Doctors</SelectItem>
+            </SelectContent>
+          </Select>
           <Select
             value={wardFilter}
             onValueChange={(val) => setWardFilter((val === 'all' ? '' : val) ?? '')}
@@ -346,14 +365,25 @@ function DoctorOrdersTab() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span
-                        className={cn(
-                          'text-[10px] font-bold px-2 py-0.5 rounded-full uppercase',
-                          statusColor[order.status] ?? 'bg-slate-100 text-slate-600',
+                      <div className="flex flex-col gap-1">
+                        <span
+                          className={cn(
+                            'inline-flex w-fit text-[10px] font-bold px-2 py-0.5 rounded-full uppercase',
+                            order.completedExternallyAt
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : statusColor[order.status] ?? 'bg-slate-100 text-slate-600',
+                          )}
+                        >
+                          {order.completedExternallyAt
+                            ? 'Done by patient'
+                            : order.status.replace(/_/g, ' ')}
+                        </span>
+                        {order.completedExternallyAt && (
+                          <span className="text-[10px] text-emerald-700">
+                            {formatDateTime(order.completedExternallyAt)}
+                          </span>
                         )}
-                      >
-                        {order.status.replace(/_/g, ' ')}
-                      </span>
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-xs text-on-surface-variant">
                       {formatDateTime(order.createdAt)}
@@ -370,7 +400,28 @@ function DoctorOrdersTab() {
                             View
                           </Button>
                         )}
-                        {isAcked ? (
+                        {order.externalReportUrl && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs text-emerald-700 hover:bg-emerald-50"
+                            render={
+                              <a
+                                href={order.externalReportUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              />
+                            }
+                          >
+                            Patient report
+                          </Button>
+                        )}
+                        {order.completedExternallyAt ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Self-completed
+                          </span>
+                        ) : isAcked ? (
                           <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700">
                             <CheckCircle2 className="h-3 w-3" />
                             Acknowledged

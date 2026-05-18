@@ -893,6 +893,9 @@ export interface NurseClinicalOrder {
   doctor: { id: string; user: { firstName: string; lastName: string } | null } | null;
   wardId: string | null;
   ward: { id: string; name: string } | null;
+  completedExternallyAt: string | null;
+  externalReportUrl: string | null;
+  externalNotes: string | null;
 }
 
 /**
@@ -903,6 +906,8 @@ export function useClinicalOrders(params?: {
   wardId?: string;
   status?: 'pending' | 'completed' | 'cancelled' | 'all';
   type?: 'lab' | 'imaging' | 'all';
+  scope?: 'mine' | 'all';
+  patientId?: string;
   limit?: number;
 }) {
   return useQuery({
