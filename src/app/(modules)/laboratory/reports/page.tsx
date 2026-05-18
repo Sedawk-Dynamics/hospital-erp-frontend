@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Search, FileText, RefreshCw, Download, BarChart3, Clock, TrendingUp, Building2, AlertCircle, Edit3, Eye } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Search, FileText, RefreshCw, Download, BarChart3, Clock, TrendingUp, Building2, AlertCircle, Edit3, Eye, Upload, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -12,20 +12,23 @@ import { toast } from 'sonner';
 import { formatDate, formatDateTime } from '@/lib/date-utils';
 import {
   useLabReports,
-  useGenerateLabReport,
   useLabReportAnalytics,
   useLabAnalyticsExtended,
   useCorrectLabReport,
 } from '@/hooks/use-lab';
 import type { LabReport } from '@/hooks/use-lab';
+import { useUploadLabAttachment, formatFileSize } from '@/hooks/use-lab-attachments';
 import { SupervisorOnlyGuard } from '@/components/laboratory/supervisor-only-guard';
 import { LabReportPrintDialog } from '@/components/laboratory/lab-report-print-view';
 
+// Reports are now produced by the per-test upload flow (Status tab → "Mark
+// Done"); the lab no longer generates a report manually. The states below
+// are what the backend actually emits today.
 const statusConfig: Record<string, { label: string; className: string }> = {
   draft: { label: 'Draft', className: 'bg-gray-100 text-gray-800' },
-  generated: { label: 'Generated', className: 'bg-green-100 text-green-800' },
-  delivered: { label: 'Delivered', className: 'bg-blue-100 text-blue-800' },
-  printed: { label: 'Printed', className: 'bg-purple-100 text-purple-800' },
+  published: { label: 'Published', className: 'bg-emerald-100 text-emerald-800' },
+  corrected: { label: 'Corrected', className: 'bg-amber-100 text-amber-800' },
+  approved: { label: 'Signed', className: 'bg-blue-100 text-blue-800' },
 };
 
 const reportCategories = [
@@ -75,7 +78,6 @@ function LabReportsPageInner() {
     status: statusFilter || undefined,
   });
 
-  const generateReport = useGenerateLabReport();
   const analyticsQ = useLabReportAnalytics();
   const extendedQ = useLabAnalyticsExtended();
   const [correctFor, setCorrectFor] = useState<LabReport | null>(null);
@@ -86,19 +88,16 @@ function LabReportsPageInner() {
   const analytics = analyticsQ.data;
   const extended = extendedQ.data;
 
-  const handleGenerate = async (orderId: string) => {
-    try {
-      await generateReport.mutateAsync({ orderId });
-      toast.success('Report generated successfully');
-    } catch {
-      toast.error('Failed to generate report');
-    }
-  };
-
   return (
     <div className="space-y-6 animate-fade-in-up">
       <div className="flex items-center justify-between">
-        <h1 className="font-headline text-xl font-bold">Lab Reports</h1>
+        <div>
+          <h1 className="font-headline text-xl font-bold">Lab Reports</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Reports are auto-published from the Status tab when every test on an order is
+            uploaded and marked done.
+          </p>
+        </div>
         <Button variant="outline" size="sm" onClick={() => refetch()}>
           <RefreshCw className="mr-1.5 h-4 w-4" />
           Refresh
@@ -227,9 +226,9 @@ function LabReportsPageInner() {
         </div>
       </div>
 
-      {/* Generated Reports Table */}
+      {/* Published Reports Table */}
       <div>
-        <h2 className="font-label text-xs text-on-surface-variant uppercase tracking-widest mb-3">Generated Reports</h2>
+        <h2 className="font-label text-xs text-on-surface-variant uppercase tracking-widest mb-3">Published Reports</h2>
 
         {/* Filters */}
         <div className="flex items-center gap-3 flex-wrap mb-3">
@@ -245,9 +244,9 @@ function LabReportsPageInner() {
           <div className="flex items-center gap-1">
             {[
               { value: '', label: 'All' },
+              { value: 'published', label: 'Published' },
+              { value: 'corrected', label: 'Corrected' },
               { value: 'draft', label: 'Draft' },
-              { value: 'generated', label: 'Generated' },
-              { value: 'delivered', label: 'Delivered' },
             ].map((filter) => (
               <Button
                 key={filter.value}
@@ -269,7 +268,8 @@ function LabReportsPageInner() {
                   <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Report #</th>
                   <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Patient</th>
                   <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Tests</th>
-                  <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Generated Date</th>
+                  <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Published</th>
+                  <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Version</th>
                   <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Status</th>
                   <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Actions</th>
                 </tr>
@@ -277,22 +277,26 @@ function LabReportsPageInner() {
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center">
+                    <td colSpan={7} className="px-4 py-8 text-center">
                       <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                     </td>
                   </tr>
                 ) : reports.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center">
+                    <td colSpan={7} className="px-4 py-12 text-center">
                       <div className="flex flex-col items-center gap-2">
                         <FileText className="h-8 w-8 text-muted-foreground/50" />
-                        <p className="text-muted-foreground">No reports found.</p>
+                        <p className="text-muted-foreground">
+                          No reports yet. Reports appear here once a lab order has every test
+                          uploaded and marked done from the Status tab.
+                        </p>
                       </div>
                     </td>
                   </tr>
                 ) : (
                   reports.map((report: LabReport) => {
                     const status = statusConfig[report.status] || statusConfig.draft;
+                    const fileUrl = report.pdfUrl || report.fileUrl;
                     return (
                       <tr key={report.id} className="group hover:bg-surface-container-low transition-colors">
                         <td className="px-4 py-3 font-medium font-mono text-xs">
@@ -333,11 +337,14 @@ function LabReportsPageInner() {
                           </div>
                         </td>
                         <td className="px-4 py-3 text-muted-foreground text-xs">
-                          {report.generatedAt
-                            ? formatDateTime(report.generatedAt)
+                          {report.publishedAt
+                            ? formatDateTime(report.publishedAt)
                             : report.createdAt
                               ? formatDate(report.createdAt)
                               : '-'}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground">
+                          v{report.version ?? 1}
                         </td>
                         <td className="px-4 py-3">
                           <span className={cn(
@@ -353,20 +360,10 @@ function LabReportsPageInner() {
                               variant="outline"
                               size="sm"
                               onClick={() => setPreviewFor(report.id)}
-                              title="Preview branded report"
+                              title="Preview branded report (uploaded files render inline)"
                             >
                               <Eye className="h-3.5 w-3.5" />
                             </Button>
-                            {report.status === 'draft' && report.orderId && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleGenerate(report.orderId!)}
-                                disabled={generateReport.isPending}
-                              >
-                                Generate
-                              </Button>
-                            )}
                             {(report.status === 'published' || report.status === 'corrected') && (
                               <Button
                                 variant="outline"
@@ -377,11 +374,12 @@ function LabReportsPageInner() {
                                 <Edit3 className="mr-1 h-3.5 w-3.5" /> Correct
                               </Button>
                             )}
-                            {report.fileUrl && (
+                            {fileUrl && (
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => window.open(report.fileUrl!, '_blank')}
+                                onClick={() => window.open(fileUrl, '_blank')}
+                                title="Download report file"
                               >
                                 <Download className="h-4 w-4" />
                               </Button>
@@ -420,13 +418,28 @@ function LabReportsPageInner() {
   );
 }
 
-// Issue a corrected version of a published report. Bumps the version and
-// requires re-sign before the next publish; sends an email + portal
-// notification to the patient and ordering doctor.
+// Issue a corrected version of a published report. Aligned with the upload
+// flow: the operator picks the corrected file in this dialog (optional but
+// strongly encouraged) and submits with a reason. The new file is uploaded
+// tied to the report; the backend bumps version, refreshes publishedAt,
+// keeps the report visible to the patient, and sends correction emails.
 function CorrectionDialog({ report, onClose }: { report: LabReport | null; onClose: () => void }) {
   const correct = useCorrectLabReport();
+  const upload = useUploadLabAttachment();
   const [notes, setNotes] = useState('');
   const [notify, setNotify] = useState(true);
+  const [file, setFile] = useState<File | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const orderId = report?.labOrderId ?? report?.orderId;
+  const busy = correct.isPending || upload.isPending;
+
+  const reset = () => {
+    setNotes('');
+    setNotify(true);
+    setFile(null);
+    if (fileRef.current) fileRef.current.value = '';
+  };
 
   const handle = async () => {
     if (!report) return;
@@ -435,14 +448,24 @@ function CorrectionDialog({ report, onClose }: { report: LabReport | null; onClo
       return;
     }
     try {
+      // Upload first so the new file is already tied to the report by the
+      // time the corrected version is announced to the patient + doctor.
+      if (file && orderId) {
+        await upload.mutateAsync({
+          orderId,
+          file,
+          category: 'report_pdf',
+          labReportId: report.id,
+          description: `Correction v${(report.version ?? 1) + 1}: ${notes.trim()}`.slice(0, 240),
+        });
+      }
       await correct.mutateAsync({
         id: report.id,
         correctionNotes: notes.trim(),
         notify,
       });
-      toast.success('Report corrected; re-sign required');
-      setNotes('');
-      setNotify(true);
+      toast.success('Corrected report published');
+      reset();
       onClose();
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? 'Failed to correct report');
@@ -450,7 +473,15 @@ function CorrectionDialog({ report, onClose }: { report: LabReport | null; onClo
   };
 
   return (
-    <Dialog open={!!report} onOpenChange={(open) => !open && onClose()}>
+    <Dialog
+      open={!!report}
+      onOpenChange={(open) => {
+        if (!open) {
+          reset();
+          onClose();
+        }
+      }}
+    >
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -458,13 +489,59 @@ function CorrectionDialog({ report, onClose }: { report: LabReport | null; onClo
             Correct Report
           </DialogTitle>
           <DialogDescription>
-            A new version will be created and the report will move back to draft. The
-            existing signature is cleared, so a supervisor must re-sign before the
-            corrected version is republished.
+            Upload the corrected report file and describe what changed. A new version is
+            published immediately — the patient and ordering doctor are notified and the
+            existing files remain on the order for audit.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
+          <div>
+            <Label>Corrected report file</Label>
+            <input
+              ref={fileRef}
+              type="file"
+              className="hidden"
+              accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.doc,.docx"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            />
+            {file ? (
+              <div className="mt-1 flex items-center justify-between rounded-md border bg-card px-2 py-1.5 text-xs">
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{file.name}</p>
+                  <p className="text-[10px] text-muted-foreground">{formatFileSize(file.size)}</p>
+                </div>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7"
+                  onClick={() => {
+                    setFile(null);
+                    if (fileRef.current) fileRef.current.value = '';
+                  }}
+                  disabled={busy}
+                  title="Remove selection"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => fileRef.current?.click()}
+                disabled={busy}
+                className="mt-1 gap-1.5"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                Choose file
+              </Button>
+            )}
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              PDF, JPG, PNG, WEBP — max 10 MB. Optional but recommended; existing files stay
+              on the order as v{report?.version ?? 1}.
+            </p>
+          </div>
           <div>
             <Label>Reason for correction *</Label>
             <Textarea
@@ -485,11 +562,11 @@ function CorrectionDialog({ report, onClose }: { report: LabReport | null; onClo
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={correct.isPending}>
+          <Button variant="outline" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button onClick={handle} disabled={correct.isPending}>
-            {correct.isPending ? 'Saving…' : 'Issue Correction'}
+          <Button onClick={handle} disabled={busy}>
+            {upload.isPending ? 'Uploading…' : correct.isPending ? 'Saving…' : 'Issue Correction'}
           </Button>
         </DialogFooter>
       </DialogContent>

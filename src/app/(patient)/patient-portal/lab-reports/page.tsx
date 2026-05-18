@@ -321,6 +321,7 @@ function ReportDialog({ report, onClose }: { report: PortalLabReport | null; onC
                       <Button
                         variant="ghost"
                         size="icon-sm"
+                        nativeButton={false}
                         render={<a href={url} target="_blank" rel="noopener noreferrer" download={a.fileName} />}
                         aria-label="Open / download"
                       >

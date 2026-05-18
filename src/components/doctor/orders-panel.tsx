@@ -18,8 +18,10 @@ import { FlaskConical, ScanLine, Plus, XCircle, CheckCircle2, ExternalLink } fro
 import { toast } from 'sonner';
 import { LabOrderDialog } from './lab-order-dialog';
 import { ImagingRequestDialog } from './imaging-request-dialog';
+import { LabOrderDetailDialog } from '@/components/shared/lab-order-detail-dialog';
 import { cn } from '@/lib/utils';
 import { resolveAttachmentUrl } from '@/hooks/use-lab-attachments';
+import { Paperclip } from 'lucide-react';
 
 interface OrdersPanelProps {
   patientId: string;
@@ -55,6 +57,9 @@ const imagingTypeLabels: Record<string, string> = {
 export function OrdersPanel({ patientId, visitId }: OrdersPanelProps) {
   const [labDialogOpen, setLabDialogOpen] = useState(false);
   const [imagingDialogOpen, setImagingDialogOpen] = useState(false);
+  // When the doctor clicks a lab order row, open the shared read-only detail
+  // dialog so they can see the uploaded report files (PDF / images / scans).
+  const [openOrderId, setOpenOrderId] = useState<string | null>(null);
 
   // If no visitId passed, auto-fetch the patient's latest active visit.
   const { data: fallbackVisit } = useQuery({
@@ -157,15 +162,30 @@ export function OrdersPanel({ patientId, visitId }: OrdersPanelProps) {
                 const doneByPatient = !!order.completedExternallyAt;
                 const isCancellable =
                   order.status !== 'completed' && order.status !== 'cancelled';
+                const fileCount =
+                  (order as any)?._count?.attachments ??
+                  (Array.isArray((order as any)?.attachments)
+                    ? (order as any).attachments.length
+                    : 0);
                 return (
                   <div
                     key={order.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setOpenOrderId(order.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setOpenOrderId(order.id);
+                      }
+                    }}
                     className={cn(
-                      'flex items-start justify-between rounded-lg border p-2.5 transition-colors',
+                      'flex items-start justify-between rounded-lg border p-2.5 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/30',
                       doneByPatient
                         ? 'border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50/70'
                         : 'border-border/50 hover:bg-accent/30',
                     )}
+                    title="View order details and uploaded files"
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -186,6 +206,12 @@ export function OrdersPanel({ patientId, visitId }: OrdersPanelProps) {
                         <span className="text-xs text-muted-foreground">
                           {formatDate(order.createdAt)}
                         </span>
+                        {fileCount > 0 && (
+                          <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-primary">
+                            <Paperclip className="h-3 w-3" />
+                            {fileCount} file{fileCount > 1 ? 's' : ''}
+                          </span>
+                        )}
                         {order.urgency && order.urgency !== 'routine' && !doneByPatient && (
                           <Badge
                             variant="outline"
@@ -201,12 +227,15 @@ export function OrdersPanel({ patientId, visitId }: OrdersPanelProps) {
                         {/* Source-aware report link:
                             - patient self-completion → "Patient Uploaded"
                             - else lab-signed report  → "Lab Report"
-                            (nothing rendered when neither URL is set) */}
+                            Wrapped in stopPropagation so the row's click doesn't
+                            also open the dialog when the doctor wants the
+                            direct download. */}
                         {doneByPatient && order.externalReportUrl ? (
                           <a
                             href={resolveAttachmentUrl(order.externalReportUrl)}
                             target="_blank"
                             rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
                             className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 hover:underline"
                           >
                             <ExternalLink className="h-3 w-3" />
@@ -217,6 +246,7 @@ export function OrdersPanel({ patientId, visitId }: OrdersPanelProps) {
                             href={resolveAttachmentUrl(order.labReport.pdfUrl)}
                             target="_blank"
                             rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
                             className="inline-flex items-center gap-1 text-[10px] font-semibold text-primary hover:underline"
                           >
                             <ExternalLink className="h-3 w-3" />
@@ -230,7 +260,10 @@ export function OrdersPanel({ patientId, visitId }: OrdersPanelProps) {
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 ml-2 shrink-0">
+                    <div
+                      className="flex items-center gap-1 ml-2 shrink-0"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       {doneByPatient ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 text-[10px] font-bold whitespace-nowrap">
                           <CheckCircle2 className="h-3 w-3" />
@@ -437,6 +470,10 @@ export function OrdersPanel({ patientId, visitId }: OrdersPanelProps) {
         onOpenChange={setImagingDialogOpen}
         patientId={patientId}
         visitId={effectiveVisitId}
+      />
+      <LabOrderDetailDialog
+        orderId={openOrderId}
+        onOpenChange={(open) => !open && setOpenOrderId(null)}
       />
     </div>
   );

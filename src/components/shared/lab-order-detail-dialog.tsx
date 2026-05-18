@@ -1,21 +1,35 @@
 'use client';
 
 // Read-only lab order detail dialog for clinicians (doctor / nurse / admin).
-// Shows order metadata, samples, per-test results (highlighting abnormals),
-// and any attachments uploaded by the lab. Mirrors the lab-internal dialog
-// minus the lifecycle/edit actions.
+// The lab produces reports as uploaded files (PDF / image / scan) — there is
+// no separate manual result-entry step — so this dialog renders tests with
+// their uploaded files inline. Legacy parameter results (from orders created
+// under the old flow) still render in a table if present.
 
 import { useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { FlaskConical, AlertCircle, CheckCircle2, ExternalLink } from 'lucide-react';
+import {
+  FlaskConical,
+  AlertCircle,
+  CheckCircle2,
+  ExternalLink,
+  Download,
+  FileText,
+  FileImage,
+  Paperclip,
+} from 'lucide-react';
 import { formatDateTime } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
 import { useLabOrder, type LabOrder } from '@/hooks/use-lab';
-import { LabAttachmentsViewer } from './lab-attachments-viewer';
 import type { LabAttachment } from '@/hooks/use-lab-attachments';
-import { resolveAttachmentUrl } from '@/hooks/use-lab-attachments';
+import {
+  resolveAttachmentUrl,
+  formatFileSize,
+  isImageMime,
+  isPdfMime,
+} from '@/hooks/use-lab-attachments';
 
 interface LabOrderDetailDialogProps {
   orderId: string | null;
@@ -66,6 +80,25 @@ export function LabOrderDetailDialog({ orderId, onOpenChange }: LabOrderDetailDi
     }
     return rows;
   }, [order]);
+
+  // Bucket attachments by labOrderItemId. The Order Detail endpoint returns
+  // the full attachment list on the order; we slice it per item so each test
+  // row can show its files inline. Files without an item link land in a
+  // shared "Additional files" block.
+  const { attachmentsByItem, orphanAttachments } = useMemo(() => {
+    const byItem = new Map<string, LabAttachment[]>();
+    const orphans: LabAttachment[] = [];
+    for (const a of order?.attachments ?? []) {
+      if (a.labOrderItemId) {
+        const list = byItem.get(a.labOrderItemId) ?? [];
+        list.push(a);
+        byItem.set(a.labOrderItemId, list);
+      } else {
+        orphans.push(a);
+      }
+    }
+    return { attachmentsByItem: byItem, orphanAttachments: orphans };
+  }, [order?.attachments]);
 
   return (
     <Dialog open={!!orderId} onOpenChange={onOpenChange}>
@@ -149,78 +182,91 @@ export function LabOrderDetailDialog({ orderId, onOpenChange }: LabOrderDetailDi
 
             <section className="space-y-2">
               <h3 className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Tests &amp; Results
+                Tests &amp; Report Files
               </h3>
               {(order.labOrderItems ?? []).length === 0 ? (
                 <p className="text-xs text-muted-foreground">No tests on this order.</p>
               ) : (
                 <div className="rounded-lg border divide-y">
-                  {(order.labOrderItems ?? []).map((it) => (
-                    <div key={it.id} className="px-3 py-2.5">
-                      <div className="flex items-center justify-between">
-                        <div className="font-medium text-sm">
-                          {it.test?.testName ?? 'Test'}
-                          {it.test?.testCode && (
-                            <span className="ml-1 text-[10px] text-muted-foreground">({it.test.testCode})</span>
-                          )}
+                  {(order.labOrderItems ?? []).map((it) => {
+                    const files = attachmentsByItem.get(it.id) ?? [];
+                    const legacyResults = it.labResults ?? [];
+                    return (
+                      <div key={it.id} className="px-3 py-2.5 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="font-medium text-sm min-w-0">
+                            {it.test?.testName ?? 'Test'}
+                            {it.test?.testCode && (
+                              <span className="ml-1 text-[10px] text-muted-foreground">({it.test.testCode})</span>
+                            )}
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              'capitalize',
+                              it.status === 'completed' && 'bg-emerald-100 text-emerald-800 border-transparent',
+                            )}
+                          >
+                            {it.status.replace('_', ' ')}
+                          </Badge>
                         </div>
-                        <Badge variant="outline" className="capitalize">{it.status}</Badge>
-                      </div>
-                      {(it.labResults ?? []).length > 0 ? (
-                        <table className="mt-2 w-full text-xs">
-                          <thead className="text-[10px] uppercase text-muted-foreground">
-                            <tr>
-                              <th className="text-left font-medium pb-1">Parameter</th>
-                              <th className="text-left font-medium pb-1">Value</th>
-                              <th className="text-left font-medium pb-1">Reference</th>
-                              <th className="text-left font-medium pb-1">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y">
-                            {(it.labResults ?? []).map((r) => (
-                              <tr key={r.id} className={cn(r.isAbnormal && 'text-error')}>
-                                <td className="py-1 pr-2">{r.parameterName}</td>
-                                <td className={cn('py-1 pr-2 font-medium', r.isAbnormal && 'text-error')}>
-                                  {r.value ?? '-'} {r.unit ?? ''}
-                                </td>
-                                <td className="py-1 pr-2 text-muted-foreground">
-                                  {r.normalRange ?? '-'}
-                                </td>
-                                <td className="py-1 pr-2">
-                                  <Badge variant="outline" className="text-[9px] capitalize">
-                                    {r.status ?? 'entered'}
-                                  </Badge>
-                                  {r.enteredAt && (
-                                    <span className="ml-1 text-[10px] text-muted-foreground">
-                                      {formatDateTime(r.enteredAt)}
-                                    </span>
-                                  )}
-                                </td>
+
+                        {/* Legacy parameter results — only renders for older
+                            orders that used the manual entry path. New orders
+                            never carry these. */}
+                        {legacyResults.length > 0 && (
+                          <table className="mt-1 w-full text-xs">
+                            <thead className="text-[10px] uppercase text-muted-foreground">
+                              <tr>
+                                <th className="text-left font-medium pb-1">Parameter</th>
+                                <th className="text-left font-medium pb-1">Value</th>
+                                <th className="text-left font-medium pb-1">Reference</th>
+                                <th className="text-left font-medium pb-1">Status</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      ) : (
-                        <p className="mt-1 text-[11px] italic text-muted-foreground">
-                          Results not yet entered.
-                        </p>
-                      )}
-                    </div>
-                  ))}
+                            </thead>
+                            <tbody className="divide-y">
+                              {legacyResults.map((r) => (
+                                <tr key={r.id} className={cn(r.isAbnormal && 'text-error')}>
+                                  <td className="py-1 pr-2">{r.parameterName}</td>
+                                  <td className={cn('py-1 pr-2 font-medium', r.isAbnormal && 'text-error')}>
+                                    {r.value ?? '-'} {r.unit ?? ''}
+                                  </td>
+                                  <td className="py-1 pr-2 text-muted-foreground">
+                                    {r.normalRange ?? '-'}
+                                  </td>
+                                  <td className="py-1 pr-2">
+                                    <Badge variant="outline" className="text-[9px] capitalize">
+                                      {r.status ?? 'entered'}
+                                    </Badge>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+
+                        {files.length > 0 ? (
+                          <AttachmentList files={files} />
+                        ) : legacyResults.length === 0 ? (
+                          <p className="text-[11px] italic text-muted-foreground">
+                            No report file uploaded for this test yet.
+                          </p>
+                        ) : null}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </section>
 
-            <section className="space-y-2">
-              <h3 className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Attachments
-              </h3>
-              <LabAttachmentsViewer
-                attachments={order.attachments ?? []}
-                emptyMessage="No files attached to this order yet."
-                dense
-              />
-            </section>
+            {orphanAttachments.length > 0 && (
+              <section className="space-y-2">
+                <h3 className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Additional Files
+                </h3>
+                <AttachmentList files={orphanAttachments} />
+              </section>
+            )}
           </div>
         )}
 
@@ -229,5 +275,61 @@ export function LabOrderDetailDialog({ orderId, onOpenChange }: LabOrderDetailDi
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Renders a list of uploaded files. Images get an inline thumbnail clickable
+// to a new tab; PDFs and other docs get an icon row with download chevron.
+// Read-only — clinicians can view + download but never delete from this view.
+function AttachmentList({ files }: { files: LabAttachment[] }) {
+  return (
+    <ul className="space-y-1.5">
+      {files.map((a) => {
+        const url = resolveAttachmentUrl(a.fileUrl);
+        const isImage = isImageMime(a.mimeType);
+        const Icon = isImage ? FileImage : isPdfMime(a.mimeType) ? FileText : Paperclip;
+        return (
+          <li
+            key={a.id}
+            className="flex items-center gap-2 rounded-md border bg-card px-2 py-1.5"
+          >
+            {isImage ? (
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="h-10 w-10 shrink-0 overflow-hidden rounded border bg-muted"
+                title="Open full size"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={url} alt={a.fileName} className="h-full w-full object-cover" />
+              </a>
+            ) : (
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded border bg-muted">
+                <Icon className="h-4 w-4 text-muted-foreground" />
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-medium text-foreground">{a.fileName}</p>
+              <p className="text-[10px] text-muted-foreground capitalize">
+                {a.category.replace('_', ' ')} · {formatFileSize(a.sizeBytes)}
+                {a.uploader && ` · ${a.uploader.firstName} ${a.uploader.lastName ?? ''}`.trim()}
+                {a.description && ` · ${a.description}`}
+              </p>
+            </div>
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              download={a.fileName}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-lg hover:bg-surface-container-high text-muted-foreground hover:text-foreground"
+              title={isPdfMime(a.mimeType) ? 'Open PDF' : 'Download'}
+            >
+              <Download className="h-3.5 w-3.5" />
+            </a>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

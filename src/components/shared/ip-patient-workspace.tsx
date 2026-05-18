@@ -642,10 +642,15 @@ function OrdersPanel({ admissionId, patientId, role }: { admissionId: string; pa
   const imaging = imagingData?.data ?? [];
 
   // Surface any lab order with at least one attachment so clinicians can spot
-  // a reportable file at a glance — the lab UI uploads against the order, not
-  // the report, so the count comes from the order list payload.
+  // a reportable file at a glance. The list endpoint ships a tenant-scoped
+  // `_count.attachments` for the badge; we fall back to the array length if
+  // the full attachment list is hydrated.
   const attachmentCount = (o: any): number =>
-    Array.isArray(o?.attachments) ? o.attachments.length : 0;
+    typeof o?._count?.attachments === 'number'
+      ? o._count.attachments
+      : Array.isArray(o?.attachments)
+        ? o.attachments.length
+        : 0;
 
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

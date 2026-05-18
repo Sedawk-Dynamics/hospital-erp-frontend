@@ -214,6 +214,7 @@ export function LabAttachmentsViewer({
                   <Button
                     size="icon"
                     variant="ghost"
+                    nativeButton={false}
                     render={
                       <a href={url} target="_blank" rel="noopener noreferrer" download={a.fileName} />
                     }

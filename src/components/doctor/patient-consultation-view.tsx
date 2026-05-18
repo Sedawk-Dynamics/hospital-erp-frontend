@@ -517,6 +517,7 @@ function DocumentsTab({ patient }: { patient: Patient }) {
           <Button
             variant="ghost"
             size="sm"
+            nativeButton={false}
             className="shrink-0"
             render={<a href={doc.fileUrl} target="_blank" rel="noopener noreferrer" />}
           >

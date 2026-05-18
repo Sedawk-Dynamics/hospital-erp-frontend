@@ -1,23 +1,28 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Search, ClipboardCheck, FlaskConical, FileSignature, AlertCircle, Eye } from 'lucide-react';
+import {
+  Search,
+  ClipboardCheck,
+  FlaskConical,
+  Upload,
+  CheckCircle2,
+  Download,
+  Trash2,
+  FileText,
+  FileImage,
+} from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
   useLabOrders,
   useLabReports,
-  useLabSamples,
   useAcceptLabOrder,
   useCollectSample,
   useUpdateSampleStatus,
-  useEnterResults,
-  useVerifyResults,
-  useGenerateLabReport,
-  useSignLabReport,
-  usePublishLabReport,
+  useCompleteLabOrderItem,
   useLabDepartments,
   type LabOrder,
 } from '@/hooks/use-lab';
@@ -35,11 +40,17 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { LabAttachmentsViewer } from '@/components/shared/lab-attachments-viewer';
-import { useLabOrderAttachments } from '@/hooks/use-lab-attachments';
+import {
+  useLabOrderAttachments,
+  useUploadLabAttachment,
+  useDeleteLabAttachment,
+  resolveAttachmentUrl,
+  formatFileSize,
+  isImageMime,
+  type LabAttachment,
+} from '@/hooks/use-lab-attachments';
 import { useLabRole } from '@/hooks/use-lab-role';
 import { LabDashboardSummary } from '@/components/laboratory/lab-dashboard-summary';
-import { LabReportPrintDialog } from '@/components/laboratory/lab-report-print-view';
 
 export default function LaboratoryHomePage() {
   // Technicians get the worklist surface only: status, reports, order intake.
@@ -663,7 +674,10 @@ function SampleCollectionDialog({
 }
 
 // ============================================================
-// Order Detail Dialog — sample lifecycle, result entry, sign/publish
+// Order Detail Dialog — sample lifecycle + per-test upload & mark-done.
+// The uploaded files ARE the report; when every test on the order is marked
+// done, the backend auto-publishes the LabReport so the patient portal +
+// doctor/nurse readers light up.
 // ============================================================
 function OrderDetailDialog({
   order,
@@ -673,50 +687,21 @@ function OrderDetailDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const sampleStatus = useUpdateSampleStatus();
-  const enterResults = useEnterResults();
-  const verifyResults = useVerifyResults();
-  const generateReport = useGenerateLabReport();
-  const { canApprove } = useLabRole();
-
-  const [activeItemId, setActiveItemId] = useState<string | null>(null);
-  const [resultRows, setResultRows] = useState<
-    Array<{ parameterName: string; value: string; unit: string; normalRange: string }>
-  >([{ parameterName: '', value: '', unit: '', normalRange: '' }]);
+  // Pull the full attachment list once per dialog open and slice it per item;
+  // saves N hook calls when an order has many tests.
+  const { data: attachments } = useLabOrderAttachments(order?.id);
 
   if (!order) return null;
 
-  const activeItem = order.labOrderItems?.find((it) => it.id === activeItemId);
-
-  const advanceSample = async (sampleId: string, status: 'in_transit' | 'received' | 'processing' | 'completed') => {
+  const advanceSample = async (
+    sampleId: string,
+    status: 'in_transit' | 'received' | 'processing' | 'completed',
+  ) => {
     try {
       await sampleStatus.mutateAsync({ id: sampleId, status });
       toast.success(`Sample marked ${status.replace('_', ' ')}`);
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? 'Failed to update sample');
-    }
-  };
-
-  const submitResults = async () => {
-    if (!activeItem) return;
-    const cleaned = resultRows.filter((r) => r.parameterName.trim());
-    if (cleaned.length === 0) { toast.error('Add at least one parameter'); return; }
-    try {
-      await enterResults.mutateAsync({
-        labOrderItemId: activeItem.id,
-        labOrderId: order.id,
-        patientId: order.patientId,
-        results: cleaned.map((r) => ({
-          parameterName: r.parameterName.trim(),
-          value: r.value || undefined,
-          unit: r.unit || undefined,
-          normalRange: r.normalRange || undefined,
-        })),
-      });
-      toast.success('Results entered');
-      setActiveItemId(null);
-      setResultRows([{ parameterName: '', value: '', unit: '', normalRange: '' }]);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Failed to save results');
     }
   };
 
@@ -763,164 +748,22 @@ function OrderDetailDialog({
           )}
         </section>
 
-        {/* Test items */}
+        {/* Tests — upload + mark done per test */}
         <section className="space-y-2">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Tests</h3>
+          <p className="text-[11px] text-muted-foreground">
+            Upload the report file (PDF / image / scan) for each test, then mark it done. Uploaded files
+            are visible to the patient, ordering doctor, and ward nurses.
+          </p>
           <div className="rounded-lg border divide-y">
             {(order.labOrderItems ?? []).map((it) => (
-              <div key={it.id} className="px-3 py-2 text-sm">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="font-medium">{it.test.testName}</span>
-                    <Badge className="ml-2">{it.status}</Badge>
-                  </div>
-                  <Button size="sm" onClick={() => setActiveItemId(it.id)} disabled={it.status === 'cancelled'}>
-                    Enter Results
-                  </Button>
-                </div>
-
-                {activeItemId === it.id && (
-                  <div className="mt-3 space-y-2 rounded-md bg-surface-container-low p-3">
-                    {resultRows.map((r, idx) => (
-                      <div key={idx} className="grid grid-cols-12 gap-2">
-                        <Input
-                          className="col-span-4"
-                          placeholder="Parameter"
-                          value={r.parameterName}
-                          onChange={(e) => {
-                            const next = [...resultRows]; next[idx].parameterName = e.target.value; setResultRows(next);
-                          }}
-                        />
-                        <Input
-                          className="col-span-3"
-                          placeholder="Value"
-                          value={r.value}
-                          onChange={(e) => {
-                            const next = [...resultRows]; next[idx].value = e.target.value; setResultRows(next);
-                          }}
-                        />
-                        <Input
-                          className="col-span-2"
-                          placeholder="Unit"
-                          value={r.unit}
-                          onChange={(e) => {
-                            const next = [...resultRows]; next[idx].unit = e.target.value; setResultRows(next);
-                          }}
-                        />
-                        <Input
-                          className="col-span-3"
-                          placeholder='Range (e.g. "10-20")'
-                          value={r.normalRange}
-                          onChange={(e) => {
-                            const next = [...resultRows]; next[idx].normalRange = e.target.value; setResultRows(next);
-                          }}
-                        />
-                      </div>
-                    ))}
-                    <div className="flex justify-between">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setResultRows([...resultRows, { parameterName: '', value: '', unit: '', normalRange: '' }])}
-                      >
-                        + Add parameter
-                      </Button>
-                      <div className="flex gap-1">
-                        <Button size="sm" variant="outline" onClick={() => setActiveItemId(null)}>Cancel</Button>
-                        <Button size="sm" onClick={submitResults} disabled={enterResults.isPending}>
-                          {enterResults.isPending ? 'Saving…' : 'Save Results'}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <TestItemRow
+                key={it.id}
+                orderId={order.id}
+                item={it}
+                attachments={(attachments ?? []).filter((a) => a.labOrderItemId === it.id)}
+              />
             ))}
-          </div>
-        </section>
-
-        {/* Result review (per-result approve / request correction) — supervisor only */}
-        {canApprove && (order.labOrderItems ?? []).some((it) => (it as any).labResults?.length) && (
-          <section className="space-y-2">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Result Review</h3>
-            <div className="rounded-lg border divide-y">
-              {(order.labOrderItems ?? []).flatMap((it) =>
-                ((it as any).labResults ?? []).map((r: any) => (
-                  <div key={r.id} className="flex items-center justify-between px-3 py-2 text-sm">
-                    <div>
-                      <span className="font-medium">{r.parameterName}</span>
-                      <span className="ml-2 text-muted-foreground">
-                        {r.value ?? '-'} {r.unit ?? ''} {r.normalRange ? `(ref ${r.normalRange})` : ''}
-                      </span>
-                      {r.isAbnormal && <Badge className="ml-2 bg-red-100 text-red-800">abnormal</Badge>}
-                      <Badge className="ml-2">{r.status ?? 'entered'}</Badge>
-                    </div>
-                    <div className="flex gap-1">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={async () => {
-                          const note = prompt('Reason for correction?');
-                          if (!note) return;
-                          try {
-                            await verifyResults.mutateAsync({ id: r.id, action: 'request_correction', correctionNotes: note });
-                            toast.success('Sent back for correction');
-                          } catch (err: any) {
-                            toast.error(err?.response?.data?.message ?? 'Failed');
-                          }
-                        }}
-                      >
-                        <AlertCircle className="size-3.5" /> Request correction
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={async () => {
-                          try {
-                            await verifyResults.mutateAsync({ id: r.id, action: 'approve' });
-                            toast.success('Approved');
-                          } catch (err: any) {
-                            toast.error(err?.response?.data?.message ?? 'Failed');
-                          }
-                        }}
-                      >
-                        Approve
-                      </Button>
-                    </div>
-                  </div>
-                )),
-              )}
-            </div>
-          </section>
-        )}
-
-        {/* Attachments (PDFs, images, scans) */}
-        <section className="space-y-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
-            Attachments
-          </h3>
-          <OrderAttachmentsSection orderId={order.id} />
-        </section>
-
-        {/* Report controls */}
-        <section className="space-y-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Report</h3>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={async () => {
-                try {
-                  await generateReport.mutateAsync({ orderId: order.id });
-                  toast.success('Draft report generated');
-                } catch (err: any) {
-                  toast.error(err?.response?.data?.message ?? 'Failed to generate');
-                }
-              }}
-              disabled={generateReport.isPending}
-            >
-              <FileSignature className="size-3.5" /> Generate
-            </Button>
-            <ReportSignPublish orderId={order.id} />
           </div>
         </section>
 
@@ -932,62 +775,179 @@ function OrderDetailDialog({
   );
 }
 
-function ReportSignPublish({ orderId }: { orderId: string }) {
-  const reportsQ = useLabReports({ limit: 5 });
-  const sign = useSignLabReport();
-  const publish = usePublishLabReport();
-  const { canApprove } = useLabRole();
-  const [previewId, setPreviewId] = useState<string | null>(null);
+// Per-test row: shows existing uploaded files for the test, lets the lab user
+// upload another, and exposes a Mark Done button. The backend rejects Done
+// without at least one attachment, so the local guard mirrors that.
+function TestItemRow({
+  orderId,
+  item,
+  attachments,
+}: {
+  orderId: string;
+  item: NonNullable<LabOrder['labOrderItems']>[number];
+  attachments: LabAttachment[];
+}) {
+  const upload = useUploadLabAttachment();
+  const remove = useDeleteLabAttachment();
+  const complete = useCompleteLabOrderItem();
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  const report = (reportsQ.data?.data ?? []).find((r) => r.orderId === orderId);
-  if (!report) return null;
+  const isDone = item.status === 'completed';
+  const isCancelled = item.status === 'cancelled';
+  const canMarkDone = !isDone && !isCancelled && attachments.length > 0;
 
-  const status = (report as any).status as string;
+  const onPick = async (file: File) => {
+    try {
+      await upload.mutateAsync({
+        orderId,
+        file,
+        category: 'report_pdf',
+        labOrderItemId: item.id,
+      });
+      toast.success(`Uploaded ${file.name}`);
+      if (fileRef.current) fileRef.current.value = '';
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Upload failed');
+    }
+  };
+
+  const onDelete = async (id: string) => {
+    if (!confirm('Remove this file? It will disappear from the patient and clinician views.')) return;
+    try {
+      await remove.mutateAsync(id);
+      toast.success('File removed');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Delete failed');
+    }
+  };
+
+  const onDone = async () => {
+    try {
+      await complete.mutateAsync({ orderId, itemId: item.id });
+      toast.success('Test marked done');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Failed to mark done');
+    }
+  };
+
   return (
-    <>
-      <Badge>{status}</Badge>
-      <Button size="sm" variant="outline" onClick={() => setPreviewId(report.id)}>
-        <Eye className="size-3.5" /> Preview
-      </Button>
-      {canApprove && status !== 'approved' && status !== 'published' && (
-        <Button
-          size="sm"
-          onClick={async () => {
-            try {
-              await sign.mutateAsync(report.id);
-              toast.success('Report signed');
-            } catch (err: any) {
-              toast.error(err?.response?.data?.message ?? 'Failed to sign');
-            }
-          }}
-          disabled={sign.isPending}
-        >
-          Sign
-        </Button>
-      )}
-      {canApprove && status === 'approved' && (
-        <Button
-          size="sm"
-          onClick={async () => {
-            try {
-              await publish.mutateAsync({ id: report.id });
-              toast.success('Report published');
-            } catch (err: any) {
-              toast.error(err?.response?.data?.message ?? 'Failed to publish');
-            }
-          }}
-          disabled={publish.isPending}
-        >
-          Publish
-        </Button>
-      )}
+    <div className="px-3 py-3 text-sm space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <span className="font-medium">{item.test.testName}</span>
+          {item.test.testCode && (
+            <span className="ml-1 text-[10px] text-muted-foreground">({item.test.testCode})</span>
+          )}
+          <Badge
+            className={cn(
+              'ml-2 capitalize',
+              isDone && 'bg-emerald-100 text-emerald-800',
+              isCancelled && 'bg-red-100 text-red-800',
+            )}
+          >
+            {item.status.replace('_', ' ')}
+          </Badge>
+        </div>
+        <div className="flex gap-1 shrink-0">
+          {!isDone && !isCancelled && (
+            <>
+              <input
+                ref={fileRef}
+                type="file"
+                className="hidden"
+                accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.doc,.docx"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) onPick(f);
+                }}
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => fileRef.current?.click()}
+                disabled={upload.isPending}
+                className="gap-1"
+              >
+                <Upload className="size-3.5" />
+                {upload.isPending ? 'Uploading…' : 'Upload'}
+              </Button>
+              <Button
+                size="sm"
+                onClick={onDone}
+                disabled={!canMarkDone || complete.isPending}
+                className="gap-1"
+                title={!canMarkDone ? 'Upload a report file first' : undefined}
+              >
+                <CheckCircle2 className="size-3.5" />
+                {complete.isPending ? 'Saving…' : 'Mark Done'}
+              </Button>
+            </>
+          )}
+          {isDone && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700">
+              <CheckCircle2 className="size-3.5" />
+              Done
+            </span>
+          )}
+        </div>
+      </div>
 
-      <LabReportPrintDialog
-        reportId={previewId}
-        open={!!previewId}
-        onOpenChange={(next) => !next && setPreviewId(null)}
-      />
-    </>
+      {attachments.length === 0 ? (
+        <p className="text-[11px] italic text-muted-foreground">
+          No file uploaded for this test yet.
+        </p>
+      ) : (
+        <ul className="space-y-1">
+          {attachments.map((a) => {
+            const url = resolveAttachmentUrl(a.fileUrl);
+            const Icon = isImageMime(a.mimeType) ? FileImage : FileText;
+            return (
+              <li
+                key={a.id}
+                className="flex items-center gap-2 rounded-md border bg-card px-2 py-1.5"
+              >
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded border bg-muted">
+                  <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium">{a.fileName}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {formatFileSize(a.sizeBytes)}
+                    {a.uploader && ` · ${a.uploader.firstName} ${a.uploader.lastName ?? ''}`.trim()}
+                    {' · '}
+                    {formatDateTime(a.createdAt)}
+                  </p>
+                </div>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  nativeButton={false}
+                  render={
+                    <a href={url} target="_blank" rel="noopener noreferrer" download={a.fileName} />
+                  }
+                  className="h-7 w-7"
+                  title="Open / download"
+                >
+                  <Download className="size-3.5" />
+                </Button>
+                {!isDone && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => onDelete(a.id)}
+                    disabled={remove.isPending}
+                    className="h-7 w-7 text-error"
+                    title="Remove"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -1069,24 +1029,6 @@ function StatusBadge({ status }: { status?: string }) {
     )}>
       {status?.replace(/_/g, ' ')}
     </span>
-  );
-}
-
-// Loads + renders attachments tied to a single lab order. Lab roles can
-// upload (report PDFs, microscopy images, raw output) and delete; the same
-// list ships to doctors, nurses and patients via the order/report payload.
-function OrderAttachmentsSection({ orderId }: { orderId: string }) {
-  const { data, isLoading } = useLabOrderAttachments(orderId);
-  if (isLoading) {
-    return <p className="text-xs text-muted-foreground">Loading attachments…</p>;
-  }
-  return (
-    <LabAttachmentsViewer
-      attachments={data ?? []}
-      orderId={orderId}
-      canUpload
-      canDelete
-    />
   );
 }
 

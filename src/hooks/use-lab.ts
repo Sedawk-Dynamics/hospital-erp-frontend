@@ -179,6 +179,20 @@ export interface LabReport {
   approvedAt?: string;
   publishedAt?: string;
   correctionNotes?: string;
+  attachments?: Array<{
+    id: string;
+    labOrderId: string;
+    labReportId?: string | null;
+    labOrderItemId?: string | null;
+    category: string;
+    fileName: string;
+    fileUrl: string;
+    mimeType: string;
+    sizeBytes: number;
+    description?: string | null;
+    uploader?: { id: string; firstName: string; lastName: string };
+    createdAt: string;
+  }>;
   createdAt: string;
   updatedAt: string;
 }
@@ -649,6 +663,25 @@ export function useEnterResults() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: labKeys.results.all });
       queryClient.invalidateQueries({ queryKey: labKeys.orders.all });
+    },
+  });
+}
+
+// Marks a single test on a lab order as done. Server-side: when every item
+// on the order is completed the order auto-finalizes and a LabReport is
+// published in one shot — uploaded attachments ARE the report.
+export function useCompleteLabOrderItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ orderId, itemId }: { orderId: string; itemId: string }) => {
+      const response = await apiPatch(`/lab/orders/${orderId}/items/${itemId}/complete`);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: labKeys.orders.all });
+      queryClient.invalidateQueries({ queryKey: labKeys.reports.all });
+      queryClient.invalidateQueries({ queryKey: ['lab', 'attachments'] });
+      queryClient.invalidateQueries({ queryKey: ['lab', 'dashboard'] });
     },
   });
 }

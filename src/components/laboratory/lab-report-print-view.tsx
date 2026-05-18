@@ -2,11 +2,17 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
-import { Loader2, Printer, X } from 'lucide-react';
+import { Loader2, Printer, X, FileText, Download, Paperclip } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useLabReport, type LabReport } from '@/hooks/use-lab';
 import { formatDate, formatDateTime } from '@/lib/date-utils';
+import {
+  resolveAttachmentUrl,
+  formatFileSize,
+  isImageMime,
+  isPdfMime,
+} from '@/hooks/use-lab-attachments';
 
 interface StructuredPayload {
   branding?: {
@@ -123,7 +129,32 @@ export function LabReportPaper({ report }: { report: LabReport }) {
       ? `${report.patient.firstName} ${report.patient.lastName ?? ''}`.trim()
       : undefined,
   };
-  const items = payload.items ?? [];
+
+  // We render the labOrder's items as the source of truth (the upload flow
+  // doesn't write a structured `items` array into reportContent). Parameter
+  // results, if any historical orders still carry them, are looked up from
+  // the legacy payload by testCode/testName.
+  const orderItems = report.labOrder?.labOrderItems ?? report.order?.labOrderItems ?? [];
+  const legacyResultsByKey = new Map<string, NonNullable<StructuredPayload['items']>[number]['results']>();
+  for (const it of payload.items ?? []) {
+    const key = it.testCode ?? it.testName;
+    if (it.results?.length) legacyResultsByKey.set(key, it.results);
+  }
+
+  const attachments = report.attachments ?? [];
+  // Files tied to a specific test item render under that test; the rest land
+  // in a shared "Additional files" block at the end.
+  const attachmentsByItem = new Map<string, typeof attachments>();
+  const orphanAttachments: typeof attachments = [];
+  for (const a of attachments) {
+    if (a.labOrderItemId) {
+      const list = attachmentsByItem.get(a.labOrderItemId) ?? [];
+      list.push(a);
+      attachmentsByItem.set(a.labOrderItemId, list);
+    } else {
+      orphanAttachments.push(a);
+    }
+  }
 
   const issuedDate = report.publishedAt ?? report.signedAt ?? report.generatedAt ?? report.createdAt;
 
@@ -198,56 +229,85 @@ export function LabReportPaper({ report }: { report: LabReport }) {
         </div>
       </section>
 
-      {/* Results */}
+      {/* Tests + uploaded report files */}
       <section className="px-8 py-4">
-        {items.length === 0 ? (
-          <p className="text-center text-gray-500 italic">No structured results in this report.</p>
+        {orderItems.length === 0 && attachments.length === 0 ? (
+          <p className="text-center text-gray-500 italic">No tests or files in this report.</p>
         ) : (
-          items.map((item, idx) => (
-            <div key={`${item.testCode ?? item.testName}-${idx}`} className="mb-4 break-inside-avoid">
-              <div className="flex items-baseline justify-between border-b border-gray-300 pb-1 mb-2">
-                <h3 className="text-sm font-bold uppercase tracking-wide">{item.testName}</h3>
-                <span className="text-[11px] text-gray-600">
-                  {item.testCode && <span className="font-mono mr-2">{item.testCode}</span>}
-                  {item.sampleType && <span>Sample: {item.sampleType}</span>}
-                </span>
-              </div>
-              {item.results && item.results.length > 0 ? (
-                <table className="w-full text-[12px] border-collapse">
-                  <thead>
-                    <tr className="bg-gray-50 text-[10px] uppercase tracking-wide text-gray-600">
-                      <th className="text-left px-2 py-1 border border-gray-200">Parameter</th>
-                      <th className="text-right px-2 py-1 border border-gray-200">Result</th>
-                      <th className="text-left px-2 py-1 border border-gray-200">Unit</th>
-                      <th className="text-left px-2 py-1 border border-gray-200">Reference Range</th>
-                      <th className="text-center px-2 py-1 border border-gray-200">Flag</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {item.results.map((r, i) => (
-                      <tr key={`${r.parameter}-${i}`} className={r.isAbnormal ? 'bg-red-50' : ''}>
-                        <td className="px-2 py-1 border border-gray-200">{r.parameter}</td>
-                        <td className={`px-2 py-1 border border-gray-200 text-right font-mono ${r.isAbnormal ? 'font-bold text-red-700' : ''}`}>
-                          {r.value ?? '—'}
-                        </td>
-                        <td className="px-2 py-1 border border-gray-200 text-gray-700">{r.unit ?? '—'}</td>
-                        <td className="px-2 py-1 border border-gray-200 text-gray-700">{r.normalRange ?? '—'}</td>
-                        <td className="px-2 py-1 border border-gray-200 text-center">
-                          {r.isAbnormal ? (
-                            <span className="font-bold text-red-700">H/L</span>
-                          ) : (
-                            <span className="text-gray-400">—</span>
-                          )}
-                        </td>
+          orderItems.map((it, idx) => {
+            const testName = it.test?.testName ?? 'Test';
+            const testCode = it.test?.testCode;
+            const legacy = legacyResultsByKey.get(testCode ?? testName);
+            const files = attachmentsByItem.get(it.id) ?? [];
+            return (
+              <div key={it.id ?? `${testCode ?? testName}-${idx}`} className="mb-5 break-inside-avoid">
+                <div className="flex items-baseline justify-between border-b border-gray-300 pb-1 mb-2">
+                  <h3 className="text-sm font-bold uppercase tracking-wide">{testName}</h3>
+                  <span className="text-[11px] text-gray-600">
+                    {testCode && <span className="font-mono mr-2">{testCode}</span>}
+                    {files.length > 0 && (
+                      <span>
+                        {files.length} file{files.length > 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </span>
+                </div>
+
+                {legacy && legacy.length > 0 && (
+                  <table className="w-full text-[12px] border-collapse mb-2">
+                    <thead>
+                      <tr className="bg-gray-50 text-[10px] uppercase tracking-wide text-gray-600">
+                        <th className="text-left px-2 py-1 border border-gray-200">Parameter</th>
+                        <th className="text-right px-2 py-1 border border-gray-200">Result</th>
+                        <th className="text-left px-2 py-1 border border-gray-200">Unit</th>
+                        <th className="text-left px-2 py-1 border border-gray-200">Reference Range</th>
+                        <th className="text-center px-2 py-1 border border-gray-200">Flag</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
-                <p className="text-[11px] italic text-gray-500">No parameters entered for this test.</p>
-              )}
+                    </thead>
+                    <tbody>
+                      {legacy.map((r, i) => (
+                        <tr key={`${r.parameter}-${i}`} className={r.isAbnormal ? 'bg-red-50' : ''}>
+                          <td className="px-2 py-1 border border-gray-200">{r.parameter}</td>
+                          <td className={`px-2 py-1 border border-gray-200 text-right font-mono ${r.isAbnormal ? 'font-bold text-red-700' : ''}`}>
+                            {r.value ?? '—'}
+                          </td>
+                          <td className="px-2 py-1 border border-gray-200 text-gray-700">{r.unit ?? '—'}</td>
+                          <td className="px-2 py-1 border border-gray-200 text-gray-700">{r.normalRange ?? '—'}</td>
+                          <td className="px-2 py-1 border border-gray-200 text-center">
+                            {r.isAbnormal ? (
+                              <span className="font-bold text-red-700">H/L</span>
+                            ) : (
+                              <span className="text-gray-400">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+
+                {files.length > 0 ? (
+                  <AttachmentBlock files={files} />
+                ) : !legacy?.length ? (
+                  <p className="text-[11px] italic text-gray-500">
+                    No file uploaded for this test.
+                  </p>
+                ) : null}
+              </div>
+            );
+          })
+        )}
+
+        {orphanAttachments.length > 0 && (
+          <div className="mb-2 break-inside-avoid">
+            <div className="flex items-baseline justify-between border-b border-gray-300 pb-1 mb-2">
+              <h3 className="text-sm font-bold uppercase tracking-wide">Additional Files</h3>
+              <span className="text-[11px] text-gray-600">
+                {orphanAttachments.length} file{orphanAttachments.length > 1 ? 's' : ''}
+              </span>
             </div>
-          ))
+            <AttachmentBlock files={orphanAttachments} />
+          </div>
         )}
 
         {payload.notes && (
@@ -323,6 +383,67 @@ export function LabReportPaper({ report }: { report: LabReport }) {
         {report.status === 'corrected' && ' This corrected copy supersedes any prior version.'}
       </div>
     </article>
+  );
+}
+
+// Renders the uploaded files for a test (or order). Images get an inline
+// thumbnail so the report previews properly; PDFs / other docs show a row
+// with a click-through link. Print output gives every file an absolute URL
+// so the print window can still resolve images.
+function AttachmentBlock({
+  files,
+}: {
+  files: NonNullable<LabReport['attachments']>;
+}) {
+  return (
+    <div className="space-y-2">
+      {files.map((a) => {
+        const url = resolveAttachmentUrl(a.fileUrl);
+        const isImage = isImageMime(a.mimeType);
+        if (isImage) {
+          return (
+            <figure
+              key={a.id}
+              className="rounded border border-gray-200 overflow-hidden bg-gray-50"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={url}
+                alt={a.fileName}
+                className="block max-h-[400px] w-full object-contain bg-white"
+              />
+              <figcaption className="px-2 py-1 text-[10px] text-gray-600 flex items-center justify-between">
+                <span className="truncate font-medium">{a.fileName}</span>
+                <span className="text-gray-500">
+                  {formatFileSize(a.sizeBytes)}
+                  {a.uploader && ` · ${a.uploader.firstName} ${a.uploader.lastName ?? ''}`.trim()}
+                </span>
+              </figcaption>
+            </figure>
+          );
+        }
+        const Icon = isPdfMime(a.mimeType) ? FileText : Paperclip;
+        return (
+          <a
+            key={a.id}
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="no-underline flex items-center gap-2 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-[12px] hover:bg-gray-100"
+          >
+            <Icon className="h-4 w-4 text-gray-600 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-medium text-gray-800">{a.fileName}</p>
+              <p className="text-[10px] text-gray-500 capitalize">
+                {a.category.replace('_', ' ')} · {formatFileSize(a.sizeBytes)}
+                {a.uploader && ` · uploaded by ${a.uploader.firstName} ${a.uploader.lastName ?? ''}`.trim()}
+              </p>
+            </div>
+            <Download className="h-3.5 w-3.5 text-gray-500 shrink-0" />
+          </a>
+        );
+      })}
+    </div>
   );
 }
 
