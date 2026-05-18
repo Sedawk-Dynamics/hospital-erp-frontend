@@ -181,6 +181,7 @@ export default function PatientLabReportsPage() {
                           <Button
                             variant="ghost"
                             size="icon-sm"
+                            nativeButton={false}
                             render={
                               <a
                                 href={resolveAttachmentUrl(r.attachments?.[0]?.fileUrl ?? r.pdfUrl ?? '')}
