@@ -135,6 +135,12 @@ function parseNum(v: string): number | undefined {
   return isNaN(n) ? undefined : n;
 }
 
+// Backend persists the timestamp as `recordedAt` (see Vital prisma model);
+// older code paths exposed `createdAt`, so fall back for safety.
+function vitalTimestamp(v: Vital): string | undefined {
+  return v.recordedAt ?? v.createdAt;
+}
+
 // ── Unified encounter view ─────────────────────────────────
 //
 // Both admissions and appointments map onto the same set of fields the
@@ -364,7 +370,7 @@ function LatestVitalsCard({ vitals }: { vitals: Vital | undefined }) {
           Latest Vitals
         </h2>
         <p className="text-[10px] text-on-surface-variant">
-          Recorded {formatDateTime(vitals.createdAt)}
+          Recorded {formatDateTime(vitalTimestamp(vitals))}
         </p>
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
@@ -512,7 +518,9 @@ export default function NurseVitalsPage() {
     const map = new Map<string, number>();
     const arr = allVitalsData?.data ?? [];
     for (const v of arr) {
-      const t = new Date(v.createdAt).getTime();
+      const ts = vitalTimestamp(v);
+      if (!ts) continue;
+      const t = new Date(ts).getTime();
       const prev = map.get(v.patientId);
       if (!prev || t > prev) map.set(v.patientId, t);
     }
@@ -666,27 +674,30 @@ export default function NurseVitalsPage() {
   // ── Trend series (7-day window) ──────────────────────────
   const trendSeries = useMemo(() => {
     const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const within = vitals.filter((v) => new Date(v.createdAt).getTime() >= cutoff);
+    const within = vitals.filter((v) => {
+      const ts = vitalTimestamp(v);
+      return ts ? new Date(ts).getTime() >= cutoff : false;
+    });
     return {
       bp: within
         .filter((v) => v.bloodPressureSystolic != null || v.bloodPressureDiastolic != null)
         .map((v) => ({
-          time: v.createdAt,
+          time: vitalTimestamp(v)!,
           value: v.bloodPressureSystolic ?? 0,
           value2: v.bloodPressureDiastolic ?? undefined,
         })),
       temp: within
         .filter((v) => v.temperature != null)
-        .map((v) => ({ time: v.createdAt, value: v.temperature! })),
+        .map((v) => ({ time: vitalTimestamp(v)!, value: v.temperature! })),
       pulse: within
         .filter((v) => v.pulseRate != null || v.heartRate != null)
-        .map((v) => ({ time: v.createdAt, value: (v.pulseRate ?? v.heartRate)! })),
+        .map((v) => ({ time: vitalTimestamp(v)!, value: (v.pulseRate ?? v.heartRate)! })),
       rr: within
         .filter((v) => v.respiratoryRate != null)
-        .map((v) => ({ time: v.createdAt, value: v.respiratoryRate! })),
+        .map((v) => ({ time: vitalTimestamp(v)!, value: v.respiratoryRate! })),
       spo2: within
         .filter((v) => v.oxygenSaturation != null)
-        .map((v) => ({ time: v.createdAt, value: v.oxygenSaturation! })),
+        .map((v) => ({ time: vitalTimestamp(v)!, value: v.oxygenSaturation! })),
     };
   }, [vitals]);
 
@@ -1092,7 +1103,7 @@ export default function NurseVitalsPage() {
                               className="border-b border-outline-variant/20 hover:bg-surface-container-low"
                             >
                               <td className="px-2 py-2 font-medium text-foreground">
-                                {formatDateTime(v.createdAt)}
+                                {formatDateTime(vitalTimestamp(v))}
                               </td>
                               <td
                                 className={cn(

@@ -57,8 +57,9 @@ export interface Vital {
   bloodSugar?: number;
   notes?: string;
   recordedBy?: string;
-  createdAt: string;
-  updatedAt: string;
+  recordedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface NursingNote {
