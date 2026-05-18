@@ -896,6 +896,12 @@ export interface NurseClinicalOrder {
   completedExternallyAt: string | null;
   externalReportUrl: string | null;
   externalNotes: string | null;
+  // Set when lab / radiology has uploaded their own signed report. Drives
+  // the "Lab Report" / "Imaging Report" link in clinical views (the
+  // patient-uploaded `externalReportUrl` takes precedence and is labelled
+  // "Patient Uploaded" instead).
+  reportUrl: string | null;
+  reportStatus: string | null;
 }
 
 /**

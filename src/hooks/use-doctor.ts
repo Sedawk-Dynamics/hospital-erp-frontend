@@ -218,6 +218,14 @@ export interface LabOrder {
   completedExternallyAt?: string | null;
   externalReportUrl?: string | null;
   externalNotes?: string | null;
+  // Lab-signed report (when present, link is shown as "Lab Report").
+  labReport?: {
+    id: string;
+    status: string;
+    pdfUrl?: string | null;
+    publishedAt?: string | null;
+    signedAt?: string | null;
+  } | null;
   // Legacy/denormalized fields surfaced by some list endpoints or consumers.
   tests?: { id: string; name: string; code?: string; category?: string }[];
   priority?: string;
@@ -1215,6 +1223,13 @@ export interface ImagingRequest {
   completedExternallyAt?: string | null;
   externalReportUrl?: string | null;
   externalNotes?: string | null;
+  // Radiology-signed report ("Imaging Report" link when present).
+  imagingResult?: {
+    id: string;
+    status: string;
+    pdfReportUrl?: string | null;
+    signedAt?: string | null;
+  } | null;
 }
 
 interface ImagingRequestParams {

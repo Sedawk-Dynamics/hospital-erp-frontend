@@ -66,6 +66,11 @@ interface PortalOpenOrder {
   completedExternallyAt: string | null;
   externalReportUrl: string | null;
   externalNotes: string | null;
+  // Hospital-uploaded report (lab pdf or radiology pdf). When set and the
+  // patient did NOT self-complete, the row links to "Lab Report" /
+  // "Imaging Report" instead of "View uploaded report".
+  reportUrl: string | null;
+  reportStatus: string | null;
 }
 
 const labStatusLabel: Record<string, string> = {
@@ -335,9 +340,24 @@ function OrderRow({
                   className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:underline"
                 >
                   <ExternalLink className="h-3 w-3" />
-                  View uploaded report
+                  Patient Uploaded
                 </a>
               )}
+            </div>
+          )}
+
+          {/* Hospital-uploaded report (only when patient hasn't self-completed) */}
+          {!doneByPatient && order.reportUrl && (
+            <div className="rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1.5">
+              <a
+                href={resolveAttachmentUrl(order.reportUrl)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline"
+              >
+                <ExternalLink className="h-3 w-3" />
+                {order.orderType === 'lab' ? 'Lab Report' : 'Imaging Report'}
+              </a>
             </div>
           )}
 

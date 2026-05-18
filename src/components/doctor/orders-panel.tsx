@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import { LabOrderDialog } from './lab-order-dialog';
 import { ImagingRequestDialog } from './imaging-request-dialog';
 import { cn } from '@/lib/utils';
+import { resolveAttachmentUrl } from '@/hooks/use-lab-attachments';
 
 interface OrdersPanelProps {
   patientId: string;
@@ -197,17 +198,31 @@ export function OrdersPanel({ patientId, visitId }: OrdersPanelProps) {
                             {order.urgency.toUpperCase()}
                           </Badge>
                         )}
-                        {doneByPatient && order.externalReportUrl && (
+                        {/* Source-aware report link:
+                            - patient self-completion → "Patient Uploaded"
+                            - else lab-signed report  → "Lab Report"
+                            (nothing rendered when neither URL is set) */}
+                        {doneByPatient && order.externalReportUrl ? (
                           <a
-                            href={order.externalReportUrl}
+                            href={resolveAttachmentUrl(order.externalReportUrl)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 hover:underline"
                           >
                             <ExternalLink className="h-3 w-3" />
-                            Patient report
+                            Patient Uploaded
                           </a>
-                        )}
+                        ) : order.labReport?.pdfUrl ? (
+                          <a
+                            href={resolveAttachmentUrl(order.labReport.pdfUrl)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[10px] font-semibold text-primary hover:underline"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                            Lab Report
+                          </a>
+                        ) : null}
                         {doneByPatient && order.externalNotes && (
                           <span className="text-[10px] italic text-emerald-700 truncate max-w-[220px]">
                             {order.externalNotes}
@@ -338,17 +353,27 @@ export function OrdersPanel({ patientId, visitId }: OrdersPanelProps) {
                             {request.clinicalIndication}
                           </span>
                         )}
-                        {doneByPatient && request.externalReportUrl && (
+                        {doneByPatient && request.externalReportUrl ? (
                           <a
-                            href={request.externalReportUrl}
+                            href={resolveAttachmentUrl(request.externalReportUrl)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 hover:underline"
                           >
                             <ExternalLink className="h-3 w-3" />
-                            Patient report
+                            Patient Uploaded
                           </a>
-                        )}
+                        ) : request.imagingResult?.pdfReportUrl ? (
+                          <a
+                            href={resolveAttachmentUrl(request.imagingResult.pdfReportUrl)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[10px] font-semibold text-primary hover:underline"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                            Imaging Report
+                          </a>
+                        ) : null}
                         {doneByPatient && request.externalNotes && (
                           <span className="text-[10px] italic text-emerald-700 truncate max-w-[220px]">
                             {request.externalNotes}

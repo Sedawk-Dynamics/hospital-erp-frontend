@@ -44,6 +44,7 @@ import {
 import type { BedInfo, SupplyRequest, InventoryItem, NurseClinicalOrder } from '@/hooks/use-nurse';
 import { useWards } from '@/hooks/use-clinical';
 import { LabOrderDetailDialog } from '@/components/shared/lab-order-detail-dialog';
+import { resolveAttachmentUrl } from '@/hooks/use-lab-attachments';
 
 // ============================================================
 // Types
@@ -400,22 +401,41 @@ function DoctorOrdersTab() {
                             View
                           </Button>
                         )}
-                        {order.externalReportUrl && (
+                        {/* Source-aware report link:
+                            - patient self-completion → "Patient Uploaded" (green)
+                            - else lab/imaging report → "Lab Report" / "Imaging Report" (primary)
+                            (nothing rendered when neither URL is set) */}
+                        {order.externalReportUrl ? (
                           <Button
                             size="sm"
                             variant="ghost"
                             className="h-7 text-xs text-emerald-700 hover:bg-emerald-50"
                             render={
                               <a
-                                href={order.externalReportUrl}
+                                href={resolveAttachmentUrl(order.externalReportUrl)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                               />
                             }
                           >
-                            Patient report
+                            Patient Uploaded
                           </Button>
-                        )}
+                        ) : order.reportUrl ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs text-primary hover:bg-primary/10"
+                            render={
+                              <a
+                                href={resolveAttachmentUrl(order.reportUrl)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              />
+                            }
+                          >
+                            {order.orderType === 'lab' ? 'Lab Report' : 'Imaging Report'}
+                          </Button>
+                        ) : null}
                         {order.completedExternallyAt ? (
                           <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700">
                             <CheckCircle2 className="h-3 w-3" />
