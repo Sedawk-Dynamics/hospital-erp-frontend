@@ -89,7 +89,26 @@ export interface LabOrder {
     id: string;
     testId: string;
     status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
-    test: { id: string; testName: string; testCode?: string };
+    test: {
+      id: string;
+      testName: string;
+      testCode?: string;
+      sampleType?: string | null;
+      normalRange?: string | null;
+      unit?: string | null;
+    };
+    // Eager-loaded by GET /lab/orders/:id so the order-detail dialog can
+    // render saved structured-mode results inline.
+    labResults?: Array<{
+      id: string;
+      parameterName: string;
+      value?: string | null;
+      unit?: string | null;
+      normalRange?: string | null;
+      isAbnormal?: boolean | null;
+      status?: string;
+      correctionNotes?: string | null;
+    }>;
   }>;
   labSamples?: Array<{
     id: string;
@@ -97,6 +116,15 @@ export interface LabOrder {
     sampleType: string;
     barcode?: string | null;
   }>;
+  // Eager-loaded by GET /lab/orders/:id — present once the report has been
+  // generated (draft) or auto-published via the upload+mark-done flow.
+  labReport?: {
+    id: string;
+    status: 'draft' | 'review' | 'approved' | 'published' | 'corrected';
+    version?: number;
+    signedAt?: string | null;
+    publishedAt?: string | null;
+  } | null;
   priority?: 'routine' | 'urgent' | 'stat';
   urgency?: 'routine' | 'urgent' | 'stat';
   status:
@@ -786,6 +814,39 @@ export function usePublishLabReport() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: labKeys.reports.all });
       queryClient.invalidateQueries({ queryKey: labKeys.orders.all });
+    },
+  });
+}
+
+// One-shot submit: generate (if needed) + sign + publish in a single call.
+// Backend route is gated by `lab_reports.create`, so technicians can call
+// this without supervisor sign-off — matches the auto-publish behaviour of
+// the upload+mark-done path.
+export function useSubmitLabReport() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      orderId,
+      notify,
+      reportContent,
+      hospitalBranding,
+    }: {
+      orderId: string;
+      notify?: boolean;
+      reportContent?: string;
+      hospitalBranding?: Record<string, unknown>;
+    }) => {
+      const response = await apiPost<LabReport>(`/lab/reports/${orderId}/submit`, {
+        notify: notify ?? true,
+        reportContent,
+        hospitalBranding,
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: labKeys.reports.all });
+      queryClient.invalidateQueries({ queryKey: labKeys.orders.all });
+      queryClient.invalidateQueries({ queryKey: ['lab', 'dashboard'] });
     },
   });
 }

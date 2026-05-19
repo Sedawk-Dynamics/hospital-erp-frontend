@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Search,
@@ -12,6 +12,12 @@ import {
   Trash2,
   FileText,
   FileImage,
+  ClipboardEdit,
+  Plus,
+  Send,
+  Eye,
+  AlertTriangle,
+  X as XIcon,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -24,6 +30,10 @@ import {
   useUpdateSampleStatus,
   useCompleteLabOrderItem,
   useLabDepartments,
+  useEnterResults,
+  useVerifyResults,
+  useSubmitLabReport,
+  useLabOrder,
   type LabOrder,
 } from '@/hooks/use-lab';
 import { useUsersList } from '@/hooks/use-users';
@@ -51,6 +61,7 @@ import {
 } from '@/hooks/use-lab-attachments';
 import { useLabRole } from '@/hooks/use-lab-role';
 import { LabDashboardSummary } from '@/components/laboratory/lab-dashboard-summary';
+import { LabReportPrintDialog } from '@/components/laboratory/lab-report-print-view';
 
 export default function LaboratoryHomePage() {
   // Technicians get the worklist surface only: status, reports, order intake.
@@ -674,10 +685,21 @@ function SampleCollectionDialog({
 }
 
 // ============================================================
-// Order Detail Dialog — sample lifecycle + per-test upload & mark-done.
-// The uploaded files ARE the report; when every test on the order is marked
-// done, the backend auto-publishes the LabReport so the patient portal +
-// doctor/nurse readers light up.
+// Order Detail Dialog — sample lifecycle + per-test two-mode result entry
+// + order-level report panel (Generate → Sign → Publish).
+//
+// Two report-generation paths per SoW Week 6/7:
+//   Mode A (Upload): upload a PDF/image per test → Mark Done. When every
+//     item is done the backend auto-publishes the LabReport — the uploaded
+//     files ARE the report.
+//   Mode B (Add Details): enter structured parameter rows per test (value,
+//     unit, normal range, abnormal flag). Generate creates a branded
+//     LabReport draft; supervisor signs and publishes.
+//
+// Role gating: both technicians and supervisors can run either mode and
+// generate a draft report. Sign / Publish / Verify-results stay supervisor-
+// only (the backend permission `lab_reports.approve` enforces this; the UI
+// just hides the controls).
 // ============================================================
 function OrderDetailDialog({
   order,
@@ -687,11 +709,14 @@ function OrderDetailDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const sampleStatus = useUpdateSampleStatus();
-  // Pull the full attachment list once per dialog open and slice it per item;
-  // saves N hook calls when an order has many tests.
+  // Re-fetch the order fresh inside the dialog so the report + entered
+  // results refresh after Save Results / Generate / Sign / Publish without
+  // forcing the parent table to reload.
+  const liveOrderQ = useLabOrder(order?.id ?? '');
+  const liveOrder = liveOrderQ.data ?? order;
   const { data: attachments } = useLabOrderAttachments(order?.id);
 
-  if (!order) return null;
+  if (!order || !liveOrder) return null;
 
   const advanceSample = async (
     sampleId: string,
@@ -707,25 +732,25 @@ function OrderDetailDialog({
 
   return (
     <Dialog open={!!order} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            Order #{order.id.slice(0, 8)} — {order.patient.firstName} {order.patient.lastName}
+            Order #{liveOrder.id.slice(0, 8)} — {liveOrder.patient.firstName} {liveOrder.patient.lastName}
           </DialogTitle>
           <DialogDescription>
-            <StatusBadge status={order.status} />
-            <span className="ml-2 text-xs">{order.labOrderItems?.length ?? 0} test(s)</span>
+            <StatusBadge status={liveOrder.status} />
+            <span className="ml-2 text-xs">{liveOrder.labOrderItems?.length ?? 0} test(s)</span>
           </DialogDescription>
         </DialogHeader>
 
         {/* Samples */}
         <section className="space-y-2">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Samples</h3>
-          {(order.labSamples?.length ?? 0) === 0 ? (
+          {(liveOrder.labSamples?.length ?? 0) === 0 ? (
             <p className="text-sm text-muted-foreground">No samples collected yet.</p>
           ) : (
             <div className="rounded-lg border divide-y">
-              {(order.labSamples ?? []).map((s) => (
+              {(liveOrder.labSamples ?? []).map((s) => (
                 <div key={s.id} className="flex items-center justify-between px-3 py-2 text-sm">
                   <div>
                     <span className="font-medium">{s.sampleType}</span>
@@ -748,24 +773,29 @@ function OrderDetailDialog({
           )}
         </section>
 
-        {/* Tests — upload + mark done per test */}
+        {/* Tests — two-mode result entry per test */}
         <section className="space-y-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Tests</h3>
-          <p className="text-[11px] text-muted-foreground">
-            Upload the report file (PDF / image / scan) for each test, then mark it done. Uploaded files
-            are visible to the patient, ordering doctor, and ward nurses.
-          </p>
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Tests</h3>
+            <div className="text-[10px] text-muted-foreground">
+              Choose per test: <span className="font-medium">Upload File</span> (file IS the report) or <span className="font-medium">Add Details</span> (generate a branded report).
+            </div>
+          </div>
           <div className="rounded-lg border divide-y">
-            {(order.labOrderItems ?? []).map((it) => (
+            {(liveOrder.labOrderItems ?? []).map((it) => (
               <TestItemRow
                 key={it.id}
-                orderId={order.id}
+                orderId={liveOrder.id}
+                patientId={liveOrder.patientId}
                 item={it}
                 attachments={(attachments ?? []).filter((a) => a.labOrderItemId === it.id)}
               />
             ))}
           </div>
         </section>
+
+        {/* Order-level report panel (Submit + Preview) */}
+        <OrderReportPanel order={liveOrder} attachments={attachments ?? []} />
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
@@ -775,26 +805,175 @@ function OrderDetailDialog({
   );
 }
 
-// Per-test row: shows existing uploaded files for the test, lets the lab user
-// upload another, and exposes a Mark Done button. The backend rejects Done
-// without at least one attachment, so the local guard mirrors that.
+// ============================================================
+// Order-level Report Panel
+//   - No report or draft/approved: "Submit Report" (one-shot generate +
+//     sign + publish). Submit is enabled when ANY of these is present:
+//     (1) at least one uploaded file on the order, (2) at least one
+//     structured result entered, or (3) both. Backend route is gated by
+//     `lab_reports.create` so technicians can submit without supervisor
+//     sign-off — matches the upload+mark-done auto-publish trust model.
+//   - Published: Preview / Print only.
+// ============================================================
+function OrderReportPanel({
+  order,
+  attachments,
+}: {
+  order: LabOrder;
+  attachments: LabAttachment[];
+}) {
+  const submit = useSubmitLabReport();
+  const [previewId, setPreviewId] = useState<string | null>(null);
+
+  const report = order.labReport;
+
+  const hasAnyResult = (order.labOrderItems ?? []).some(
+    (it) => (it.labResults?.length ?? 0) > 0,
+  );
+  const hasAnyAttachment = attachments.length > 0;
+  // Any one of file / data / both is enough to submit.
+  const canSubmit = hasAnyResult || hasAnyAttachment;
+
+  const isPublished = report?.status === 'published';
+
+  const onSubmit = async () => {
+    try {
+      await submit.mutateAsync({ orderId: order.id, notify: true });
+      toast.success('Report submitted and published');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Failed to submit report');
+    }
+  };
+
+  return (
+    <section className="space-y-2">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Report</h3>
+      <div className="rounded-lg border p-3 bg-surface-container-low">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm min-w-0">
+            {report ? (
+              <>
+                <span className="font-medium">Lab Report</span>
+                <Badge className="ml-2 capitalize">{report.status}</Badge>
+                <span className="ml-2 text-[10px] text-muted-foreground">v{report.version ?? 1}</span>
+                {report.publishedAt && (
+                  <span className="ml-2 text-[10px] text-muted-foreground">
+                    · published {formatDateTime(report.publishedAt)}
+                  </span>
+                )}
+                {!report.publishedAt && report.signedAt && (
+                  <span className="ml-2 text-[10px] text-muted-foreground">
+                    · signed {formatDateTime(report.signedAt)}
+                  </span>
+                )}
+              </>
+            ) : (
+              <span className="text-muted-foreground">
+                {canSubmit
+                  ? hasAnyResult && hasAnyAttachment
+                    ? 'Files and details captured. Submit to publish the branded report.'
+                    : hasAnyResult
+                      ? 'Details captured. Submit to publish the branded report.'
+                      : 'Files uploaded. Submit to publish the report.'
+                  : 'No report yet. Upload a file or enter parameter details for at least one test, then Submit.'}
+              </span>
+            )}
+          </div>
+          <div className="flex gap-1 shrink-0">
+            {report && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setPreviewId(report.id)}
+                className="gap-1"
+              >
+                <Eye className="size-3.5" />
+                Preview / Print
+              </Button>
+            )}
+            {!isPublished && (
+              <Button
+                size="sm"
+                onClick={onSubmit}
+                disabled={!canSubmit || submit.isPending}
+                className="gap-1"
+                title={!canSubmit ? 'Upload a file or enter result details for at least one test' : undefined}
+              >
+                <Send className="size-3.5" />
+                {submit.isPending ? 'Submitting…' : 'Submit Report'}
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <LabReportPrintDialog
+        reportId={previewId}
+        open={!!previewId}
+        onOpenChange={(next) => !next && setPreviewId(null)}
+      />
+    </section>
+  );
+}
+
+// Per-test row: hosts the two report-generation modes for this single test.
+//   Tab "Upload File" — file picker + Mark Done. Mark Done is the fast path:
+//     the backend treats the uploaded file as the report, and once every
+//     item on the order is marked done it auto-publishes the LabReport.
+//   Tab "Add Details" — structured parameter rows (auto-prefilled from the
+//     test catalog's normalRange/unit). Save Results creates LabResult rows
+//     which the order-level Generate Report button rolls up into a branded
+//     LabReport snapshot.
 function TestItemRow({
   orderId,
+  patientId,
   item,
   attachments,
 }: {
   orderId: string;
+  patientId: string;
   item: NonNullable<LabOrder['labOrderItems']>[number];
   attachments: LabAttachment[];
 }) {
+  const { canApprove } = useLabRole();
   const upload = useUploadLabAttachment();
   const remove = useDeleteLabAttachment();
   const complete = useCompleteLabOrderItem();
+  const enterResults = useEnterResults();
+  const verifyResult = useVerifyResults();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const isDone = item.status === 'completed';
   const isCancelled = item.status === 'cancelled';
   const canMarkDone = !isDone && !isCancelled && attachments.length > 0;
+
+  // Existing LabResult rows for this item (eager-loaded by useLabOrder).
+  const existingResults = item.labResults ?? [];
+
+  // Default the active mode based on what's already captured for this item:
+  // results already entered → start on "Add Details"; otherwise upload.
+  const defaultMode: 'upload' | 'details' = existingResults.length > 0 ? 'details' : 'upload';
+  const [mode, setMode] = useState<'upload' | 'details'>(defaultMode);
+
+  // Structured parameter rows (drafted client-side, persisted via Save).
+  type Row = { parameterName: string; value: string; unit: string; normalRange: string; isAbnormal: boolean };
+  const blankRow = (): Row => ({
+    parameterName: item.test.testName,
+    value: '',
+    unit: item.test.unit ?? '',
+    normalRange: item.test.normalRange ?? '',
+    isAbnormal: false,
+  });
+  const [rows, setRows] = useState<Row[]>([blankRow()]);
+
+  // If results are saved server-side, reset the form to a single blank row
+  // (existing results render in the read-only list above the form).
+  useEffect(() => {
+    if (existingResults.length > 0 && rows.every((r) => !r.value && !r.parameterName)) {
+      setRows([blankRow()]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existingResults.length]);
 
   const onPick = async (file: File) => {
     try {
@@ -830,8 +1009,61 @@ function TestItemRow({
     }
   };
 
+  const onSaveResults = async () => {
+    const filled = rows
+      .map((r) => ({ ...r, parameterName: r.parameterName.trim(), value: r.value.trim() }))
+      .filter((r) => r.parameterName && r.value);
+    if (filled.length === 0) {
+      toast.error('Enter at least one parameter with a value');
+      return;
+    }
+    try {
+      await enterResults.mutateAsync({
+        labOrderItemId: item.id,
+        labOrderId: orderId,
+        patientId,
+        results: filled.map((r) => ({
+          parameterName: r.parameterName,
+          value: r.value,
+          unit: r.unit || undefined,
+          normalRange: r.normalRange || undefined,
+          isAbnormal: r.isAbnormal,
+        })),
+      });
+      toast.success(`Saved ${filled.length} result${filled.length === 1 ? '' : 's'}`);
+      setRows([blankRow()]);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Failed to save results');
+    }
+  };
+
+  const onVerifyResult = async (
+    id: string,
+    action: 'approve' | 'request_correction',
+  ) => {
+    let notes: string | undefined;
+    if (action === 'request_correction') {
+      const input = window.prompt('Reason / requested correction?');
+      if (input == null) return;
+      notes = input.trim() || undefined;
+    }
+    try {
+      await verifyResult.mutateAsync({ id, action, correctionNotes: notes });
+      toast.success(action === 'approve' ? 'Result approved' : 'Correction requested');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Failed');
+    }
+  };
+
+  const updateRow = (idx: number, patch: Partial<Row>) =>
+    setRows((rs) => rs.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  const addRow = () => setRows((rs) => [...rs, blankRow()]);
+  const removeRow = (idx: number) =>
+    setRows((rs) => (rs.length === 1 ? [blankRow()] : rs.filter((_, i) => i !== idx)));
+
   return (
     <div className="px-3 py-3 text-sm space-y-2">
+      {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
           <span className="font-medium">{item.test.testName}</span>
@@ -847,10 +1079,34 @@ function TestItemRow({
           >
             {item.status.replace('_', ' ')}
           </Badge>
+          {existingResults.length > 0 && !isDone && (
+            <Badge className="ml-1 bg-cyan-100 text-cyan-800">
+              {existingResults.length} result{existingResults.length === 1 ? '' : 's'} saved
+            </Badge>
+          )}
         </div>
-        <div className="flex gap-1 shrink-0">
-          {!isDone && !isCancelled && (
-            <>
+        {isDone && (
+          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 shrink-0">
+            <CheckCircle2 className="size-3.5" />
+            Done
+          </span>
+        )}
+      </div>
+
+      {!isCancelled && !isDone && (
+        <Tabs value={mode} onValueChange={(v: any) => setMode(v)} className="mt-1">
+          <TabsList variant="line" className="h-8">
+            <TabsTrigger value="upload" className="gap-1 text-xs">
+              <Upload className="size-3" /> Upload File
+            </TabsTrigger>
+            <TabsTrigger value="details" className="gap-1 text-xs">
+              <ClipboardEdit className="size-3" /> Add Details
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Upload mode */}
+          <TabsContent value="upload" className="pt-2 space-y-2">
+            <div className="flex items-center gap-2">
               <input
                 ref={fileRef}
                 type="file"
@@ -869,7 +1125,7 @@ function TestItemRow({
                 className="gap-1"
               >
                 <Upload className="size-3.5" />
-                {upload.isPending ? 'Uploading…' : 'Upload'}
+                {upload.isPending ? 'Uploading…' : 'Upload File'}
               </Button>
               <Button
                 size="sm"
@@ -881,73 +1137,230 @@ function TestItemRow({
                 <CheckCircle2 className="size-3.5" />
                 {complete.isPending ? 'Saving…' : 'Mark Done'}
               </Button>
-            </>
-          )}
-          {isDone && (
-            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700">
-              <CheckCircle2 className="size-3.5" />
-              Done
-            </span>
-          )}
-        </div>
-      </div>
+              <span className="text-[10px] text-muted-foreground ml-1">
+                Auto-publishes the report when every test is marked done.
+              </span>
+            </div>
+            <AttachmentList attachments={attachments} onDelete={onDelete} pending={remove.isPending} canDelete={!isDone} />
+          </TabsContent>
 
-      {attachments.length === 0 ? (
-        <p className="text-[11px] italic text-muted-foreground">
-          No file uploaded for this test yet.
-        </p>
-      ) : (
-        <ul className="space-y-1">
-          {attachments.map((a) => {
-            const url = resolveAttachmentUrl(a.fileUrl);
-            const Icon = isImageMime(a.mimeType) ? FileImage : FileText;
-            return (
-              <li
-                key={a.id}
-                className="flex items-center gap-2 rounded-md border bg-card px-2 py-1.5"
-              >
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded border bg-muted">
-                  <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+          {/* Add Details mode */}
+          <TabsContent value="details" className="pt-2 space-y-2">
+            {existingResults.length > 0 && (
+              <div className="rounded-md border bg-card">
+                <div className="px-2 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground border-b">
+                  Saved results
                 </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium">{a.fileName}</p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {formatFileSize(a.sizeBytes)}
-                    {a.uploader && ` · ${a.uploader.firstName} ${a.uploader.lastName ?? ''}`.trim()}
-                    {' · '}
-                    {formatDateTime(a.createdAt)}
-                  </p>
+                <ul className="divide-y">
+                  {existingResults.map((r) => (
+                    <li key={r.id} className="flex items-center justify-between gap-2 px-2 py-1.5 text-xs">
+                      <div className="min-w-0 flex-1">
+                        <span className="font-medium">{r.parameterName}</span>
+                        <span className="ml-2">{r.value ?? '-'}</span>
+                        {r.unit && <span className="ml-1 text-muted-foreground">{r.unit}</span>}
+                        {r.normalRange && (
+                          <span className="ml-2 text-[10px] text-muted-foreground">
+                            (range {r.normalRange})
+                          </span>
+                        )}
+                        {r.isAbnormal && (
+                          <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700">
+                            <AlertTriangle className="size-3" /> Abnormal
+                          </span>
+                        )}
+                        {r.status && r.status !== 'entered' && (
+                          <Badge className="ml-2 capitalize">{r.status}</Badge>
+                        )}
+                        {r.correctionNotes && (
+                          <div className="text-[10px] text-amber-700 mt-0.5">
+                            Correction: {r.correctionNotes}
+                          </div>
+                        )}
+                      </div>
+                      {canApprove && r.status !== 'approved' && (
+                        <div className="flex gap-1 shrink-0">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[10px]"
+                            disabled={verifyResult.isPending}
+                            onClick={() => onVerifyResult(r.id, 'approve')}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[10px]"
+                            disabled={verifyResult.isPending}
+                            onClick={() => onVerifyResult(r.id, 'request_correction')}
+                          >
+                            Request fix
+                          </Button>
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="rounded-md border bg-card">
+              <div className="grid grid-cols-12 gap-1 px-2 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground border-b">
+                <div className="col-span-3">Parameter</div>
+                <div className="col-span-2">Value</div>
+                <div className="col-span-2">Unit</div>
+                <div className="col-span-3">Normal range</div>
+                <div className="col-span-1 text-center">Abn</div>
+                <div className="col-span-1"></div>
+              </div>
+              {rows.map((r, idx) => (
+                <div key={idx} className="grid grid-cols-12 gap-1 px-2 py-1.5 border-b last:border-b-0 items-center">
+                  <Input
+                    className="col-span-3 h-7 text-xs"
+                    value={r.parameterName}
+                    onChange={(e) => updateRow(idx, { parameterName: e.target.value })}
+                    placeholder="e.g. Hemoglobin"
+                  />
+                  <Input
+                    className="col-span-2 h-7 text-xs"
+                    value={r.value}
+                    onChange={(e) => updateRow(idx, { value: e.target.value })}
+                    placeholder="value"
+                  />
+                  <Input
+                    className="col-span-2 h-7 text-xs"
+                    value={r.unit}
+                    onChange={(e) => updateRow(idx, { unit: e.target.value })}
+                    placeholder="g/dL"
+                  />
+                  <Input
+                    className="col-span-3 h-7 text-xs"
+                    value={r.normalRange}
+                    onChange={(e) => updateRow(idx, { normalRange: e.target.value })}
+                    placeholder="13.5-17.5"
+                  />
+                  <div className="col-span-1 flex justify-center">
+                    <input
+                      type="checkbox"
+                      checked={r.isAbnormal}
+                      onChange={(e) => updateRow(idx, { isAbnormal: e.target.checked })}
+                    />
+                  </div>
+                  <div className="col-span-1 flex justify-end">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => removeRow(idx)}
+                      className="h-6 w-6 text-muted-foreground"
+                      title="Remove row"
+                    >
+                      <XIcon className="size-3" />
+                    </Button>
+                  </div>
                 </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  nativeButton={false}
-                  render={
-                    <a href={url} target="_blank" rel="noopener noreferrer" download={a.fileName} />
-                  }
-                  className="h-7 w-7"
-                  title="Open / download"
-                >
-                  <Download className="size-3.5" />
+              ))}
+              <div className="flex items-center justify-between gap-2 px-2 py-2">
+                <Button size="sm" variant="ghost" onClick={addRow} className="gap-1 text-xs">
+                  <Plus className="size-3" /> Add parameter
                 </Button>
-                {!isDone && (
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => onDelete(a.id)}
-                    disabled={remove.isPending}
-                    className="h-7 w-7 text-error"
-                    title="Remove"
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+                <Button
+                  size="sm"
+                  onClick={onSaveResults}
+                  disabled={enterResults.isPending}
+                  className="gap-1"
+                >
+                  {enterResults.isPending ? 'Saving…' : 'Save Results'}
+                </Button>
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              Saved parameters roll up into the order's branded report.
+              Use the <span className="font-medium">Generate Report</span> button below once results
+              are entered for the tests you want to publish.
+            </p>
+          </TabsContent>
+        </Tabs>
+      )}
+
+      {/* When the test is already done OR cancelled, just show the file list read-only. */}
+      {(isDone || isCancelled) && attachments.length > 0 && (
+        <AttachmentList attachments={attachments} canDelete={false} />
       )}
     </div>
+  );
+}
+
+// Reusable attachment list (read or delete) — extracted so both modes can
+// render uploaded files identically.
+function AttachmentList({
+  attachments,
+  onDelete,
+  pending,
+  canDelete,
+}: {
+  attachments: LabAttachment[];
+  onDelete?: (id: string) => void;
+  pending?: boolean;
+  canDelete?: boolean;
+}) {
+  if (attachments.length === 0) {
+    return (
+      <p className="text-[11px] italic text-muted-foreground">
+        No file uploaded for this test yet.
+      </p>
+    );
+  }
+  return (
+    <ul className="space-y-1">
+      {attachments.map((a) => {
+        const url = resolveAttachmentUrl(a.fileUrl);
+        const Icon = isImageMime(a.mimeType) ? FileImage : FileText;
+        return (
+          <li
+            key={a.id}
+            className="flex items-center gap-2 rounded-md border bg-card px-2 py-1.5"
+          >
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded border bg-muted">
+              <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-medium">{a.fileName}</p>
+              <p className="text-[10px] text-muted-foreground">
+                {formatFileSize(a.sizeBytes)}
+                {a.uploader && ` · ${a.uploader.firstName} ${a.uploader.lastName ?? ''}`.trim()}
+                {' · '}
+                {formatDateTime(a.createdAt)}
+              </p>
+            </div>
+            <Button
+              size="icon"
+              variant="ghost"
+              nativeButton={false}
+              render={
+                <a href={url} target="_blank" rel="noopener noreferrer" download={a.fileName} />
+              }
+              className="h-7 w-7"
+              title="Open / download"
+            >
+              <Download className="size-3.5" />
+            </Button>
+            {canDelete && onDelete && (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => onDelete(a.id)}
+                disabled={pending}
+                className="h-7 w-7 text-error"
+                title="Remove"
+              >
+                <Trash2 className="size-3.5" />
+              </Button>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
