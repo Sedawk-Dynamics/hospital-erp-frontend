@@ -16,6 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
 import { useDicomStudy, type DicomSeries, type DicomInstance } from '@/hooks/use-dicom';
+import { DicomRenderer } from '@/components/radiology/dicom-renderer';
 
 export default function DicomViewerPage() {
   const params = useParams<{ id: string }>();
@@ -279,21 +280,10 @@ function StackViewer({ instances }: { instances: DicomInstance[] }) {
             className="object-contain transition-transform"
           />
         ) : (
-          <div className="text-white text-center px-6 py-12">
-            <ImageIcon className="h-12 w-12 mx-auto mb-3 opacity-60" />
-            <p className="text-sm">DICOM file (.dcm)</p>
-            <p className="text-xs opacity-70 mt-1">
-              Use the OHIF viewer link or download to render with Cornerstone-enabled viewers.
-            </p>
-            <a
-              href={current.fileUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs underline opacity-80 mt-2 inline-block"
-            >
-              Open / Download file
-            </a>
-          </div>
+          // Native DICOM renderer (dicom-parser + canvas, with W/L controls).
+          // For compressed transfer syntaxes the component shows an Open-OHIF
+          // hint and a download link.
+          <DicomRenderer fileUrl={current.fileUrl} zoom={zoom} className="w-full" />
         )}
       </div>
     </div>
