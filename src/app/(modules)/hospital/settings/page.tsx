@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { Building2, UserCog, Wrench, Layout, ChevronRight } from 'lucide-react';
+import { Building2, UserCog, Wrench, Layout, ChevronRight, ShieldCheck } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 interface SettingsGroup {
@@ -50,6 +50,13 @@ const settingsGroups: SettingsGroup[] = [
       { label: 'Layout', href: '#', comingSoon: true },
       { label: 'Template', href: '#', comingSoon: true },
       { label: 'Card Layout Configuration', href: '#', comingSoon: true },
+    ],
+  },
+  {
+    title: 'Compliance & Audit',
+    icon: ShieldCheck,
+    items: [
+      { label: 'Audit Logs', href: '/hospital/audit-logs' },
     ],
   },
 ];
