@@ -1177,9 +1177,10 @@ export default function NurseDashboardPage() {
     const vitals = vitalsData?.data ?? [];
     const latestByPatient = new Map<string, typeof vitals[number]>();
     for (const v of vitals) {
+      if (!v.createdAt) continue;
       const existing = latestByPatient.get(v.patientId);
       const vTime = new Date(v.createdAt).getTime();
-      if (!existing || vTime > new Date(existing.createdAt).getTime()) {
+      if (!existing || vTime > new Date(existing.createdAt!).getTime()) {
         latestByPatient.set(v.patientId, v);
       }
     }
@@ -1196,7 +1197,7 @@ export default function NurseDashboardPage() {
         patientName: name,
         mrn: v.patient?.mrn,
         alerts,
-        recordedAt: v.createdAt,
+        recordedAt: v.createdAt!,
       });
     });
     return rows;
@@ -1209,6 +1210,7 @@ export default function NurseDashboardPage() {
     const vitals = vitalsData?.data ?? [];
     const latestByPatient = new Map<string, number>();
     for (const v of vitals) {
+      if (!v.createdAt) continue;
       const t = new Date(v.createdAt).getTime();
       const prev = latestByPatient.get(v.patientId);
       if (!prev || t > prev) latestByPatient.set(v.patientId, t);

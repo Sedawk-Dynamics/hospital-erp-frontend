@@ -397,7 +397,7 @@ export default function ClinicalChartingPage() {
   const trendSeries = useMemo(() => {
     const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
     const within = vitals.filter(
-      (v) => new Date(v.createdAt).getTime() >= cutoff,
+      (v) => v.createdAt != null && new Date(v.createdAt).getTime() >= cutoff,
     );
     return {
       bp: within
@@ -405,25 +405,25 @@ export default function ClinicalChartingPage() {
           (v) => v.bloodPressureSystolic != null || v.bloodPressureDiastolic != null,
         )
         .map((v) => ({
-          time: v.createdAt,
+          time: v.createdAt!,
           value: v.bloodPressureSystolic ?? 0,
           value2: v.bloodPressureDiastolic ?? undefined,
         })),
       temp: within
         .filter((v) => v.temperature != null)
-        .map((v) => ({ time: v.createdAt, value: v.temperature! })),
+        .map((v) => ({ time: v.createdAt!, value: v.temperature! })),
       pulse: within
         .filter((v) => v.pulseRate != null || v.heartRate != null)
         .map((v) => ({
-          time: v.createdAt,
+          time: v.createdAt!,
           value: (v.pulseRate ?? v.heartRate)!,
         })),
       rr: within
         .filter((v) => v.respiratoryRate != null)
-        .map((v) => ({ time: v.createdAt, value: v.respiratoryRate! })),
+        .map((v) => ({ time: v.createdAt!, value: v.respiratoryRate! })),
       spo2: within
         .filter((v) => v.oxygenSaturation != null)
-        .map((v) => ({ time: v.createdAt, value: v.oxygenSaturation! })),
+        .map((v) => ({ time: v.createdAt!, value: v.oxygenSaturation! })),
     };
   }, [vitals]);
 

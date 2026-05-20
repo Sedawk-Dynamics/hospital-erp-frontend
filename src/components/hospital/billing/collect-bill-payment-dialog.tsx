@@ -67,7 +67,7 @@ const formSchema = z.object({
     'cheque',
     'other',
   ]),
-  amount: z.coerce.number().positive('Amount must be greater than zero'),
+  amount: z.number().positive('Amount must be greater than zero'),
   referenceNumber: z.string().max(200).optional(),
   notes: z.string().max(500).optional(),
 });
@@ -252,7 +252,7 @@ export function CollectBillPaymentDialog({
                 step="0.01"
                 min="0"
                 max={balanceDue}
-                {...register('amount')}
+                {...register('amount', { valueAsNumber: true })}
               />
               {errors.amount && (
                 <p className="text-xs text-destructive">{errors.amount.message}</p>
