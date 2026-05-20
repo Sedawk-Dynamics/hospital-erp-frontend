@@ -263,6 +263,23 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
     ],
   },
 
+  hr: {
+    key: 'hr',
+    label: 'HR & Payroll',
+    icon: UserCog,
+    baseRoute: '/hr',
+    sidebarItems: [
+      { label: 'Dashboard', href: '/hr', icon: LayoutDashboard },
+      { label: 'Staff', href: '/hr/staff', icon: Users },
+      { label: 'Duty Rosters', href: '/hr/rosters', icon: CalendarClock },
+      { label: 'Attendance', href: '/hr/attendance', icon: ClipboardCheck },
+      { label: 'Leaves', href: '/hr/leaves', icon: FileText },
+      { label: 'Payroll', href: '/hr/payroll', icon: Receipt },
+      { label: 'Licenses', href: '/hr/licenses', icon: FileCheck },
+      { label: 'Reports', href: '/hr/reports', icon: BarChart3 },
+    ],
+  },
+
   'nurse-admin': {
     key: 'nurse-admin',
     label: 'Nursing Admin',

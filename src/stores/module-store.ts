@@ -13,7 +13,8 @@ export type ModuleKey =
   | 'doctor'
   | 'nurse'
   | 'nurse-admin'
-  | 'insurance';
+  | 'insurance'
+  | 'hr';
 
 function loadPersistedModule(): ModuleKey | null {
   if (typeof window === 'undefined') return null;

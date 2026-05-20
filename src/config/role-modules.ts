@@ -29,6 +29,7 @@ export const ALL_MODULES: ModuleKey[] = [
   'nurse',
   'nurse-admin',
   'insurance',
+  'hr',
 ];
 
 // Standard admin modules (for admin — hospital subscription owner)
@@ -43,6 +44,7 @@ export const ADMIN_MODULES: ModuleKey[] = [
   'daycare',
   'ward',
   'insurance',
+  'hr',
 ];
 
 // Doctor specializations all map to the single 'doctor' module
@@ -100,8 +102,8 @@ const ROLE_MODULE_MAP: Record<string, ModuleKey[]> = {
   // Blood bank → hospital
   blood_bank_staff: ['hospital'],
 
-  // HR → hospital
-  hr_staff: ['hospital'],
+  // HR → dedicated HR module
+  hr_staff: ['hr'],
 
   // Patient role → no module access (future patient portal)
   patient: [],
