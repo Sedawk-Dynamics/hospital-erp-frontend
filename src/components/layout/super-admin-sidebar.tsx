@@ -20,6 +20,7 @@ import {
   Percent,
   CalendarCheck,
   FileText,
+  Beaker,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -31,6 +32,7 @@ const NAV_ITEMS = [
   { href: '/super-admin/commission', label: 'Commission', icon: Percent },
   { href: '/super-admin/features', label: 'Features', icon: ToggleLeft },
   { href: '/super-admin/form-templates', label: 'Form Templates', icon: FileText },
+  { href: '/super-admin/lab-templates', label: 'Lab Templates', icon: Beaker },
   { href: '/super-admin/support', label: 'Support Tickets', icon: LifeBuoy },
   { href: '/super-admin/reports', label: 'Reports', icon: BarChart3 },
   { href: '/super-admin/settings', label: 'Settings', icon: Settings },

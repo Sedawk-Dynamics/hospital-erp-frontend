@@ -41,7 +41,14 @@ export interface LabTestCatalog {
   turnaroundTime?: string;
   price: number;
   isActive: boolean;
-  parameters?: LabTestParameter[];
+  // Structured parameter list (from cloned template or admin-added). When
+  // null/empty the lab "Add Details" mode falls back to free-form rows.
+  // Shape matches backend parameterSpecSchema (lab.validation.ts).
+  parameters?: LabTestParameter[] | null;
+  templateId?: string | null;
+  specimen?: string | null;
+  instructions?: string | null;
+  interpretation?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -49,9 +56,20 @@ export interface LabTestCatalog {
 export interface LabTestParameter {
   id: string;
   name: string;
-  unit?: string;
-  normalRange?: string;
-  method?: string;
+  code?: string | null;
+  unit?: string | null;
+  refLow?: number | null;
+  refHigh?: number | null;
+  refRangeText?: string | null;
+  decimals?: number | null;
+  group?: string | null;
+  inputType?: 'number' | 'text' | 'select';
+  options?: { value: string; label: string }[] | null;
+  notes?: string | null;
+  /** @deprecated legacy free-text range — replaced by refRangeText / refLow / refHigh */
+  normalRange?: string | null;
+  /** @deprecated unused */
+  method?: string | null;
 }
 
 export interface LabOrder {
@@ -96,6 +114,11 @@ export interface LabOrder {
       sampleType?: string | null;
       normalRange?: string | null;
       unit?: string | null;
+      // Structured parameter list (from cloned template). When present, the
+      // lab "Add Details" UI renders one input row per parameter spec
+      // instead of free-form rows.
+      parameters?: LabTestParameter[] | null;
+      interpretation?: string | null;
     };
     // Eager-loaded by GET /lab/orders/:id so the order-detail dialog can
     // render saved structured-mode results inline.
@@ -431,6 +454,10 @@ type LabTestPayload = {
   price?: number;
   turnaroundHours?: number;
   sampleType?: string;
+  specimen?: string | null;
+  instructions?: string | null;
+  parameters?: LabTestParameter[] | null;
+  interpretation?: string | null;
   isActive?: boolean;
 };
 
@@ -492,6 +519,26 @@ export function useDeleteLabTest() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: labKeys.tests.all });
+    },
+  });
+}
+
+// Narrow update for lab supervisors — only price + TAT. Backend exposes
+// /lab/tests/:id/price separately so supervisors can't drift the catalog's
+// parameter list via the full PUT endpoint.
+export function useUpdateLabTestPrice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, price, turnaroundHours }: { id: string; price?: number; turnaroundHours?: number }) => {
+      const response = await apiPatch<LabTestCatalog>(`/lab/tests/${id}/price`, {
+        price,
+        turnaroundHours,
+      });
+      return response.data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: labKeys.tests.all });
+      queryClient.invalidateQueries({ queryKey: labKeys.tests.detail(variables.id) });
     },
   });
 }

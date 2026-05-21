@@ -956,7 +956,39 @@ function TestItemRow({
   const [mode, setMode] = useState<'upload' | 'details'>(defaultMode);
 
   // Structured parameter rows (drafted client-side, persisted via Save).
-  type Row = { parameterName: string; value: string; unit: string; normalRange: string; isAbnormal: boolean };
+  type Row = {
+    parameterName: string;
+    value: string;
+    unit: string;
+    normalRange: string;
+    isAbnormal: boolean;
+    // When the catalog has a parameter schema, each row also carries the
+    // input-type + option list so the render path can pick the right
+    // control. Free-form rows leave these undefined.
+    inputType?: 'number' | 'text' | 'select';
+    options?: { value: string; label: string }[];
+    group?: string | null;
+    notes?: string | null;
+    refLow?: number | null;
+    refHigh?: number | null;
+    decimals?: number | null;
+  };
+
+  // Catalog parameter schema (from the cloned platform template). When set,
+  // we render one input row per parameter instead of free-form add/remove.
+  const schemaParams = item.test.parameters && item.test.parameters.length > 0
+    ? item.test.parameters
+    : null;
+
+  const formatRefRange = (
+    p: NonNullable<NonNullable<typeof item.test.parameters>[number]>,
+  ): string => {
+    if (p.refLow != null && p.refHigh != null) return `${p.refLow}–${p.refHigh}`;
+    if (p.refLow != null) return `≥ ${p.refLow}`;
+    if (p.refHigh != null) return `≤ ${p.refHigh}`;
+    return p.refRangeText ?? p.normalRange ?? '';
+  };
+
   const blankRow = (): Row => ({
     parameterName: item.test.testName,
     value: '',
@@ -964,13 +996,43 @@ function TestItemRow({
     normalRange: item.test.normalRange ?? '',
     isAbnormal: false,
   });
-  const [rows, setRows] = useState<Row[]>([blankRow()]);
 
-  // If results are saved server-side, reset the form to a single blank row
-  // (existing results render in the read-only list above the form).
+  // Build the initial structured rows from the catalog schema; one row per
+  // parameter. Re-runs cheaply on test/parameters identity change.
+  const initialRows = useMemo<Row[]>(() => {
+    if (!schemaParams) return [blankRow()];
+    return schemaParams.map((p) => ({
+      parameterName: p.name,
+      value: '',
+      unit: p.unit ?? '',
+      normalRange: formatRefRange(p),
+      isAbnormal: false,
+      inputType: p.inputType ?? 'number',
+      options: p.options ?? undefined,
+      group: p.group ?? null,
+      notes: p.notes ?? null,
+      refLow: p.refLow ?? null,
+      refHigh: p.refHigh ?? null,
+      decimals: p.decimals ?? null,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id, schemaParams]);
+
+  const [rows, setRows] = useState<Row[]>(initialRows);
+
+  // Re-sync local rows when the schema arrives async (catalog included on
+  // first GET but parameters might land later if backend trims) OR when the
+  // item identity changes.
   useEffect(() => {
-    if (existingResults.length > 0 && rows.every((r) => !r.value && !r.parameterName)) {
-      setRows([blankRow()]);
+    setRows(initialRows);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id, schemaParams ? schemaParams.length : 0]);
+
+  // After save, reset rows back to a blank set so the form is ready for
+  // editing or re-entry. For structured mode we re-init from schema.
+  useEffect(() => {
+    if (existingResults.length > 0 && rows.every((r) => !r.value)) {
+      setRows(initialRows);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existingResults.length]);
@@ -1012,7 +1074,23 @@ function TestItemRow({
   const onSaveResults = async () => {
     const filled = rows
       .map((r) => ({ ...r, parameterName: r.parameterName.trim(), value: r.value.trim() }))
-      .filter((r) => r.parameterName && r.value);
+      .filter((r) => r.parameterName && r.value)
+      .map((r) => {
+        // Auto-flag abnormal for numeric rows with a ref range. The user
+        // can still override by ticking the checkbox in free-form mode.
+        if (
+          (r.inputType === 'number' || r.inputType === undefined) &&
+          (r.refLow != null || r.refHigh != null)
+        ) {
+          const n = Number(r.value);
+          if (Number.isFinite(n)) {
+            const lo = r.refLow ?? -Infinity;
+            const hi = r.refHigh ?? Infinity;
+            return { ...r, isAbnormal: r.isAbnormal || n < lo || n > hi };
+          }
+        }
+        return r;
+      });
     if (filled.length === 0) {
       toast.error('Enter at least one parameter with a value');
       return;
@@ -1031,7 +1109,7 @@ function TestItemRow({
         })),
       });
       toast.success(`Saved ${filled.length} result${filled.length === 1 ? '' : 's'}`);
-      setRows([blankRow()]);
+      setRows(initialRows);
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? 'Failed to save results');
     }
@@ -1205,64 +1283,97 @@ function TestItemRow({
               </div>
             )}
 
-            <div className="rounded-md border bg-card">
-              <div className="grid grid-cols-12 gap-1 px-2 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground border-b">
-                <div className="col-span-3">Parameter</div>
-                <div className="col-span-2">Value</div>
-                <div className="col-span-2">Unit</div>
-                <div className="col-span-3">Normal range</div>
-                <div className="col-span-1 text-center">Abn</div>
-                <div className="col-span-1"></div>
-              </div>
-              {rows.map((r, idx) => (
-                <div key={idx} className="grid grid-cols-12 gap-1 px-2 py-1.5 border-b last:border-b-0 items-center">
-                  <Input
-                    className="col-span-3 h-7 text-xs"
-                    value={r.parameterName}
-                    onChange={(e) => updateRow(idx, { parameterName: e.target.value })}
-                    placeholder="e.g. Hemoglobin"
-                  />
-                  <Input
-                    className="col-span-2 h-7 text-xs"
-                    value={r.value}
-                    onChange={(e) => updateRow(idx, { value: e.target.value })}
-                    placeholder="value"
-                  />
-                  <Input
-                    className="col-span-2 h-7 text-xs"
-                    value={r.unit}
-                    onChange={(e) => updateRow(idx, { unit: e.target.value })}
-                    placeholder="g/dL"
-                  />
-                  <Input
-                    className="col-span-3 h-7 text-xs"
-                    value={r.normalRange}
-                    onChange={(e) => updateRow(idx, { normalRange: e.target.value })}
-                    placeholder="13.5-17.5"
-                  />
-                  <div className="col-span-1 flex justify-center">
-                    <input
-                      type="checkbox"
-                      checked={r.isAbnormal}
-                      onChange={(e) => updateRow(idx, { isAbnormal: e.target.checked })}
-                    />
-                  </div>
-                  <div className="col-span-1 flex justify-end">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => removeRow(idx)}
-                      className="h-6 w-6 text-muted-foreground"
-                      title="Remove row"
-                    >
-                      <XIcon className="size-3" />
-                    </Button>
-                  </div>
+            {schemaParams ? (
+              // Structured mode — one input row per catalog parameter, grouped
+              // by `group`. Free-form add/remove is disabled because the
+              // schema defines the report shape.
+              <SchemaParamGrid
+                rows={rows}
+                updateRow={updateRow}
+              />
+            ) : (
+              <div className="rounded-md border bg-card">
+                <div className="grid grid-cols-12 gap-1 px-2 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground border-b">
+                  <div className="col-span-3">Parameter</div>
+                  <div className="col-span-2">Value</div>
+                  <div className="col-span-2">Unit</div>
+                  <div className="col-span-3">Normal range</div>
+                  <div className="col-span-1 text-center">Abn</div>
+                  <div className="col-span-1"></div>
                 </div>
-              ))}
-              <div className="flex items-center justify-between gap-2 px-2 py-2">
-                <Button size="sm" variant="ghost" onClick={addRow} className="gap-1 text-xs">
-                  <Plus className="size-3" /> Add parameter
+                {rows.map((r, idx) => (
+                  <div key={idx} className="grid grid-cols-12 gap-1 px-2 py-1.5 border-b last:border-b-0 items-center">
+                    <Input
+                      className="col-span-3 h-7 text-xs"
+                      value={r.parameterName}
+                      onChange={(e) => updateRow(idx, { parameterName: e.target.value })}
+                      placeholder="e.g. Hemoglobin"
+                    />
+                    <Input
+                      className="col-span-2 h-7 text-xs"
+                      value={r.value}
+                      onChange={(e) => updateRow(idx, { value: e.target.value })}
+                      placeholder="value"
+                    />
+                    <Input
+                      className="col-span-2 h-7 text-xs"
+                      value={r.unit}
+                      onChange={(e) => updateRow(idx, { unit: e.target.value })}
+                      placeholder="g/dL"
+                    />
+                    <Input
+                      className="col-span-3 h-7 text-xs"
+                      value={r.normalRange}
+                      onChange={(e) => updateRow(idx, { normalRange: e.target.value })}
+                      placeholder="13.5-17.5"
+                    />
+                    <div className="col-span-1 flex justify-center">
+                      <input
+                        type="checkbox"
+                        checked={r.isAbnormal}
+                        onChange={(e) => updateRow(idx, { isAbnormal: e.target.checked })}
+                      />
+                    </div>
+                    <div className="col-span-1 flex justify-end">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => removeRow(idx)}
+                        className="h-6 w-6 text-muted-foreground"
+                        title="Remove row"
+                      >
+                        <XIcon className="size-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between gap-2 px-2 py-2">
+                  <Button size="sm" variant="ghost" onClick={addRow} className="gap-1 text-xs">
+                    <Plus className="size-3" /> Add parameter
+                  </Button>
+                </div>
+              </div>
+            )}
+            <div className="flex items-center justify-between gap-2 px-2 py-2">
+              <div className="text-[10px] text-muted-foreground">
+                {schemaParams ? (
+                  <span>
+                    Report uses <span className="font-medium">{schemaParams.length}</span> parameter
+                    {schemaParams.length === 1 ? '' : 's'} from the catalog. Numeric values are auto-flagged when outside the reference range.
+                  </span>
+                ) : (
+                  <span>No catalog parameters configured — using free-form rows.</span>
+                )}
+              </div>
+              <div className="flex gap-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setRows(initialRows)}
+                  className="gap-1 text-xs"
+                  title="Clear entered values"
+                >
+                  Reset
                 </Button>
                 <Button
                   size="sm"
@@ -1287,6 +1398,131 @@ function TestItemRow({
       {(isDone || isCancelled) && attachments.length > 0 && (
         <AttachmentList attachments={attachments} canDelete={false} />
       )}
+    </div>
+  );
+}
+
+// Renders structured-mode result entry: one input per catalog parameter
+// row, grouped by `group` (RBC indices, WBC differential, etc.). The
+// outer component owns `rows` state + the save handler; this only
+// presents the inputs.
+function SchemaParamGrid({
+  rows,
+  updateRow,
+}: {
+  rows: Array<{
+    parameterName: string;
+    value: string;
+    unit: string;
+    normalRange: string;
+    isAbnormal: boolean;
+    inputType?: 'number' | 'text' | 'select';
+    options?: { value: string; label: string }[];
+    group?: string | null;
+    notes?: string | null;
+    refLow?: number | null;
+    refHigh?: number | null;
+    decimals?: number | null;
+  }>;
+  updateRow: (idx: number, patch: Partial<(typeof rows)[number]>) => void;
+}) {
+  // Group rows by `group` field, preserving incoming order. Rows without a
+  // group land in a single "Other" section at the end.
+  const groups = useMemo(() => {
+    const order: string[] = [];
+    const buckets = new Map<string, number[]>();
+    rows.forEach((r, idx) => {
+      const k = r.group || '';
+      if (!buckets.has(k)) {
+        buckets.set(k, []);
+        order.push(k);
+      }
+      buckets.get(k)!.push(idx);
+    });
+    return order.map((label) => ({ label, indices: buckets.get(label)! }));
+  }, [rows]);
+
+  // Compute live abnormal flag for numeric rows. Doesn't mutate state — just
+  // tints the value cell red so the technician notices before saving. The
+  // saved-row flag is computed authoritatively in onSaveResults.
+  const isOutOfRange = (r: (typeof rows)[number]): boolean => {
+    if (!r.value) return false;
+    if (r.inputType === 'select' || r.inputType === 'text') return false;
+    const n = Number(r.value);
+    if (!Number.isFinite(n)) return false;
+    if (r.refLow != null && n < r.refLow) return true;
+    if (r.refHigh != null && n > r.refHigh) return true;
+    return false;
+  };
+
+  return (
+    <div className="rounded-md border bg-card">
+      <div className="grid grid-cols-12 gap-1 px-2 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground border-b">
+        <div className="col-span-4">Parameter</div>
+        <div className="col-span-3">Result</div>
+        <div className="col-span-2">Unit</div>
+        <div className="col-span-2">Reference</div>
+        <div className="col-span-1 text-center">Abn</div>
+      </div>
+      {groups.map((g) => (
+        <div key={g.label || '_none'}>
+          {g.label && (
+            <div className="px-2 py-1.5 bg-surface-container-low text-[10px] uppercase tracking-wide font-semibold text-on-surface-variant border-b">
+              {g.label}
+            </div>
+          )}
+          {g.indices.map((idx) => {
+            const r = rows[idx];
+            const abn = isOutOfRange(r) || r.isAbnormal;
+            return (
+              <div
+                key={idx}
+                className="grid grid-cols-12 gap-1 px-2 py-1.5 border-b last:border-b-0 items-center"
+              >
+                <div className="col-span-4 min-w-0">
+                  <div className="text-xs font-medium truncate">{r.parameterName}</div>
+                  {r.notes && (
+                    <div className="text-[10px] text-muted-foreground truncate">{r.notes}</div>
+                  )}
+                </div>
+                <div className="col-span-3">
+                  {r.inputType === 'select' && r.options ? (
+                    <select
+                      className="flex h-7 w-full rounded-lg border border-input bg-transparent px-2 text-xs focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
+                      value={r.value}
+                      onChange={(e) => updateRow(idx, { value: e.target.value })}
+                    >
+                      <option value="">— select —</option>
+                      {r.options.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Input
+                      className={cn('h-7 text-xs', abn && 'border-error text-error focus-visible:border-error')}
+                      type={r.inputType === 'number' ? 'number' : 'text'}
+                      step={r.decimals != null ? Math.pow(10, -r.decimals).toString() : 'any'}
+                      value={r.value}
+                      onChange={(e) => updateRow(idx, { value: e.target.value })}
+                      placeholder={r.inputType === 'number' ? '0' : 'enter result'}
+                    />
+                  )}
+                </div>
+                <div className="col-span-2 text-xs text-muted-foreground truncate">{r.unit || '—'}</div>
+                <div className="col-span-2 text-[11px] text-muted-foreground truncate">{r.normalRange || '—'}</div>
+                <div className="col-span-1 flex justify-center">
+                  <input
+                    type="checkbox"
+                    checked={r.isAbnormal || abn}
+                    onChange={(e) => updateRow(idx, { isAbnormal: e.target.checked })}
+                    title="Mark as abnormal"
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
     </div>
   );
 }

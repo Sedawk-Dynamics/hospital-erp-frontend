@@ -28,12 +28,19 @@ export function useLabRole() {
     role === 'super_admin';
 
   const isTechnician = role === 'lab_technician';
+  // Hospital-level admin OR platform super admin. Distinct from `isSupervisor`
+  // because lab_supervisor (a lab role) gets a narrower catalog surface —
+  // they can only update price + TAT, never parameters.
+  const isAdmin = role === 'admin' || role === 'super_admin';
 
   return {
     role,
     isSupervisor,
     isTechnician,
+    isAdmin,
     /** True when the user can do supervisor-only actions (verify/sign/publish/correct). */
     canApprove: isSupervisor,
+    /** True when the user can edit lab catalog schema (parameters, name, ...). */
+    canEditCatalog: isAdmin,
   };
 }
