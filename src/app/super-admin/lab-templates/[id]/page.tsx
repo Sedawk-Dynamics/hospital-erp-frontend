@@ -27,6 +27,7 @@ import {
   type LabParameterSpec,
 } from '@/hooks/use-lab-templates';
 import { LabParameterBuilder } from '@/components/laboratory/lab-parameter-builder';
+import { LabReportPreviewDialog } from '@/components/laboratory/lab-report-preview';
 
 interface LabTemplateBuilderPageProps {
   params: Promise<{ id: string }>;
@@ -55,6 +56,7 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
   });
   const [parameters, setParameters] = useState<LabParameterSpec[]>([]);
   const [dirty, setDirty] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   useEffect(() => {
     if (!template) return;
@@ -171,6 +173,10 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {dirty && <span className="text-[10px] text-amber-600 font-medium">Unsaved changes</span>}
+          <Button variant="outline" onClick={() => setPreviewOpen(true)} className="gap-1">
+            <Eye className="h-3.5 w-3.5" />
+            Preview report
+          </Button>
           {!meta.isPublished && (
             <Button onClick={() => handleSave({ publish: true })} disabled={update.isPending} className="gap-1">
               <CheckCircle2 className="h-3.5 w-3.5" />
@@ -310,6 +316,23 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
           Save
         </Button>
       </div>
+
+      <LabReportPreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        source={{
+          name: meta.name || 'Untitled template',
+          code: meta.code || null,
+          departmentName: meta.departmentName,
+          sampleType: meta.sampleType,
+          specimen: meta.specimen,
+          instructions: meta.instructions,
+          description: meta.description,
+          interpretation: meta.interpretation,
+          turnaroundHours: meta.turnaroundHours === '' ? null : Number(meta.turnaroundHours),
+          parameters,
+        }}
+      />
     </div>
   );
 }

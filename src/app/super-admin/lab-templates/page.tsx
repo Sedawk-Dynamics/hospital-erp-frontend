@@ -41,6 +41,7 @@ import {
   useDeleteLabTemplate,
   type LabTestTemplate,
 } from '@/hooks/use-lab-templates';
+import { LabReportPreviewDialog } from '@/components/laboratory/lab-report-preview';
 
 export default function SuperAdminLabTemplatesPage() {
   const router = useRouter();
@@ -52,6 +53,7 @@ export default function SuperAdminLabTemplatesPage() {
   const [openNew, setOpenNew] = useState(false);
   const [newForm, setNewForm] = useState({ name: '', departmentName: '', code: '' });
   const [confirmDelete, setConfirmDelete] = useState<LabTestTemplate | null>(null);
+  const [previewTpl, setPreviewTpl] = useState<LabTestTemplate | null>(null);
 
   const templates = data?.data ?? [];
   const filtered = templates.filter((t) =>
@@ -203,6 +205,10 @@ export default function SuperAdminLabTemplatesPage() {
                               </Link>
                             }
                           />
+                          <DropdownMenuItem onClick={() => setPreviewTpl(t)}>
+                            <Eye className="h-3.5 w-3.5 mr-2" />
+                            Preview report
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => setConfirmDelete(t)}
                             className="text-destructive focus:text-destructive"
@@ -261,6 +267,28 @@ export default function SuperAdminLabTemplatesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Preview */}
+      <LabReportPreviewDialog
+        open={!!previewTpl}
+        onOpenChange={(open) => !open && setPreviewTpl(null)}
+        source={
+          previewTpl
+            ? {
+                name: previewTpl.name,
+                code: previewTpl.code,
+                departmentName: previewTpl.departmentName,
+                sampleType: previewTpl.sampleType,
+                specimen: previewTpl.specimen,
+                instructions: previewTpl.instructions,
+                description: previewTpl.description,
+                interpretation: previewTpl.interpretation,
+                turnaroundHours: previewTpl.turnaroundHours ?? null,
+                parameters: previewTpl.parameters ?? [],
+              }
+            : null
+        }
+      />
 
       {/* Delete confirmation */}
       <Dialog open={!!confirmDelete} onOpenChange={(open) => !open && setConfirmDelete(null)}>

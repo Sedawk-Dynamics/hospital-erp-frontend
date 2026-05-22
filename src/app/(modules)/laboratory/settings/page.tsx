@@ -19,7 +19,7 @@
 import { useState } from 'react';
 import {
   Search, Plus, Pencil, Trash2, Beaker, Building2, RefreshCw,
-  CopyPlus, Download, Loader2, CheckCircle2,
+  CopyPlus, Download, Loader2, CheckCircle2, Eye,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -52,6 +52,10 @@ import {
 import { useLabRole } from '@/hooks/use-lab-role';
 import { SupervisorOnlyGuard } from '@/components/laboratory/supervisor-only-guard';
 import { LabParameterBuilder } from '@/components/laboratory/lab-parameter-builder';
+import {
+  LabReportPreviewDialog,
+  type LabReportPreviewSource,
+} from '@/components/laboratory/lab-report-preview';
 
 export default function LabSettingsPage() {
   return (
@@ -314,6 +318,7 @@ function TestCatalogSection() {
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
   const [editingTest, setEditingTest] = useState<LabTestCatalog | null>(null);
+  const [previewTest, setPreviewTest] = useState<LabTestCatalog | null>(null);
 
   const { data, isLoading, refetch } = useLabTests({
     search: search || undefined,
@@ -440,6 +445,14 @@ function TestCatalogSection() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setPreviewTest(test)}
+                          title="Preview report"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
                         <Dialog
                           open={editingTest?.id === test.id}
                           onOpenChange={(open) => !open && setEditingTest(null)}
@@ -488,8 +501,30 @@ function TestCatalogSection() {
           </div>
         )}
       </div>
+
+      <LabReportPreviewDialog
+        open={!!previewTest}
+        onOpenChange={(open) => !open && setPreviewTest(null)}
+        source={previewTest ? catalogToPreviewSource(previewTest) : null}
+      />
     </div>
   );
+}
+
+function catalogToPreviewSource(test: LabTestCatalog): LabReportPreviewSource {
+  return {
+    name: test.testName ?? test.name ?? 'Test',
+    code: test.testCode ?? test.code ?? null,
+    departmentName: (test.labDepartment ?? test.department)?.name ?? null,
+    sampleType: test.sampleType ?? null,
+    specimen: test.specimen ?? null,
+    instructions: test.instructions ?? null,
+    description: test.description ?? null,
+    interpretation: test.interpretation ?? null,
+    defaultPrice: test.price ?? null,
+    turnaroundHours: test.turnaroundHours ?? null,
+    parameters: (test.parameters as LabParameterSpec[] | undefined) ?? [],
+  };
 }
 
 // Role-aware edit/create dialog for catalog rows. Hospital admin gets the
@@ -524,6 +559,7 @@ function TestFormDialog({
   const [parameters, setParameters] = useState<LabParameterSpec[]>(
     (test?.parameters as LabParameterSpec[] | undefined) ?? [],
   );
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const createTest = useCreateLabTest();
   const updateTest = useUpdateLabTest();
@@ -752,6 +788,16 @@ function TestFormDialog({
         )}
 
         <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setPreviewOpen(true)}
+            disabled={isPending}
+            className="gap-1 mr-auto"
+          >
+            <Eye className="h-3.5 w-3.5" />
+            Preview report
+          </Button>
           <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
             Cancel
           </Button>
@@ -760,6 +806,24 @@ function TestFormDialog({
           </Button>
         </DialogFooter>
       </form>
+
+      <LabReportPreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        source={{
+          name: formData.testName || 'Untitled test',
+          code: formData.testCode || null,
+          departmentName: departments.find((d) => d.id === formData.labDepartmentId)?.name ?? null,
+          sampleType: formData.sampleType || null,
+          specimen: formData.specimen || null,
+          instructions: formData.instructions || null,
+          description: formData.description || null,
+          interpretation: formData.interpretation || null,
+          defaultPrice: formData.price || null,
+          turnaroundHours: formData.turnaroundHours || null,
+          parameters: fullEdit ? parameters : ((test?.parameters as LabParameterSpec[] | undefined) ?? []),
+        }}
+      />
     </DialogContent>
   );
 }
@@ -771,6 +835,7 @@ function TestFormDialog({
 function TemplatesImportSection() {
   const { canEditCatalog } = useLabRole();
   const [search, setSearch] = useState('');
+  const [previewTpl, setPreviewTpl] = useState<LabTestTemplate | null>(null);
   const { data, isLoading, refetch } = useLabTemplates({ limit: 200 });
   const cloneOne = useCloneOneLabTemplate();
   const cloneAll = useCloneAllLabTemplates();
@@ -915,25 +980,36 @@ function TemplatesImportSection() {
                     </td>
                     <td className="px-4 py-2.5 text-right text-xs">{t.turnaroundHours ? `${t.turnaroundHours}h` : '—'}</td>
                     <td className="px-4 py-2.5 text-right">
-                      {isImported ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700">
-                          <CheckCircle2 className="h-3 w-3" />
-                          Imported
-                        </span>
-                      ) : canEditCatalog ? (
+                      <div className="inline-flex items-center gap-1 justify-end">
                         <Button
                           size="sm"
-                          variant="outline"
-                          onClick={() => onCloneOne(t)}
-                          disabled={cloneOne.isPending}
+                          variant="ghost"
+                          onClick={() => setPreviewTpl(t)}
                           className="gap-1 h-7 text-xs"
+                          title="Preview report"
                         >
-                          <Download className="h-3 w-3" />
-                          Clone
+                          <Eye className="h-3 w-3" />
                         </Button>
-                      ) : (
-                        <span className="text-[10px] text-muted-foreground">Admin only</span>
-                      )}
+                        {isImported ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Imported
+                          </span>
+                        ) : canEditCatalog ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onCloneOne(t)}
+                            disabled={cloneOne.isPending}
+                            className="gap-1 h-7 text-xs"
+                          >
+                            <Download className="h-3 w-3" />
+                            Clone
+                          </Button>
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground">Admin only</span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -942,6 +1018,28 @@ function TemplatesImportSection() {
           </tbody>
         </table>
       </div>
+
+      <LabReportPreviewDialog
+        open={!!previewTpl}
+        onOpenChange={(open) => !open && setPreviewTpl(null)}
+        source={
+          previewTpl
+            ? {
+                name: previewTpl.name,
+                code: previewTpl.code,
+                departmentName: previewTpl.departmentName,
+                sampleType: previewTpl.sampleType,
+                specimen: previewTpl.specimen,
+                instructions: previewTpl.instructions,
+                description: previewTpl.description,
+                interpretation: previewTpl.interpretation,
+                defaultPrice: previewTpl.defaultPrice ?? null,
+                turnaroundHours: previewTpl.turnaroundHours ?? null,
+                parameters: previewTpl.parameters ?? [],
+              }
+            : null
+        }
+      />
     </div>
   );
 }

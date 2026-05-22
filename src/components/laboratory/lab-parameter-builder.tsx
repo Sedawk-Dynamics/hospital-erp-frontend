@@ -19,6 +19,7 @@ import type {
   LabParameterInputType,
   LabParameterOption,
 } from '@/hooks/use-lab-templates';
+import { LabUnitPicker } from './lab-unit-picker';
 
 interface LabParameterBuilderProps {
   value: LabParameterSpec[];
@@ -127,11 +128,10 @@ export function LabParameterBuilder({ value, onChange }: LabParameterBuilderProp
                   value={p.group ?? ''}
                   onChange={(e) => update(idx, { group: e.target.value || null })}
                 />
-                <Input
-                  className="col-span-1 h-7 text-xs"
-                  placeholder="g/dL"
-                  value={p.unit ?? ''}
-                  onChange={(e) => update(idx, { unit: e.target.value || null })}
+                <LabUnitPicker
+                  className="col-span-1"
+                  value={p.unit}
+                  onChange={(next) => update(idx, { unit: next })}
                 />
                 <div className="col-span-2 flex items-center gap-1">
                   {p.inputType === 'number' ? (
