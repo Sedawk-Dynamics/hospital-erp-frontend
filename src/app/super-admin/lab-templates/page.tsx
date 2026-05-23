@@ -56,11 +56,21 @@ export default function SuperAdminLabTemplatesPage() {
   const [previewTpl, setPreviewTpl] = useState<LabTestTemplate | null>(null);
 
   const templates = data?.data ?? [];
-  const filtered = templates.filter((t) =>
-    !search.trim()
-      ? true
-      : `${t.name} ${t.code ?? ''} ${t.departmentName}`.toLowerCase().includes(search.toLowerCase()),
-  );
+  const filtered = templates.filter((t) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    // Local matches against name/code/department AND aliases/tags so a
+    // search for "FBC" / "hemoglobin" surfaces CBC even before the
+    // server-side search round-trip completes.
+    const haystack = [
+      t.name,
+      t.code ?? '',
+      t.departmentName,
+      ...(t.aliases ?? []),
+      ...(t.tags ?? []),
+    ].join(' ').toLowerCase();
+    return haystack.includes(q);
+  });
 
   async function handleCreate() {
     if (!newForm.name.trim() || !newForm.departmentName.trim()) {
@@ -119,7 +129,7 @@ export default function SuperAdminLabTemplatesPage() {
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Search by name, code, department…"
+              placeholder='Search by name, code, department, alias or tag ("FBC", "hemoglobin"…)'
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-8 h-8 text-xs"
@@ -166,6 +176,12 @@ export default function SuperAdminLabTemplatesPage() {
                       >
                         {t.name}
                       </Link>
+                      {(t.aliases?.length ?? 0) > 0 && (
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          also: {t.aliases!.slice(0, 4).join(', ')}
+                          {t.aliases!.length > 4 ? ` +${t.aliases!.length - 4}` : ''}
+                        </p>
+                      )}
                       {t.description && (
                         <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">{t.description}</p>
                       )}

@@ -49,6 +49,12 @@ export interface LabTestCatalog {
   specimen?: string | null;
   instructions?: string | null;
   interpretation?: string | null;
+  // Dynamic-search synonyms + tags. Editable by hospital admin per row
+  // without touching the platform template.
+  aliases?: string[];
+  tags?: string[];
+  // True for hospital-authored tests with no platform-template link.
+  isCustom?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -458,6 +464,11 @@ type LabTestPayload = {
   instructions?: string | null;
   parameters?: LabTestParameter[] | null;
   interpretation?: string | null;
+  // Dynamic-search synonyms + tags + custom-test flag (see 2026-05-23
+  // meeting decisions).
+  aliases?: string[];
+  tags?: string[];
+  isCustom?: boolean;
   isActive?: boolean;
 };
 

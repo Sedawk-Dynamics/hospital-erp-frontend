@@ -19,8 +19,9 @@
 import { useState } from 'react';
 import {
   Search, Plus, Pencil, Trash2, Beaker, Building2, RefreshCw,
-  CopyPlus, Download, Loader2, CheckCircle2, Eye,
+  CopyPlus, Download, Loader2, CheckCircle2, Eye, Ruler,
 } from 'lucide-react';
+import { LabUnitsManager } from '@/components/laboratory/lab-units-manager';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
@@ -52,6 +53,7 @@ import {
 import { useLabRole } from '@/hooks/use-lab-role';
 import { SupervisorOnlyGuard } from '@/components/laboratory/supervisor-only-guard';
 import { LabParameterBuilder } from '@/components/laboratory/lab-parameter-builder';
+import { LabTagsInput } from '@/components/laboratory/lab-tags-input';
 import {
   LabReportPreviewDialog,
   type LabReportPreviewSource,
@@ -86,6 +88,10 @@ function LabSettingsPageInner() {
             <Building2 className="mr-1.5 h-4 w-4" />
             Departments
           </TabsTrigger>
+          <TabsTrigger value="units">
+            <Ruler className="mr-1.5 h-4 w-4" />
+            Units
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="tests" className="pt-4">
@@ -96,6 +102,9 @@ function LabSettingsPageInner() {
         </TabsContent>
         <TabsContent value="departments" className="pt-4">
           <DepartmentsSection />
+        </TabsContent>
+        <TabsContent value="units" className="pt-4">
+          <LabUnitsManager />
         </TabsContent>
       </Tabs>
     </div>
@@ -346,7 +355,7 @@ function TestCatalogSection() {
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search tests..."
+            placeholder='Search tests, aliases, tags ("FBC", "hemoglobin"…)'
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             className="pl-9"
@@ -360,7 +369,7 @@ function TestCatalogSection() {
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
             <DialogTrigger render={<Button size="sm" />}>
               <Plus className="mr-1.5 h-4 w-4" />
-              Add Test
+              Create Custom Test
             </DialogTrigger>
             <TestFormDialog mode="create" onClose={() => setCreateOpen(false)} />
           </Dialog>
@@ -413,9 +422,19 @@ function TestCatalogSection() {
                   <tr key={test.id} className="group hover:bg-surface-container-low transition-colors">
                     <td className="px-4 py-3">
                       <div className="font-medium">{test.testName ?? test.name}</div>
-                      {test.templateId && (
-                        <Badge className="mt-0.5 bg-primary/10 text-primary text-[9px]">From platform template</Badge>
-                      )}
+                      <div className="flex gap-1 mt-0.5">
+                        {test.templateId && (
+                          <Badge className="bg-primary/10 text-primary text-[9px]">From platform template</Badge>
+                        )}
+                        {test.isCustom && !test.templateId && (
+                          <Badge className="bg-amber-100 text-amber-800 text-[9px]">Hospital custom</Badge>
+                        )}
+                        {(test.aliases?.length ?? 0) > 0 && (
+                          <Badge className="bg-cyan-50 text-cyan-700 text-[9px]" title={test.aliases?.join(', ')}>
+                            +{test.aliases!.length} alias{test.aliases!.length === 1 ? '' : 'es'}
+                          </Badge>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{test.testCode ?? test.code ?? '-'}</td>
                     <td className="px-4 py-3 text-muted-foreground">{(test.labDepartment ?? test.department)?.name ?? '-'}</td>
@@ -559,6 +578,12 @@ function TestFormDialog({
   const [parameters, setParameters] = useState<LabParameterSpec[]>(
     (test?.parameters as LabParameterSpec[] | undefined) ?? [],
   );
+  const [aliases, setAliases] = useState<string[]>(
+    ((test as unknown as { aliases?: string[] })?.aliases) ?? [],
+  );
+  const [tags, setTags] = useState<string[]>(
+    ((test as unknown as { tags?: string[] })?.tags) ?? [],
+  );
   const [previewOpen, setPreviewOpen] = useState(false);
 
   const createTest = useCreateLabTest();
@@ -617,6 +642,12 @@ function TestFormDialog({
       turnaroundHours: formData.turnaroundHours || undefined,
       price: formData.price,
       parameters: parameters as unknown as LabTestParameter[],
+      aliases,
+      tags,
+      // Mode = create → mark as custom unless this catalog row was
+      // explicitly cloned from a template (createTest path doesn't carry
+      // a templateId). Edits don't change isCustom — preserved server-side.
+      ...(mode === 'create' ? { isCustom: true } : {}),
     };
 
     try {
@@ -639,11 +670,13 @@ function TestFormDialog({
     <DialogContent className={fullEdit ? 'sm:max-w-4xl max-h-[92vh] overflow-y-auto' : 'sm:max-w-md'}>
       <DialogHeader>
         <DialogTitle>
-          {isEdit ? (fullEdit ? 'Edit Test' : 'Edit Price / TAT') : 'Add Test'}
+          {isEdit ? (fullEdit ? 'Edit Test' : 'Edit Price / TAT') : 'Create Custom Test'}
         </DialogTitle>
         <DialogDescription>
           {fullEdit
-            ? 'Configure the catalog row. Structured parameters drive the technician\'s result-entry grid.'
+            ? (isEdit
+                ? 'Configure the catalog row. Structured parameters drive the technician\'s result-entry grid.'
+                : 'Author a hospital-specific test. It stays independent of the platform master data — a future Sync schemas will not touch it.')
             : 'Lab supervisors can update price and turnaround time. Parameter list is admin-only.'}
         </DialogDescription>
       </DialogHeader>
@@ -737,6 +770,26 @@ function TestFormDialog({
                 onChange={(e) => setFormData((p) => ({ ...p, description: e.target.value }))}
                 rows={2}
               />
+            </div>
+
+            <div className="col-span-12 grid grid-cols-12 gap-3 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3">
+              <div className="col-span-12">
+                <div className="text-[10px] uppercase font-semibold tracking-wide text-primary">
+                  Search & synonyms (hospital-local)
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Doctors searching for "FBC" or "Hemogram" surface this test. Tags are loose keywords.
+                  Edits here stay on your catalog — they don't touch the master template.
+                </p>
+              </div>
+              <div className="col-span-6 space-y-1">
+                <Label className="text-xs">Aliases</Label>
+                <LabTagsInput value={aliases} onChange={setAliases} valueMode="alias" max={25} placeholder='e.g. "FBC"' />
+              </div>
+              <div className="col-span-6 space-y-1">
+                <Label className="text-xs">Tags</Label>
+                <LabTagsInput value={tags} onChange={setTags} valueMode="tag" max={40} placeholder='e.g. "hemoglobin"' />
+              </div>
             </div>
 
             <div className="col-span-12">
@@ -848,11 +901,23 @@ function TemplatesImportSection() {
     (tests?.data ?? []).map((t) => t.templateId).filter(Boolean) as string[],
   );
 
-  const filtered = templates.filter((t) =>
-    !search.trim()
-      ? true
-      : `${t.name} ${t.code ?? ''} ${t.departmentName}`.toLowerCase().includes(search.toLowerCase()),
-  );
+  const filtered = templates.filter((t) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    // Match against name/code/department AND the alias/tag arrays so a
+    // local search for "FBC" or "hemoglobin" surfaces CBC even before
+    // the user re-fetches with the server-side search.
+    const haystack = [
+      t.name,
+      t.code ?? '',
+      t.departmentName,
+      ...(t.aliases ?? []),
+      ...(t.tags ?? []),
+    ]
+      .join(' ')
+      .toLowerCase();
+    return haystack.includes(q);
+  });
 
   const onCloneOne = async (tpl: LabTestTemplate) => {
     try {
@@ -889,7 +954,7 @@ function TemplatesImportSection() {
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search platform templates…"
+            placeholder='Search by name, code, alias or tag…'
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"

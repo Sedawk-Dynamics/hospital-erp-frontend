@@ -20,6 +20,8 @@ import type {
   LabParameterOption,
 } from '@/hooks/use-lab-templates';
 import { LabUnitPicker } from './lab-unit-picker';
+import { LabUnitGroupPicker } from './lab-unit-group-picker';
+import { useLabUnitGroups, findUnitGroupForSymbol } from '@/hooks/use-lab-units';
 
 interface LabParameterBuilderProps {
   value: LabParameterSpec[];
@@ -38,6 +40,7 @@ function blankParam(): LabParameterSpec {
     name: '',
     code: null,
     unit: null,
+    unitGroupCode: null,
     refLow: null,
     refHigh: null,
     refRangeText: null,
@@ -51,9 +54,28 @@ function blankParam(): LabParameterSpec {
 
 export function LabParameterBuilder({ value, onChange }: LabParameterBuilderProps) {
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  const unitGroupsQuery = useLabUnitGroups();
 
   const update = (idx: number, patch: Partial<LabParameterSpec>) => {
     onChange(value.map((p, i) => (i === idx ? { ...p, ...patch } : p)));
+  };
+
+  // When the user picks a unit before picking a group, auto-fill the group
+  // so the next-time dropdown filter shows the right set. The unit picker
+  // already allows custom units that don't map to any group; we just leave
+  // unitGroupCode unset for those.
+  const updateUnit = (idx: number, next: string | null) => {
+    const patch: Partial<LabParameterSpec> = { unit: next };
+    const current = value[idx];
+    if (next && !current.unitGroupCode) {
+      const hit = findUnitGroupForSymbol(unitGroupsQuery.data, next);
+      if (hit) patch.unitGroupCode = hit.group.code;
+    }
+    if (!next && current.unitGroupCode) {
+      // Don't clear the group automatically — the user might want to swap
+      // units within the same group.
+    }
+    update(idx, patch);
   };
 
   const move = (idx: number, dir: -1 | 1) => {
@@ -94,11 +116,12 @@ export function LabParameterBuilder({ value, onChange }: LabParameterBuilderProp
     <div className="rounded-lg border bg-card overflow-hidden">
       <div className="grid grid-cols-12 gap-1 px-3 py-2 bg-surface-container-low border-b text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant">
         <div className="col-span-1"></div>
-        <div className="col-span-3">Parameter name</div>
-        <div className="col-span-2">Group</div>
+        <div className="col-span-2">Parameter name</div>
+        <div className="col-span-2">Section</div>
+        <div className="col-span-2">Unit group</div>
         <div className="col-span-1">Unit</div>
         <div className="col-span-2">Reference range</div>
-        <div className="col-span-2">Type</div>
+        <div className="col-span-1">Type</div>
         <div className="col-span-1 text-right">Actions</div>
       </div>
 
@@ -117,7 +140,7 @@ export function LabParameterBuilder({ value, onChange }: LabParameterBuilderProp
                   <GripVertical className="h-3.5 w-3.5" />
                 </div>
                 <Input
-                  className="col-span-3 h-7 text-xs"
+                  className="col-span-2 h-7 text-xs"
                   placeholder="e.g. Hemoglobin"
                   value={p.name}
                   onChange={(e) => update(idx, { name: e.target.value })}
@@ -128,10 +151,16 @@ export function LabParameterBuilder({ value, onChange }: LabParameterBuilderProp
                   value={p.group ?? ''}
                   onChange={(e) => update(idx, { group: e.target.value || null })}
                 />
+                <LabUnitGroupPicker
+                  className="col-span-2"
+                  value={p.unitGroupCode}
+                  onChange={(code) => update(idx, { unitGroupCode: code })}
+                />
                 <LabUnitPicker
                   className="col-span-1"
                   value={p.unit}
-                  onChange={(next) => update(idx, { unit: next })}
+                  unitGroupCode={p.unitGroupCode}
+                  onChange={(next) => updateUnit(idx, next)}
                 />
                 <div className="col-span-2 flex items-center gap-1">
                   {p.inputType === 'number' ? (
@@ -164,13 +193,14 @@ export function LabParameterBuilder({ value, onChange }: LabParameterBuilderProp
                   )}
                 </div>
                 <select
-                  className="col-span-2 h-7 rounded-lg border border-input bg-transparent px-2 text-xs"
+                  className="col-span-1 h-7 rounded-lg border border-input bg-transparent px-1 text-xs"
                   value={p.inputType}
                   onChange={(e) => setInputType(idx, e.target.value as LabParameterInputType)}
+                  title="Input type"
                 >
                   <option value="number">Number</option>
                   <option value="text">Text</option>
-                  <option value="select">Select (categorical)</option>
+                  <option value="select">Select</option>
                 </select>
                 <div className="col-span-1 flex items-center justify-end gap-0.5">
                   <Button

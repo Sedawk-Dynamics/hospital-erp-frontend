@@ -28,6 +28,7 @@ import {
 } from '@/hooks/use-lab-templates';
 import { LabParameterBuilder } from '@/components/laboratory/lab-parameter-builder';
 import { LabReportPreviewDialog } from '@/components/laboratory/lab-report-preview';
+import { LabTagsInput } from '@/components/laboratory/lab-tags-input';
 
 interface LabTemplateBuilderPageProps {
   params: Promise<{ id: string }>;
@@ -55,6 +56,8 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
     isPublished: true,
   });
   const [parameters, setParameters] = useState<LabParameterSpec[]>([]);
+  const [aliases, setAliases] = useState<string[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
   const [dirty, setDirty] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
 
@@ -74,6 +77,8 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
       isPublished: template.isPublished,
     });
     setParameters(template.parameters ?? []);
+    setAliases(template.aliases ?? []);
+    setTags(template.tags ?? []);
     setDirty(false);
   }, [template]);
 
@@ -93,6 +98,16 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
 
   function onParametersChange(next: LabParameterSpec[]) {
     setParameters(next);
+    setDirty(true);
+  }
+
+  function onAliasesChange(next: string[]) {
+    setAliases(next);
+    setDirty(true);
+  }
+
+  function onTagsChange(next: string[]) {
+    setTags(next);
     setDirty(true);
   }
 
@@ -128,6 +143,8 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
         defaultPrice: meta.defaultPrice === '' ? null : Number(meta.defaultPrice),
         turnaroundHours: meta.turnaroundHours === '' ? null : Number(meta.turnaroundHours),
         parameters,
+        aliases,
+        tags,
         isPublished: opts.publish ?? meta.isPublished,
       });
       toast.success(opts.publish ? 'Saved and published' : 'Saved');
@@ -273,6 +290,28 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
               rows={2}
               placeholder="Brief description of what this test measures and when it's used."
             />
+          </div>
+        </div>
+      </section>
+
+      {/* Aliases + tags (dynamic search layer) */}
+      <section className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4 space-y-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Search & synonyms
+        </h2>
+        <p className="text-[11px] text-muted-foreground">
+          Aliases let doctors find this test under a different name — e.g. searching "FBC" or "Hemogram" surfaces
+          CBC. Tags are loose keywords (parameter names, anatomy, indications) that also feed search. Both are
+          part of the dynamic-search layer agreed in the 2026-05-23 meeting.
+        </p>
+        <div className="grid grid-cols-12 gap-3">
+          <div className="col-span-6 space-y-1">
+            <Label>Aliases (alternative names)</Label>
+            <LabTagsInput value={aliases} onChange={onAliasesChange} valueMode="alias" max={25} placeholder='e.g. "FBC", "Hemogram"' />
+          </div>
+          <div className="col-span-6 space-y-1">
+            <Label>Tags (keywords)</Label>
+            <LabTagsInput value={tags} onChange={onTagsChange} valueMode="tag" max={40} placeholder='e.g. "hemoglobin", "anemia"' />
           </div>
         </div>
       </section>

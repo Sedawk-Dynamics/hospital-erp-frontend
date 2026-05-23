@@ -21,6 +21,10 @@ export interface LabParameterSpec {
   name: string;
   code?: string | null;
   unit?: string | null;
+  // Unit-group code (e.g. "concentration_mass"). Lets the parameter builder
+  // filter the unit dropdown to the relevant units. Optional for backwards-
+  // compat with parameters seeded before the unit-groups migration.
+  unitGroupCode?: string | null;
   refLow?: number | null;
   refHigh?: number | null;
   refRangeText?: string | null;
@@ -44,6 +48,11 @@ export interface LabTestTemplate {
   turnaroundHours?: number | null;
   parameters: LabParameterSpec[];
   interpretation?: string | null;
+  // Dynamic-search layer — alternative names + loose keywords. Both arrays
+  // contribute to the searchTokens column so e.g. searching "hemoglobin"
+  // surfaces CBC.
+  aliases?: string[];
+  tags?: string[];
   isPublished: boolean;
   version: number;
   createdAt: string;
@@ -64,6 +73,8 @@ export type LabTestTemplateInput = {
   turnaroundHours?: number | null;
   parameters: LabParameterSpec[];
   interpretation?: string | null;
+  aliases?: string[];
+  tags?: string[];
   isPublished?: boolean;
 };
 
