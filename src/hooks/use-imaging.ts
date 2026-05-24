@@ -340,6 +340,30 @@ export function useImagingAnalytics(params?: { fromDate?: string; toDate?: strin
   });
 }
 
+export function useEditImagingResult() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      ...data
+    }: {
+      id: string;
+      findings?: string;
+      impression?: string;
+      pacsReferenceId?: string;
+      pdfReportUrl?: string;
+    }) => {
+      const response = await apiPatch<ImagingResult>(`/imaging/results/${id}`, data);
+      return response.data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: imagingKeys.results.all });
+      queryClient.invalidateQueries({ queryKey: imagingKeys.results.detail(variables.id) });
+      queryClient.invalidateQueries({ queryKey: imagingKeys.requests.all });
+    },
+  });
+}
+
 export function useVerifyImagingResult() {
   const queryClient = useQueryClient();
   return useMutation({

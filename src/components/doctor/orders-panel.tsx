@@ -19,9 +19,10 @@ import { toast } from 'sonner';
 import { LabOrderDialog } from './lab-order-dialog';
 import { ImagingRequestDialog } from './imaging-request-dialog';
 import { LabOrderDetailDialog } from '@/components/shared/lab-order-detail-dialog';
+import { ImagingOrderViewerDialog } from '@/components/shared/imaging-order-viewer-dialog';
 import { cn } from '@/lib/utils';
 import { resolveAttachmentUrl } from '@/hooks/use-lab-attachments';
-import { Paperclip } from 'lucide-react';
+import { Paperclip, Eye } from 'lucide-react';
 
 interface OrdersPanelProps {
   patientId: string;
@@ -60,6 +61,9 @@ export function OrdersPanel({ patientId, visitId }: OrdersPanelProps) {
   // When the doctor clicks a lab order row, open the shared read-only detail
   // dialog so they can see the uploaded report files (PDF / images / scans).
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
+  // Same idea for imaging — clicking a row opens the universal viewer over
+  // the request's attachments (PDFs, JPG/PNG, DICOM, videos).
+  const [openImagingId, setOpenImagingId] = useState<string | null>(null);
 
   // If no visitId passed, auto-fetch the patient's latest active visit.
   const { data: fallbackVisit } = useQuery({
@@ -344,14 +348,17 @@ export function OrdersPanel({ patientId, visitId }: OrdersPanelProps) {
                 const doneByPatient = !!request.completedExternallyAt;
                 const isCancellable =
                   request.status !== 'completed' && request.status !== 'cancelled';
+                const hasResult = !!request.imagingResult;
                 return (
                   <div
                     key={request.id}
+                    onClick={() => hasResult && setOpenImagingId(request.id)}
                     className={cn(
                       'flex items-start justify-between rounded-lg border p-2.5 transition-colors',
                       doneByPatient
                         ? 'border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50/70'
                         : 'border-border/50 hover:bg-accent/30',
+                      hasResult && 'cursor-pointer',
                     )}
                   >
                     <div className="flex-1 min-w-0">
@@ -391,21 +398,19 @@ export function OrdersPanel({ patientId, visitId }: OrdersPanelProps) {
                             href={resolveAttachmentUrl(request.externalReportUrl)}
                             target="_blank"
                             rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
                             className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 hover:underline"
                           >
                             <ExternalLink className="h-3 w-3" />
                             Patient Uploaded
                           </a>
-                        ) : request.imagingResult?.pdfReportUrl ? (
-                          <a
-                            href={resolveAttachmentUrl(request.imagingResult.pdfReportUrl)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-[10px] font-semibold text-primary hover:underline"
+                        ) : hasResult ? (
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] font-semibold text-primary"
                           >
-                            <ExternalLink className="h-3 w-3" />
-                            Imaging Report
-                          </a>
+                            <Eye className="h-3 w-3" />
+                            View Report &amp; Files
+                          </span>
                         ) : null}
                         {doneByPatient && request.externalNotes && (
                           <span className="text-[10px] italic text-emerald-700 truncate max-w-[220px]">
@@ -437,7 +442,10 @@ export function OrdersPanel({ patientId, visitId }: OrdersPanelProps) {
                           size="icon"
                           className="h-6 w-6 text-destructive hover:text-destructive"
                           title="Cancel request"
-                          onClick={() => handleCancelImaging(request.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCancelImaging(request.id);
+                          }}
                           disabled={cancelImaging.isPending}
                         >
                           <XCircle className="h-3 w-3" />
@@ -474,6 +482,10 @@ export function OrdersPanel({ patientId, visitId }: OrdersPanelProps) {
       <LabOrderDetailDialog
         orderId={openOrderId}
         onOpenChange={(open) => !open && setOpenOrderId(null)}
+      />
+      <ImagingOrderViewerDialog
+        requestId={openImagingId}
+        onOpenChange={(open) => !open && setOpenImagingId(null)}
       />
     </div>
   );
