@@ -25,7 +25,6 @@ interface LabTestCatalogEntry {
   testName: string;
   testCode?: string;
   sampleType?: string;
-  labDepartment?: { id: string; name: string };
 }
 
 interface LabOrderDialogProps {
@@ -79,7 +78,7 @@ export function LabOrderDialog({ open, onOpenChange, patientId, visitId }: LabOr
           id: t.id,
           name: t.testName,
           code: t.testCode,
-          category: t.labDepartment?.name ?? t.sampleType,
+          category: t.sampleType,
         }));
         // Filter out already selected tests
         const filtered = results.filter(

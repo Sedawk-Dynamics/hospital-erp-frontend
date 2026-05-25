@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Search, FileText, RefreshCw, Download, BarChart3, Clock, TrendingUp, Building2, AlertCircle, Edit3, Eye, Upload, X } from 'lucide-react';
+import { Search, FileText, RefreshCw, Download, BarChart3, Clock, TrendingUp, AlertCircle, Edit3, Eye, Upload, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -34,7 +34,7 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 const reportCategories = [
   {
     title: 'Test Volume Report',
-    description: 'Summary of tests conducted over a period, grouped by test type and department.',
+    description: 'Summary of tests conducted over a period, grouped by test type.',
     icon: BarChart3,
     color: 'text-blue-600 bg-blue-50',
   },
@@ -49,12 +49,6 @@ const reportCategories = [
     description: 'Financial summary of lab billing, collections, and outstanding amounts.',
     icon: TrendingUp,
     color: 'text-green-600 bg-green-50',
-  },
-  {
-    title: 'Department-wise Report',
-    description: 'Breakdown of tests, samples, and results across each lab department.',
-    icon: Building2,
-    color: 'text-purple-600 bg-purple-50',
   },
 ];
 
@@ -114,31 +108,16 @@ function LabReportsPageInner() {
         </div>
       )}
 
-      {analytics && (analytics.testVolume.length > 0 || analytics.departmentWorkload.length > 0) && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant mb-2">Top Tests</h3>
-            <div className="space-y-1">
-              {analytics.testVolume.slice(0, 8).map((t) => (
-                <div key={t.testId} className="flex items-center justify-between text-sm">
-                  <span className="truncate">{t.testName}</span>
-                  <span className="text-muted-foreground">{t.count}</span>
-                </div>
-              ))}
-              {analytics.testVolume.length === 0 && <p className="text-xs text-muted-foreground">No data yet.</p>}
-            </div>
-          </div>
-          <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant mb-2">Department Workload</h3>
-            <div className="space-y-1">
-              {analytics.departmentWorkload.map((d) => (
-                <div key={d.departmentId} className="flex items-center justify-between text-sm">
-                  <span className="truncate">{d.departmentName}</span>
-                  <span className="text-muted-foreground">{d.count}</span>
-                </div>
-              ))}
-              {analytics.departmentWorkload.length === 0 && <p className="text-xs text-muted-foreground">No data yet.</p>}
-            </div>
+      {analytics && analytics.testVolume.length > 0 && (
+        <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant mb-2">Top Tests</h3>
+          <div className="space-y-1">
+            {analytics.testVolume.slice(0, 8).map((t) => (
+              <div key={t.testId} className="flex items-center justify-between text-sm">
+                <span className="truncate">{t.testName}</span>
+                <span className="text-muted-foreground">{t.count}</span>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -202,7 +181,7 @@ function LabReportsPageInner() {
       {/* Report Category Cards */}
       <div>
         <h2 className="font-label text-xs text-on-surface-variant uppercase tracking-widest mb-3">Report Categories</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {reportCategories.map((category) => {
             const Icon = category.icon;
             return (

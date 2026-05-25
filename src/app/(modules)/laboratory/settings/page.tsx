@@ -2,23 +2,23 @@
 
 // Hospital-side Lab Settings.
 //
-// Three tabs:
-//   • Departments        — manage in-hospital lab departments
+// Tabs:
 //   • Test Catalog       — the actual lab test list; admin can edit fully
 //                          (incl. structured parameters), supervisor can
 //                          only update price + TAT.
 //   • Import Templates   — pull super-admin platform templates into the
 //                          catalog one-by-one or all-at-once.
+//   • Units              — manage unit groups + units.
 //
 // Role behaviour:
-//   admin / super_admin   → see all three tabs + full edit
-//   lab_supervisor        → see all three tabs but Test Catalog edits are
+//   admin / super_admin   → see all tabs + full edit
+//   lab_supervisor        → see all tabs but Test Catalog edits are
 //                           price-only; Import shows a read-only summary
 //                           since clone-* endpoints require admin.
 
 import { useState } from 'react';
 import {
-  Search, Plus, Pencil, Trash2, Beaker, Building2, RefreshCw,
+  Search, Plus, Pencil, Trash2, Beaker, RefreshCw,
   CopyPlus, Download, Loader2, CheckCircle2, Eye, Ruler,
 } from 'lucide-react';
 import { LabUnitsManager } from '@/components/laboratory/lab-units-manager';
@@ -32,17 +32,13 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
-  useLabDepartments,
-  useCreateLabDepartment,
-  useUpdateLabDepartment,
-  useDeleteLabDepartment,
   useLabTests,
   useCreateLabTest,
   useUpdateLabTest,
   useUpdateLabTestPrice,
   useDeleteLabTest,
 } from '@/hooks/use-lab';
-import type { LabDepartment, LabTestCatalog, LabTestParameter } from '@/hooks/use-lab';
+import type { LabTestCatalog, LabTestParameter } from '@/hooks/use-lab';
 import {
   useLabTemplates,
   useCloneOneLabTemplate,
@@ -84,10 +80,6 @@ function LabSettingsPageInner() {
             <CopyPlus className="mr-1.5 h-4 w-4" />
             Import Templates
           </TabsTrigger>
-          <TabsTrigger value="departments">
-            <Building2 className="mr-1.5 h-4 w-4" />
-            Departments
-          </TabsTrigger>
           <TabsTrigger value="units">
             <Ruler className="mr-1.5 h-4 w-4" />
             Units
@@ -100,220 +92,11 @@ function LabSettingsPageInner() {
         <TabsContent value="templates" className="pt-4">
           <TemplatesImportSection />
         </TabsContent>
-        <TabsContent value="departments" className="pt-4">
-          <DepartmentsSection />
-        </TabsContent>
         <TabsContent value="units" className="pt-4">
           <LabUnitsManager />
         </TabsContent>
       </Tabs>
     </div>
-  );
-}
-
-// ============================================================
-// Departments Section
-// ============================================================
-
-function DepartmentsSection() {
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [editingDept, setEditingDept] = useState<LabDepartment | null>(null);
-
-  const { data, isLoading, refetch } = useLabDepartments({
-    search: search || undefined,
-    page,
-    limit: 20,
-  });
-  const deleteDepartment = useDeleteLabDepartment();
-
-  const departments = data?.data ?? [];
-  const meta = data?.meta;
-
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Delete department "${name}"? This cannot be undone.`)) return;
-    try {
-      await deleteDepartment.mutateAsync(id);
-      toast.success('Department deleted');
-    } catch {
-      toast.error('Failed to delete department');
-    }
-  };
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search departments..."
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            className="pl-9"
-          />
-        </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>
-          <RefreshCw className="mr-1.5 h-4 w-4" />
-          Refresh
-        </Button>
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogTrigger render={<Button size="sm" />}>
-            <Plus className="mr-1.5 h-4 w-4" />
-            Add Department
-          </DialogTrigger>
-          <DepartmentFormDialog onClose={() => setCreateOpen(false)} />
-        </Dialog>
-      </div>
-
-      <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-surface-container">
-                <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Department Name</th>
-                <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Status</th>
-                <th className="px-4 pb-4 pt-5 text-right font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading ? (
-                <tr>
-                  <td colSpan={3} className="px-4 py-8 text-center">
-                    <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                  </td>
-                </tr>
-              ) : departments.length === 0 ? (
-                <tr>
-                  <td colSpan={3} className="px-4 py-12 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <Building2 className="h-8 w-8 text-muted-foreground/50" />
-                      <p className="text-muted-foreground">No departments found. Create one to get started.</p>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                departments.map((dept: LabDepartment) => (
-                  <tr key={dept.id} className="group hover:bg-surface-container-low transition-colors">
-                    <td className="px-4 py-3 font-medium">{dept.name}</td>
-                    <td className="px-4 py-3">
-                      <span className={cn(
-                        'text-[10px] font-bold px-2 py-0.5 rounded-full',
-                        dept.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800',
-                      )}>
-                        {dept.isActive ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <Dialog
-                          open={editingDept?.id === dept.id}
-                          onOpenChange={(open) => !open && setEditingDept(null)}
-                        >
-                          <DialogTrigger
-                            render={<Button variant="ghost" size="sm" />}
-                            onClick={() => setEditingDept(dept)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </DialogTrigger>
-                          {editingDept?.id === dept.id && (
-                            <DepartmentFormDialog
-                              department={editingDept}
-                              onClose={() => setEditingDept(null)}
-                            />
-                          )}
-                        </Dialog>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => handleDelete(dept.id, dept.name)}
-                          disabled={deleteDepartment.isPending}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        {(meta?.totalPages ?? 1) > 1 && (
-          <div className="flex items-center justify-between border-t px-4 py-3">
-            <p className="text-sm text-muted-foreground">Page {page} of {meta?.totalPages}</p>
-            <div className="flex gap-1">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</Button>
-              <Button variant="outline" size="sm" disabled={page >= (meta?.totalPages ?? 1)} onClick={() => setPage(page + 1)}>Next</Button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function DepartmentFormDialog({
-  department,
-  onClose,
-}: {
-  department?: LabDepartment;
-  onClose: () => void;
-}) {
-  const isEdit = !!department;
-  const [name, setName] = useState(department?.name || '');
-
-  const createDept = useCreateLabDepartment();
-  const updateDept = useUpdateLabDepartment();
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) {
-      toast.error('Department name is required');
-      return;
-    }
-    try {
-      if (isEdit && department) {
-        await updateDept.mutateAsync({ id: department.id, name });
-        toast.success('Department updated');
-      } else {
-        await createDept.mutateAsync({ name });
-        toast.success('Department created');
-      }
-      onClose();
-    } catch {
-      toast.error(isEdit ? 'Failed to update department' : 'Failed to create department');
-    }
-  };
-
-  const isPending = createDept.isPending || updateDept.isPending;
-
-  return (
-    <DialogContent className="sm:max-w-md">
-      <DialogHeader>
-        <DialogTitle>{isEdit ? 'Edit Department' : 'Add Department'}</DialogTitle>
-        <DialogDescription>
-          {isEdit ? 'Update department details.' : 'Create a new lab department.'}
-        </DialogDescription>
-      </DialogHeader>
-      <form onSubmit={handleSubmit} className="space-y-3">
-        <div>
-          <Label htmlFor="dept-name">Department Name *</Label>
-          <Input
-            id="dept-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Hematology"
-          />
-        </div>
-        <DialogFooter>
-          <Button type="submit" disabled={isPending}>
-            {isPending ? 'Saving...' : isEdit ? 'Update' : 'Create'}
-          </Button>
-        </DialogFooter>
-      </form>
-    </DialogContent>
   );
 }
 
@@ -389,7 +172,6 @@ function TestCatalogSection() {
               <tr className="border-b border-surface-container">
                 <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Test Name</th>
                 <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Code</th>
-                <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Department</th>
                 <th className="px-4 pb-4 pt-5 text-right font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Parameters</th>
                 <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Sample</th>
                 <th className="px-4 pb-4 pt-5 text-right font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">TAT</th>
@@ -401,13 +183,13 @@ function TestCatalogSection() {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center">
+                  <td colSpan={8} className="px-4 py-8 text-center">
                     <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                   </td>
                 </tr>
               ) : tests.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center">
+                  <td colSpan={8} className="px-4 py-12 text-center">
                     <div className="flex flex-col items-center gap-2">
                       <Beaker className="h-8 w-8 text-muted-foreground/50" />
                       <p className="text-muted-foreground">No tests in your catalog yet.</p>
@@ -437,7 +219,6 @@ function TestCatalogSection() {
                       </div>
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{test.testCode ?? test.code ?? '-'}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{(test.labDepartment ?? test.department)?.name ?? '-'}</td>
                     <td className="px-4 py-3 text-right">
                       {(test.parameters?.length ?? 0) > 0 ? (
                         <Badge className="bg-cyan-100 text-cyan-800">
@@ -534,7 +315,6 @@ function catalogToPreviewSource(test: LabTestCatalog): LabReportPreviewSource {
   return {
     name: test.testName ?? test.name ?? 'Test',
     code: test.testCode ?? test.code ?? null,
-    departmentName: (test.labDepartment ?? test.department)?.name ?? null,
     sampleType: test.sampleType ?? null,
     specimen: test.specimen ?? null,
     instructions: test.instructions ?? null,
@@ -565,7 +345,6 @@ function TestFormDialog({
   const [formData, setFormData] = useState({
     testName: test?.testName ?? test?.name ?? '',
     testCode: test?.testCode ?? test?.code ?? '',
-    labDepartmentId: test?.labDepartmentId ?? test?.departmentId ?? '',
     sampleType: test?.sampleType ?? '',
     specimen: test?.specimen ?? '',
     instructions: test?.instructions ?? '',
@@ -589,8 +368,6 @@ function TestFormDialog({
   const createTest = useCreateLabTest();
   const updateTest = useUpdateLabTest();
   const updatePrice = useUpdateLabTestPrice();
-  const { data: deptData } = useLabDepartments({ limit: 100 });
-  const departments = deptData?.data ?? [];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -615,10 +392,6 @@ function TestFormDialog({
       toast.error('Test name is required');
       return;
     }
-    if (!formData.labDepartmentId) {
-      toast.error('Department is required');
-      return;
-    }
     if (!formData.price || formData.price <= 0) {
       toast.error('Please enter a valid price');
       return;
@@ -633,7 +406,6 @@ function TestFormDialog({
     const payload = {
       testName: formData.testName,
       testCode: formData.testCode || undefined,
-      labDepartmentId: formData.labDepartmentId,
       sampleType: formData.sampleType || undefined,
       specimen: formData.specimen || undefined,
       instructions: formData.instructions || undefined,
@@ -701,21 +473,7 @@ function TestFormDialog({
                 placeholder="CBC"
               />
             </div>
-            <div className="col-span-4">
-              <Label htmlFor="test-dept">Department *</Label>
-              <select
-                id="test-dept"
-                value={formData.labDepartmentId}
-                onChange={(e) => setFormData((p) => ({ ...p, labDepartmentId: e.target.value }))}
-                className="flex h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm shadow-xs transition-all outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-              >
-                <option value="">Select department</option>
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="col-span-4">
+            <div className="col-span-8">
               <Label htmlFor="test-sample">Sample Type</Label>
               <Input
                 id="test-sample"
@@ -866,7 +624,6 @@ function TestFormDialog({
         source={{
           name: formData.testName || 'Untitled test',
           code: formData.testCode || null,
-          departmentName: departments.find((d) => d.id === formData.labDepartmentId)?.name ?? null,
           sampleType: formData.sampleType || null,
           specimen: formData.specimen || null,
           instructions: formData.instructions || null,
@@ -904,13 +661,12 @@ function TemplatesImportSection() {
   const filtered = templates.filter((t) => {
     const q = search.trim().toLowerCase();
     if (!q) return true;
-    // Match against name/code/department AND the alias/tag arrays so a
-    // local search for "FBC" or "hemoglobin" surfaces CBC even before
-    // the user re-fetches with the server-side search.
+    // Match against name/code AND the alias/tag arrays so a local search
+    // for "FBC" or "hemoglobin" surfaces CBC even before the user re-fetches
+    // with the server-side search.
     const haystack = [
       t.name,
       t.code ?? '',
-      t.departmentName,
       ...(t.aliases ?? []),
       ...(t.tags ?? []),
     ]
@@ -1001,7 +757,6 @@ function TemplatesImportSection() {
           <thead>
             <tr className="border-b border-surface-container">
               <th className="px-4 pb-3 pt-4 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Template</th>
-              <th className="px-4 pb-3 pt-4 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Department</th>
               <th className="px-4 pb-3 pt-4 text-right font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Params</th>
               <th className="px-4 pb-3 pt-4 text-right font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Default ₹</th>
               <th className="px-4 pb-3 pt-4 text-right font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">TAT</th>
@@ -1011,13 +766,13 @@ function TemplatesImportSection() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={6} className="py-8 text-center">
+                <td colSpan={5} className="py-8 text-center">
                   <Loader2 className="h-5 w-5 animate-spin text-primary mx-auto" />
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className="py-12 text-center text-sm text-muted-foreground">
+                <td colSpan={5} className="py-12 text-center text-sm text-muted-foreground">
                   {templates.length === 0 ? 'No platform templates available.' : 'No templates match your search.'}
                 </td>
               </tr>
@@ -1034,7 +789,6 @@ function TemplatesImportSection() {
                         {t.sampleType ?? ''}
                       </div>
                     </td>
-                    <td className="px-4 py-2.5 text-xs text-muted-foreground">{t.departmentName}</td>
                     <td className="px-4 py-2.5 text-right">
                       <Badge className="bg-cyan-100 text-cyan-800 text-[10px]">
                         {t.parameters?.length ?? 0}
@@ -1092,7 +846,6 @@ function TemplatesImportSection() {
             ? {
                 name: previewTpl.name,
                 code: previewTpl.code,
-                departmentName: previewTpl.departmentName,
                 sampleType: previewTpl.sampleType,
                 specimen: previewTpl.specimen,
                 instructions: previewTpl.instructions,

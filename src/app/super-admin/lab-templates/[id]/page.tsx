@@ -1,7 +1,7 @@
 'use client';
 
 // Super-admin Lab Test Template builder. Edits a single LabTestTemplate:
-// metadata (name, code, department, sample type, price, TAT) + parameter
+// metadata (name, code, sample type, price, TAT) + parameter
 // grid (delegated to <LabParameterBuilder/>) + clinical interpretation
 // notes that print at the foot of the branded report.
 
@@ -45,7 +45,6 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
   const [meta, setMeta] = useState({
     name: '',
     code: '',
-    departmentName: '',
     sampleType: '',
     specimen: '',
     instructions: '',
@@ -66,7 +65,6 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
     setMeta({
       name: template.name,
       code: template.code ?? '',
-      departmentName: template.departmentName,
       sampleType: template.sampleType ?? '',
       specimen: template.specimen ?? '',
       instructions: template.instructions ?? '',
@@ -112,8 +110,8 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
   }
 
   async function handleSave(opts: { publish?: boolean } = {}) {
-    if (!meta.name.trim() || !meta.departmentName.trim()) {
-      toast.error('Name and department are required');
+    if (!meta.name.trim()) {
+      toast.error('Name is required');
       return;
     }
     // Validate parameter rows: every row needs a name; select rows need ≥1
@@ -134,7 +132,6 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
         id,
         name: meta.name.trim(),
         code: meta.code.trim() || null,
-        departmentName: meta.departmentName.trim(),
         sampleType: meta.sampleType.trim() || null,
         specimen: meta.specimen.trim() || null,
         instructions: meta.instructions.trim() || null,
@@ -216,17 +213,13 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
       <section className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4 space-y-4">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Test details</h2>
         <div className="grid grid-cols-12 gap-3">
-          <div className="col-span-6">
+          <div className="col-span-8">
             <Label htmlFor="t-name">Test name *</Label>
             <Input id="t-name" value={meta.name} onChange={(e) => onMetaChange('name', e.target.value)} placeholder="Complete Blood Count" />
           </div>
-          <div className="col-span-3">
+          <div className="col-span-4">
             <Label htmlFor="t-code">Code</Label>
             <Input id="t-code" value={meta.code} onChange={(e) => onMetaChange('code', e.target.value)} placeholder="CBC" />
-          </div>
-          <div className="col-span-3">
-            <Label htmlFor="t-dept">Department *</Label>
-            <Input id="t-dept" value={meta.departmentName} onChange={(e) => onMetaChange('departmentName', e.target.value)} placeholder="Hematology" />
           </div>
 
           <div className="col-span-3">
@@ -362,7 +355,6 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
         source={{
           name: meta.name || 'Untitled template',
           code: meta.code || null,
-          departmentName: meta.departmentName,
           sampleType: meta.sampleType,
           specimen: meta.specimen,
           instructions: meta.instructions,

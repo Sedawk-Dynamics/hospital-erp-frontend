@@ -51,7 +51,7 @@ export default function SuperAdminLabTemplatesPage() {
 
   const [search, setSearch] = useState('');
   const [openNew, setOpenNew] = useState(false);
-  const [newForm, setNewForm] = useState({ name: '', departmentName: '', code: '' });
+  const [newForm, setNewForm] = useState({ name: '', code: '' });
   const [confirmDelete, setConfirmDelete] = useState<LabTestTemplate | null>(null);
   const [previewTpl, setPreviewTpl] = useState<LabTestTemplate | null>(null);
 
@@ -59,13 +59,12 @@ export default function SuperAdminLabTemplatesPage() {
   const filtered = templates.filter((t) => {
     const q = search.trim().toLowerCase();
     if (!q) return true;
-    // Local matches against name/code/department AND aliases/tags so a
-    // search for "FBC" / "hemoglobin" surfaces CBC even before the
-    // server-side search round-trip completes.
+    // Local matches against name/code AND aliases/tags so a search for
+    // "FBC" / "hemoglobin" surfaces CBC even before the server-side
+    // search round-trip completes.
     const haystack = [
       t.name,
       t.code ?? '',
-      t.departmentName,
       ...(t.aliases ?? []),
       ...(t.tags ?? []),
     ].join(' ').toLowerCase();
@@ -73,21 +72,20 @@ export default function SuperAdminLabTemplatesPage() {
   });
 
   async function handleCreate() {
-    if (!newForm.name.trim() || !newForm.departmentName.trim()) {
-      toast.error('Name and department are required');
+    if (!newForm.name.trim()) {
+      toast.error('Name is required');
       return;
     }
     try {
       const tpl = await createTpl.mutateAsync({
         name: newForm.name.trim(),
-        departmentName: newForm.departmentName.trim(),
         code: newForm.code.trim() || null,
         parameters: [],
         isPublished: false,
       });
       toast.success('Template created');
       setOpenNew(false);
-      setNewForm({ name: '', departmentName: '', code: '' });
+      setNewForm({ name: '', code: '' });
       if (tpl?.id) router.push(`/super-admin/lab-templates/${tpl.id}`);
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Failed to create';
@@ -129,7 +127,7 @@ export default function SuperAdminLabTemplatesPage() {
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder='Search by name, code, department, alias or tag ("FBC", "hemoglobin"…)'
+              placeholder='Search by name, code, alias or tag ("FBC", "hemoglobin"…)'
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-8 h-8 text-xs"
@@ -157,7 +155,6 @@ export default function SuperAdminLabTemplatesPage() {
                 <tr className="border-b">
                   <th className="text-left py-2 px-2">Test</th>
                   <th className="text-left py-2 px-2">Code</th>
-                  <th className="text-left py-2 px-2">Department</th>
                   <th className="text-right py-2 px-2">Parameters</th>
                   <th className="text-right py-2 px-2">Default ₹</th>
                   <th className="text-right py-2 px-2">TAT</th>
@@ -187,7 +184,6 @@ export default function SuperAdminLabTemplatesPage() {
                       )}
                     </td>
                     <td className="py-2 px-2 font-mono text-[11px] text-muted-foreground">{t.code ?? '—'}</td>
-                    <td className="py-2 px-2 text-xs">{t.departmentName}</td>
                     <td className="py-2 px-2 text-right text-xs font-semibold">{t.parameters?.length ?? 0}</td>
                     <td className="py-2 px-2 text-right text-xs">
                       {t.defaultPrice != null ? `₹ ${Number(t.defaultPrice).toLocaleString('en-IN')}` : '—'}
@@ -249,7 +245,7 @@ export default function SuperAdminLabTemplatesPage() {
           <DialogHeader>
             <DialogTitle>New lab test template</DialogTitle>
             <DialogDescription>
-              Give the test a name + department to start. Add parameters on the next screen.
+              Give the test a name to start. Add parameters on the next screen.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -259,18 +255,11 @@ export default function SuperAdminLabTemplatesPage() {
               onChange={(e) => setNewForm((p) => ({ ...p, name: e.target.value }))}
               autoFocus
             />
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                placeholder="Department (e.g. Hematology)"
-                value={newForm.departmentName}
-                onChange={(e) => setNewForm((p) => ({ ...p, departmentName: e.target.value }))}
-              />
-              <Input
-                placeholder="Code (e.g. CBC)"
-                value={newForm.code}
-                onChange={(e) => setNewForm((p) => ({ ...p, code: e.target.value }))}
-              />
-            </div>
+            <Input
+              placeholder="Code (e.g. CBC)"
+              value={newForm.code}
+              onChange={(e) => setNewForm((p) => ({ ...p, code: e.target.value }))}
+            />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenNew(false)} disabled={createTpl.isPending}>
@@ -293,7 +282,6 @@ export default function SuperAdminLabTemplatesPage() {
             ? {
                 name: previewTpl.name,
                 code: previewTpl.code,
-                departmentName: previewTpl.departmentName,
                 sampleType: previewTpl.sampleType,
                 specimen: previewTpl.specimen,
                 instructions: previewTpl.instructions,

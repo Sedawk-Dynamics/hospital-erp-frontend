@@ -5,32 +5,14 @@ import { apiGet, apiPost, apiPut, apiDelete, apiPatch } from '@/lib/api';
 // Types
 // ============================================================
 
-export interface LabDepartment {
-  id: string;
-  name: string;
-  /** @deprecated retained for legacy callers; backend ignores */
-  description?: string;
-  /** @deprecated retained for legacy callers; backend ignores */
-  headOfDepartment?: string;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt?: string;
-}
-
 export interface LabTestCatalog {
   id: string;
   testName: string;
   testCode?: string;
-  labDepartmentId?: string;
-  labDepartment?: { id: string; name: string };
   /** @deprecated alias for testName */
   name?: string;
   /** @deprecated alias for testCode */
   code?: string;
-  /** @deprecated alias for labDepartmentId */
-  departmentId?: string;
-  /** @deprecated alias for labDepartment */
-  department?: { id: string; name: string };
   category?: string;
   sampleType?: string;
   description?: string;
@@ -101,8 +83,6 @@ export interface LabOrder {
   orderer?: { id: string; firstName: string; lastName: string };
   assignedToId?: string | null;
   assignedTo?: { id: string; firstName: string; lastName: string } | null;
-  assignedDeptId?: string | null;
-  assignedDept?: { id: string; name: string } | null;
   acceptedAt?: string | null;
   acceptedBy?: string | null;
   visitId?: string;
@@ -326,13 +306,9 @@ interface PaginatedParams {
 // ============================================================
 
 export const labKeys = {
-  departments: {
-    all: ['lab', 'departments'] as const,
-    list: (params?: PaginatedParams) => ['lab', 'departments', 'list', params] as const,
-  },
   tests: {
     all: ['lab', 'tests'] as const,
-    list: (params?: PaginatedParams & { departmentId?: string }) => ['lab', 'tests', 'list', params] as const,
+    list: (params?: PaginatedParams) => ['lab', 'tests', 'list', params] as const,
     detail: (id: string) => ['lab', 'tests', 'detail', id] as const,
   },
   orders: {
@@ -369,67 +345,10 @@ export const labKeys = {
 };
 
 // ============================================================
-// Lab Department Hooks
-// ============================================================
-
-export function useLabDepartments(params?: PaginatedParams) {
-  return useQuery({
-    queryKey: labKeys.departments.list(params),
-    queryFn: async () => {
-      const response = await apiGet<LabDepartment[]>('/lab/departments', { params });
-      return { data: response.data, meta: response.meta as PaginationMeta };
-    },
-  });
-}
-
-export function useCreateLabDepartment() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (data: { name: string; description?: string; headOfDepartment?: string; isActive?: boolean }) => {
-      // Backend only stores name + isActive
-      const response = await apiPost<LabDepartment>('/lab/departments', {
-        name: data.name,
-        isActive: data.isActive ?? true,
-      });
-      return response.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: labKeys.departments.all });
-    },
-  });
-}
-
-export function useUpdateLabDepartment() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, name, isActive }: { id: string; name?: string; description?: string; headOfDepartment?: string; isActive?: boolean }) => {
-      const response = await apiPut<LabDepartment>(`/lab/departments/${id}`, { name, isActive });
-      return response.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: labKeys.departments.all });
-    },
-  });
-}
-
-export function useDeleteLabDepartment() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: string) => {
-      const response = await apiDelete(`/lab/departments/${id}`);
-      return response.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: labKeys.departments.all });
-    },
-  });
-}
-
-// ============================================================
 // Lab Test Hooks
 // ============================================================
 
-export function useLabTests(params?: PaginatedParams & { departmentId?: string }) {
+export function useLabTests(params?: PaginatedParams) {
   return useQuery({
     queryKey: labKeys.tests.list(params),
     queryFn: async () => {
@@ -453,7 +372,6 @@ export function useLabTest(id: string) {
 type LabTestPayload = {
   testName: string;
   testCode?: string;
-  labDepartmentId: string;
   description?: string;
   normalRange?: string;
   unit?: string;
@@ -475,7 +393,6 @@ type LabTestPayload = {
 type LegacyLabTestPayload = {
   name?: string;
   code?: string;
-  departmentId?: string;
   category?: string;
   turnaroundTime?: string;
 };
@@ -484,12 +401,11 @@ function normalizeTestPayload(data: Partial<LabTestPayload> & LegacyLabTestPaylo
   const out: any = { ...data };
   if (data.name && !data.testName) out.testName = data.name;
   if (data.code && !data.testCode) out.testCode = data.code;
-  if (data.departmentId && !data.labDepartmentId) out.labDepartmentId = data.departmentId;
   if (data.turnaroundTime && !data.turnaroundHours) {
     const m = String(data.turnaroundTime).match(/(\d+)/);
     if (m) out.turnaroundHours = Number(m[1]);
   }
-  delete out.name; delete out.code; delete out.departmentId;
+  delete out.name; delete out.code;
   delete out.category; delete out.turnaroundTime;
   return out;
 }
@@ -563,7 +479,6 @@ export type LabOrdersFilters = PaginatedParams & {
   priority?: string;
   urgency?: string;
   assignedTo?: string;
-  assignedDeptId?: string;
   outsourced?: boolean;
   isThirdParty?: boolean;
   accepted?: boolean;
@@ -589,17 +504,14 @@ export function useAcceptLabOrder() {
     mutationFn: async ({
       id,
       assignedToId,
-      assignedDeptId,
       notes,
     }: {
       id: string;
       assignedToId?: string;
-      assignedDeptId?: string;
       notes?: string;
     }) => {
       const response = await apiPatch<LabOrder>(`/lab/orders/${id}/accept`, {
         assignedToId,
-        assignedDeptId,
         notes,
       });
       return response.data;
@@ -945,8 +857,7 @@ export interface LabReportAnalytics {
     avgTatHours: number;
     medianTatHours: number;
   };
-  testVolume: { testId: string; testName: string; count: number; labDepartmentId: string }[];
-  departmentWorkload: { departmentId: string; departmentName: string; count: number }[];
+  testVolume: { testId: string; testName: string; count: number }[];
 }
 
 export function useLabReportAnalytics(params?: { fromDate?: string; toDate?: string }) {

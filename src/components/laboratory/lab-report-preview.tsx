@@ -108,7 +108,6 @@ function refRangeLabel(p: LabParameterSpec): string {
 export interface LabReportPreviewSource {
   name: string;
   code?: string | null;
-  departmentName?: string | null;
   sampleType?: string | null;
   specimen?: string | null;
   instructions?: string | null;
@@ -215,7 +214,6 @@ export function LabReportPreviewBody({ source }: { source: LabReportPreviewSourc
         <PatientField label="Sample Collected" value={today.toLocaleString('en-IN')} />
         <PatientField label="Sample Type" value={source.sampleType ?? 'Blood'} />
         <PatientField label="Specimen" value={source.specimen ?? '—'} />
-        <PatientField label="Department" value={source.departmentName ?? '—'} />
       </div>
 
       {/* Test title */}

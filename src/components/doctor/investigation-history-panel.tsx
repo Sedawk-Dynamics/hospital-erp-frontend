@@ -21,7 +21,7 @@ interface LabResult {
 interface LabOrderItem {
   id: string;
   status: string;
-  test: { id: string; testName: string; testCode?: string; labDepartment?: { name?: string } | null } | null;
+  test: { id: string; testName: string; testCode?: string } | null;
   labResults: LabResult[];
 }
 
@@ -192,9 +192,6 @@ function OrderCard({
             <div key={item.id}>
               <p className="font-semibold text-foreground/90">
                 {item.test?.testName || 'Test'}
-                {item.test?.labDepartment?.name && (
-                  <span className="text-muted-foreground font-normal"> · {item.test.labDepartment.name}</span>
-                )}
               </p>
               {item.labResults.length === 0 ? (
                 <p className="text-[10px] text-muted-foreground italic pl-2">No results entered yet</p>

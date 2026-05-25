@@ -39,7 +39,6 @@ export interface LabTestTemplate {
   id: string;
   name: string;
   code?: string | null;
-  departmentName: string;
   sampleType?: string | null;
   specimen?: string | null;
   instructions?: string | null;
@@ -64,7 +63,6 @@ export interface LabTestTemplate {
 export type LabTestTemplateInput = {
   name: string;
   code?: string | null;
-  departmentName: string;
   sampleType?: string | null;
   specimen?: string | null;
   instructions?: string | null;
@@ -88,7 +86,7 @@ const keys = {
 // Templates (super-admin)
 // ─────────────────────────────────────────────────────────────
 
-export function useLabTemplates(params?: { search?: string; departmentName?: string; isPublished?: boolean; page?: number; limit?: number }) {
+export function useLabTemplates(params?: { search?: string; isPublished?: boolean; page?: number; limit?: number }) {
   return useQuery({
     queryKey: keys.list(params),
     queryFn: async () => {
@@ -181,7 +179,7 @@ export function useCloneOneLabTemplate() {
 export function useCloneAllLabTemplates() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (body?: { departmentName?: string; overwriteExisting?: boolean }) => {
+    mutationFn: async (body?: { overwriteExisting?: boolean }) => {
       const res = await apiPost<{ created: number; updated: number; skipped: number; total: number }>(
         '/lab/templates/clone-all',
         body ?? {},

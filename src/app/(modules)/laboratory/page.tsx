@@ -29,7 +29,6 @@ import {
   useCollectSample,
   useUpdateSampleStatus,
   useCompleteLabOrderItem,
-  useLabDepartments,
   useEnterResults,
   useVerifyResults,
   useSubmitLabReport,
@@ -392,7 +391,7 @@ function IncomingOrderTab() {
   return (
     <div className="space-y-4">
       <div className="rounded-xl bg-amber-50 px-4 py-2 text-xs text-amber-900">
-        Orders shown here are awaiting acceptance from the lab. Assign a technician/department to start processing.
+        Orders shown here are awaiting acceptance from the lab. Assign a technician to start processing.
       </div>
 
       <OrderTable
@@ -516,11 +515,9 @@ function AcceptOrderDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const usersQ = useUsersList({ limit: 200 });
-  const departmentsQ = useLabDepartments({ limit: 100 });
   const acceptMutation = useAcceptLabOrder();
 
   const [techId, setTechId] = useState<string>('');
-  const [deptId, setDeptId] = useState<string>('');
   const [notes, setNotes] = useState('');
 
   const labStaff = useMemo(
@@ -537,11 +534,10 @@ function AcceptOrderDialog({
       await acceptMutation.mutateAsync({
         id: order.id,
         assignedToId: techId || undefined,
-        assignedDeptId: deptId || undefined,
         notes: notes || undefined,
       });
       toast.success('Lab order accepted');
-      setTechId(''); setDeptId(''); setNotes('');
+      setTechId(''); setNotes('');
       onOpenChange(false);
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? 'Failed to accept order');
@@ -554,7 +550,7 @@ function AcceptOrderDialog({
         <DialogHeader>
           <DialogTitle>Accept Lab Order</DialogTitle>
           <DialogDescription>
-            Assign this order to a technician or department to start processing.
+            Assign this order to a technician to start processing.
           </DialogDescription>
         </DialogHeader>
 
@@ -562,20 +558,6 @@ function AcceptOrderDialog({
           <div>
             <Label>Patient</Label>
             <p className="text-sm">{order?.patient.firstName} {order?.patient.lastName}</p>
-          </div>
-
-          <div>
-            <Label>Department</Label>
-            <select
-              className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm"
-              value={deptId}
-              onChange={(e) => setDeptId(e.target.value)}
-            >
-              <option value="">-- Select department (optional) --</option>
-              {(departmentsQ.data?.data ?? []).map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
-            </select>
           </div>
 
           <div>
@@ -604,7 +586,7 @@ function AcceptOrderDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={acceptMutation.isPending}>
             Cancel
           </Button>
-          <Button onClick={handle} disabled={acceptMutation.isPending || (!techId && !deptId)}>
+          <Button onClick={handle} disabled={acceptMutation.isPending || !techId}>
             {acceptMutation.isPending ? 'Accepting…' : 'Accept Order'}
           </Button>
         </DialogFooter>
