@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useAuthStore } from '@/stores/auth-store';
+import { getRolePortalLabel } from '@/config/role-modules';
 import { useRouter } from 'next/navigation';
 
 export function SuperAdminHeader() {
@@ -26,12 +27,14 @@ export function SuperAdminHeader() {
     ? `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}`.toUpperCase()
     : 'SA';
 
+  const portalLabel = getRolePortalLabel(user?.role?.slug || 'super_admin');
+
   return (
     <header className="sticky top-0 z-40 flex h-20 items-center justify-between bg-background/80 backdrop-blur-xl px-8">
       {/* Left side */}
       <div className="flex items-center gap-8">
         <h1 className="font-headline font-extrabold text-2xl text-primary tracking-tight">
-          Hospital ERP
+          {portalLabel}
         </h1>
         <div className="relative hidden sm:block">
           <svg

@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useSidebarStore } from '@/stores/sidebar-store';
 import { MODULE_REGISTRY, getModuleFromPathname, type NavItem } from '@/config/modules';
-import { getModulesForRole } from '@/config/role-modules';
+import { getModulesForRole, getRolePortalLabel } from '@/config/role-modules';
 import { useAuthStore } from '@/stores/auth-store';
 
 function normalizeRoleSlug(slug?: string | null): string {
@@ -44,6 +44,7 @@ function SidebarContent({
 
   const roleSlug = user?.role?.slug;
   const allowedModules = getModulesForRole(roleSlug);
+  const portalLabel = getRolePortalLabel(roleSlug);
   const isSingleModule = allowedModules.length === 1;
   const currentModule = getModuleFromPathname(pathname);
 
@@ -105,7 +106,7 @@ function SidebarContent({
           <h2 className="text-primary font-bold text-xl tracking-tighter font-headline">
             {process.env.NEXT_PUBLIC_APP_NAME || 'Sanctuary'}
           </h2>
-          <p className="text-xs text-slate-400 font-medium font-label">Admin</p>
+          <p className="text-xs text-slate-400 font-medium font-label">{portalLabel}</p>
         </div>
         {/* Pin / Unpin button — visible on hover or when pinned */}
         {onTogglePin && (

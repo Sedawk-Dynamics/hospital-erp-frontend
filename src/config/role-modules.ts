@@ -143,6 +143,66 @@ export function getModulesForRole(roleSlug?: string): ModuleKey[] {
 }
 
 /**
+ * Map of role slug → portal display label shown in headers/sidebars
+ * (e.g. "Doctor Portal", "Lab Supervisor Portal"). Keys are normalized
+ * snake_case slugs; doctor specializations all collapse to "Doctor Portal".
+ */
+const ROLE_PORTAL_LABEL: Record<string, string> = {
+  super_admin: 'Super Admin Portal',
+  admin: 'Admin Portal',
+
+  // Lab
+  lab_technician: 'Lab Technician Portal',
+  lab_supervisor: 'Lab Supervisor Portal',
+
+  // Radiology
+  radiologist: 'Radiologist Portal',
+
+  // Pharmacy
+  pharmacist: 'Pharmacist Portal',
+  pharmacy_technician: 'Pharmacy Tech Portal',
+  pharmacy_admin: 'Pharmacy Admin Portal',
+
+  // Nursing
+  nurse: 'Nurse Portal',
+  nurse_admin: 'Nurse Admin Portal',
+
+  // Front office / finance
+  front_desk: 'Front Desk Portal',
+  billing_admin: 'Billing Portal',
+  cashier: 'Cashier Portal',
+  insurance_staff: 'Insurance Portal',
+
+  // Operations
+  inventory_manager: 'Inventory Portal',
+  blood_bank_staff: 'Blood Bank Portal',
+  hr_staff: 'HR Portal',
+
+  // Patient
+  patient: 'Patient Portal',
+};
+
+function toTitleCase(slug: string): string {
+  return slug
+    .split('_')
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+/**
+ * Get the portal display label for a role (e.g. "Doctor Portal").
+ * Used in headers/sidebars to show the active role instead of generic "Admin".
+ */
+export function getRolePortalLabel(roleSlug?: string | null): string {
+  if (!roleSlug) return 'Admin Portal';
+  const normalized = roleSlug.toLowerCase().replace(/[\s-]+/g, '_');
+  if (DOCTOR_ROLE_SLUGS.includes(normalized)) return 'Doctor Portal';
+  if (normalized in ROLE_PORTAL_LABEL) return ROLE_PORTAL_LABEL[normalized];
+  return `${toTitleCase(normalized)} Portal`;
+}
+
+/**
  * Get the auto-route path for a role.
  * Always returns the first permitted module's base route (no module selection step).
  * Returns null only for roles with no modules (e.g. patient).

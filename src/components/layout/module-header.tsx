@@ -16,6 +16,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useClinicStore } from '@/stores/clinic-store';
 import { usePermissions } from '@/hooks/use-permissions';
 import { MODULE_REGISTRY, getModuleFromPathname } from '@/config/modules';
+import { getRolePortalLabel } from '@/config/role-modules';
 import { useRouter, usePathname } from 'next/navigation';
 
 export function ModuleHeader() {
@@ -46,6 +47,7 @@ export function ModuleHeader() {
   const settingsPath = activeModule ? MODULE_REGISTRY[activeModule]?.sidebarItems?.find(i => i.label === 'Settings')?.href : null;
 
   const clinicName = selectedClinic?.name || user?.tenant?.name || 'Hospital ERP';
+  const portalLabel = getRolePortalLabel(user?.role?.slug);
 
   return (
     <header className="flex justify-between items-center sticky top-0 z-40 bg-background/80 backdrop-blur-xl h-20 px-8">
@@ -95,7 +97,7 @@ export function ModuleHeader() {
             <div className="text-right hidden sm:block">
               <p className="font-label text-xs font-semibold text-on-surface">{clinicName}</p>
               <p className="font-label text-[10px] text-on-surface-variant">
-                {selectedClinic?.hospitalCode ? `Code: ${selectedClinic.hospitalCode}` : (moduleLabel || 'Admin Terminal')}
+                {selectedClinic?.hospitalCode ? `Code: ${selectedClinic.hospitalCode}` : portalLabel}
               </p>
             </div>
             {/* Avatar — code.html: w-10 h-10 rounded-xl bg-secondary-container */}
