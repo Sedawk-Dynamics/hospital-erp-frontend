@@ -4,8 +4,9 @@
 // (Units tab) and also surfaceable on the super-admin side. Behaviour:
 //   • lists every unit group merged (global + tenant-local), with units
 //     nested as collapsible rows
-//   • shows a "system" badge on platform-seeded rows (delete is blocked
-//     server-side; UI hides the bin)
+//   • "Platform global" / "Hospital local" scope badge conveys provenance
+//   • super-admin surface (allowGlobal) can edit + delete any row; hospital
+//     surface can only mutate its local rows (global rows are read-only)
 //   • inline create for a hospital-local group or a unit inside any group
 //     the caller has rights on
 //   • edit-in-place for symbol/name/conversion factor/base
@@ -24,7 +25,6 @@ import {
   Plus,
   Trash2,
   X,
-  Lock,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -208,8 +208,11 @@ export function LabUnitsManager({ allowGlobal = false }: LabUnitsManagerProps) {
         <div>
           <h2 className="text-sm font-semibold">Unit groups</h2>
           <p className="text-[11px] text-muted-foreground">
-            Hierarchy: parameters → unit group → unit. Hospital-local groups stay on this tenant; deleting the
-            global ones is blocked. {allowGlobal ? 'Toggle "Global" on create to author at the platform level.' : ''}
+            Hierarchy: parameters → unit group → unit. Hospital-local groups stay on this tenant and never affect
+            other hospitals.{' '}
+            {allowGlobal
+              ? 'Platform-global rows are editable here — toggle "Global" on create to author at the platform level.'
+              : 'Platform-global rows are read-only from this screen; create a local group to customise.'}
           </p>
         </div>
         <Button size="sm" onClick={() => setNewGroupOpen(true)} className="gap-1.5">
@@ -243,6 +246,12 @@ export function LabUnitsManager({ allowGlobal = false }: LabUnitsManagerProps) {
             <tbody>
               {sortedGroups.map((g) => {
                 const isExpanded = expanded.has(g.id);
+                // A row is writable when the caller owns it: super-admin
+                // surface owns globals + locals; hospital surface owns
+                // only its local rows. The backend enforces the same rule;
+                // we mirror it here so the buttons match what'll succeed.
+                const isLocal = g.tenantId !== null;
+                const canWriteRow = allowGlobal || isLocal;
                 return (
                   <Fragment key={g.id}>
                     <tr className="border-b hover:bg-surface-container-low">
@@ -258,13 +267,7 @@ export function LabUnitsManager({ allowGlobal = false }: LabUnitsManagerProps) {
                       <td className="px-3 py-2 font-medium">
                         <div className="flex items-center gap-2">
                           {g.name}
-                          {g.isSystem && (
-                            <Badge className="bg-muted text-muted-foreground text-[9px] gap-1">
-                              <Lock className="h-2.5 w-2.5" />
-                              system
-                            </Badge>
-                          )}
-                          {g.tenantId && (
+                          {isLocal && (
                             <Badge className="bg-primary/10 text-primary text-[9px]">local</Badge>
                           )}
                         </div>
@@ -274,29 +277,33 @@ export function LabUnitsManager({ allowGlobal = false }: LabUnitsManagerProps) {
                       </td>
                       <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{g.code}</td>
                       <td className="px-3 py-2 text-xs">
-                        {g.tenantId ? <span>Hospital local</span> : <span>Platform global</span>}
+                        {isLocal ? <span>Hospital local</span> : <span>Platform global</span>}
                       </td>
                       <td className="px-3 py-2 text-right text-xs font-semibold">{g.units.length}</td>
                       <td className="px-3 py-2 text-right">
                         <div className="inline-flex gap-1 justify-end">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 text-xs gap-1"
-                            onClick={() => startAddUnit(g.id)}
-                          >
-                            <Plus className="h-3 w-3" />
-                            Unit
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 text-xs"
-                            onClick={() => setEditingGroup(g)}
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </Button>
-                          {!g.isSystem && (
+                          {canWriteRow && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 text-xs gap-1"
+                              onClick={() => startAddUnit(g.id)}
+                            >
+                              <Plus className="h-3 w-3" />
+                              Unit
+                            </Button>
+                          )}
+                          {canWriteRow && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 text-xs"
+                              onClick={() => setEditingGroup(g)}
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                          )}
+                          {canWriteRow && (
                             <Button
                               size="sm"
                               variant="ghost"
@@ -347,15 +354,17 @@ export function LabUnitsManager({ allowGlobal = false }: LabUnitsManagerProps) {
                                       </td>
                                       <td className="py-1.5 text-right">
                                         <div className="inline-flex gap-1 justify-end">
-                                          <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            className="h-6 w-6 p-0"
-                                            onClick={() => setEditingUnit(u)}
-                                          >
-                                            <Pencil className="h-3 w-3" />
-                                          </Button>
-                                          {!u.isSystem && (
+                                          {canWriteRow && (
+                                            <Button
+                                              size="sm"
+                                              variant="ghost"
+                                              className="h-6 w-6 p-0"
+                                              onClick={() => setEditingUnit(u)}
+                                            >
+                                              <Pencil className="h-3 w-3" />
+                                            </Button>
+                                          )}
+                                          {canWriteRow && (
                                             <Button
                                               size="sm"
                                               variant="ghost"
@@ -374,7 +383,7 @@ export function LabUnitsManager({ allowGlobal = false }: LabUnitsManagerProps) {
                             </div>
                           )}
 
-                          {newUnitForGroup === g.id && (
+                          {newUnitForGroup === g.id && canWriteRow && (
                             <div className="mt-2 grid grid-cols-12 gap-2 items-end p-3 rounded border border-dashed border-primary/40 bg-primary/5">
                               <div className="col-span-2">
                                 <Label className="text-[10px]">Symbol *</Label>
