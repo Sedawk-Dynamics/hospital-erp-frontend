@@ -51,7 +51,6 @@ export interface ImagingResult {
   requestId?: string;
   request?: ImagingRequest;
   patientId?: string;
-  findings?: string;
   impression?: string;
   conclusion?: string;
   pdfReportUrl?: string;
@@ -277,7 +276,6 @@ export function useUploadImagingResult() {
     mutationFn: async (data: {
       imagingRequestId: string;
       patientId: string;
-      findings?: string;
       impression?: string;
       imageUrls?: string[];
       pacsReferenceId?: string;
@@ -300,7 +298,6 @@ export function useAddImagingReport() {
       ...data
     }: {
       id: string;
-      findings: string;
       impression?: string;
       recommendation?: string;
       pdfReportUrl?: string;
@@ -348,7 +345,6 @@ export function useEditImagingResult() {
       ...data
     }: {
       id: string;
-      findings?: string;
       impression?: string;
       pacsReferenceId?: string;
       pdfReportUrl?: string;

@@ -1,9 +1,9 @@
 'use client';
 
 // Read-only viewer for an imaging request's report + uploaded files.
-// Used by doctor / nurse / patient surfaces. Renders findings + impression
-// from the linked ImagingResult and shows the attachments through the
-// universal FileViewer so PDFs, modality JPG/PNG, DICOM and video loops
+// Used by doctor / nurse / patient surfaces. Renders impression + radiologist
+// metadata from the linked ImagingResult and shows the attachments through
+// the universal FileViewer so PDFs, modality JPG/PNG, DICOM and video loops
 // all play back inside the same dialog.
 
 import { useMemo } from 'react';
@@ -90,16 +90,8 @@ export function ImagingOrderViewerDialog({ requestId, onOpenChange }: Props) {
               )}
             </div>
 
-            {(result?.findings || result?.impression) && (
+            {(result?.impression || result?.radiologist) && (
               <div className="space-y-2 rounded-lg border p-3">
-                {result.findings && (
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                      Findings
-                    </p>
-                    <p className="whitespace-pre-wrap text-sm">{result.findings}</p>
-                  </div>
-                )}
                 {result.impression && (
                   <div>
                     <p className="text-[10px] uppercase tracking-wide text-muted-foreground">

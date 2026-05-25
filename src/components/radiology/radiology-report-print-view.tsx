@@ -149,13 +149,6 @@ export function RadiologyReportPaper({ result }: { result: ImagingResult }) {
         </section>
       )}
 
-      <section className="px-8 py-4 border-b border-gray-200">
-        <h3 className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">Findings</h3>
-        <p className="whitespace-pre-wrap text-[12.5px] leading-relaxed">
-          {result.findings ?? '—'}
-        </p>
-      </section>
-
       {result.impression && (
         <section className="px-8 py-4 border-b border-gray-200">
           <h3 className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">Impression</h3>

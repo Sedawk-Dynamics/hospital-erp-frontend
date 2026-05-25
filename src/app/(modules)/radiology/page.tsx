@@ -359,46 +359,36 @@ function UploadResultDialog({
   const [resultId, setResultId] = useState<string | null>(existingResultId ?? null);
   const isEdit = !!existingResultId || !!resultId;
 
-  const [findings, setFindings] = useState('');
-  const [impression, setImpression] = useState('');
-  const [pacsRef, setPacsRef] = useState('');
-
   const attachmentsQ = useImagingRequestAttachments(request?.id);
 
-  // Reset state when the dialog target changes.
   useEffect(() => {
     setResultId(existingResultId ?? null);
-    setFindings('');
-    setImpression('');
-    setPacsRef('');
   }, [request?.id, existingResultId]);
 
-  const handleSave = async () => {
-    if (!request) return;
-    try {
-      if (resultId) {
-        await edit.mutateAsync({
-          id: resultId,
-          findings: findings || undefined,
-          impression: impression || undefined,
-          pacsReferenceId: pacsRef || undefined,
-        });
-        toast.success('Report updated');
-      } else {
+  // For new results we create an empty draft so the attachments panel can
+  // bind uploads to a resultId. Auto-runs once when the dialog opens on a
+  // request that doesn't yet have a result.
+  useEffect(() => {
+    if (!request || resultId) return;
+    let cancelled = false;
+    (async () => {
+      try {
         const created = await upload.mutateAsync({
           imagingRequestId: request.id,
           patientId: request.patientId,
-          findings,
-          impression: impression || undefined,
-          pacsReferenceId: pacsRef || undefined,
         });
-        setResultId((created as any)?.id ?? null);
-        toast.success('Draft created — upload files below');
+        if (!cancelled) setResultId((created as any)?.id ?? null);
+      } catch (err: any) {
+        if (!cancelled) {
+          toast.error(err?.response?.data?.message ?? 'Failed to create draft');
+        }
       }
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Failed to save');
-    }
-  };
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request?.id]);
 
   return (
     <Dialog open={!!request} onOpenChange={onOpenChange}>
@@ -408,54 +398,14 @@ function UploadResultDialog({
             {isEdit ? 'Edit Imaging Report' : 'Upload Imaging Result'}
           </DialogTitle>
           <DialogDescription>
-            {isEdit
-              ? 'Update findings, impression, and attached files.'
-              : 'Enter findings, then upload the report and modality files.'}
+            Upload the modality output, scanned PDF report, DICOM file, or video loop.
+            The doctor will view these in the embedded viewer.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div>
-            <Label>Findings {!isEdit && '*'}</Label>
-            <Textarea
-              rows={4}
-              value={findings}
-              onChange={(e) => setFindings(e.target.value)}
-              placeholder="Detailed findings…"
-            />
-          </div>
-          <div>
-            <Label>Impression</Label>
-            <Textarea
-              rows={3}
-              value={impression}
-              onChange={(e) => setImpression(e.target.value)}
-              placeholder="Summary impression…"
-            />
-          </div>
-          <div>
-            <Label>PACS Reference</Label>
-            <Input value={pacsRef} onChange={(e) => setPacsRef(e.target.value)} placeholder="Optional PACS study UID" />
-          </div>
-
-          <div className="flex justify-end">
-            <Button onClick={handleSave} disabled={upload.isPending || edit.isPending}>
-              {(upload.isPending || edit.isPending)
-                ? 'Saving…'
-                : isEdit
-                  ? 'Save changes'
-                  : 'Create draft'}
-            </Button>
-          </div>
-
-          <div className="border-t pt-4">
-            <div className="mb-2">
-              <p className="text-sm font-semibold">Attached Files</p>
-              <p className="text-xs text-muted-foreground">
-                Upload the modality output, scanned PDF report, DICOM file, or video loop.
-                The doctor will view these in the embedded viewer.
-              </p>
-            </div>
+            <p className="text-sm font-semibold mb-2">Attached Files</p>
             {request && (
               <ImagingAttachmentsViewer
                 requestId={request.id}
@@ -466,7 +416,9 @@ function UploadResultDialog({
                 emptyMessage={
                   resultId
                     ? 'No files attached yet — upload modality images, PDFs, DICOM or videos.'
-                    : 'Save the draft first, then upload modality files here.'
+                    : upload.isPending
+                      ? 'Preparing draft…'
+                      : 'Creating draft…'
                 }
               />
             )}
@@ -535,7 +487,7 @@ function ResultsTab() {
                         <Eye className="size-3.5" />
                       </Button>
                       {r.status !== 'published' && (
-                        <Button size="sm" variant="outline" onClick={() => setEditFor(r)} title="Edit findings + files">
+                        <Button size="sm" variant="outline" onClick={() => setEditFor(r)} title="Edit attached files">
                           <Pencil className="size-3.5" /> Edit
                         </Button>
                       )}
@@ -592,6 +544,7 @@ function ResultsTab() {
         pending={addReport.isPending}
       />
 
+
       <EditResultDialog
         result={editFor}
         onOpenChange={(open) => !open && setEditFor(null)}
@@ -619,21 +572,19 @@ function FinalizeReportDialog({
 }: {
   result: ImagingResult | null;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (payload: { findings: string; impression?: string; recommendation?: string }) => void;
+  onSubmit: (payload: { recommendation?: string }) => void;
   pending: boolean;
 }) {
-  const [findings, setFindings] = useState('');
-  const [impression, setImpression] = useState('');
   const [recommendation, setRecommendation] = useState('');
 
   const requestId = result?.imagingRequest?.id ?? result?.requestId;
   const attachmentsQ = useImagingRequestAttachments(requestId);
 
   useEffect(() => {
-    setFindings(result?.findings ?? '');
-    setImpression(result?.impression ?? '');
     setRecommendation('');
-  }, [result?.id, result?.findings, result?.impression]);
+  }, [result?.id]);
+
+  const hasAttachments = (attachmentsQ.data ?? []).length > 0;
 
   return (
     <Dialog open={!!result} onOpenChange={onOpenChange}>
@@ -641,18 +592,10 @@ function FinalizeReportDialog({
         <DialogHeader>
           <DialogTitle>Finalize Imaging Report</DialogTitle>
           <DialogDescription>
-            Confirm findings + impression. After finalize, the report can be signed and published.
+            Confirm the attached files are correct. After finalize, the report can be signed and published.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          <div>
-            <Label>Findings *</Label>
-            <Textarea rows={4} value={findings} onChange={(e) => setFindings(e.target.value)} />
-          </div>
-          <div>
-            <Label>Impression</Label>
-            <Textarea rows={3} value={impression} onChange={(e) => setImpression(e.target.value)} />
-          </div>
           <div>
             <Label>Recommendation</Label>
             <Textarea rows={2} value={recommendation} onChange={(e) => setRecommendation(e.target.value)} />
@@ -661,7 +604,7 @@ function FinalizeReportDialog({
           <div className="border-t pt-3">
             <p className="text-sm font-semibold">Attached Files</p>
             <p className="text-xs text-muted-foreground mb-2">
-              Upload the signed PDF report here — it&apos;s auto-linked to this result.
+              The uploaded report (PDF / DICOM / image / video) carries the radiology finding.
             </p>
             {requestId && (
               <ImagingAttachmentsViewer
@@ -678,11 +621,9 @@ function FinalizeReportDialog({
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>Cancel</Button>
           <Button
-            disabled={pending || !findings.trim()}
+            disabled={pending || !hasAttachments}
             onClick={() =>
               onSubmit({
-                findings,
-                impression: impression || undefined,
                 recommendation: recommendation || undefined,
               })
             }
@@ -703,35 +644,8 @@ function EditResultDialog({
   result: ImagingResult | null;
   onOpenChange: (open: boolean) => void;
 }) {
-  const edit = useEditImagingResult();
-  const [findings, setFindings] = useState('');
-  const [impression, setImpression] = useState('');
-  const [pacsRef, setPacsRef] = useState('');
-
   const requestId = result?.imagingRequest?.id ?? result?.requestId;
   const attachmentsQ = useImagingResultAttachments(result?.id);
-
-  useEffect(() => {
-    setFindings(result?.findings ?? '');
-    setImpression(result?.impression ?? '');
-    setPacsRef(result?.pacsReferenceId ?? '');
-  }, [result?.id, result?.findings, result?.impression, result?.pacsReferenceId]);
-
-  const handleSave = async () => {
-    if (!result) return;
-    try {
-      await edit.mutateAsync({
-        id: result.id,
-        findings: findings || undefined,
-        impression: impression || undefined,
-        pacsReferenceId: pacsRef || undefined,
-      });
-      toast.success('Result updated');
-      onOpenChange(false);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Failed to save');
-    }
-  };
 
   return (
     <Dialog open={!!result} onOpenChange={onOpenChange}>
@@ -739,25 +653,12 @@ function EditResultDialog({
         <DialogHeader>
           <DialogTitle>Edit Imaging Result</DialogTitle>
           <DialogDescription>
-            Adjust findings, impression, or replace attached files.
+            Add, replace, or remove the attached files.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div>
-            <Label>Findings</Label>
-            <Textarea rows={4} value={findings} onChange={(e) => setFindings(e.target.value)} />
-          </div>
-          <div>
-            <Label>Impression</Label>
-            <Textarea rows={3} value={impression} onChange={(e) => setImpression(e.target.value)} />
-          </div>
-          <div>
-            <Label>PACS Reference</Label>
-            <Input value={pacsRef} onChange={(e) => setPacsRef(e.target.value)} />
-          </div>
-
-          <div className="border-t pt-3">
-            <p className="text-sm font-semibold">Attached Files</p>
+            <p className="text-sm font-semibold mb-2">Attached Files</p>
             {requestId && (
               <ImagingAttachmentsViewer
                 requestId={requestId}
@@ -770,10 +671,7 @@ function EditResultDialog({
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={edit.isPending}>Cancel</Button>
-          <Button onClick={handleSave} disabled={edit.isPending}>
-            {edit.isPending ? 'Saving…' : 'Save changes'}
-          </Button>
+          <Button onClick={() => onOpenChange(false)}>Close</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

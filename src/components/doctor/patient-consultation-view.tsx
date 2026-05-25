@@ -418,7 +418,6 @@ interface ImagingRequest {
   modality?: string;
   bodyPart?: string;
   status: string;
-  findings?: string;
   createdAt: string;
 }
 
@@ -452,8 +451,7 @@ function ImagingTab({ patientId }: { patientId: string }) {
             <th className="pb-2 pr-3">Date</th>
             <th className="pb-2 pr-3">Type</th>
             <th className="pb-2 pr-3">Body Part</th>
-            <th className="pb-2 pr-3">Status</th>
-            <th className="pb-2">Findings</th>
+            <th className="pb-2">Status</th>
           </tr>
         </thead>
         <tbody className="divide-y">
@@ -464,7 +462,7 @@ function ImagingTab({ patientId }: { patientId: string }) {
               </td>
               <td className="py-2 pr-3">{req.type || req.modality || '—'}</td>
               <td className="py-2 pr-3">{req.bodyPart || '—'}</td>
-              <td className="py-2 pr-3">
+              <td className="py-2">
                 <Badge
                   variant={
                     req.status === 'completed'
@@ -477,9 +475,6 @@ function ImagingTab({ patientId }: { patientId: string }) {
                 >
                   {req.status}
                 </Badge>
-              </td>
-              <td className="py-2 max-w-[180px] truncate">
-                {req.findings || '—'}
               </td>
             </tr>
           ))}
