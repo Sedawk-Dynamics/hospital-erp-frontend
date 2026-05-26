@@ -28,7 +28,12 @@ import {
 } from '@/hooks/use-lab-templates';
 import { LabParameterBuilder } from '@/components/laboratory/lab-parameter-builder';
 import { LabReportPreviewDialog } from '@/components/laboratory/lab-report-preview';
-import { LabTagsInput } from '@/components/laboratory/lab-tags-input';
+import {
+  LabTagsInput,
+  mergeSynonyms,
+  splitSynonyms,
+  SYNONYMS_MAX,
+} from '@/components/laboratory/lab-tags-input';
 
 interface LabTemplateBuilderPageProps {
   params: Promise<{ id: string }>;
@@ -55,8 +60,11 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
     isPublished: true,
   });
   const [parameters, setParameters] = useState<LabParameterSpec[]>([]);
-  const [aliases, setAliases] = useState<string[]>([]);
-  const [tags, setTags] = useState<string[]>([]);
+  // Single unified "search & synonyms" list. Backend still keeps aliases
+  // (case-preserved, max 25) and tags (lowercased, max 40) as separate
+  // columns so search semantics stay identical; we merge on load and split
+  // on save (first 25 → aliases, remainder → tags).
+  const [synonyms, setSynonyms] = useState<string[]>([]);
   const [dirty, setDirty] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
 
@@ -75,8 +83,7 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
       isPublished: template.isPublished,
     });
     setParameters(template.parameters ?? []);
-    setAliases(template.aliases ?? []);
-    setTags(template.tags ?? []);
+    setSynonyms(mergeSynonyms(template.aliases, template.tags));
     setDirty(false);
   }, [template]);
 
@@ -99,13 +106,8 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
     setDirty(true);
   }
 
-  function onAliasesChange(next: string[]) {
-    setAliases(next);
-    setDirty(true);
-  }
-
-  function onTagsChange(next: string[]) {
-    setTags(next);
+  function onSynonymsChange(next: string[]) {
+    setSynonyms(next);
     setDirty(true);
   }
 
@@ -127,6 +129,7 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
       }
     }
 
+    const { aliases, tags } = splitSynonyms(synonyms);
     try {
       await update.mutateAsync({
         id,
@@ -287,25 +290,25 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
         </div>
       </section>
 
-      {/* Aliases + tags (dynamic search layer) */}
+      {/* Search & synonyms (dynamic search layer — single combined list) */}
       <section className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4 space-y-3">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Search & synonyms
         </h2>
         <p className="text-[11px] text-muted-foreground">
-          Aliases let doctors find this test under a different name — e.g. searching "FBC" or "Hemogram" surfaces
-          CBC. Tags are loose keywords (parameter names, anatomy, indications) that also feed search. Both are
-          part of the dynamic-search layer agreed in the 2026-05-23 meeting.
+          Add alternative names and keywords that should surface this test in search — e.g. "FBC",
+          "Hemogram", "hemoglobin", "anemia". Out-of-range numeric values are still auto-flagged on
+          the result entry form. Part of the dynamic-search layer agreed in the 2026-05-23 meeting.
         </p>
-        <div className="grid grid-cols-12 gap-3">
-          <div className="col-span-6 space-y-1">
-            <Label>Aliases (alternative names)</Label>
-            <LabTagsInput value={aliases} onChange={onAliasesChange} valueMode="alias" max={25} placeholder='e.g. "FBC", "Hemogram"' />
-          </div>
-          <div className="col-span-6 space-y-1">
-            <Label>Tags (keywords)</Label>
-            <LabTagsInput value={tags} onChange={onTagsChange} valueMode="tag" max={40} placeholder='e.g. "hemoglobin", "anemia"' />
-          </div>
+        <div className="space-y-1">
+          <Label>Synonyms</Label>
+          <LabTagsInput
+            value={synonyms}
+            onChange={onSynonymsChange}
+            valueMode="alias"
+            max={SYNONYMS_MAX}
+            placeholder='e.g. "FBC", "Hemogram", "hemoglobin"'
+          />
         </div>
       </section>
 

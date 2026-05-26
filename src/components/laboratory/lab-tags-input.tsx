@@ -9,6 +9,11 @@
 //     lists with hospital-specific synonyms (their cloned row owns its
 //     own arrays so this doesn't touch the master template)
 //
+// Both surfaces now expose a SINGLE "synonyms" field; aliases (case-preserved
+// max 25) and tags (lowercased max 40) are still two columns in the DB so
+// search semantics stay identical. mergeSynonyms / splitSynonyms / SYNONYMS_MAX
+// below handle the load/save conversion.
+//
 // Inputs are accepted on Enter, Tab, comma or paste. Duplicates collapse
 // case-insensitively. The component is fully controlled — parent owns
 // the array. Caller passes `valueMode = 'tag'` for lower-cased keywords
@@ -36,6 +41,39 @@ function uniqueAdd(list: string[], v: string): string[] {
   const lower = v.toLowerCase();
   if (list.some((x) => x.toLowerCase() === lower)) return list;
   return [...list, v];
+}
+
+// Backend caps: aliases max 25, tags max 40 — combined cap = 65.
+export const SYNONYMS_MAX = 65;
+const ALIAS_BUCKET = 25;
+
+// Merge stored `aliases` + `tags` into a single deduped list (case-insensitive).
+// Aliases come first to preserve casing in the UI for canonical synonyms.
+export function mergeSynonyms(
+  aliases?: string[] | null,
+  tags?: string[] | null,
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of [...(aliases ?? []), ...(tags ?? [])]) {
+    const trimmed = String(v ?? '').trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(trimmed);
+  }
+  return out;
+}
+
+// Split a unified synonyms list back into the two backend columns. The first
+// 25 entries land in `aliases` (case-preserved), the rest in `tags` (the
+// backend lowercases them on persist).
+export function splitSynonyms(synonyms: string[]): { aliases: string[]; tags: string[] } {
+  return {
+    aliases: synonyms.slice(0, ALIAS_BUCKET),
+    tags: synonyms.slice(ALIAS_BUCKET),
+  };
 }
 
 export function LabTagsInput({

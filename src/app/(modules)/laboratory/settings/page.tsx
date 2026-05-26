@@ -49,7 +49,12 @@ import {
 import { useLabRole } from '@/hooks/use-lab-role';
 import { SupervisorOnlyGuard } from '@/components/laboratory/supervisor-only-guard';
 import { LabParameterBuilder } from '@/components/laboratory/lab-parameter-builder';
-import { LabTagsInput } from '@/components/laboratory/lab-tags-input';
+import {
+  LabTagsInput,
+  mergeSynonyms,
+  splitSynonyms,
+  SYNONYMS_MAX,
+} from '@/components/laboratory/lab-tags-input';
 import {
   LabReportPreviewDialog,
   type LabReportPreviewSource,
@@ -357,11 +362,13 @@ function TestFormDialog({
   const [parameters, setParameters] = useState<LabParameterSpec[]>(
     (test?.parameters as LabParameterSpec[] | undefined) ?? [],
   );
-  const [aliases, setAliases] = useState<string[]>(
-    ((test as unknown as { aliases?: string[] })?.aliases) ?? [],
-  );
-  const [tags, setTags] = useState<string[]>(
-    ((test as unknown as { tags?: string[] })?.tags) ?? [],
+  // Single combined synonyms list. Backend keeps aliases + tags as two
+  // columns; mergeSynonyms / splitSynonyms handle the load + save transform.
+  const [synonyms, setSynonyms] = useState<string[]>(
+    mergeSynonyms(
+      (test as unknown as { aliases?: string[] })?.aliases,
+      (test as unknown as { tags?: string[] })?.tags,
+    ),
   );
   const [previewOpen, setPreviewOpen] = useState(false);
 
@@ -403,6 +410,7 @@ function TestFormDialog({
       }
     }
 
+    const { aliases, tags } = splitSynonyms(synonyms);
     const payload = {
       testName: formData.testName,
       testCode: formData.testCode || undefined,
@@ -536,17 +544,20 @@ function TestFormDialog({
                   Search & synonyms (hospital-local)
                 </div>
                 <p className="text-[11px] text-muted-foreground mt-0.5">
-                  Doctors searching for "FBC" or "Hemogram" surface this test. Tags are loose keywords.
-                  Edits here stay on your catalog — they don't touch the master template.
+                  Alternative names and keywords that should surface this test in search — e.g.
+                  "FBC", "Hemogram", "hemoglobin", "anemia". Edits here stay on your catalog and
+                  don't touch the master template.
                 </p>
               </div>
-              <div className="col-span-6 space-y-1">
-                <Label className="text-xs">Aliases</Label>
-                <LabTagsInput value={aliases} onChange={setAliases} valueMode="alias" max={25} placeholder='e.g. "FBC"' />
-              </div>
-              <div className="col-span-6 space-y-1">
-                <Label className="text-xs">Tags</Label>
-                <LabTagsInput value={tags} onChange={setTags} valueMode="tag" max={40} placeholder='e.g. "hemoglobin"' />
+              <div className="col-span-12 space-y-1">
+                <Label className="text-xs">Synonyms</Label>
+                <LabTagsInput
+                  value={synonyms}
+                  onChange={setSynonyms}
+                  valueMode="alias"
+                  max={SYNONYMS_MAX}
+                  placeholder='e.g. "FBC", "Hemogram", "hemoglobin"'
+                />
               </div>
             </div>
 
