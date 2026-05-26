@@ -32,6 +32,7 @@ import {
   useEnterResults,
   useVerifyResults,
   useSubmitLabReport,
+  usePublishLabReport,
   useLabOrder,
   type LabOrder,
 } from '@/hooks/use-lab';
@@ -190,30 +191,43 @@ function LabStatusTab() {
 }
 
 // ============================================================
-// Test Report Tab — completed reports (status=completed)
+// Test Report Tab — published + corrected reports, plus a "Pending Approval"
+// filter so supervisors can quickly jump to the review queue.
 // ============================================================
 function TestReportTab() {
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'published' | 'review'>('published');
   const [page, setPage] = useState(1);
   const { data, isLoading } = useLabReports({
     search: search || undefined,
-    status: 'published',
+    status: statusFilter,
     page,
     limit: 20,
   });
 
   const reports = data?.data ?? [];
+  const isReviewView = statusFilter === 'review';
 
   return (
     <div className="space-y-4">
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant/60" />
-        <Input
-          placeholder="Search by patient/MRN..."
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-          className="bg-surface-container-low border-none rounded-xl pl-12 pr-6 py-2.5 font-label text-sm outline-none"
-        />
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative max-w-sm flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant/60" />
+          <Input
+            placeholder="Search by patient/MRN..."
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            className="bg-surface-container-low border-none rounded-xl pl-12 pr-6 py-2.5 font-label text-sm outline-none"
+          />
+        </div>
+        <select
+          value={statusFilter}
+          onChange={(e) => { setStatusFilter(e.target.value as any); setPage(1); }}
+          className="rounded-lg border bg-background px-3 py-2 text-sm"
+        >
+          <option value="published">Published</option>
+          <option value="review">Pending approval</option>
+        </select>
       </div>
 
       <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary overflow-hidden">
@@ -223,7 +237,7 @@ function TestReportTab() {
               <Th>Order #</Th>
               <Th>Patient</Th>
               <Th>Status</Th>
-              <Th>Published</Th>
+              <Th>{isReviewView ? 'Submitted' : 'Published'}</Th>
               <Th>Version</Th>
             </tr>
           </thead>
@@ -231,17 +245,32 @@ function TestReportTab() {
             {isLoading ? (
               <LoadingRow span={5} />
             ) : reports.length === 0 ? (
-              <EmptyRow span={5} message="No completed reports yet." />
+              <EmptyRow
+                span={5}
+                message={isReviewView ? 'No reports awaiting approval.' : 'No published reports yet.'}
+              />
             ) : (
               reports.map((r) => (
                 <tr key={r.id} className="hover:bg-surface-container-low transition-colors">
-                  <td className="px-4 py-3 font-medium">{r.orderId?.slice(0, 8)}</td>
+                  <td className="px-4 py-3 font-medium">{(r.orderId ?? r.labOrderId)?.slice(0, 8)}</td>
                   <td className="px-4 py-3">
                     {r.patient ? `${r.patient.firstName} ${r.patient.lastName ?? ''}` : '-'}
                   </td>
-                  <td className="px-4 py-3"><Badge>{r.status}</Badge></td>
+                  <td className="px-4 py-3">
+                    <Badge
+                      className={cn(
+                        'capitalize',
+                        r.status === 'review' && 'bg-amber-100 text-amber-800',
+                        r.status === 'published' && 'bg-emerald-100 text-emerald-800',
+                      )}
+                    >
+                      {r.status === 'review' ? 'Awaiting approval' : r.status}
+                    </Badge>
+                  </td>
                   <td className="px-4 py-3 text-muted-foreground">
-                    {(r as any).publishedAt ? formatDateTime((r as any).publishedAt) : '-'}
+                    {isReviewView
+                      ? ((r as any).updatedAt ? formatDateTime((r as any).updatedAt) : '-')
+                      : ((r as any).publishedAt ? formatDateTime((r as any).publishedAt) : '-')}
                   </td>
                   <td className="px-4 py-3">v{(r as any).version ?? 1}</td>
                 </tr>
@@ -789,13 +818,15 @@ function OrderDetailDialog({
 
 // ============================================================
 // Order-level Report Panel
-//   - No report or draft/approved: "Submit Report" (one-shot generate +
-//     sign + publish). Submit is enabled when ANY of these is present:
-//     (1) at least one uploaded file on the order, (2) at least one
-//     structured result entered, or (3) both. Backend route is gated by
-//     `lab_reports.create` so technicians can submit without supervisor
-//     sign-off — matches the upload+mark-done auto-publish trust model.
-//   - Published: Preview / Print only.
+//   - No report or status='draft': "Submit for Approval" — technicians (and
+//     supervisors who choose to draft first) queue the report for review.
+//     Submit is enabled when ANY of these is present: an uploaded file, a
+//     saved structured result, or both.
+//   - status='review': awaiting supervisor approval. Supervisors see
+//     "Approve & Publish" (and Preview); technicians see a pending badge.
+//   - status='published'/'corrected': Preview / Print only.
+// Patient portal stays gated by status='published'|'corrected' so anything
+// in review/draft is invisible to the patient until a supervisor publishes.
 // ============================================================
 function OrderReportPanel({
   order,
@@ -804,7 +835,9 @@ function OrderReportPanel({
   order: LabOrder;
   attachments: LabAttachment[];
 }) {
+  const { canApprove } = useLabRole();
   const submit = useSubmitLabReport();
+  const publish = usePublishLabReport();
   const [previewId, setPreviewId] = useState<string | null>(null);
 
   const report = order.labReport;
@@ -816,14 +849,26 @@ function OrderReportPanel({
   // Any one of file / data / both is enough to submit.
   const canSubmit = hasAnyResult || hasAnyAttachment;
 
-  const isPublished = report?.status === 'published';
+  const isPublished = report?.status === 'published' || report?.status === 'corrected';
+  const isAwaitingApproval = report?.status === 'review';
+  const canResubmit = !report || report.status === 'draft' || report.status === 'review';
 
   const onSubmit = async () => {
     try {
       await submit.mutateAsync({ orderId: order.id, notify: true });
-      toast.success('Report submitted and published');
+      toast.success('Submitted for supervisor approval');
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? 'Failed to submit report');
+    }
+  };
+
+  const onApprove = async () => {
+    if (!report) return;
+    try {
+      await publish.mutateAsync({ id: report.id, notify: true });
+      toast.success('Report approved and published to patient');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Failed to publish report');
     }
   };
 
@@ -836,7 +881,15 @@ function OrderReportPanel({
             {report ? (
               <>
                 <span className="font-medium">Lab Report</span>
-                <Badge className="ml-2 capitalize">{report.status}</Badge>
+                <Badge
+                  className={cn(
+                    'ml-2 capitalize',
+                    isAwaitingApproval && 'bg-amber-100 text-amber-800',
+                    isPublished && 'bg-emerald-100 text-emerald-800',
+                  )}
+                >
+                  {isAwaitingApproval ? 'Awaiting approval' : report.status}
+                </Badge>
                 <span className="ml-2 text-[10px] text-muted-foreground">v{report.version ?? 1}</span>
                 {report.publishedAt && (
                   <span className="ml-2 text-[10px] text-muted-foreground">
@@ -848,15 +901,22 @@ function OrderReportPanel({
                     · signed {formatDateTime(report.signedAt)}
                   </span>
                 )}
+                {isAwaitingApproval && (
+                  <div className="text-[10px] text-amber-700 mt-1">
+                    {canApprove
+                      ? 'Review the uploaded files / entered details below, then Approve & Publish.'
+                      : 'Submitted to lab supervisor. The patient will see this report only after approval.'}
+                  </div>
+                )}
               </>
             ) : (
               <span className="text-muted-foreground">
                 {canSubmit
                   ? hasAnyResult && hasAnyAttachment
-                    ? 'Files and details captured. Submit to publish the branded report.'
+                    ? 'Files and details captured. Submit for supervisor approval.'
                     : hasAnyResult
-                      ? 'Details captured. Submit to publish the branded report.'
-                      : 'Files uploaded. Submit to publish the report.'
+                      ? 'Details captured. Submit for supervisor approval.'
+                      : 'Files uploaded. Submit for supervisor approval.'
                   : 'No report yet. Upload a file or enter parameter details for at least one test, then Submit.'}
               </span>
             )}
@@ -873,7 +933,9 @@ function OrderReportPanel({
                 Preview / Print
               </Button>
             )}
-            {!isPublished && (
+            {/* Tech can submit / re-submit while the report is still in a
+                tech-editable state (no report, draft, or sent back). */}
+            {canResubmit && (
               <Button
                 size="sm"
                 onClick={onSubmit}
@@ -882,7 +944,24 @@ function OrderReportPanel({
                 title={!canSubmit ? 'Upload a file or enter result details for at least one test' : undefined}
               >
                 <Send className="size-3.5" />
-                {submit.isPending ? 'Submitting…' : 'Submit Report'}
+                {submit.isPending
+                  ? 'Submitting…'
+                  : isAwaitingApproval
+                    ? 'Re-submit'
+                    : 'Submit for Approval'}
+              </Button>
+            )}
+            {/* Supervisor-only Approve & Publish. Only shown when the report
+                is in review (so technicians never see a publish button). */}
+            {isAwaitingApproval && canApprove && report && (
+              <Button
+                size="sm"
+                onClick={onApprove}
+                disabled={publish.isPending}
+                className="gap-1 bg-emerald-600 hover:bg-emerald-700"
+              >
+                <CheckCircle2 className="size-3.5" />
+                {publish.isPending ? 'Publishing…' : 'Approve & Publish'}
               </Button>
             )}
           </div>
@@ -1198,7 +1277,7 @@ function TestItemRow({
                 {complete.isPending ? 'Saving…' : 'Mark Done'}
               </Button>
               <span className="text-[10px] text-muted-foreground ml-1">
-                Auto-publishes the report when every test is marked done.
+                Queues the report for supervisor approval once every test is marked done.
               </span>
             </div>
             <AttachmentList attachments={attachments} onDelete={onDelete} pending={remove.isPending} canDelete={!isDone} />
@@ -1369,8 +1448,8 @@ function TestItemRow({
             </div>
             <p className="text-[10px] text-muted-foreground">
               Saved parameters roll up into the order's branded report.
-              Use the <span className="font-medium">Generate Report</span> button below once results
-              are entered for the tests you want to publish.
+              Use <span className="font-medium">Submit for Approval</span> below once results are entered;
+              a lab supervisor must approve before the patient sees anything.
             </p>
           </TabsContent>
         </Tabs>

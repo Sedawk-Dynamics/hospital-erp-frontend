@@ -784,6 +784,7 @@ export function usePublishLabReport() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: labKeys.reports.all });
       queryClient.invalidateQueries({ queryKey: labKeys.orders.all });
+      queryClient.invalidateQueries({ queryKey: ['lab', 'dashboard'] });
     },
   });
 }
