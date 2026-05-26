@@ -1356,10 +1356,9 @@ function TestItemRow({
               <div className="rounded-md border bg-card">
                 <div className="grid grid-cols-12 gap-1 px-2 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground border-b">
                   <div className="col-span-3">Parameter</div>
-                  <div className="col-span-2">Value</div>
+                  <div className="col-span-3">Value</div>
                   <div className="col-span-2">Unit</div>
                   <div className="col-span-3">Normal range</div>
-                  <div className="col-span-1 text-center">Abn</div>
                   <div className="col-span-1"></div>
                 </div>
                 {rows.map((r, idx) => (
@@ -1371,7 +1370,7 @@ function TestItemRow({
                       placeholder="e.g. Hemoglobin"
                     />
                     <Input
-                      className="col-span-2 h-7 text-xs"
+                      className="col-span-3 h-7 text-xs"
                       value={r.value}
                       onChange={(e) => updateRow(idx, { value: e.target.value })}
                       placeholder="value"
@@ -1388,13 +1387,6 @@ function TestItemRow({
                       onChange={(e) => updateRow(idx, { normalRange: e.target.value })}
                       placeholder="13.5-17.5"
                     />
-                    <div className="col-span-1 flex justify-center">
-                      <input
-                        type="checkbox"
-                        checked={r.isAbnormal}
-                        onChange={(e) => updateRow(idx, { isAbnormal: e.target.checked })}
-                      />
-                    </div>
                     <div className="col-span-1 flex justify-end">
                       <Button
                         size="icon"
@@ -1520,10 +1512,9 @@ function SchemaParamGrid({
     <div className="rounded-md border bg-card">
       <div className="grid grid-cols-12 gap-1 px-2 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground border-b">
         <div className="col-span-4">Parameter</div>
-        <div className="col-span-3">Result</div>
+        <div className="col-span-4">Result</div>
         <div className="col-span-2">Unit</div>
         <div className="col-span-2">Reference</div>
-        <div className="col-span-1 text-center">Abn</div>
       </div>
       {groups.map((g) => (
         <div key={g.label || '_none'}>
@@ -1534,7 +1525,7 @@ function SchemaParamGrid({
           )}
           {g.indices.map((idx) => {
             const r = rows[idx];
-            const abn = isOutOfRange(r) || r.isAbnormal;
+            const abn = isOutOfRange(r);
             return (
               <div
                 key={idx}
@@ -1546,7 +1537,7 @@ function SchemaParamGrid({
                     <div className="text-[10px] text-muted-foreground truncate">{r.notes}</div>
                   )}
                 </div>
-                <div className="col-span-3">
+                <div className="col-span-4 flex items-center gap-1">
                   {r.inputType === 'select' && r.options ? (
                     <select
                       className="flex h-7 w-full rounded-lg border border-input bg-transparent px-2 text-xs focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
@@ -1568,17 +1559,18 @@ function SchemaParamGrid({
                       placeholder={r.inputType === 'number' ? '0' : 'enter result'}
                     />
                   )}
+                  {abn && (
+                    <span
+                      className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-error shrink-0"
+                      title="Auto-flagged: outside the reference range"
+                    >
+                      <AlertTriangle className="size-3" />
+                      Abn
+                    </span>
+                  )}
                 </div>
                 <div className="col-span-2 text-xs text-muted-foreground truncate">{r.unit || '—'}</div>
                 <div className="col-span-2 text-[11px] text-muted-foreground truncate">{r.normalRange || '—'}</div>
-                <div className="col-span-1 flex justify-center">
-                  <input
-                    type="checkbox"
-                    checked={r.isAbnormal || abn}
-                    onChange={(e) => updateRow(idx, { isAbnormal: e.target.checked })}
-                    title="Mark as abnormal"
-                  />
-                </div>
               </div>
             );
           })}
