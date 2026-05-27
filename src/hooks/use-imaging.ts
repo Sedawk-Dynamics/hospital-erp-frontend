@@ -39,6 +39,22 @@ export interface ImagingRequest {
   reason?: string;
   notes?: string;
   imagingResult?: { id: string; status: string } | null;
+  // Payment-verify gate (2026-05-27 flow)
+  paymentVerified?: boolean;
+  paymentVerifiedBy?: string | null;
+  paymentVerifiedAt?: string | null;
+  paymentVerifier?: { id: string; firstName: string; lastName: string } | null;
+  // Linked bill summary — decorated by the list endpoint so admin can see
+  // payment status before clicking Verify Payment.
+  linkedBill?: {
+    id?: string;
+    billNumber?: string;
+    status?: string;
+    amountPaid?: number | string;
+    totalAmount?: number | string;
+    balanceDue?: number | string;
+    chargeAmount?: number | string;
+  } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -95,6 +111,12 @@ interface ImagingRequestParams {
   fromDate?: string;
   toDate?: string;
   sortOrder?: 'asc' | 'desc';
+  /**
+   * 'true'  → only payment-verified requests (radiologist queue)
+   * 'false' → only un-verified requests (radiology_admin queue)
+   * omit    → both
+   */
+  paymentVerified?: 'true' | 'false';
 }
 
 interface ImagingResultParams {
@@ -165,6 +187,21 @@ export function useCreateImagingRequest() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: imagingKeys.requests.all });
+    },
+  });
+}
+
+export function useVerifyImagingPayment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiPatch<ImagingRequest>(`/imaging/requests/${id}/verify-payment`);
+      return response.data;
+    },
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: imagingKeys.requests.all });
+      queryClient.invalidateQueries({ queryKey: imagingKeys.requests.detail(id) });
+      queryClient.invalidateQueries({ queryKey: ['imaging', 'dashboard'] });
     },
   });
 }
@@ -340,11 +377,17 @@ export function useImagingAnalytics(params?: { fromDate?: string; toDate?: strin
 // ── Dashboard (counts + recent activity) ──────────────────────────────────
 export interface ImagingDashboard {
   counts: {
+    /** Admin queue: new requests not yet payment-verified. */
+    awaitingPaymentVerify: number;
+    /** Radiologist queue: cleared-on-payment but not yet scheduled. */
     pending: number;
     scheduled: number;
     inProgress: number;
     completedToday: number;
     statToday: number;
+    /** Admin queue: radiologist marked complete, awaiting admin publish. */
+    awaitingApproval: number;
+    /** Legacy alias for awaitingApproval — kept for backward compat. */
     awaitingVerify: number;
     publishedToday: number;
     cancelledToday: number;

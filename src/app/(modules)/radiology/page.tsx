@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { formatDateTime, toInputDateStr } from '@/lib/date-utils';
 import {
   Search, Calendar, Clock, CheckCircle2, Loader2,
-  CalendarPlus, ImagePlus, ShieldCheck, Eye, Pencil,
+  CalendarPlus, ImagePlus, ShieldCheck, Eye, Pencil, IndianRupee,
+  Wallet,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -24,6 +25,7 @@ import {
   useAddImagingReport,
   useEditImagingResult,
   useVerifyImagingResult,
+  useVerifyImagingPayment,
   useImagingResults,
   type ImagingRequest,
   type ImagingResult,
@@ -33,32 +35,69 @@ import {
   useImagingResultAttachments,
 } from '@/hooks/use-imaging-attachments';
 import { useUsersList } from '@/hooks/use-users';
+import { useRadiologyRole } from '@/hooks/use-radiology-role';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { RadiologyReportPrintDialog } from '@/components/radiology/radiology-report-print-view';
 import { ImagingAttachmentsViewer } from '@/components/shared/imaging-attachments-viewer';
 
 export default function RadiologyHomePage() {
+  const { isRadiologyAdmin, isRadiologist } = useRadiologyRole();
+  // Both flows always need Dashboard + Scheduled + Completed + Results.
+  // Admin additionally sees Awaiting Payment + Awaiting Approval.
+  // Radiologist sees Pending (only payment-verified, status=requested).
+  const defaultTab = isRadiologyAdmin ? 'awaiting-payment' : 'pending';
+
   return (
     <div className="space-y-6 animate-fade-in-up">
       <PageHeader
         title="Radiology Home"
-        description="Schedule imaging studies, upload reports, and publish results"
+        description={
+          isRadiologyAdmin
+            ? 'Verify payments, route requests to radiologists, approve & publish reports.'
+            : 'Pick up cleared requests, perform studies, upload reports, mark complete.'
+        }
       />
 
-      <Tabs defaultValue="dashboard">
+      <Tabs defaultValue={defaultTab}>
         <TabsList variant="line">
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+          {isRadiologyAdmin && (
+            <TabsTrigger value="awaiting-payment">
+              <Wallet className="mr-1.5 size-3.5" /> Awaiting Payment
+            </TabsTrigger>
+          )}
           <TabsTrigger value="pending">Pending</TabsTrigger>
           <TabsTrigger value="scheduled">Scheduled</TabsTrigger>
           <TabsTrigger value="completed">Completed</TabsTrigger>
+          {isRadiologyAdmin && (
+            <TabsTrigger value="awaiting-approval">
+              <ShieldCheck className="mr-1.5 size-3.5" /> Awaiting Approval
+            </TabsTrigger>
+          )}
           <TabsTrigger value="results">Results</TabsTrigger>
         </TabsList>
 
         <TabsContent value="dashboard" className="pt-4"><DashboardTab /></TabsContent>
-        <TabsContent value="pending" className="pt-4"><RequestList status="requested" /></TabsContent>
-        <TabsContent value="scheduled" className="pt-4"><RequestList status="scheduled" /></TabsContent>
-        <TabsContent value="completed" className="pt-4"><RequestList status="completed" /></TabsContent>
+        {isRadiologyAdmin && (
+          <TabsContent value="awaiting-payment" className="pt-4">
+            <RequestList variant="awaiting-payment" />
+          </TabsContent>
+        )}
+        <TabsContent value="pending" className="pt-4">
+          <RequestList variant="pending" radiologistView={isRadiologist} />
+        </TabsContent>
+        <TabsContent value="scheduled" className="pt-4">
+          <RequestList variant="scheduled" radiologistView={isRadiologist} />
+        </TabsContent>
+        <TabsContent value="completed" className="pt-4">
+          <RequestList variant="completed" radiologistView={isRadiologist} />
+        </TabsContent>
+        {isRadiologyAdmin && (
+          <TabsContent value="awaiting-approval" className="pt-4">
+            <ResultsTab onlyFinalized={true} />
+          </TabsContent>
+        )}
         <TabsContent value="results" className="pt-4"><ResultsTab /></TabsContent>
       </Tabs>
     </div>
@@ -108,7 +147,7 @@ function DashboardTab() {
         <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-44" />
       </div>
 
-      <RequestTable requests={requests} loading={isLoading} />
+      <RequestTable requests={requests} loading={isLoading} variant="pending" />
     </div>
   );
 }
@@ -135,14 +174,38 @@ function StatCard({
 }
 
 // ============================================================
-// Request list per status
+// Request list per variant
 // ============================================================
-function RequestList({ status }: { status: string }) {
+//   - awaiting-payment: admin-only queue, paymentVerified=false
+//   - pending:          radiologist sees paymentVerified=true + status=requested,
+//                       admin sees all status=requested (paid + unpaid)
+//   - scheduled:        status=scheduled (already gated by payment server-side)
+//   - completed:        status=completed
+type RequestListVariant = 'awaiting-payment' | 'pending' | 'scheduled' | 'completed';
+
+function RequestList({
+  variant, radiologistView = false,
+}: {
+  variant: RequestListVariant;
+  radiologistView?: boolean;
+}) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
 
+  // Compute the API filter from the variant + role context.
+  const apiParams = (() => {
+    if (variant === 'awaiting-payment') {
+      return { paymentVerified: 'false' as const };
+    }
+    const base: { status?: string; paymentVerified?: 'true' } = {
+      status: variant === 'pending' ? 'requested' : variant,
+    };
+    if (radiologistView) base.paymentVerified = 'true';
+    return base;
+  })();
+
   const { data, isLoading } = useImagingRequests({
-    status,
+    ...apiParams,
     page,
     limit: 20,
     search: search || undefined,
@@ -156,7 +219,7 @@ function RequestList({ status }: { status: string }) {
         <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search…" className="pl-9" />
       </div>
-      <RequestTable requests={requests} loading={isLoading} />
+      <RequestTable requests={requests} loading={isLoading} variant={variant} />
       {(data?.meta?.totalPages ?? 1) > 1 && (
         <div className="flex items-center justify-between border-t px-4 py-3">
           <p className="text-sm text-muted-foreground">Page {page} of {data?.meta?.totalPages}</p>
@@ -170,9 +233,32 @@ function RequestList({ status }: { status: string }) {
   );
 }
 
-function RequestTable({ requests, loading }: { requests: ImagingRequest[]; loading: boolean }) {
+function RequestTable({
+  requests, loading, variant,
+}: {
+  requests: ImagingRequest[];
+  loading: boolean;
+  variant: RequestListVariant;
+}) {
   const [scheduleFor, setScheduleFor] = useState<ImagingRequest | null>(null);
   const [uploadFor, setUploadFor] = useState<ImagingRequest | null>(null);
+  const { isRadiologyAdmin } = useRadiologyRole();
+  const verifyPayment = useVerifyImagingPayment();
+
+  const handleVerifyPayment = async (r: ImagingRequest) => {
+    try {
+      await verifyPayment.mutateAsync(r.id);
+      toast.success('Payment verified — request released to radiologist');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Failed to verify payment');
+    }
+  };
+
+  // Columns differ slightly by variant: the awaiting-payment queue replaces
+  // the "Technician" column with a "Bill" column so the admin can see the
+  // payment status at a glance.
+  const isAwaitingPayment = variant === 'awaiting-payment';
+  const colCount = 8;
 
   return (
     <>
@@ -187,58 +273,95 @@ function RequestTable({ requests, loading }: { requests: ImagingRequest[]; loadi
                 <Th>Urgency</Th>
                 <Th>Status</Th>
                 <Th>Scheduled</Th>
-                <Th>Technician</Th>
+                <Th>{isAwaitingPayment ? 'Bill' : 'Technician'}</Th>
                 <Th>Actions</Th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={8} className="px-4 py-8 text-center"><Loader2 className="size-5 animate-spin inline-block" /></td></tr>
+                <tr><td colSpan={colCount} className="px-4 py-8 text-center"><Loader2 className="size-5 animate-spin inline-block" /></td></tr>
               ) : requests.length === 0 ? (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No imaging requests.</td></tr>
+                <tr><td colSpan={colCount} className="px-4 py-8 text-center text-muted-foreground">
+                  {isAwaitingPayment
+                    ? 'No requests pending payment verification.'
+                    : 'No imaging requests.'}
+                </td></tr>
               ) : (
-                requests.map((r) => (
-                  <tr key={r.id} className="hover:bg-surface-container-low">
-                    <td className="px-4 py-3 font-medium">
-                      {r.patient?.firstName} {r.patient?.lastName}
-                    </td>
-                    <td className="px-4 py-3 capitalize">{r.imagingType.replace(/_/g, ' ')}</td>
-                    <td className="px-4 py-3">{r.bodyPart ?? '-'}</td>
-                    <td className="px-4 py-3"><Badge>{r.urgency ?? r.priority ?? 'routine'}</Badge></td>
-                    <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
-                    <td className="px-4 py-3 text-xs">
-                      {r.scheduledAt ? formatDateTime(r.scheduledAt) : '-'}
-                      {r.room && <div className="text-muted-foreground">Room: {r.room}</div>}
-                    </td>
-                    <td className="px-4 py-3 text-xs">
-                      {r.assignedTechnician
-                        ? `${r.assignedTechnician.firstName} ${r.assignedTechnician.lastName}`
-                        : '-'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-1 justify-end">
-                        {(r.status === 'requested' || r.status === 'scheduled') && (
-                          <Button size="sm" variant="outline" onClick={() => setScheduleFor(r)}>
-                            <CalendarPlus className="size-3.5" /> Schedule
-                          </Button>
+                requests.map((r) => {
+                  const canSchedule = r.paymentVerified !== false; // server also enforces
+                  return (
+                    <tr key={r.id} className="hover:bg-surface-container-low">
+                      <td className="px-4 py-3 font-medium">
+                        <div>{r.patient?.firstName} {r.patient?.lastName}</div>
+                        {r.patient?.mrn && (
+                          <div className="text-[10px] font-mono text-muted-foreground">{r.patient.mrn}</div>
                         )}
-                        {r.status !== 'cancelled' && (
-                          <Button size="sm" onClick={() => setUploadFor(r)}>
-                            {r.imagingResult ? (
-                              <>
-                                <Pencil className="size-3.5" /> Edit Report
-                              </>
-                            ) : (
-                              <>
-                                <ImagePlus className="size-3.5" /> Upload Result
-                              </>
-                            )}
-                          </Button>
+                      </td>
+                      <td className="px-4 py-3 capitalize">{r.imagingType.replace(/_/g, ' ')}</td>
+                      <td className="px-4 py-3">{r.bodyPart ?? '-'}</td>
+                      <td className="px-4 py-3"><Badge>{r.urgency ?? r.priority ?? 'routine'}</Badge></td>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={r.status} />
+                        {r.paymentVerified === false && (
+                          <div className="mt-1">
+                            <Badge variant="outline" className="text-amber-700 border-amber-300 bg-amber-50 text-[10px]">
+                              <Wallet className="size-3 mr-1" /> Unpaid
+                            </Badge>
+                          </div>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="px-4 py-3 text-xs">
+                        {r.scheduledAt ? formatDateTime(r.scheduledAt) : '-'}
+                        {r.room && <div className="text-muted-foreground">Room: {r.room}</div>}
+                      </td>
+                      <td className="px-4 py-3 text-xs">
+                        {isAwaitingPayment ? (
+                          <BillCell request={r} />
+                        ) : r.assignedTechnician ? (
+                          `${r.assignedTechnician.firstName} ${r.assignedTechnician.lastName}`
+                        ) : (
+                          '-'
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-1 justify-end flex-wrap">
+                          {isAwaitingPayment && isRadiologyAdmin && (
+                            <Button
+                              size="sm"
+                              onClick={() => handleVerifyPayment(r)}
+                              disabled={verifyPayment.isPending}
+                            >
+                              <ShieldCheck className="size-3.5" /> Verify Payment
+                            </Button>
+                          )}
+                          {!isAwaitingPayment && (r.status === 'requested' || r.status === 'scheduled') && canSchedule && (
+                            <Button size="sm" variant="outline" onClick={() => setScheduleFor(r)}>
+                              <CalendarPlus className="size-3.5" /> Schedule
+                            </Button>
+                          )}
+                          {!isAwaitingPayment && r.status !== 'cancelled' && canSchedule && (
+                            <Button size="sm" onClick={() => setUploadFor(r)}>
+                              {r.imagingResult ? (
+                                <>
+                                  <Pencil className="size-3.5" /> Edit Report
+                                </>
+                              ) : (
+                                <>
+                                  <ImagePlus className="size-3.5" /> Upload Result
+                                </>
+                              )}
+                            </Button>
+                          )}
+                          {!isAwaitingPayment && !canSchedule && (
+                            <span className="text-[10px] text-muted-foreground italic">
+                              Payment pending
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -247,6 +370,31 @@ function RequestTable({ requests, loading }: { requests: ImagingRequest[]; loadi
       <ScheduleDialog request={scheduleFor} onOpenChange={(open) => !open && setScheduleFor(null)} />
       <UploadResultDialog request={uploadFor} onOpenChange={(open) => !open && setUploadFor(null)} />
     </>
+  );
+}
+
+// Bill summary cell shown on the Awaiting Payment queue. Pulls
+// from the linkedBill decoration the list endpoint attaches per row.
+function BillCell({ request }: { request: ImagingRequest }) {
+  const b = request.linkedBill;
+  if (!b) return <span className="text-muted-foreground">No bill yet</span>;
+  const charge = Number(b.chargeAmount ?? 0);
+  const paid = Number(b.amountPaid ?? 0);
+  const due = Number(b.balanceDue ?? 0);
+  return (
+    <div className="space-y-0.5">
+      <div className="font-mono text-[10px]">{b.billNumber}</div>
+      <div className="flex items-center gap-1">
+        <IndianRupee className="size-3" />
+        <span>{charge.toLocaleString('en-IN')}</span>
+        <Badge variant="outline" className="text-[10px] ml-1 capitalize">
+          {b.status?.replace(/_/g, ' ') ?? 'pending'}
+        </Badge>
+      </div>
+      <div className="text-[10px] text-muted-foreground">
+        Paid {paid.toLocaleString('en-IN')} · Due {due.toLocaleString('en-IN')}
+      </div>
+    </div>
   );
 }
 
@@ -436,15 +584,21 @@ function UploadResultDialog({
 }
 
 // ============================================================
-// Results Tab — finalize/sign/publish + edit
+// Results Tab — finalize (radiologist) + sign/publish (admin) + edit
 // ============================================================
-function ResultsTab() {
+function ResultsTab({ onlyFinalized = false }: { onlyFinalized?: boolean }) {
   const [page, setPage] = useState(1);
-  const { data, isLoading } = useImagingResults({ page, limit: 20 });
+  // When called from "Awaiting Approval" admin tab, narrow to finalized only.
+  const { data, isLoading } = useImagingResults({
+    page,
+    limit: 20,
+    ...(onlyFinalized ? { status: 'finalized' } : {}),
+  });
   const results = (data?.data ?? []) as ImagingResult[];
 
   const addReport = useAddImagingReport();
   const verify = useVerifyImagingResult();
+  const { isRadiologyAdmin } = useRadiologyRole();
 
   const [reportFor, setReportFor] = useState<ImagingResult | null>(null);
   const [editFor, setEditFor] = useState<ImagingResult | null>(null);
@@ -468,7 +622,11 @@ function ResultsTab() {
             {isLoading ? (
               <tr><td colSpan={6} className="px-4 py-8 text-center"><Loader2 className="size-5 animate-spin inline-block" /></td></tr>
             ) : results.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No results yet.</td></tr>
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                {onlyFinalized
+                  ? 'No reports awaiting admin approval.'
+                  : 'No results yet.'}
+              </td></tr>
             ) : (
               results.map((r) => (
                 <tr key={r.id} className="hover:bg-surface-container-low">
@@ -491,24 +649,33 @@ function ResultsTab() {
                           <Pencil className="size-3.5" /> Edit
                         </Button>
                       )}
+                      {/* Radiologist marks the report complete (finalized). */}
                       {r.status === 'draft' && (
-                        <Button size="sm" variant="outline" onClick={() => setReportFor(r)}>Finalize</Button>
+                        <Button size="sm" variant="outline" onClick={() => setReportFor(r)}>
+                          <CheckCircle2 className="size-3.5" /> Mark Complete
+                        </Button>
                       )}
-                      {r.status === 'finalized' && (
+                      {/* Only radiology_admin can publish a finalized report (2026-05-27 flow). */}
+                      {r.status === 'finalized' && isRadiologyAdmin && (
                         <Button
                           size="sm"
                           onClick={async () => {
                             try {
                               await verify.mutateAsync(r.id);
-                              toast.success('Result verified & published');
+                              toast.success('Report approved & published — patient can now view it');
                             } catch (err: any) {
-                              toast.error(err?.response?.data?.message ?? 'Failed to verify');
+                              toast.error(err?.response?.data?.message ?? 'Failed to approve');
                             }
                           }}
                           disabled={verify.isPending}
                         >
-                          <ShieldCheck className="size-3.5" /> Sign & Publish
+                          <ShieldCheck className="size-3.5" /> Approve & Publish
                         </Button>
+                      )}
+                      {r.status === 'finalized' && !isRadiologyAdmin && (
+                        <span className="text-[10px] text-muted-foreground italic px-2">
+                          Awaiting admin approval
+                        </span>
                       )}
                       {r.pdfReportUrl && (
                         <a className="text-xs underline px-2 py-1" href={r.pdfReportUrl} target="_blank" rel="noreferrer">PDF</a>
@@ -535,7 +702,7 @@ function ResultsTab() {
           if (!reportFor) return;
           try {
             await addReport.mutateAsync({ id: reportFor.id, ...payload });
-            toast.success('Report finalized');
+            toast.success('Marked complete — sent to admin for approval');
             setReportFor(null);
           } catch (err: any) {
             toast.error(err?.response?.data?.message ?? 'Failed');
@@ -590,9 +757,10 @@ function FinalizeReportDialog({
     <Dialog open={!!result} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Finalize Imaging Report</DialogTitle>
+          <DialogTitle>Mark Report Complete</DialogTitle>
           <DialogDescription>
-            Confirm the attached files are correct. After finalize, the report can be signed and published.
+            Confirm the attached files are correct. Marking complete sends the
+            report to the radiology admin for approval before it reaches the patient.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
@@ -628,7 +796,7 @@ function FinalizeReportDialog({
               })
             }
           >
-            {pending ? 'Saving…' : 'Finalize'}
+            {pending ? 'Saving…' : 'Mark Complete'}
           </Button>
         </DialogFooter>
       </DialogContent>

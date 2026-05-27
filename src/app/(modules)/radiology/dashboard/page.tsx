@@ -7,7 +7,7 @@
 import Link from 'next/link';
 import {
   Clock, Calendar, Loader2, CheckCircle2, ShieldCheck, FileBarChart,
-  AlertTriangle, XCircle, FileSignature, Stethoscope, RefreshCw,
+  AlertTriangle, XCircle, FileSignature, Stethoscope, RefreshCw, Wallet,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/shared/page-header';
@@ -54,10 +54,26 @@ function DashboardInner() {
         }
       />
 
-      {/* Top stat grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+      {/* Top stat grid — admin's two primary queues come first */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <StatCard
-          label="Pending"
+          label="Awaiting Payment"
+          value={counts?.awaitingPaymentVerify}
+          icon={Wallet}
+          accent="bg-amber-50 text-amber-700"
+          loading={isLoading}
+          href="/radiology"
+        />
+        <StatCard
+          label="Awaiting Approval"
+          value={counts?.awaitingApproval}
+          icon={FileSignature}
+          accent="bg-rose-50 text-rose-700"
+          loading={isLoading}
+          href="/radiology"
+        />
+        <StatCard
+          label="Pending (paid)"
           value={counts?.pending}
           icon={Clock}
           accent="bg-amber-50 text-amber-700"
@@ -77,13 +93,6 @@ function DashboardInner() {
           value={counts?.inProgress}
           icon={Loader2}
           accent="bg-purple-50 text-purple-700"
-          loading={isLoading}
-        />
-        <StatCard
-          label="Awaiting Sign-off"
-          value={counts?.awaitingVerify}
-          icon={FileSignature}
-          accent="bg-rose-50 text-rose-700"
           loading={isLoading}
         />
         <StatCard
