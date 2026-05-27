@@ -90,8 +90,6 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       // staff/outsource/test-catalog management, financials, analytics).
       { label: 'Reports', href: '/laboratory/reports', icon: BarChart3, restrictTo: ['lab_supervisor', 'pathologist'] },
       { label: 'Billing', href: '/laboratory/billing', icon: Receipt, restrictTo: ['lab_supervisor', 'pathologist'] },
-      { label: 'Inventory', href: '/laboratory/inventory', icon: Package, restrictTo: ['lab_supervisor', 'pathologist'] },
-      { label: 'Purchase', href: '/laboratory/purchase', icon: ShoppingCart, restrictTo: ['lab_supervisor', 'pathologist'] },
       { label: 'Settings', href: '/laboratory/settings', icon: Settings, restrictTo: ['lab_supervisor', 'pathologist'] },
     ],
   },
@@ -112,8 +110,6 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Dashboard', href: '/radiology/dashboard', icon: LayoutDashboard, restrictTo: ['radiology_admin'] },
       { label: 'Reports', href: '/radiology/reports', icon: BarChart3, restrictTo: ['radiology_admin'] },
       { label: 'Billing', href: '/radiology/billing', icon: Receipt, restrictTo: ['radiology_admin'] },
-      { label: 'Inventory', href: '/radiology/inventory', icon: Package, restrictTo: ['radiology_admin'] },
-      { label: 'Purchase', href: '/radiology/purchase', icon: ShoppingCart, restrictTo: ['radiology_admin'] },
       { label: 'Settings', href: '/radiology/settings', icon: Settings, restrictTo: ['radiology_admin'] },
     ],
   },
