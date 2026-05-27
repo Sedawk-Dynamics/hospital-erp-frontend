@@ -30,6 +30,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { DicomRenderer } from '@/components/radiology/dicom-renderer';
+import { RadiologyViewer } from '@/components/radiology/viewer';
 import {
   type ImagingAttachment,
   resolveAttachmentUrl,
@@ -304,79 +305,89 @@ interface FilePreviewDialogProps {
 export function FilePreviewDialog({ file, open, onOpenChange }: FilePreviewDialogProps) {
   if (!file) return null;
   const url = resolveAttachmentUrl(file.fileUrl);
-  const isPdf = isPdfMime(file.mimeType);
-  const isImage = isImageMime(file.mimeType);
-  const isVideo = isVideoMime(file.mimeType);
   const isAudio = file.mimeType?.startsWith('audio/');
-  const isDicom = isDicomFile({ fileName: file.fileName, mimeType: file.mimeType });
+  const isText =
+    file.mimeType === 'text/plain' ||
+    file.mimeType?.startsWith('text/');
 
+  // The new RadiologyViewer auto-detects DICOM/PDF/image/video and offers a
+  // unified dark-theme shell with toolbar + keyboard shortcuts. We only fall
+  // back to the older inline players for audio and text — neither is
+  // radiology-relevant but the universal viewer should still handle them.
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-[95vw] sm:max-w-[95vw] h-[92vh] p-0 gap-0 overflow-hidden"
+        className="max-w-[95vw] sm:max-w-[95vw] h-[92vh] p-0 gap-0 overflow-hidden bg-zinc-950 border-zinc-800"
       >
-        <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/40">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium">{file.fileName}</p>
-            <p className="text-[10px] text-muted-foreground">
-              {file.sizeBytes ? formatFileSize(file.sizeBytes) : ''}
-              {file.description ? ` · ${file.description}` : ''}
-            </p>
-          </div>
-          <div className="flex gap-1">
-            <Button
-              size="sm"
-              variant="outline"
-              nativeButton={false}
-              render={<a href={url} target="_blank" rel="noreferrer" download={file.fileName} />}
-            >
-              <Download className="size-3.5 mr-1" /> Download
-            </Button>
-            <Button size="icon" variant="ghost" onClick={() => onOpenChange(false)} className="h-8 w-8">
-              <X className="size-4" />
-            </Button>
-          </div>
-        </div>
-        <div className="flex-1 overflow-auto bg-black/90">
-          {isPdf ? (
-            <iframe src={url} title={file.fileName} className="w-full h-full bg-white" />
-          ) : isImage ? (
-            <div className="flex h-full w-full items-center justify-center p-4">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={url}
-                alt={file.fileName}
-                className="max-h-full max-w-full object-contain"
-              />
-            </div>
-          ) : isVideo ? (
-            <div className="flex h-full w-full items-center justify-center">
-              <video controls src={url} className="max-h-full max-w-full" />
-            </div>
-          ) : isAudio ? (
-            <div className="flex h-full w-full items-center justify-center bg-background">
-              <audio controls src={url} className="w-full max-w-lg" />
-            </div>
-          ) : isDicom ? (
-            <DicomRenderer fileUrl={url} className="h-full" />
-          ) : (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-background">
-              <FileQuestion className="size-12 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">
-                Preview not available for this file type.
-              </p>
-              <Button
-                variant="outline"
-                nativeButton={false}
-                render={<a href={url} target="_blank" rel="noreferrer" download={file.fileName} />}
-              >
-                <Download className="size-4 mr-1.5" /> Download {file.fileName}
-              </Button>
-            </div>
-          )}
-        </div>
+        {isAudio ? (
+          <AudioFallback url={url} fileName={file.fileName} sizeBytes={file.sizeBytes}
+            description={file.description ?? undefined} onClose={() => onOpenChange(false)} />
+        ) : isText ? (
+          <TextFallback url={url} fileName={file.fileName} onClose={() => onOpenChange(false)} />
+        ) : (
+          <RadiologyViewer
+            fileUrl={url}
+            fileName={file.fileName}
+            mimeType={file.mimeType}
+            canDownload={true}
+            events={{
+              onClose: () => onOpenChange(false),
+            }}
+          />
+        )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Small wrappers for the two non-radiology types we still want to render.
+function AudioFallback({
+  url, fileName, sizeBytes, description, onClose,
+}: { url: string; fileName: string; sizeBytes?: number; description?: string; onClose: () => void }) {
+  return (
+    <>
+      <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800 bg-zinc-900">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-zinc-100">{fileName}</p>
+          <p className="text-[10px] text-zinc-400">
+            {sizeBytes ? formatFileSize(sizeBytes) : ''}
+            {description ? ` · ${description}` : ''}
+          </p>
+        </div>
+        <div className="flex gap-1">
+          <Button size="sm" variant="outline" nativeButton={false}
+            render={<a href={url} target="_blank" rel="noreferrer" download={fileName} />}>
+            <Download className="size-3.5 mr-1" /> Download
+          </Button>
+          <Button size="icon" variant="ghost" onClick={onClose} className="h-8 w-8 text-zinc-300">
+            <X className="size-4" />
+          </Button>
+        </div>
+      </div>
+      <div className="flex h-full w-full items-center justify-center bg-zinc-950">
+        <audio controls src={url} className="w-full max-w-lg" />
+      </div>
+    </>
+  );
+}
+
+function TextFallback({ url, fileName, onClose }: { url: string; fileName: string; onClose: () => void }) {
+  return (
+    <>
+      <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800 bg-zinc-900">
+        <p className="truncate text-sm font-medium text-zinc-100">{fileName}</p>
+        <div className="flex gap-1">
+          <Button size="sm" variant="outline" nativeButton={false}
+            render={<a href={url} target="_blank" rel="noreferrer" download={fileName} />}>
+            <Download className="size-3.5 mr-1" /> Download
+          </Button>
+          <Button size="icon" variant="ghost" onClick={onClose} className="h-8 w-8 text-zinc-300">
+            <X className="size-4" />
+          </Button>
+        </div>
+      </div>
+      <iframe src={url} title={fileName} className="w-full h-full bg-zinc-950 text-zinc-200" />
+    </>
   );
 }
 

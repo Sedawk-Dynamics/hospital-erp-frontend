@@ -1,11 +1,10 @@
 'use client';
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeft, ChevronLeft, ChevronRight, ZoomIn, ZoomOut,
-  Maximize2, Image as ImageIcon, Layers, ExternalLink,
+  ArrowLeft, Image as ImageIcon, Layers, ExternalLink,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -16,7 +15,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
 import { useDicomStudy, type DicomSeries, type DicomInstance } from '@/hooks/use-dicom';
-import { DicomRenderer } from '@/components/radiology/dicom-renderer';
+import { RadiologyViewer } from '@/components/radiology/viewer';
 
 export default function DicomViewerPage() {
   const params = useParams<{ id: string }>();
@@ -213,14 +212,6 @@ function InstanceThumbnail({ instance }: { instance: DicomInstance }) {
 // a placeholder and the file URL so the user can download.
 // ============================================================
 function StackViewer({ instances }: { instances: DicomInstance[] }) {
-  const [idx, setIdx] = useState(0);
-  const [zoom, setZoom] = useState(1);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    setIdx(0);
-  }, [instances.length]);
-
   if (instances.length === 0) {
     return (
       <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary">
@@ -233,59 +224,20 @@ function StackViewer({ instances }: { instances: DicomInstance[] }) {
     );
   }
 
-  const current = instances[idx];
-  const isImage = !!current.mimeType && /^image\//.test(current.mimeType);
-
-  const prev = () => setIdx((i) => Math.max(0, i - 1));
-  const next = () => setIdx((i) => Math.min(instances.length - 1, i + 1));
+  // Delegate to the unified RadiologyViewer. It auto-detects DICOM vs image,
+  // surfaces the full pro toolset (pan/zoom/W-L/measure/rotate/invert/
+  // presets) and supports multi-slice scroll + cine when there's more than
+  // one instance.
+  const files = instances.map((inst) => ({
+    fileUrl: inst.fileUrl,
+    fileName: `Instance ${inst.instanceNumber ?? ''}`.trim(),
+    mimeType: inst.mimeType ?? undefined,
+    sizeBytes: inst.fileSizeBytes ?? undefined,
+  }));
 
   return (
-    <div className="bg-black rounded-xl shadow-sanctuary overflow-hidden flex flex-col" style={{ minHeight: 600 }}>
-      <div className="flex items-center justify-between px-3 py-2 bg-zinc-900 text-white text-xs">
-        <div>
-          Image {idx + 1} / {instances.length}
-          {current.instanceNumber !== null && <span className="ml-2 opacity-70">#{current.instanceNumber}</span>}
-        </div>
-        <div className="flex gap-1">
-          <Button size="sm" variant="ghost" onClick={prev} disabled={idx === 0} className="h-7 text-white hover:bg-white/10">
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button size="sm" variant="ghost" onClick={next} disabled={idx >= instances.length - 1} className="h-7 text-white hover:bg-white/10">
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))} className="h-7 text-white hover:bg-white/10">
-            <ZoomOut className="h-4 w-4" />
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setZoom(1)} className="h-7 text-white hover:bg-white/10">
-            <Maximize2 className="h-4 w-4" />
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setZoom((z) => Math.min(4, z + 0.25))} className="h-7 text-white hover:bg-white/10">
-            <ZoomIn className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-
-      <div ref={containerRef} className="flex-1 flex items-center justify-center overflow-auto" style={{ minHeight: 500 }}>
-        {isImage ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={current.fileUrl}
-            alt={`Instance ${current.instanceNumber}`}
-            style={{
-              transform: `scale(${zoom})`,
-              transformOrigin: 'center center',
-              maxWidth: '100%',
-              maxHeight: '500px',
-            }}
-            className="object-contain transition-transform"
-          />
-        ) : (
-          // Native DICOM renderer (dicom-parser + canvas, with W/L controls).
-          // For compressed transfer syntaxes the component shows an Open-OHIF
-          // hint and a download link.
-          <DicomRenderer fileUrl={current.fileUrl} zoom={zoom} className="w-full" />
-        )}
-      </div>
+    <div className="rounded-xl shadow-sanctuary overflow-hidden" style={{ minHeight: 600 }}>
+      <RadiologyViewer files={files} fileType="dicom" />
     </div>
   );
 }
