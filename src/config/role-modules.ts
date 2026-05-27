@@ -76,6 +76,7 @@ const ROLE_MODULE_MAP: Record<string, ModuleKey[]> = {
 
   // Radiology staff → radiology only
   radiologist: ['radiology'],
+  radiology_admin: ['radiology'],
 
   // Pharmacy staff → pharmacy only
   pharmacist: ['pharmacy'],
@@ -157,6 +158,7 @@ const ROLE_PORTAL_LABEL: Record<string, string> = {
 
   // Radiology
   radiologist: 'Radiologist Portal',
+  radiology_admin: 'Radiology Admin Portal',
 
   // Pharmacy
   pharmacist: 'Pharmacist Portal',

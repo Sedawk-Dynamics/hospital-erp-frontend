@@ -10,8 +10,17 @@ import { cn } from '@/lib/utils';
 import { formatDateTime, toInputDateStr } from '@/lib/date-utils';
 import { useImagingAnalytics, useImagingRequests, type ImagingRequest } from '@/hooks/use-imaging';
 import { StatusBadge } from '@/components/shared/status-badge';
+import { RadiologyAdminGuard } from '@/components/radiology/radiology-admin-guard';
 
 export default function RadiologyReportsPage() {
+  return (
+    <RadiologyAdminGuard>
+      <RadiologyReportsInner />
+    </RadiologyAdminGuard>
+  );
+}
+
+function RadiologyReportsInner() {
   const [from, setFrom] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);

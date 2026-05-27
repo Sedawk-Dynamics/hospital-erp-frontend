@@ -337,6 +337,89 @@ export function useImagingAnalytics(params?: { fromDate?: string; toDate?: strin
   });
 }
 
+// ── Dashboard (counts + recent activity) ──────────────────────────────────
+export interface ImagingDashboard {
+  counts: {
+    pending: number;
+    scheduled: number;
+    inProgress: number;
+    completedToday: number;
+    statToday: number;
+    awaitingVerify: number;
+    publishedToday: number;
+    cancelledToday: number;
+    totalRequestsToday: number;
+    overdueScheduled: number;
+  };
+  recentRequests: Array<{
+    id: string;
+    status: string;
+    imagingType: string;
+    bodyPart?: string | null;
+    urgency: string;
+    createdAt: string;
+    scheduledAt?: string | null;
+    patient?: { firstName: string; lastName: string; mrn?: string } | null;
+  }>;
+  recentResults: Array<{
+    id: string;
+    status: string;
+    updatedAt: string;
+    signedAt?: string | null;
+    imagingRequest?: { imagingType: string; bodyPart?: string | null } | null;
+    patient?: { firstName: string; lastName: string; mrn?: string } | null;
+  }>;
+}
+
+export function useImagingDashboard() {
+  return useQuery({
+    queryKey: ['imaging', 'dashboard'] as const,
+    queryFn: async () => {
+      const response = await apiGet<ImagingDashboard>('/imaging/dashboard');
+      return response.data;
+    },
+    // Refresh every minute so the worklist counts stay close to live.
+    refetchInterval: 60_000,
+  });
+}
+
+// ── Billing summary (auto-linked imaging bill-items roll-up) ──────────────
+export interface ImagingBillingSummary {
+  summary: {
+    totalBilled: number;
+    totalPaid: number;
+    totalOutstanding: number;
+    itemCount: number;
+  };
+  statusMix: Record<string, number>;
+  recent: Array<{
+    id: string;
+    description: string;
+    totalAmount: number | string;
+    createdAt: string;
+    referenceId: string;
+    bill: {
+      id: string;
+      billNumber: string;
+      status: string;
+      amountPaid: number | string;
+      totalAmount: number | string;
+      balanceDue: number | string;
+      patient?: { id: string; mrn: string; firstName: string; lastName: string };
+    };
+  }>;
+}
+
+export function useImagingBillingSummary(params?: { fromDate?: string; toDate?: string }) {
+  return useQuery({
+    queryKey: ['imaging', 'billing-summary', params] as const,
+    queryFn: async () => {
+      const response = await apiGet<ImagingBillingSummary>('/imaging/billing-summary', { params });
+      return response.data;
+    },
+  });
+}
+
 export function useEditImagingResult() {
   const queryClient = useQueryClient();
   return useMutation({

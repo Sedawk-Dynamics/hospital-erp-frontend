@@ -102,14 +102,19 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
     icon: ScanLine,
     baseRoute: '/radiology',
     sidebarItems: [
+      // Home + Worklist + Studies are the radiologist's primary surface.
       { label: 'Home', href: '/radiology', icon: Home },
       { label: 'DICOM Studies', href: '/radiology/studies', icon: ScanLine },
       { label: 'Worklist', href: '/radiology/worklist', icon: ClipboardList },
-      { label: 'Reports', href: '/radiology/reports', icon: BarChart3 },
-      { label: 'Billing', href: '/radiology/billing', icon: Receipt },
-      { label: 'Inventory', href: '/radiology/inventory', icon: Package },
-      { label: 'Purchase', href: '/radiology/purchase', icon: ShoppingCart },
-      { label: 'Settings', href: '/radiology/settings', icon: Settings },
+      // Below: radiology_admin-only per SOW (analytics, billing, inventory,
+      // vendor purchases, modality catalog/tariffs). Sidebar hides them for
+      // radiologists; the RadiologyAdminGuard also gates the routes.
+      { label: 'Dashboard', href: '/radiology/dashboard', icon: LayoutDashboard, restrictTo: ['radiology_admin'] },
+      { label: 'Reports', href: '/radiology/reports', icon: BarChart3, restrictTo: ['radiology_admin'] },
+      { label: 'Billing', href: '/radiology/billing', icon: Receipt, restrictTo: ['radiology_admin'] },
+      { label: 'Inventory', href: '/radiology/inventory', icon: Package, restrictTo: ['radiology_admin'] },
+      { label: 'Purchase', href: '/radiology/purchase', icon: ShoppingCart, restrictTo: ['radiology_admin'] },
+      { label: 'Settings', href: '/radiology/settings', icon: Settings, restrictTo: ['radiology_admin'] },
     ],
   },
 
