@@ -195,6 +195,7 @@ function RecentImagingTable() {
     limit: 10,
     search: search || undefined,
     sortOrder: 'desc',
+    excludeCancelled: true,
   });
   const requests = (data?.data ?? []) as ImagingRequest[];
 

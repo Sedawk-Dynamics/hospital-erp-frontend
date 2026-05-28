@@ -115,6 +115,7 @@ function DashboardTab() {
     limit: 100,
     search: search || undefined,
     date: date || undefined,
+    excludeCancelled: true,
   });
 
   const requests = (data?.data ?? []) as ImagingRequest[];
@@ -209,6 +210,7 @@ function RequestList({
     page,
     limit: 20,
     search: search || undefined,
+    excludeCancelled: true,
   });
 
   const requests = (data?.data ?? []) as ImagingRequest[];
@@ -373,6 +375,22 @@ function RequestTable({
   );
 }
 
+// Friendly labels for the PaymentMethod enum.
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cash: 'Cash',
+  credit_card: 'Credit Card',
+  debit_card: 'Debit Card',
+  upi: 'UPI',
+  net_banking: 'Net Banking',
+  insurance: 'Insurance',
+  cheque: 'Cheque',
+  other: 'Other',
+};
+
+function formatPaymentMethod(method: string) {
+  return PAYMENT_METHOD_LABELS[method] ?? method.replace(/_/g, ' ');
+}
+
 // Bill summary cell shown on the Awaiting Payment queue. Pulls
 // from the linkedBill decoration the list endpoint attaches per row.
 function BillCell({ request }: { request: ImagingRequest }) {
@@ -381,6 +399,11 @@ function BillCell({ request }: { request: ImagingRequest }) {
   const charge = Number(b.chargeAmount ?? 0);
   const paid = Number(b.amountPaid ?? 0);
   const due = Number(b.balanceDue ?? 0);
+  // Distinct payment modes used against this bill, newest first (already
+  // ordered by the API). Lets the admin confirm how the patient paid us.
+  const modes = Array.from(
+    new Set((b.payments ?? []).map((p) => formatPaymentMethod(p.paymentMethod))),
+  );
   return (
     <div className="space-y-0.5">
       <div className="font-mono text-[10px]">{b.billNumber}</div>
@@ -393,6 +416,18 @@ function BillCell({ request }: { request: ImagingRequest }) {
       </div>
       <div className="text-[10px] text-muted-foreground">
         Paid {paid.toLocaleString('en-IN')} · Due {due.toLocaleString('en-IN')}
+      </div>
+      <div className="flex items-center gap-1 flex-wrap pt-0.5">
+        <Wallet className="size-3 text-muted-foreground" />
+        {modes.length > 0 ? (
+          modes.map((m) => (
+            <Badge key={m} variant="outline" className="text-[10px] border-emerald-300 bg-emerald-50 text-emerald-700">
+              {m}
+            </Badge>
+          ))
+        ) : (
+          <span className="text-[10px] text-muted-foreground italic">No payment recorded</span>
+        )}
       </div>
     </div>
   );

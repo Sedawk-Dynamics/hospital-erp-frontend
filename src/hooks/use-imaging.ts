@@ -54,6 +54,11 @@ export interface ImagingRequest {
     totalAmount?: number | string;
     balanceDue?: number | string;
     chargeAmount?: number | string;
+    payments?: Array<{
+      paymentMethod: string;
+      amount: number | string;
+      paymentDate?: string;
+    }>;
   } | null;
   createdAt: string;
   updatedAt: string;
@@ -117,6 +122,8 @@ interface ImagingRequestParams {
    * omit    → both
    */
   paymentVerified?: 'true' | 'false';
+  /** Radiology module passes this to hide cancelled requests. */
+  excludeCancelled?: boolean;
 }
 
 interface ImagingResultParams {

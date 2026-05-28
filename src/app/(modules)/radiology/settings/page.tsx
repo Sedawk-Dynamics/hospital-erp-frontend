@@ -13,7 +13,7 @@
 
 import { useState, useEffect } from 'react';
 import {
-  Settings, Plus, Pencil, Search, Activity, RefreshCw, Save, Tag,
+  Settings, Plus, Pencil, Search, Activity, RefreshCw, Save, Tag, IndianRupee,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
@@ -85,26 +85,49 @@ function RadiologySettingsInner() {
 
 // ── Tariffs ─────────────────────────────────────────────────────────────────
 
+// Modality value set — used to keep per-modality base-price rows out of the
+// freeform "specific studies" table below.
+const MODALITY_CODES = new Set(MODALITY_OPTIONS.map((m) => m.value));
+
 function TariffsSection() {
   const [search, setSearch] = useState('');
   const tariffsQ = useServiceTariffs({
     category: 'imaging',
     limit: 200,
   });
-  const tariffs = (tariffsQ.data?.data ?? []).filter((t) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      t.serviceName.toLowerCase().includes(q) ||
-      (t.serviceCode ?? '').toLowerCase().includes(q)
-    );
-  });
+  const allTariffs = tariffsQ.data?.data ?? [];
+  // The freeform table lists named studies (e.g. "MRI Brain with contrast"),
+  // not the per-modality base prices which live in the grid above.
+  const tariffs = allTariffs
+    .filter((t) => !MODALITY_CODES.has((t.serviceCode ?? '').toLowerCase()))
+    .filter((t) => {
+      if (!search) return true;
+      const q = search.toLowerCase();
+      return (
+        t.serviceName.toLowerCase().includes(q) ||
+        (t.serviceCode ?? '').toLowerCase().includes(q)
+      );
+    });
 
   const [editing, setEditing] = useState<ServiceTariff | null>(null);
   const [creating, setCreating] = useState(false);
 
   return (
     <div className="space-y-4">
+      <ModalityPricingSection
+        tariffs={allTariffs}
+        loading={tariffsQ.isLoading}
+        onChanged={() => tariffsQ.refetch()}
+      />
+
+      <div className="flex items-center gap-2 pt-2">
+        <Tag className="h-4 w-4 text-muted-foreground" />
+        <h3 className="font-semibold text-sm">Named Studies</h3>
+        <span className="text-xs text-muted-foreground">
+          Specific protocols priced separately from the modality base price (e.g. "MRI Brain with contrast").
+        </span>
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -191,6 +214,161 @@ function TariffsSection() {
         open={!!editing}
         onOpenChange={(o) => !o && setEditing(null)}
       />
+    </div>
+  );
+}
+
+// ── Modality base prices ──────────────────────────────────────────────────────
+// A quick grid for setting the base price of every imaging modality in one
+// place. Each row is backed by a ServiceTariff whose serviceCode equals the
+// imaging type (e.g. 'ct_scan'), which the auto-bill linker and the charges
+// pull both resolve by. Available to radiology_admin and hospital admin.
+
+function ModalityPricingSection({
+  tariffs, loading, onChanged,
+}: {
+  tariffs: ServiceTariff[];
+  loading: boolean;
+  onChanged: () => void;
+}) {
+  const create = useCreateServiceTariff();
+  const update = useUpdateServiceTariff();
+
+  // serviceCode (lowercased) → existing tariff
+  const byCode = new Map<string, ServiceTariff>();
+  for (const t of tariffs) {
+    const code = (t.serviceCode ?? '').toLowerCase();
+    if (code) byCode.set(code, t);
+  }
+
+  // Local draft per modality: { price, gst }. Seeded from existing tariffs.
+  const [drafts, setDrafts] = useState<Record<string, { price: string; gst: string }>>({});
+  const [savingCode, setSavingCode] = useState<string | null>(null);
+
+  useEffect(() => {
+    const next: Record<string, { price: string; gst: string }> = {};
+    for (const m of MODALITY_OPTIONS) {
+      const existing = byCode.get(m.value);
+      next[m.value] = {
+        price: existing ? String(Number(existing.basePrice)) : '',
+        gst: existing ? String(Number(existing.gstRatePercent ?? 0)) : '0',
+      };
+    }
+    setDrafts(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tariffs]);
+
+  const handleSave = async (m: typeof MODALITY_OPTIONS[number]) => {
+    const draft = drafts[m.value];
+    if (!draft || draft.price === '' || Number(draft.price) <= 0) {
+      toast.error('Enter a base price greater than 0');
+      return;
+    }
+    const existing = byCode.get(m.value);
+    setSavingCode(m.value);
+    try {
+      if (existing) {
+        await update.mutateAsync({
+          id: existing.id,
+          name: existing.serviceName,
+          code: m.value,
+          category: 'imaging',
+          basePrice: Number(draft.price),
+          taxRate: Number(draft.gst || 0),
+          isActive: true,
+        });
+      } else {
+        await create.mutateAsync({
+          name: m.label,
+          code: m.value,
+          category: 'imaging',
+          basePrice: Number(draft.price),
+          taxRate: Number(draft.gst || 0),
+          isActive: true,
+        });
+      }
+      toast.success(`${m.label} base price saved`);
+      onChanged();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Failed to save price');
+    } finally {
+      setSavingCode(null);
+    }
+  };
+
+  return (
+    <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <IndianRupee className="h-4 w-4 text-muted-foreground" />
+        <h3 className="font-semibold text-sm">Modality Base Prices</h3>
+        <span className="text-xs text-muted-foreground">
+          Set the default charge for each imaging type. Used to auto-bill new requests.
+        </span>
+      </div>
+
+      {loading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {MODALITY_OPTIONS.map((m) => {
+            const draft = drafts[m.value] ?? { price: '', gst: '0' };
+            const existing = byCode.get(m.value);
+            return (
+              <div
+                key={m.value}
+                className="flex items-end gap-2 rounded-lg border border-surface-container p-3"
+              >
+                <div className="flex-1">
+                  <p className="font-medium text-sm">{m.label}</p>
+                  <p className="text-[11px] text-muted-foreground">{m.description}</p>
+                </div>
+                <div className="w-28">
+                  <Label className="text-[10px]">Base Price (₹)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder={existing ? undefined : 'Not set'}
+                    value={draft.price}
+                    onChange={(e) =>
+                      setDrafts((prev) => ({
+                        ...prev,
+                        [m.value]: { ...prev[m.value], price: e.target.value },
+                      }))
+                    }
+                  />
+                </div>
+                <div className="w-20">
+                  <Label className="text-[10px]">GST %</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step="0.5"
+                    value={draft.gst}
+                    onChange={(e) =>
+                      setDrafts((prev) => ({
+                        ...prev,
+                        [m.value]: { ...prev[m.value], gst: e.target.value },
+                      }))
+                    }
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => handleSave(m)}
+                  disabled={savingCode === m.value}
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  {savingCode === m.value ? 'Saving…' : 'Save'}
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
