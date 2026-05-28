@@ -265,7 +265,7 @@ export function DicomProViewer({
     startZoom: number;
   }>(null);
 
-  const onMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const el = e.currentTarget;
     const rect = el.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -294,7 +294,14 @@ export function DicomProViewer({
     }
 
     // Pan / zoom-drag (left button) and W/L drag (right button) start.
-    el.setPointerCapture?.((e as any).pointerId);
+    // Capture the pointer so the drag keeps tracking even if the cursor
+    // leaves the canvas. Guarded: the pointer may already be gone (e.g. a
+    // synthetic event), which would otherwise throw NotFoundError.
+    try {
+      if (e.pointerId != null) el.setPointerCapture(e.pointerId);
+    } catch {
+      /* pointer not capturable — drag still works within the canvas */
+    }
     dragRef.current = {
       button: e.button,
       startX: e.clientX,
@@ -306,7 +313,7 @@ export function DicomProViewer({
     };
   };
 
-  const onMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const drag = dragRef.current;
     if (!drag) return;
     const dx = e.clientX - drag.startX;
@@ -332,10 +339,17 @@ export function DicomProViewer({
       return;
     }
     // Left-drag in length/angle mode does nothing — points are captured
-    // on click in onMouseDown.
+    // on click in onPointerDown.
   };
 
-  const onMouseUp = () => {
+  const onPointerUp = (e?: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e && e.pointerId != null) {
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        /* already released */
+      }
+    }
     dragRef.current = null;
   };
 
@@ -578,10 +592,10 @@ export function DicomProViewer({
               imageRendering: 'pixelated',
               cursor: tool === 'pan' ? 'grab' : tool === 'zoom' ? 'ns-resize' : 'crosshair',
             }}
-            onMouseDown={onMouseDown}
-            onMouseMove={onMouseMove}
-            onMouseUp={onMouseUp}
-            onMouseLeave={onMouseUp}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
             onWheel={onWheel}
             onContextMenu={(e) => e.preventDefault()}
           />

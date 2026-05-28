@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
-import { Loader2, Printer, X } from 'lucide-react';
+import { Eye, Loader2, Printer, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useImagingResult, type ImagingResult } from '@/hooks/use-imaging';
+import { resolveAttachmentUrl, isImageMime } from '@/hooks/use-lab-attachments';
+import { FilePreviewDialog, type ViewableFile } from '@/components/shared/file-viewer';
 import { formatDate, formatDateTime } from '@/lib/date-utils';
 
 export function RadiologyReportPrintDialog({
@@ -28,7 +30,34 @@ export function RadiologyReportPrintDialog({
     win.document.write(`<!DOCTYPE html><html><head><title>Radiology Report</title>${printStyles}</head><body>${html}</body></html>`);
     win.document.close();
     win.focus();
-    win.print();
+
+    // Wait for the scan images to finish loading before printing, otherwise
+    // they'd be missing from the saved PDF. Guard against double-print.
+    const imgs = Array.from(win.document.images);
+    let printed = false;
+    const triggerPrint = () => {
+      if (printed) return;
+      printed = true;
+      win.print();
+    };
+    if (imgs.length === 0) {
+      triggerPrint();
+      return;
+    }
+    let pending = imgs.length;
+    const onSettled = () => {
+      pending -= 1;
+      if (pending <= 0) triggerPrint();
+    };
+    imgs.forEach((img) => {
+      if (img.complete) onSettled();
+      else {
+        img.addEventListener('load', onSettled);
+        img.addEventListener('error', onSettled);
+      }
+    });
+    // Fallback so a stuck image never blocks printing.
+    setTimeout(triggerPrint, 2500);
   };
 
   return (
@@ -57,6 +86,121 @@ export function RadiologyReportPrintDialog({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Renders the uploaded scan files on the branded report — images inline, other
+// formats (PDF / DICOM / video) listed by name. Every file gets a "View" action
+// that opens the universal viewer (DICOM/PDF/image/video). The view controls
+// carry `no-print` so they're hidden in the printed/saved PDF while the inline
+// scan images still appear. Falls back to the legacy `imageUrls` field.
+function ReportFilesSection({ result }: { result: ImagingResult }) {
+  const [previewing, setPreviewing] = useState<ViewableFile | null>(null);
+
+  const attachments = (result.attachments ?? []).filter((a) => !a.deletedAt);
+  const imageAtts = attachments.filter((a) => isImageMime(a.mimeType));
+  const otherAtts = attachments.filter((a) => !isImageMime(a.mimeType));
+  const legacyUrls = result.imageUrls ?? [];
+
+  if (imageAtts.length === 0 && otherAtts.length === 0 && legacyUrls.length === 0) {
+    return null;
+  }
+
+  const imgStyle: React.CSSProperties = {
+    width: '100%',
+    height: 'auto',
+    maxHeight: '320px',
+    objectFit: 'contain',
+    border: '1px solid #e5e7eb',
+    borderRadius: '4px',
+    background: '#000',
+  };
+
+  const toViewable = (a: NonNullable<ImagingResult['attachments']>[number]): ViewableFile => ({
+    id: a.id,
+    fileName: a.fileName,
+    fileUrl: a.fileUrl,
+    mimeType: a.mimeType,
+    sizeBytes: a.sizeBytes,
+    description: a.description,
+    category: a.category,
+  });
+
+  return (
+    <section className="px-8 py-4 border-b border-gray-200">
+      <h3 className="text-[10px] uppercase tracking-wide text-gray-500 mb-2">Images &amp; Files</h3>
+
+      {(imageAtts.length > 0 || legacyUrls.length > 0) && (
+        <div className="grid grid-cols-2 gap-3">
+          {imageAtts.map((a) => (
+            <div key={a.id} className="relative group">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={resolveAttachmentUrl(a.fileUrl)} alt={a.fileName} style={imgStyle} />
+              <button
+                type="button"
+                onClick={() => setPreviewing(toViewable(a))}
+                className="no-print absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all group-hover:bg-black/30 group-hover:opacity-100"
+                title={`View ${a.fileName}`}
+              >
+                <span className="inline-flex items-center gap-1 rounded bg-white/90 px-2 py-1 text-[11px] font-medium text-gray-800">
+                  <Eye className="size-3.5" /> View
+                </span>
+              </button>
+            </div>
+          ))}
+          {legacyUrls.map((url, idx) => (
+            <div key={`legacy-${idx}`} className="relative group">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={url} alt={`Image ${idx + 1}`} style={imgStyle} />
+              <button
+                type="button"
+                onClick={() =>
+                  setPreviewing({ id: `legacy-${idx}`, fileName: `Image ${idx + 1}`, fileUrl: url, mimeType: 'image/*' })
+                }
+                className="no-print absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all group-hover:bg-black/30 group-hover:opacity-100"
+                title="View image"
+              >
+                <span className="inline-flex items-center gap-1 rounded bg-white/90 px-2 py-1 text-[11px] font-medium text-gray-800">
+                  <Eye className="size-3.5" /> View
+                </span>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {otherAtts.length > 0 && (
+        <ul className="mt-3 space-y-1 text-[11px] text-gray-700">
+          {otherAtts.map((a) => (
+            <li key={a.id} className="flex items-center gap-2">
+              <span className="min-w-0 truncate">
+                • {a.fileName}
+                {a.category && <span className="text-gray-400"> ({a.category.replace(/_/g, ' ')})</span>}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPreviewing(toViewable(a))}
+                className="no-print inline-flex shrink-0 items-center gap-1 rounded border border-primary/40 px-1.5 py-0.5 text-[10px] font-medium text-primary hover:bg-primary/5"
+              >
+                <Eye className="size-3" /> View
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {result.pacsReferenceId && (
+        <p className="mt-2 text-[10px] text-gray-500 font-mono">
+          PACS reference: {result.pacsReferenceId}
+        </p>
+      )}
+
+      <FilePreviewDialog
+        file={previewing}
+        open={!!previewing}
+        onOpenChange={(open) => !open && setPreviewing(null)}
+      />
+    </section>
   );
 }
 
@@ -158,27 +302,7 @@ export function RadiologyReportPaper({ result }: { result: ImagingResult }) {
         </section>
       )}
 
-      {result.imageUrls && result.imageUrls.length > 0 && (
-        <section className="px-8 py-4 border-b border-gray-200">
-          <h3 className="text-[10px] uppercase tracking-wide text-gray-500 mb-2">Images</h3>
-          <div className="grid grid-cols-3 gap-3">
-            {result.imageUrls.map((url, idx) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={`${url}-${idx}`}
-                src={url}
-                alt={`Image ${idx + 1}`}
-                className="w-full h-32 object-cover rounded border border-gray-200"
-              />
-            ))}
-          </div>
-          {result.pacsReferenceId && (
-            <p className="mt-2 text-[10px] text-gray-500 font-mono">
-              PACS reference: {result.pacsReferenceId}
-            </p>
-          )}
-        </section>
-      )}
+      <ReportFilesSection result={result} />
 
       <footer className="grid grid-cols-3 gap-6 px-8 pt-4 pb-8">
         <div className="col-span-2 grid grid-cols-2 gap-6">
@@ -269,4 +393,5 @@ const printStyles = `<style>
   .object-cover { object-fit: cover; }
   .rounded { border-radius: 4px; }
   .border-gray-200 { border-color: #e5e7eb; }
+  .no-print { display: none !important; }
 </style>`;

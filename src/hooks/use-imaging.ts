@@ -79,6 +79,17 @@ export interface ImagingResult {
   reportUrl?: string;
   imageUrls?: string[];
   pacsReferenceId?: string;
+  // Uploaded files (PDF / image / DICOM / video). Returned by GET /imaging/results/:id.
+  attachments?: Array<{
+    id: string;
+    category?: string;
+    fileName: string;
+    fileUrl: string;
+    mimeType: string;
+    sizeBytes?: number;
+    description?: string | null;
+    deletedAt?: string | null;
+  }>;
   radiologistId?: string;
   radiologist?: { id: string; firstName: string; lastName: string };
   /** legacy alias */
