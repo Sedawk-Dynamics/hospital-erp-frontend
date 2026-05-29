@@ -596,6 +596,7 @@ function UploadResultDialog({
                 attachments={attachmentsQ.data ?? []}
                 canUpload={true}
                 canManage={true}
+                enableOrthanc
                 emptyMessage={
                   resultId
                     ? 'No files attached yet — upload modality images, PDFs, DICOM or videos.'
@@ -816,6 +817,7 @@ function FinalizeReportDialog({
                 attachments={attachmentsQ.data ?? []}
                 canUpload={true}
                 canManage={true}
+                enableOrthanc
                 dense={true}
               />
             )}
@@ -869,6 +871,7 @@ function EditResultDialog({
                 attachments={attachmentsQ.data ?? []}
                 canUpload={true}
                 canManage={true}
+                enableOrthanc
               />
             )}
           </div>

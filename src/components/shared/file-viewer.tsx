@@ -30,7 +30,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { DicomRenderer } from '@/components/radiology/dicom-renderer';
-import { RadiologyViewer } from '@/components/radiology/viewer';
+import { RadiologyViewer, DicomDetailedViewer } from '@/components/radiology/viewer';
 import {
   type ImagingAttachment,
   resolveAttachmentUrl,
@@ -62,9 +62,14 @@ interface FileViewerProps {
   // Optional override — if false, the viewer never tries to render the file
   // inline, only shows the action tile.
   inlinePreview?: boolean;
+  // When true, the DICOM *detailed* (fullscreen) view streams from the PACS via
+  // OHIF instead of the in-house viewer. Inline tile previews stay in-house
+  // regardless. Set only on clinical imaging surfaces (file.id must be an
+  // ImagingAttachment id). Default false keeps lab/other callers unchanged.
+  enableOrthanc?: boolean;
 }
 
-export function FileViewer({ file, dense = false, inlinePreview = true }: FileViewerProps) {
+export function FileViewer({ file, dense = false, inlinePreview = true, enableOrthanc = false }: FileViewerProps) {
   const [previewOpen, setPreviewOpen] = useState(false);
 
   const url = resolveAttachmentUrl(file.fileUrl);
@@ -130,7 +135,7 @@ export function FileViewer({ file, dense = false, inlinePreview = true }: FileVi
             </Button>
           </div>
         </div>
-        <FilePreviewDialog file={file} open={previewOpen} onOpenChange={setPreviewOpen} />
+        <FilePreviewDialog file={file} open={previewOpen} onOpenChange={setPreviewOpen} enableOrthanc={enableOrthanc} />
       </>
     );
   }
@@ -174,7 +179,7 @@ export function FileViewer({ file, dense = false, inlinePreview = true }: FileVi
       <div className="max-h-[480px] overflow-hidden bg-black/5">
         <InlineRenderer file={file} url={url} />
       </div>
-      <FilePreviewDialog file={file} open={previewOpen} onOpenChange={setPreviewOpen} />
+      <FilePreviewDialog file={file} open={previewOpen} onOpenChange={setPreviewOpen} enableOrthanc={enableOrthanc} />
     </div>
   );
 }
@@ -300,15 +305,19 @@ interface FilePreviewDialogProps {
   file: ViewableFile | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  // When true and the file is a DICOM imaging attachment, the detailed view
+  // streams from the PACS (OHIF) instead of the in-house viewer.
+  enableOrthanc?: boolean;
 }
 
-export function FilePreviewDialog({ file, open, onOpenChange }: FilePreviewDialogProps) {
+export function FilePreviewDialog({ file, open, onOpenChange, enableOrthanc = false }: FilePreviewDialogProps) {
   if (!file) return null;
   const url = resolveAttachmentUrl(file.fileUrl);
   const isAudio = file.mimeType?.startsWith('audio/');
   const isText =
     file.mimeType === 'text/plain' ||
     file.mimeType?.startsWith('text/');
+  const isDicom = isDicomFile({ fileName: file.fileName, mimeType: file.mimeType });
 
   // The new RadiologyViewer auto-detects DICOM/PDF/image/video and offers a
   // unified dark-theme shell with toolbar + keyboard shortcuts. We only fall
@@ -324,6 +333,16 @@ export function FilePreviewDialog({ file, open, onOpenChange }: FilePreviewDialo
             description={file.description ?? undefined} onClose={() => onOpenChange(false)} />
         ) : isText ? (
           <TextFallback url={url} fileName={file.fileName} onClose={() => onOpenChange(false)} />
+        ) : enableOrthanc && isDicom ? (
+          // Detailed DICOM view → Orthanc PACS / OHIF (falls back to in-house).
+          <DicomDetailedViewer
+            attachmentId={file.id}
+            fileUrl={url}
+            fileName={file.fileName}
+            mimeType={file.mimeType}
+            canDownload={true}
+            onClose={() => onOpenChange(false)}
+          />
         ) : (
           <RadiologyViewer
             fileUrl={url}

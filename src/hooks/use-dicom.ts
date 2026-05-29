@@ -78,9 +78,72 @@ export interface WorklistEntry {
   referringPhysician: string | null;
 }
 
+export interface PacsConfig {
+  provider: 'none' | 'orthanc' | 'postdicom';
+  configured: boolean;
+  embeddable: boolean;
+  label: string;
+}
+
 // ============================================================
 // Hooks
 // ============================================================
+
+/** How DICOM is archived + viewed for this deployment (Orthanc / PostDICOM / in-house). */
+export function useDicomConfig() {
+  return useQuery({
+    queryKey: ['dicom', 'config'],
+    queryFn: async () => {
+      const res = await apiGet<PacsConfig>('/imaging/dicom/config');
+      return res.data;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/**
+ * Resolve the embeddable PACS viewer URL for a DICOM attachment (used by the
+ * detailed/fullscreen view). The backend lazily archives the file first if
+ * needed. Returns viewerUrl: null when the file can't be served from a PACS,
+ * so the caller falls back to the in-house viewer.
+ */
+export function useDicomAttachmentViewer(attachmentId: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: ['dicom', 'attachment-viewer', attachmentId],
+    queryFn: async () => {
+      const res = await apiGet<{
+        viewerUrl: string | null;
+        studyInstanceUid?: string;
+        reason?: string;
+      }>(`/imaging/dicom/attachment/${attachmentId}/viewer`);
+      return res.data;
+    },
+    enabled: enabled && !!attachmentId,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+}
+
+/** Manually (re)push a DICOM attachment to the configured PACS. */
+export function useSyncDicomAttachment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (attachmentId: string) => {
+      const res = await apiPost<{
+        synced: boolean;
+        reason?: string;
+        studyId?: string;
+        studyInstanceUid?: string;
+        viewerUrl?: string;
+      }>(`/imaging/dicom/sync-attachment/${attachmentId}`, {});
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['dicom', 'studies'] });
+    },
+  });
+}
 
 export function useDicomStudies(params?: {
   patientId?: string;

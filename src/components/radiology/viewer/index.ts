@@ -16,6 +16,7 @@
 
 export { RadiologyViewer } from './radiology-viewer';
 export { DicomProViewer } from './dicom-pro-viewer';
+export { DicomDetailedViewer } from './dicom-detailed-viewer';
 export { PdfViewer } from './pdf-viewer';
 export { ImageViewer } from './image-viewer';
 export { EcgViewer } from './ecg-viewer';

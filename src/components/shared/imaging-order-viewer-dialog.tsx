@@ -116,6 +116,7 @@ export function ImagingOrderViewerDialog({ requestId, onOpenChange }: Props) {
                 attachments={attachments}
                 canUpload={false}
                 canManage={false}
+                enableOrthanc
                 emptyMessage="The radiologist hasn't uploaded any files yet."
               />
             </div>

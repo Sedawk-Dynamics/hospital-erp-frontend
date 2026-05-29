@@ -14,13 +14,20 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
-import { useDicomStudy, type DicomSeries, type DicomInstance } from '@/hooks/use-dicom';
+import { useDicomStudy, useDicomConfig, type DicomSeries, type DicomInstance } from '@/hooks/use-dicom';
 import { RadiologyViewer } from '@/components/radiology/viewer';
 
 export default function DicomViewerPage() {
   const params = useParams<{ id: string }>();
   const studyId = params?.id;
   const { data: study, isLoading } = useDicomStudy(studyId ?? null);
+  const { data: pacs } = useDicomConfig();
+
+  // Label the embedded viewer by provider; fall back to a generic label.
+  const embedLabel =
+    pacs?.provider === 'orthanc' ? 'OHIF Viewer'
+    : pacs?.provider === 'postdicom' ? 'PostDICOM Viewer'
+    : 'PACS Viewer';
 
   // Flatten all instances across series + study-level for the stack viewer.
   const allInstances = useMemo<DicomInstance[]>(() => {
@@ -78,18 +85,37 @@ export default function DicomViewerPage() {
         {study.viewerUrl && (
           <a href={study.viewerUrl} target="_blank" rel="noopener noreferrer">
             <Button size="sm" variant="outline">
-              <ExternalLink className="mr-1.5 h-4 w-4" /> Open OHIF
+              <ExternalLink className="mr-1.5 h-4 w-4" /> Open {embedLabel} in new tab
             </Button>
           </a>
         )}
       </div>
 
-      <Tabs defaultValue="viewer">
+      <Tabs defaultValue={study.viewerUrl ? 'ohif' : 'viewer'}>
         <TabsList>
-          <TabsTrigger value="viewer">Viewer</TabsTrigger>
+          {study.viewerUrl && <TabsTrigger value="ohif">{embedLabel}</TabsTrigger>}
+          <TabsTrigger value="viewer">In-house Viewer</TabsTrigger>
           <TabsTrigger value="series">Series ({study.series?.length ?? 0})</TabsTrigger>
           <TabsTrigger value="details">Details</TabsTrigger>
         </TabsList>
+
+        {study.viewerUrl && (
+          <TabsContent value="ohif" className="mt-3">
+            <div className="rounded-xl shadow-sanctuary overflow-hidden bg-black">
+              <iframe
+                src={study.viewerUrl}
+                title={`${embedLabel} — ${study.studyInstanceUid}`}
+                className="w-full"
+                style={{ height: 'calc(100vh - 220px)', minHeight: 600, border: 0 }}
+                allow="fullscreen"
+              />
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1.5">
+              Streamed from the PACS archive via DICOMweb. Supports compressed
+              transfer syntaxes (JPEG/JPEG-2000/RLE) and full multi-series studies.
+            </p>
+          </TabsContent>
+        )}
 
         <TabsContent value="viewer" className="mt-3">
           <div className="grid grid-cols-1 lg:grid-cols-[200px_1fr] gap-3">

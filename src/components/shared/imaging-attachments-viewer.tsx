@@ -47,6 +47,13 @@ interface Props {
   canManage?: boolean;
   /** Compact mode — small tiles only (used in patient-side / inline panels). */
   dense?: boolean;
+  /**
+   * Route the DICOM *detailed* (fullscreen) view through the Orthanc PACS / OHIF
+   * viewer. Inline tile previews stay on the in-house renderer either way. Set
+   * on clinical surfaces (radiology/doctor/nurse); leave off for patient-facing
+   * surfaces so patient browsers never talk to the PACS directly.
+   */
+  enableOrthanc?: boolean;
   emptyMessage?: string;
 }
 
@@ -57,6 +64,7 @@ export function ImagingAttachmentsViewer({
   canUpload = false,
   canManage = false,
   dense = false,
+  enableOrthanc = false,
   emptyMessage = 'No files attached yet.',
 }: Props) {
   const [category, setCategory] = useState<ImagingAttachmentCategory>('report_pdf');
@@ -281,7 +289,7 @@ export function ImagingAttachmentsViewer({
                   </div>
                 </div>
               ) : (
-                <FileViewer file={toViewable(a)} />
+                <FileViewer file={toViewable(a)} enableOrthanc={enableOrthanc} />
               )}
               {canManage && editingId !== a.id && (
                 <div className="flex items-center justify-end gap-1 px-1">
@@ -317,6 +325,7 @@ export function ImagingAttachmentsViewer({
         file={previewing ? toViewable(previewing) : null}
         open={!!previewing}
         onOpenChange={(open) => !open && setPreviewing(null)}
+        enableOrthanc={enableOrthanc}
       />
     </div>
   );

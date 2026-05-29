@@ -199,6 +199,7 @@ function ReportFilesSection({ result }: { result: ImagingResult }) {
         file={previewing}
         open={!!previewing}
         onOpenChange={(open) => !open && setPreviewing(null)}
+        enableOrthanc
       />
     </section>
   );
