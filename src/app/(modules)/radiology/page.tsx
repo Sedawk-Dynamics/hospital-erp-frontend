@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { formatDateTime, toInputDateStr } from '@/lib/date-utils';
+import { formatDateTime } from '@/lib/date-utils';
 import {
-  Search, Calendar, Clock, CheckCircle2, Loader2,
-  CalendarPlus, ImagePlus, ShieldCheck, Eye, Pencil, IndianRupee,
-  Wallet,
+  Search, Clock, CheckCircle2, Loader2,
+  ImagePlus, ShieldCheck, Eye, Pencil, IndianRupee,
+  Wallet, Ban, RotateCcw, UserX,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -20,13 +20,14 @@ import { StatusBadge } from '@/components/shared/status-badge';
 import { PageHeader } from '@/components/shared/page-header';
 import {
   useImagingRequests,
-  useScheduleImaging,
-  useUploadImagingResult,
-  useAddImagingReport,
-  useEditImagingResult,
   useVerifyImagingResult,
   useVerifyImagingPayment,
+  useCloseImagingRequest,
+  useReopenImagingRequest,
   useImagingResults,
+  IMAGING_CLOSURE_REASONS,
+  IMAGING_CLOSURE_REASON_LABELS,
+  type ImagingClosureReason,
   type ImagingRequest,
   type ImagingResult,
 } from '@/hooks/use-imaging';
@@ -34,7 +35,6 @@ import {
   useImagingRequestAttachments,
   useImagingResultAttachments,
 } from '@/hooks/use-imaging-attachments';
-import { useUsersList } from '@/hooks/use-users';
 import { useRadiologyRole } from '@/hooks/use-radiology-role';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -68,13 +68,15 @@ export default function RadiologyHomePage() {
             </TabsTrigger>
           )}
           <TabsTrigger value="pending">Pending</TabsTrigger>
-          <TabsTrigger value="scheduled">Scheduled</TabsTrigger>
           <TabsTrigger value="completed">Completed</TabsTrigger>
           {isRadiologyAdmin && (
             <TabsTrigger value="awaiting-approval">
               <ShieldCheck className="mr-1.5 size-3.5" /> Awaiting Approval
             </TabsTrigger>
           )}
+          <TabsTrigger value="closed">
+            <UserX className="mr-1.5 size-3.5" /> Closed / No-show
+          </TabsTrigger>
           <TabsTrigger value="results">Results</TabsTrigger>
         </TabsList>
 
@@ -87,17 +89,15 @@ export default function RadiologyHomePage() {
         <TabsContent value="pending" className="pt-4">
           <RequestList variant="pending" radiologistView={isRadiologist} />
         </TabsContent>
-        <TabsContent value="scheduled" className="pt-4">
-          <RequestList variant="scheduled" radiologistView={isRadiologist} />
-        </TabsContent>
         <TabsContent value="completed" className="pt-4">
           <RequestList variant="completed" radiologistView={isRadiologist} />
         </TabsContent>
         {isRadiologyAdmin && (
           <TabsContent value="awaiting-approval" className="pt-4">
-            <ResultsTab onlyFinalized={true} />
+            <ResultsTab pendingApproval={true} />
           </TabsContent>
         )}
+        <TabsContent value="closed" className="pt-4"><ClosedTab /></TabsContent>
         <TabsContent value="results" className="pt-4"><ResultsTab /></TabsContent>
       </Tabs>
     </div>
@@ -109,7 +109,9 @@ export default function RadiologyHomePage() {
 // ============================================================
 function DashboardTab() {
   const [search, setSearch] = useState('');
-  const [date, setDate] = useState(toInputDateStr());
+  // Empty by default → show the whole active worklist. Picking a date narrows
+  // to that day's ORDERS (scheduling was removed, so there's no schedule date).
+  const [date, setDate] = useState('');
 
   const { data, isLoading } = useImagingRequests({
     limit: 100,
@@ -121,21 +123,21 @@ function DashboardTab() {
   const requests = (data?.data ?? []) as ImagingRequest[];
 
   const stats = useMemo(() => {
-    let pending = 0, scheduled = 0, inProgress = 0, completed = 0;
+    let pending = 0, inProgress = 0, completed = 0;
     for (const r of requests) {
-      if (r.status === 'requested') pending++;
-      else if (r.status === 'scheduled') scheduled++;
+      // 'requested' + legacy 'scheduled' are both "to-do" now that scheduling
+      // is removed.
+      if (r.status === 'requested' || r.status === 'scheduled') pending++;
       else if (r.status === 'in_progress') inProgress++;
       else if (r.status === 'completed') completed++;
     }
-    return { pending, scheduled, inProgress, completed };
+    return { pending, inProgress, completed };
   }, [requests]);
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <StatCard label="Pending" value={stats.pending} icon={Clock} className="bg-amber-50 text-amber-700" />
-        <StatCard label="Scheduled" value={stats.scheduled} icon={Calendar} className="bg-blue-50 text-blue-700" />
         <StatCard label="In Progress" value={stats.inProgress} icon={Loader2} className="bg-purple-50 text-purple-700" />
         <StatCard label="Completed" value={stats.completed} icon={CheckCircle2} className="bg-emerald-50 text-emerald-700" />
       </div>
@@ -145,7 +147,11 @@ function DashboardTab() {
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search…" className="pl-9" />
         </div>
+        <Label className="text-xs text-muted-foreground whitespace-nowrap">Orders on</Label>
         <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-44" />
+        {date && (
+          <Button size="sm" variant="outline" onClick={() => setDate('')}>All</Button>
+        )}
       </div>
 
       <RequestTable requests={requests} loading={isLoading} variant="pending" />
@@ -178,11 +184,11 @@ function StatCard({
 // Request list per variant
 // ============================================================
 //   - awaiting-payment: admin-only queue, paymentVerified=false
-//   - pending:          radiologist sees paymentVerified=true + status=requested,
-//                       admin sees all status=requested (paid + unpaid)
-//   - scheduled:        status=scheduled (already gated by payment server-side)
+//   - pending:          the radiologist's active worklist — payment-verified
+//                       requests that aren't completed yet (scheduling was
+//                       removed, so this is just "ready to scan & upload").
 //   - completed:        status=completed
-type RequestListVariant = 'awaiting-payment' | 'pending' | 'scheduled' | 'completed';
+type RequestListVariant = 'awaiting-payment' | 'pending' | 'completed';
 
 function RequestList({
   variant, radiologistView = false,
@@ -198,11 +204,17 @@ function RequestList({
     if (variant === 'awaiting-payment') {
       return { paymentVerified: 'false' as const };
     }
-    const base: { status?: string; paymentVerified?: 'true' } = {
-      status: variant === 'pending' ? 'requested' : variant,
+    if (variant === 'completed') {
+      return {
+        status: 'completed',
+        ...(radiologistView ? { paymentVerified: 'true' as const } : {}),
+      };
+    }
+    // pending = active worklist: everything not completed/cancelled/no-show.
+    return {
+      excludeCompleted: true as const,
+      ...(radiologistView ? { paymentVerified: 'true' as const } : {}),
     };
-    if (radiologistView) base.paymentVerified = 'true';
-    return base;
   })();
 
   const { data, isLoading } = useImagingRequests({
@@ -242,8 +254,8 @@ function RequestTable({
   loading: boolean;
   variant: RequestListVariant;
 }) {
-  const [scheduleFor, setScheduleFor] = useState<ImagingRequest | null>(null);
   const [uploadFor, setUploadFor] = useState<ImagingRequest | null>(null);
+  const [closeFor, setCloseFor] = useState<ImagingRequest | null>(null);
   const { isRadiologyAdmin } = useRadiologyRole();
   const verifyPayment = useVerifyImagingPayment();
 
@@ -260,7 +272,9 @@ function RequestTable({
   // the "Technician" column with a "Bill" column so the admin can see the
   // payment status at a glance.
   const isAwaitingPayment = variant === 'awaiting-payment';
-  const colCount = 8;
+  // Scheduling was removed, so the Scheduled + Technician columns are gone.
+  // The awaiting-payment queue keeps a Bill column for the admin.
+  const colCount = isAwaitingPayment ? 7 : 6;
 
   return (
     <>
@@ -274,8 +288,7 @@ function RequestTable({
                 <Th>Body Part</Th>
                 <Th>Urgency</Th>
                 <Th>Status</Th>
-                <Th>Scheduled</Th>
-                <Th>{isAwaitingPayment ? 'Bill' : 'Technician'}</Th>
+                {isAwaitingPayment && <Th>Bill</Th>}
                 <Th>Actions</Th>
               </tr>
             </thead>
@@ -290,7 +303,7 @@ function RequestTable({
                 </td></tr>
               ) : (
                 requests.map((r) => {
-                  const canSchedule = r.paymentVerified !== false; // server also enforces
+                  const canUpload = r.paymentVerified !== false; // server also enforces
                   return (
                     <tr key={r.id} className="hover:bg-surface-container-low">
                       <td className="px-4 py-3 font-medium">
@@ -312,19 +325,11 @@ function RequestTable({
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-xs">
-                        {r.scheduledAt ? formatDateTime(r.scheduledAt) : '-'}
-                        {r.room && <div className="text-muted-foreground">Room: {r.room}</div>}
-                      </td>
-                      <td className="px-4 py-3 text-xs">
-                        {isAwaitingPayment ? (
+                      {isAwaitingPayment && (
+                        <td className="px-4 py-3 text-xs">
                           <BillCell request={r} />
-                        ) : r.assignedTechnician ? (
-                          `${r.assignedTechnician.firstName} ${r.assignedTechnician.lastName}`
-                        ) : (
-                          '-'
-                        )}
-                      </td>
+                        </td>
+                      )}
                       <td className="px-4 py-3">
                         <div className="flex gap-1 justify-end flex-wrap">
                           {isAwaitingPayment && isRadiologyAdmin && (
@@ -336,12 +341,7 @@ function RequestTable({
                               <ShieldCheck className="size-3.5" /> Verify Payment
                             </Button>
                           )}
-                          {!isAwaitingPayment && (r.status === 'requested' || r.status === 'scheduled') && canSchedule && (
-                            <Button size="sm" variant="outline" onClick={() => setScheduleFor(r)}>
-                              <CalendarPlus className="size-3.5" /> Schedule
-                            </Button>
-                          )}
-                          {!isAwaitingPayment && r.status !== 'cancelled' && canSchedule && (
+                          {!isAwaitingPayment && r.status !== 'cancelled' && r.status !== 'no_show' && canUpload && r.imagingResult?.status !== 'published' && (
                             <Button size="sm" onClick={() => setUploadFor(r)}>
                               {r.imagingResult ? (
                                 <>
@@ -354,10 +354,29 @@ function RequestTable({
                               )}
                             </Button>
                           )}
-                          {!isAwaitingPayment && !canSchedule && (
+                          {/* Published reports are locked — show a read-only marker
+                              in place of the edit button. */}
+                          {!isAwaitingPayment && r.imagingResult?.status === 'published' && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 italic px-2">
+                              <ShieldCheck className="size-3" /> Published — locked
+                            </span>
+                          )}
+                          {!isAwaitingPayment && !canUpload && (
                             <span className="text-[10px] text-muted-foreground italic">
                               Payment pending
                             </span>
+                          )}
+                          {/* Admin can close out a request that won't produce a
+                              report file (no-show, refused, done elsewhere, …). */}
+                          {isRadiologyAdmin && r.status !== 'completed' && !r.imagingResult && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-rose-700 border-rose-200 hover:bg-rose-50"
+                              onClick={() => setCloseFor(r)}
+                            >
+                              <Ban className="size-3.5" /> Close
+                            </Button>
                           )}
                         </div>
                       </td>
@@ -369,9 +388,249 @@ function RequestTable({
           </table>
         </div>
       </div>
-      <ScheduleDialog request={scheduleFor} onOpenChange={(open) => !open && setScheduleFor(null)} />
       <UploadResultDialog request={uploadFor} onOpenChange={(open) => !open && setUploadFor(null)} />
+      <CloseRequestDialog request={closeFor} onOpenChange={(open) => !open && setCloseFor(null)} />
     </>
+  );
+}
+
+// ============================================================
+// Close Request Dialog — admin closes a request with no report file
+// ============================================================
+// Used for the "patient never came / no scan will happen" cases the normal
+// upload→complete flow can't terminate. Picks a reason (which decides whether
+// the request lands on `no_show` or `cancelled`) plus an optional note.
+function CloseRequestDialog({
+  request, onOpenChange,
+}: {
+  request: ImagingRequest | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const close = useCloseImagingRequest();
+  const [reason, setReason] = useState<ImagingClosureReason>('patient_no_show');
+  const [note, setNote] = useState('');
+
+  useEffect(() => {
+    setReason('patient_no_show');
+    setNote('');
+  }, [request?.id]);
+
+  const selected = IMAGING_CLOSURE_REASONS.find((r) => r.value === reason);
+
+  const handle = async () => {
+    if (!request) return;
+    if (reason === 'other' && !note.trim()) {
+      toast.error('Add a note describing the reason');
+      return;
+    }
+    try {
+      await close.mutateAsync({ id: request.id, reason, note: note.trim() || undefined });
+      toast.success(
+        reason === 'patient_no_show'
+          ? 'Marked as no-show'
+          : 'Request closed — doctor notified',
+      );
+      onOpenChange(false);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Failed to close request');
+    }
+  };
+
+  return (
+    <Dialog open={!!request} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Close Imaging Request</DialogTitle>
+          <DialogDescription>
+            Use this for studies that won&apos;t produce a report file — the patient
+            didn&apos;t come, refused, had it done elsewhere, or it&apos;s no longer
+            required. The ordering doctor is notified.
+          </DialogDescription>
+        </DialogHeader>
+        {request && (
+          <div className="rounded-lg bg-surface-container-low px-3 py-2 text-sm">
+            <span className="font-medium">
+              {request.patient?.firstName} {request.patient?.lastName}
+            </span>{' '}
+            · <span className="capitalize">{request.imagingType.replace(/_/g, ' ')}</span>
+            {request.bodyPart ? ` · ${request.bodyPart}` : ''}
+          </div>
+        )}
+        <div className="space-y-3">
+          <div>
+            <Label>Reason *</Label>
+            <select
+              className="w-full rounded-lg border bg-background px-3 py-2 text-sm"
+              value={reason}
+              onChange={(e) => setReason(e.target.value as ImagingClosureReason)}
+            >
+              {IMAGING_CLOSURE_REASONS.map((r) => (
+                <option key={r.value} value={r.value}>{r.label}</option>
+              ))}
+            </select>
+            {selected && (
+              <p className="text-xs text-muted-foreground mt-1">{selected.hint}</p>
+            )}
+          </div>
+          <div>
+            <Label>Note {reason === 'other' ? '*' : '(optional)'}</Label>
+            <Textarea
+              rows={2}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Any extra detail for the record / doctor…"
+            />
+          </div>
+          {reason === 'patient_no_show' ? (
+            <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+              This will be recorded as a <strong>no-show</strong>. You can reschedule or
+              reopen it later from the Closed / No-show tab if the patient returns.
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              This will mark the request <strong>cancelled</strong> with the reason saved
+              for reporting. It can be reopened later if needed.
+            </p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={close.isPending}>
+            Cancel
+          </Button>
+          <Button onClick={handle} disabled={close.isPending} className="bg-rose-600 hover:bg-rose-700">
+            {close.isPending ? 'Closing…' : 'Close Request'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============================================================
+// Closed / No-show Tab — terminal admin-closed requests + reopen/reschedule
+// ============================================================
+function ClosedTab() {
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const { isRadiologyAdmin } = useRadiologyRole();
+
+  const { data, isLoading } = useImagingRequests({
+    closed: true,
+    page,
+    limit: 20,
+    search: search || undefined,
+  });
+
+  const requests = (data?.data ?? []) as ImagingRequest[];
+
+  const reopen = useReopenImagingRequest();
+
+  const handleReopen = async (r: ImagingRequest) => {
+    try {
+      await reopen.mutateAsync(r.id);
+      toast.success('Reopened — back in the worklist');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Failed to reopen');
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search…" className="pl-9" />
+      </div>
+
+      <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-surface-container">
+                <Th>Patient</Th>
+                <Th>Type</Th>
+                <Th>Body Part</Th>
+                <Th>Status</Th>
+                <Th>Reason</Th>
+                <Th>Closed By</Th>
+                <Th>Closed At</Th>
+                {isRadiologyAdmin && <Th>Actions</Th>}
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading ? (
+                <tr><td colSpan={8} className="px-4 py-8 text-center"><Loader2 className="size-5 animate-spin inline-block" /></td></tr>
+              ) : requests.length === 0 ? (
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                  No closed or no-show requests.
+                </td></tr>
+              ) : (
+                requests.map((r) => (
+                  <tr key={r.id} className="hover:bg-surface-container-low">
+                    <td className="px-4 py-3 font-medium">
+                      <div>{r.patient?.firstName} {r.patient?.lastName}</div>
+                      {r.patient?.mrn && (
+                        <div className="text-[10px] font-mono text-muted-foreground">{r.patient.mrn}</div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 capitalize">{r.imagingType.replace(/_/g, ' ')}</td>
+                    <td className="px-4 py-3">{r.bodyPart ?? '-'}</td>
+                    <td className="px-4 py-3">
+                      {r.status === 'no_show' ? (
+                        <Badge variant="outline" className="text-amber-700 border-amber-300 bg-amber-50">
+                          <UserX className="size-3 mr-1" /> No-show
+                        </Badge>
+                      ) : (
+                        <StatusBadge status={r.status} />
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div>{r.closureReason ? (IMAGING_CLOSURE_REASON_LABELS[r.closureReason] ?? r.closureReason) : '-'}</div>
+                      {r.closureNote && (
+                        <div className="text-[10px] text-muted-foreground max-w-[200px] truncate" title={r.closureNote}>
+                          {r.closureNote}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-xs">
+                      {r.closer ? `${r.closer.firstName} ${r.closer.lastName}` : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-xs">
+                      {r.closedAt ? formatDateTime(r.closedAt) : '-'}
+                    </td>
+                    {isRadiologyAdmin && (
+                      <td className="px-4 py-3">
+                        <div className="flex gap-1 justify-end flex-wrap">
+                          {/* Reopen brings a closed/no-show request back into the
+                              worklist (Pending). Scheduling was removed. */}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleReopen(r)}
+                            disabled={reopen.isPending}
+                          >
+                            <RotateCcw className="size-3.5" /> Reopen
+                          </Button>
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {(data?.meta?.totalPages ?? 1) > 1 && (
+        <div className="flex items-center justify-between border-t px-4 py-3">
+          <p className="text-sm text-muted-foreground">Page {page} of {data?.meta?.totalPages}</p>
+          <div className="flex gap-1">
+            <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</Button>
+            <Button size="sm" variant="outline" disabled={page >= (data?.meta?.totalPages ?? 1)} onClick={() => setPage(page + 1)}>Next</Button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -434,91 +693,6 @@ function BillCell({ request }: { request: ImagingRequest }) {
 }
 
 // ============================================================
-// Schedule Dialog (date + technician + room)
-// ============================================================
-function ScheduleDialog({
-  request, onOpenChange,
-}: {
-  request: ImagingRequest | null;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const schedule = useScheduleImaging();
-  const usersQ = useUsersList({ limit: 200 });
-
-  const techs = useMemo(
-    () =>
-      (usersQ.data?.data ?? []).filter((u) =>
-        u.userRoles?.some((ur) => ['radiologist', 'lab_technician'].includes(ur.role.name)),
-      ),
-    [usersQ.data],
-  );
-
-  const [date, setDate] = useState('');
-  const [time, setTime] = useState('09:00');
-  const [techId, setTechId] = useState('');
-  const [room, setRoom] = useState('');
-
-  const handle = async () => {
-    if (!request) return;
-    if (!date) { toast.error('Pick a date'); return; }
-    try {
-      await schedule.mutateAsync({
-        id: request.id,
-        scheduledDate: date,
-        scheduledTime: time,
-        assignedTechnicianId: techId || undefined,
-        room: room || undefined,
-      });
-      toast.success('Scheduled');
-      setDate(''); setTime('09:00'); setTechId(''); setRoom('');
-      onOpenChange(false);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Failed to schedule');
-    }
-  };
-
-  return (
-    <Dialog open={!!request} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Schedule Imaging</DialogTitle>
-          <DialogDescription>Assign date, room, and technician.</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <Label>Date *</Label>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-            </div>
-            <div>
-              <Label>Time</Label>
-              <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
-            </div>
-          </div>
-          <div>
-            <Label>Technician</Label>
-            <select className="w-full rounded-lg border bg-background px-3 py-2 text-sm" value={techId} onChange={(e) => setTechId(e.target.value)}>
-              <option value="">-- Select technician --</option>
-              {techs.map((u) => (
-                <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <Label>Room</Label>
-            <Input value={room} onChange={(e) => setRoom(e.target.value)} placeholder="e.g. Radiology Room 2" />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={schedule.isPending}>Cancel</Button>
-          <Button onClick={handle} disabled={schedule.isPending}>{schedule.isPending ? 'Saving…' : 'Schedule'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ============================================================
 // Upload Result Dialog — create or edit
 // ============================================================
 // Unified flow: if the request already has a result, this dialog opens in
@@ -532,46 +706,25 @@ function UploadResultDialog({
   request: ImagingRequest | null;
   onOpenChange: (open: boolean) => void;
 }) {
-  const upload = useUploadImagingResult();
-  const edit = useEditImagingResult();
-
-  // The request payload only carries { id, status } for an existing result —
-  // so once we have a resultId (either from the request or from a fresh
-  // create), fetch the attachments using that ID directly.
+  // The result row is created lazily by the backend on the FIRST file upload —
+  // opening this dialog no longer creates anything, so opening + closing
+  // without uploading leaves no draft behind (and can't trip the "result
+  // already exists" conflict). If the request already has a result, bind new
+  // files to it; otherwise the viewer uploads against the request alone.
   const existingResultId = request?.imagingResult?.id;
-  const [resultId, setResultId] = useState<string | null>(existingResultId ?? null);
-  const isEdit = !!existingResultId || !!resultId;
+  const isEdit = !!existingResultId;
 
   const attachmentsQ = useImagingRequestAttachments(request?.id);
+  const hasAttachments = (attachmentsQ.data ?? []).length > 0;
 
-  useEffect(() => {
-    setResultId(existingResultId ?? null);
-  }, [request?.id, existingResultId]);
-
-  // For new results we create an empty draft so the attachments panel can
-  // bind uploads to a resultId. Auto-runs once when the dialog opens on a
-  // request that doesn't yet have a result.
-  useEffect(() => {
-    if (!request || resultId) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const created = await upload.mutateAsync({
-          imagingRequestId: request.id,
-          patientId: request.patientId,
-        });
-        if (!cancelled) setResultId((created as any)?.id ?? null);
-      } catch (err: any) {
-        if (!cancelled) {
-          toast.error(err?.response?.data?.message ?? 'Failed to create draft');
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [request?.id]);
+  const handleSubmit = () => {
+    if (!hasAttachments) {
+      toast.error('Attach at least one file before submitting');
+      return;
+    }
+    toast.success(isEdit ? 'Report updated' : 'Result submitted — study marked completed');
+    onOpenChange(false);
+  };
 
   return (
     <Dialog open={!!request} onOpenChange={onOpenChange}>
@@ -582,7 +735,7 @@ function UploadResultDialog({
           </DialogTitle>
           <DialogDescription>
             Upload the modality output, scanned PDF report, DICOM file, or video loop.
-            The doctor will view these in the embedded viewer.
+            The study is marked completed only once a file is attached.
           </DialogDescription>
         </DialogHeader>
 
@@ -592,26 +745,20 @@ function UploadResultDialog({
             {request && (
               <ImagingAttachmentsViewer
                 requestId={request.id}
-                resultId={resultId ?? undefined}
+                resultId={existingResultId ?? undefined}
                 attachments={attachmentsQ.data ?? []}
                 canUpload={true}
                 canManage={true}
                 enableOrthanc
-                emptyMessage={
-                  resultId
-                    ? 'No files attached yet — upload modality images, PDFs, DICOM or videos.'
-                    : upload.isPending
-                      ? 'Preparing draft…'
-                      : 'Creating draft…'
-                }
+                emptyMessage="No files attached yet — upload modality images, PDFs, DICOM or videos."
               />
             )}
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Close
+          <Button onClick={handleSubmit} disabled={!hasAttachments}>
+            <CheckCircle2 className="size-3.5" /> Submit
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -620,23 +767,22 @@ function UploadResultDialog({
 }
 
 // ============================================================
-// Results Tab — finalize (radiologist) + sign/publish (admin) + edit
+// Results Tab — radiology admin approves & publishes uploaded studies
 // ============================================================
-function ResultsTab({ onlyFinalized = false }: { onlyFinalized?: boolean }) {
+function ResultsTab({ pendingApproval = false }: { pendingApproval?: boolean }) {
   const [page, setPage] = useState(1);
-  // When called from "Awaiting Approval" admin tab, narrow to finalized only.
+  // The "Awaiting Approval" admin tab narrows to studies that have a file but
+  // aren't published yet (pendingApproval); the plain Results tab shows all.
   const { data, isLoading } = useImagingResults({
     page,
     limit: 20,
-    ...(onlyFinalized ? { status: 'finalized' } : {}),
+    ...(pendingApproval ? { pendingApproval: true } : {}),
   });
   const results = (data?.data ?? []) as ImagingResult[];
 
-  const addReport = useAddImagingReport();
   const verify = useVerifyImagingResult();
   const { isRadiologyAdmin } = useRadiologyRole();
 
-  const [reportFor, setReportFor] = useState<ImagingResult | null>(null);
   const [editFor, setEditFor] = useState<ImagingResult | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
 
@@ -659,7 +805,7 @@ function ResultsTab({ onlyFinalized = false }: { onlyFinalized?: boolean }) {
               <tr><td colSpan={6} className="px-4 py-8 text-center"><Loader2 className="size-5 animate-spin inline-block" /></td></tr>
             ) : results.length === 0 ? (
               <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
-                {onlyFinalized
+                {pendingApproval
                   ? 'No reports awaiting admin approval.'
                   : 'No results yet.'}
               </td></tr>
@@ -685,14 +831,9 @@ function ResultsTab({ onlyFinalized = false }: { onlyFinalized?: boolean }) {
                           <Pencil className="size-3.5" /> Edit
                         </Button>
                       )}
-                      {/* Radiologist marks the report complete (finalized). */}
-                      {r.status === 'draft' && (
-                        <Button size="sm" variant="outline" onClick={() => setReportFor(r)}>
-                          <CheckCircle2 className="size-3.5" /> Mark Complete
-                        </Button>
-                      )}
-                      {/* Only radiology_admin can publish a finalized report (2026-05-27 flow). */}
-                      {r.status === 'finalized' && isRadiologyAdmin && (
+                      {/* Radiology admin approves & publishes the uploaded study
+                          directly — the radiologist finalize step was removed. */}
+                      {r.status !== 'published' && isRadiologyAdmin && (
                         <Button
                           size="sm"
                           onClick={async () => {
@@ -705,10 +846,10 @@ function ResultsTab({ onlyFinalized = false }: { onlyFinalized?: boolean }) {
                           }}
                           disabled={verify.isPending}
                         >
-                          <ShieldCheck className="size-3.5" /> Approve & Publish
+                          <ShieldCheck className="size-3.5" /> Approve &amp; Publish
                         </Button>
                       )}
-                      {r.status === 'finalized' && !isRadiologyAdmin && (
+                      {r.status !== 'published' && !isRadiologyAdmin && (
                         <span className="text-[10px] text-muted-foreground italic px-2">
                           Awaiting admin approval
                         </span>
@@ -731,22 +872,6 @@ function ResultsTab({ onlyFinalized = false }: { onlyFinalized?: boolean }) {
         onOpenChange={(next) => !next && setPreviewId(null)}
       />
 
-      <FinalizeReportDialog
-        result={reportFor}
-        onOpenChange={(open) => !open && setReportFor(null)}
-        onSubmit={async (payload) => {
-          if (!reportFor) return;
-          try {
-            await addReport.mutateAsync({ id: reportFor.id, ...payload });
-            toast.success('Marked complete — sent to admin for approval');
-            setReportFor(null);
-          } catch (err: any) {
-            toast.error(err?.response?.data?.message ?? 'Failed');
-          }
-        }}
-        pending={addReport.isPending}
-      />
-
 
       <EditResultDialog
         result={editFor}
@@ -763,81 +888,6 @@ function ResultsTab({ onlyFinalized = false }: { onlyFinalized?: boolean }) {
         </div>
       )}
     </div>
-  );
-}
-
-// Finalize Report — sets status=finalized so it can be signed/published.
-// Replaces the old "paste PDF URL" version with attachments management; the
-// PDF the radiologist uploads via the attachments panel is auto-mirrored
-// onto ImagingResult.pdfReportUrl by the backend.
-function FinalizeReportDialog({
-  result, onOpenChange, onSubmit, pending,
-}: {
-  result: ImagingResult | null;
-  onOpenChange: (open: boolean) => void;
-  onSubmit: (payload: { recommendation?: string }) => void;
-  pending: boolean;
-}) {
-  const [recommendation, setRecommendation] = useState('');
-
-  const requestId = result?.imagingRequest?.id ?? result?.requestId;
-  const attachmentsQ = useImagingRequestAttachments(requestId);
-
-  useEffect(() => {
-    setRecommendation('');
-  }, [result?.id]);
-
-  const hasAttachments = (attachmentsQ.data ?? []).length > 0;
-
-  return (
-    <Dialog open={!!result} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Mark Report Complete</DialogTitle>
-          <DialogDescription>
-            Confirm the attached files are correct. Marking complete sends the
-            report to the radiology admin for approval before it reaches the patient.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <Label>Recommendation</Label>
-            <Textarea rows={2} value={recommendation} onChange={(e) => setRecommendation(e.target.value)} />
-          </div>
-
-          <div className="border-t pt-3">
-            <p className="text-sm font-semibold">Attached Files</p>
-            <p className="text-xs text-muted-foreground mb-2">
-              The uploaded report (PDF / DICOM / image / video) carries the radiology finding.
-            </p>
-            {requestId && (
-              <ImagingAttachmentsViewer
-                requestId={requestId}
-                resultId={result?.id}
-                attachments={attachmentsQ.data ?? []}
-                canUpload={true}
-                canManage={true}
-                enableOrthanc
-                dense={true}
-              />
-            )}
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>Cancel</Button>
-          <Button
-            disabled={pending || !hasAttachments}
-            onClick={() =>
-              onSubmit({
-                recommendation: recommendation || undefined,
-              })
-            }
-          >
-            {pending ? 'Saving…' : 'Mark Complete'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 

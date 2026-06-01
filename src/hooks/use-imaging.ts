@@ -5,6 +5,33 @@ import { apiGet, apiPost, apiPatch, apiPut } from '@/lib/api';
 // Types
 // ============================================================
 
+// Reasons a radiology_admin can close out a request that won't produce a
+// report file. Mirrors the backend ImagingClosureReason enum.
+export type ImagingClosureReason =
+  | 'patient_no_show'
+  | 'patient_refused'
+  | 'patient_cancelled'
+  | 'done_externally'
+  | 'not_required'
+  | 'equipment_unavailable'
+  | 'duplicate_order'
+  | 'other';
+
+export const IMAGING_CLOSURE_REASONS: { value: ImagingClosureReason; label: string; hint: string }[] = [
+  { value: 'patient_no_show', label: 'Patient no-show', hint: 'Patient did not arrive for the scan' },
+  { value: 'patient_refused', label: 'Patient refused', hint: 'Patient declined the procedure' },
+  { value: 'patient_cancelled', label: 'Cancelled by patient', hint: 'Patient asked to cancel' },
+  { value: 'done_externally', label: 'Done elsewhere', hint: 'Scan performed at another facility' },
+  { value: 'not_required', label: 'No longer required', hint: 'Clinically no longer needed' },
+  { value: 'equipment_unavailable', label: 'Equipment unavailable', hint: 'Machine down / out of service' },
+  { value: 'duplicate_order', label: 'Duplicate order', hint: 'Same study ordered twice' },
+  { value: 'other', label: 'Other', hint: 'Specify in the note' },
+];
+
+export const IMAGING_CLOSURE_REASON_LABELS: Record<string, string> = Object.fromEntries(
+  IMAGING_CLOSURE_REASONS.map((r) => [r.value, r.label]),
+);
+
 export interface ImagingRequest {
   id: string;
   patientId: string;
@@ -44,6 +71,12 @@ export interface ImagingRequest {
   paymentVerifiedBy?: string | null;
   paymentVerifiedAt?: string | null;
   paymentVerifier?: { id: string; firstName: string; lastName: string } | null;
+  // Admin closure (2026-06-01 flow)
+  closureReason?: ImagingClosureReason | null;
+  closureNote?: string | null;
+  closedBy?: string | null;
+  closedAt?: string | null;
+  closer?: { id: string; firstName: string; lastName: string } | null;
   // Linked bill summary — decorated by the list endpoint so admin can see
   // payment status before clicking Verify Payment.
   linkedBill?: {
@@ -133,8 +166,12 @@ interface ImagingRequestParams {
    * omit    → both
    */
   paymentVerified?: 'true' | 'false';
-  /** Radiology module passes this to hide cancelled requests. */
+  /** Radiology module passes this to hide cancelled + no-show requests. */
   excludeCancelled?: boolean;
+  /** Pending worklist: also hide completed (shows only the active to-do set). */
+  excludeCompleted?: boolean;
+  /** Closed / No-show tab: fetch terminal admin-closed requests (cancelled + no_show). */
+  closed?: boolean;
 }
 
 interface ImagingResultParams {
@@ -142,6 +179,8 @@ interface ImagingResultParams {
   limit?: number;
   search?: string;
   status?: string;
+  /** Admin "Awaiting Approval" queue: uploaded-but-unpublished results. */
+  pendingApproval?: boolean;
 }
 
 // ============================================================
@@ -233,6 +272,47 @@ export function useCancelImagingRequest() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: imagingKeys.requests.all });
+    },
+  });
+}
+
+export function useCloseImagingRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      reason,
+      note,
+    }: {
+      id: string;
+      reason: ImagingClosureReason;
+      note?: string;
+    }) => {
+      const response = await apiPatch<ImagingRequest>(`/imaging/requests/${id}/close`, {
+        reason,
+        note,
+      });
+      return response.data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: imagingKeys.requests.all });
+      queryClient.invalidateQueries({ queryKey: imagingKeys.requests.detail(variables.id) });
+      queryClient.invalidateQueries({ queryKey: ['imaging', 'dashboard'] });
+    },
+  });
+}
+
+export function useReopenImagingRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiPatch<ImagingRequest>(`/imaging/requests/${id}/reopen`);
+      return response.data;
+    },
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: imagingKeys.requests.all });
+      queryClient.invalidateQueries({ queryKey: imagingKeys.requests.detail(id) });
+      queryClient.invalidateQueries({ queryKey: ['imaging', 'dashboard'] });
     },
   });
 }
@@ -411,6 +491,10 @@ export interface ImagingDashboard {
     cancelledToday: number;
     totalRequestsToday: number;
     overdueScheduled: number;
+    /** All-time no-show requests not yet reopened/rescheduled. */
+    noShow: number;
+    /** Requests the admin closed today (no-show + reasoned cancellations). */
+    closedToday: number;
   };
   recentRequests: Array<{
     id: string;

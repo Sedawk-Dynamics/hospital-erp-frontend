@@ -6,8 +6,9 @@
 
 import Link from 'next/link';
 import {
-  Clock, Calendar, Loader2, CheckCircle2, ShieldCheck, FileBarChart,
+  Clock, Loader2, CheckCircle2, ShieldCheck, FileBarChart,
   AlertTriangle, XCircle, FileSignature, Stethoscope, RefreshCw, Wallet,
+  UserX, Ban,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/shared/page-header';
@@ -81,14 +82,6 @@ function DashboardInner() {
           href="/radiology"
         />
         <StatCard
-          label="Scheduled"
-          value={counts?.scheduled}
-          icon={Calendar}
-          accent="bg-blue-50 text-blue-700"
-          loading={isLoading}
-          href="/radiology"
-        />
-        <StatCard
           label="In Progress"
           value={counts?.inProgress}
           icon={Loader2}
@@ -105,7 +98,7 @@ function DashboardInner() {
       </div>
 
       {/* Second row — operational warnings + today summary */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <StatCard
           label="STAT Today"
           value={counts?.statToday}
@@ -114,11 +107,20 @@ function DashboardInner() {
           loading={isLoading}
         />
         <StatCard
-          label="Overdue Scheduled"
-          value={counts?.overdueScheduled}
-          icon={AlertTriangle}
-          accent="bg-orange-50 text-orange-700"
+          label="No-show"
+          value={counts?.noShow}
+          icon={UserX}
+          accent="bg-amber-50 text-amber-700"
           loading={isLoading}
+          href="/radiology"
+        />
+        <StatCard
+          label="Closed Today"
+          value={counts?.closedToday}
+          icon={Ban}
+          accent="bg-rose-50 text-rose-700"
+          loading={isLoading}
+          href="/radiology"
         />
         <StatCard
           label="Completed Today"
