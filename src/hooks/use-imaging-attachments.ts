@@ -151,7 +151,15 @@ export function resolveAttachmentUrl(fileUrl: string): string {
   if (/^https?:\/\//.test(fileUrl)) return fileUrl;
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
   const origin = apiUrl.replace(/\/api\/v\d+\/?$/, '');
-  return `${origin}${fileUrl.startsWith('/') ? '' : '/'}${fileUrl}`;
+  const full = `${origin}${fileUrl.startsWith('/') ? '' : '/'}${fileUrl}`;
+  // Authenticated PACS retrieve endpoint (used after PACS_DROP_LOCAL) — plain
+  // <a>/<img>/fetch can't send the Authorization header, so pass the access
+  // token as a query param the endpoint understands.
+  if (fileUrl.startsWith('/api/') && fileUrl.includes('/pacs/file')) {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+    if (token) return `${full}${full.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`;
+  }
+  return full;
 }
 
 export function formatFileSize(bytes: number): string {

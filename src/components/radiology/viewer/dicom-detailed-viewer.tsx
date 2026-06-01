@@ -16,6 +16,7 @@ import { Loader2, Download, ExternalLink, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useDicomConfig, useDicomAttachmentViewer } from '@/hooks/use-dicom';
 import { RadiologyViewer } from './radiology-viewer';
+import { OhifEmbed } from './ohif-embed';
 
 interface DicomDetailedViewerProps {
   /** ImagingAttachment id — used to resolve/archive the study in the PACS. */
@@ -104,13 +105,7 @@ export function DicomDetailedViewer({
           </div>
         </header>
         <div className="min-h-0 flex-1 bg-black">
-          <iframe
-            src={viewerUrl}
-            title={`PACS viewer — ${fileName}`}
-            className="h-full w-full"
-            style={{ border: 0 }}
-            allow="fullscreen"
-          />
+          <OhifEmbed viewerUrl={viewerUrl} title={`PACS viewer — ${fileName}`} />
         </div>
       </div>
     );

@@ -15,7 +15,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
 import { useDicomStudy, useDicomConfig, type DicomSeries, type DicomInstance } from '@/hooks/use-dicom';
-import { RadiologyViewer } from '@/components/radiology/viewer';
+import { RadiologyViewer, OhifEmbed } from '@/components/radiology/viewer';
 
 export default function DicomViewerPage() {
   const params = useParams<{ id: string }>();
@@ -101,13 +101,10 @@ export default function DicomViewerPage() {
 
         {study.viewerUrl && (
           <TabsContent value="ohif" className="mt-3">
-            <div className="rounded-xl shadow-sanctuary overflow-hidden bg-black">
-              <iframe
-                src={study.viewerUrl}
+            <div className="rounded-xl shadow-sanctuary overflow-hidden bg-black" style={{ height: 'calc(100vh - 220px)', minHeight: 600 }}>
+              <OhifEmbed
+                viewerUrl={study.viewerUrl}
                 title={`${embedLabel} — ${study.studyInstanceUid}`}
-                className="w-full"
-                style={{ height: 'calc(100vh - 220px)', minHeight: 600, border: 0 }}
-                allow="fullscreen"
               />
             </div>
             <p className="text-[11px] text-muted-foreground mt-1.5">

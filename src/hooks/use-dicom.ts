@@ -83,6 +83,8 @@ export interface PacsConfig {
   configured: boolean;
   embeddable: boolean;
   label: string;
+  /** Viewer traffic routed through the authenticating PACS proxy. */
+  proxy: boolean;
 }
 
 // ============================================================
@@ -122,6 +124,24 @@ export function useDicomAttachmentViewer(attachmentId: string | null, enabled: b
     staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
     retry: false,
+  });
+}
+
+/**
+ * Mint the short-lived PACS session cookie so the OHIF iframe (served by the
+ * backend proxy) can reach DICOMweb. Must be called before showing the iframe
+ * when PACS proxy mode is on. withCredentials so the Set-Cookie is stored.
+ */
+export function useCreatePacsSession() {
+  return useMutation({
+    mutationFn: async () => {
+      const res = await apiPost<{ viewerBase: string; ttlMin: number }>(
+        '/pacs/session',
+        {},
+        { withCredentials: true },
+      );
+      return res.data;
+    },
   });
 }
 
