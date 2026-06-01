@@ -234,7 +234,6 @@ function DashboardInner() {
 
       <div className="flex flex-wrap gap-2">
         <Link href="/radiology"><Button variant="outline" size="sm"><Stethoscope className="mr-1.5 h-4 w-4" />Open Worklist</Button></Link>
-        <Link href="/radiology/studies"><Button variant="outline" size="sm"><FileBarChart className="mr-1.5 h-4 w-4" />DICOM Studies</Button></Link>
         <Link href="/radiology/reports"><Button variant="outline" size="sm"><FileBarChart className="mr-1.5 h-4 w-4" />Full Reports & TAT</Button></Link>
       </div>
     </div>

@@ -100,9 +100,8 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
     icon: ScanLine,
     baseRoute: '/radiology',
     sidebarItems: [
-      // Home + Worklist + Studies are the radiologist's primary surface.
+      // Home + Worklist are the radiologist's primary surface.
       { label: 'Home', href: '/radiology', icon: Home },
-      { label: 'DICOM Studies', href: '/radiology/studies', icon: ScanLine },
       { label: 'Worklist', href: '/radiology/worklist', icon: ClipboardList },
       // Below: radiology_admin-only per SOW (analytics, billing, inventory,
       // vendor purchases, modality catalog/tariffs). Sidebar hides them for

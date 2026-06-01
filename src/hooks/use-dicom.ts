@@ -43,6 +43,10 @@ export interface DicomStudy {
   storagePath: string | null;
   viewerUrl: string | null;
   createdAt: string;
+  /** True when this "study" is synthesized from uploaded imaging files (no external PACS). */
+  synthesized?: boolean;
+  /** Linked imaging request (present on synthesized studies). */
+  imagingRequestId?: string | null;
   patient?: {
     id: string;
     mrn: string;
