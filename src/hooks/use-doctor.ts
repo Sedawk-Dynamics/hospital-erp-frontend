@@ -1261,6 +1261,8 @@ export function useCreateImagingRequest() {
       clinicalIndication?: string;
       urgency?: string;
       notes?: string;
+      /** Set when ordering a study picked from the imaging catalog (exact pricing). */
+      serviceTariffId?: string;
     }) => {
       const response = await apiPost<ImagingRequest>('/imaging/requests', data);
       return response.data;

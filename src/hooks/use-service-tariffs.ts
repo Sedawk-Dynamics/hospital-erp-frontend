@@ -4,11 +4,14 @@
 // uses the DB column names which we expose verbatim in the types below.
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPost, apiPut } from '@/lib/api';
+import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 
 export type ServiceTariffCategory =
   | 'consultation' | 'procedure' | 'lab' | 'imaging' | 'pharmacy'
   | 'room' | 'nursing' | 'surgery' | 'other';
+
+export type ImagingModality =
+  | 'xray' | 'mri' | 'ct_scan' | 'ultrasound' | 'ecg' | 'echo' | 'other';
 
 export interface ServiceTariff {
   id: string;
@@ -18,6 +21,8 @@ export interface ServiceTariff {
   category: ServiceTariffCategory;
   basePrice: number | string;
   gstRatePercent: number | string;
+  /** Imaging tariffs only — the modality this study runs on. */
+  modality?: ImagingModality | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -54,6 +59,7 @@ export interface CreateTariffInput {
   basePrice: number;
   taxRate?: number;
   isActive?: boolean;
+  modality?: ImagingModality | null;
 }
 
 export function useCreateServiceTariff() {
@@ -78,6 +84,7 @@ export interface UpdateTariffInput {
   basePrice?: number;
   taxRate?: number;
   isActive?: boolean;
+  modality?: ImagingModality | null;
 }
 
 export function useUpdateServiceTariff() {
@@ -86,6 +93,19 @@ export function useUpdateServiceTariff() {
     mutationFn: async ({ id, ...data }: UpdateTariffInput) => {
       const response = await apiPut<ServiceTariff>(`/billing/tariffs/${id}`, data);
       return response.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: tariffKeys.all });
+    },
+  });
+}
+
+export function useDeleteServiceTariff() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await apiDelete(`/billing/tariffs/${id}`);
+      return id;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: tariffKeys.all });
