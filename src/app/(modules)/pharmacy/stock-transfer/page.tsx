@@ -1,4 +1,5 @@
 'use client';
+import { PharmacyAdminGuard } from '@/components/pharmacy/pharmacy-admin-guard';
 
 import { useState } from 'react';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
@@ -34,7 +35,7 @@ const typeLabels: Record<string, string> = {
   expired_removal: 'Expired',
 };
 
-export default function PharmacyStockTransferPage() {
+function PharmacyStockTransferPageInner() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
 
@@ -140,5 +141,13 @@ export default function PharmacyStockTransferPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function PharmacyStockTransferPage() {
+  return (
+    <PharmacyAdminGuard>
+      <PharmacyStockTransferPageInner />
+    </PharmacyAdminGuard>
   );
 }

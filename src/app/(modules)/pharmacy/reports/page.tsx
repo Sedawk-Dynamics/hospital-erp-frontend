@@ -1,4 +1,5 @@
 'use client';
+import { PharmacyAdminGuard } from '@/components/pharmacy/pharmacy-admin-guard';
 
 import { useState } from 'react';
 import {
@@ -14,7 +15,7 @@ import { usePharmacyAnalytics } from '@/hooks/use-pharmacy';
 const fmtINR = (n: number) =>
   `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 
-export default function PharmacyReportsPage() {
+function PharmacyReportsPageInner() {
   const [from, setFrom] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() - 30);
     return toInputDateStr(d);
@@ -302,5 +303,13 @@ function BatchTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+export default function PharmacyReportsPage() {
+  return (
+    <PharmacyAdminGuard>
+      <PharmacyReportsPageInner />
+    </PharmacyAdminGuard>
   );
 }

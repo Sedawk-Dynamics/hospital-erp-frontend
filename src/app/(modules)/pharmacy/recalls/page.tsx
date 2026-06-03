@@ -1,4 +1,5 @@
 'use client';
+import { PharmacyAdminGuard } from '@/components/pharmacy/pharmacy-admin-guard';
 
 import { useState } from 'react';
 import {
@@ -30,7 +31,7 @@ import {
 
 type Mode = 'recalled' | 'flag-batch' | 'flag-drug';
 
-export default function PharmacyRecallsPage() {
+function PharmacyRecallsPageInner() {
   const [mode, setMode] = useState<Mode>('recalled');
   const [affectedBatchId, setAffectedBatchId] = useState<string | null>(null);
 
@@ -471,5 +472,13 @@ function AffectedPatientsDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+export default function PharmacyRecallsPage() {
+  return (
+    <PharmacyAdminGuard>
+      <PharmacyRecallsPageInner />
+    </PharmacyAdminGuard>
   );
 }

@@ -1,4 +1,5 @@
 'use client';
+import { PharmacyAdminGuard } from '@/components/pharmacy/pharmacy-admin-guard';
 
 import { useState } from 'react';
 import { Plus, Pencil, Trash2, Tags, Check, X } from 'lucide-react';
@@ -35,7 +36,7 @@ import {
   type DrugCategory,
 } from '@/hooks/use-pharmacy';
 
-export default function PharmacySettingsPage() {
+function PharmacySettingsPageInner() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -300,5 +301,13 @@ export default function PharmacySettingsPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function PharmacySettingsPage() {
+  return (
+    <PharmacyAdminGuard>
+      <PharmacySettingsPageInner />
+    </PharmacyAdminGuard>
   );
 }

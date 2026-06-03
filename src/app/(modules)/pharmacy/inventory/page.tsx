@@ -1,4 +1,5 @@
 'use client';
+import { PharmacyAdminGuard } from '@/components/pharmacy/pharmacy-admin-guard';
 
 import { useState } from 'react';
 import { Search, Plus, Pill, ChevronLeft, ChevronRight, Pencil, Trash2 } from 'lucide-react';
@@ -45,6 +46,7 @@ import {
   SelectItem,
   SelectValue,
 } from '@/components/ui/select';
+import { ImportFromCatalogDialog } from '@/components/pharmacy/import-from-catalog-dialog';
 
 const DOSAGE_FORMS: DosageForm[] = [
   'tablet',
@@ -112,7 +114,7 @@ function formStateToInput(form: FormState): CreateFormularyInput {
   return out;
 }
 
-export default function PharmacyInventoryPage() {
+function PharmacyInventoryPageInner() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -187,6 +189,8 @@ export default function PharmacyInventoryPage() {
           <h1 className="font-headline text-xl font-bold">Drug Formulary</h1>
           <p className="text-sm text-muted-foreground">Master list of drugs available for prescribing and dispensing.</p>
         </div>
+        <div className="flex items-center gap-2">
+        <ImportFromCatalogDialog />
         <Dialog open={dialogOpen} onOpenChange={(open) => {
           setDialogOpen(open);
           if (!open) {
@@ -340,6 +344,7 @@ export default function PharmacyInventoryPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Search bar */}
@@ -475,5 +480,13 @@ export default function PharmacyInventoryPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+export default function PharmacyInventoryPage() {
+  return (
+    <PharmacyAdminGuard>
+      <PharmacyInventoryPageInner />
+    </PharmacyAdminGuard>
   );
 }

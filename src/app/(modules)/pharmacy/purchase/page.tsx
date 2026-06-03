@@ -1,4 +1,5 @@
 'use client';
+import { PharmacyAdminGuard } from '@/components/pharmacy/pharmacy-admin-guard';
 
 import Link from 'next/link';
 import { ShoppingCart, ArrowRight } from 'lucide-react';
@@ -8,7 +9,7 @@ import { EmptyState } from '@/components/shared/empty-state';
 // Pharmacy purchase orders are managed in the unified Inventory module
 // (single PO surface across drugs, consumables, equipment). This page
 // guides the user there instead of duplicating the UI.
-export default function PharmacyPurchaseRedirectPage() {
+function PharmacyPurchaseRedirectPageInner() {
   return (
     <div className="space-y-4 animate-fade-in-up">
       <div>
@@ -35,5 +36,13 @@ export default function PharmacyPurchaseRedirectPage() {
         />
       </div>
     </div>
+  );
+}
+
+export default function PharmacyPurchaseRedirectPage() {
+  return (
+    <PharmacyAdminGuard>
+      <PharmacyPurchaseRedirectPageInner />
+    </PharmacyAdminGuard>
   );
 }

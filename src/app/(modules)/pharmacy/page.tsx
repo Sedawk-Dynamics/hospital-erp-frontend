@@ -26,6 +26,7 @@ import {
   useFormulary,
   useBatchesByDrug,
   useCreateDispense,
+  useDispensePriceCheck,
   usePrescriptionQueue,
   usePrescriptionDetail,
   type FormularyItem,
@@ -198,6 +199,7 @@ function PharmacyPOS() {
 
   // --- Mutation ---
   const createDispense = useCreateDispense();
+  const priceCheck = useDispensePriceCheck();
 
   // --- Auto-load patient + cart when prescription detail arrives ---
   useEffect(() => {
@@ -408,16 +410,11 @@ function PharmacyPOS() {
     && linkedToPrescription
     && prescriptionItemsHaveLinks;
 
-  const handleCreateBill = async () => {
-    if (cart.length === 0) return toast.error('Add at least one medicine to the cart');
-    if (!selectedPatient) return toast.error('Please select a patient first');
-    if (!cartHasAllBatches) return toast.error('Please select a batch for each medicine');
-    if (!linkedToPrescription) return toast.error('Pick a prescription — dispensing requires a doctor order');
-    if (paymentModes.length === 0) return toast.error('Please select at least one payment mode');
-
+  // Performs the actual dispense at the hospital's own price.
+  const runDispense = async () => {
     try {
       await createDispense.mutateAsync({
-        patientId: selectedPatient.id,
+        patientId: selectedPatient!.id,
         prescriptionId: activePrescriptionId as string,
         items: cart.map((c) => ({
           prescriptionItemId: c.prescriptionItemId as string,
@@ -435,6 +432,30 @@ function PharmacyPOS() {
       const message = err instanceof Error ? err.message : 'Failed to dispense';
       toast.error(message);
     }
+  };
+
+  const handleCreateBill = async () => {
+    if (cart.length === 0) return toast.error('Add at least one medicine to the cart');
+    if (!selectedPatient) return toast.error('Please select a patient first');
+    if (!cartHasAllBatches) return toast.error('Please select a batch for each medicine');
+    if (!linkedToPrescription) return toast.error('Pick a prescription — dispensing requires a doctor order');
+    if (paymentModes.length === 0) return toast.error('Please select at least one payment mode');
+
+    // NPPA price control is ADVISORY only — show a non-blocking heads-up if any
+    // scheduled drug is above its ceiling, then dispense at the hospital's price.
+    try {
+      const check = await priceCheck.mutateAsync(
+        cart.map((c) => ({ drugBatchId: c.batchId as string })),
+      );
+      if (check?.hasViolations) {
+        const names = check.violations.map((v) => v.drugName).join(', ');
+        toast.warning(`Above NPPA ceiling (dispensing at your price): ${names}`);
+      }
+    } catch {
+      // Advisory only — never block dispensing if the check fails.
+    }
+
+    await runDispense();
   };
 
   const handleSaveDraft = async () => {

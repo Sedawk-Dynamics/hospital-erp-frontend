@@ -260,6 +260,52 @@ export function useCreateFormularyItem() {
   });
 }
 
+export interface PriceControlWatchItem {
+  formularyId: string;
+  drugName: string;
+  genericName: string | null;
+  hospitalPrice: number | null;
+  priceSource: 'batch' | 'formulary' | null;
+  ceilingPrice: number | null;
+  ceilingUnit: string | null;
+  nppaNotification: string | null;
+  ceilingEffectiveDate: string | null;
+  isOverCeiling: boolean;
+}
+
+export interface PriceControlWatch {
+  items: PriceControlWatchItem[];
+  total: number;
+  overCeilingCount: number;
+}
+
+// NPPA / DPCO price-control watch: this hospital's stocked scheduled drugs vs
+// the official ceiling. Read-only — never changes the hospital's price.
+export function usePriceControlWatch() {
+  return useQuery({
+    queryKey: ['pharmacy', 'price-control-watch'],
+    queryFn: async () => {
+      const response = await apiGet<PriceControlWatch>('/pharmacy/price-control-watch');
+      return response.data as PriceControlWatch;
+    },
+  });
+}
+
+// Import a drug from the platform DrugMaster catalog into this tenant's
+// formulary (one-click "add to formulary"). Backend dedupes on drugMasterId.
+export function useImportFormularyItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { drugMasterId: string; categoryId?: string; price?: number }) => {
+      const response = await apiPost<FormularyItem>('/pharmacy/formulary/import', data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
+    },
+  });
+}
+
 export function useUpdateFormularyItem() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -406,6 +452,31 @@ export interface CreateDispenseInput {
   prescriptionId: string;
   items: CreateDispenseItem[];
   notes?: string;
+  // NPPA price-control override (applied to any scheduled item over ceiling).
+  overrideCeiling?: boolean;
+  overrideReason?: string;
+}
+
+export interface DispensePriceViolation {
+  drugBatchId: string;
+  drugName: string;
+  unitPrice: number;
+  ceilingPrice: number;
+  ceilingUnit: string | null;
+}
+
+// Pre-flight NPPA price check for a cart — call before dispensing to collect a
+// single override authorisation up front.
+export function useDispensePriceCheck() {
+  return useMutation({
+    mutationFn: async (items: Array<{ drugBatchId: string }>) => {
+      const response = await apiPost<{
+        violations: DispensePriceViolation[];
+        hasViolations: boolean;
+      }>('/pharmacy/dispense/price-check', { items });
+      return response.data;
+    },
+  });
 }
 
 export function useCreateDispense() {
@@ -424,6 +495,8 @@ export function useCreateDispense() {
           drugBatchId: item.drugBatchId,
           quantityDispensed: item.quantity,
           notes: data.notes,
+          overrideCeiling: data.overrideCeiling,
+          overrideReason: data.overrideReason,
         });
         results.push(response.data);
       }

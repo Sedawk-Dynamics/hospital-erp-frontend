@@ -1,4 +1,5 @@
 'use client';
+import { PharmacyAdminGuard } from '@/components/pharmacy/pharmacy-admin-guard';
 
 import { useState } from 'react';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
@@ -18,7 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { useDispenseRecords } from '@/hooks/use-pharmacy';
 
-export default function PharmacyTransactionsPage() {
+function PharmacyTransactionsPageInner() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
 
@@ -143,5 +144,13 @@ export default function PharmacyTransactionsPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function PharmacyTransactionsPage() {
+  return (
+    <PharmacyAdminGuard>
+      <PharmacyTransactionsPageInner />
+    </PharmacyAdminGuard>
   );
 }

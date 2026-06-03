@@ -879,13 +879,17 @@ function MedicationsSection({ form, patientId }: { form: any; patientId: string 
   const { data: formularyResults } = useFormularySearch(debouncedSearch);
 
   const filteredResults = (formularyResults ?? []).filter(
-    (d: FormularyDrug) => !medicines.some((m: MedicineFormData) => m.drugId === d.id),
+    // Master-catalog matches have a null id — never dedupe those by id (they
+    // share the same null), only dedupe already-stocked formulary rows.
+    (d: FormularyDrug) => d.id == null || !medicines.some((m: MedicineFormData) => m.drugId === d.id),
   );
 
   const handleSelectDrug = useCallback((drug: FormularyDrug) => {
     append({
       ...defaultMedicine,
-      drugId: drug.id,
+      // Catalog-only drugs (source 'master') have no formulary id → leave
+      // drugId unset so the item is saved as free-text.
+      drugId: drug.id ?? undefined,
       drugName: drug.drugName,
       genericName: drug.genericName || '',
       dosageForm: drug.dosageForm || '',
@@ -964,10 +968,10 @@ function MedicationsSection({ form, patientId }: { form: any; patientId: string 
           {showDropdown && drugSearch.length >= 2 && (
             <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-48 overflow-y-auto rounded-lg border bg-popover shadow-lg">
               {filteredResults.map((drug) => {
-                const badge = getDosageFormBadge(drug.dosageForm);
+                const badge = getDosageFormBadge(drug.dosageForm ?? undefined);
                 return (
                   <button
-                    key={drug.id}
+                    key={drug.id ?? drug.drugMasterId ?? drug.drugName}
                     type="button"
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent transition-colors border-b last:border-b-0"
                     onClick={() => handleSelectDrug(drug)}
@@ -987,6 +991,11 @@ function MedicationsSection({ form, patientId }: { form: any; patientId: string 
                         {[drug.genericName, drug.strength && `(${drug.strength})`].filter(Boolean).join(' ')}
                       </p>
                     </div>
+                    {drug.source === 'master' && (
+                      <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-muted-foreground border-muted-foreground/30 shrink-0">
+                        catalog
+                      </Badge>
+                    )}
                   </button>
                 );
               })}

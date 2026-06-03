@@ -851,7 +851,7 @@ function CreatePrescriptionDialog({
                     ) : formularyResults && formularyResults.length > 0 ? (
                       formularyResults.map((drug) => (
                         <button
-                          key={drug.id}
+                          key={drug.id ?? drug.drugMasterId ?? drug.drugName}
                           type="button"
                           className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent transition-colors"
                           onClick={() => handleSelectDrug(drug)}
@@ -1568,7 +1568,7 @@ function ViewPrescriptionDialog({
                           ) : newDrugResults && newDrugResults.length > 0 ? (
                             newDrugResults.map((drug) => (
                               <button
-                                key={drug.id}
+                                key={drug.id ?? drug.drugMasterId ?? drug.drugName}
                                 type="button"
                                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent transition-colors"
                                 onClick={() => handleSelectNewDrug(drug)}

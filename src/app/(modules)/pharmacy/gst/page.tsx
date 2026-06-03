@@ -1,4 +1,5 @@
 'use client';
+import { PharmacyAdminGuard } from '@/components/pharmacy/pharmacy-admin-guard';
 
 import { useState } from 'react';
 import { FileText, RefreshCw, IndianRupee, Calculator, Receipt } from 'lucide-react';
@@ -21,7 +22,7 @@ const fmtINR = (n: number) =>
 
 const GST_RATES = [0, 5, 12, 18, 28];
 
-export default function GSTReportPage() {
+function GSTReportPageInner() {
   const [from, setFrom] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
@@ -199,5 +200,13 @@ function Mini({ label, value }: { label: string; value: string }) {
       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
       <p className="text-lg font-bold mt-0.5">{value}</p>
     </div>
+  );
+}
+
+export default function GSTReportPage() {
+  return (
+    <PharmacyAdminGuard>
+      <GSTReportPageInner />
+    </PharmacyAdminGuard>
   );
 }

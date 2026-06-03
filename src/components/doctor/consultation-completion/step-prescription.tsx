@@ -50,9 +50,9 @@ export function StepPrescription({ form, patientId }: StepPrescriptionProps) {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  // Filter already-added drugs
+  // Filter already-added drugs (catalog-only matches have a null id → keep them)
   const filteredResults = (formularyResults ?? []).filter(
-    (d) => !medicines.some((m) => m.drugId === d.id),
+    (d) => d.id == null || !medicines.some((m) => m.drugId === d.id),
   );
 
   // Select drug from formulary → add as row
@@ -60,7 +60,8 @@ export function StepPrescription({ form, patientId }: StepPrescriptionProps) {
     (drug: FormularyDrug) => {
       const newMed: MedicineFormData = {
         ...defaultMedicine,
-        drugId: drug.id,
+        // Catalog-only drugs have no formulary id → save as free-text.
+        drugId: drug.id ?? undefined,
         drugName: drug.drugName,
         genericName: drug.genericName || '',
         dosageForm: drug.dosageForm || '',
@@ -175,10 +176,10 @@ export function StepPrescription({ form, patientId }: StepPrescriptionProps) {
         {showDropdown && drugSearch.length >= 2 && (
           <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-56 overflow-y-auto rounded-lg border bg-popover shadow-lg">
             {filteredResults.map((drug) => {
-              const badge = getDosageFormBadge(drug.dosageForm);
+              const badge = getDosageFormBadge(drug.dosageForm ?? undefined);
               return (
                 <button
-                  key={drug.id}
+                  key={drug.id ?? drug.drugMasterId ?? drug.drugName}
                   type="button"
                   className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm hover:bg-accent transition-colors border-b last:border-b-0"
                   onClick={() => handleSelectDrug(drug)}

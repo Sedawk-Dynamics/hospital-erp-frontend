@@ -1,4 +1,5 @@
 'use client';
+import { PharmacyAdminGuard } from '@/components/pharmacy/pharmacy-admin-guard';
 
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -97,7 +98,7 @@ function daysUntil(date: string | Date): number {
   return Math.floor((target - now) / (1000 * 60 * 60 * 24));
 }
 
-export default function PharmacyBatchesPage() {
+function PharmacyBatchesPageInner() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [drugFilter, setDrugFilter] = useState<string | null>(null);
@@ -565,5 +566,13 @@ export default function PharmacyBatchesPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function PharmacyBatchesPage() {
+  return (
+    <PharmacyAdminGuard>
+      <PharmacyBatchesPageInner />
+    </PharmacyAdminGuard>
   );
 }

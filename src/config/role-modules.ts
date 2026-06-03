@@ -78,10 +78,10 @@ const ROLE_MODULE_MAP: Record<string, ModuleKey[]> = {
   radiologist: ['radiology'],
   radiology_admin: ['radiology'],
 
-  // Pharmacy staff → pharmacy only
+  // Two pharmacy roles: pharmacist (counter) → pharmacy; pharmacy_admin
+  // (management) → pharmacy + the inventory module (suppliers, POs, stock).
   pharmacist: ['pharmacy'],
-  pharmacy_technician: ['pharmacy'],
-  pharmacy_admin: ['pharmacy'],
+  pharmacy_admin: ['pharmacy', 'inventory'],
 
   // Nursing staff → dedicated nurse module
   nurse: ['nurse'],
@@ -162,7 +162,6 @@ const ROLE_PORTAL_LABEL: Record<string, string> = {
 
   // Pharmacy
   pharmacist: 'Pharmacist Portal',
-  pharmacy_technician: 'Pharmacy Tech Portal',
   pharmacy_admin: 'Pharmacy Admin Portal',
 
   // Nursing

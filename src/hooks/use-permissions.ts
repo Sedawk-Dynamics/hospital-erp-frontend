@@ -145,21 +145,16 @@ export const ROLE_PERMISSIONS: Record<string, PermissionDef[]> = {
   ],
 
   pharmacist: [
-    { module: 'pharmacy', action: 'read' }, { module: 'pharmacy', action: 'create' }, { module: 'pharmacy', action: 'update' }, { module: 'pharmacy', action: 'approve' },
+    { module: 'pharmacy', action: 'read' }, { module: 'pharmacy', action: 'create' }, { module: 'pharmacy', action: 'update' },
     { module: 'prescriptions', action: 'read' }, { module: 'prescriptions', action: 'update' },
     { module: 'inventory', action: 'read' }, { module: 'patients', action: 'read' },
   ],
 
-  pharmacy_technician: [
-    { module: 'pharmacy', action: 'read' }, { module: 'pharmacy', action: 'create' }, { module: 'pharmacy', action: 'update' },
-    { module: 'prescriptions', action: 'read' }, { module: 'inventory', action: 'read' }, { module: 'patients', action: 'read' },
-  ],
-
   pharmacy_admin: [
-    { module: 'pharmacy', action: 'read' }, { module: 'pharmacy', action: 'create' }, { module: 'pharmacy', action: 'update' }, { module: 'pharmacy', action: 'delete' }, { module: 'pharmacy', action: 'approve' },
+    { module: 'pharmacy', action: 'read' }, { module: 'pharmacy', action: 'create' }, { module: 'pharmacy', action: 'update' }, { module: 'pharmacy', action: 'delete' }, { module: 'pharmacy', action: 'approve' }, { module: 'pharmacy', action: 'export' },
     { module: 'prescriptions', action: 'read' }, { module: 'prescriptions', action: 'update' },
-    { module: 'inventory', action: 'read' }, { module: 'inventory', action: 'create' }, { module: 'inventory', action: 'update' },
-    { module: 'patients', action: 'read' }, { module: 'reports', action: 'read' },
+    { module: 'inventory', action: 'read' }, { module: 'inventory', action: 'create' }, { module: 'inventory', action: 'update' }, { module: 'inventory', action: 'delete' }, { module: 'inventory', action: 'approve' }, { module: 'inventory', action: 'export' },
+    { module: 'patients', action: 'read' }, { module: 'reports', action: 'read' }, { module: 'reports', action: 'export' },
   ],
 
   inventory_manager: [

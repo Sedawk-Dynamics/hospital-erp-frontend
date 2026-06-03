@@ -23,6 +23,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { toast } from 'sonner';
+import { usePharmacyRole } from '@/hooks/use-pharmacy-role';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
 import {
   useReturns, useCreateReturn, useProcessReturn, useBatches,
@@ -33,6 +34,7 @@ type ReturnTab = 'all' | 'pending' | 'processed' | 'rejected';
 type CreateMode = 'patient_return' | 'vendor_return';
 
 export default function PharmacyReturnsPage() {
+  const { isPharmacyAdmin } = usePharmacyRole();
   const [tab, setTab] = useState<ReturnTab>('pending');
   const [createOpen, setCreateOpen] = useState<CreateMode | null>(null);
 
@@ -56,10 +58,12 @@ export default function PharmacyReturnsPage() {
             <Plus className="mr-1.5 h-4 w-4" />
             Patient Return
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setCreateOpen('vendor_return')}>
-            <Plus className="mr-1.5 h-4 w-4" />
-            Vendor Return
-          </Button>
+          {isPharmacyAdmin && (
+            <Button variant="outline" size="sm" onClick={() => setCreateOpen('vendor_return')}>
+              <Plus className="mr-1.5 h-4 w-4" />
+              Vendor Return
+            </Button>
+          )}
         </div>
       </div>
 

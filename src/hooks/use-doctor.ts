@@ -1033,13 +1033,18 @@ export function useCreateMRDRequest() {
 // ============================================================
 
 export interface FormularyDrug {
-  id: string;
+  // `id` is the tenant formulary row id (usable as PrescriptionItem.drugId) for
+  // source==='formulary'; it is null for platform-catalog matches the hospital
+  // hasn't stocked yet (source==='master'), which carry `drugMasterId` instead.
+  id: string | null;
   drugName: string;
-  genericName?: string;
-  dosageForm?: string;
-  strength?: string;
-  manufacturer?: string;
-  price?: number;
+  genericName?: string | null;
+  dosageForm?: string | null;
+  strength?: string | null;
+  manufacturer?: string | null;
+  price?: number | string | null;
+  source?: 'formulary' | 'master';
+  drugMasterId?: string;
 }
 
 export function useFormularySearch(search: string) {
