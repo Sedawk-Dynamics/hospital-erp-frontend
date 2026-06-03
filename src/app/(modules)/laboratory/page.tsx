@@ -17,6 +17,7 @@ import {
   Send,
   Eye,
   AlertTriangle,
+  Lock,
   X as XIcon,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -800,6 +801,11 @@ function OrderDetailDialog({
                 patientId={liveOrder.patientId}
                 item={it}
                 attachments={(attachments ?? []).filter((a) => a.labOrderItemId === it.id)}
+                reportFinalized={
+                  liveOrder.labReport != null &&
+                  liveOrder.labReport.status !== 'draft' &&
+                  liveOrder.labReport.status !== 'review'
+                }
               />
             ))}
           </div>
@@ -990,11 +996,15 @@ function TestItemRow({
   patientId,
   item,
   attachments,
+  reportFinalized,
 }: {
   orderId: string;
   patientId: string;
   item: NonNullable<LabOrder['labOrderItems']>[number];
   attachments: LabAttachment[];
+  // True once the lab supervisor has signed/approved/published (or corrected)
+  // the order's report. From that point the report is locked — no editing.
+  reportFinalized: boolean;
 }) {
   const { canApprove } = useLabRole();
   const upload = useUploadLabAttachment();
@@ -1006,7 +1016,14 @@ function TestItemRow({
 
   const isDone = item.status === 'completed';
   const isCancelled = item.status === 'cancelled';
-  const canMarkDone = !isDone && !isCancelled && attachments.length > 0;
+
+  // A done test is normally read-only. "Edit" re-opens the entry controls so a
+  // technician can fix an upload/result — but only while the report is still
+  // unfinalized. Once the supervisor finalizes, editing is locked entirely.
+  const [editing, setEditing] = useState(false);
+  const isEditable = !isCancelled && (!isDone || (editing && !reportFinalized));
+
+  const canMarkDone = isEditable && attachments.length > 0;
 
   // Existing LabResult rows for this item (eager-loaded by useLabOrder).
   const existingResults = item.labResults ?? [];
@@ -1127,6 +1144,7 @@ function TestItemRow({
     try {
       await complete.mutateAsync({ orderId, itemId: item.id });
       toast.success('Test marked done');
+      setEditing(false);
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? 'Failed to mark done');
     }
@@ -1225,14 +1243,43 @@ function TestItemRow({
           )}
         </div>
         {isDone && (
-          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 shrink-0">
-            <CheckCircle2 className="size-3.5" />
-            Done
-          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700">
+              <CheckCircle2 className="size-3.5" />
+              Done
+            </span>
+            {/* Edit re-opens entry while unfinalized; once the supervisor
+                finalizes the report the test is locked instead. */}
+            {!reportFinalized ? (
+              editing ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-2 text-[10px]"
+                  onClick={() => setEditing(false)}
+                >
+                  Cancel edit
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 gap-1 px-2 text-[10px]"
+                  onClick={() => setEditing(true)}
+                >
+                  <ClipboardEdit className="size-3" /> Edit
+                </Button>
+              )
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
+                <Lock className="size-3" /> Locked
+              </span>
+            )}
+          </div>
         )}
       </div>
 
-      {!isCancelled && !isDone && (
+      {isEditable && (
         <Tabs value={mode} onValueChange={(v: any) => setMode(v)} className="mt-1">
           <TabsList variant="line" className="h-8">
             <TabsTrigger value="upload" className="gap-1 text-xs">
@@ -1280,7 +1327,7 @@ function TestItemRow({
                 Queues the report for supervisor approval once every test is marked done.
               </span>
             </div>
-            <AttachmentList attachments={attachments} onDelete={onDelete} pending={remove.isPending} canDelete={!isDone} />
+            <AttachmentList attachments={attachments} onDelete={onDelete} pending={remove.isPending} canDelete={isEditable} />
           </TabsContent>
 
           {/* Add Details mode */}
@@ -1447,8 +1494,9 @@ function TestItemRow({
         </Tabs>
       )}
 
-      {/* When the test is already done OR cancelled, just show the file list read-only. */}
-      {(isDone || isCancelled) && attachments.length > 0 && (
+      {/* When the test is done (and not being edited) OR cancelled, just show
+          the file list read-only. */}
+      {((isDone && !editing) || isCancelled) && attachments.length > 0 && (
         <AttachmentList attachments={attachments} canDelete={false} />
       )}
     </div>
