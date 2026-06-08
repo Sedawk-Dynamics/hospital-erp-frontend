@@ -34,6 +34,10 @@ export interface FormularyItem {
   strength: string | null;
   unitOfMeasurement: string | null;
   price: number | string | null;
+  // Loose / sub-unit sale + GST (per base unit). packSize = base units per pack.
+  packSize: number | null;
+  looseUnitLabel: string | null;
+  taxPercent: number | string | null;
   indications: string | null;
   contraindications: string | null;
   isActive: boolean;
@@ -41,6 +45,11 @@ export interface FormularyItem {
   createdAt: string;
   updatedAt: string;
   drugBatches?: Array<Pick<DrugBatch, 'id' | 'batchNumber' | 'expiryDate' | 'quantityInStock' | 'sellingPrice'>>;
+  // Live stock summary (from getFormulary) — derived from available batches.
+  totalStock?: number;
+  batchCount?: number;
+  inStock?: boolean;
+  nearestExpiry?: string | null;
 }
 
 export interface DrugBatch {
@@ -60,7 +69,10 @@ export interface DrugBatch {
   recallReason: string | null;
   createdAt: string;
   updatedAt: string;
-  drug?: Pick<FormularyItem, 'id' | 'drugName' | 'genericName' | 'strength' | 'dosageForm'>;
+  drug?: Pick<
+    FormularyItem,
+    'id' | 'drugName' | 'genericName' | 'strength' | 'dosageForm' | 'packSize' | 'looseUnitLabel' | 'taxPercent'
+  >;
   supplier?: { id: string; name: string } | null;
 }
 
@@ -117,6 +129,7 @@ export interface FormularyQueryParams extends PaginatedParams {
   categoryId?: string;
   dosageForm?: DosageForm;
   isActive?: boolean | string;
+  stockStatus?: 'in' | 'out';
 }
 
 export interface BatchQueryParams extends PaginatedParams {
@@ -242,6 +255,9 @@ export interface CreateFormularyInput {
   strength?: string;
   unitOfMeasurement?: string;
   price?: number;
+  packSize?: number;
+  looseUnitLabel?: string;
+  taxPercent?: number;
   indications?: string;
   contraindications?: string;
   isActive?: boolean;
@@ -302,6 +318,58 @@ export function useImportFormularyItem() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
+      queryClient.invalidateQueries({ queryKey: ['pharmacy', 'catalog'] });
+    },
+  });
+}
+
+// ── Tenant catalog browse (platform DrugMaster + imported flag) ──
+export interface CatalogItem {
+  id: string;
+  name: string;
+  genericName: string | null;
+  manufacturer: string | null;
+  dosageForm: DosageForm | null;
+  strength: string | null;
+  packSizeLabel: string | null;
+  mrp: number | string | null;
+  schedule: string | null;
+  isScheduled: boolean;
+  ceilingPrice: number | string | null;
+  imported: boolean;
+  formularyId: string | null;
+}
+
+export interface CatalogQueryParams extends PaginatedParams {
+  dosageForm?: DosageForm;
+  schedule?: string;
+  imported?: 'yes' | 'no';
+}
+
+export function usePharmacyCatalog(params?: CatalogQueryParams) {
+  return useQuery({
+    queryKey: ['pharmacy', 'catalog', params],
+    queryFn: async () => {
+      const response = await apiGet<CatalogItem[]>('/pharmacy/catalog', { params });
+      return { data: response.data, meta: response.meta as PaginationMeta | undefined };
+    },
+  });
+}
+
+// Bulk copy many catalog drugs into the formulary in one call (dedupes server-side).
+export function useImportFormularyBulk() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { drugMasterIds: string[]; categoryId?: string }) => {
+      const response = await apiPost<{ requested: number; created: number; skipped: number }>(
+        '/pharmacy/formulary/import-bulk',
+        data,
+      );
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
+      queryClient.invalidateQueries({ queryKey: ['pharmacy', 'catalog'] });
     },
   });
 }
@@ -507,6 +575,104 @@ export function useCreateDispense() {
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
       queryClient.invalidateQueries({ queryKey: ['prescriptions'] });
     },
+  });
+}
+
+// ============================================================
+// Counter Billing (POS sale) Hooks
+// ============================================================
+
+export interface PharmacySaleItemInput {
+  drugBatchId: string;
+  prescriptionItemId?: string;
+  quantity: number;
+  saleUnit?: 'pack' | 'loose';
+  discountPercent?: number;
+  unitPrice?: number;
+}
+
+export interface CreatePharmacySaleInput {
+  patientId?: string;
+  prescriptionId?: string;
+  items: PharmacySaleItemInput[];
+  paymentMethod?: 'cash' | 'credit_card' | 'debit_card' | 'upi' | 'net_banking' | 'cheque' | 'other';
+  amountPaid?: number;
+  notes?: string;
+  overrideReason?: string;
+}
+
+export interface PharmacyBillItem {
+  id: string;
+  description: string;
+  quantity: number;
+  unitPrice: number | string;
+  discountPercent: number | string;
+  discountAmount: number | string;
+  taxPercent: number | string;
+  taxAmount: number | string;
+  totalAmount: number | string;
+}
+
+export interface PharmacySale {
+  bill: {
+    id: string;
+    billNumber: string;
+    billDate: string;
+    subtotal: number | string;
+    discountAmount: number | string;
+    taxAmount: number | string;
+    totalAmount: number | string;
+    amountPaid: number | string;
+    balanceDue: number | string;
+    status: string;
+    patient?: {
+      id: string;
+      mrn: string;
+      firstName: string;
+      lastName: string | null;
+      gender: string | null;
+      dateOfBirth: string | null;
+      phone: string | null;
+    };
+    billItems: PharmacyBillItem[];
+    payments: Array<{ id: string; amount: number | string; paymentMethod: string; paymentDate: string }>;
+    generator?: { id: string; firstName: string; lastName: string } | null;
+  };
+  hospital: {
+    name: string;
+    logoUrl: string | null;
+    address: string | null;
+    city: string | null;
+    state: string | null;
+    phone: string | null;
+    email: string | null;
+  } | null;
+}
+
+// Bill an entire cart as ONE invoice (partial / loose / walk-in / GST / payment).
+export function useCreatePharmacySale() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: CreatePharmacySaleInput) => {
+      const response = await apiPost<PharmacySale>('/pharmacy/sales', data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.dispensing.all });
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: ['prescriptions'] });
+    },
+  });
+}
+
+export function usePharmacySale(billId: string | null) {
+  return useQuery({
+    queryKey: ['pharmacy', 'sales', billId],
+    queryFn: async () => {
+      const response = await apiGet<PharmacySale>(`/pharmacy/sales/${billId}`);
+      return response.data;
+    },
+    enabled: !!billId,
   });
 }
 
@@ -725,7 +891,7 @@ export interface RecallAffectedPatients {
     dispenses: Array<{
       dispensedAt: string;
       quantity: number;
-      prescriptionId: string;
+      prescriptionId: string | null;
       doctorName: string | null;
     }>;
   }>;

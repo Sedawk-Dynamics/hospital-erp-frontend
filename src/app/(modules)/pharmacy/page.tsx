@@ -14,7 +14,11 @@ import {
   ClipboardList,
   Stethoscope,
   X,
+  Check,
+  CalendarClock,
 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -25,14 +29,16 @@ import { formatDate, formatTime24, toInputDateStr } from '@/lib/date-utils';
 import {
   useFormulary,
   useBatchesByDrug,
-  useCreateDispense,
   useDispensePriceCheck,
+  useCreatePharmacySale,
   usePrescriptionQueue,
   usePrescriptionDetail,
   type FormularyItem,
   type DrugBatch,
   type PrescriptionListItem,
+  type PharmacySale,
 } from '@/hooks/use-pharmacy';
+import { PharmacyReceiptDialog } from '@/components/pharmacy/pharmacy-receipt-dialog';
 
 export default function PharmacyBillingPage() {
   return (
@@ -77,13 +83,19 @@ interface CartItem {
   batchId: string | null;
   batchNumber: string;
   expiryDate: string | null;
-  // Pricing — pulled from the chosen batch (or formulary fallback)
+  // Pricing — per BASE (loose) unit, pulled from the chosen batch / formulary
   sellingPrice: number;
   purchasePrice: number;
-  // User-editable
+  // Loose / sub-unit sale. packSize = base units per pack/strip. When the line
+  // sells 'pack' the quantity counts packs; when 'loose' it counts sub-units.
+  packSize: number;
+  looseUnitLabel: string;
+  taxPercent: number;
+  saleUnit: 'pack' | 'loose';
+  // User-editable (quantity is in the chosen saleUnit)
   quantity: number;
   discount: number;
-  // Stock check
+  // Stock check — always in BASE units
   availableQty: number;
 }
 
@@ -105,13 +117,30 @@ const toNum = (n: number | string | null | undefined): number => {
   return typeof n === 'string' ? Number(n) : n;
 };
 
+// Base (loose) units this line represents, accounting for pack vs loose selling.
+function baseQtyOf(item: CartItem): number {
+  const pack = item.packSize > 0 ? item.packSize : 1;
+  return item.saleUnit === 'loose' ? item.quantity : item.quantity * pack;
+}
+
+function computeItemGross(item: CartItem): number {
+  return item.sellingPrice * baseQtyOf(item);
+}
+
 function computeItemNet(item: CartItem): number {
-  const base = item.sellingPrice * item.quantity;
-  return base - base * (item.discount / 100);
+  const gross = computeItemGross(item);
+  return gross - gross * (item.discount / 100);
+}
+
+// GST embedded in the MRP (prices are tax-inclusive).
+function computeItemTax(item: CartItem): number {
+  const net = computeItemNet(item);
+  const rate = item.taxPercent || 0;
+  return net - net / (1 + rate / 100);
 }
 
 function computeItemMargin(item: CartItem): number {
-  const cost = item.purchasePrice * item.quantity;
+  const cost = item.purchasePrice * baseQtyOf(item);
   return computeItemNet(item) - cost;
 }
 
@@ -144,12 +173,16 @@ function PharmacyPOS() {
 
   // --- Cart + payment state ---
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [paymentModes, setPaymentModes] = useState<string[]>([]);
+  const [paymentMode, setPaymentMode] = useState<string>('Cash');
+  const [amountTendered, setAmountTendered] = useState<string>('');
 
-  // --- Batch picker ---
+  // --- Receipt ---
+  const [receiptSale, setReceiptSale] = useState<PharmacySale | null>(null);
+  const [receiptOpen, setReceiptOpen] = useState(false);
+
+  // --- Batch picker (modal) ---
   const [batchPickerForRow, setBatchPickerForRow] = useState<string | null>(null);
   const [batchPickerDrugId, setBatchPickerDrugId] = useState<string | null>(null);
-  const batchPickerRef = useRef<HTMLDivElement>(null);
 
   // --- Debounces ---
   useEffect(() => {
@@ -198,7 +231,7 @@ function PharmacyPOS() {
   const availableBatches = (batchesForDrug ?? []).filter((b) => b.quantityInStock > 0);
 
   // --- Mutation ---
-  const createDispense = useCreateDispense();
+  const createSale = useCreatePharmacySale();
   const priceCheck = useDispensePriceCheck();
 
   // --- Auto-load patient + cart when prescription detail arrives ---
@@ -229,11 +262,17 @@ function PharmacyPOS() {
         expiryDate: null,
         sellingPrice: 0,
         purchasePrice: 0,
+        packSize: 1,
+        looseUnitLabel: 'unit',
+        taxPercent: 12,
+        saleUnit: 'loose',
         quantity: it.quantity ?? 1,
         discount: 0,
         availableQty: 0,
       }));
     setCart(newCart);
+    // FEFO — auto-pick the nearest-expiry batch for each prescription line.
+    newCart.forEach((c) => void autoSelectBatch(c.rowKey, c.formularyItemId));
     if (activePrescription.prescriptionItems.some((it) => !it.drugId)) {
       toast.info('Some items lack a formulary link and need to be selected manually.');
     }
@@ -248,10 +287,6 @@ function PharmacyPOS() {
       }
       if (patientDropdownRef.current && !patientDropdownRef.current.contains(e.target as Node)) {
         setShowPatientDropdown(false);
-      }
-      if (batchPickerRef.current && !batchPickerRef.current.contains(e.target as Node)) {
-        setBatchPickerForRow(null);
-        setBatchPickerDrugId(null);
       }
       if (prescriptionPickerRef.current && !prescriptionPickerRef.current.contains(e.target as Node)) {
         setPrescriptionPickerOpen(false);
@@ -286,20 +321,63 @@ function PharmacyPOS() {
     setCart([]);
   }, []);
 
+  const selectBatch = useCallback((rowKey: string, batch: DrugBatch) => {
+    setCart((prev) =>
+      prev.map((c) => {
+        if (c.rowKey !== rowKey) return c;
+        // Pull pack/loose/GST config off the batch's formulary drug (if present).
+        const pack = batch.drug?.packSize && batch.drug.packSize > 0 ? batch.drug.packSize : c.packSize;
+        const saleUnit: 'pack' | 'loose' = pack > 1 ? c.saleUnit : 'pack';
+        const maxInUnit = saleUnit === 'loose' ? batch.quantityInStock : Math.floor(batch.quantityInStock / (pack || 1));
+        return {
+          ...c,
+          batchId: batch.id,
+          batchNumber: batch.batchNumber,
+          sellingPrice: toNum(batch.sellingPrice) || c.sellingPrice,
+          purchasePrice: toNum(batch.purchasePrice),
+          packSize: pack,
+          looseUnitLabel: batch.drug?.looseUnitLabel || c.looseUnitLabel,
+          taxPercent: batch.drug?.taxPercent != null ? toNum(batch.drug.taxPercent) : c.taxPercent,
+          saleUnit,
+          availableQty: batch.quantityInStock,
+          expiryDate: batch.expiryDate,
+          quantity: Math.max(1, Math.min(c.quantity || 1, maxInUnit || 1)),
+        };
+      }),
+    );
+    setBatchPickerForRow(null);
+    setBatchPickerDrugId(null);
+  }, []);
+
+  // FEFO — auto-pick the nearest-expiry available batch for a freshly-added row.
+  const autoSelectBatch = useCallback(async (rowKey: string, drugId: string) => {
+    try {
+      const res = await apiGet<DrugBatch[]>('/pharmacy/batches', {
+        params: { drugId, availableOnly: true, limit: 50 },
+      });
+      const batches = (res.data ?? []).filter((b) => b.quantityInStock > 0);
+      if (batches.length === 0) return;
+      const nearest = batches
+        .slice()
+        .sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime())[0];
+      selectBatch(rowKey, nearest);
+    } catch {
+      /* leave unselected — the cashier can pick manually */
+    }
+  }, [selectBatch]);
+
   // --- Walk-in cart helpers ---
   const addWalkInItem = useCallback((item: FormularyItem) => {
     if (activePrescriptionId) {
-      toast.warning('This bill is linked to a prescription. Clear it first to dispense walk-in items.');
+      toast.warning('This bill is linked to a prescription. Clear it first to add walk-in items.');
       return;
     }
+    const pack = item.packSize && item.packSize > 0 ? item.packSize : 1;
+    const rowKey = `walk::${item.id}`;
+    const alreadyInCart = cart.some((c) => c.rowKey === rowKey);
     setCart((prev) => {
-      const rowKey = `walk::${item.id}`;
       const existing = prev.find((c) => c.rowKey === rowKey);
       if (existing) {
-        if (existing.availableQty > 0 && existing.quantity >= existing.availableQty) {
-          toast.warning(`Max available stock: ${existing.availableQty}`);
-          return prev;
-        }
         return prev.map((c) =>
           c.rowKey === rowKey ? { ...c, quantity: c.quantity + 1 } : c,
         );
@@ -317,50 +395,75 @@ function PharmacyPOS() {
           expiryDate: null,
           sellingPrice: toNum(item.price),
           purchasePrice: 0,
+          packSize: pack,
+          looseUnitLabel: item.looseUnitLabel || 'unit',
+          taxPercent: item.taxPercent != null ? toNum(item.taxPercent) : 12,
+          // Default to loose so "give me X" works out of the box; the cashier
+          // can flip to pack selling when a packSize is configured.
+          saleUnit: pack > 1 ? 'loose' : 'pack',
           quantity: 1,
           discount: 0,
           availableQty: 0,
         },
       ];
     });
+    // Auto-pick the nearest-expiry batch (FEFO) for newly-added rows.
+    if (!alreadyInCart) void autoSelectBatch(rowKey, item.id);
     setMedicineSearch('');
     setShowDropdown(false);
     searchInputRef.current?.focus();
-  }, [activePrescriptionId]);
+  }, [activePrescriptionId, cart, autoSelectBatch]);
 
-  const selectBatch = useCallback((rowKey: string, batch: DrugBatch) => {
-    setCart((prev) =>
-      prev.map((c) => {
-        if (c.rowKey !== rowKey) return c;
-        return {
-          ...c,
-          batchId: batch.id,
-          batchNumber: batch.batchNumber,
-          sellingPrice: toNum(batch.sellingPrice) || c.sellingPrice,
-          purchasePrice: toNum(batch.purchasePrice),
-          availableQty: batch.quantityInStock,
-          expiryDate: batch.expiryDate,
-          quantity: Math.min(c.quantity || 1, batch.quantityInStock || 1),
-        };
-      }),
-    );
-    setBatchPickerForRow(null);
-    setBatchPickerDrugId(null);
-  }, []);
+  // Max quantity in the row's current unit (packs vs loose), given base stock.
+  const maxQtyInUnit = (c: CartItem): number => {
+    if (c.availableQty <= 0) return Infinity; // batch not chosen yet — no cap
+    const pack = c.packSize > 0 ? c.packSize : 1;
+    return c.saleUnit === 'loose' ? c.availableQty : Math.floor(c.availableQty / pack);
+  };
 
   const updateQty = (rowKey: string, delta: number) => {
     setCart((prev) =>
       prev
         .map((c) => {
           if (c.rowKey !== rowKey) return c;
+          const max = maxQtyInUnit(c);
           const newQty = Math.max(0, c.quantity + delta);
-          if (c.availableQty > 0 && newQty > c.availableQty) {
-            toast.warning(`Max available stock: ${c.availableQty}`);
+          if (newQty > max) {
+            toast.warning(`Max available: ${max} ${c.saleUnit === 'loose' ? c.looseUnitLabel : 'pack'}(s)`);
             return c;
           }
           return { ...c, quantity: newQty };
         })
         .filter((c) => c.quantity > 0),
+    );
+  };
+
+  // Typed quantity (free entry). Empty string keeps 0 transiently; clamped to stock.
+  const setQtyExact = (rowKey: string, raw: string) => {
+    const parsed = Math.floor(Number(raw));
+    setCart((prev) =>
+      prev.map((c) => {
+        if (c.rowKey !== rowKey) return c;
+        if (!raw || Number.isNaN(parsed) || parsed < 0) return { ...c, quantity: 0 };
+        const max = maxQtyInUnit(c);
+        if (parsed > max) {
+          toast.warning(`Max available: ${max} ${c.saleUnit === 'loose' ? c.looseUnitLabel : 'pack'}(s)`);
+          return { ...c, quantity: max === Infinity ? parsed : max };
+        }
+        return { ...c, quantity: parsed };
+      }),
+    );
+  };
+
+  // Flip a row between selling whole packs and loose sub-units, re-clamping qty.
+  const toggleSaleUnit = (rowKey: string, unit: 'pack' | 'loose') => {
+    setCart((prev) =>
+      prev.map((c) => {
+        if (c.rowKey !== rowKey) return c;
+        const next = { ...c, saleUnit: unit };
+        const max = maxQtyInUnit(next);
+        return { ...next, quantity: Math.max(1, Math.min(c.quantity || 1, max === Infinity ? c.quantity || 1 : max)) };
+      }),
     );
   };
 
@@ -376,86 +479,86 @@ function PharmacyPOS() {
     );
   };
 
-  const togglePaymentMode = (mode: string) => {
-    setPaymentModes((prev) =>
-      prev.includes(mode) ? prev.filter((m) => m !== mode) : [...prev, mode],
-    );
-  };
-
   // --- Summary ---
   const summary = useMemo(() => {
-    const subtotal = cart.reduce((s, c) => s + c.sellingPrice * c.quantity, 0);
-    const totalDiscount = cart.reduce(
-      (s, c) => s + c.sellingPrice * c.quantity * (c.discount / 100),
-      0,
-    );
+    const subtotal = cart.reduce((s, c) => s + computeItemGross(c), 0);
+    const totalDiscount = cart.reduce((s, c) => s + computeItemGross(c) * (c.discount / 100), 0);
     const afterDiscount = subtotal - totalDiscount;
+    const totalTax = cart.reduce((s, c) => s + computeItemTax(c), 0);
     const rounded = Math.round(afterDiscount);
     const roundOff = Math.round((rounded - afterDiscount) * 100) / 100;
     const margin = cart.reduce((s, c) => s + computeItemMargin(c), 0);
-    return { subtotal, totalDiscount, afterDiscount, rounded, roundOff, margin };
+    return { subtotal, totalDiscount, afterDiscount, totalTax, rounded, roundOff, margin };
   }, [cart]);
+
+  const tenderedNum = Number(amountTendered) || 0;
+  const changeDue = Math.max(0, tenderedNum - summary.rounded);
 
   const fmt = (n: number) =>
     n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const cartHasAllBatches = cart.length > 0 && cart.every((c) => c.batchId !== null);
-  const linkedToPrescription = !!activePrescriptionId && !!activePrescription;
-  const prescriptionItemsHaveLinks = !linkedToPrescription
-    || cart.every((c) => c.prescriptionItemId !== null);
-  const canCreateBill =
-    cart.length > 0
-    && selectedPatient !== null
-    && cartHasAllBatches
-    && linkedToPrescription
-    && prescriptionItemsHaveLinks;
+  // A bill needs a cart with a batch per line. Patient AND prescription are
+  // both OPTIONAL — a walk-in / OTC counter sale needs neither.
+  const canCreateBill = cart.length > 0 && cartHasAllBatches;
 
-  // Performs the actual dispense at the hospital's own price.
-  const runDispense = async () => {
+  const PAYMENT_METHOD_MAP: Record<string, 'cash' | 'credit_card' | 'upi' | 'net_banking'> = {
+    Cash: 'cash',
+    Card: 'credit_card',
+    UPI: 'upi',
+    'Bank Transfer': 'net_banking',
+  };
+
+  // Bills the whole cart as one invoice, then opens the printable receipt.
+  const runSale = async () => {
     try {
-      await createDispense.mutateAsync({
-        patientId: selectedPatient!.id,
-        prescriptionId: activePrescriptionId as string,
+      const sale = await createSale.mutateAsync({
+        // Omitted for walk-in — backend bills it to the tenant Walk-in customer.
+        patientId: selectedPatient?.id,
+        prescriptionId: activePrescriptionId || undefined,
         items: cart.map((c) => ({
-          prescriptionItemId: c.prescriptionItemId as string,
           drugBatchId: c.batchId as string,
+          prescriptionItemId: c.prescriptionItemId || undefined,
           quantity: c.quantity,
+          saleUnit: c.saleUnit,
+          discountPercent: c.discount || undefined,
         })),
-        notes: `Payment: ${paymentModes.join(', ')}`,
+        paymentMethod: PAYMENT_METHOD_MAP[paymentMode] ?? 'cash',
+        // Omit when nothing was typed → backend records full payment at counter.
+        amountPaid: amountTendered ? Math.min(tenderedNum, summary.rounded) : undefined,
       });
-      toast.success(`Dispensed ${cart.length} item${cart.length > 1 ? 's' : ''}`);
+      toast.success(`Bill ${sale.bill.billNumber} created`);
+      setReceiptSale(sale);
+      setReceiptOpen(true);
       setCart([]);
-      setPaymentModes([]);
+      setAmountTendered('');
       setActivePrescriptionId(null);
       clearPatient();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to dispense';
+      const message = err instanceof Error ? err.message : 'Failed to create bill';
       toast.error(message);
     }
   };
 
   const handleCreateBill = async () => {
     if (cart.length === 0) return toast.error('Add at least one medicine to the cart');
-    if (!selectedPatient) return toast.error('Please select a patient first');
     if (!cartHasAllBatches) return toast.error('Please select a batch for each medicine');
-    if (!linkedToPrescription) return toast.error('Pick a prescription — dispensing requires a doctor order');
-    if (paymentModes.length === 0) return toast.error('Please select at least one payment mode');
 
     // NPPA price control is ADVISORY only — show a non-blocking heads-up if any
-    // scheduled drug is above its ceiling, then dispense at the hospital's price.
+    // scheduled drug is above its ceiling, then bill at the hospital's price.
     try {
       const check = await priceCheck.mutateAsync(
         cart.map((c) => ({ drugBatchId: c.batchId as string })),
       );
       if (check?.hasViolations) {
         const names = check.violations.map((v) => v.drugName).join(', ');
-        toast.warning(`Above NPPA ceiling (dispensing at your price): ${names}`);
+        toast.warning(`Above NPPA ceiling (billing at your price): ${names}`);
       }
     } catch {
-      // Advisory only — never block dispensing if the check fails.
+      // Advisory only — never block billing if the check fails.
     }
 
-    await runDispense();
+    await runSale();
   };
 
   const handleSaveDraft = async () => {
@@ -465,7 +568,7 @@ function PharmacyPOS() {
       patient: selectedPatient,
       prescriptionId: activePrescriptionId,
       items: cart,
-      paymentModes,
+      paymentMode,
       summary,
       createdAt: new Date().toISOString(),
     };
@@ -487,7 +590,7 @@ function PharmacyPOS() {
         <div className="relative flex-1 max-w-md min-w-[260px]" ref={patientDropdownRef}>
           <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search patient by name, mobile, MRN..."
+            placeholder="Search patient (optional for walk-in)..."
             value={patientSearch}
             onChange={(e) => {
               setPatientSearch(e.target.value);
@@ -721,16 +824,11 @@ function PharmacyPOS() {
                           <p className="text-[10px] uppercase tracking-wide text-emerald-600">From Rx</p>
                         )}
                       </td>
-                      <td className="px-3 py-2.5 relative">
+                      <td className="px-3 py-2.5">
                         <button
                           onClick={() => {
-                            if (batchPickerForRow === item.rowKey) {
-                              setBatchPickerForRow(null);
-                              setBatchPickerDrugId(null);
-                            } else {
-                              setBatchPickerForRow(item.rowKey);
-                              setBatchPickerDrugId(item.formularyItemId);
-                            }
+                            setBatchPickerForRow(item.rowKey);
+                            setBatchPickerDrugId(item.formularyItemId);
                           }}
                           className={cn(
                             'inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors',
@@ -748,6 +846,7 @@ function PharmacyPOS() {
                                   (Exp: {formatDate(item.expiryDate)})
                                 </span>
                               )}
+                              <ChevronDown className="h-3 w-3 opacity-60" />
                             </>
                           ) : (
                             <>
@@ -756,54 +855,6 @@ function PharmacyPOS() {
                             </>
                           )}
                         </button>
-                        {batchPickerForRow === item.rowKey && (
-                          <div
-                            ref={batchPickerRef}
-                            className="absolute top-full left-0 z-50 mt-1 w-72 rounded-lg border bg-popover shadow-lg"
-                          >
-                            <div className="px-3 py-2 border-b bg-muted/30">
-                              <p className="text-xs font-medium text-muted-foreground">
-                                Batches for {item.drugName}
-                              </p>
-                            </div>
-                            {batchesLoading ? (
-                              <div className="px-4 py-3 text-sm text-muted-foreground text-center">
-                                <div className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent mr-2" />
-                                Loading batches...
-                              </div>
-                            ) : availableBatches.length === 0 ? (
-                              <div className="px-4 py-3 text-sm text-muted-foreground text-center">
-                                No available batches
-                              </div>
-                            ) : (
-                              <div className="max-h-48 overflow-y-auto">
-                                {availableBatches.map((batch) => (
-                                  <button
-                                    key={batch.id}
-                                    onClick={() => selectBatch(item.rowKey, batch)}
-                                    className={cn(
-                                      'flex w-full items-center justify-between px-3 py-2 text-left hover:bg-muted/50 transition-colors border-b last:border-0 text-xs',
-                                      item.batchId === batch.id && 'bg-primary/5',
-                                    )}
-                                  >
-                                    <div>
-                                      <p className="font-medium text-foreground">{batch.batchNumber}</p>
-                                      <p className="text-muted-foreground">
-                                        Exp: {formatDate(batch.expiryDate)}
-                                        {' · '}Stock: {batch.quantityInStock}
-                                      </p>
-                                    </div>
-                                    <div className="text-right">
-                                      {batch.sellingPrice != null && (
-                                        <p className="font-semibold text-foreground">{`₹${toNum(batch.sellingPrice).toFixed(2)}`}</p>
-                                      )}
-                                    </div>
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
                       </td>
                       <td className="px-3 py-2.5">
                         <div className="flex items-center justify-center gap-1">
@@ -813,7 +864,13 @@ function PharmacyPOS() {
                           >
                             <Minus className="h-3 w-3" />
                           </button>
-                          <span className="w-8 text-center font-medium">{item.quantity}</span>
+                          <input
+                            type="number"
+                            min={0}
+                            value={item.quantity || ''}
+                            onChange={(e) => setQtyExact(item.rowKey, e.target.value)}
+                            className="h-6 w-12 rounded border bg-background text-center text-xs"
+                          />
                           <button
                             onClick={() => updateQty(item.rowKey, 1)}
                             className="flex h-6 w-6 items-center justify-center rounded border bg-muted/50 hover:bg-muted transition-colors"
@@ -821,13 +878,39 @@ function PharmacyPOS() {
                             <Plus className="h-3 w-3" />
                           </button>
                         </div>
+                        {item.packSize > 1 && (
+                          <div className="mt-1 flex items-center justify-center gap-1">
+                            {(['pack', 'loose'] as const).map((u) => (
+                              <button
+                                key={u}
+                                onClick={() => toggleSaleUnit(item.rowKey, u)}
+                                className={cn(
+                                  'rounded border px-1.5 py-0.5 text-[10px] capitalize transition-colors',
+                                  item.saleUnit === u
+                                    ? 'border-primary/30 bg-primary/10 text-primary'
+                                    : 'border-border text-muted-foreground hover:bg-muted/50',
+                                )}
+                              >
+                                {u === 'loose' ? item.looseUnitLabel || 'Loose' : 'Pack'}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         {item.availableQty > 0 && (
                           <p className="text-center text-[10px] text-muted-foreground mt-0.5">
-                            Avl: {item.availableQty}
+                            Avl: {item.saleUnit === 'loose'
+                              ? `${item.availableQty} ${item.looseUnitLabel || 'units'}`
+                              : `${Math.floor(item.availableQty / (item.packSize || 1))} pack`}
+                            {item.packSize > 1 && ` (1 pack = ${item.packSize})`}
                           </p>
                         )}
                       </td>
-                      <td className="px-3 py-2.5 text-right">{`₹${fmt(item.sellingPrice)}`}</td>
+                      <td className="px-3 py-2.5 text-right">
+                        {`₹${fmt(item.saleUnit === 'loose' ? item.sellingPrice : item.sellingPrice * (item.packSize || 1))}`}
+                        <div className="text-[10px] text-muted-foreground">
+                          {item.saleUnit === 'loose' ? `/${item.looseUnitLabel || 'unit'}` : '/pack'}
+                        </div>
+                      </td>
                       <td className="px-3 py-2.5">
                         <Input
                           type="number"
@@ -840,6 +923,11 @@ function PharmacyPOS() {
                       </td>
                       <td className="px-3 py-2.5 text-right font-medium">
                         {`₹${fmt(computeItemNet(item))}`}
+                        {item.taxPercent > 0 && (
+                          <div className="text-[10px] font-normal text-muted-foreground">
+                            incl. GST {item.taxPercent}%
+                          </div>
+                        )}
                       </td>
                       <td className="px-3 py-2.5 text-center">
                         <button
@@ -859,7 +947,7 @@ function PharmacyPOS() {
           {cart.length > 0 && (
             <div className="border-t px-3 py-2 bg-muted/20 flex justify-between items-center text-xs text-muted-foreground">
               <span>{cart.length} item{cart.length !== 1 ? 's' : ''} in cart</span>
-              <span>Total Qty: {cart.reduce((s, c) => s + c.quantity, 0)}</span>
+              <span>Total Units: {cart.reduce((s, c) => s + baseQtyOf(c), 0)}</span>
             </div>
           )}
         </div>
@@ -868,7 +956,7 @@ function PharmacyPOS() {
         <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-6 space-y-4">
           <h3 className="font-semibold text-foreground">Bill Summary</h3>
 
-          {selectedPatient && (
+          {selectedPatient ? (
             <div className="rounded-md border bg-muted/20 px-3 py-2">
               <p className="text-xs text-muted-foreground">Patient</p>
               <p className="text-sm font-medium text-foreground">
@@ -877,6 +965,14 @@ function PharmacyPOS() {
               {selectedPatient.mrn && (
                 <p className="text-xs text-muted-foreground">MRN: {selectedPatient.mrn}</p>
               )}
+            </div>
+          ) : (
+            <div className="rounded-md border bg-muted/20 px-3 py-2 flex items-center gap-2">
+              <User className="h-4 w-4 text-muted-foreground" />
+              <div>
+                <p className="text-sm font-medium text-foreground">Walk-in customer</p>
+                <p className="text-xs text-muted-foreground">No patient — OTC counter sale</p>
+              </div>
             </div>
           )}
 
@@ -895,23 +991,11 @@ function PharmacyPOS() {
           )}
 
           {/* Validation warnings */}
-          {cart.length > 0 && !linkedToPrescription && (
-            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
-              <p className="text-xs text-amber-700">
-                Pick a prescription — drugs can only be dispensed against a doctor order.
-              </p>
-            </div>
-          )}
           {cart.length > 0 && !cartHasAllBatches && (
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
               <p className="text-xs text-amber-700">
                 Select a batch for each medicine before billing.
               </p>
-            </div>
-          )}
-          {cart.length > 0 && !selectedPatient && (
-            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
-              <p className="text-xs text-amber-700">Select a patient to create the bill.</p>
             </div>
           )}
 
@@ -925,6 +1009,10 @@ function PharmacyPOS() {
               <span className="font-medium text-green-600">
                 {summary.totalDiscount > 0 ? `-₹${fmt(summary.totalDiscount)}` : '0.00'}
               </span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Incl. GST</span>
+              <span className="text-muted-foreground">₹{fmt(summary.totalTax)}</span>
             </div>
             {summary.roundOff !== 0 && (
               <div className="flex justify-between">
@@ -951,17 +1039,44 @@ function PharmacyPOS() {
             <p className="text-xs text-muted-foreground mb-2">Mode of Payment</p>
             <div className="flex flex-wrap gap-2">
               {['Cash', 'Card', 'UPI', 'Bank Transfer'].map((mode) => (
-                <label key={mode} className="flex items-center gap-1.5 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="rounded border-border"
-                    checked={paymentModes.includes(mode)}
-                    onChange={() => togglePaymentMode(mode)}
-                  />
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setPaymentMode(mode)}
+                  className={cn(
+                    'rounded-full border px-3 py-1 text-xs transition-colors',
+                    paymentMode === mode
+                      ? 'border-primary/40 bg-primary/10 text-primary'
+                      : 'border-border text-muted-foreground hover:bg-muted/50',
+                  )}
+                >
                   {mode}
-                </label>
+                </button>
               ))}
             </div>
+          </div>
+
+          {/* Amount tendered + change (mainly for cash) */}
+          <div>
+            <p className="text-xs text-muted-foreground mb-1">Amount Tendered</p>
+            <Input
+              type="number"
+              min={0}
+              placeholder={`Default: ₹${fmt(summary.rounded)} (full)`}
+              value={amountTendered}
+              onChange={(e) => setAmountTendered(e.target.value)}
+              className="h-9"
+            />
+            {tenderedNum > 0 && (
+              <div className="mt-1 flex justify-between text-xs">
+                <span className="text-muted-foreground">
+                  {tenderedNum >= summary.rounded ? 'Change to return' : 'Balance due'}
+                </span>
+                <span className={cn('font-medium', tenderedNum >= summary.rounded ? 'text-emerald-600' : 'text-amber-600')}>
+                  ₹{fmt(tenderedNum >= summary.rounded ? changeDue : summary.rounded - tenderedNum)}
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="flex gap-2">
@@ -975,14 +1090,102 @@ function PharmacyPOS() {
             </Button>
             <Button
               className="flex-1"
-              disabled={!canCreateBill || createDispense.isPending}
+              disabled={!canCreateBill || createSale.isPending}
               onClick={handleCreateBill}
             >
-              {createDispense.isPending ? 'Dispensing...' : 'Dispense'}
+              {createSale.isPending ? 'Billing...' : 'Generate Bill'}
             </Button>
           </div>
         </div>
       </div>
+
+      {/* Batch selection modal (opens on top; FEFO-sorted, nearest expiry first) */}
+      <Dialog
+        open={batchPickerForRow !== null}
+        onOpenChange={(o) => {
+          if (!o) {
+            setBatchPickerForRow(null);
+            setBatchPickerDrugId(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          {(() => {
+            const pickItem = cart.find((c) => c.rowKey === batchPickerForRow) ?? null;
+            const sorted = availableBatches
+              .slice()
+              .sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 text-base">
+                    <Package className="h-4 w-4 text-primary" />
+                    Select Batch{pickItem ? ` — ${pickItem.drugName}` : ''}
+                  </DialogTitle>
+                </DialogHeader>
+                {batchesLoading ? (
+                  <div className="py-8 text-center text-sm text-muted-foreground">
+                    <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                  </div>
+                ) : sorted.length === 0 ? (
+                  <div className="py-8 text-center text-sm text-muted-foreground">
+                    No in-stock batches for this drug. Add stock under Batches.
+                  </div>
+                ) : (
+                  <div className="max-h-[55vh] space-y-1.5 overflow-y-auto">
+                    {sorted.map((batch, idx) => {
+                      const days = Math.floor(
+                        (new Date(batch.expiryDate).getTime() - Date.now()) / 86400000,
+                      );
+                      const isNearest = idx === 0;
+                      const isSelected = pickItem?.batchId === batch.id;
+                      const expiringSoon = days <= 30;
+                      return (
+                        <button
+                          key={batch.id}
+                          onClick={() => pickItem && selectBatch(pickItem.rowKey, batch)}
+                          className={cn(
+                            'flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-left transition-colors',
+                            isSelected
+                              ? 'border-primary bg-primary/5'
+                              : 'border-border hover:bg-muted/50',
+                          )}
+                        >
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-medium text-sm">{batch.batchNumber}</span>
+                              {isNearest && (
+                                <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px]">
+                                  <CalendarClock className="mr-0.5 h-2.5 w-2.5" />
+                                  Earliest expiry
+                                </Badge>
+                              )}
+                              {isSelected && <Check className="h-3.5 w-3.5 text-primary" />}
+                            </div>
+                            <p className={cn('text-xs', expiringSoon ? 'text-amber-600' : 'text-muted-foreground')}>
+                              Exp: {formatDate(batch.expiryDate)} ({days}d) · Stock: {batch.quantityInStock}
+                            </p>
+                          </div>
+                          {batch.sellingPrice != null && (
+                            <p className="shrink-0 font-semibold text-sm">
+                              ₹{toNum(batch.sellingPrice).toFixed(2)}
+                            </p>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                <p className="text-[11px] text-muted-foreground">
+                  The earliest-expiry batch is auto-selected (FEFO). Pick another to override.
+                </p>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      <PharmacyReceiptDialog sale={receiptSale} open={receiptOpen} onOpenChange={setReceiptOpen} />
     </div>
   );
 }
@@ -1081,6 +1284,8 @@ function PharmacyCashCounterTab() {
         dispensedAt: string;
         verifiedBy: string | null;
         notes?: string | null;
+        unitPrice?: number | string | null;
+        lineTotal?: number | string | null;
         drugBatch?: { drug?: { drugName: string }; batchNumber: string; sellingPrice?: number | string };
         patient?: { firstName: string; lastName: string };
       }>>('/pharmacy/dispensing', { params: { fromDate: today, limit: 100 } });
@@ -1089,10 +1294,19 @@ function PharmacyCashCounterTab() {
   });
 
   const records = dispensing ?? [];
-  const total = records.reduce((sum, r) => {
-    const price = r.drugBatch?.sellingPrice ? Number(r.drugBatch.sellingPrice) : 0;
-    return sum + price * (r.quantityDispensed || 0);
-  }, 0);
+  // Prefer the price actually billed (lineTotal/unitPrice recorded on the sale);
+  // fall back to the batch selling price for legacy/queue dispenses.
+  const lineAmountOf = (r: {
+    lineTotal?: number | string | null;
+    unitPrice?: number | string | null;
+    quantityDispensed: number;
+    drugBatch?: { sellingPrice?: number | string };
+  }) => {
+    if (r.lineTotal != null) return Number(r.lineTotal);
+    const unit = r.unitPrice != null ? Number(r.unitPrice) : Number(r.drugBatch?.sellingPrice ?? 0);
+    return unit * (r.quantityDispensed || 0);
+  };
+  const total = records.reduce((sum, r) => sum + lineAmountOf(r), 0);
   const fmt = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
   return (
@@ -1137,8 +1351,7 @@ function PharmacyCashCounterTab() {
               <tr><td colSpan={7} className="px-4 py-8 text-center font-label text-on-surface-variant">No dispensing records today.</td></tr>
             ) : (
               records.map((r) => {
-                const price = r.drugBatch?.sellingPrice ? Number(r.drugBatch.sellingPrice) : 0;
-                const lineAmount = price * (r.quantityDispensed || 0);
+                const lineAmount = lineAmountOf(r);
                 return (
                   <tr key={r.id} className="group hover:bg-surface-container-low transition-colors">
                     <td className="px-4 py-3 font-medium">{r.drugBatch?.drug?.drugName ?? '-'}</td>

@@ -3,6 +3,7 @@ import {
   FlaskConical,
   ScanLine,
   Pill,
+  Database,
   Scissors,
   UserRound,
   Sun,
@@ -126,6 +127,7 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Price Control (NPPA)', href: '/pharmacy/price-control', icon: ShieldCheck },
       // pharmacy_admin only (management + financials). admin/super_admin bypass.
       { label: 'Billing Transaction', href: '/pharmacy/transactions', icon: ArrowLeftRight, restrictTo: ['pharmacy_admin'] },
+      { label: 'Drug Catalog', href: '/pharmacy/catalog', icon: Database, restrictTo: ['pharmacy_admin'] },
       { label: 'Drug Formulary', href: '/pharmacy/inventory', icon: Pill, restrictTo: ['pharmacy_admin'] },
       { label: 'Batches', href: '/pharmacy/batches', icon: PillBottle, restrictTo: ['pharmacy_admin'] },
       { label: 'Recalls', href: '/pharmacy/recalls', icon: ShieldAlert, restrictTo: ['pharmacy_admin'] },

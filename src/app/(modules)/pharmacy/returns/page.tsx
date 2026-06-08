@@ -210,7 +210,6 @@ function CreateReturnDialog({ mode, onClose }: { mode: CreateMode; onClose: () =
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [quantity, setQuantity] = useState<number>(1);
   const [reason, setReason] = useState('');
-  const [patientId, setPatientId] = useState('');
   const [supplierId, setSupplierId] = useState('');
 
   const { data: batchesResp } = useBatches({
@@ -235,18 +234,11 @@ function CreateReturnDialog({ mode, onClose }: { mode: CreateMode; onClose: () =
       toast.error('Enter a quantity');
       return;
     }
-    if (mode === 'patient_return' && !patientId) {
-      toast.error('Enter the patient UUID');
-      return;
-    }
-    if (mode === 'vendor_return' && selectedBatch?.supplier?.id) {
-      // ok
-    }
     try {
       await createReturn.mutateAsync({
         returnType: mode,
         drugBatchId: selectedBatchId,
-        patientId: mode === 'patient_return' ? patientId : undefined,
+        // Patient is optional for a counter return — not collected here.
         supplierId:
           mode === 'vendor_return'
             ? supplierId || selectedBatch?.supplier?.id
@@ -322,19 +314,7 @@ function CreateReturnDialog({ mode, onClose }: { mode: CreateMode; onClose: () =
             />
           </div>
 
-          {mode === 'patient_return' ? (
-            <div>
-              <label className="text-xs font-medium">Patient ID (UUID)</label>
-              <Input
-                placeholder="Patient UUID"
-                value={patientId}
-                onChange={(e) => setPatientId(e.target.value)}
-              />
-              <p className="text-[10px] text-muted-foreground mt-1">
-                Copy the patient UUID from their profile. For full patient picker, use the dispense flow.
-              </p>
-            </div>
-          ) : (
+          {mode === 'vendor_return' && (
             <div>
               <label className="text-xs font-medium">Supplier ID (optional)</label>
               <Input

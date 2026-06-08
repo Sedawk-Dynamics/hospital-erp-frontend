@@ -2,11 +2,13 @@
 import { PharmacyAdminGuard } from '@/components/pharmacy/pharmacy-admin-guard';
 
 import { useState } from 'react';
-import { Search, Plus, Pill, ChevronLeft, ChevronRight, Pencil, Trash2 } from 'lucide-react';
+import { Search, Plus, Pill, ChevronLeft, ChevronRight, Pencil, Trash2, PackagePlus, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
+import { formatDate, toInputDateStr } from '@/lib/date-utils';
 import {
   Table,
   TableHeader,
@@ -34,6 +36,7 @@ import {
   useCreateFormularyItem,
   useUpdateFormularyItem,
   useDeleteFormularyItem,
+  useCreateBatch,
   usePharmacyCategories,
   type FormularyItem,
   type DosageForm,
@@ -68,6 +71,9 @@ interface FormState {
   strength: string;
   unitOfMeasurement: string;
   price: string;
+  packSize: string;
+  looseUnitLabel: string;
+  taxPercent: string;
   indications: string;
   contraindications: string;
 }
@@ -81,6 +87,9 @@ const EMPTY_FORM: FormState = {
   strength: '',
   unitOfMeasurement: '',
   price: '',
+  packSize: '',
+  looseUnitLabel: '',
+  taxPercent: '',
   indications: '',
   contraindications: '',
 };
@@ -95,6 +104,9 @@ function formStateFromItem(item: FormularyItem): FormState {
     strength: item.strength ?? '',
     unitOfMeasurement: item.unitOfMeasurement ?? '',
     price: item.price != null ? String(item.price) : '',
+    packSize: item.packSize != null ? String(item.packSize) : '',
+    looseUnitLabel: item.looseUnitLabel ?? '',
+    taxPercent: item.taxPercent != null ? String(item.taxPercent) : '',
     indications: item.indications ?? '',
     contraindications: item.contraindications ?? '',
   };
@@ -109,24 +121,54 @@ function formStateToInput(form: FormState): CreateFormularyInput {
   if (form.strength.trim()) out.strength = form.strength.trim();
   if (form.unitOfMeasurement.trim()) out.unitOfMeasurement = form.unitOfMeasurement.trim();
   if (form.price && !isNaN(parseFloat(form.price))) out.price = parseFloat(form.price);
+  if (form.packSize && !isNaN(parseInt(form.packSize, 10))) out.packSize = parseInt(form.packSize, 10);
+  if (form.looseUnitLabel.trim()) out.looseUnitLabel = form.looseUnitLabel.trim();
+  if (form.taxPercent && !isNaN(parseFloat(form.taxPercent))) out.taxPercent = parseFloat(form.taxPercent);
   if (form.indications.trim()) out.indications = form.indications.trim();
   if (form.contraindications.trim()) out.contraindications = form.contraindications.trim();
   return out;
 }
 
+// Compact "add stock" (batch) form used directly from a formulary row.
+interface StockForm {
+  batchNumber: string;
+  expiryDate: string;
+  quantityReceived: string;
+  purchasePrice: string;
+  sellingPrice: string;
+}
+const EMPTY_STOCK: StockForm = {
+  batchNumber: '',
+  expiryDate: '',
+  quantityReceived: '',
+  purchasePrice: '',
+  sellingPrice: '',
+};
+
 function PharmacyInventoryPageInner() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [stockFilter, setStockFilter] = useState<'all' | 'in' | 'out'>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<FormularyItem | null>(null);
   const [formData, setFormData] = useState<FormState>(EMPTY_FORM);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  const { data, isLoading } = useFormulary({ page, limit: 20, search: search || undefined });
+  // Quick "add stock" dialog
+  const [stockDrug, setStockDrug] = useState<FormularyItem | null>(null);
+  const [stockForm, setStockForm] = useState<StockForm>(EMPTY_STOCK);
+
+  const { data, isLoading } = useFormulary({
+    page,
+    limit: 20,
+    search: search || undefined,
+    stockStatus: stockFilter === 'all' ? undefined : stockFilter,
+  });
   const { data: categoriesData } = usePharmacyCategories();
   const createItem = useCreateFormularyItem();
   const updateItem = useUpdateFormularyItem();
   const deleteItem = useDeleteFormularyItem();
+  const createBatch = useCreateBatch();
 
   const items = data?.data ?? [];
   const meta = data?.meta;
@@ -178,6 +220,54 @@ function PharmacyInventoryPageInner() {
       setDeleteId(null);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to delete drug';
+      toast.error(msg);
+    }
+  };
+
+  const openAddStock = (item: FormularyItem) => {
+    setStockForm({
+      ...EMPTY_STOCK,
+      // Pre-fill selling price from the formulary price so a quick add is 1-click.
+      sellingPrice: item.price != null ? String(item.price) : '',
+    });
+    setStockDrug(item);
+  };
+
+  const handleAddStock = async () => {
+    if (!stockDrug) return;
+    if (!stockForm.batchNumber.trim()) return toast.error('Batch number is required');
+    if (!stockForm.expiryDate) return toast.error('Expiry date is required');
+    const qty = parseInt(stockForm.quantityReceived, 10);
+    if (!qty || qty <= 0) return toast.error('Quantity must be greater than 0');
+    try {
+      await createBatch.mutateAsync({
+        drugId: stockDrug.id,
+        batchNumber: stockForm.batchNumber.trim(),
+        expiryDate: stockForm.expiryDate,
+        quantityReceived: qty,
+        ...(stockForm.purchasePrice && !isNaN(parseFloat(stockForm.purchasePrice))
+          ? { purchasePrice: parseFloat(stockForm.purchasePrice) }
+          : {}),
+        ...(stockForm.sellingPrice && !isNaN(parseFloat(stockForm.sellingPrice))
+          ? { sellingPrice: parseFloat(stockForm.sellingPrice) }
+          : {}),
+      });
+      toast.success(`Stock added for ${stockDrug.drugName}`);
+      setStockDrug(null);
+      setStockForm(EMPTY_STOCK);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to add stock';
+      toast.error(msg);
+    }
+  };
+
+  // Quick availability toggle — flips whether the drug can be prescribed/sold.
+  const toggleActive = async (item: FormularyItem) => {
+    try {
+      await updateItem.mutateAsync({ id: item.id, isActive: !item.isActive });
+      toast.success(item.isActive ? 'Marked unavailable' : 'Marked available');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to update';
       toast.error(msg);
     }
   };
@@ -290,7 +380,7 @@ function PharmacyInventoryPageInner() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="price">Cost (₹)</Label>
+                  <Label htmlFor="price">Price / unit (₹)</Label>
                   <Input
                     id="price"
                     type="number"
@@ -298,6 +388,40 @@ function PharmacyInventoryPageInner() {
                     value={formData.price}
                     onChange={(e) => updateField('price', e.target.value)}
                     placeholder="0.00"
+                  />
+                </div>
+              </div>
+              {/* Loose / sub-unit sale + GST — drives the POS pack/loose toggle */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="packSize">Pack Size</Label>
+                  <Input
+                    id="packSize"
+                    type="number"
+                    min={1}
+                    value={formData.packSize}
+                    onChange={(e) => updateField('packSize', e.target.value)}
+                    placeholder="e.g. 10 (tabs/strip)"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="looseUnitLabel">Loose Unit</Label>
+                  <Input
+                    id="looseUnitLabel"
+                    value={formData.looseUnitLabel}
+                    onChange={(e) => updateField('looseUnitLabel', e.target.value)}
+                    placeholder="e.g. Tablet"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="taxPercent">GST %</Label>
+                  <Input
+                    id="taxPercent"
+                    type="number"
+                    step="0.01"
+                    value={formData.taxPercent}
+                    onChange={(e) => updateField('taxPercent', e.target.value)}
+                    placeholder="12"
                   />
                 </div>
               </div>
@@ -347,18 +471,39 @@ function PharmacyInventoryPageInner() {
         </div>
       </div>
 
-      {/* Search bar */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Search drugs by name, generic name..."
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(1);
-          }}
-          className="pl-9"
-        />
+      {/* Search bar + stock filter */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative w-full max-w-md">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search drugs by name, generic name..."
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+            className="pl-9"
+          />
+        </div>
+        <div className="flex items-center gap-1.5">
+          {([
+            { key: 'all', label: 'All' },
+            { key: 'in', label: 'In stock' },
+            { key: 'out', label: 'Out of stock' },
+          ] as const).map((f) => (
+            <Button
+              key={f.key}
+              size="sm"
+              variant={stockFilter === f.key ? 'default' : 'outline'}
+              onClick={() => {
+                setStockFilter(f.key);
+                setPage(1);
+              }}
+            >
+              {f.label}
+            </Button>
+          ))}
+        </div>
       </div>
 
       {/* Table */}
@@ -394,9 +539,10 @@ function PharmacyInventoryPageInner() {
                   <TableHead>Form</TableHead>
                   <TableHead>Strength</TableHead>
                   <TableHead>Manufacturer</TableHead>
-                  <TableHead className="text-right">Cost</TableHead>
+                  <TableHead className="text-right">Price</TableHead>
+                  <TableHead className="text-center">Stock</TableHead>
                   <TableHead className="text-center">Status</TableHead>
-                  <TableHead className="text-right w-[120px]">Actions</TableHead>
+                  <TableHead className="text-right w-[150px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -412,20 +558,56 @@ function PharmacyInventoryPageInner() {
                       {item.price != null ? `₹${Number(item.price).toFixed(2)}` : '-'}
                     </TableCell>
                     <TableCell className="text-center">
-                      <Badge
-                        className={
-                          item.isRecalled
-                            ? 'bg-red-500/10 text-red-600 border-red-500/20'
-                            : item.isActive
-                            ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
-                            : 'bg-muted text-muted-foreground'
-                        }
+                      {item.inStock ? (
+                        <div className="flex flex-col items-center">
+                          <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
+                            In stock: {item.totalStock}
+                          </Badge>
+                          {item.nearestExpiry && (
+                            <span className="mt-0.5 text-[10px] text-muted-foreground">
+                              exp {formatDate(item.nearestExpiry)}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20">
+                          Out of stock
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <button
+                        type="button"
+                        onClick={() => toggleActive(item)}
+                        disabled={item.isRecalled}
+                        title={item.isRecalled ? 'Recalled' : 'Click to toggle availability'}
+                        className="inline-flex"
                       >
-                        {item.isRecalled ? 'Recalled' : item.isActive ? 'Active' : 'Inactive'}
-                      </Badge>
+                        <Badge
+                          className={cn(
+                            'cursor-pointer transition-colors',
+                            item.isRecalled
+                              ? 'bg-red-500/10 text-red-600 border-red-500/20 cursor-not-allowed'
+                              : item.isActive
+                              ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20 hover:bg-emerald-500/20'
+                              : 'bg-muted text-muted-foreground hover:bg-muted/80',
+                          )}
+                        >
+                          {item.isRecalled ? 'Recalled' : item.isActive ? 'Available' : 'Unavailable'}
+                        </Badge>
+                      </button>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => startEdit(item)} className="h-8 w-8 p-0">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openAddStock(item)}
+                        className="h-8 w-8 p-0 text-muted-foreground hover:text-primary"
+                        title="Add stock"
+                      >
+                        <PackagePlus className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => startEdit(item)} className="h-8 w-8 p-0" title="Edit">
                         <Pencil className="h-4 w-4" />
                       </Button>
                       <Button
@@ -433,6 +615,7 @@ function PharmacyInventoryPageInner() {
                         size="sm"
                         onClick={() => setDeleteId(item.id)}
                         className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                        title="Delete"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -461,6 +644,89 @@ function PharmacyInventoryPageInner() {
           </>
         )}
       </div>
+
+      {/* Quick Add Stock (batch) */}
+      <Dialog open={!!stockDrug} onOpenChange={(open) => { if (!open) { setStockDrug(null); setStockForm(EMPTY_STOCK); } }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Package className="h-4 w-4 text-primary" />
+              Add Stock
+            </DialogTitle>
+            <DialogDescription>
+              Receive a batch for <span className="font-medium text-foreground">{stockDrug?.drugName}</span>
+              {stockDrug?.strength ? ` ${stockDrug.strength}` : ''}. Stock becomes available immediately.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="stockBatch">Batch Number *</Label>
+                <Input
+                  id="stockBatch"
+                  value={stockForm.batchNumber}
+                  onChange={(e) => setStockForm((p) => ({ ...p, batchNumber: e.target.value }))}
+                  placeholder="e.g. B24A001"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="stockExpiry">Expiry Date *</Label>
+                <Input
+                  id="stockExpiry"
+                  type="date"
+                  min={toInputDateStr()}
+                  value={stockForm.expiryDate}
+                  onChange={(e) => setStockForm((p) => ({ ...p, expiryDate: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="stockQty">Quantity *</Label>
+                <Input
+                  id="stockQty"
+                  type="number"
+                  min={1}
+                  value={stockForm.quantityReceived}
+                  onChange={(e) => setStockForm((p) => ({ ...p, quantityReceived: e.target.value }))}
+                  placeholder="e.g. 100"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="stockPurchase">Purchase ₹</Label>
+                <Input
+                  id="stockPurchase"
+                  type="number"
+                  step="0.01"
+                  value={stockForm.purchasePrice}
+                  onChange={(e) => setStockForm((p) => ({ ...p, purchasePrice: e.target.value }))}
+                  placeholder="0.00"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="stockSelling">Selling ₹</Label>
+                <Input
+                  id="stockSelling"
+                  type="number"
+                  step="0.01"
+                  value={stockForm.sellingPrice}
+                  onChange={(e) => setStockForm((p) => ({ ...p, sellingPrice: e.target.value }))}
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Quantity is in base/loose units (e.g. individual tablets). Manage multiple batches under Batches.
+            </p>
+          </div>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+            <Button onClick={handleAddStock} disabled={createBatch.isPending}>
+              {createBatch.isPending ? 'Adding...' : 'Add Stock'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete confirmation */}
       <Dialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
