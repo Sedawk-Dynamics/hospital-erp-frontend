@@ -3,7 +3,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { toInputDateStr, formatTime24 } from '@/lib/date-utils';
-import { Search, CalendarIcon, Users, Clock, BedDouble, FlaskConical, Scissors } from 'lucide-react';
+import { Search, CalendarIcon, Users, Clock, BedDouble, Scissors } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -11,7 +11,7 @@ import { AppointmentStatsRow } from '@/components/hospital/appointment-stats-row
 import { PatientTagFilter } from '@/components/hospital/patient-tag-filter';
 import { PatientCategoryIndicators } from '@/components/doctor/patient-category-indicators';
 import { DoctorActionButtons } from '@/components/doctor/doctor-action-buttons';
-import { useDoctorAppointments, useDoctorAppointmentStats, useUpdateAppointmentStatus, useLabOrders, useDoctorOTRequests } from '@/hooks/use-doctor';
+import { useDoctorAppointments, useDoctorAppointmentStats, useUpdateAppointmentStatus, useDoctorOTRequests } from '@/hooks/use-doctor';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -121,16 +121,10 @@ function QuickStatCard({ icon, label, value, accent, iconBg, iconColor, badge }:
 
 // ── Alerts Panel ─────────────────────────────────────────
 
-function AlertsPanel({ pendingLabCount, pendingOTCount }: { pendingLabCount: number; pendingOTCount: number }) {
-  if (pendingLabCount === 0 && pendingOTCount === 0) return null;
+function AlertsPanel({ pendingOTCount }: { pendingOTCount: number }) {
+  if (pendingOTCount === 0) return null;
   return (
     <div className="flex flex-wrap gap-2">
-      {pendingLabCount > 0 && (
-        <div className="inline-flex items-center gap-2 rounded-lg bg-secondary/10 border border-secondary/20 px-3 py-1.5 font-label text-xs font-bold text-secondary">
-          <FlaskConical className="h-3.5 w-3.5" />
-          {pendingLabCount} pending lab results
-        </div>
-      )}
       {pendingOTCount > 0 && (
         <div className="inline-flex items-center gap-2 rounded-lg bg-tertiary/10 border border-tertiary/20 px-3 py-1.5 font-label text-xs font-bold text-tertiary">
           <Scissors className="h-3.5 w-3.5" />
@@ -197,10 +191,8 @@ export default function DoctorHomePage() {
   );
 
   // Alerts data
-  const { data: labOrdersData } = useLabOrders({ status: 'ordered', limit: 5 });
   const { data: otRequestsData } = useDoctorOTRequests({ status: 'pending', limit: 5 });
 
-  const pendingLabCount = labOrdersData?.meta?.total ?? labOrdersData?.data?.length ?? 0;
   const pendingOTCount = otRequestsData?.meta?.total ?? otRequestsData?.data?.length ?? 0;
 
   const appointments = appointmentsData?.data ?? [];
@@ -271,7 +263,7 @@ export default function DoctorHomePage() {
       )}
 
       {/* Alerts Panel */}
-      <AlertsPanel pendingLabCount={pendingLabCount} pendingOTCount={pendingOTCount} />
+      <AlertsPanel pendingOTCount={pendingOTCount} />
 
       {/* Patient categories + Stats row — only for Today view */}
       {viewMode === 'today' && (

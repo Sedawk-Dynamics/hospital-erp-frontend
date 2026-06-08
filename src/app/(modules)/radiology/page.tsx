@@ -41,6 +41,17 @@ import { toast } from 'sonner';
 import { RadiologyReportPrintDialog } from '@/components/radiology/radiology-report-print-view';
 import { ImagingAttachmentsViewer } from '@/components/shared/imaging-attachments-viewer';
 
+// Color-code the urgency/priority badge so STAT/urgent cases stand out at a glance.
+const URGENCY_BADGE_CLASSES: Record<string, string> = {
+  stat: 'bg-red-100 text-red-700 [a]:hover:bg-red-200',
+  urgent: 'bg-amber-100 text-amber-700 [a]:hover:bg-amber-200',
+  routine: 'bg-emerald-100 text-emerald-700 [a]:hover:bg-emerald-200',
+};
+
+function urgencyBadgeClass(urgency?: string | null) {
+  return URGENCY_BADGE_CLASSES[(urgency ?? 'routine').toLowerCase()] ?? URGENCY_BADGE_CLASSES.routine;
+}
+
 export default function RadiologyHomePage() {
   const { isRadiologyAdmin, isRadiologist } = useRadiologyRole();
   // Both flows always need Dashboard + Scheduled + Completed + Results.
@@ -314,7 +325,11 @@ function RequestTable({
                       </td>
                       <td className="px-4 py-3 capitalize">{r.imagingType.replace(/_/g, ' ')}</td>
                       <td className="px-4 py-3">{r.bodyPart ?? '-'}</td>
-                      <td className="px-4 py-3"><Badge>{r.urgency ?? r.priority ?? 'routine'}</Badge></td>
+                      <td className="px-4 py-3">
+                        <Badge className={cn('capitalize', urgencyBadgeClass(r.urgency ?? r.priority))}>
+                          {r.urgency ?? r.priority ?? 'routine'}
+                        </Badge>
+                      </td>
                       <td className="px-4 py-3">
                         <StatusBadge status={r.status} />
                         {r.paymentVerified === false && (
