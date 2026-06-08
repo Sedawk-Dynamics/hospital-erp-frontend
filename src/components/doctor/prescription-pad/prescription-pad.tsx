@@ -16,7 +16,10 @@ import {
 import { useFormularySearch, useAllergyCheck, usePatientVitals, usePatientDiagnoses, usePrescriptions, useProgressNotes, type FormularyDrug } from '@/hooks/use-doctor';
 import { useLatestVitals } from '@/hooks/use-nurse';
 import { useDebounce } from '@/hooks/use-debounce';
+import { useValidatePrescriptionQuery, useValidatePrescription, type CdssWarning } from '@/hooks/use-cdss';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { ShieldAlert } from 'lucide-react';
 import {
   consultationCompletionSchema,
   defaultFormValues,
@@ -227,6 +230,37 @@ export function PrescriptionPad({
   const investigationsSummary = watch('investigationsSummary') ?? '';
   const pinnedSections = (watch('pinnedSections') ?? []) as ConsultationPinSection[];
 
+  // ── CDSS prescription safety (allergy / drug-interaction / dosage) ──
+  // Live-validates the medicines list against the patient's allergy profile,
+  // drug-drug interactions and dosage limits. `blockers` (severe allergy,
+  // contraindicated interaction, recalled drug) hard-stop signing.
+  const watchedMeds = (useWatch({ control: form.control, name: 'medicines' }) ?? []) as MedicineFormData[];
+  const cdssItems = useMemo(
+    () =>
+      watchedMeds
+        .filter((m) => m?.drugName?.trim())
+        .map((m) => ({
+          drugName: m.drugName,
+          dosage: [m.dose, m.strength].filter(Boolean).join(' ') || m.dosage || undefined,
+          frequency: m.frequency || undefined,
+          route: m.route || undefined,
+        })),
+    [watchedMeds],
+  );
+  const cdssSig = JSON.stringify(cdssItems);
+  const debouncedCdssSig = useDebounce(cdssSig, 500);
+  const debouncedCdssItems = useMemo(() => {
+    try {
+      return JSON.parse(debouncedCdssSig) as typeof cdssItems;
+    } catch {
+      return [] as typeof cdssItems;
+    }
+  }, [debouncedCdssSig]);
+  const { data: cdss } = useValidatePrescriptionQuery(patientId, debouncedCdssItems);
+  const cdssBlockers = cdss?.blockers ?? [];
+  const cdssWarnings = cdss?.warnings ?? [];
+  const validateRx = useValidatePrescription();
+
   const isPinned = useCallback(
     (section: ConsultationPinSection) => pinnedSections.includes(section),
     [pinnedSections],
@@ -264,6 +298,26 @@ export function PrescriptionPad({
     const valid = await form.trigger();
     if (!valid) return;
 
+    // CDSS safety gate — re-validate fresh (never trust a stale "all clear")
+    // and hard-block on contraindications: severe/life-threatening allergy,
+    // contraindicated drug interaction, or a recalled drug.
+    if (cdssItems.length > 0) {
+      try {
+        const result = await validateRx.mutateAsync({ patientId, items: cdssItems });
+        if (result.blockers.length > 0) {
+          toast.error(
+            `Cannot sign — ${result.blockers.length} safety alert${result.blockers.length > 1 ? 's' : ''}: ${result.blockers
+              .map((b) => b.message)
+              .join('; ')}`,
+            { duration: 9000 },
+          );
+          return;
+        }
+      } catch {
+        // CDSS unavailable — fail open so the consult can still be signed.
+      }
+    }
+
     try {
       await submitConsultation({
         formData: form.getValues(),
@@ -278,7 +332,7 @@ export function PrescriptionPad({
     } catch {
       // error is set in hook
     }
-  }, [form, submitConsultation, patientId, appointmentId, doctorProfileId, doctorUserId, editMode, onComplete, clearDraft]);
+  }, [form, submitConsultation, patientId, appointmentId, doctorProfileId, doctorUserId, editMode, onComplete, clearDraft, cdssItems, validateRx]);
 
   // ── Handle Clear ──
   const handleClear = useCallback(() => {
@@ -585,6 +639,8 @@ export function PrescriptionPad({
               />
             </div>
 
+            <CdssSafetyPanel warnings={cdssWarnings} blockers={cdssBlockers} />
+
             <MedicationsSection form={form} patientId={patientId} />
 
             <PadSection
@@ -864,6 +920,84 @@ function DiagnosisSection({ form, pinSlot }: { form: any; pinSlot?: React.ReactN
 }
 
 // ═══════════════════════════════════════════════════════════
+// CDSS Safety Panel — allergy / interaction / dosage alerts
+// ═══════════════════════════════════════════════════════════
+
+const CDSS_KIND_LABEL: Record<string, string> = {
+  allergy: 'Allergy',
+  interaction: 'Interaction',
+  dosage: 'Dosage',
+  recall: 'Recall',
+};
+
+function CdssSafetyPanel({ warnings, blockers }: { warnings: CdssWarning[]; blockers: CdssWarning[] }) {
+  if (warnings.length === 0 && blockers.length === 0) return null;
+
+  return (
+    <div className="space-y-2">
+      {blockers.length > 0 && (
+        <div className="rounded-xl border border-error/40 bg-error/10 overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-2 border-b border-error/20">
+            <ShieldAlert className="h-4 w-4 text-error shrink-0" />
+            <h3 className="text-sm font-bold text-error flex-1">
+              Prescribing blocked — {blockers.length} contraindication{blockers.length !== 1 ? 's' : ''}
+            </h3>
+          </div>
+          <ul className="px-4 py-2 space-y-1.5">
+            {blockers.map((b, i) => (
+              <li key={i} className="flex items-start gap-2 text-xs">
+                <Badge className="bg-error/15 text-error border-error/30 shrink-0 text-[10px]">
+                  {CDSS_KIND_LABEL[b.kind] ?? b.kind}
+                </Badge>
+                <div className="min-w-0">
+                  <p className="font-medium text-error">{b.message}</p>
+                  {b.detail && <p className="text-[11px] text-error/80">{b.detail}</p>}
+                </div>
+              </li>
+            ))}
+          </ul>
+          <p className="px-4 pb-2 text-[11px] text-error/80">
+            Remove or change the flagged drug(s) — the consultation can&apos;t be signed while a contraindication stands.
+          </p>
+        </div>
+      )}
+
+      {warnings.length > 0 && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-2 border-b border-amber-200">
+            <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+            <h3 className="text-sm font-bold text-amber-800 flex-1">
+              {warnings.length} clinical warning{warnings.length !== 1 ? 's' : ''} — review before signing
+            </h3>
+          </div>
+          <ul className="px-4 py-2 space-y-1.5">
+            {warnings.map((w, i) => (
+              <li key={i} className="flex items-start gap-2 text-xs">
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    'shrink-0 text-[10px] capitalize',
+                    w.severity === 'major'
+                      ? 'border-amber-400 text-amber-700'
+                      : 'border-muted-foreground/30 text-muted-foreground',
+                  )}
+                >
+                  {CDSS_KIND_LABEL[w.kind] ?? w.kind}
+                </Badge>
+                <div className="min-w-0">
+                  <p className="font-medium text-amber-900">{w.message}</p>
+                  {w.detail && <p className="text-[11px] text-amber-700">{w.detail}</p>}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
 // Medications Section (inline table)
 // ═══════════════════════════════════════════════════════════
 
@@ -915,7 +1049,9 @@ function MedicationsSection({ form, patientId }: { form: any; patientId: string 
   );
 
   return (
-    <div className="rounded-xl border bg-card overflow-hidden">
+    // No `overflow-hidden` here — it would clip the drug-search dropdown that
+    // renders absolutely below the search input at the bottom of this card.
+    <div className="rounded-xl border bg-card">
       <div className="flex items-center gap-2 px-4 py-3">
         <Pill className="h-4 w-4 text-error shrink-0" />
         <h3 className="text-sm font-bold flex-1">Medications</h3>

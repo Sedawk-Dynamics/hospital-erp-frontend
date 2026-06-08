@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useCreateImagingRequest } from '@/hooks/use-doctor';
+import { useCreateImagingRequest, usePatientDiagnoses } from '@/hooks/use-doctor';
+import { useOrderSuggestions } from '@/hooks/use-cdss';
 import { useImagingCatalog, type ImagingCatalogItem } from '@/hooks/use-imaging-catalog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -10,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { ScanLine, Loader2, Search, X, IndianRupee, Check } from 'lucide-react';
+import { ScanLine, Loader2, Search, X, IndianRupee, Check, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ImagingRequestDialogProps {
@@ -80,6 +81,12 @@ export function ImagingRequestDialog({ open, onOpenChange, patientId, visitId }:
     : [];
 
   const createImagingRequest = useCreateImagingRequest();
+
+  // ── CDSS diagnosis-based imaging suggestions ──
+  const { data: diagnoses } = usePatientDiagnoses(patientId);
+  const primaryDx = diagnoses?.[0];
+  const { data: suggestions } = useOrderSuggestions(primaryDx?.icdCode, primaryDx?.diagnosisName);
+  const suggestedImaging = suggestions?.imaging ?? [];
 
   const pickService = (item: ImagingCatalogItem) => {
     setSelected(item);
@@ -227,6 +234,32 @@ export function ImagingRequestDialog({ open, onOpenChange, patientId, visitId }:
                   );
                 })}
               </div>
+
+              {/* CDSS diagnosis-based imaging suggestions */}
+              {primaryDx?.diagnosisName && suggestedImaging.length > 0 && (
+                <div className="mt-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-primary">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Suggested for {primaryDx.diagnosisName}
+                    {primaryDx.icdCode ? <span className="text-muted-foreground">({primaryDx.icdCode})</span> : null}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {suggestedImaging.map((name) => (
+                      <button
+                        key={name}
+                        type="button"
+                        onClick={() => setCatalogSearch(name)}
+                        className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-card px-2.5 py-1 text-xs hover:bg-primary/10 transition-colors"
+                      >
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-1.5 text-[10px] text-muted-foreground">
+                    Click to search the catalog for a recommended study.
+                  </p>
+                </div>
+              )}
 
               {/* Search for anything else */}
               <div className="relative mt-3">

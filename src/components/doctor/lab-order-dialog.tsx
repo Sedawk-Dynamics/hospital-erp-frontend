@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useCreateLabOrder } from '@/hooks/use-doctor';
+import { useCreateLabOrder, usePatientDiagnoses } from '@/hooks/use-doctor';
+import { useOrderSuggestions } from '@/hooks/use-cdss';
 import { apiGet } from '@/lib/api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -10,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { X, Search, FlaskConical, Loader2 } from 'lucide-react';
+import { X, Search, FlaskConical, Loader2, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface LabTest {
@@ -55,6 +56,15 @@ export function LabOrderDialog({ open, onOpenChange, patientId, visitId }: LabOr
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const createLabOrder = useCreateLabOrder();
+
+  // ── CDSS diagnosis-based order suggestions ──
+  const { data: diagnoses } = usePatientDiagnoses(patientId);
+  const primaryDx = diagnoses?.[0];
+  const { data: suggestions } = useOrderSuggestions(primaryDx?.icdCode, primaryDx?.diagnosisName);
+  // Suggested labs not already added (by case-insensitive name).
+  const suggestedLabs = (suggestions?.labs ?? []).filter(
+    (name) => !selectedTests.some((t) => t.name.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(t.name.toLowerCase())),
+  );
 
   // Search for tests with debounce
   useEffect(() => {
@@ -119,6 +129,23 @@ export function LabOrderDialog({ open, onOpenChange, patientId, visitId }: LabOr
   const handleRemoveTest = useCallback((testId: string) => {
     setSelectedTests((prev) => prev.filter((t) => t.id !== testId));
   }, []);
+
+  // Add a CDSS-suggested test by resolving its name against the lab catalog.
+  const handleAddSuggested = useCallback(async (name: string) => {
+    try {
+      const response = await apiGet<LabTestCatalogEntry[]>('/lab/test-catalog', {
+        params: { search: name, limit: 1, isActive: 'true' },
+      });
+      const hit = response.data?.[0];
+      if (!hit) {
+        toast.message(`“${name}” isn’t in your lab catalog — search and add it manually.`);
+        return;
+      }
+      handleAddTest({ id: hit.id, name: hit.testName, code: hit.testCode, category: hit.sampleType });
+    } catch {
+      toast.error('Could not add the suggested test');
+    }
+  }, [handleAddTest]);
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && searchResults.length > 0) {
@@ -236,6 +263,32 @@ export function LabOrderDialog({ open, onOpenChange, patientId, visitId }: LabOr
               </div>
             )}
           </div>
+
+          {/* CDSS diagnosis-based suggestions */}
+          {primaryDx?.diagnosisName && suggestedLabs.length > 0 && (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-primary">
+                <Sparkles className="h-3.5 w-3.5" />
+                Suggested for {primaryDx.diagnosisName}
+                {primaryDx.icdCode ? <span className="text-muted-foreground">({primaryDx.icdCode})</span> : null}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {suggestedLabs.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => handleAddSuggested(name)}
+                    className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-card px-2.5 py-1 text-xs hover:bg-primary/10 transition-colors"
+                  >
+                    + {name}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-[10px] text-muted-foreground">
+                Recommended based on the patient&apos;s diagnosis. Click to add; review before ordering.
+              </p>
+            </div>
+          )}
 
           {/* Selected Tests */}
           <div>
