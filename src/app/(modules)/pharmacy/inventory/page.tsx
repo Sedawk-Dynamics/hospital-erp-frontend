@@ -725,9 +725,41 @@ function PharmacyInventoryPageInner() {
                 />
               </div>
             </div>
-            <p className="text-[11px] text-muted-foreground">
-              Quantity is in base/loose units (e.g. individual tablets). Manage multiple batches under Batches.
-            </p>
+            {(() => {
+              const ps = stockDrug?.packSize && stockDrug.packSize > 1 ? stockDrug.packSize : null;
+              const qty = parseInt(stockForm.quantityReceived, 10);
+              const unit = stockDrug?.looseUnitLabel || 'unit';
+              if (ps && qty > 0) {
+                const packs = Math.floor(qty / ps);
+                const loose = qty % ps;
+                return (
+                  <div className="space-y-1">
+                    <p className="text-[11px] text-muted-foreground">
+                      Quantity is in base/loose units. {qty} {unit.toLowerCase()}(s) ={' '}
+                      <span className="font-medium text-foreground">
+                        {packs} pack{packs === 1 ? '' : 's'} of {ps}
+                        {loose ? ` + ${loose} loose` : ''}
+                      </span>
+                      .
+                    </p>
+                    {stockForm.quantityReceived === '' && (
+                      <button
+                        type="button"
+                        onClick={() => setStockForm((p) => ({ ...p, quantityReceived: String(ps) }))}
+                        className="text-[11px] text-primary hover:underline"
+                      >
+                        Quick-fill 1 pack ({ps})
+                      </button>
+                    )}
+                  </div>
+                );
+              }
+              return (
+                <p className="text-[11px] text-muted-foreground">
+                  Quantity is in base/loose units (e.g. individual tablets). Manage multiple batches under Batches.
+                </p>
+              );
+            })()}
           </div>
           <DialogFooter>
             <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
