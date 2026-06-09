@@ -24,11 +24,15 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { toast } from 'sonner';
 import { usePharmacyRole } from '@/hooks/use-pharmacy-role';
+import { usePatientSearch } from '@/hooks/use-hospital';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
 import {
-  useReturns, useCreateReturn, useProcessReturn, useBatches,
-  type PharmacyReturn,
+  useReturns, useCreateReturn, useProcessReturn, useBatches, useReturnableDispenses,
+  type PharmacyReturn, type ReturnableDispense,
 } from '@/hooks/use-pharmacy';
+
+const inr = (n: number | string | null | undefined) =>
+  n == null ? '—' : `₹${Number(n).toFixed(2)}`;
 
 type ReturnTab = 'all' | 'pending' | 'processed' | 'rejected';
 type CreateMode = 'patient_return' | 'vendor_return';
@@ -97,6 +101,7 @@ export default function PharmacyReturnsPage() {
                     <TableHead>Drug · Batch</TableHead>
                     <TableHead>From</TableHead>
                     <TableHead className="text-right">Qty</TableHead>
+                    <TableHead className="text-right">Refund</TableHead>
                     <TableHead>Reason</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead className="text-center">Status</TableHead>
@@ -129,8 +134,17 @@ function ReturnRow({ record }: { record: PharmacyReturn }) {
 
   const handleProcess = async (status: 'processed' | 'rejected') => {
     try {
-      await processReturn.mutateAsync({ id: record.id, status });
-      toast.success(status === 'processed' ? 'Return processed — stock restored' : 'Return rejected');
+      const updated = await processReturn.mutateAsync({ id: record.id, status });
+      if (status === 'processed') {
+        const refunded = updated?.refund?.amount ?? updated?.refundAmount;
+        toast.success(
+          refunded != null && Number(refunded) > 0
+            ? `Return processed — stock restored, ${inr(refunded)} refunded`
+            : 'Return processed — stock restored',
+        );
+      } else {
+        toast.success('Return rejected');
+      }
     } catch (err) {
       toast.error((err as Error).message ?? 'Failed to process return');
     }
@@ -166,6 +180,20 @@ function ReturnRow({ record }: { record: PharmacyReturn }) {
           : record.supplier?.name ?? '-'}
       </TableCell>
       <TableCell className="text-right">{record.quantity}</TableCell>
+      <TableCell className="text-right">
+        {record.refundAmount != null ? (
+          <div className="flex flex-col items-end">
+            <span className="font-medium font-mono">{inr(record.refundAmount)}</span>
+            {record.refund && (
+              <Badge className="mt-0.5 bg-emerald-500/10 text-emerald-700 border-emerald-500/20 text-[10px] capitalize">
+                {record.refund.status}
+              </Badge>
+            )}
+          </div>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        )}
+      </TableCell>
       <TableCell className="max-w-[220px] truncate text-sm text-muted-foreground">
         {record.reason || '-'}
       </TableCell>
@@ -206,16 +234,192 @@ function ReturnRow({ record }: { record: PharmacyReturn }) {
 }
 
 function CreateReturnDialog({ mode, onClose }: { mode: CreateMode; onClose: () => void }) {
+  if (mode === 'patient_return') {
+    return <PatientReturnDialog onClose={onClose} />;
+  }
+  return <VendorReturnDialog onClose={onClose} />;
+}
+
+// Patient return: anchored to the original counter sale so the refund is
+// computed from what was billed and bounded by what was dispensed.
+function PatientReturnDialog({ onClose }: { onClose: () => void }) {
+  const [patientSearch, setPatientSearch] = useState('');
+  const [patient, setPatient] = useState<{ id: string; name: string } | null>(null);
+  const [selectedLine, setSelectedLine] = useState<ReturnableDispense | null>(null);
+  const [quantity, setQuantity] = useState<number>(1);
+  const [reason, setReason] = useState('');
+
+  const { data: patientResults } = usePatientSearch(patientSearch);
+  const { data: lines, isLoading: linesLoading } = useReturnableDispenses(patient?.id ?? null);
+  const createReturn = useCreateReturn();
+
+  const maxQty = selectedLine?.remaining ?? 1;
+  const refundPreview =
+    selectedLine?.unitPrice != null ? selectedLine.unitPrice * quantity : null;
+
+  const handleSubmit = async () => {
+    if (!selectedLine) return toast.error('Pick the original sale line to return against');
+    if (quantity <= 0 || quantity > maxQty) {
+      return toast.error(`Quantity must be between 1 and ${maxQty}`);
+    }
+    try {
+      const created = await createReturn.mutateAsync({
+        returnType: 'patient_return',
+        dispensingRecordId: selectedLine.id,
+        quantity,
+        reason: reason || undefined,
+      });
+      toast.success(
+        created?.refundAmount != null
+          ? `Return created — ${inr(created.refundAmount)} refund pending approval`
+          : 'Return created — waiting for approval',
+      );
+      onClose();
+    } catch (err) {
+      toast.error((err as Error).message ?? 'Failed to create return');
+    }
+  };
+
+  return (
+    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>New Patient Return</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          {/* 1. Pick the patient */}
+          {!patient ? (
+            <div>
+              <label className="text-xs font-medium">Find patient</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Name, MRN or phone (min 2 chars)"
+                  value={patientSearch}
+                  onChange={(e) => setPatientSearch(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              {(patientResults?.length ?? 0) > 0 && (
+                <div className="mt-2 max-h-40 overflow-y-auto rounded-md border">
+                  {patientResults!.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() =>
+                        setPatient({ id: p.id, name: `${p.firstName} ${p.lastName ?? ''}`.trim() })
+                      }
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                    >
+                      <span className="font-medium">{p.firstName} {p.lastName}</span>
+                      {p.mrn && <span className="ml-2 text-xs text-muted-foreground font-mono">{p.mrn}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center justify-between rounded-md bg-muted/40 p-2 text-sm">
+              <span><User className="mr-1 inline h-3.5 w-3.5" /><b>{patient.name}</b></span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { setPatient(null); setSelectedLine(null); }}
+              >
+                Change
+              </Button>
+            </div>
+          )}
+
+          {/* 2. Pick the sale line to return against */}
+          {patient && (
+            <div>
+              <label className="text-xs font-medium">Returnable items (last 120 days)</label>
+              {linesLoading ? (
+                <Skeleton className="mt-1 h-16 w-full" />
+              ) : (lines?.length ?? 0) === 0 ? (
+                <p className="mt-1 rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">
+                  No returnable counter sales found for this patient.
+                </p>
+              ) : (
+                <div className="mt-1 max-h-44 overflow-y-auto rounded-md border">
+                  {lines!.map((l) => (
+                    <button
+                      key={l.id}
+                      onClick={() => { setSelectedLine(l); setQuantity(Math.min(1, l.remaining) || 1); }}
+                      className={`w-full px-3 py-2 text-left text-sm hover:bg-muted ${
+                        selectedLine?.id === l.id ? 'bg-primary/10' : ''
+                      }`}
+                    >
+                      <div className="flex justify-between">
+                        <span className="font-medium">{l.drugName}</span>
+                        <span className="text-xs text-muted-foreground">{inr(l.unitPrice)}/{l.saleUnit === 'loose' ? (l.looseUnitLabel || 'unit') : 'pack'}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {l.billNumber && <span className="font-mono">{l.billNumber}</span>}
+                        {l.batchNumber && <span className="font-mono"> · {l.batchNumber}</span>}
+                        <span> · {l.remaining} of {l.quantityDispensed} returnable</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 3. Quantity + refund preview */}
+          {selectedLine && (
+            <>
+              <div>
+                <label className="text-xs font-medium">
+                  Return quantity (max {maxQty})
+                </label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={maxQty}
+                  value={quantity}
+                  onChange={(e) =>
+                    setQuantity(Math.max(1, Math.min(maxQty, Number(e.target.value) || 1)))
+                  }
+                />
+              </div>
+              <div className="flex items-center justify-between rounded-md bg-emerald-500/5 border border-emerald-500/20 p-2 text-sm">
+                <span className="text-muted-foreground">Refund (at billed price)</span>
+                <span className="font-semibold text-emerald-700 font-mono">{inr(refundPreview)}</span>
+              </div>
+            </>
+          )}
+
+          <div>
+            <label className="text-xs font-medium">Reason</label>
+            <Textarea
+              placeholder="e.g. unused, allergic reaction, wrong dispense..."
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={2}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={createReturn.isPending || !selectedLine}>
+            {createReturn.isPending ? 'Saving…' : 'Create Return'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Vendor return: damaged/unsold stock back to the supplier (no refund).
+function VendorReturnDialog({ onClose }: { onClose: () => void }) {
   const [batchSearch, setBatchSearch] = useState('');
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [quantity, setQuantity] = useState<number>(1);
   const [reason, setReason] = useState('');
   const [supplierId, setSupplierId] = useState('');
 
-  const { data: batchesResp } = useBatches({
-    search: batchSearch || undefined,
-    limit: 25,
-  });
+  const { data: batchesResp } = useBatches({ search: batchSearch || undefined, limit: 25 });
   const batches = batchesResp?.data ?? [];
 
   const selectedBatch = useMemo(
@@ -226,23 +430,13 @@ function CreateReturnDialog({ mode, onClose }: { mode: CreateMode; onClose: () =
   const createReturn = useCreateReturn();
 
   const handleSubmit = async () => {
-    if (!selectedBatchId) {
-      toast.error('Pick a batch');
-      return;
-    }
-    if (quantity <= 0) {
-      toast.error('Enter a quantity');
-      return;
-    }
+    if (!selectedBatchId) return toast.error('Pick a batch');
+    if (quantity <= 0) return toast.error('Enter a quantity');
     try {
       await createReturn.mutateAsync({
-        returnType: mode,
+        returnType: 'vendor_return',
         drugBatchId: selectedBatchId,
-        // Patient is optional for a counter return — not collected here.
-        supplierId:
-          mode === 'vendor_return'
-            ? supplierId || selectedBatch?.supplier?.id
-            : undefined,
+        supplierId: supplierId || selectedBatch?.supplier?.id,
         quantity,
         reason: reason || undefined,
       });
@@ -257,9 +451,7 @@ function CreateReturnDialog({ mode, onClose }: { mode: CreateMode; onClose: () =
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>
-            {mode === 'patient_return' ? 'New Patient Return' : 'New Vendor Return'}
-          </DialogTitle>
+          <DialogTitle>New Vendor Return</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
           <div>
@@ -289,9 +481,7 @@ function CreateReturnDialog({ mode, onClose }: { mode: CreateMode; onClose: () =
                     <span className="font-medium">{b.drug?.drugName}</span>
                     <span className="text-xs text-muted-foreground">Stock: {b.quantityInStock}</span>
                   </div>
-                  <div className="text-xs text-muted-foreground font-mono">
-                    Batch {b.batchNumber}
-                  </div>
+                  <div className="text-xs text-muted-foreground font-mono">Batch {b.batchNumber}</div>
                 </button>
               ))}
             </div>
@@ -314,25 +504,19 @@ function CreateReturnDialog({ mode, onClose }: { mode: CreateMode; onClose: () =
             />
           </div>
 
-          {mode === 'vendor_return' && (
-            <div>
-              <label className="text-xs font-medium">Supplier ID (optional)</label>
-              <Input
-                placeholder={selectedBatch?.supplier?.id ?? 'Defaults to batch supplier'}
-                value={supplierId}
-                onChange={(e) => setSupplierId(e.target.value)}
-              />
-            </div>
-          )}
+          <div>
+            <label className="text-xs font-medium">Supplier ID (optional)</label>
+            <Input
+              placeholder={selectedBatch?.supplier?.id ?? 'Defaults to batch supplier'}
+              value={supplierId}
+              onChange={(e) => setSupplierId(e.target.value)}
+            />
+          </div>
 
           <div>
             <label className="text-xs font-medium">Reason</label>
             <Textarea
-              placeholder={
-                mode === 'patient_return'
-                  ? 'e.g. unused, allergic reaction, wrong dispense...'
-                  : 'e.g. damaged on receipt, expired, recall...'
-              }
+              placeholder="e.g. damaged on receipt, expired, recall..."
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               rows={3}
