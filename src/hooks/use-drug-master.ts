@@ -28,12 +28,6 @@ export interface DrugMaster {
   description?: string | null;
   sideEffects?: string | null;
   drugInteractions?: { drug?: string[]; brand?: string[]; effect?: string[] } | null;
-  // NPPA / DPCO price control (official reference; never affects hospital price)
-  isScheduled?: boolean;
-  ceilingPrice?: number | string | null;
-  ceilingUnit?: string | null;
-  nppaNotification?: string | null;
-  ceilingEffectiveDate?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -222,57 +216,6 @@ export function useStartRefresh() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['drug-master', 'refresh-status'] });
-      qc.invalidateQueries({ queryKey: drugMasterKeys.all });
-    },
-  });
-}
-
-// ============================================================
-// NPPA / DPCO official ceiling-price import (super-admin)
-// ============================================================
-
-export interface NppaSummary {
-  rows: number;
-  ceilingsUpserted: number;
-  drugsMatched: number;
-  ceilingsUnmatched: number;
-}
-
-export interface NppaState {
-  status: 'idle' | 'running' | 'success' | 'error';
-  startedAt: string | null;
-  finishedAt: string | null;
-  source: string | null;
-  result: NppaSummary | null;
-  error: string | null;
-}
-
-export function useNppaStatus(enabled = true) {
-  return useQuery({
-    queryKey: ['drug-master', 'nppa-status'],
-    queryFn: async () => {
-      const response = await apiGet<NppaState>('/drug-master/nppa/status');
-      return response.data as NppaState;
-    },
-    enabled,
-    refetchInterval: (query) =>
-      (query.state.data as NppaState | undefined)?.status === 'running' ? 2000 : false,
-  });
-}
-
-export function useImportNppa() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (file: File) => {
-      const fd = new FormData();
-      fd.append('file', file);
-      const res = await apiClient.post('/drug-master/nppa/import', fd, {
-        headers: { 'Content-Type': undefined },
-      });
-      return res.data?.data as NppaState;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['drug-master', 'nppa-status'] });
       qc.invalidateQueries({ queryKey: drugMasterKeys.all });
     },
   });

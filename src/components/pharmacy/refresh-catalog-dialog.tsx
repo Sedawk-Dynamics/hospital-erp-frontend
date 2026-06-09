@@ -4,7 +4,7 @@
 // snapshot so MRP / discontinued / composition changes flow in WITHOUT
 // duplicating drugs, breaking hospital import links, or touching any
 // hospital's own formulary/batch prices. Re-pull the default dataset or
-// upload a newer/NPPA-adjusted CSV.
+// upload a newer/price-adjusted CSV.
 
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -180,7 +180,7 @@ export function RefreshCatalogDialog() {
           )}
 
           <p className="text-[11px] text-muted-foreground">
-            Tip: to reflect new NPPA / market prices, upload an updated CSV with the same columns.
+            Tip: to reflect new market prices, upload an updated CSV with the same columns.
             The refresh matches drugs by name + manufacturer + pack, so it updates in place.
           </p>
         </div>

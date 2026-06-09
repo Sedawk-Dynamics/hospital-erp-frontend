@@ -124,7 +124,6 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Billing', href: '/pharmacy', icon: Receipt },
       { label: 'Prescription Queue', href: '/pharmacy/queue', icon: ClipboardList },
       { label: 'Returns', href: '/pharmacy/returns', icon: ArrowLeftRight },
-      { label: 'Price Control (NPPA)', href: '/pharmacy/price-control', icon: ShieldCheck },
       // pharmacy_admin only (management + financials). admin/super_admin bypass.
       { label: 'Billing Transaction', href: '/pharmacy/transactions', icon: ArrowLeftRight, restrictTo: ['pharmacy_admin'] },
       { label: 'Drug Catalog', href: '/pharmacy/catalog', icon: Database, restrictTo: ['pharmacy_admin'] },

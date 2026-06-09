@@ -44,7 +44,6 @@ import {
   type DrugMasterInput,
 } from '@/hooks/use-drug-master';
 import { RefreshCatalogDialog } from '@/components/pharmacy/refresh-catalog-dialog';
-import { NppaImportDialog } from '@/components/pharmacy/nppa-import-dialog';
 
 const DOSAGE_FORMS = [
   'tablet',
@@ -188,7 +187,6 @@ export default function SuperAdminDrugMasterPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <NppaImportDialog />
           <RefreshCatalogDialog />
           <Button onClick={openCreate} className="gap-1.5">
             <Plus className="h-4 w-4" />
@@ -267,14 +265,6 @@ export default function SuperAdminDrugMasterPage() {
                             }`}
                           >
                             {d.isPublished ? 'Published' : 'Draft'}
-                          </span>
-                        )}
-                        {d.isScheduled && (
-                          <span
-                            className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700"
-                            title={`NPPA ceiling ₹${d.ceilingPrice ?? '—'}${d.ceilingUnit ? ` ${d.ceilingUnit}` : ''}${d.nppaNotification ? ` · ${d.nppaNotification}` : ''}`}
-                          >
-                            NPPA ₹{d.ceilingPrice != null ? Number(d.ceilingPrice).toLocaleString('en-IN') : '—'}
                           </span>
                         )}
                       </div>
