@@ -105,10 +105,32 @@ export interface PharmacyReturn {
   status: 'pending' | 'processed' | 'rejected';
   processedBy: string | null;
   createdAt: string;
+  // Billing linkage (patient returns anchored to a counter sale).
+  dispensingRecordId?: string | null;
+  billId?: string | null;
+  saleUnit?: 'pack' | 'loose' | null;
+  unitPrice?: number | string | null;
+  refundAmount?: number | string | null;
+  refund?: { id: string; amount: number | string; status: string } | null;
   drugBatch?: { id: string; batchNumber: string; drug?: { id: string; drugName: string } };
   patient?: { id: string; firstName: string; lastName: string };
   supplier?: { id: string; name: string };
   processor?: { id: string; firstName: string; lastName: string } | null;
+}
+
+// A patient's recent counter-sale line that still has units eligible for return.
+export interface ReturnableDispense {
+  id: string;
+  drugName: string;
+  looseUnitLabel: string | null;
+  batchNumber: string | null;
+  billId: string | null;
+  billNumber: string | null;
+  saleUnit: 'pack' | 'loose';
+  unitPrice: number | null;
+  quantityDispensed: number;
+  remaining: number;
+  dispensedAt: string;
 }
 
 interface PaginationMeta {
@@ -634,7 +656,10 @@ export function useCreateReturn() {
   return useMutation({
     mutationFn: async (data: {
       returnType: 'patient_return' | 'vendor_return';
-      drugBatchId: string;
+      // Optional when dispensingRecordId is supplied — the batch is taken from
+      // the original sale line.
+      drugBatchId?: string;
+      dispensingRecordId?: string;
       patientId?: string;
       supplierId?: string;
       quantity: number;
@@ -646,7 +671,23 @@ export function useCreateReturn() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.returns.all });
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: ['pharmacy', 'returnable'] });
     },
+  });
+}
+
+// A patient's returnable counter-sale lines — drives the patient-return picker.
+export function useReturnableDispenses(patientId: string | null) {
+  return useQuery({
+    queryKey: ['pharmacy', 'returnable', patientId],
+    queryFn: async () => {
+      const response = await apiGet<{ items: ReturnableDispense[]; total: number }>(
+        '/pharmacy/returnable',
+        { params: { patientId } },
+      );
+      return response.data?.items ?? [];
+    },
+    enabled: !!patientId,
   });
 }
 
