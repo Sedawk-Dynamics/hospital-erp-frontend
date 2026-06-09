@@ -538,6 +538,7 @@ function PharmacyInventoryPageInner() {
                   <TableHead>Category</TableHead>
                   <TableHead>Form</TableHead>
                   <TableHead>Strength</TableHead>
+                  <TableHead className="text-center">Pack</TableHead>
                   <TableHead>Manufacturer</TableHead>
                   <TableHead className="text-right">Price</TableHead>
                   <TableHead className="text-center">Stock</TableHead>
@@ -553,6 +554,15 @@ function PharmacyInventoryPageInner() {
                     <TableCell>{item.category?.name || '-'}</TableCell>
                     <TableCell className="capitalize">{item.dosageForm || '-'}</TableCell>
                     <TableCell>{item.strength || '-'}</TableCell>
+                    <TableCell className="text-center">
+                      {item.packSize && item.packSize > 1 ? (
+                        <Badge variant="outline" className="font-mono text-[11px]">
+                          {item.packSize} {item.looseUnitLabel || 'units'}/pack
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">{item.manufacturer || '-'}</TableCell>
                     <TableCell className="text-right font-mono">
                       {item.price != null ? `₹${Number(item.price).toFixed(2)}` : '-'}
