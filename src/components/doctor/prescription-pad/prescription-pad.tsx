@@ -17,6 +17,10 @@ import { useFormularySearch, useAllergyCheck, usePatientVitals, usePatientDiagno
 import { useLatestVitals } from '@/hooks/use-nurse';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useValidatePrescriptionQuery, useValidatePrescription, type CdssWarning } from '@/hooks/use-cdss';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { ShieldAlert } from 'lucide-react';
@@ -260,6 +264,10 @@ export function PrescriptionPad({
   const cdssBlockers = cdss?.blockers ?? [];
   const cdssWarnings = cdss?.warnings ?? [];
   const validateRx = useValidatePrescription();
+  // Sign-time override dialog state — set when every blocker is an
+  // overridable interaction contraindication.
+  const [cdssOverrideBlockers, setCdssOverrideBlockers] = useState<CdssWarning[] | null>(null);
+  const [cdssOverrideReason, setCdssOverrideReason] = useState('');
 
   const isPinned = useCallback(
     (section: ConsultationPinSection) => pinnedSections.includes(section),
@@ -294,30 +302,7 @@ export function PrescriptionPad({
   );
 
   // ── Handle Submit ──
-  const handleFinish = useCallback(async () => {
-    const valid = await form.trigger();
-    if (!valid) return;
-
-    // CDSS safety gate — re-validate fresh (never trust a stale "all clear")
-    // and hard-block on contraindications: severe/life-threatening allergy,
-    // contraindicated drug interaction, or a recalled drug.
-    if (cdssItems.length > 0) {
-      try {
-        const result = await validateRx.mutateAsync({ patientId, items: cdssItems });
-        if (result.blockers.length > 0) {
-          toast.error(
-            `Cannot sign — ${result.blockers.length} safety alert${result.blockers.length > 1 ? 's' : ''}: ${result.blockers
-              .map((b) => b.message)
-              .join('; ')}`,
-            { duration: 9000 },
-          );
-          return;
-        }
-      } catch {
-        // CDSS unavailable — fail open so the consult can still be signed.
-      }
-    }
-
+  const doSubmit = useCallback(async () => {
     try {
       await submitConsultation({
         formData: form.getValues(),
@@ -332,7 +317,74 @@ export function PrescriptionPad({
     } catch {
       // error is set in hook
     }
-  }, [form, submitConsultation, patientId, appointmentId, doctorProfileId, doctorUserId, editMode, onComplete, clearDraft, cdssItems, validateRx]);
+  }, [submitConsultation, form, patientId, appointmentId, doctorProfileId, doctorUserId, editMode, clearDraft, onComplete]);
+
+  const handleFinish = useCallback(async () => {
+    const valid = await form.trigger();
+    if (!valid) return;
+
+    // CDSS safety gate — re-validate fresh (never trust a stale "all clear")
+    // and hard-block on contraindications: severe/life-threatening allergy,
+    // contraindicated drug interaction, or a recalled drug. Interaction
+    // contraindications may be overridden with a documented clinical reason;
+    // severe allergies and recalled drugs may not.
+    if (cdssItems.length > 0) {
+      try {
+        const result = await validateRx.mutateAsync({ patientId, items: cdssItems });
+        if (result.blockers.length > 0) {
+          if (result.blockers.every((b) => b.overridable)) {
+            setCdssOverrideBlockers(result.blockers);
+            setCdssOverrideReason('');
+            return; // dialog takes over; sign continues via handleOverrideAndSign
+          }
+          toast.error(
+            `Cannot sign — ${result.blockers.length} safety alert${result.blockers.length > 1 ? 's' : ''}: ${result.blockers
+              .map((b) => b.message)
+              .join('; ')}`,
+            { duration: 9000 },
+          );
+          return;
+        }
+        // Clean (or warnings only) — persist major findings for the CDSS
+        // review dashboard, fire-and-forget.
+        if (result.warnings.length > 0) {
+          validateRx.mutate({ patientId, items: cdssItems, persist: true });
+        }
+      } catch {
+        // CDSS unavailable — fail open so the consult can still be signed.
+      }
+    }
+
+    await doSubmit();
+  }, [form, patientId, cdssItems, validateRx, doSubmit]);
+
+  // ── CDSS override-and-sign (interaction blockers only) ──
+  const handleOverrideAndSign = useCallback(async () => {
+    const reason = cdssOverrideReason.trim();
+    if (reason.length < 5) {
+      toast.error('Override reason must be at least 5 characters');
+      return;
+    }
+    try {
+      const result = await validateRx.mutateAsync({
+        patientId,
+        items: cdssItems,
+        persist: true,
+        overrideReason: reason,
+      });
+      if (result.blockers.length > 0) {
+        toast.error(
+          `Still blocked — ${result.blockers.map((b) => b.message).join('; ')}`,
+          { duration: 9000 },
+        );
+        return;
+      }
+    } catch {
+      // CDSS unavailable — fail open.
+    }
+    setCdssOverrideBlockers(null);
+    await doSubmit();
+  }, [cdssOverrideReason, validateRx, patientId, cdssItems, doSubmit]);
 
   // ── Handle Clear ──
   const handleClear = useCallback(() => {
@@ -365,6 +417,53 @@ export function PrescriptionPad({
           </div>
         </div>
       )}
+
+      {/* ── CDSS override dialog (interaction blockers only) ── */}
+      <Dialog
+        open={!!cdssOverrideBlockers}
+        onOpenChange={(open) => { if (!open) setCdssOverrideBlockers(null); }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldAlert className="h-4 w-4 text-error" />
+              Contraindicated interaction — override?
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <ul className="rounded-lg bg-error/10 border border-error/30 p-3 space-y-1.5">
+              {(cdssOverrideBlockers ?? []).map((b, i) => (
+                <li key={i} className="text-xs text-error font-medium">{b.message}</li>
+              ))}
+            </ul>
+            <div>
+              <label className="text-xs font-medium">Clinical justification *</label>
+              <Textarea
+                value={cdssOverrideReason}
+                onChange={(e) => setCdssOverrideReason(e.target.value)}
+                placeholder="Why is it clinically appropriate to proceed despite this interaction?"
+                rows={3}
+              />
+              <p className="text-[10px] text-muted-foreground mt-1">
+                The override is recorded on the CDSS dashboard with your name, reason and time.
+                Severe allergies and recalled drugs can never be overridden.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCdssOverrideBlockers(null)}>
+              Go back and change drugs
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={validateRx.isPending || cdssOverrideReason.trim().length < 5}
+              onClick={handleOverrideAndSign}
+            >
+              Override & sign
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Sections (SOAP flow top → bottom) ── */}
       <div className="space-y-4 pb-4">
@@ -957,7 +1056,9 @@ function CdssSafetyPanel({ warnings, blockers }: { warnings: CdssWarning[]; bloc
             ))}
           </ul>
           <p className="px-4 pb-2 text-[11px] text-error/80">
-            Remove or change the flagged drug(s) — the consultation can&apos;t be signed while a contraindication stands.
+            {blockers.some((b) => b.overridable)
+              ? 'Remove or change the flagged drug(s). Interaction contraindications may be overridden at sign time with a documented clinical reason; severe allergies and recalls cannot.'
+              : 'Remove or change the flagged drug(s) — the consultation can’t be signed while a contraindication stands.'}
           </p>
         </div>
       )}
