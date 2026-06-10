@@ -42,6 +42,7 @@ import {
   useCreateOTRequest,
   useApproveOTRequest,
   useScheduleOT,
+  useUpdateOTRequest,
   useOperatingTheaters,
   type OTRequest,
 } from '@/hooks/use-ot';
@@ -211,6 +212,35 @@ export default function OTHomePage() {
 
   // Mutations
   const approveMutation = useApproveOTRequest();
+  const updateMutation = useUpdateOTRequest();
+
+  // Surgery lifecycle: scheduled → in_progress stamps the actual start,
+  // in_progress → completed stamps the actual end (feeds OT utilization).
+  const handleStartSurgery = useCallback(
+    (id: string) => {
+      updateMutation.mutate(
+        { id, status: 'in_progress', actualStartTime: new Date().toISOString() },
+        {
+          onSuccess: () => toast.success('Surgery started'),
+          onError: (err: any) => toast.error(err?.message ?? 'Failed to start surgery'),
+        },
+      );
+    },
+    [updateMutation]
+  );
+
+  const handleCompleteSurgery = useCallback(
+    (id: string) => {
+      updateMutation.mutate(
+        { id, status: 'completed', actualEndTime: new Date().toISOString() },
+        {
+          onSuccess: () => toast.success('Surgery completed'),
+          onError: (err: any) => toast.error(err?.message ?? 'Failed to complete surgery'),
+        },
+      );
+    },
+    [updateMutation]
+  );
 
   const handleApprove = useCallback(
     (id: string) => {
@@ -460,14 +490,38 @@ export default function OTHomePage() {
                           </>
                         )}
                         {req.status === 'scheduled' && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                              onClick={() => handleStartSurgery(req.id)}
+                              disabled={updateMutation.isPending}
+                            >
+                              <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                              Start
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                              onClick={() => openScheduleDialog(req)}
+                            >
+                              <CalendarClock className="mr-1 h-3.5 w-3.5" />
+                              Reschedule
+                            </Button>
+                          </>
+                        )}
+                        {req.status === 'in_progress' && (
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                            onClick={() => openScheduleDialog(req)}
+                            className="text-teal-600 hover:text-teal-700 hover:bg-teal-50"
+                            onClick={() => handleCompleteSurgery(req.id)}
+                            disabled={updateMutation.isPending}
                           >
-                            <CalendarClock className="mr-1 h-3.5 w-3.5" />
-                            Reschedule
+                            <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                            Complete
                           </Button>
                         )}
                         <Button
