@@ -826,6 +826,58 @@ export function usePharmacyAnalytics(params?: { fromDate?: string; toDate?: stri
 }
 
 // ============================================================
+// Stock Ledger (batch-wise movement register)
+// ============================================================
+
+export type StockLedgerMovement = 'receipt' | 'dispense' | 'patient_return' | 'vendor_return';
+
+export interface StockLedgerEntry {
+  date: string;
+  movementType: StockLedgerMovement;
+  drugId: string;
+  drugName: string;
+  batchNumber: string;
+  quantityIn: number;
+  quantityOut: number;
+  party: string | null;
+  referenceId: string;
+}
+
+export interface StockLedgerResult {
+  fromDate: string;
+  toDate: string;
+  entries: StockLedgerEntry[];
+  page: number;
+  limit: number;
+  total: number;
+  summary: {
+    totalReceived: number;
+    totalDispensed: number;
+    totalReturned: number;
+    totalIn: number;
+    totalOut: number;
+    netChange: number;
+    closingStock: number;
+  };
+}
+
+export function useStockLedger(params?: {
+  fromDate?: string;
+  toDate?: string;
+  drugId?: string;
+  page?: number;
+  limit?: number;
+}) {
+  return useQuery({
+    queryKey: ['pharmacy', 'stock-ledger', params],
+    queryFn: async () => {
+      const response = await apiGet<StockLedgerResult>('/pharmacy/stock-ledger', { params });
+      return response.data;
+    },
+  });
+}
+
+// ============================================================
 // Recall Management
 // ============================================================
 

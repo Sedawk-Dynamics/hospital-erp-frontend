@@ -132,6 +132,7 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Recalls', href: '/pharmacy/recalls', icon: ShieldAlert, restrictTo: ['pharmacy_admin'] },
       { label: 'Purchase', href: '/pharmacy/purchase', icon: ShoppingCart, restrictTo: ['pharmacy_admin'] },
       { label: 'Reports', href: '/pharmacy/reports', icon: BarChart3, restrictTo: ['pharmacy_admin'] },
+      { label: 'Stock Ledger', href: '/pharmacy/stock-ledger', icon: ClipboardList, restrictTo: ['pharmacy_admin'] },
       { label: 'Stock Transfer', href: '/pharmacy/stock-transfer', icon: Truck, restrictTo: ['pharmacy_admin'] },
       { label: 'Settings', href: '/pharmacy/settings', icon: Settings, restrictTo: ['pharmacy_admin'] },
       { label: 'GST Update', href: '/pharmacy/gst', icon: FileText, restrictTo: ['pharmacy_admin'] },
