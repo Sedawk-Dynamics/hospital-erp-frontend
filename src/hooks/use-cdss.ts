@@ -1,5 +1,5 @@
-import { useQuery, useMutation } from '@tanstack/react-query';
-import { apiGet, apiPost } from '@/lib/api';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiGet, apiPost, apiPatch } from '@/lib/api';
 
 // ============================================================
 // Types
@@ -15,11 +15,14 @@ export interface CdssWarning {
   pair?: [string, string];
   message: string;
   detail?: string;
+  /** Blocker can be overridden with a documented reason (interactions only). */
+  overridable?: boolean;
 }
 
 export interface ValidatePrescriptionResult {
   warnings: CdssWarning[];
   blockers: CdssWarning[];
+  overridden: CdssWarning[];
 }
 
 export interface CdssRxItem {
@@ -31,7 +34,15 @@ export interface CdssRxItem {
 
 export function useValidatePrescription() {
   return useMutation({
-    mutationFn: async (data: { patientId: string; items: CdssRxItem[] }) => {
+    mutationFn: async (data: {
+      patientId: string;
+      items: CdssRxItem[];
+      /** Persist major+ findings as dashboard alerts (sign-time call). */
+      persist?: boolean;
+      prescriptionId?: string;
+      /** Clinical justification to override interaction blockers. */
+      overrideReason?: string;
+    }) => {
       const res = await apiPost<ValidatePrescriptionResult>('/cdss/validate-prescription', data);
       return res.data;
     },
@@ -94,18 +105,28 @@ export function useOrderSuggestions(icdCode?: string | null, diagnosisName?: str
 // Alerts feed
 // ============================================================
 
+export type CdssAlertType = 'drug_interaction' | 'allergy' | 'dosage' | 'recall' | 'critical_value';
+export type CdssAlertStatus = 'active' | 'acknowledged' | 'overridden';
+
 export interface CdssAlert {
   id: string;
-  userId: string;
-  title: string;
+  patientId: string | null;
+  alertType: CdssAlertType;
+  severity: string;
   message: string;
-  notificationType: string;
-  channel: string;
+  detail: string | null;
+  drugName: string | null;
+  parameterName: string | null;
+  parameterValue: string | null;
   referenceType: string | null;
   referenceId: string | null;
-  isRead: boolean;
+  status: CdssAlertStatus;
+  acknowledgedAt: string | null;
+  acknowledgeNote: string | null;
+  overrideReason: string | null;
   createdAt: string;
-  user?: { id: string; firstName: string; lastName: string };
+  patient?: { id: string; mrn: string; firstName: string; lastName: string } | null;
+  acknowledgedBy?: { id: string; firstName: string; lastName: string } | null;
 }
 
 export interface CdssAbnormalResult {
@@ -131,6 +152,8 @@ export interface CdssAlertsFeed {
 export function useCdssAlerts(params?: {
   page?: number;
   limit?: number;
+  type?: CdssAlertType | 'all';
+  status?: CdssAlertStatus | 'all';
   patientId?: string;
   fromDate?: string;
   toDate?: string;
@@ -144,16 +167,50 @@ export function useCdssAlerts(params?: {
   });
 }
 
+export interface CdssAlertsSummary {
+  criticalToday: number;
+  criticalWeek: number;
+  activeTotal: number;
+  byType: Partial<Record<CdssAlertType, number>>;
+  unreadCritical: number;
+}
+
 export function useCdssAlertsSummary() {
   return useQuery({
     queryKey: ['cdss', 'alerts', 'summary'],
     queryFn: async () => {
-      const res = await apiGet<{
-        criticalToday: number;
-        criticalWeek: number;
-        unreadCritical: number;
-      }>('/cdss/alerts/summary');
+      const res = await apiGet<CdssAlertsSummary>('/cdss/alerts/summary');
       return res.data;
+    },
+  });
+}
+
+// ============================================================
+// Alert review workflow
+// ============================================================
+
+export function useAcknowledgeCdssAlert() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ alertId, note }: { alertId: string; note?: string }) => {
+      const res = await apiPatch<CdssAlert>(`/cdss/alerts/${alertId}/acknowledge`, { note });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cdss', 'alerts'] });
+    },
+  });
+}
+
+export function useOverrideCdssAlert() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ alertId, reason }: { alertId: string; reason: string }) => {
+      const res = await apiPatch<CdssAlert>(`/cdss/alerts/${alertId}/override`, { reason });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cdss', 'alerts'] });
     },
   });
 }
