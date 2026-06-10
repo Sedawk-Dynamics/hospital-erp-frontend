@@ -23,7 +23,8 @@ import { PageHeader } from '@/components/shared/page-header';
 import { EmptyState } from '@/components/shared/empty-state';
 import {
   useOperatingTheaters, useCreateOperatingTheater, useUpdateOperatingTheater,
-  useDeleteOperatingTheater, type OperatingTheater,
+  useDeleteOperatingTheater, useOtSchedulingSettings, useUpdateOtSchedulingSettings,
+  type OperatingTheater,
 } from '@/hooks/use-ot';
 
 const STATUS_COLOR: Record<string, string> = {
@@ -172,35 +173,7 @@ export default function OTSettingsPage() {
         )}
       </div>
 
-      {/* Scheduling preferences are saved locally for now (not part of Week 10 SOW
-          backend). Left as-is so the OT manager can capture intent. */}
-      <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary">
-        <div className="p-5 border-b flex items-center gap-3">
-          <div className="rounded-lg bg-primary/10 p-2">
-            <Settings className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h2 className="font-headline text-lg font-bold">Scheduling Preferences</h2>
-            <p className="text-sm text-muted-foreground">Default surgery duration, buffers, and daily caps</p>
-          </div>
-        </div>
-        <div className="p-5 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div>
-              <Label>Default Surgery Duration (min)</Label>
-              <Input type="number" defaultValue={60} className="mt-1.5" />
-            </div>
-            <div>
-              <Label>Buffer Time Between Surgeries (min)</Label>
-              <Input type="number" defaultValue={30} className="mt-1.5" />
-            </div>
-            <div>
-              <Label>Max Surgeries Per Day</Label>
-              <Input type="number" defaultValue={10} className="mt-1.5" />
-            </div>
-          </div>
-        </div>
-      </div>
+      <SchedulingPreferencesCard />
 
       <TheaterDialog
         open={dialogOpen}
@@ -238,6 +211,118 @@ export default function OTSettingsPage() {
         }}
         isPending={create.isPending || update.isPending}
       />
+    </div>
+  );
+}
+
+function SchedulingPreferencesCard() {
+  const { data: settings, isLoading } = useOtSchedulingSettings();
+  const update = useUpdateOtSchedulingSettings();
+  const [form, setForm] = useState({
+    defaultDurationMinutes: 60,
+    bufferMinutes: 30,
+    maxSurgeriesPerDay: 10,
+    dayStartTime: '',
+    dayEndTime: '',
+  });
+
+  useEffect(() => {
+    if (!settings) return;
+    setForm({
+      defaultDurationMinutes: settings.defaultDurationMinutes,
+      bufferMinutes: settings.bufferMinutes,
+      maxSurgeriesPerDay: settings.maxSurgeriesPerDay,
+      dayStartTime: settings.dayStartTime ?? '',
+      dayEndTime: settings.dayEndTime ?? '',
+    });
+  }, [settings]);
+
+  const handleSave = () => {
+    update.mutate(
+      {
+        defaultDurationMinutes: Number(form.defaultDurationMinutes) || 60,
+        bufferMinutes: Number(form.bufferMinutes) || 0,
+        maxSurgeriesPerDay: Number(form.maxSurgeriesPerDay) || 1,
+        dayStartTime: form.dayStartTime || null,
+        dayEndTime: form.dayEndTime || null,
+      },
+      {
+        onSuccess: () => toast.success('Scheduling preferences saved'),
+        onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Save failed'),
+      },
+    );
+  };
+
+  return (
+    <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary">
+      <div className="p-5 border-b flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="rounded-lg bg-primary/10 p-2">
+            <Settings className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h2 className="font-headline text-lg font-bold">Scheduling Preferences</h2>
+            <p className="text-sm text-muted-foreground">Default surgery duration, buffers, and daily caps</p>
+          </div>
+        </div>
+        <Button onClick={handleSave} disabled={update.isPending || isLoading}>
+          {update.isPending && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
+          Save
+        </Button>
+      </div>
+      <div className="p-5 space-y-4">
+        {isLoading ? (
+          <Skeleton className="h-16 w-full" />
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <Label>Default Surgery Duration (min)</Label>
+              <Input
+                type="number"
+                value={form.defaultDurationMinutes}
+                onChange={(e) => setForm({ ...form, defaultDurationMinutes: Number(e.target.value) })}
+                className="mt-1.5"
+              />
+            </div>
+            <div>
+              <Label>Buffer Time Between Surgeries (min)</Label>
+              <Input
+                type="number"
+                value={form.bufferMinutes}
+                onChange={(e) => setForm({ ...form, bufferMinutes: Number(e.target.value) })}
+                className="mt-1.5"
+              />
+            </div>
+            <div>
+              <Label>Max Surgeries Per Day</Label>
+              <Input
+                type="number"
+                value={form.maxSurgeriesPerDay}
+                onChange={(e) => setForm({ ...form, maxSurgeriesPerDay: Number(e.target.value) })}
+                className="mt-1.5"
+              />
+            </div>
+            <div>
+              <Label>OT Day Starts At</Label>
+              <Input
+                type="time"
+                value={form.dayStartTime}
+                onChange={(e) => setForm({ ...form, dayStartTime: e.target.value })}
+                className="mt-1.5"
+              />
+            </div>
+            <div>
+              <Label>OT Day Ends At</Label>
+              <Input
+                type="time"
+                value={form.dayEndTime}
+                onChange={(e) => setForm({ ...form, dayEndTime: e.target.value })}
+                className="mt-1.5"
+              />
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

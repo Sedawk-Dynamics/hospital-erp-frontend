@@ -363,3 +363,38 @@ export function useDeleteOperatingTheater() {
     },
   });
 }
+
+// ============================================================
+// OT scheduling preferences (per tenant)
+// ============================================================
+
+export interface OtSchedulingSettings {
+  defaultDurationMinutes: number;
+  bufferMinutes: number;
+  maxSurgeriesPerDay: number;
+  dayStartTime: string | null;
+  dayEndTime: string | null;
+}
+
+export function useOtSchedulingSettings() {
+  return useQuery({
+    queryKey: ['ot', 'settings'],
+    queryFn: async () => {
+      const response = await apiGet<OtSchedulingSettings>('/compliance/ot-settings');
+      return response.data;
+    },
+  });
+}
+
+export function useUpdateOtSchedulingSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: Partial<OtSchedulingSettings>) => {
+      const response = await apiPut<OtSchedulingSettings>('/compliance/ot-settings', data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ot', 'settings'] });
+    },
+  });
+}
