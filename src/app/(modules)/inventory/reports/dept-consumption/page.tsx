@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toInputDateStr } from '@/lib/date-utils';
-import { Building2, ChevronDown, ChevronRight, IndianRupee, Package } from 'lucide-react';
+import { Building2, ChevronDown, ChevronRight, IndianRupee, Package, Pill } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -134,8 +135,17 @@ export default function DeptConsumptionReportPage() {
                     >
                       <td className="px-4 py-3 font-medium flex items-center gap-2">
                         {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                        <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                        {row.departmentId === 'pharmacy' ? (
+                          <Pill className="h-3.5 w-3.5 text-teal-600" />
+                        ) : (
+                          <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                        )}
                         {row.departmentName}
+                        {row.departmentId === 'pharmacy' && (
+                          <Badge variant="outline" className="text-[10px] text-teal-700 border-teal-300">
+                            drug dispenses · at purchase cost
+                          </Badge>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right">{row.items.length}</td>
                       <td className="px-4 py-3 text-right">{fmt(row.totalQuantity)}</td>
