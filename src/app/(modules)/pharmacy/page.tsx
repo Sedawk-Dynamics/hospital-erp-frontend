@@ -26,6 +26,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
 import { toast } from 'sonner';
 import { formatDate, formatTime24, toInputDateStr } from '@/lib/date-utils';
+import { calcQuantityFromStrings } from '@/lib/dosage-calc';
 import {
   useFormulary,
   useBatchesByDrug,
@@ -96,6 +97,13 @@ interface CartItem {
   discount: number;
   // Stock check — always in BASE units
   availableQty: number;
+  // Prescribed dosing context — populated for prescription rows so the cashier
+  // can see what the doctor ordered (e.g. "1-1-1 · 3 days → 9"). Blank for
+  // walk-in / OTC rows. rxQuantity is the prescribed count in base (loose) units.
+  rxDosage?: string;
+  rxFrequency?: string;
+  rxDuration?: string | null;
+  rxQuantity?: number | null;
 }
 
 interface PatientResult {
@@ -249,25 +257,34 @@ function PharmacyPOS() {
     // formulary link — free-text rows can be searched and added manually).
     const newCart: CartItem[] = activePrescription.prescriptionItems
       .filter((it) => it.drugId)
-      .map((it) => ({
-        rowKey: `${it.id}::${it.drugId}`,
-        prescriptionItemId: it.id,
-        formularyItemId: it.drugId as string,
-        drugName: it.drugName,
-        genericName: null,
-        batchId: null,
-        batchNumber: '-',
-        expiryDate: null,
-        sellingPrice: 0,
-        purchasePrice: 0,
-        packSize: 1,
-        looseUnitLabel: 'unit',
-        taxPercent: 12,
-        saleUnit: 'loose',
-        quantity: it.quantity ?? 1,
-        discount: 0,
-        availableQty: 0,
-      }));
+      .map((it) => {
+        // The dispense count the doctor intends: the stored quantity, or one
+        // derived from the dose pattern × duration (e.g. 1-1-1 for 3 days → 9).
+        const rxQty = it.quantity ?? calcQuantityFromStrings(it.frequency, it.duration);
+        return {
+          rowKey: `${it.id}::${it.drugId}`,
+          prescriptionItemId: it.id,
+          formularyItemId: it.drugId as string,
+          drugName: it.drugName,
+          genericName: null,
+          batchId: null,
+          batchNumber: '-',
+          expiryDate: null,
+          sellingPrice: 0,
+          purchasePrice: 0,
+          packSize: 1,
+          looseUnitLabel: 'unit',
+          taxPercent: 12,
+          saleUnit: 'loose',
+          quantity: rxQty ?? 1,
+          discount: 0,
+          availableQty: 0,
+          rxDosage: it.dosage,
+          rxFrequency: it.frequency,
+          rxDuration: it.duration,
+          rxQuantity: rxQty ?? null,
+        };
+      });
     setCart(newCart);
     // FEFO — auto-pick the nearest-expiry batch for each prescription line.
     newCart.forEach((c) => void autoSelectBatch(c.rowKey, c.formularyItemId));
@@ -805,7 +822,27 @@ function PharmacyPOS() {
                           <p className="text-xs text-muted-foreground">{item.genericName}</p>
                         )}
                         {item.prescriptionItemId && (
-                          <p className="text-[10px] uppercase tracking-wide text-emerald-600">From Rx</p>
+                          <div className="mt-0.5 space-y-0.5">
+                            {[item.rxDosage, item.rxFrequency, item.rxDuration].filter(Boolean).length > 0 && (
+                              <p className="text-[11px] text-muted-foreground">
+                                {[item.rxDosage, item.rxFrequency, item.rxDuration].filter(Boolean).join(' · ')}
+                              </p>
+                            )}
+                            {item.rxQuantity != null && (
+                              <p className="text-[10px]">
+                                <span className="uppercase tracking-wide text-emerald-600">Rx qty: </span>
+                                <span className="font-semibold text-foreground">{item.rxQuantity}</span>
+                                {item.batchId && baseQtyOf(item) !== item.rxQuantity && (
+                                  <span className="ml-1 text-amber-600">
+                                    (billing {baseQtyOf(item)})
+                                  </span>
+                                )}
+                              </p>
+                            )}
+                            {item.rxQuantity == null && (
+                              <p className="text-[10px] uppercase tracking-wide text-emerald-600">From Rx</p>
+                            )}
+                          </div>
                         )}
                       </td>
                       <td className="px-3 py-2.5">
