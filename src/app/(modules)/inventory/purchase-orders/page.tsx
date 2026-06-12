@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ShoppingCart, Plus, CheckCircle2, PackageCheck, X,
 } from 'lucide-react';
@@ -33,9 +34,26 @@ import {
 type Tab = 'all' | 'draft' | 'approved' | 'delivered';
 
 export default function PurchaseOrdersPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [tab, setTab] = useState<Tab>('all');
   const [createOpen, setCreateOpen] = useState(false);
+  const [seedItems, setSeedItems] = useState<PoLineSeed[]>([]);
   const [detailId, setDetailId] = useState<string | null>(null);
+
+  // A low-stock "Reorder" deep-link (?reorderItemId=&reorderItemName=&reorderQty=)
+  // auto-opens the create dialog pre-seeded with that item.
+  useEffect(() => {
+    const id = searchParams.get('reorderItemId');
+    const name = searchParams.get('reorderItemName');
+    if (id && name) {
+      const qty = Math.max(1, Number(searchParams.get('reorderQty')) || 1);
+      setSeedItems([{ inventoryItemId: id, itemName: name, quantityOrdered: qty }]);
+      setCreateOpen(true);
+      // Drop the params so a later "New PO" opens blank.
+      router.replace('/inventory/purchase-orders');
+    }
+  }, [searchParams, router]);
 
   const { data, isLoading } = usePurchaseOrders({
     status: tab === 'all' ? undefined : (tab as PurchaseOrderStatus),
@@ -126,23 +144,31 @@ export default function PurchaseOrdersPage() {
         </TabsContent>
       </Tabs>
 
-      {createOpen && <CreatePoDialog onClose={() => setCreateOpen(false)} />}
+      {createOpen && (
+        <CreatePoDialog
+          initialItems={seedItems}
+          onClose={() => { setCreateOpen(false); setSeedItems([]); }}
+        />
+      )}
       {detailId && <PoDetailDialog id={detailId} onClose={() => setDetailId(null)} />}
     </div>
   );
 }
 
-function CreatePoDialog({ onClose }: { onClose: () => void }) {
+interface PoLineSeed {
+  inventoryItemId: string;
+  itemName: string;
+  quantityOrdered: number;
+  unitPrice?: number;
+}
+
+function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initialItems?: PoLineSeed[] }) {
   const [supplierId, setSupplierId] = useState<string>('');
   const [expectedDate, setExpectedDate] = useState('');
   const [notes, setNotes] = useState('');
   const [search, setSearch] = useState('');
-  const [items, setItems] = useState<Array<{
-    inventoryItemId: string;
-    itemName: string;
-    quantityOrdered: number;
-    unitPrice?: number;
-  }>>([]);
+  // Seeded from a low-stock "Reorder" deep-link when present.
+  const [items, setItems] = useState<PoLineSeed[]>(initialItems ?? []);
 
   const { data: itemsResp } = useInventoryItems({ search: search || undefined, limit: 20, isActive: true });
   const { data: suppliersResp } = useSuppliers({ limit: 100, isActive: true });
