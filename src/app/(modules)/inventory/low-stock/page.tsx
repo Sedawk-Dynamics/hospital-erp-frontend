@@ -1,7 +1,8 @@
 'use client';
 
-import { HeartPulse, AlertTriangle, Edit2 } from 'lucide-react';
+import { HeartPulse, AlertTriangle, Edit2, ShoppingCart } from 'lucide-react';
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
 } from '@/components/ui/table';
@@ -18,9 +19,23 @@ import {
 } from '@/hooks/use-inventory';
 
 export default function LowStockPage() {
+  const router = useRouter();
   const [editItem, setEditItem] = useState<InventoryItem | null>(null);
   const { data, isLoading } = useLowStockItems({ limit: 100 });
   const items = data?.data ?? [];
+
+  // Deep-link into the PO page with this item pre-selected. Suggested qty
+  // restocks at least to the threshold (and covers the current shortfall).
+  const reorder = (item: InventoryItem) => {
+    const shortfall = item.minimumStockThreshold - item.currentStock;
+    const qty = Math.max(shortfall, item.minimumStockThreshold, 1);
+    const params = new URLSearchParams({
+      reorderItemId: item.id,
+      reorderItemName: item.itemName,
+      reorderQty: String(qty),
+    });
+    router.push(`/inventory/purchase-orders?${params.toString()}`);
+  };
 
   return (
     <div className="space-y-4 animate-fade-in-up">
@@ -55,7 +70,7 @@ export default function LowStockPage() {
                 <TableHead className="text-right">Current</TableHead>
                 <TableHead className="text-right">Threshold</TableHead>
                 <TableHead className="text-right">Shortfall</TableHead>
-                <TableHead className="text-right">Adjust</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -73,7 +88,17 @@ export default function LowStockPage() {
                     <TableCell className="text-right text-muted-foreground">{item.minimumStockThreshold}</TableCell>
                     <TableCell className="text-right text-amber-700">{shortfall > 0 ? shortfall : 0}</TableCell>
                     <TableCell className="text-right">
-                      <Button size="sm" variant="ghost" onClick={() => setEditItem(item)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mr-1 h-8"
+                        onClick={() => reorder(item)}
+                        title="Raise a purchase order for this item"
+                      >
+                        <ShoppingCart className="mr-1 h-3.5 w-3.5" />
+                        Reorder
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setEditItem(item)} title="Adjust threshold">
                         <Edit2 className="h-3.5 w-3.5" />
                       </Button>
                     </TableCell>
