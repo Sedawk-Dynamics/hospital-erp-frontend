@@ -637,6 +637,70 @@ export function usePharmacySale(billId: string | null) {
   });
 }
 
+// ── Counter-sale list + void (Transactions page) ──────────────
+
+export type PharmacySaleStatus = 'paid' | 'partially_paid' | 'pending' | 'cancelled';
+
+// One row in the counter-sale list (a pharmacy PH- invoice).
+export interface PharmacySaleListItem {
+  id: string;
+  billNumber: string;
+  billDate: string;
+  subtotal: number | string;
+  discountAmount: number | string;
+  taxAmount: number | string;
+  totalAmount: number | string;
+  amountPaid: number | string;
+  balanceDue: number | string;
+  status: PharmacySaleStatus;
+  patient?: { id: string; mrn: string; firstName: string; lastName: string | null } | null;
+  generator?: { id: string; firstName: string; lastName: string } | null;
+  _count?: { billItems: number };
+}
+
+// Period roll-up returned alongside the list (rendered as summary cards).
+export interface PharmacySalesSummary {
+  totalBills: number;
+  salesCount: number;
+  totalAmount: number;
+  totalPaid: number;
+  cancelledCount: number;
+}
+
+export interface PharmacySalesParams extends PaginatedParams {
+  status?: PharmacySaleStatus;
+  fromDate?: string;
+  toDate?: string;
+}
+
+export function usePharmacySales(params?: PharmacySalesParams) {
+  return useQuery({
+    queryKey: ['pharmacy', 'sales', 'list', params],
+    queryFn: async () => {
+      const response = await apiGet<PharmacySaleListItem[]>('/pharmacy/sales', { params });
+      const meta = response.meta as (PaginationMeta & { summary?: PharmacySalesSummary }) | undefined;
+      return { data: response.data, meta, summary: meta?.summary };
+    },
+  });
+}
+
+// Void a counter sale — restores stock + reverses the counter payment.
+export function useCancelPharmacySale() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      const response = await apiPatch<PharmacySale>(`/pharmacy/sales/${id}/cancel`, { reason });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pharmacy', 'sales'] });
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.dispensing.all });
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: ['prescriptions'] });
+    },
+  });
+}
+
 // ============================================================
 // Returns Hooks
 // ============================================================
