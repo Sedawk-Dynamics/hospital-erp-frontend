@@ -47,6 +47,7 @@ import {
 import { VoiceInputButton } from '../voice-input-button';
 import { PhysicalObservationsPicker } from '../physical-observations-picker';
 import { SmartSuggestionsCard } from '../smart-suggestions-card';
+import { QtyCell } from '../prescription-qty-cell';
 
 /** Build the localStorage key where the consultation draft is stored. */
 export function getConsultationDraftKey(appointmentId: string, visitId?: string): string {
@@ -1163,12 +1164,13 @@ function MedicationsSection({ form, patientId }: { form: any; patientId: string 
         {/* Medication table */}
         {fields.length > 0 && (
           <div className="rounded-lg border overflow-hidden">
-            <div className="grid grid-cols-[minmax(160px,2fr)_90px_95px_105px_95px_1fr_32px] gap-0 border-b bg-muted/50 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+            <div className="grid grid-cols-[minmax(160px,2fr)_90px_95px_105px_95px_64px_1fr_32px] gap-0 border-b bg-muted/50 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
               <div className="px-3 py-2">Medicine</div>
               <div className="px-2 py-2">Dose</div>
               <div className="px-2 py-2">Frequency</div>
               <div className="px-2 py-2">Timing</div>
               <div className="px-2 py-2">Duration</div>
+              <div className="px-2 py-2" title="Total units = dose pattern × duration">Qty</div>
               <div className="px-2 py-2">Instructions</div>
               <div className="px-1 py-2" />
             </div>
@@ -1269,7 +1271,7 @@ function MedRow({ index, med, patientId, onUpdate, onRemove }: {
           </span>
         </div>
       )}
-      <div className="grid grid-cols-[minmax(160px,2fr)_90px_95px_105px_95px_1fr_32px] gap-0 border-b last:border-b-0 hover:bg-accent/20 transition-colors">
+      <div className="grid grid-cols-[minmax(160px,2fr)_90px_95px_105px_95px_64px_1fr_32px] gap-0 border-b last:border-b-0 hover:bg-accent/20 transition-colors">
         <div className="px-3 py-2 flex items-start gap-1.5 min-w-0">
           <GripVertical className="h-3.5 w-3.5 text-muted-foreground/20 shrink-0 mt-1 cursor-grab" />
           <div className="min-w-0 flex-1">
@@ -1304,6 +1306,9 @@ function MedRow({ index, med, patientId, onUpdate, onRemove }: {
           <select className="flex h-7 rounded-md border border-dashed border-input bg-background px-0.5 text-[10px] w-12" value={med.durationUnit || 'days'} onChange={(e) => onUpdate(index, 'durationUnit', e.target.value)}>
             {DURATION_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
           </select>
+        </div>
+        <div className="px-1 py-1.5">
+          <QtyCell index={index} med={med} onUpdate={onUpdate} compact />
         </div>
         <div className="px-1 py-1.5">
           <Input placeholder="Instructions" className="h-7 text-[11px] border-dashed" value={med.instructions || ''} onChange={(e) => onUpdate(index, 'instructions', e.target.value)} />
