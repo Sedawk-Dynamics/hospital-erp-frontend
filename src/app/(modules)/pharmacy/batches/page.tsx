@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   ChevronsUpDown,
   Check,
+  Pencil,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
@@ -26,7 +27,6 @@ import {
 } from '@/components/ui/table';
 import {
   Dialog,
-  DialogTrigger,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -62,9 +62,13 @@ import { formatDate, toInputDateStr } from '@/lib/date-utils';
 import {
   useBatches,
   useCreateBatch,
+  useUpdateBatch,
+  useFlagExpiredBatches,
   useExpiringBatches,
   useFormulary,
   type CreateBatchInput,
+  type UpdateBatchInput,
+  type DrugBatch,
 } from '@/hooks/use-pharmacy';
 import { useSuppliers } from '@/hooks/use-inventory';
 
@@ -78,6 +82,8 @@ interface FormState {
   purchasePrice: string;
   sellingPrice: string;
   quantityReceived: string;
+  // Edit-only: correct the on-hand stock for an existing batch.
+  quantityInStock: string;
 }
 
 const EMPTY_FORM: FormState = {
@@ -90,7 +96,26 @@ const EMPTY_FORM: FormState = {
   purchasePrice: '',
   sellingPrice: '',
   quantityReceived: '',
+  quantityInStock: '',
 };
+
+// ISO date → yyyy-MM-dd for <input type="date">.
+const isoToDateInput = (s: string | null | undefined) => (s ? s.slice(0, 10) : '');
+
+function formStateFromBatch(batch: DrugBatch): FormState {
+  return {
+    drugId: batch.drugId,
+    drugLabel: `${batch.drug?.drugName ?? ''}${batch.drug?.strength ? ` ${batch.drug.strength}` : ''}`,
+    batchNumber: batch.batchNumber,
+    manufacturingDate: isoToDateInput(batch.manufacturingDate),
+    expiryDate: isoToDateInput(batch.expiryDate),
+    supplierId: batch.supplierId ?? '',
+    purchasePrice: batch.purchasePrice != null ? String(batch.purchasePrice) : '',
+    sellingPrice: batch.sellingPrice != null ? String(batch.sellingPrice) : '',
+    quantityReceived: String(batch.quantityReceived),
+    quantityInStock: String(batch.quantityInStock),
+  };
+}
 
 function daysUntil(date: string | Date): number {
   const target = new Date(date).getTime();
@@ -104,6 +129,7 @@ function PharmacyBatchesPageInner() {
   const [drugFilter, setDrugFilter] = useState<string | null>(null);
   const [expiringDays, setExpiringDays] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [editingBatch, setEditingBatch] = useState<DrugBatch | null>(null);
   const [formData, setFormData] = useState<FormState>(EMPTY_FORM);
 
   // Drug picker (combobox) state
@@ -145,9 +171,72 @@ function PharmacyBatchesPageInner() {
   const meta = data?.meta;
 
   const createBatch = useCreateBatch();
+  const updateBatch = useUpdateBatch();
+  const flagExpired = useFlagExpiredBatches();
 
   const updateField = (field: keyof FormState, value: string) =>
     setFormData((prev) => ({ ...prev, [field]: value }));
+
+  const closeDialog = () => {
+    setCreateOpen(false);
+    setEditingBatch(null);
+    setFormData(EMPTY_FORM);
+    setDrugSearchInput('');
+  };
+
+  const startCreate = () => {
+    setEditingBatch(null);
+    setFormData(EMPTY_FORM);
+    setDrugSearchInput('');
+    setCreateOpen(true);
+  };
+
+  const startEdit = (batch: DrugBatch) => {
+    setEditingBatch(batch);
+    setFormData(formStateFromBatch(batch));
+    setCreateOpen(true);
+  };
+
+  const handleFlagExpired = async () => {
+    try {
+      const res = await flagExpired.mutateAsync();
+      const n = res?.flagged ?? 0;
+      toast.success(n > 0 ? `Flagged ${n} expired batch${n === 1 ? '' : 'es'}` : 'No expired batches to flag');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to flag expired batches');
+    }
+  };
+
+  const handleUpdate = async () => {
+    if (!editingBatch) return;
+    if (!formData.batchNumber.trim()) return toast.error('Batch number is required');
+    if (!formData.expiryDate) return toast.error('Expiry date is required');
+    const stock = parseInt(formData.quantityInStock, 10);
+    if (isNaN(stock) || stock < 0) return toast.error('Stock quantity must be 0 or more');
+
+    const payload: UpdateBatchInput = {
+      batchNumber: formData.batchNumber.trim(),
+      expiryDate: formData.expiryDate,
+      quantityInStock: stock,
+      manufacturingDate: formData.manufacturingDate || null,
+      supplierId: formData.supplierId || null,
+      purchasePrice:
+        formData.purchasePrice && !isNaN(parseFloat(formData.purchasePrice))
+          ? parseFloat(formData.purchasePrice)
+          : null,
+      sellingPrice:
+        formData.sellingPrice && !isNaN(parseFloat(formData.sellingPrice))
+          ? parseFloat(formData.sellingPrice)
+          : null,
+    };
+    try {
+      await updateBatch.mutateAsync({ id: editingBatch.id, ...payload });
+      toast.success('Batch updated');
+      closeDialog();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update batch');
+    }
+  };
 
   const selectedDrugForFilter = useMemo(
     () => drugs.find((d) => d.id === drugFilter) ?? null,
@@ -197,28 +286,45 @@ function PharmacyBatchesPageInner() {
             Receive new stock, track expiry, and monitor what&apos;s available for dispensing.
           </p>
         </div>
-        <Dialog open={createOpen} onOpenChange={(open) => {
-          setCreateOpen(open);
-          if (!open) {
-            setFormData(EMPTY_FORM);
-            setDrugSearchInput('');
-          }
-        }}>
-          <DialogTrigger render={
-            <Button size="sm">
-              <Plus className="mr-1.5 h-4 w-4" />
-              Add Batch
-            </Button>
-          } />
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleFlagExpired}
+            disabled={flagExpired.isPending}
+            title="Flag every past-expiry batch so dispensing blocks them"
+          >
+            <AlertTriangle className="mr-1.5 h-4 w-4" />
+            {flagExpired.isPending ? 'Flagging...' : 'Flag expired'}
+          </Button>
+          <Button size="sm" onClick={startCreate}>
+            <Plus className="mr-1.5 h-4 w-4" />
+            Add Batch
+          </Button>
+        </div>
+      </div>
+
+      {/* Create / edit batch dialog */}
+      <Dialog open={createOpen} onOpenChange={(open) => { if (!open) closeDialog(); else setCreateOpen(true); }}>
           <DialogContent className="sm:max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Receive New Batch</DialogTitle>
+              <DialogTitle>{editingBatch ? 'Edit Batch' : 'Receive New Batch'}</DialogTitle>
               <DialogDescription>
-                Record a batch of drugs received from a supplier. Stock is added immediately.
+                {editingBatch
+                  ? 'Update this batch’s details. Adjust on-hand stock here if you are correcting a count.'
+                  : 'Record a batch of drugs received from a supplier. Stock is added immediately.'}
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-3 py-2 max-h-[60vh] overflow-y-auto pr-1">
-              {/* Drug picker */}
+              {/* Drug — picker on create; a batch can't change its drug, so it's read-only on edit */}
+              {editingBatch ? (
+                <div className="space-y-1.5">
+                  <Label>Drug</Label>
+                  <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm font-medium">
+                    {formData.drugLabel || '—'}
+                  </div>
+                </div>
+              ) : (
               <div className="space-y-1.5">
                 <Label>Drug *</Label>
                 <Popover open={drugComboOpen} onOpenChange={setDrugComboOpen}>
@@ -277,6 +383,7 @@ function PharmacyBatchesPageInner() {
                   </PopoverContent>
                 </Popover>
               </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
@@ -330,17 +437,31 @@ function PharmacyBatchesPageInner() {
               </div>
 
               <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="quantityReceived">Qty Received *</Label>
-                  <Input
-                    id="quantityReceived"
-                    type="number"
-                    min={1}
-                    value={formData.quantityReceived}
-                    onChange={(e) => updateField('quantityReceived', e.target.value)}
-                    placeholder="e.g. 100"
-                  />
-                </div>
+                {editingBatch ? (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="quantityInStock">Qty In Stock *</Label>
+                    <Input
+                      id="quantityInStock"
+                      type="number"
+                      min={0}
+                      value={formData.quantityInStock}
+                      onChange={(e) => updateField('quantityInStock', e.target.value)}
+                      placeholder="On-hand units"
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="quantityReceived">Qty Received *</Label>
+                    <Input
+                      id="quantityReceived"
+                      type="number"
+                      min={1}
+                      value={formData.quantityReceived}
+                      onChange={(e) => updateField('quantityReceived', e.target.value)}
+                      placeholder="e.g. 100"
+                    />
+                  </div>
+                )}
                 <div className="space-y-1.5">
                   <Label htmlFor="purchasePrice">Purchase Price</Label>
                   <Input
@@ -367,13 +488,18 @@ function PharmacyBatchesPageInner() {
             </div>
             <DialogFooter>
               <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
-              <Button onClick={handleSubmit} disabled={createBatch.isPending}>
-                {createBatch.isPending ? 'Saving...' : 'Add Batch'}
-              </Button>
+              {editingBatch ? (
+                <Button onClick={handleUpdate} disabled={updateBatch.isPending}>
+                  {updateBatch.isPending ? 'Saving...' : 'Save Changes'}
+                </Button>
+              ) : (
+                <Button onClick={handleSubmit} disabled={createBatch.isPending}>
+                  {createBatch.isPending ? 'Saving...' : 'Add Batch'}
+                </Button>
+              )}
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </div>
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
@@ -471,7 +597,7 @@ function PharmacyBatchesPageInner() {
               : 'Receive your first batch from a supplier to get started.'}
             action={
               !(search || drugFilter || expiringDays) ? (
-                <Button size="sm" onClick={() => setCreateOpen(true)}>
+                <Button size="sm" onClick={startCreate}>
                   <Plus className="mr-1.5 h-4 w-4" />
                   Add Batch
                 </Button>
@@ -491,6 +617,7 @@ function PharmacyBatchesPageInner() {
                   <TableHead className="text-right">In Stock</TableHead>
                   <TableHead className="text-right">Selling</TableHead>
                   <TableHead className="text-center">Status</TableHead>
+                  <TableHead className="text-right w-[80px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -539,6 +666,17 @@ function PharmacyBatchesPageInner() {
                         ) : (
                           <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20">In stock</Badge>
                         )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                          title="Edit batch"
+                          onClick={() => startEdit(batch)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   );
