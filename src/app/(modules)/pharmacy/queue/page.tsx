@@ -33,6 +33,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
+import { calcQuantityFromStrings } from '@/lib/dosage-calc';
 import {
   usePrescriptionQueue,
   type PrescriptionListItem,
@@ -169,9 +170,8 @@ export default function PrescriptionQueuePage() {
                   const doctorName = rx.doctor?.user
                     ? `Dr. ${rx.doctor.user.firstName} ${rx.doctor.user.lastName}`
                     : '-';
-                  const drugLabels = rx.prescriptionItems.map((it) =>
-                    `${it.drugName}${it.dosage ? ` ${it.dosage}` : ''}`,
-                  );
+                  const items = rx.prescriptionItems;
+                  const shown = items.slice(0, 3);
                   return (
                     <TableRow key={rx.id} className="group">
                       <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
@@ -189,19 +189,46 @@ export default function PrescriptionQueuePage() {
                           {doctorName}
                         </span>
                       </TableCell>
-                      <TableCell className="max-w-[280px]">
-                        <div className="flex items-start gap-1.5">
-                          <Pill className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
-                          <span className="text-sm line-clamp-2">
-                            {drugLabels.length === 0
-                              ? <span className="text-muted-foreground italic">No items</span>
-                              : drugLabels.join(', ')}
-                          </span>
-                        </div>
-                        {rx.prescriptionItems.length > 0 && (
-                          <p className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-                            {rx.prescriptionItems.length} item{rx.prescriptionItems.length > 1 ? 's' : ''}
-                          </p>
+                      <TableCell className="max-w-[340px]">
+                        {items.length === 0 ? (
+                          <span className="text-sm italic text-muted-foreground">No items</span>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {shown.map((it) => {
+                              // Prefer the stored quantity; fall back to deriving it
+                              // from the dose pattern so the pharmacist always sees
+                              // a count to bill (null = PRN / can't derive).
+                              const qty = it.quantity ?? calcQuantityFromStrings(it.frequency, it.duration);
+                              const sig = [it.frequency, it.duration].filter(Boolean).join(' · ');
+                              return (
+                                <div key={it.id} className="flex items-start gap-1.5">
+                                  <Pill className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                  <span className="min-w-0 text-sm leading-tight">
+                                    <span className="font-medium">{it.drugName}</span>
+                                    {it.dosage ? <span className="text-muted-foreground"> {it.dosage}</span> : null}
+                                    {(sig || qty != null || it.isPrn) && (
+                                      <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                                        {sig}
+                                        {qty != null ? (
+                                          <>
+                                            {sig ? ' → ' : ''}
+                                            <span className="font-semibold text-foreground">{qty} qty</span>
+                                          </>
+                                        ) : it.isPrn ? (
+                                          <>{sig ? ' · ' : ''}<span className="font-medium">PRN</span></>
+                                        ) : null}
+                                      </span>
+                                    )}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                            {items.length > shown.length && (
+                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                +{items.length - shown.length} more item{items.length - shown.length > 1 ? 's' : ''}
+                              </p>
+                            )}
+                          </div>
                         )}
                       </TableCell>
                       <TableCell className="text-center">
