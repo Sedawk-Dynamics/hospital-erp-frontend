@@ -474,6 +474,24 @@ export function useUpdateBatch() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      // A stock / expiry edit changes the formulary's derived in-stock view.
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
+    },
+  });
+}
+
+// Idempotent maintenance sweep: flags every past-expiry batch as expired so
+// the POS / dispensing guards block them. Returns the count flagged.
+export function useFlagExpiredBatches() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const response = await apiPost<{ flagged: number }>('/pharmacy/maintenance/flag-expired', {});
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
     },
   });
 }
