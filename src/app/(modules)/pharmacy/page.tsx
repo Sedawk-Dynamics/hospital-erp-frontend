@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Search,
@@ -1216,6 +1216,7 @@ function PharmacyPOS() {
 // ============================================================
 
 function ReturnBillsTab() {
+  const router = useRouter();
   const [search, setSearch] = useState('');
 
   const { data, isLoading } = useQuery({
@@ -1243,7 +1244,10 @@ function ReturnBillsTab() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input placeholder="Search return bills..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
         </div>
-        <Button>New Return</Button>
+        <Button onClick={() => router.push('/pharmacy/returns')}>
+          <Plus className="mr-1.5 h-4 w-4" />
+          New Return
+        </Button>
       </div>
       <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary overflow-x-auto">
         <table className="w-full text-sm">
