@@ -5,6 +5,7 @@ import { doctorKeys } from '@/hooks/use-doctor';
 import { clinicalKeys } from '@/hooks/use-clinical';
 import type { ConsultationFormData, ConsultationPinSection } from './consultation-completion-schema';
 import { encodeFrequency, encodeDuration } from './consultation-completion-schema';
+import { calcQuantity } from '@/lib/dosage-calc';
 
 interface SubmitParams {
   formData: ConsultationFormData;
@@ -138,7 +139,13 @@ export function useConsultationCompletion() {
             duration: med.durationValue ? encodeDuration(med.durationValue, med.durationUnit) : undefined,
             route: med.route || 'oral',
             instructions: med.instructions || undefined,
-            quantity: typeof med.quantity === 'number' ? med.quantity : undefined,
+            // Use the doctor's explicit count when given; otherwise auto-derive
+            // it from the dose pattern × duration (e.g. 1-1-1 for 3 days → 9) so
+            // the pharmacist receives a billable quantity.
+            quantity:
+              typeof med.quantity === 'number'
+                ? med.quantity
+                : calcQuantity(med.frequency, med.durationValue, med.durationUnit) ?? undefined,
             isPrn: med.isPrn ?? false,
           }));
 
