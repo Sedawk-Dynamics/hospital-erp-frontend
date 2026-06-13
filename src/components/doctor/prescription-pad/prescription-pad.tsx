@@ -36,6 +36,7 @@ import {
   CONSULTATION_PIN_SECTIONS,
   CONSULTATION_PIN_SECTION_LABELS,
   getDosageFormBadge,
+  getDoseUnitLabel,
   type ConsultationFormData,
   type ConsultationPinSection,
   type MedicineFormData,
@@ -1166,11 +1167,11 @@ function MedicationsSection({ form, patientId }: { form: any; patientId: string 
           <div className="rounded-lg border overflow-hidden">
             <div className="grid grid-cols-[minmax(160px,2fr)_90px_95px_105px_95px_64px_1fr_32px] gap-0 border-b bg-muted/50 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
               <div className="px-3 py-2">Medicine</div>
-              <div className="px-2 py-2">Dose</div>
+              <div className="px-2 py-2" title="Units taken per intake (default 1)">Dose</div>
               <div className="px-2 py-2">Frequency</div>
               <div className="px-2 py-2">Timing</div>
               <div className="px-2 py-2">Duration</div>
-              <div className="px-2 py-2" title="Total units = dose pattern × duration">Qty</div>
+              <div className="px-2 py-2" title="Total units = dose pattern × duration × dose">Qty</div>
               <div className="px-2 py-2">Instructions</div>
               <div className="px-1 py-2" />
             </div>
@@ -1287,7 +1288,24 @@ function MedRow({ index, med, patientId, onUpdate, onRemove }: {
           </div>
         </div>
         <div className="px-1 py-1.5">
-          <Input placeholder="e.g. 1 Tab" className="h-7 text-[11px] border-dashed" value={med.dose || ''} onChange={(e) => onUpdate(index, 'dose', e.target.value)} />
+          <div className="flex items-center gap-0.5">
+            <Input
+              type="number"
+              min={0}
+              step="0.5"
+              placeholder="1"
+              title="Units per intake (default 1) — multiplied into Qty"
+              className="h-7 w-11 px-1 text-center text-[11px] border-dashed"
+              value={med.doseQuantity ?? 1}
+              onChange={(e) => {
+                const raw = e.target.value;
+                onUpdate(index, 'doseQuantity', raw === '' ? 1 : Number(raw));
+              }}
+            />
+            <span className="text-[9px] uppercase tracking-wide text-muted-foreground">
+              {getDoseUnitLabel(med.dosageForm)}
+            </span>
+          </div>
         </div>
         <div className="px-1 py-1.5">
           <select className="flex h-7 w-full rounded-md border border-dashed border-input bg-background px-1 text-[11px]" value={med.frequency || ''} onChange={(e) => { onUpdate(index, 'frequency', e.target.value); onUpdate(index, 'isPrn', e.target.value === 'SOS'); }}>

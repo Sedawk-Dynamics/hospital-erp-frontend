@@ -15,6 +15,7 @@ import {
   DURATION_UNITS,
   ROUTE_OPTIONS,
   getDosageFormBadge,
+  getDoseUnitLabel,
   defaultMedicine,
   type ConsultationFormData,
   type MedicineFormData,
@@ -116,11 +117,11 @@ export function StepPrescription({ form, patientId }: StepPrescriptionProps) {
           {/* Table header */}
           <div className="grid grid-cols-[minmax(180px,2fr)_100px_100px_110px_100px_72px_1fr_36px] gap-0 border-b bg-muted/50 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
             <div className="px-3 py-2.5">Medicine</div>
-            <div className="px-2 py-2.5">Dose</div>
+            <div className="px-2 py-2.5" title="Units taken per intake (default 1)">Dose</div>
             <div className="px-2 py-2.5">Frequency</div>
             <div className="px-2 py-2.5">Timing</div>
             <div className="px-2 py-2.5">Duration</div>
-            <div className="px-2 py-2.5" title="Total units = dose pattern × duration">Qty</div>
+            <div className="px-2 py-2.5" title="Total units = dose pattern × duration × dose">Qty</div>
             <div className="px-2 py-2.5">Instructions</div>
             <div className="px-1 py-2.5" />
           </div>
@@ -282,14 +283,26 @@ function MedicineRow({
           </div>
         </div>
 
-        {/* Dose */}
+        {/* Dose — per-intake units (default 1), multiplied into Qty */}
         <div className="px-1.5 py-2">
-          <Input
-            placeholder={med.dosageForm ? `e.g. 1 ${getDosageFormBadge(med.dosageForm) || 'Tab'}` : 'e.g. 1 Tab'}
-            className="h-8 text-xs border-dashed"
-            value={med.dose || ''}
-            onChange={(e) => onUpdate(index, 'dose', e.target.value)}
-          />
+          <div className="flex items-center gap-1">
+            <Input
+              type="number"
+              min={0}
+              step="0.5"
+              placeholder="1"
+              title="Units per intake (default 1) — multiplied into Qty"
+              className="h-8 w-14 px-1.5 text-center text-xs border-dashed"
+              value={med.doseQuantity ?? 1}
+              onChange={(e) => {
+                const raw = e.target.value;
+                onUpdate(index, 'doseQuantity', raw === '' ? 1 : Number(raw));
+              }}
+            />
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              {getDoseUnitLabel(med.dosageForm)}
+            </span>
+          </div>
         </div>
 
         {/* Frequency dropdown */}
