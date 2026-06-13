@@ -165,6 +165,9 @@ export function PharmacyReceiptDialog({
 
                 <div className="rule" />
                 <p className="center muted xs">
+                  Qty is in individual units (tablets / caps / ml), not packs.
+                </p>
+                <p className="center muted xs">
                   GST is inclusive in MRP. Goods once sold are returnable only per policy.
                 </p>
                 <p className="center muted xs">Get well soon — Thank you!</p>
