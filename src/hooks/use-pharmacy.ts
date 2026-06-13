@@ -323,6 +323,8 @@ export interface CatalogItem {
   dosageForm: DosageForm | null;
   strength: string | null;
   packSizeLabel: string | null;
+  // Numeric base units per pack/strip (e.g. 10). Null = indivisible container.
+  packSize: number | null;
   mrp: number | string | null;
   schedule: string | null;
   imported: boolean;

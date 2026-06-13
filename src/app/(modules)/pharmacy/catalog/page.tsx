@@ -300,7 +300,16 @@ function PharmacyCatalogPageInner() {
                       <TableCell className="text-muted-foreground">{d.genericName || '-'}</TableCell>
                       <TableCell className="text-muted-foreground">{d.manufacturer || '-'}</TableCell>
                       <TableCell className="capitalize">{d.dosageForm || '-'}</TableCell>
-                      <TableCell className="text-muted-foreground text-xs">{d.packSizeLabel || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground text-xs">
+                        {d.packSize != null ? (
+                          <span title={d.packSizeLabel || undefined}>
+                            <span className="font-medium text-foreground">{d.packSize}</span>
+                            {' '}/pack
+                          </span>
+                        ) : (
+                          d.packSizeLabel || '-'
+                        )}
+                      </TableCell>
                       <TableCell className="text-right font-mono">
                         {d.mrp != null ? `₹${Number(d.mrp).toFixed(2)}` : '-'}
                       </TableCell>
