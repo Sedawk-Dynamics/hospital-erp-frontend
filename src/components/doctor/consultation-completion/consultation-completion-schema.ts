@@ -102,7 +102,12 @@ const medicineSchema = z.object({
   genericName: z.string().optional(),
   dosageForm: z.string().optional(),       // tablet, capsule, syrup, etc.
   strength: z.string().optional(),          // 500mg, 75mg/ml, etc.
-  dose: z.string().optional(),              // e.g. "1 Tablet", "5 ml"
+  dose: z.string().optional(),              // legacy descriptive label, e.g. "1 Tablet"
+  // Per-intake dose multiplier — how many units the patient takes each occasion.
+  // Defaults to 1; multiplied into the auto Qty (freq × duration × dose). Kept
+  // lenient (no positive() guard) so a transient 0/blank never blocks the form
+  // submit trigger — the submit builder and calc sanitise ≤ 0 back to 1.
+  doseQuantity: z.coerce.number().default(1).catch(1),
   frequency: z.string().optional(),         // e.g. "1-0-1", "SOS", "Stat"
   timing: z.string().optional(),            // e.g. "After Meal", "Before Meal"
   durationValue: z.string().optional(),
@@ -310,6 +315,29 @@ export function getDosageFormBadge(dosageForm?: string): string {
   return DOSAGE_FORM_LABELS[dosageForm.toLowerCase()] || dosageForm;
 }
 
+/**
+ * Short per-intake unit label for the Dose field, derived from the dosage form.
+ * Tablets/capsules count in pieces; liquids in ml; etc. Falls back to "unit".
+ */
+const DOSE_UNIT_LABELS: Record<string, string> = {
+  tablet: 'tab',
+  capsule: 'cap',
+  syrup: 'ml',
+  suspension: 'ml',
+  solution: 'ml',
+  drops: 'drop',
+  injection: 'ml',
+  inhaler: 'puff',
+  cream: 'app',
+  ointment: 'app',
+  gel: 'app',
+  powder: 'sachet',
+};
+export function getDoseUnitLabel(dosageForm?: string): string {
+  if (!dosageForm) return 'unit';
+  return DOSE_UNIT_LABELS[dosageForm.toLowerCase()] || 'unit';
+}
+
 // ── Default values ─────────────────────────────────────────
 
 export const defaultMedicine: MedicineFormData = {
@@ -319,6 +347,7 @@ export const defaultMedicine: MedicineFormData = {
   dosageForm: '',
   strength: '',
   dose: '',
+  doseQuantity: 1,
   frequency: '',
   timing: '',
   durationValue: '',

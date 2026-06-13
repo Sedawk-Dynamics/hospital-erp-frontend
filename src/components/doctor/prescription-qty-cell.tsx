@@ -10,8 +10,9 @@ import type { MedicineFormData } from './consultation-completion/consultation-co
  * prescription step and the standalone prescription pad.
  *
  * The number shown is the total units the course needs — dose pattern ×
- * duration (e.g. `1-1-1` for `3 days` → 9). That value is what the pharmacist
- * bills, so surfacing it here keeps doctor and pharmacy in agreement.
+ * duration × per-intake dose (e.g. `1-1-1` for `3 days` with dose 2 → 18). That
+ * value is what the pharmacist bills, so surfacing it here keeps doctor and
+ * pharmacy in agreement.
  *
  * A doctor can type to override; clearing the field reverts to `undefined` so
  * the auto value (recomputed by the submit builder) is used again.
@@ -27,7 +28,7 @@ export function QtyCell({
   onUpdate: (index: number, field: keyof MedicineFormData, value: any) => void;
   compact?: boolean;
 }) {
-  const autoQty = calcQuantity(med.frequency, med.durationValue, med.durationUnit);
+  const autoQty = calcQuantity(med.frequency, med.durationValue, med.durationUnit, med.doseQuantity);
   const isManual = typeof med.quantity === 'number' && !Number.isNaN(med.quantity);
   const display = isManual ? med.quantity : autoQty ?? '';
 
