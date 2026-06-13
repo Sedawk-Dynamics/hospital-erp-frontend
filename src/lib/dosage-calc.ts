@@ -8,10 +8,14 @@
  * number auto-fills the doctor's Qty field and flows to the pharmacist so they
  * bill the right count.
  *
+ * A per-intake **dose** multiplier scales it further — how many units the patient
+ * takes at each occasion (default `1`). So `1-1-1` for `3 days` with a dose of `2`
+ * is `(1+1+1) × 3 × 2 = 18`.
+ *
  * Two entry points:
- *  - `calcQuantity(frequency, durationValue, durationUnit)` — for the live
+ *  - `calcQuantity(frequency, durationValue, durationUnit, dose)` — for the live
  *    doctor form, where duration is a number + unit dropdown.
- *  - `calcQuantityFromStrings(frequency, duration)` — for the pharmacy side,
+ *  - `calcQuantityFromStrings(frequency, duration, dose)` — for the pharmacy side,
  *    where the encoded strings ("1-1-1 - After Meal", "3 days") are read back
  *    off a stored PrescriptionItem.
  */
@@ -92,29 +96,51 @@ export function parseDurationDays(duration?: string | null): number | null {
   return durationToDays(m[1], unit);
 }
 
+/**
+ * Normalise a per-intake dose multiplier. Anything missing, non-numeric, or
+ * ≤ 0 falls back to `1` (the default single-unit dose).
+ */
+export function parseDoseMultiplier(dose?: number | string | null): number {
+  if (dose === null || dose === undefined || dose === '') return 1;
+  const n = typeof dose === 'string' ? Number(dose) : dose;
+  if (!Number.isFinite(n) || n <= 0) return 1;
+  return n;
+}
+
 /** Round up — the patient needs enough to finish the course. */
-function totalUnits(perDay: number | null, days: number | null): number | null {
+function totalUnits(perDay: number | null, days: number | null, dose: number): number | null {
   if (perDay === null || days === null) return null;
-  const total = Math.ceil(perDay * days);
+  const total = Math.ceil(perDay * days * dose);
   return total > 0 ? total : null;
 }
 
 /**
  * Total units to dispense from the live doctor form (duration as value + unit).
  * Returns `null` when it can't be derived (PRN frequency or no duration).
+ * `dose` is the per-intake multiplier (default 1).
  */
 export function calcQuantity(
   frequency?: string | null,
   durationValue?: string | number | null,
   durationUnit?: string | null,
+  dose?: number | string | null,
 ): number | null {
-  return totalUnits(parseFrequencyPerDay(frequency), durationToDays(durationValue, durationUnit));
+  return totalUnits(
+    parseFrequencyPerDay(frequency),
+    durationToDays(durationValue, durationUnit),
+    parseDoseMultiplier(dose),
+  );
 }
 
 /** Total units to dispense from stored strings (pharmacy / read-back side). */
 export function calcQuantityFromStrings(
   frequency?: string | null,
   duration?: string | null,
+  dose?: number | string | null,
 ): number | null {
-  return totalUnits(parseFrequencyPerDay(frequency), parseDurationDays(duration));
+  return totalUnits(
+    parseFrequencyPerDay(frequency),
+    parseDurationDays(duration),
+    parseDoseMultiplier(dose),
+  );
 }
