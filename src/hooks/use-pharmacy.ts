@@ -813,6 +813,9 @@ export interface PrescriptionListItem {
     duration: string | null;
     route: string;
     instructions: string | null;
+    // Per-intake dose multiplier (units each occasion, default 1). Used to
+    // re-derive the dispense count when `quantity` isn't stored.
+    doseQuantity: number | string | null;
     quantity: number | null;
     isPrn: boolean;
   }>;

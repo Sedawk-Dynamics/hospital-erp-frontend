@@ -103,6 +103,8 @@ interface CartItem {
   rxDosage?: string;
   rxFrequency?: string;
   rxDuration?: string | null;
+  // Per-intake dose multiplier the doctor set (default 1).
+  rxDose?: number;
   rxQuantity?: number | null;
 }
 
@@ -259,8 +261,10 @@ function PharmacyPOS() {
       .filter((it) => it.drugId)
       .map((it) => {
         // The dispense count the doctor intends: the stored quantity, or one
-        // derived from the dose pattern × duration (e.g. 1-1-1 for 3 days → 9).
-        const rxQty = it.quantity ?? calcQuantityFromStrings(it.frequency, it.duration);
+        // derived from the dose pattern × duration × per-intake dose (e.g. 1-1-1
+        // for 3 days with dose 2 → 18).
+        const rxQty = it.quantity ?? calcQuantityFromStrings(it.frequency, it.duration, it.doseQuantity);
+        const rxDose = Number(it.doseQuantity ?? 1) || 1;
         return {
           rowKey: `${it.id}::${it.drugId}`,
           prescriptionItemId: it.id,
@@ -282,6 +286,7 @@ function PharmacyPOS() {
           rxDosage: it.dosage,
           rxFrequency: it.frequency,
           rxDuration: it.duration,
+          rxDose,
           rxQuantity: rxQty ?? null,
         };
       });
@@ -823,9 +828,9 @@ function PharmacyPOS() {
                         )}
                         {item.prescriptionItemId && (
                           <div className="mt-0.5 space-y-0.5">
-                            {[item.rxDosage, item.rxFrequency, item.rxDuration].filter(Boolean).length > 0 && (
+                            {[item.rxDosage, item.rxFrequency, item.rxDuration, (item.rxDose ?? 1) > 1 ? `× ${item.rxDose} dose` : null].filter(Boolean).length > 0 && (
                               <p className="text-[11px] text-muted-foreground">
-                                {[item.rxDosage, item.rxFrequency, item.rxDuration].filter(Boolean).join(' · ')}
+                                {[item.rxDosage, item.rxFrequency, item.rxDuration, (item.rxDose ?? 1) > 1 ? `× ${item.rxDose} dose` : null].filter(Boolean).join(' · ')}
                               </p>
                             )}
                             {item.rxQuantity != null && (

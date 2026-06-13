@@ -196,10 +196,14 @@ export default function PrescriptionQueuePage() {
                           <div className="space-y-1.5">
                             {shown.map((it) => {
                               // Prefer the stored quantity; fall back to deriving it
-                              // from the dose pattern so the pharmacist always sees
-                              // a count to bill (null = PRN / can't derive).
-                              const qty = it.quantity ?? calcQuantityFromStrings(it.frequency, it.duration);
-                              const sig = [it.frequency, it.duration].filter(Boolean).join(' · ');
+                              // from the dose pattern × duration × per-intake dose so
+                              // the pharmacist always sees a count to bill (null = PRN
+                              // / can't derive).
+                              const qty = it.quantity ?? calcQuantityFromStrings(it.frequency, it.duration, it.doseQuantity);
+                              const dose = Number(it.doseQuantity ?? 1);
+                              const sig = [it.frequency, it.duration, dose > 1 ? `× ${dose}` : null]
+                                .filter(Boolean)
+                                .join(' · ');
                               return (
                                 <div key={it.id} className="flex items-start gap-1.5">
                                   <Pill className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
