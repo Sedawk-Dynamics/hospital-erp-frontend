@@ -354,8 +354,28 @@ function PharmacyPOS() {
         if (c.rowKey !== rowKey) return c;
         // Pull pack/loose/GST config off the batch's formulary drug (if present).
         const pack = batch.drug?.packSize && batch.drug.packSize > 0 ? batch.drug.packSize : c.packSize;
-        const saleUnit: 'pack' | 'loose' = pack > 1 ? c.saleUnit : 'pack';
-        const maxInUnit = saleUnit === 'loose' ? batch.quantityInStock : Math.floor(batch.quantityInStock / (pack || 1));
+
+        // First batch pick (the FEFO auto-select on load) of a prescription line
+        // for a loose-sellable drug (tablets/caps, packSize > 1): default to
+        // billing the doctor's exact count in LOOSE units, never packs — so a
+        // "30 tablets" Rx auto-bills 30 tablets. A later manual re-pick keeps
+        // whatever unit/qty the cashier has since chosen.
+        const firstPick = c.batchId === null;
+        const rxLooseSolid = c.prescriptionItemId != null && pack > 1;
+
+        let saleUnit: 'pack' | 'loose';
+        let quantity: number;
+        if (firstPick && rxLooseSolid) {
+          saleUnit = 'loose';
+          const target = c.rxQuantity ?? c.quantity ?? 1;
+          quantity = Math.max(1, Math.min(target, batch.quantityInStock));
+        } else {
+          saleUnit = pack > 1 ? c.saleUnit : 'pack';
+          const maxInUnit =
+            saleUnit === 'loose' ? batch.quantityInStock : Math.floor(batch.quantityInStock / (pack || 1));
+          quantity = Math.max(1, Math.min(c.quantity || 1, maxInUnit || 1));
+        }
+
         return {
           ...c,
           batchId: batch.id,
@@ -369,7 +389,7 @@ function PharmacyPOS() {
           saleUnit,
           availableQty: batch.quantityInStock,
           expiryDate: batch.expiryDate,
-          quantity: Math.max(1, Math.min(c.quantity || 1, maxInUnit || 1)),
+          quantity,
         };
       }),
     );
