@@ -27,6 +27,7 @@ import { apiGet } from '@/lib/api';
 import { toast } from 'sonner';
 import { formatDate, formatTime24, toInputDateStr } from '@/lib/date-utils';
 import { calcQuantityFromStrings } from '@/lib/dosage-calc';
+import { looseUnitLabel, packSummary, formatBaseQty } from '@/lib/pharmacy-units';
 import {
   useFormulary,
   useBatchesByDrug,
@@ -90,6 +91,9 @@ interface CartItem {
   // sells 'pack' the quantity counts packs; when 'loose' it counts sub-units.
   packSize: number;
   looseUnitLabel: string;
+  // Dosage form (tablet/syrup/...) — drives the base-unit noun shown to the
+  // cashier when no explicit looseUnitLabel is configured.
+  dosageForm: string | null;
   taxPercent: number;
   saleUnit: 'pack' | 'loose';
   // User-editable (quantity is in the chosen saleUnit)
@@ -278,7 +282,10 @@ function PharmacyPOS() {
           purchasePrice: 0,
           packSize: 1,
           looseUnitLabel: 'unit',
+          dosageForm: null,
           taxPercent: 12,
+          // Prescriptions are written in loose units (tablets), never packs —
+          // bill the exact count the doctor ordered.
           saleUnit: 'loose',
           quantity: rxQty ?? 1,
           discount: 0,
@@ -356,7 +363,8 @@ function PharmacyPOS() {
           sellingPrice: toNum(batch.sellingPrice) || c.sellingPrice,
           purchasePrice: toNum(batch.purchasePrice),
           packSize: pack,
-          looseUnitLabel: batch.drug?.looseUnitLabel || c.looseUnitLabel,
+          dosageForm: batch.drug?.dosageForm ?? c.dosageForm,
+          looseUnitLabel: looseUnitLabel(batch.drug?.dosageForm, batch.drug?.looseUnitLabel) || c.looseUnitLabel,
           taxPercent: batch.drug?.taxPercent != null ? toNum(batch.drug.taxPercent) : c.taxPercent,
           saleUnit,
           availableQty: batch.quantityInStock,
@@ -416,7 +424,8 @@ function PharmacyPOS() {
           sellingPrice: toNum(item.price),
           purchasePrice: 0,
           packSize: pack,
-          looseUnitLabel: item.looseUnitLabel || 'unit',
+          looseUnitLabel: looseUnitLabel(item.dosageForm, item.looseUnitLabel),
+          dosageForm: item.dosageForm ?? null,
           taxPercent: item.taxPercent != null ? toNum(item.taxPercent) : 12,
           // Default to loose so "give me X" works out of the box; the cashier
           // can flip to pack selling when a packSize is configured.
@@ -784,7 +793,17 @@ function PharmacyPOS() {
                   <div className="text-right flex-shrink-0">
                     <p className="text-sm font-semibold text-foreground">
                       {item.price != null ? `₹${toNum(item.price).toFixed(2)}` : '-'}
+                      {item.price != null && (
+                        <span className="text-[10px] font-normal text-muted-foreground">
+                          {' '}/{looseUnitLabel(item.dosageForm, item.looseUnitLabel)}
+                        </span>
+                      )}
                     </p>
+                    {packSummary(item.packSize, item.dosageForm, item.looseUnitLabel) && (
+                      <p className="text-[10px] text-muted-foreground">
+                        {packSummary(item.packSize, item.dosageForm, item.looseUnitLabel)}
+                      </p>
+                    )}
                   </div>
                 </button>
               ))
@@ -826,6 +845,12 @@ function PharmacyPOS() {
                         {item.genericName && (
                           <p className="text-xs text-muted-foreground">{item.genericName}</p>
                         )}
+                        {packSummary(item.packSize, item.dosageForm, item.looseUnitLabel) && (
+                          <p className="text-[10px] text-muted-foreground">
+                            <Package className="mr-0.5 inline h-2.5 w-2.5" />
+                            {packSummary(item.packSize, item.dosageForm, item.looseUnitLabel)}
+                          </p>
+                        )}
                         {item.prescriptionItemId && (
                           <div className="mt-0.5 space-y-0.5">
                             {[item.rxDosage, item.rxFrequency, item.rxDuration, (item.rxDose ?? 1) > 1 ? `× ${item.rxDose} dose` : null].filter(Boolean).length > 0 && (
@@ -836,10 +861,12 @@ function PharmacyPOS() {
                             {item.rxQuantity != null && (
                               <p className="text-[10px]">
                                 <span className="uppercase tracking-wide text-emerald-600">Rx qty: </span>
-                                <span className="font-semibold text-foreground">{item.rxQuantity}</span>
+                                <span className="font-semibold text-foreground">
+                                  {formatBaseQty(item.rxQuantity, item.dosageForm, item.looseUnitLabel)}
+                                </span>
                                 {item.batchId && baseQtyOf(item) !== item.rxQuantity && (
                                   <span className="ml-1 text-amber-600">
-                                    (billing {baseQtyOf(item)})
+                                    (billing {formatBaseQty(baseQtyOf(item), item.dosageForm, item.looseUnitLabel)})
                                   </span>
                                 )}
                               </p>
@@ -973,7 +1000,9 @@ function PharmacyPOS() {
           {cart.length > 0 && (
             <div className="border-t px-3 py-2 bg-muted/20 flex justify-between items-center text-xs text-muted-foreground">
               <span>{cart.length} item{cart.length !== 1 ? 's' : ''} in cart</span>
-              <span>Total Units: {cart.reduce((s, c) => s + baseQtyOf(c), 0)}</span>
+              <span title="Loose units (tablets/caps/ml), not packs">
+                Total Units: {cart.reduce((s, c) => s + baseQtyOf(c), 0)}
+              </span>
             </div>
           )}
         </div>
