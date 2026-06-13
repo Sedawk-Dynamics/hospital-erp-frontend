@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { doctorKeys } from '@/hooks/use-doctor';
 import { clinicalKeys } from '@/hooks/use-clinical';
 import type { ConsultationFormData, ConsultationPinSection } from './consultation-completion-schema';
-import { encodeFrequency, encodeDuration } from './consultation-completion-schema';
+import { encodeFrequency, encodeDuration, getDoseUnitLabel } from './consultation-completion-schema';
 import { calcQuantity } from '@/lib/dosage-calc';
 
 interface SubmitParams {
@@ -139,13 +139,15 @@ export function useConsultationCompletion() {
             duration: med.durationValue ? encodeDuration(med.durationValue, med.durationUnit) : undefined,
             route: med.route || 'oral',
             instructions: med.instructions || undefined,
+            // Per-intake dose multiplier (units each occasion, default 1).
+            doseQuantity: med.doseQuantity && med.doseQuantity > 0 ? med.doseQuantity : 1,
             // Use the doctor's explicit count when given; otherwise auto-derive
-            // it from the dose pattern × duration (e.g. 1-1-1 for 3 days → 9) so
-            // the pharmacist receives a billable quantity.
+            // it from the dose pattern × duration × dose (e.g. 1-1-1 for 3 days
+            // with dose 2 → 18) so the pharmacist receives a billable quantity.
             quantity:
               typeof med.quantity === 'number'
                 ? med.quantity
-                : calcQuantity(med.frequency, med.durationValue, med.durationUnit) ?? undefined,
+                : calcQuantity(med.frequency, med.durationValue, med.durationUnit, med.doseQuantity) ?? undefined,
             isPrn: med.isPrn ?? false,
           }));
 
@@ -279,7 +281,12 @@ function buildProgressNoteContent(data: ConsultationFormData): string {
   // Medicines prescribed
   if (data.medicines.length > 0) {
     const medLines = data.medicines.map((m) => {
-      const dose = m.dose || m.strength || m.dosage || '';
+      // Show the per-intake dose (e.g. "2 tab") when it isn't the default 1;
+      // otherwise fall back to the legacy descriptive dose / strength.
+      const dose =
+        m.doseQuantity && m.doseQuantity !== 1
+          ? `${m.doseQuantity} ${getDoseUnitLabel(m.dosageForm)}`
+          : m.dose || m.strength || m.dosage || '';
       const freq = m.frequency || '';
       const timing = m.timing || '';
       const dur = m.durationValue ? `${m.durationValue} ${m.durationUnit}` : '';
