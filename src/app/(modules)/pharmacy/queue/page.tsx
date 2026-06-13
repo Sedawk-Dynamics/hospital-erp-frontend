@@ -216,7 +216,12 @@ export default function PrescriptionQueuePage() {
                                         {qty != null ? (
                                           <>
                                             {sig ? ' → ' : ''}
-                                            <span className="font-semibold text-foreground">{qty} qty</span>
+                                            <span
+                                              className="font-semibold text-foreground"
+                                              title="Total units (tablets/caps/ml) to dispense — not packs"
+                                            >
+                                              {qty} units
+                                            </span>
                                           </>
                                         ) : it.isPrn ? (
                                           <>{sig ? ' · ' : ''}<span className="font-medium">PRN</span></>
