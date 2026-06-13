@@ -59,6 +59,7 @@ import {
 } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
 import { formatDate, toInputDateStr } from '@/lib/date-utils';
+import { packSummary } from '@/lib/pharmacy-units';
 import {
   useBatches,
   useCreateBatch,
@@ -634,6 +635,11 @@ function PharmacyBatchesPageInner() {
                           {batch.drug?.strength ?? ''}
                           {batch.drug?.dosageForm ? ` · ${batch.drug.dosageForm}` : ''}
                         </div>
+                        {packSummary(batch.drug?.packSize, batch.drug?.dosageForm, batch.drug?.looseUnitLabel) && (
+                          <div className="text-[10px] text-muted-foreground">
+                            {packSummary(batch.drug?.packSize, batch.drug?.dosageForm, batch.drug?.looseUnitLabel)}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell className="text-muted-foreground">{batch.supplier?.name ?? '-'}</TableCell>
                       <TableCell className="text-muted-foreground text-xs">
