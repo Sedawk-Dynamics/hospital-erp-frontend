@@ -194,6 +194,7 @@ export const inventoryKeys = {
     list: (params?: Record<string, unknown>) => ['inventory', 'transfers', 'list', params] as const,
     detail: (id: string) => ['inventory', 'transfers', 'detail', id] as const,
   },
+  settings: ['inventory', 'settings'] as const,
   reports: {
     stockBalance: (params?: Record<string, unknown>) => ['inventory', 'reports', 'stock-balance', params] as const,
     deptConsumption: (params?: Record<string, unknown>) => ['inventory', 'reports', 'dept-consumption', params] as const,
@@ -460,6 +461,21 @@ export function useReceivePurchaseOrder() {
       queryClient.invalidateQueries({ queryKey: inventoryKeys.purchaseOrders.all });
       queryClient.invalidateQueries({ queryKey: inventoryKeys.items.all });
       queryClient.invalidateQueries({ queryKey: inventoryKeys.transactions.all });
+    },
+  });
+}
+
+export function useCancelPurchaseOrder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason?: string }) => {
+      const response = await apiPatch<PurchaseOrder>(`/inventory/purchase-orders/${id}/cancel`, {
+        reason,
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.purchaseOrders.all });
     },
   });
 }
@@ -998,6 +1014,87 @@ export function useCancelStockTransfer() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: inventoryKeys.transfers.all });
+    },
+  });
+}
+
+// ============================================================
+// Inventory Settings & Alerts (per-tenant module configuration)
+// ============================================================
+
+export interface InventorySettings {
+  id: string;
+  tenantId: string;
+  defaultLowStockThreshold: number;
+  expiryAlertMonths: number;
+  lowStockAlertEnabled: boolean;
+  expiryAlertEnabled: boolean;
+  autoFlagExpired: boolean;
+  preventExpiredUse: boolean;
+  reorderNotifyEnabled: boolean;
+  alertRecipientRoles: string[];
+  lastAlertRunAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type UpdateInventorySettingsInput = Partial<
+  Pick<
+    InventorySettings,
+    | 'defaultLowStockThreshold'
+    | 'expiryAlertMonths'
+    | 'lowStockAlertEnabled'
+    | 'expiryAlertEnabled'
+    | 'autoFlagExpired'
+    | 'preventExpiredUse'
+    | 'reorderNotifyEnabled'
+    | 'alertRecipientRoles'
+  >
+>;
+
+export interface RunAlertsResult {
+  lowStockAlerts: number;
+  expiryAlerts: number;
+  expiredFlagged: number;
+  ranAt: string;
+}
+
+export function useInventorySettings() {
+  return useQuery({
+    queryKey: inventoryKeys.settings,
+    queryFn: async () => {
+      const response = await apiGet<InventorySettings>('/inventory/settings');
+      return response.data;
+    },
+  });
+}
+
+export function useUpdateInventorySettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: UpdateInventorySettingsInput) => {
+      const response = await apiPut<InventorySettings>('/inventory/settings', data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.settings });
+      // New default threshold affects item creation; refresh item views too.
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.items.all });
+    },
+  });
+}
+
+export function useRunInventoryAlerts() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data?: { autoFlagExpired?: boolean }) => {
+      const response = await apiPost<RunAlertsResult>('/inventory/alerts/run', data ?? {});
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.settings });
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.items.all });
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.transactions.all });
     },
   });
 }

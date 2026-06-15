@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
-  ShoppingCart, Plus, CheckCircle2, PackageCheck, X,
+  ShoppingCart, Plus, CheckCircle2, PackageCheck, X, Ban,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -27,7 +27,7 @@ import { toast } from 'sonner';
 import { formatDate } from '@/lib/date-utils';
 import {
   usePurchaseOrders, useCreatePurchaseOrder, useApprovePurchaseOrder,
-  useReceivePurchaseOrder, usePurchaseOrder, useInventoryItems, useSuppliers,
+  useReceivePurchaseOrder, useCancelPurchaseOrder, usePurchaseOrder, useInventoryItems, useSuppliers,
   type PurchaseOrderStatus, type CreatePurchaseOrderInput,
 } from '@/hooks/use-inventory';
 
@@ -330,6 +330,7 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
   const { data, isLoading } = usePurchaseOrder(id);
   const approve = useApprovePurchaseOrder();
   const receive = useReceivePurchaseOrder();
+  const cancel = useCancelPurchaseOrder();
   const [recvMap, setRecvMap] = useState<Record<string, number>>({});
 
   const handleApprove = async () => {
@@ -339,6 +340,18 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
       toast.success('PO approved');
     } catch (err) { toast.error((err as Error).message); }
   };
+
+  const handleCancel = async () => {
+    const reason = window.prompt('Cancel this PO? Optionally enter a reason:');
+    if (reason === null) return; // user dismissed the prompt
+    try {
+      await cancel.mutateAsync({ id, reason: reason || undefined });
+      toast.success('PO cancelled');
+      onClose();
+    } catch (err) { toast.error((err as Error).message); }
+  };
+
+  const canCancel = data && ['draft', 'submitted', 'approved'].includes(data.status);
 
   const handleReceive = async () => {
     if (!data) return;
@@ -424,6 +437,16 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
           </div>
         )}
         <DialogFooter>
+          {canCancel && (
+            <Button
+              variant="outline"
+              className="mr-auto text-red-600 hover:text-red-700"
+              onClick={handleCancel}
+              disabled={cancel.isPending}
+            >
+              <Ban className="mr-1.5 h-4 w-4" /> Cancel PO
+            </Button>
+          )}
           {data?.status === 'draft' && (
             <Button onClick={handleApprove} disabled={approve.isPending}>
               <CheckCircle2 className="mr-1.5 h-4 w-4" /> Approve
