@@ -129,7 +129,6 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Drug Catalog', href: '/pharmacy/catalog', icon: Database, restrictTo: ['pharmacy_admin'] },
       { label: 'Drug Formulary', href: '/pharmacy/inventory', icon: Pill, restrictTo: ['pharmacy_admin'] },
       { label: 'Batches', href: '/pharmacy/batches', icon: PillBottle, restrictTo: ['pharmacy_admin'] },
-      { label: 'Recalls', href: '/pharmacy/recalls', icon: ShieldAlert, restrictTo: ['pharmacy_admin'] },
       { label: 'Purchase', href: '/pharmacy/purchase', icon: ShoppingCart, restrictTo: ['pharmacy_admin'] },
       { label: 'Reports', href: '/pharmacy/reports', icon: BarChart3, restrictTo: ['pharmacy_admin'] },
       { label: 'Stock Ledger', href: '/pharmacy/stock-ledger', icon: ClipboardList, restrictTo: ['pharmacy_admin'] },

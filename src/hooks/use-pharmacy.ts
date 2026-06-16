@@ -162,6 +162,7 @@ export interface FormularyQueryParams extends PaginatedParams {
 export interface BatchQueryParams extends PaginatedParams {
   drugId?: string | null;
   isExpired?: boolean | string;
+  isRecalled?: boolean | string;
   availableOnly?: boolean | string;
 }
 
