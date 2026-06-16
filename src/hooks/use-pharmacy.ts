@@ -1118,6 +1118,40 @@ export interface PrescriptionQueueParams extends PaginatedParams {
 }
 
 // ============================================================
+// G15 — Mandatory reports
+// ============================================================
+export function useDailyTransactionReport(date?: string) {
+  return useQuery({
+    queryKey: ['pharmacy', 'reports', 'daily', date ?? null],
+    queryFn: async () => (await apiGet<any>('/pharmacy/reports/daily-transactions', { params: { date } })).data,
+  });
+}
+export function usePurchaseReport(params: { fromDate?: string; toDate?: string; supplierId?: string }) {
+  return useQuery({
+    queryKey: ['pharmacy', 'reports', 'purchases', params],
+    queryFn: async () => (await apiGet<any>('/pharmacy/reports/purchases', { params })).data,
+  });
+}
+export function useStockValuationReport() {
+  return useQuery({
+    queryKey: ['pharmacy', 'reports', 'valuation'],
+    queryFn: async () => (await apiGet<any>('/pharmacy/reports/stock-valuation')).data,
+  });
+}
+export function useVendorWiseReport(supplierId?: string) {
+  return useQuery({
+    queryKey: ['pharmacy', 'reports', 'vendor-wise', supplierId ?? null],
+    queryFn: async () => (await apiGet<any>('/pharmacy/reports/vendor-wise', { params: { supplierId } })).data,
+  });
+}
+export function useCreditNotesReport(params: { fromDate?: string; toDate?: string; supplierId?: string }) {
+  return useQuery({
+    queryKey: ['pharmacy', 'reports', 'credit-notes', params],
+    queryFn: async () => (await apiGet<any>('/pharmacy/reports/credit-notes', { params })).data,
+  });
+}
+
+// ============================================================
 // G16 — Emergency (Golden Hour) pre-registration buffer
 // ============================================================
 export interface EmergencyPatient {

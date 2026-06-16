@@ -126,6 +126,7 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       // pharmacy_admin only (management + financials). admin/super_admin bypass.
       { label: 'Billing Transaction', href: '/pharmacy/transactions', icon: ArrowLeftRight, restrictTo: ['pharmacy_admin'] },
       { label: 'Reports', href: '/pharmacy/reports', icon: BarChart3, restrictTo: ['pharmacy_admin'] },
+      { label: 'Statutory Reports', href: '/pharmacy/statutory-reports', icon: FileText, restrictTo: ['pharmacy_admin'] },
       { label: 'Stock Ledger', href: '/pharmacy/stock-ledger', icon: ClipboardList, restrictTo: ['pharmacy_admin'] },
       { label: 'Settings', href: '/pharmacy/settings', icon: Settings, restrictTo: ['pharmacy_admin'] },
     ],
