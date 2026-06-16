@@ -1,5 +1,4 @@
 'use client';
-import { PharmacyAdminGuard } from '@/components/pharmacy/pharmacy-admin-guard';
 
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -374,10 +373,8 @@ function PharmacyCatalogPageInner() {
   );
 }
 
-export default function PharmacyCatalogPage() {
-  return (
-    <PharmacyAdminGuard>
-      <PharmacyCatalogPageInner />
-    </PharmacyAdminGuard>
-  );
+// Drug Catalog now lives under the Inventory module; inventory-module
+// membership governs access, so no extra role guard is needed.
+export default function DrugCatalogPage() {
+  return <PharmacyCatalogPageInner />;
 }
