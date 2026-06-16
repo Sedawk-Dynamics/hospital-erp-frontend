@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, type ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod/v4';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -17,6 +17,7 @@ import {
   Stethoscope,
   ChevronLeft,
   ChevronRight,
+  Ban,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -182,6 +183,8 @@ export default function OTHomePage() {
   const [bookDialogOpen, setBookDialogOpen] = useState(false);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [scheduleTarget, setScheduleTarget] = useState<OTRequest | null>(null);
+  const [viewTarget, setViewTarget] = useState<OTRequest | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<OTRequest | null>(null);
 
   const statusFilter = activeFilter === 'all' ? undefined : activeFilter;
 
@@ -524,10 +527,23 @@ export default function OTHomePage() {
                             Complete
                           </Button>
                         )}
+                        {(req.status === 'requested' || req.status === 'scheduled') && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            onClick={() => setCancelTarget(req)}
+                          >
+                            <Ban className="mr-1 h-3.5 w-3.5" />
+                            Cancel
+                          </Button>
+                        )}
                         <Button
                           size="icon"
                           variant="ghost"
                           className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                          title="View details"
+                          onClick={() => setViewTarget(req)}
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
@@ -591,7 +607,153 @@ export default function OTHomePage() {
           }}
         />
       )}
+
+      {/* Surgery details */}
+      {viewTarget && (
+        <SurgeryDetailsDialog request={viewTarget} onClose={() => setViewTarget(null)} />
+      )}
+
+      {/* Cancel surgery */}
+      {cancelTarget && (
+        <CancelSurgeryDialog request={cancelTarget} onClose={() => setCancelTarget(null)} />
+      )}
     </div>
+  );
+}
+
+// ============================================================
+// Surgery Details (read-only) + Cancel
+// ============================================================
+
+function DetailRow({ label, value }: { label: string; value?: ReactNode }) {
+  if (value === undefined || value === null || value === '' || value === '-') return null;
+  return (
+    <div className="flex justify-between gap-4 py-1.5 border-b last:border-b-0">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-sm font-medium text-right">{value}</span>
+    </div>
+  );
+}
+
+function SurgeryDetailsDialog({ request, onClose }: { request: OTRequest; onClose: () => void }) {
+  const r = request;
+  const sched = r.scheduledDate
+    ? `${formatDate(r.scheduledDate)}${r.scheduledStartTime ? ` · ${formatTime(r.scheduledStartTime)}` : ''}${r.scheduledEndTime ? ` – ${formatTime(r.scheduledEndTime)}` : ''}`
+    : '-';
+  const actual = r.actualStartTime
+    ? `${formatTime(r.actualStartTime)}${r.actualEndTime ? ` – ${formatTime(r.actualEndTime)}` : ' (in progress)'}`
+    : '-';
+
+  return (
+    <Dialog open={true} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            {r.surgeryName}
+            <Badge
+              variant="outline"
+              className={cn('text-xs', STATUS_BADGE_CLASSES[r.status?.toLowerCase()] ?? 'bg-gray-100 text-gray-700 border-gray-300')}
+            >
+              {statusLabel(r.status)}
+            </Badge>
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <section>
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Patient</h4>
+            <DetailRow label="Name" value={formatPatientName(r)} />
+            <DetailRow label="UHID / MRN" value={r.patient?.uhid ?? r.patient?.mrn} />
+            <DetailRow label="Phone" value={r.patient?.phone} />
+          </section>
+          <section>
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Surgery</h4>
+            <DetailRow label="Type" value={r.surgeryType} />
+            <DetailRow label="Speciality" value={r.speciality} />
+            <DetailRow label="Priority" value={r.priority && <span className="capitalize">{r.priority}</span>} />
+            <DetailRow label="Theater" value={r.otName ?? r.ot?.name} />
+            <DetailRow label="Surgeon" value={formatDoctorName(r.surgeon)} />
+            <DetailRow label="Anaesthetist" value={formatDoctorName(r.anaesthetist)} />
+          </section>
+          <section>
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Timing</h4>
+            <DetailRow label="Scheduled" value={sched} />
+            <DetailRow label="Actual" value={actual} />
+            <DetailRow label="Duration" value={r.durationMinutes ? `${r.durationMinutes} min` : (r.estimatedDuration ? `${r.estimatedDuration} min (est.)` : undefined)} />
+          </section>
+          <section>
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Clinical</h4>
+            <DetailRow label="Pre-op diagnosis" value={r.preOpDiagnosis} />
+            <DetailRow label="Post-op diagnosis" value={r.postOpDiagnosis} />
+            <DetailRow label="Notes" value={r.notes} />
+          </section>
+          <section>
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Billing</h4>
+            <DetailRow label="Amount" value={r.billingAmount != null ? `₹${Number(r.billingAmount).toFixed(2)}` : undefined} />
+            <DetailRow label="Status" value={r.billingStatus && <span className="capitalize">{r.billingStatus.replace('_', ' ')}</span>} />
+          </section>
+          {r.status === 'cancelled' && r.cancellationReason && (
+            <section>
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-red-600 mb-1">Cancellation</h4>
+              <p className="text-sm">{r.cancellationReason}</p>
+            </section>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CancelSurgeryDialog({ request, onClose }: { request: OTRequest; onClose: () => void }) {
+  const [reason, setReason] = useState('');
+  const update = useUpdateOTRequest();
+
+  const handleCancel = () => {
+    if (!reason.trim()) {
+      toast.error('A cancellation reason is required');
+      return;
+    }
+    update.mutate(
+      { id: request.id, status: 'cancelled', cancellationReason: reason.trim() },
+      {
+        onSuccess: () => { toast.success('Surgery cancelled'); onClose(); },
+        onError: (e: any) => toast.error(e?.message ?? 'Failed to cancel surgery'),
+      },
+    );
+  };
+
+  return (
+    <Dialog open={true} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Cancel Surgery</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Cancel <b>{request.surgeryName}</b> for {formatPatientName(request)}? This frees the slot and marks the request cancelled.
+          </p>
+          <div>
+            <Label>Reason *</Label>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={3}
+              placeholder="e.g. patient deferred, pre-op fitness not cleared..."
+              className="mt-1 flex min-h-[72px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Keep</Button>
+          <Button variant="destructive" onClick={handleCancel} disabled={update.isPending}>
+            {update.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+            Cancel Surgery
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
