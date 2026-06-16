@@ -230,7 +230,6 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
     baseRoute: '/inventory',
     sidebarItems: [
       { label: 'Stock Register', href: '/inventory', icon: ClipboardList },
-      { label: 'Stock In', href: '/inventory/stock-in', icon: Truck },
       { label: 'Stock Out', href: '/inventory/stock-out', icon: ArrowRightLeft },
       { label: 'Stock Transfer', href: '/inventory/stock-transfer', icon: ArrowLeftRight },
       { label: 'Low Stock Alerts', href: '/inventory/low-stock', icon: HeartPulse },
