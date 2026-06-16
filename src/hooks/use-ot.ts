@@ -235,6 +235,35 @@ export function useUpdateOTRequest() {
   });
 }
 
+// Push an OT surgery's charge onto a hospital bill (+ optional full payment).
+export interface BillOtResult {
+  billId: string;
+  billNumber: string | null;
+  billStatus: string | null;
+  totalAmount: number;
+  amountPaid: number;
+  balanceDue: number;
+  paid: boolean;
+}
+
+export function useBillOtRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      collectPayment,
+      paymentMethod,
+    }: { id: string; collectPayment?: boolean; paymentMethod?: string }) => {
+      const response = await apiPost<BillOtResult>(`/billing/ot/${id}/bill`, { collectPayment, paymentMethod });
+      return response.data;
+    },
+    onSuccess: (_d, v) => {
+      queryClient.invalidateQueries({ queryKey: otKeys.requests.all });
+      queryClient.invalidateQueries({ queryKey: otKeys.requests.detail(v.id) });
+    },
+  });
+}
+
 // ============================================================
 // OT Analytics
 // ============================================================

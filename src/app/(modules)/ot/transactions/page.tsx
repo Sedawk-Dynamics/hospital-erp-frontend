@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { formatDate } from '@/lib/date-utils';
 import {
-  CreditCard, Search, Download, IndianRupee, Clock, CheckCircle2, XCircle, Pencil, Loader2,
+  CreditCard, Search, Download, IndianRupee, Clock, CheckCircle2, XCircle, Pencil, Loader2, Receipt,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
@@ -19,7 +19,19 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/shared/page-header';
 import { EmptyState } from '@/components/shared/empty-state';
-import { useOTRequests, useUpdateOTRequest, type OTRequest } from '@/hooks/use-ot';
+import { useOTRequests, useUpdateOTRequest, useBillOtRequest, type OTRequest } from '@/hooks/use-ot';
+import { useAuthStore } from '@/stores/auth-store';
+
+// Pushing an OT charge to the hospital bill creates/finalizes a bill and can
+// record payment — a billing action, so it's limited to hospital admins
+// (the backend requires billing:create, which only admin/super_admin hold here).
+function useCanBillToHospital() {
+  const roleSlug = useAuthStore((s) => s.user?.role?.slug);
+  const n = (roleSlug ?? '').toLowerCase().replace(/[\s-]+/g, '_');
+  return n === 'admin' || n === 'super_admin';
+}
+
+const PAYMENT_METHODS = ['cash', 'upi', 'credit_card', 'debit_card', 'bank_transfer', 'cheque', 'insurance'] as const;
 
 const STATUS_COLOR: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700 border-amber-300',
@@ -39,9 +51,11 @@ function formatPatientName(req: OTRequest): string {
 }
 
 export default function OTTransactionsPage() {
+  const canBill = useCanBillToHospital();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [editingId, setEditingId] = useState<OTRequest | null>(null);
+  const [billingTarget, setBillingTarget] = useState<OTRequest | null>(null);
 
   const { data, isLoading } = useOTRequests({ page, limit: 20, search: search.trim() || undefined });
   const all = data?.data ?? [];
@@ -159,15 +173,29 @@ export default function OTTransactionsPage() {
                         {r.status?.replace('_', ' ')}
                       </Badge>
                     </td>
-                    <td className="px-4 py-2 text-center">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-8"
-                        onClick={() => setEditingId(r)}
-                      >
-                        <Pencil className="h-3.5 w-3.5 mr-1" /> Bill
-                      </Button>
+                    <td className="px-4 py-2">
+                      <div className="flex items-center justify-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8"
+                          onClick={() => setEditingId(r)}
+                          title="Set billing amount / status"
+                        >
+                          <Pencil className="h-3.5 w-3.5 mr-1" /> Amount
+                        </Button>
+                        {canBill && (r.billingAmount ?? 0) > 0 && r.billingStatus !== 'paid' && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50"
+                            onClick={() => setBillingTarget(r)}
+                            title="Push this surgery's charge to the patient's hospital bill"
+                          >
+                            <Receipt className="h-3.5 w-3.5 mr-1" /> To Bill
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -193,7 +221,89 @@ export default function OTTransactionsPage() {
           onOpenChange={(o) => { if (!o) setEditingId(null); }}
         />
       )}
+
+      {billingTarget && (
+        <PushToBillDialog
+          request={billingTarget}
+          onClose={() => setBillingTarget(null)}
+        />
+      )}
     </div>
+  );
+}
+
+// Push the surgery's charge onto the patient's hospital bill, optionally
+// collecting full payment. Backed by POST /billing/ot/:id/bill (idempotent).
+function PushToBillDialog({ request, onClose }: { request: OTRequest; onClose: () => void }) {
+  const [collectPayment, setCollectPayment] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<string>('cash');
+  const bill = useBillOtRequest();
+
+  const submit = () => {
+    bill.mutate(
+      { id: request.id, collectPayment, paymentMethod: collectPayment ? paymentMethod : undefined },
+      {
+        onSuccess: (res) => {
+          toast.success(
+            res.paid
+              ? `Billed ${res.billNumber ?? ''} — ${rupees(res.totalAmount)} collected`
+              : `Added to bill ${res.billNumber ?? ''} (${rupees(res.balanceDue)} due)`,
+          );
+          onClose();
+        },
+        onError: (e: any) => toast.error(e?.message ?? 'Failed to push to bill'),
+      },
+    );
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Push to Hospital Bill</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="rounded-md bg-muted/40 p-3 text-sm space-y-1">
+            <div><span className="font-medium">Patient:</span> {formatPatientName(request)}</div>
+            <div><span className="font-medium">Surgery:</span> {request.surgeryName}</div>
+            <div><span className="font-medium">Charge:</span> {rupees(request.billingAmount)}</div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Creates a finalized hospital bill for this surgery (idempotent — re-pushing reuses the same bill).
+          </p>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={collectPayment}
+              onChange={(e) => setCollectPayment(e.target.checked)}
+              className="h-4 w-4"
+            />
+            Collect full payment now
+          </label>
+          {collectPayment && (
+            <div>
+              <Label>Payment method</Label>
+              <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v ?? 'cash')}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_METHODS.map((m) => (
+                    <SelectItem key={m} value={m} className="capitalize">{m.replace('_', ' ')}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={submit} disabled={bill.isPending}>
+            {bill.isPending && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
+            <Receipt className="h-4 w-4 mr-1.5" />
+            {collectPayment ? 'Bill & Collect' : 'Push to Bill'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
