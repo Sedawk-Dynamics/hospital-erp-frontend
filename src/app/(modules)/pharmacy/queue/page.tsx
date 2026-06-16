@@ -11,7 +11,11 @@ import {
   Stethoscope,
   Pill,
   ArrowRight,
+  BedDouble,
+  Wallet,
+  CheckCircle2,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -36,8 +40,11 @@ import { formatDateTimeAmPm } from '@/lib/date-utils';
 import { calcQuantityFromStrings } from '@/lib/dosage-calc';
 import {
   usePrescriptionQueue,
+  useSetPharmacyOrderStatus,
   type PrescriptionListItem,
   type PrescriptionQueueParams,
+  type PharmacyOrderStatus,
+  type IpBillingCategory,
 } from '@/hooks/use-pharmacy';
 
 const statusBadge: Record<PrescriptionListItem['status'], string> = {
@@ -45,6 +52,29 @@ const statusBadge: Record<PrescriptionListItem['status'], string> = {
   partially_dispensed: 'bg-sky-500/10 text-sky-600 border-sky-500/20',
   dispensed: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
   cancelled: 'bg-red-500/10 text-red-600 border-red-500/20',
+};
+
+// G12: ward→pharmacy fulfilment lifecycle.
+const ORDER_FLOW: PharmacyOrderStatus[] = ['ordered', 'preparing', 'ready', 'collected'];
+const orderStatusBadge: Record<PharmacyOrderStatus, string> = {
+  ordered: 'bg-slate-500/10 text-slate-600 border-slate-500/20',
+  preparing: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
+  ready: 'bg-sky-500/10 text-sky-600 border-sky-500/20',
+  collected: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
+};
+const nextOrderLabel: Record<Exclude<PharmacyOrderStatus, 'collected'>, string> = {
+  ordered: 'Start prep',
+  preparing: 'Mark ready',
+  ready: 'Mark collected',
+};
+
+// G12: how the patient settles — drives whether the pharmacist collects payment.
+// package / insurance are billed against the advance / TPA (no cash at counter).
+const billingBadge: Record<IpBillingCategory, { label: string; cls: string; collect: boolean }> = {
+  cash: { label: 'Cash — collect', cls: 'bg-rose-500/10 text-rose-600 border-rose-500/20', collect: true },
+  corporate: { label: 'Corporate — collect', cls: 'bg-rose-500/10 text-rose-600 border-rose-500/20', collect: true },
+  package: { label: 'Package — on advance', cls: 'bg-violet-500/10 text-violet-600 border-violet-500/20', collect: false },
+  insurance: { label: 'Insurance — TPA', cls: 'bg-teal-500/10 text-teal-600 border-teal-500/20', collect: false },
 };
 
 export default function PrescriptionQueuePage() {
@@ -71,9 +101,23 @@ export default function PrescriptionQueuePage() {
   const { data, isLoading } = usePrescriptionQueue(params);
   const records = data?.data ?? [];
   const meta = data?.meta;
+  const setOrderStatus = useSetPharmacyOrderStatus();
 
   const handleDispense = (rx: PrescriptionListItem) => {
     router.push(`/pharmacy?prescriptionId=${rx.id}`);
+  };
+
+  const advanceOrder = async (rx: PrescriptionListItem) => {
+    const current = rx.pharmacyStatus ?? 'ordered';
+    const idx = ORDER_FLOW.indexOf(current);
+    const next = ORDER_FLOW[idx + 1];
+    if (!next) return;
+    try {
+      await setOrderStatus.mutateAsync({ id: rx.id, status: next });
+      toast.success(`Order ${next}`);
+    } catch (err) {
+      toast.error((err as Error).message ?? 'Failed to update order status');
+    }
   };
 
   return (
@@ -162,6 +206,7 @@ export default function PrescriptionQueuePage() {
                   <TableHead>Drugs</TableHead>
                   <TableHead className="text-center w-[90px]">Type</TableHead>
                   <TableHead className="text-center w-[140px]">Status</TableHead>
+                  <TableHead className="text-center w-[200px]">Fulfilment</TableHead>
                   <TableHead className="text-right w-[150px]">Action</TableHead>
                 </TableRow>
               </TableHeader>
@@ -182,6 +227,28 @@ export default function PrescriptionQueuePage() {
                           {rx.patient.firstName} {rx.patient.lastName}
                         </div>
                         <div className="text-xs text-muted-foreground font-mono">{rx.patient.mrn}</div>
+                        {/* G12: IP context — ward/bed + billing category */}
+                        {rx.prescriptionType === 'ip' && rx.visit?.admission && (
+                          <div className="mt-1 flex flex-wrap items-center gap-1">
+                            {(rx.visit.admission.ward || rx.visit.admission.bed) && (
+                              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                                <BedDouble className="h-3 w-3" />
+                                {rx.visit.admission.ward?.name}
+                                {rx.visit.admission.bed?.bedNumber ? ` · ${rx.visit.admission.bed.bedNumber}` : ''}
+                              </span>
+                            )}
+                            {(() => {
+                              const cat = (rx.visit.admission.billingCategory ?? 'cash') as IpBillingCategory;
+                              const b = billingBadge[cat] ?? billingBadge.cash;
+                              return (
+                                <Badge className={`text-[10px] ${b.cls}`} title={b.collect ? 'Collect payment at counter' : 'No cash at counter'}>
+                                  <Wallet className="mr-0.5 h-3 w-3" />
+                                  {b.label}
+                                </Badge>
+                              );
+                            })()}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>
                         <span className="inline-flex items-center gap-1.5 text-sm">
@@ -247,6 +314,33 @@ export default function PrescriptionQueuePage() {
                         <Badge className={statusBadge[rx.status]}>
                           {rx.status.replace('_', ' ')}
                         </Badge>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {/* G12: ward→pharmacy fulfilment lifecycle (IP orders) */}
+                        {rx.prescriptionType === 'ip' ? (
+                          (() => {
+                            const cur = (rx.pharmacyStatus ?? 'ordered') as PharmacyOrderStatus;
+                            return (
+                              <div className="flex flex-col items-center gap-1">
+                                <Badge className={orderStatusBadge[cur]}>{cur}</Badge>
+                                {cur !== 'collected' && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-6 px-2 text-[11px]"
+                                    disabled={setOrderStatus.isPending}
+                                    onClick={() => advanceOrder(rx)}
+                                  >
+                                    {cur === 'ready' ? <CheckCircle2 className="mr-1 h-3 w-3" /> : null}
+                                    {nextOrderLabel[cur as Exclude<PharmacyOrderStatus, 'collected'>]}
+                                  </Button>
+                                )}
+                              </div>
+                            );
+                          })()
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <Button

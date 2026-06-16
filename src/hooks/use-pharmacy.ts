@@ -1060,10 +1060,15 @@ export function useProcessReturn() {
 // Prescription Queue (incoming e-prescriptions for the pharmacy)
 // ============================================================
 
+export type PharmacyOrderStatus = 'ordered' | 'preparing' | 'ready' | 'collected';
+export type IpBillingCategory = 'cash' | 'package' | 'insurance' | 'corporate';
+
 export interface PrescriptionListItem {
   id: string;
   status: 'active' | 'dispensed' | 'partially_dispensed' | 'cancelled';
   prescriptionType: 'op' | 'ip';
+  // G12: ward→pharmacy fulfilment stage (null = ordered).
+  pharmacyStatus: PharmacyOrderStatus | null;
   notes: string | null;
   followUpDate: string | null;
   createdAt: string;
@@ -1072,7 +1077,18 @@ export interface PrescriptionListItem {
     id: string;
     user?: { firstName: string; lastName: string };
   };
-  visit?: { id: string; visitDate: string; visitType: string };
+  visit?: {
+    id: string;
+    visitDate: string;
+    visitType: string;
+    // G12: IP context — billing category (collect payment?) + ward/bed.
+    admission?: {
+      id: string;
+      billingCategory: IpBillingCategory | null;
+      ward?: { id: string; name: string } | null;
+      bed?: { id: string; bedNumber: string } | null;
+    } | null;
+  };
   prescriptionItems: Array<{
     id: string;
     drugId: string | null;
@@ -1095,9 +1111,27 @@ export interface PrescriptionQueueParams extends PaginatedParams {
   doctorId?: string;
   status?: 'active' | 'dispensed' | 'partially_dispensed' | 'cancelled' | 'pending';
   prescriptionType?: 'op' | 'ip';
+  pharmacyStatus?: PharmacyOrderStatus;
   dispensed?: boolean | string;
   fromDate?: string;
   toDate?: string;
+}
+
+// G12: advance an IP prescription through the ward→pharmacy fulfilment lifecycle.
+export function useSetPharmacyOrderStatus() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: PharmacyOrderStatus }) => {
+      const response = await apiPatch<{ id: string; pharmacyStatus: PharmacyOrderStatus }>(
+        `/pharmacy/queue/${id}/status`,
+        { status },
+      );
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['prescriptions', 'queue'] });
+    },
+  });
 }
 
 export function usePrescriptionQueue(params?: PrescriptionQueueParams) {
