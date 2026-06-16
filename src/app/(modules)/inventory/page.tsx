@@ -26,7 +26,7 @@ import { toast } from 'sonner';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
 import {
   useInventoryItems, useCreateItem, useUpdateItem,
-  useStockTransactions, useCreateStockTransaction, useSuppliers,
+  useStockTransactions, useCreateStockTransaction,
   type InventoryCategory, type InventoryItem, type CreateItemInput,
 } from '@/hooks/use-inventory';
 
@@ -250,7 +250,6 @@ function StockInLog({ onRecord }: { onRecord: () => void }) {
               <TableHead>Item</TableHead>
               <TableHead>Batch</TableHead>
               <TableHead>Expiry</TableHead>
-              <TableHead>Supplier</TableHead>
               <TableHead className="text-right">Qty</TableHead>
               <TableHead className="text-right">Unit Cost</TableHead>
               <TableHead className="text-right">Total</TableHead>
@@ -265,7 +264,6 @@ function StockInLog({ onRecord }: { onRecord: () => void }) {
                 <TableCell className="text-xs text-muted-foreground">
                   {t.expiryDate ? new Date(t.expiryDate).toLocaleDateString() : '-'}
                 </TableCell>
-                <TableCell className="text-sm">{t.supplier?.name ?? '-'}</TableCell>
                 <TableCell className="text-right">{t.quantity}</TableCell>
                 <TableCell className="text-right text-muted-foreground">
                   {t.unitCost ? `₹${Number(t.unitCost).toFixed(2)}` : '-'}
@@ -430,7 +428,6 @@ function ItemDialog({ item, onClose }: { item: InventoryItem | null; onClose: ()
 function StockInDialog({ initialItem, onClose }: { initialItem: InventoryItem | null; onClose: () => void }) {
   const [search, setSearch] = useState('');
   const [itemId, setItemId] = useState<string | null>(initialItem?.id ?? null);
-  const [supplierId, setSupplierId] = useState<string | null>(null);
   const [batchNumber, setBatchNumber] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
   const [quantity, setQuantity] = useState(1);
@@ -439,8 +436,6 @@ function StockInDialog({ initialItem, onClose }: { initialItem: InventoryItem | 
 
   const { data: itemsResp } = useInventoryItems({ search: search || undefined, limit: 20, isActive: true });
   const items = itemsResp?.data ?? [];
-  const { data: suppliersResp } = useSuppliers({ limit: 100, isActive: true });
-  const suppliers = suppliersResp?.data ?? [];
 
   const create = useCreateStockTransaction();
 
@@ -454,7 +449,6 @@ function StockInDialog({ initialItem, onClose }: { initialItem: InventoryItem | 
         quantity,
         batchNumber: batchNumber || undefined,
         expiryDate: expiryDate || undefined,
-        supplierId: supplierId || undefined,
         unitCost,
         notes: notes || undefined,
       });
@@ -551,18 +545,6 @@ function StockInDialog({ initialItem, onClose }: { initialItem: InventoryItem | 
                 onChange={(e) => setUnitCost(e.target.value ? Number(e.target.value) : undefined)}
               />
             </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-medium">Supplier</label>
-            <Select value={supplierId ?? ''} onValueChange={(v) => setSupplierId(v || null)}>
-              <SelectTrigger><SelectValue placeholder="Select supplier (optional)" /></SelectTrigger>
-              <SelectContent>
-                {suppliers.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
 
           <div>
