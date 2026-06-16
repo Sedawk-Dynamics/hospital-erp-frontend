@@ -40,6 +40,8 @@ export interface FormularyItem {
   taxPercent: number | string | null;
   indications: string | null;
   contraindications: string | null;
+  // G9: reorder level (base units).
+  minStock?: number | null;
   isActive: boolean;
   isRecalled: boolean;
   createdAt: string;
@@ -303,6 +305,7 @@ export interface CreateFormularyInput {
   packSize?: number;
   looseUnitLabel?: string;
   taxPercent?: number;
+  minStock?: number;
   indications?: string;
   contraindications?: string;
   isActive?: boolean;
@@ -1155,6 +1158,13 @@ export function useNarcoticRegister(params: { fromDate?: string; toDate?: string
   return useQuery({
     queryKey: ['pharmacy', 'reports', 'narcotic', params],
     queryFn: async () => (await apiGet<any>('/pharmacy/reports/narcotic-register', { params })).data,
+  });
+}
+// G9: reorder list — drugs at/below their reorder level (draft purchase order).
+export function useReorderList() {
+  return useQuery({
+    queryKey: ['pharmacy', 'reports', 'reorder'],
+    queryFn: async () => (await apiGet<any>('/pharmacy/reports/reorder')).data,
   });
 }
 

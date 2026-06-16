@@ -26,6 +26,7 @@ import {
   useVendorWiseReport,
   useCreditNotesReport,
   useNarcoticRegister,
+  useReorderList,
 } from '@/hooks/use-pharmacy';
 
 const inr = (n: number | null | undefined) =>
@@ -360,6 +361,51 @@ function NarcoticTab() {
   );
 }
 
+function ReorderTab() {
+  const { data, isLoading } = useReorderList();
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground">
+        Drugs at or below their reorder level — review and raise a purchase order.
+      </p>
+      {isLoading ? <Skeleton className="h-32 w-full" /> : (data?.items ?? []).length === 0 ? (
+        <EmptyState icon={FileText} title="Nothing to reorder" description="All drugs with a reorder level are above it (set reorder levels on the formulary)." />
+      ) : (
+        <>
+          <Totals><span>Items to reorder: <b>{data.total}</b></span></Totals>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Drug</TableHead>
+                <TableHead className="text-right">In stock</TableHead>
+                <TableHead className="text-right">Reorder level</TableHead>
+                <TableHead className="text-right">Suggested qty</TableHead>
+                <TableHead>Last supplier</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(data?.items ?? []).map((r: any) => (
+                <TableRow key={r.drugId}>
+                  <TableCell>
+                    <div className="font-medium">{r.drugName} {r.strength ?? ''}</div>
+                    {r.manufacturer && <div className="text-xs text-muted-foreground">{r.manufacturer}</div>}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20">{r.stock}</Badge>
+                  </TableCell>
+                  <TableCell className="text-right">{r.minStock}</TableCell>
+                  <TableCell className="text-right font-semibold">{r.suggestedQty}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{r.lastSupplier ?? '—'}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </>
+      )}
+    </div>
+  );
+}
+
 function StatutoryReportsInner() {
   return (
     <div className="space-y-4 animate-fade-in-up">
@@ -377,6 +423,7 @@ function StatutoryReportsInner() {
           <TabsTrigger value="vendor">Vendor-wise</TabsTrigger>
           <TabsTrigger value="credit">Credit Notes</TabsTrigger>
           <TabsTrigger value="narcotic">Narcotic (DI)</TabsTrigger>
+          <TabsTrigger value="reorder">Reorder</TabsTrigger>
         </TabsList>
         <TabsContent value="daily"><DailyReport /></TabsContent>
         <TabsContent value="purchases"><PurchaseReportTab /></TabsContent>
@@ -384,6 +431,7 @@ function StatutoryReportsInner() {
         <TabsContent value="vendor"><VendorWiseTab /></TabsContent>
         <TabsContent value="credit"><CreditNotesTab /></TabsContent>
         <TabsContent value="narcotic"><NarcoticTab /></TabsContent>
+        <TabsContent value="reorder"><ReorderTab /></TabsContent>
       </Tabs>
     </div>
   );

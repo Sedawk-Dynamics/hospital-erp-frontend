@@ -80,6 +80,7 @@ interface FormState {
   packSize: string;
   looseUnitLabel: string;
   taxPercent: string;
+  minStock: string;
   indications: string;
   contraindications: string;
 }
@@ -96,6 +97,7 @@ const EMPTY_FORM: FormState = {
   packSize: '',
   looseUnitLabel: '',
   taxPercent: '',
+  minStock: '',
   indications: '',
   contraindications: '',
 };
@@ -113,6 +115,7 @@ function formStateFromItem(item: FormularyItem): FormState {
     packSize: item.packSize != null ? String(item.packSize) : '',
     looseUnitLabel: item.looseUnitLabel ?? '',
     taxPercent: item.taxPercent != null ? String(item.taxPercent) : '',
+    minStock: item.minStock != null ? String(item.minStock) : '',
     indications: item.indications ?? '',
     contraindications: item.contraindications ?? '',
   };
@@ -130,6 +133,7 @@ function formStateToInput(form: FormState): CreateFormularyInput {
   if (form.packSize && !isNaN(parseInt(form.packSize, 10))) out.packSize = parseInt(form.packSize, 10);
   if (form.looseUnitLabel.trim()) out.looseUnitLabel = form.looseUnitLabel.trim();
   if (form.taxPercent && !isNaN(parseFloat(form.taxPercent))) out.taxPercent = parseFloat(form.taxPercent);
+  if (form.minStock && !isNaN(parseInt(form.minStock, 10))) out.minStock = parseInt(form.minStock, 10);
   if (form.indications.trim()) out.indications = form.indications.trim();
   if (form.contraindications.trim()) out.contraindications = form.contraindications.trim();
   return out;
@@ -507,14 +511,27 @@ function PharmacyInventoryPageInner() {
                   />
                 </div>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="manufacturer">Manufacturer</Label>
-                <Input
-                  id="manufacturer"
-                  value={formData.manufacturer}
-                  onChange={(e) => updateField('manufacturer', e.target.value)}
-                  placeholder="Company name"
-                />
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1.5 col-span-2">
+                  <Label htmlFor="manufacturer">Manufacturer</Label>
+                  <Input
+                    id="manufacturer"
+                    value={formData.manufacturer}
+                    onChange={(e) => updateField('manufacturer', e.target.value)}
+                    placeholder="Company name"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="minStock">Reorder Level</Label>
+                  <Input
+                    id="minStock"
+                    type="number"
+                    min={0}
+                    value={formData.minStock}
+                    onChange={(e) => updateField('minStock', e.target.value)}
+                    placeholder="e.g. 20"
+                  />
+                </div>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="indications">Indications</Label>
