@@ -4,15 +4,37 @@ import { useState } from 'react';
 import { formatDate, toInputDateStr } from '@/lib/date-utils';
 import {
   Activity, UserCheck, XCircle, Clock, TrendingUp, Calendar, BarChart3,
-  IndianRupee, ListChecks,
+  IndianRupee, ListChecks, Download, Timer, Percent,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/shared/page-header';
 import { EmptyState } from '@/components/shared/empty-state';
 import { useOTAnalytics } from '@/hooks/use-ot';
+
+// Minimal CSV serialiser + browser download (no dependency).
+function toCsv(rows: Record<string, unknown>[]): string {
+  if (!rows.length) return '';
+  const headers = Object.keys(rows[0]);
+  const esc = (v: unknown) => {
+    const s = v == null ? '' : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return [headers.join(','), ...rows.map((r) => headers.map((h) => esc(r[h])).join(','))].join('\n');
+}
+
+function downloadCsv(filename: string, rows: Record<string, unknown>[]) {
+  const blob = new Blob([toCsv(rows)], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 const STATUS_BADGE: Record<string, string> = {
   requested: 'bg-amber-100 text-amber-700 border-amber-300',
@@ -44,6 +66,35 @@ export default function OTReportsPage() {
   const surgeonWorkload = data?.surgeonWorkload ?? [];
   const otUtilization = data?.otUtilization ?? [];
   const surgeryList = data?.surgeryList ?? [];
+
+  // Key rates / revenue (derived).
+  const completionRate = totals.total ? Math.round((totals.completed / totals.total) * 100) : 0;
+  const cancellationRate = totals.total ? Math.round((totals.cancelled / totals.total) * 100) : 0;
+  const totalRevenue = surgeryList.reduce((sum, s) => sum + (s.billingAmount ?? 0), 0);
+  const avgStartDelay = data?.avgStartDelayMin ?? 0;
+  const delaySamples = data?.startDelaySampleSize ?? 0;
+
+  const handleExportCsv = () => {
+    if (surgeryList.length === 0) return;
+    downloadCsv(
+      `ot-report-${fromDate}_to_${toDate}.csv`,
+      surgeryList.map((s) => ({
+        Patient: `${s.patient.firstName} ${s.patient.lastName}`.trim(),
+        MRN: s.patient.mrn ?? '',
+        Procedure: s.procedureName,
+        Type: s.surgeryType ?? '',
+        Speciality: s.speciality ?? '',
+        Surgeon: s.surgeonName,
+        OT: s.otName ?? '',
+        Date: s.scheduledDate ? formatDate(s.scheduledDate) : '',
+        StartTime: s.scheduledStartTime ?? '',
+        DurationMin: s.durationMinutes ?? '',
+        Status: statusLabel(s.status),
+        BillingAmount: s.billingAmount ?? '',
+        BillingStatus: s.billingStatus ?? '',
+      })),
+    );
+  };
 
   return (
     <div className="space-y-5 animate-fade-in-up">
@@ -84,6 +135,41 @@ export default function OTReportsPage() {
             <p className="font-headline text-2xl font-extrabold mt-1">{s.value.toLocaleString('en-IN')}</p>
           </div>
         ))}
+      </div>
+
+      {/* Key rates / revenue */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="rounded-xl shadow-sanctuary p-4 bg-surface-container-lowest">
+          <div className="flex items-center gap-2 text-emerald-700">
+            <Percent className="h-4 w-4" />
+            <p className="text-xs text-muted-foreground">Completion rate</p>
+          </div>
+          <p className="font-headline text-2xl font-extrabold mt-1">{completionRate}%</p>
+        </div>
+        <div className="rounded-xl shadow-sanctuary p-4 bg-surface-container-lowest">
+          <div className="flex items-center gap-2 text-red-700">
+            <XCircle className="h-4 w-4" />
+            <p className="text-xs text-muted-foreground">Cancellation rate</p>
+          </div>
+          <p className="font-headline text-2xl font-extrabold mt-1">{cancellationRate}%</p>
+        </div>
+        <div className="rounded-xl shadow-sanctuary p-4 bg-surface-container-lowest">
+          <div className="flex items-center gap-2 text-amber-700">
+            <Timer className="h-4 w-4" />
+            <p className="text-xs text-muted-foreground">Avg. start delay</p>
+          </div>
+          <p className="font-headline text-2xl font-extrabold mt-1">
+            {avgStartDelay} <span className="text-sm font-medium text-muted-foreground">min</span>
+          </p>
+          <p className="text-[10px] text-muted-foreground">{delaySamples} surgeries measured</p>
+        </div>
+        <div className="rounded-xl shadow-sanctuary p-4 bg-surface-container-lowest">
+          <div className="flex items-center gap-2 text-blue-700">
+            <IndianRupee className="h-4 w-4" />
+            <p className="text-xs text-muted-foreground">Total billed</p>
+          </div>
+          <p className="font-headline text-2xl font-extrabold mt-1">{rupees(totalRevenue)}</p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -186,6 +272,15 @@ export default function OTReportsPage() {
           <ListChecks className="h-4 w-4 text-primary" />
           <h2 className="font-headline text-base font-bold">Surgery List</h2>
           <span className="ml-2 text-xs text-muted-foreground">{surgeryList.length} entries</span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="ml-auto"
+            onClick={handleExportCsv}
+            disabled={surgeryList.length === 0}
+          >
+            <Download className="mr-1.5 h-3.5 w-3.5" /> Export CSV
+          </Button>
         </div>
         {isLoading ? (
           <div className="p-4"><Skeleton className="h-32 w-full" /></div>

@@ -249,6 +249,10 @@ export interface OTAnalyticsParams {
 export interface OTAnalytics {
   fromDate: string;
   toDate: string;
+  // Average minutes between scheduled and actual start (positive = late starts);
+  // startDelaySampleSize is how many surgeries had both timestamps.
+  avgStartDelayMin: number;
+  startDelaySampleSize: number;
   totals: { total: number; completed: number; cancelled: number; scheduled: number; inProgress: number; requested: number };
   byStatus: Record<string, number>;
   surgeonWorkload: Array<{
