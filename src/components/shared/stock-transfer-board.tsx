@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod/v4';
@@ -74,6 +74,11 @@ const createSchema = z.object({
   path: ['toDepartmentId'],
 });
 type CreateForm = z.infer<typeof createSchema>;
+
+// A transfer endpoint (source/destination) can be a department, a ward, or a
+// free-typed location. Departments use the FK; wards + custom locations are
+// stored in the location text field (the model has no wardId).
+type EndpointType = 'department' | 'ward' | 'location';
 
 interface Dept { id: string; name: string }
 interface ItemRow { id: string; itemName: string; itemCode?: string | null; currentStock: number; unitOfMeasurement?: string | null }
@@ -376,6 +381,18 @@ function CreateTransferDialog({
   });
   const departments = deptsResp ?? [];
 
+  // Wards are offered as a transfer source/destination too (e.g. pharmacy →
+  // ward). The StockTransfer model has no wardId, so a ward is stored in the
+  // fromLocation / toLocation text field (its name).
+  const { data: wardsResp } = useQuery({
+    queryKey: ['infrastructure', 'wards', 'all'],
+    queryFn: async () => {
+      const r = await apiGet<Dept[]>('/infrastructure/wards', { params: { limit: 300 } });
+      return r.data;
+    },
+  });
+  const wards = wardsResp ?? [];
+
   const [itemSearch, setItemSearch] = useState('');
   const { data: itemsResp } = useQuery({
     queryKey: ['inventory', 'items', 'search', itemSearch],
@@ -409,10 +426,43 @@ function CreateTransferDialog({
     [selectedItemId, items],
   );
 
+  // Each side can be a Department (FK), a Ward (stored as location name), or a
+  // free-text location.
+  const [fromType, setFromType] = useState<EndpointType>('department');
+  const [toType, setToType] = useState<EndpointType>('department');
+
+  // Default the source to the "Pharmacy" department when one exists and the
+  // caller didn't pin a source — supports "transfer from pharmacy" out of the box.
+  const pharmacyDeptId = useMemo(
+    () => departments.find((d) => /pharmac/i.test(d.name))?.id,
+    [departments],
+  );
+  useEffect(() => {
+    if (open && !defaultFromDepartmentId && fromType === 'department' && pharmacyDeptId && !watch('fromDepartmentId')) {
+      setValue('fromDepartmentId', pharmacyDeptId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, pharmacyDeptId]);
+
   const close = () => {
     reset();
     setItemSearch('');
+    setFromType('department');
+    setToType('department');
     onOpenChange(false);
+  };
+
+  // Switching a side's type resets that side's department + location so the two
+  // never carry stale conflicting values.
+  const changeFromType = (t: EndpointType) => {
+    setFromType(t);
+    setValue('fromDepartmentId', '');
+    setValue('fromLocation', '');
+  };
+  const changeToType = (t: EndpointType) => {
+    setToType(t);
+    setValue('toDepartmentId', '');
+    setValue('toLocation', '');
   };
 
   const onSubmit = (values: CreateForm) => {
@@ -500,46 +550,32 @@ function CreateTransferDialog({
             )}
           </div>
 
-          {/* From / To */}
+          {/* From / To — each side can be a department, a ward, or a custom location */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label>From Department</Label>
-              <Select
-                value={watch('fromDepartmentId') || 'none'}
-                onValueChange={(v) => setValue('fromDepartmentId', v === 'none' ? '' : (v ?? ''))}
-              >
-                <SelectTrigger><SelectValue placeholder="Pick department" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">— external / warehouse —</SelectItem>
-                  {departments.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Input className="mt-2" placeholder="Or location text" {...register('fromLocation')} />
-              {errors.fromDepartmentId && (
-                <p className="text-xs text-red-500 mt-1">{errors.fromDepartmentId.message}</p>
-              )}
-            </div>
-            <div>
-              <Label>To Department</Label>
-              <Select
-                value={watch('toDepartmentId') || 'none'}
-                onValueChange={(v) => setValue('toDepartmentId', v === 'none' ? '' : (v ?? ''))}
-              >
-                <SelectTrigger><SelectValue placeholder="Pick department" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">— external / warehouse —</SelectItem>
-                  {departments.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Input className="mt-2" placeholder="Or location text" {...register('toLocation')} />
-              {errors.toDepartmentId && (
-                <p className="text-xs text-red-500 mt-1">{errors.toDepartmentId.message}</p>
-              )}
-            </div>
+            <EndpointPicker
+              label="From"
+              type={fromType}
+              onTypeChange={changeFromType}
+              deptId={watch('fromDepartmentId') ?? ''}
+              onDeptChange={(v) => { setValue('fromDepartmentId', v); setValue('fromLocation', ''); }}
+              location={watch('fromLocation') ?? ''}
+              onLocationChange={(v) => { setValue('fromLocation', v); setValue('fromDepartmentId', ''); }}
+              departments={departments}
+              wards={wards}
+              error={errors.fromDepartmentId?.message}
+            />
+            <EndpointPicker
+              label="To"
+              type={toType}
+              onTypeChange={changeToType}
+              deptId={watch('toDepartmentId') ?? ''}
+              onDeptChange={(v) => { setValue('toDepartmentId', v); setValue('toLocation', ''); }}
+              location={watch('toLocation') ?? ''}
+              onLocationChange={(v) => { setValue('toLocation', v); setValue('toDepartmentId', ''); }}
+              departments={departments}
+              wards={wards}
+              error={errors.toDepartmentId?.message}
+            />
           </div>
 
           {/* Qty + batch */}
@@ -583,5 +619,81 @@ function CreateTransferDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// One transfer endpoint (From / To): pick a department, a ward, or a custom
+// location. Wards + custom locations are written to the location text field.
+function EndpointPicker({
+  label, type, onTypeChange, deptId, onDeptChange, location, onLocationChange,
+  departments, wards, error,
+}: {
+  label: string;
+  type: EndpointType;
+  onTypeChange: (t: EndpointType) => void;
+  deptId: string;
+  onDeptChange: (v: string) => void;
+  location: string;
+  onLocationChange: (v: string) => void;
+  departments: Dept[];
+  wards: Dept[];
+  error?: string;
+}) {
+  return (
+    <div>
+      <Label>{label}</Label>
+      <Select value={type} onValueChange={(v) => v && onTypeChange(v as EndpointType)}>
+        <SelectTrigger><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="department">Department</SelectItem>
+          <SelectItem value="ward">Ward</SelectItem>
+          <SelectItem value="location">Other location</SelectItem>
+        </SelectContent>
+      </Select>
+
+      {type === 'department' && (
+        <Select
+          value={deptId || 'none'}
+          onValueChange={(v) => onDeptChange(v === 'none' ? '' : (v ?? ''))}
+        >
+          <SelectTrigger className="mt-2"><SelectValue placeholder="Pick department" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">— external / warehouse —</SelectItem>
+            {departments.map((d) => (
+              <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+
+      {type === 'ward' && (
+        <Select
+          value={location || 'none'}
+          onValueChange={(v) => onLocationChange(v === 'none' ? '' : (v ?? ''))}
+        >
+          <SelectTrigger className="mt-2"><SelectValue placeholder="Pick ward" /></SelectTrigger>
+          <SelectContent>
+            {wards.length === 0 ? (
+              <SelectItem value="none" disabled>No wards available</SelectItem>
+            ) : (
+              wards.map((w) => (
+                <SelectItem key={w.id} value={w.name}>{w.name}</SelectItem>
+              ))
+            )}
+          </SelectContent>
+        </Select>
+      )}
+
+      {type === 'location' && (
+        <Input
+          className="mt-2"
+          placeholder="e.g. Central Warehouse"
+          value={location}
+          onChange={(e) => onLocationChange(e.target.value)}
+        />
+      )}
+
+      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
+    </div>
   );
 }
