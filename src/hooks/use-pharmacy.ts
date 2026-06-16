@@ -1169,6 +1169,73 @@ export function useReorderList() {
 }
 
 // ============================================================
+// G13 — Ward stock sub-module
+// ============================================================
+export interface WardStockItem {
+  id: string;
+  drugId: string;
+  drugBatchId: string;
+  drugName: string;
+  looseUnitLabel: string | null;
+  batchNumber: string | null;
+  expiryDate: string | null;
+  sellingPrice: number | null;
+  quantityInStock: number;
+}
+
+export function useWardStock(wardId: string | null) {
+  return useQuery({
+    queryKey: ['pharmacy', 'ward-stock', wardId],
+    queryFn: async () => (await apiGet<{ items: WardStockItem[]; total: number }>('/pharmacy/ward-stock', { params: { wardId } })).data.items,
+    enabled: !!wardId,
+  });
+}
+
+export function useWardLedger(params: { wardId: string | null; fromDate?: string; toDate?: string }) {
+  return useQuery({
+    queryKey: ['pharmacy', 'ward-stock', 'ledger', params],
+    queryFn: async () =>
+      (await apiGet<{ items: any[]; total: number }>('/pharmacy/ward-stock/ledger', {
+        params: { wardId: params.wardId, fromDate: params.fromDate, toDate: params.toDate },
+      })).data.items,
+    enabled: !!params.wardId,
+  });
+}
+
+export function useTransferToWard() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { wardId: string; drugBatchId: string; quantity: number }) =>
+      (await apiPost('/pharmacy/ward-stock/transfer', data)).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pharmacy', 'ward-stock'] });
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+    },
+  });
+}
+
+export function useDispenseFromWard() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      wardId: string;
+      drugBatchId: string;
+      patientId: string;
+      quantity: number;
+      admissionId?: string;
+      reason?: string;
+    }) =>
+      (await apiPost<{ billId: string; billNumber: string; charged: number }>(
+        '/pharmacy/ward-stock/dispense',
+        data,
+      )).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pharmacy', 'ward-stock'] });
+    },
+  });
+}
+
+// ============================================================
 // G16 — Emergency (Golden Hour) pre-registration buffer
 // ============================================================
 export interface EmergencyPatient {
