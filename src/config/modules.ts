@@ -127,7 +127,6 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       // pharmacy_admin only (management + financials). admin/super_admin bypass.
       { label: 'Billing Transaction', href: '/pharmacy/transactions', icon: ArrowLeftRight, restrictTo: ['pharmacy_admin'] },
       { label: 'Drug Catalog', href: '/pharmacy/catalog', icon: Database, restrictTo: ['pharmacy_admin'] },
-      { label: 'Drug Formulary', href: '/pharmacy/inventory', icon: Pill, restrictTo: ['pharmacy_admin'] },
       { label: 'Batches', href: '/pharmacy/batches', icon: PillBottle, restrictTo: ['pharmacy_admin'] },
       { label: 'Reports', href: '/pharmacy/reports', icon: BarChart3, restrictTo: ['pharmacy_admin'] },
       { label: 'Stock Ledger', href: '/pharmacy/stock-ledger', icon: ClipboardList, restrictTo: ['pharmacy_admin'] },
@@ -240,6 +239,8 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Expiry Tracking', href: '/inventory/expiring', icon: Activity },
       { label: 'Low Stock Alerts', href: '/inventory/low-stock', icon: HeartPulse },
       { label: 'Purchase Orders', href: '/inventory/purchase-orders', icon: ShoppingCart },
+      // Pharmacy drug-stock management (backed by /pharmacy/* endpoints).
+      { label: 'Drug Formulary', href: '/inventory/drug-formulary', icon: Pill },
       { label: 'Reports', href: '/inventory/reports', icon: BarChart3 },
       { label: 'Audit Logs', href: '/inventory/audit-logs', icon: FileCheck },
       { label: 'Settings', href: '/inventory/settings', icon: Settings },

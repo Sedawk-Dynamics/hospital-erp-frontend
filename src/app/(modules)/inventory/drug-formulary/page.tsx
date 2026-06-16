@@ -1,5 +1,4 @@
 'use client';
-import { PharmacyAdminGuard } from '@/components/pharmacy/pharmacy-admin-guard';
 
 import { useState } from 'react';
 import { Search, Plus, Pill, ChevronLeft, ChevronRight, Pencil, Trash2, PackagePlus, Package } from 'lucide-react';
@@ -791,10 +790,9 @@ function PharmacyInventoryPageInner() {
   );
 }
 
-export default function PharmacyInventoryPage() {
-  return (
-    <PharmacyAdminGuard>
-      <PharmacyInventoryPageInner />
-    </PharmacyAdminGuard>
-  );
+// Drug Formulary now lives under the Inventory module. Access is governed by
+// inventory-module membership (admin, super_admin, pharmacy_admin,
+// inventory_manager), so no extra role guard is needed here.
+export default function DrugFormularyPage() {
+  return <PharmacyInventoryPageInner />;
 }
