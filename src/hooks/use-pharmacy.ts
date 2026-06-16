@@ -890,18 +890,63 @@ export function useCreateReturn() {
   });
 }
 
-// A patient's returnable counter-sale lines — drives the patient-return picker.
-export function useReturnableDispenses(patientId: string | null) {
+export interface ReturnablePatient {
+  id: string;
+  mrn: string | null;
+  firstName: string;
+  lastName: string | null;
+}
+
+// Returnable counter-sale lines — drives the patient-return picker. G3: look up
+// either by patient or by presenting the physical bill (billNumber).
+export function useReturnableDispenses(params: {
+  patientId?: string | null;
+  billNumber?: string | null;
+}) {
+  const { patientId, billNumber } = params;
   return useQuery({
-    queryKey: ['pharmacy', 'returnable', patientId],
+    queryKey: ['pharmacy', 'returnable', patientId ?? null, billNumber ?? null],
     queryFn: async () => {
-      const response = await apiGet<{ items: ReturnableDispense[]; total: number }>(
-        '/pharmacy/returnable',
-        { params: { patientId } },
-      );
-      return response.data?.items ?? [];
+      const response = await apiGet<{
+        items: ReturnableDispense[];
+        total: number;
+        patient?: ReturnablePatient | null;
+      }>('/pharmacy/returnable', {
+        params: { patientId: patientId || undefined, billNumber: billNumber || undefined },
+      });
+      return response.data;
     },
-    enabled: !!patientId,
+    enabled: !!patientId || !!billNumber,
+  });
+}
+
+// G3: full return record + hospital header for the acknowledgement receipt.
+export interface ReturnReceipt {
+  return: PharmacyReturn & {
+    drugBatch?: { id: string; batchNumber: string; expiryDate?: string; drug?: { id: string; drugName: string; looseUnitLabel?: string | null } };
+    drug?: { id: string; drugName: string; looseUnitLabel?: string | null } | null;
+    patient?: { id: string; mrn?: string | null; firstName: string; lastName: string | null; phone?: string | null };
+  };
+  billNumber: string | null;
+  hospital: {
+    name: string;
+    logoUrl: string | null;
+    address: string | null;
+    city: string | null;
+    state: string | null;
+    phone: string | null;
+    email: string | null;
+  } | null;
+}
+
+export function useReturnDetail(id: string | null) {
+  return useQuery({
+    queryKey: ['pharmacy', 'returns', 'detail', id],
+    queryFn: async () => {
+      const response = await apiGet<ReturnReceipt>(`/pharmacy/returns/${id}`);
+      return response.data;
+    },
+    enabled: !!id,
   });
 }
 

@@ -446,14 +446,29 @@ function CounterReturnDialog({ onClose }: { onClose: () => void }) {
 // Patient return: anchored to the original counter sale so the refund is
 // computed from what was billed and bounded by what was dispensed.
 function PatientReturnDialog({ onClose }: { onClose: () => void }) {
+  const [mode, setMode] = useState<'patient' | 'bill'>('patient');
   const [patientSearch, setPatientSearch] = useState('');
   const [patient, setPatient] = useState<{ id: string; name: string } | null>(null);
+  const [billInput, setBillInput] = useState('');
+  const [submittedBill, setSubmittedBill] = useState<string | null>(null);
   const [selectedLine, setSelectedLine] = useState<ReturnableDispense | null>(null);
   const [quantity, setQuantity] = useState<number>(1);
   const [reason, setReason] = useState('');
 
   const { data: patientResults } = usePatientSearch(patientSearch);
-  const { data: lines, isLoading: linesLoading } = useReturnableDispenses(patient?.id ?? null);
+  const {
+    data: returnable,
+    isLoading: linesLoading,
+    error: returnableError,
+  } = useReturnableDispenses({
+    patientId: mode === 'patient' ? patient?.id ?? null : null,
+    billNumber: mode === 'bill' ? submittedBill : null,
+  });
+  const lines = returnable?.items ?? [];
+  const billPatientName = returnable?.patient
+    ? `${returnable.patient.firstName} ${returnable.patient.lastName ?? ''}`.trim()
+    : null;
+  const showLines = (mode === 'patient' && !!patient) || (mode === 'bill' && !!submittedBill);
   const createReturn = useCreateReturn();
 
   const maxQty = selectedLine?.remaining ?? 1;
@@ -490,62 +505,120 @@ function PatientReturnDialog({ onClose }: { onClose: () => void }) {
           <DialogTitle>New Patient Return</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
-          {/* 1. Pick the patient */}
-          {!patient ? (
-            <div>
-              <label className="text-xs font-medium">Find patient</label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Name, MRN or phone (min 2 chars)"
-                  value={patientSearch}
-                  onChange={(e) => setPatientSearch(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-              {(patientResults?.length ?? 0) > 0 && (
-                <div className="mt-2 max-h-40 overflow-y-auto rounded-md border">
-                  {patientResults!.map((p) => (
-                    <button
-                      key={p.id}
-                      onClick={() =>
-                        setPatient({ id: p.id, name: `${p.firstName} ${p.lastName ?? ''}`.trim() })
-                      }
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
-                    >
-                      <span className="font-medium">{p.firstName} {p.lastName}</span>
-                      {p.mrn && <span className="ml-2 text-xs text-muted-foreground font-mono">{p.mrn}</span>}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="flex items-center justify-between rounded-md bg-muted/40 p-2 text-sm">
-              <span><User className="mr-1 inline h-3.5 w-3.5" /><b>{patient.name}</b></span>
+          {/* Mode: look up by patient, or by presenting the physical bill */}
+          <div className="flex items-center gap-1.5">
+            {(['patient', 'bill'] as const).map((m) => (
               <Button
-                variant="ghost"
+                key={m}
                 size="sm"
-                onClick={() => { setPatient(null); setSelectedLine(null); }}
+                variant={mode === m ? 'default' : 'outline'}
+                onClick={() => {
+                  setMode(m);
+                  setSelectedLine(null);
+                }}
               >
-                Change
+                {m === 'patient' ? 'By patient' : 'By bill no.'}
               </Button>
+            ))}
+          </div>
+
+          {/* 1a. Find patient */}
+          {mode === 'patient' &&
+            (!patient ? (
+              <div>
+                <label className="text-xs font-medium">Find patient</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    placeholder="Name, MRN or phone (min 2 chars)"
+                    value={patientSearch}
+                    onChange={(e) => setPatientSearch(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+                {(patientResults?.length ?? 0) > 0 && (
+                  <div className="mt-2 max-h-40 overflow-y-auto rounded-md border">
+                    {patientResults!.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() =>
+                          setPatient({ id: p.id, name: `${p.firstName} ${p.lastName ?? ''}`.trim() })
+                        }
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                      >
+                        <span className="font-medium">{p.firstName} {p.lastName}</span>
+                        {p.mrn && <span className="ml-2 text-xs text-muted-foreground font-mono">{p.mrn}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center justify-between rounded-md bg-muted/40 p-2 text-sm">
+                <span><User className="mr-1 inline h-3.5 w-3.5" /><b>{patient.name}</b></span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => { setPatient(null); setSelectedLine(null); }}
+                >
+                  Change
+                </Button>
+              </div>
+            ))}
+
+          {/* 1b. Look up by bill number (physical bill presented) */}
+          {mode === 'bill' && (
+            <div>
+              <label className="text-xs font-medium">Bill number</label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="e.g. PH-20260616-0007"
+                  value={billInput}
+                  onChange={(e) => setBillInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      setSubmittedBill(billInput.trim() || null);
+                      setSelectedLine(null);
+                    }
+                  }}
+                />
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSubmittedBill(billInput.trim() || null);
+                    setSelectedLine(null);
+                  }}
+                >
+                  Find
+                </Button>
+              </div>
+              {submittedBill && billPatientName && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  <User className="mr-1 inline h-3.5 w-3.5" />
+                  {billPatientName}
+                </p>
+              )}
+              {returnableError && (
+                <p className="mt-1 text-xs text-red-600">
+                  {(returnableError as Error).message ?? 'Bill not found'}
+                </p>
+              )}
             </div>
           )}
 
           {/* 2. Pick the sale line to return against */}
-          {patient && (
+          {showLines && (
             <div>
               <label className="text-xs font-medium">Returnable items (last 120 days)</label>
               {linesLoading ? (
                 <Skeleton className="mt-1 h-16 w-full" />
-              ) : (lines?.length ?? 0) === 0 ? (
+              ) : lines.length === 0 ? (
                 <p className="mt-1 rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">
-                  No returnable counter sales found for this patient.
+                  No returnable counter sales found.
                 </p>
               ) : (
                 <div className="mt-1 max-h-44 overflow-y-auto rounded-md border">
-                  {lines!.map((l) => (
+                  {lines.map((l) => (
                     <button
                       key={l.id}
                       onClick={() => { setSelectedLine(l); setQuantity(Math.min(1, l.remaining) || 1); }}
