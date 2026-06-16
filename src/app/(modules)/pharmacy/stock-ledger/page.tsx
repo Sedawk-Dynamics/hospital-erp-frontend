@@ -22,6 +22,7 @@ const MOVEMENT_LABEL: Record<StockLedgerMovement, string> = {
   dispense: 'Dispense / Sale',
   patient_return: 'Patient Return',
   vendor_return: 'Vendor Return',
+  counter_return: 'Counter Return',
 };
 
 const MOVEMENT_BADGE: Record<StockLedgerMovement, string> = {
@@ -29,6 +30,7 @@ const MOVEMENT_BADGE: Record<StockLedgerMovement, string> = {
   dispense: 'bg-blue-500/10 text-blue-700 border-blue-500/20',
   patient_return: 'bg-amber-500/10 text-amber-700 border-amber-500/20',
   vendor_return: 'bg-purple-500/10 text-purple-700 border-purple-500/20',
+  counter_return: 'bg-teal-500/10 text-teal-700 border-teal-500/20',
 };
 
 function StockLedgerPageInner() {

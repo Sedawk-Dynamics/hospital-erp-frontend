@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import {
-  RotateCcw, Search, CheckCircle2, XCircle, Building2, User, Plus,
+  RotateCcw, Search, CheckCircle2, XCircle, Building2, User, Plus, ShoppingCart,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -28,14 +28,15 @@ import { usePatientSearch } from '@/hooks/use-hospital';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
 import {
   useReturns, useCreateReturn, useProcessReturn, useBatches, useReturnableDispenses,
-  type PharmacyReturn, type ReturnableDispense,
+  useFormulary,
+  type PharmacyReturn, type ReturnableDispense, type FormularyItem,
 } from '@/hooks/use-pharmacy';
 
 const inr = (n: number | string | null | undefined) =>
   n == null ? '—' : `₹${Number(n).toFixed(2)}`;
 
 type ReturnTab = 'all' | 'pending' | 'processed' | 'rejected';
-type CreateMode = 'patient_return' | 'vendor_return';
+type CreateMode = 'patient_return' | 'vendor_return' | 'counter_return';
 
 export default function PharmacyReturnsPage() {
   const { isPharmacyAdmin } = usePharmacyRole();
@@ -54,17 +55,21 @@ export default function PharmacyReturnsPage() {
         <div>
           <h1 className="font-headline text-xl font-bold">Pharmacy Returns</h1>
           <p className="text-xs text-muted-foreground">
-            Patient returns restock the batch on approval. Vendor returns log damaged/unsold stock.
+            Counter returns just need the medicine + quantity (no patient). Patient returns restock & refund the original sale. Vendor returns log damaged/unsold stock.
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => setCreateOpen('counter_return')}>
+            <ShoppingCart className="mr-1.5 h-4 w-4" />
+            Counter Return
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setCreateOpen('patient_return')}>
-            <Plus className="mr-1.5 h-4 w-4" />
+            <User className="mr-1.5 h-4 w-4" />
             Patient Return
           </Button>
           {isPharmacyAdmin && (
             <Button variant="outline" size="sm" onClick={() => setCreateOpen('vendor_return')}>
-              <Plus className="mr-1.5 h-4 w-4" />
+              <Building2 className="mr-1.5 h-4 w-4" />
               Vendor Return
             </Button>
           )}
@@ -155,11 +160,19 @@ function ReturnRow({ record }: { record: PharmacyReturn }) {
       <Badge className="bg-blue-500/10 text-blue-700 border-blue-500/20">
         <User className="mr-1 h-3 w-3" /> Patient
       </Badge>
+    ) : record.returnType === 'counter_return' ? (
+      <Badge className="bg-teal-500/10 text-teal-700 border-teal-500/20">
+        <ShoppingCart className="mr-1 h-3 w-3" /> Counter
+      </Badge>
     ) : (
       <Badge className="bg-purple-500/10 text-purple-700 border-purple-500/20">
         <Building2 className="mr-1 h-3 w-3" /> Vendor
       </Badge>
     );
+
+  const drugName =
+    record.drug?.drugName ?? record.drugBatch?.drug?.drugName ?? '-';
+  const batchLabel = record.drugBatch?.batchNumber ?? record.batchNumber ?? null;
 
   const statusBadge = {
     pending: <Badge className="bg-amber-500/10 text-amber-700 border-amber-500/20">Pending</Badge>,
@@ -171,12 +184,16 @@ function ReturnRow({ record }: { record: PharmacyReturn }) {
     <TableRow>
       <TableCell>{typeBadge}</TableCell>
       <TableCell>
-        <div className="font-medium">{record.drugBatch?.drug?.drugName ?? '-'}</div>
-        <div className="text-xs text-muted-foreground font-mono">{record.drugBatch?.batchNumber}</div>
+        <div className="font-medium">{drugName}</div>
+        {batchLabel && (
+          <div className="text-xs text-muted-foreground font-mono">{batchLabel}</div>
+        )}
       </TableCell>
       <TableCell className="text-sm">
         {record.returnType === 'patient_return'
           ? record.patient ? `${record.patient.firstName} ${record.patient.lastName}` : '-'
+          : record.returnType === 'counter_return'
+          ? <span className="text-muted-foreground">Walk-in / counter</span>
           : record.supplier?.name ?? '-'}
       </TableCell>
       <TableCell className="text-right">{record.quantity}</TableCell>
@@ -234,10 +251,196 @@ function ReturnRow({ record }: { record: PharmacyReturn }) {
 }
 
 function CreateReturnDialog({ mode, onClose }: { mode: CreateMode; onClose: () => void }) {
+  if (mode === 'counter_return') {
+    return <CounterReturnDialog onClose={onClose} />;
+  }
   if (mode === 'patient_return') {
     return <PatientReturnDialog onClose={onClose} />;
   }
   return <VendorReturnDialog onClose={onClose} />;
+}
+
+// Counter return: a walk-in / over-the-counter return that is NOT tied to a
+// patient or a bill. Just capture the medicine + quantity, with batch & expiry
+// optional. No patient lookup, no refund — stock is restored on approval.
+function CounterReturnDialog({ onClose }: { onClose: () => void }) {
+  const [drugSearch, setDrugSearch] = useState('');
+  const [drug, setDrug] = useState<FormularyItem | null>(null);
+  const [quantity, setQuantity] = useState<number>(1);
+  const [saleUnit, setSaleUnit] = useState<'pack' | 'loose'>('pack');
+  const [batchNumber, setBatchNumber] = useState('');
+  const [expiryDate, setExpiryDate] = useState('');
+  const [reason, setReason] = useState('');
+
+  const { data: formularyData, isLoading: searchLoading } = useFormulary({
+    search: drugSearch.length >= 2 ? drugSearch : undefined,
+    isActive: true,
+    limit: 25,
+  });
+  const results = formularyData?.data ?? [];
+
+  const createReturn = useCreateReturn();
+
+  // Only offer the loose-unit option when the medicine is sold in sub-units.
+  const canSellLoose = !!drug?.packSize && drug.packSize > 1;
+  const looseLabel = drug?.looseUnitLabel || 'unit';
+
+  const handleSubmit = async () => {
+    if (!drug) return toast.error('Pick the medicine being returned');
+    if (quantity <= 0) return toast.error('Enter a quantity');
+    try {
+      await createReturn.mutateAsync({
+        returnType: 'counter_return',
+        drugId: drug.id,
+        quantity,
+        saleUnit: canSellLoose ? saleUnit : 'pack',
+        batchNumber: batchNumber.trim() || undefined,
+        expiryDate: expiryDate || undefined,
+        reason: reason || undefined,
+      });
+      toast.success('Counter return created — waiting for approval');
+      onClose();
+    } catch (err) {
+      toast.error((err as Error).message ?? 'Failed to create return');
+    }
+  };
+
+  return (
+    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>New Counter Return</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          {/* 1. Pick the medicine */}
+          {!drug ? (
+            <div>
+              <label className="text-xs font-medium">Medicine</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search medicine by name (min 2 chars)"
+                  value={drugSearch}
+                  onChange={(e) => setDrugSearch(e.target.value)}
+                  className="pl-9"
+                  autoFocus
+                />
+              </div>
+              {drugSearch.length >= 2 && (
+                <div className="mt-2 max-h-44 overflow-y-auto rounded-md border">
+                  {searchLoading ? (
+                    <div className="p-3"><Skeleton className="h-10 w-full" /></div>
+                  ) : results.length === 0 ? (
+                    <p className="p-3 text-center text-xs text-muted-foreground">
+                      No matching medicine in the formulary.
+                    </p>
+                  ) : (
+                    results.map((d) => (
+                      <button
+                        key={d.id}
+                        onClick={() => {
+                          setDrug(d);
+                          setSaleUnit(d.packSize && d.packSize > 1 ? 'loose' : 'pack');
+                        }}
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                      >
+                        <div className="font-medium">
+                          {d.drugName}
+                          {d.strength && <span className="ml-1 text-xs text-muted-foreground">{d.strength}</span>}
+                        </div>
+                        {d.genericName && (
+                          <div className="text-xs text-muted-foreground">{d.genericName}</div>
+                        )}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center justify-between rounded-md bg-muted/40 p-2 text-sm">
+              <span>
+                <ShoppingCart className="mr-1 inline h-3.5 w-3.5" />
+                <b>{drug.drugName}</b>
+                {drug.strength && <span className="ml-1 text-xs text-muted-foreground">{drug.strength}</span>}
+              </span>
+              <Button variant="ghost" size="sm" onClick={() => setDrug(null)}>Change</Button>
+            </div>
+          )}
+
+          {/* 2. Quantity + unit */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium">Quantity</label>
+              <Input
+                type="number"
+                min={1}
+                value={quantity}
+                onChange={(e) => setQuantity(Math.max(1, Number(e.target.value) || 1))}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium">Unit</label>
+              <Select
+                value={saleUnit}
+                onValueChange={(v) => v && setSaleUnit(v as 'pack' | 'loose')}
+                disabled={!canSellLoose}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pack">Pack / Strip</SelectItem>
+                  {canSellLoose && (
+                    <SelectItem value="loose">{looseLabel} (loose)</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* 3. Optional batch + expiry */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium">Batch number (optional)</label>
+              <Input
+                placeholder="e.g. B12345"
+                value={batchNumber}
+                onChange={(e) => setBatchNumber(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium">Expiry (optional)</label>
+              <Input
+                type="date"
+                value={expiryDate}
+                onChange={(e) => setExpiryDate(e.target.value)}
+              />
+            </div>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            On approval the stock is restored to the matching batch — or a new batch is created when both batch number and expiry are given.
+          </p>
+
+          <div>
+            <label className="text-xs font-medium">Reason (optional)</label>
+            <Textarea
+              placeholder="e.g. unused, wrong medicine, customer changed mind..."
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={2}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={createReturn.isPending || !drug}>
+            {createReturn.isPending ? 'Saving…' : 'Create Return'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 // Patient return: anchored to the original counter sale so the refund is

@@ -96,8 +96,8 @@ export interface DispenseRecord {
 
 export interface PharmacyReturn {
   id: string;
-  returnType: 'patient_return' | 'vendor_return';
-  drugBatchId: string;
+  returnType: 'patient_return' | 'vendor_return' | 'counter_return';
+  drugBatchId: string | null;
   patientId: string | null;
   supplierId: string | null;
   quantity: number;
@@ -112,6 +112,11 @@ export interface PharmacyReturn {
   unitPrice?: number | string | null;
   refundAmount?: number | string | null;
   refund?: { id: string; amount: number | string; status: string } | null;
+  // counter_return: medicine + optional free-text batch/expiry, no patient.
+  drugId?: string | null;
+  batchNumber?: string | null;
+  expiryDate?: string | null;
+  drug?: { id: string; drugName: string } | null;
   drugBatch?: { id: string; batchNumber: string; drug?: { id: string; drugName: string } };
   patient?: { id: string; firstName: string; lastName: string };
   supplier?: { id: string; name: string };
@@ -739,13 +744,18 @@ export function useCreateReturn() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: {
-      returnType: 'patient_return' | 'vendor_return';
+      returnType: 'patient_return' | 'vendor_return' | 'counter_return';
       // Optional when dispensingRecordId is supplied — the batch is taken from
       // the original sale line.
       drugBatchId?: string;
       dispensingRecordId?: string;
       patientId?: string;
       supplierId?: string;
+      // counter_return: the medicine + optional free-text batch / expiry.
+      drugId?: string;
+      batchNumber?: string;
+      expiryDate?: string;
+      saleUnit?: 'pack' | 'loose';
       quantity: number;
       reason?: string;
     }) => {
@@ -916,7 +926,7 @@ export function usePharmacyAnalytics(params?: { fromDate?: string; toDate?: stri
 // Stock Ledger (batch-wise movement register)
 // ============================================================
 
-export type StockLedgerMovement = 'receipt' | 'dispense' | 'patient_return' | 'vendor_return';
+export type StockLedgerMovement = 'receipt' | 'dispense' | 'patient_return' | 'vendor_return' | 'counter_return';
 
 export interface StockLedgerEntry {
   date: string;
