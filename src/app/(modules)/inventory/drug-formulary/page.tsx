@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Search, Plus, Pill, ChevronLeft, ChevronRight, Pencil, Trash2, PackagePlus, Package } from 'lucide-react';
+import { Search, Plus, Pill, ChevronLeft, ChevronRight, Pencil, Trash2, PackagePlus, Package, Merge, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -37,10 +37,16 @@ import {
   useDeleteFormularyItem,
   useCreateBatch,
   usePharmacyCategories,
+  useFormularyMatches,
+  isDuplicateSuspected,
   type FormularyItem,
+  type FormularyMatch,
   type DosageForm,
   type CreateFormularyInput,
 } from '@/hooks/use-pharmacy';
+import { useDebounce } from '@/hooks/use-debounce';
+import { DrugDuplicateResolver } from '@/components/pharmacy/drug-duplicate-resolver';
+import { MergeDrugDialog } from '@/components/pharmacy/merge-drug-dialog';
 import {
   Select,
   SelectTrigger,
@@ -157,6 +163,26 @@ function PharmacyInventoryPageInner() {
   const [stockDrug, setStockDrug] = useState<FormularyItem | null>(null);
   const [stockForm, setStockForm] = useState<StockForm>(EMPTY_STOCK);
 
+  // G1: duplicate-resolution dialog (server flagged a likely duplicate on create)
+  // and the merge-duplicates dialog (consolidate already-split stock).
+  const [duplicate, setDuplicate] = useState<{ matches: FormularyMatch[]; incoming: FormState } | null>(null);
+  const [mergeSource, setMergeSource] = useState<FormularyItem | null>(null);
+
+  // G1: live duplicate hint while typing a new drug's name (create mode only).
+  const debouncedName = useDebounce(formData.drugName, 400);
+  const liveEnabled = dialogOpen && !editingItem;
+  const { data: liveMatches = [] } = useFormularyMatches(
+    {
+      name: debouncedName,
+      genericName: formData.genericName || undefined,
+      manufacturer: formData.manufacturer || undefined,
+      strength: formData.strength || undefined,
+      dosageForm: formData.dosageForm || undefined,
+    },
+    liveEnabled,
+  );
+  const topLiveMatch = liveEnabled && liveMatches.length && liveMatches[0].score >= 70 ? liveMatches[0] : null;
+
   const { data, isLoading } = useFormulary({
     page,
     limit: 20,
@@ -176,27 +202,67 @@ function PharmacyInventoryPageInner() {
   const updateField = (field: keyof FormState, value: string) =>
     setFormData((prev) => ({ ...prev, [field]: value }));
 
+  // Create a new formulary drug. On the first attempt (force=false) the server
+  // may detect a likely duplicate and return suggestions instead of creating —
+  // we then show the resolver so the user can map to the existing drug. `form`
+  // is passed explicitly so "create anyway" works off the snapshot even after
+  // the add dialog (and its formData) has been reset.
+  const doCreate = async (form: FormState, force: boolean) => {
+    try {
+      const payload = formStateToInput(form);
+      if (force) payload.force = true;
+      const result = await createItem.mutateAsync(payload);
+      if (isDuplicateSuspected(result)) {
+        setDuplicate({ matches: result.matches, incoming: form });
+        setDialogOpen(false);
+        return;
+      }
+      toast.success('Drug added to formulary');
+      setDuplicate(null);
+      setDialogOpen(false);
+      setEditingItem(null);
+      setFormData(EMPTY_FORM);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save drug');
+    }
+  };
+
   const handleSubmit = async () => {
     if (!formData.drugName.trim()) {
       toast.error('Drug name is required');
       return;
     }
-    try {
-      const payload = formStateToInput(formData);
-      if (editingItem) {
-        await updateItem.mutateAsync({ id: editingItem.id, ...payload });
+    if (editingItem) {
+      try {
+        await updateItem.mutateAsync({ id: editingItem.id, ...formStateToInput(formData) });
         toast.success('Drug updated');
-      } else {
-        await createItem.mutateAsync(payload);
-        toast.success('Drug added to formulary');
+        setDialogOpen(false);
+        setEditingItem(null);
+        setFormData(EMPTY_FORM);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to save drug');
       }
-      setDialogOpen(false);
-      setEditingItem(null);
-      setFormData(EMPTY_FORM);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to save drug';
-      toast.error(msg);
+      return;
     }
+    await doCreate(formData, false);
+  };
+
+  // G1: "Use this" in the duplicate resolver / live hint → add stock straight
+  // onto the existing drug instead of creating a duplicate row.
+  const useExistingDrug = (m: FormularyMatch) => {
+    setDuplicate(null);
+    setDialogOpen(false);
+    setEditingItem(null);
+    setFormData(EMPTY_FORM);
+    openAddStock({
+      id: m.id,
+      drugName: m.drugName,
+      genericName: m.genericName,
+      strength: m.strength,
+      price: m.price,
+      packSize: m.packSize,
+      looseUnitLabel: null,
+    } as FormularyItem);
   };
 
   const startEdit = (item: FormularyItem) => {
@@ -314,6 +380,20 @@ function PharmacyInventoryPageInner() {
                     onChange={(e) => updateField('drugName', e.target.value)}
                     placeholder="e.g. Paracetamol 500mg"
                   />
+                  {topLiveMatch && (
+                    <button
+                      type="button"
+                      onClick={() => useExistingDrug(topLiveMatch)}
+                      className="flex w-full items-start gap-1.5 rounded-md bg-amber-500/10 px-2 py-1.5 text-left text-[11px] text-amber-700 hover:bg-amber-500/20"
+                    >
+                      <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                      <span>
+                        Possible duplicate: <span className="font-medium">{topLiveMatch.drugName}</span>{' '}
+                        ({topLiveMatch.score}% · stock {topLiveMatch.totalStock}). Click to add stock to it
+                        instead.
+                      </span>
+                    </button>
+                  )}
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="genericName">Generic Name</Label>
@@ -616,6 +696,15 @@ function PharmacyInventoryPageInner() {
                       >
                         <PackagePlus className="h-4 w-4" />
                       </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setMergeSource(item)}
+                        className="h-8 w-8 p-0 text-muted-foreground hover:text-primary"
+                        title="Merge duplicate into another drug"
+                      >
+                        <Merge className="h-4 w-4" />
+                      </Button>
                       <Button variant="ghost" size="sm" onClick={() => startEdit(item)} className="h-8 w-8 p-0" title="Edit">
                         <Pencil className="h-4 w-4" />
                       </Button>
@@ -768,6 +857,30 @@ function PharmacyInventoryPageInner() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* G1: duplicate-resolution prompt shown when create detects a likely match */}
+      {duplicate && (
+        <DrugDuplicateResolver
+          open={!!duplicate}
+          onOpenChange={(open) => {
+            if (!open) setDuplicate(null);
+          }}
+          incoming={{
+            drugName: duplicate.incoming.drugName,
+            genericName: duplicate.incoming.genericName || undefined,
+            manufacturer: duplicate.incoming.manufacturer || undefined,
+            strength: duplicate.incoming.strength || undefined,
+            dosageForm: duplicate.incoming.dosageForm || undefined,
+          }}
+          matches={duplicate.matches}
+          onUseExisting={useExistingDrug}
+          onCreateAnyway={() => doCreate(duplicate.incoming, true)}
+          creating={createItem.isPending}
+        />
+      )}
+
+      {/* G1: merge an already-split duplicate into a canonical drug */}
+      <MergeDrugDialog source={mergeSource} onOpenChange={(open) => !open && setMergeSource(null)} />
 
       {/* Delete confirmation */}
       <Dialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>

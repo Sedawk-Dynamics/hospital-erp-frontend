@@ -289,17 +289,89 @@ export interface CreateFormularyInput {
   indications?: string;
   contraindications?: string;
   isActive?: boolean;
+  // G1: set true to create even when a high-confidence near-duplicate exists.
+  force?: boolean;
+}
+
+// G1: a candidate existing drug the inward typed name might be a duplicate of.
+export interface FormularyMatch {
+  id: string;
+  drugName: string;
+  genericName: string | null;
+  manufacturer: string | null;
+  dosageForm: DosageForm | null;
+  strength: string | null;
+  packSize: number | null;
+  price: number | string | null;
+  drugMasterId: string | null;
+  totalStock: number;
+  score: number;
+}
+
+// useCreateFormularyItem returns either the created item, or — when the server
+// detects a likely duplicate and the user didn't force — the suggestions.
+export type CreateFormularyResult =
+  | FormularyItem
+  | { duplicateSuspected: true; matches: FormularyMatch[] };
+
+export function isDuplicateSuspected(
+  r: CreateFormularyResult,
+): r is { duplicateSuspected: true; matches: FormularyMatch[] } {
+  return (r as { duplicateSuspected?: boolean }).duplicateSuspected === true;
 }
 
 export function useCreateFormularyItem() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: CreateFormularyInput) => {
-      const response = await apiPost<FormularyItem>('/pharmacy/formulary', data);
+      const response = await apiPost<CreateFormularyResult>('/pharmacy/formulary', data);
+      return response.data;
+    },
+    onSuccess: (data) => {
+      // Only a real create touches the list — a duplicate prompt changed nothing.
+      if (!isDuplicateSuspected(data)) {
+        queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
+      }
+    },
+  });
+}
+
+// G1: live duplicate look-up for the add-drug dialog (debounce on the caller).
+export interface FormularyMatchParams {
+  name: string;
+  genericName?: string;
+  manufacturer?: string;
+  strength?: string;
+  dosageForm?: string;
+  excludeId?: string;
+}
+
+export function useFormularyMatches(params: FormularyMatchParams, enabled = true) {
+  return useQuery({
+    queryKey: ['pharmacy', 'formulary', 'match', params],
+    queryFn: async () => {
+      const response = await apiGet<{ matches: FormularyMatch[] }>('/pharmacy/formulary/match', {
+        params,
+      });
+      return response.data.matches;
+    },
+    enabled: enabled && !!params.name && params.name.trim().length >= 2,
+    staleTime: 30_000,
+  });
+}
+
+// G1: merge a duplicate drug (sourceId) into the canonical one — consolidates
+// stock that already split across two near-duplicate rows.
+export function useMergeFormulary() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ targetId, sourceId }: { targetId: string; sourceId: string }) => {
+      const response = await apiPost(`/pharmacy/formulary/${targetId}/merge`, { sourceId });
       return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
     },
   });
 }
