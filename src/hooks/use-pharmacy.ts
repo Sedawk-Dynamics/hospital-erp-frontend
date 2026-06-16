@@ -585,6 +585,66 @@ export function useUpdateBatch() {
   });
 }
 
+// G4: deliberate stock-count correction (reason-stamped + audited).
+export function useAdjustBatchStock() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      newQuantity,
+      physicalCount,
+      reason,
+    }: {
+      id: string;
+      newQuantity?: number;
+      physicalCount?: number;
+      reason: string;
+    }) => {
+      const response = await apiPatch<{ from: number; to: number; delta: number }>(
+        `/pharmacy/batches/${id}/adjust`,
+        { newQuantity, physicalCount, reason },
+      );
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
+      queryClient.invalidateQueries({ queryKey: ['pharmacy', 'stock-adjustments'] });
+    },
+  });
+}
+
+// G4: stock discrepancy report — manual corrections in a date window.
+export interface StockAdjustment {
+  id: string;
+  batchId: string;
+  drugName: string | null;
+  batchNumber: string | null;
+  from: number | null;
+  to: number | null;
+  delta: number | null;
+  physicalCount: number | null;
+  reason: string | null;
+  user: string | null;
+  createdAt: string;
+}
+
+export function useStockAdjustments(params?: {
+  fromDate?: string;
+  toDate?: string;
+  drugId?: string;
+  page?: number;
+  limit?: number;
+}) {
+  return useQuery({
+    queryKey: ['pharmacy', 'stock-adjustments', params],
+    queryFn: async () => {
+      const response = await apiGet<StockAdjustment[]>('/pharmacy/batches/adjustments', { params });
+      return { data: response.data, meta: response.meta as PaginationMeta | undefined };
+    },
+  });
+}
+
 // Idempotent maintenance sweep: flags every past-expiry batch as expired so
 // the POS / dispensing guards block them. Returns the count flagged.
 export function useFlagExpiredBatches() {

@@ -19,6 +19,8 @@ import {
   RotateCcw,
   Activity,
   ShieldX,
+  SlidersHorizontal,
+  ClipboardList,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
@@ -69,6 +71,10 @@ import { cn } from '@/lib/utils';
 import { formatDate, formatDateTimeAmPm, toInputDateStr } from '@/lib/date-utils';
 import { packSummary } from '@/lib/pharmacy-units';
 import {
+  AdjustStockDialog,
+  StockAdjustmentsLogDialog,
+} from '@/components/pharmacy/stock-adjust-dialogs';
+import {
   useBatches,
   useCreateBatch,
   useUpdateBatch,
@@ -80,6 +86,8 @@ import {
   useRecallBatch,
   useUnrecallBatch,
   useRecallDrug,
+  useAdjustBatchStock,
+  useStockAdjustments,
   type CreateBatchInput,
   type UpdateBatchInput,
   type DrugBatch,
@@ -160,6 +168,10 @@ function PharmacyBatchesPageInner() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editingBatch, setEditingBatch] = useState<DrugBatch | null>(null);
   const [formData, setFormData] = useState<FormState>(EMPTY_FORM);
+
+  // G4: stock-count adjustment + discrepancy log.
+  const [adjustTarget, setAdjustTarget] = useState<DrugBatch | null>(null);
+  const [adjustLogOpen, setAdjustLogOpen] = useState(false);
 
   // Recall management (moved here from the old Recalls page — recalls act on batches).
   const [recallTarget, setRecallTarget] = useState<DrugBatch | null>(null);
@@ -390,6 +402,15 @@ function PharmacyBatchesPageInner() {
           >
             <AlertTriangle className="mr-1.5 h-4 w-4" />
             {flagExpired.isPending ? 'Flagging...' : 'Flag expired'}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setAdjustLogOpen(true)}
+            title="View the stock-adjustment discrepancy log"
+          >
+            <ClipboardList className="mr-1.5 h-4 w-4" />
+            Adjustments
           </Button>
           <Button size="sm" onClick={startCreate}>
             <Plus className="mr-1.5 h-4 w-4" />
@@ -938,6 +959,15 @@ function PharmacyBatchesPageInner() {
                           <Button
                             variant="ghost"
                             size="sm"
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-primary"
+                            title="Adjust stock count (audited)"
+                            onClick={() => setAdjustTarget(batch)}
+                          >
+                            <SlidersHorizontal className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             className="h-8 w-8 p-0"
                             title="Edit batch"
                             onClick={() => startEdit(batch)}
@@ -1014,6 +1044,10 @@ function PharmacyBatchesPageInner() {
           onClose={() => setAffectedBatchId(null)}
         />
       )}
+
+      {/* G4: stock-count adjustment + discrepancy log */}
+      <AdjustStockDialog batch={adjustTarget} onOpenChange={(open) => !open && setAdjustTarget(null)} />
+      <StockAdjustmentsLogDialog open={adjustLogOpen} onOpenChange={setAdjustLogOpen} />
     </div>
   );
 }
