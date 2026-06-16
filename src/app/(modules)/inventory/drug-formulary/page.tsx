@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Search, Plus, Pill, ChevronLeft, ChevronRight, Pencil, Trash2, PackagePlus, Package, Merge, AlertTriangle } from 'lucide-react';
+import { Search, Plus, Pill, ChevronLeft, ChevronRight, Pencil, Trash2, PackagePlus, Package, Merge, AlertTriangle, Replace } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -47,6 +47,7 @@ import {
 import { useDebounce } from '@/hooks/use-debounce';
 import { DrugDuplicateResolver } from '@/components/pharmacy/drug-duplicate-resolver';
 import { MergeDrugDialog } from '@/components/pharmacy/merge-drug-dialog';
+import { AlternativesDialog } from '@/components/pharmacy/alternatives-dialog';
 import {
   Select,
   SelectTrigger,
@@ -167,6 +168,8 @@ function PharmacyInventoryPageInner() {
   // and the merge-duplicates dialog (consolidate already-split stock).
   const [duplicate, setDuplicate] = useState<{ matches: FormularyMatch[]; incoming: FormState } | null>(null);
   const [mergeSource, setMergeSource] = useState<FormularyItem | null>(null);
+  // G8: view alternative brands (same composition) for a drug.
+  const [altDrug, setAltDrug] = useState<FormularyItem | null>(null);
 
   // G1: live duplicate hint while typing a new drug's name (create mode only).
   const debouncedName = useDebounce(formData.drugName, 400);
@@ -699,6 +702,15 @@ function PharmacyInventoryPageInner() {
                       <Button
                         variant="ghost"
                         size="sm"
+                        onClick={() => setAltDrug(item)}
+                        className="h-8 w-8 p-0 text-muted-foreground hover:text-primary"
+                        title="Alternative brands (same composition)"
+                      >
+                        <Replace className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => setMergeSource(item)}
                         className="h-8 w-8 p-0 text-muted-foreground hover:text-primary"
                         title="Merge duplicate into another drug"
@@ -881,6 +893,9 @@ function PharmacyInventoryPageInner() {
 
       {/* G1: merge an already-split duplicate into a canonical drug */}
       <MergeDrugDialog source={mergeSource} onOpenChange={(open) => !open && setMergeSource(null)} />
+
+      {/* G8: alternative brands sharing the same composition */}
+      <AlternativesDialog drug={altDrug} onOpenChange={(open) => !open && setAltDrug(null)} />
 
       {/* Delete confirmation */}
       <Dialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>

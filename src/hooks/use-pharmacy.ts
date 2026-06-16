@@ -377,6 +377,35 @@ export function useFormularyMatches(params: FormularyMatchParams, enabled = true
   });
 }
 
+// G8: alternative brands sharing a drug's composition (for out-of-stock swaps).
+export interface FormularyAlternative {
+  id: string;
+  drugName: string;
+  genericName: string | null;
+  manufacturer: string | null;
+  dosageForm: DosageForm | null;
+  strength: string | null;
+  price: number | string | null;
+  packSize: number | null;
+  looseUnitLabel: string | null;
+  totalStock: number;
+  inStock: boolean;
+  nearestExpiry: string | null;
+}
+
+export function useFormularyAlternatives(id: string | null) {
+  return useQuery({
+    queryKey: ['pharmacy', 'formulary', 'alternatives', id],
+    queryFn: async () => {
+      const response = await apiGet<{ composition: string | null; alternatives: FormularyAlternative[] }>(
+        `/pharmacy/formulary/${id}/alternatives`,
+      );
+      return response.data;
+    },
+    enabled: !!id,
+  });
+}
+
 // G1: merge a duplicate drug (sourceId) into the canonical one — consolidates
 // stock that already split across two near-duplicate rows.
 export function useMergeFormulary() {
