@@ -1,5 +1,4 @@
 'use client';
-import { PharmacyAdminGuard } from '@/components/pharmacy/pharmacy-admin-guard';
 
 import { useState } from 'react';
 import { FileText, RefreshCw, IndianRupee, Calculator, Receipt } from 'lucide-react';
@@ -203,10 +202,8 @@ function Mini({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default function GSTReportPage() {
-  return (
-    <PharmacyAdminGuard>
-      <GSTReportPageInner />
-    </PharmacyAdminGuard>
-  );
+// Drug GST report now lives under the Inventory module; inventory-module
+// membership governs access, so no extra role guard is needed.
+export default function DrugGstReportPage() {
+  return <GSTReportPageInner />;
 }

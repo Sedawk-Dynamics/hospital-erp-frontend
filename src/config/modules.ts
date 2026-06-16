@@ -129,7 +129,6 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Reports', href: '/pharmacy/reports', icon: BarChart3, restrictTo: ['pharmacy_admin'] },
       { label: 'Stock Ledger', href: '/pharmacy/stock-ledger', icon: ClipboardList, restrictTo: ['pharmacy_admin'] },
       { label: 'Settings', href: '/pharmacy/settings', icon: Settings, restrictTo: ['pharmacy_admin'] },
-      { label: 'GST Update', href: '/pharmacy/gst', icon: FileText, restrictTo: ['pharmacy_admin'] },
     ],
   },
 
@@ -241,6 +240,7 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Drug Catalog', href: '/inventory/drug-catalog', icon: Database },
       { label: 'Drug Formulary', href: '/inventory/drug-formulary', icon: Pill },
       { label: 'Drug Batches', href: '/inventory/drug-batches', icon: PillBottle },
+      { label: 'Drug GST', href: '/inventory/drug-gst', icon: FileText },
       { label: 'Reports', href: '/inventory/reports', icon: BarChart3 },
       { label: 'Audit Logs', href: '/inventory/audit-logs', icon: FileCheck },
       { label: 'Settings', href: '/inventory/settings', icon: Settings },
