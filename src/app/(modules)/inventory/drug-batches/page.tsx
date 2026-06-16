@@ -1,5 +1,4 @@
 'use client';
-import { PharmacyAdminGuard } from '@/components/pharmacy/pharmacy-admin-guard';
 
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -1069,10 +1068,9 @@ function AffectedPatientsDialog({ batchId, onClose }: { batchId: string; onClose
   );
 }
 
-export default function PharmacyBatchesPage() {
-  return (
-    <PharmacyAdminGuard>
-      <PharmacyBatchesPageInner />
-    </PharmacyAdminGuard>
-  );
+// Drug Batches now lives under the Inventory module; inventory-module
+// membership governs access (admin, super_admin, pharmacy_admin,
+// inventory_manager), so no extra role guard is needed.
+export default function DrugBatchesPage() {
+  return <PharmacyBatchesPageInner />;
 }
