@@ -938,6 +938,9 @@ export function useCreateReturn() {
       saleUnit?: 'pack' | 'loose';
       quantity: number;
       reason?: string;
+      // G5: vendor (expired/damaged) return supplier credit note.
+      creditNoteNumber?: string;
+      creditAmount?: number;
     }) => {
       const response = await apiPost<PharmacyReturn>('/pharmacy/returns', data);
       return response.data;

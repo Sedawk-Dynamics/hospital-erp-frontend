@@ -706,6 +706,8 @@ function VendorReturnDialog({ onClose }: { onClose: () => void }) {
   const [quantity, setQuantity] = useState<number>(1);
   const [reason, setReason] = useState('');
   const [supplierId, setSupplierId] = useState('');
+  const [creditNoteNumber, setCreditNoteNumber] = useState('');
+  const [creditAmount, setCreditAmount] = useState('');
 
   const { data: batchesResp } = useBatches({ search: batchSearch || undefined, limit: 25 });
   const batches = batchesResp?.data ?? [];
@@ -714,6 +716,11 @@ function VendorReturnDialog({ onClose }: { onClose: () => void }) {
     () => batches.find((b) => b.id === selectedBatchId),
     [batches, selectedBatchId],
   );
+
+  // G5: default credit = returned qty × purchase price (what the distributor
+  // should credit back). The user can override.
+  const autoCredit =
+    selectedBatch?.purchasePrice != null ? Number(selectedBatch.purchasePrice) * quantity : null;
 
   const createReturn = useCreateReturn();
 
@@ -727,8 +734,10 @@ function VendorReturnDialog({ onClose }: { onClose: () => void }) {
         supplierId: supplierId || selectedBatch?.supplier?.id,
         quantity,
         reason: reason || undefined,
+        creditNoteNumber: creditNoteNumber.trim() || undefined,
+        creditAmount: creditAmount ? Number(creditAmount) : undefined,
       });
-      toast.success('Return created — waiting for approval');
+      toast.success('Vendor return created — stock reduces on approval');
       onClose();
     } catch (err) {
       toast.error((err as Error).message ?? 'Failed to create return');
@@ -800,6 +809,33 @@ function VendorReturnDialog({ onClose }: { onClose: () => void }) {
               onChange={(e) => setSupplierId(e.target.value)}
             />
           </div>
+
+          {/* G5: supplier credit note for the returned (expired/damaged) stock */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium">Credit note no.</label>
+              <Input
+                placeholder="Supplier CN ref"
+                value={creditNoteNumber}
+                onChange={(e) => setCreditNoteNumber(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium">Credit amount (₹)</label>
+              <Input
+                type="number"
+                step="0.01"
+                placeholder={autoCredit != null ? autoCredit.toFixed(2) : '0.00'}
+                value={creditAmount}
+                onChange={(e) => setCreditAmount(e.target.value)}
+              />
+            </div>
+          </div>
+          {autoCredit != null && !creditAmount && (
+            <p className="text-[11px] text-muted-foreground">
+              Defaults to {inr(autoCredit)} (qty × purchase price) if left blank.
+            </p>
+          )}
 
           <div>
             <label className="text-xs font-medium">Reason</label>

@@ -92,7 +92,7 @@ import {
   type UpdateBatchInput,
   type DrugBatch,
 } from '@/hooks/use-pharmacy';
-import { useSuppliers } from '@/hooks/use-inventory';
+import { useSuppliers, useInventorySettings } from '@/hooks/use-inventory';
 
 interface FormState {
   drugId: string;
@@ -200,6 +200,11 @@ function PharmacyBatchesPageInner() {
   const { data: suppliersData } = useSuppliers({ limit: 50 });
   const suppliers = suppliersData?.data ?? [];
 
+  // G5: per-pharmacy configurable expiry alert threshold (Inventory Settings).
+  const { data: invSettings } = useInventorySettings();
+  const configuredMonths = invSettings?.expiryAlertMonths ?? 3;
+  const configuredDays = configuredMonths * 30;
+
   const allBatches = useBatches({
     page,
     limit: 20,
@@ -223,13 +228,16 @@ function PharmacyBatchesPageInner() {
   const expirySummary = useMemo(() => {
     const rows = expirySummaryData?.data ?? [];
     let within30 = 0;
+    let withinConfigured = 0;
     let valueAtRisk = 0;
     for (const b of rows) {
-      if (daysUntil(b.expiryDate) <= 30) within30 += 1;
+      const d = daysUntil(b.expiryDate);
+      if (d <= 30) within30 += 1;
+      if (d <= configuredDays) withinConfigured += 1;
       valueAtRisk += (Number(b.sellingPrice) || 0) * (b.quantityInStock || 0);
     }
-    return { within90: rows.length, within30, valueAtRisk };
-  }, [expirySummaryData]);
+    return { within90: rows.length, within30, withinConfigured, valueAtRisk };
+  }, [expirySummaryData, configuredDays]);
 
   const data = expiringDays ? expiringBatches.data : allBatches.data;
   const isLoading = expiringDays ? expiringBatches.isLoading : allBatches.isLoading;
@@ -422,12 +430,15 @@ function PharmacyBatchesPageInner() {
       {/* Expiry overview — at-a-glance near-expiry exposure (drug stock). */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <button
-          onClick={() => { setExpiringDays(30); setRecalledOnly(false); setPage(1); }}
+          onClick={() => { setExpiringDays(configuredDays); setRecalledOnly(false); setPage(1); }}
           className="flex items-center justify-between rounded-xl bg-surface-container-lowest p-4 text-left shadow-sanctuary transition hover:ring-1 hover:ring-amber-500/30"
+          title="Alert threshold — configurable in Inventory Settings"
         >
           <div>
-            <p className="text-xs text-muted-foreground">Expiring ≤30 days</p>
-            <p className="mt-0.5 text-2xl font-bold text-amber-700">{expirySummary.within30}</p>
+            <p className="text-xs text-muted-foreground">
+              Expiry alert (≤{configuredMonths} mo)
+            </p>
+            <p className="mt-0.5 text-2xl font-bold text-amber-700">{expirySummary.withinConfigured}</p>
           </div>
           <AlertTriangle className="h-7 w-7 text-amber-500/60" />
         </button>
