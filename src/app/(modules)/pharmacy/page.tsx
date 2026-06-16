@@ -16,6 +16,7 @@ import {
   X,
   Check,
   CalendarClock,
+  Siren,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
@@ -41,8 +42,10 @@ import {
   type PharmacyPaymentMethod,
   type PharmacyTenderInput,
   type CreatePharmacySaleInput,
+  useCreateEmergencyPatient,
 } from '@/hooks/use-pharmacy';
 import { PharmacyReceiptDialog } from '@/components/pharmacy/pharmacy-receipt-dialog';
+import { EmergencyMergeDialog } from '@/components/pharmacy/emergency-merge-dialog';
 
 export default function PharmacyBillingPage() {
   return (
@@ -255,6 +258,22 @@ function PharmacyPOS() {
 
   // --- Mutation ---
   const createSale = useCreatePharmacySale();
+  const createEmergency = useCreateEmergencyPatient();
+
+  // G16: emergency-record merge dialog.
+  const [mergeOpen, setMergeOpen] = useState(false);
+
+  // G16: mint a temp emergency patient and select it so the cart bills to it.
+  const handleEmergencyPatient = async () => {
+    try {
+      const p = await createEmergency.mutateAsync({});
+      setSelectedPatient({ id: p.id, firstName: p.firstName, lastName: p.lastName ?? '', mrn: p.mrn });
+      setActivePrescriptionId(null);
+      toast.success(`Emergency patient ${p.mrn} created — dispense now, merge after registration`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create emergency patient');
+    }
+  };
 
   // --- Auto-load patient + cart when prescription detail arrives ---
   useEffect(() => {
@@ -798,6 +817,30 @@ function PharmacyPOS() {
               </div>
             </div>
           )}
+        </div>
+
+        {/* G16: Emergency (Golden Hour) — mint a temp patient to dispense against
+            immediately, and merge temp records into a real MRN after registration. */}
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-rose-600 border-rose-500/30 hover:bg-rose-500/10"
+            disabled={createEmergency.isPending}
+            onClick={handleEmergencyPatient}
+            title="Create a temporary emergency patient and bill against it now"
+          >
+            <Siren className="mr-1.5 h-4 w-4" />
+            {createEmergency.isPending ? 'Creating…' : 'Emergency'}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setMergeOpen(true)}
+            title="Merge an emergency record into a registered patient"
+          >
+            ER records
+          </Button>
         </div>
       </div>
 
@@ -1427,6 +1470,9 @@ function PharmacyPOS() {
       </Dialog>
 
       <PharmacyReceiptDialog sale={receiptSale} open={receiptOpen} onOpenChange={setReceiptOpen} />
+
+      {/* G16: merge an emergency temp record into a registered patient */}
+      <EmergencyMergeDialog open={mergeOpen} onOpenChange={setMergeOpen} />
     </div>
   );
 }

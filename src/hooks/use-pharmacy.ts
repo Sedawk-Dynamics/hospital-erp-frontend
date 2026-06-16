@@ -1117,6 +1117,64 @@ export interface PrescriptionQueueParams extends PaginatedParams {
   toDate?: string;
 }
 
+// ============================================================
+// G16 — Emergency (Golden Hour) pre-registration buffer
+// ============================================================
+export interface EmergencyPatient {
+  id: string;
+  mrn: string;
+  firstName: string;
+  lastName: string | null;
+  phone?: string | null;
+  createdAt: string;
+  billCount: number;
+  heldAmount: number;
+  balanceDue: number;
+}
+
+export function useCreateEmergencyPatient() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { firstName?: string; lastName?: string; phone?: string; gender?: string }) => {
+      const response = await apiPost<{ id: string; mrn: string; firstName: string; lastName: string | null }>(
+        '/pharmacy/emergency-patients',
+        data,
+      );
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pharmacy', 'emergency-patients'] });
+    },
+  });
+}
+
+export function useEmergencyPatients(enabled = true) {
+  return useQuery({
+    queryKey: ['pharmacy', 'emergency-patients'],
+    queryFn: async () => {
+      const response = await apiGet<{ items: EmergencyPatient[]; total: number }>(
+        '/pharmacy/emergency-patients',
+      );
+      return response.data.items;
+    },
+    enabled,
+  });
+}
+
+export function useMergeEmergencyPatient() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, targetPatientId }: { id: string; targetPatientId: string }) => {
+      const response = await apiPost(`/pharmacy/emergency-patients/${id}/merge`, { targetPatientId });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pharmacy', 'emergency-patients'] });
+      queryClient.invalidateQueries({ queryKey: ['pharmacy', 'sales'] });
+    },
+  });
+}
+
 // G12: advance an IP prescription through the ward→pharmacy fulfilment lifecycle.
 export function useSetPharmacyOrderStatus() {
   const queryClient = useQueryClient();
