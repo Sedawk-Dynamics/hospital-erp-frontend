@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import {
-  RotateCcw, Search, CheckCircle2, XCircle, Building2, User, Plus, ShoppingCart,
+  RotateCcw, Search, CheckCircle2, XCircle, Building2, User, Plus, ShoppingCart, Receipt,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { toast } from 'sonner';
 import { usePharmacyRole } from '@/hooks/use-pharmacy-role';
+import { ReturnReceiptDialog } from '@/components/pharmacy/return-receipt-dialog';
 import { usePatientSearch } from '@/hooks/use-hospital';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
 import {
@@ -136,6 +137,7 @@ export default function PharmacyReturnsPage() {
 
 function ReturnRow({ record }: { record: PharmacyReturn }) {
   const processReturn = useProcessReturn();
+  const [receiptOpen, setReceiptOpen] = useState(false);
 
   const handleProcess = async (status: 'processed' | 'rejected') => {
     try {
@@ -147,6 +149,8 @@ function ReturnRow({ record }: { record: PharmacyReturn }) {
             ? `Return processed — stock restored, ${inr(refunded)} refunded`
             : 'Return processed — stock restored',
         );
+        // G3: offer the printable acknowledgement straight away.
+        setReceiptOpen(true);
       } else {
         toast.success('Return rejected');
       }
@@ -241,10 +245,18 @@ function ReturnRow({ record }: { record: PharmacyReturn }) {
             </Button>
           </div>
         ) : (
-          <span className="text-xs text-muted-foreground">
-            {record.processor ? `By ${record.processor.firstName} ${record.processor.lastName}` : '-'}
-          </span>
+          <div className="flex items-center justify-end gap-2">
+            {record.status === 'processed' && (
+              <Button size="sm" variant="ghost" onClick={() => setReceiptOpen(true)} title="Print return receipt">
+                <Receipt className="mr-1 h-3.5 w-3.5" /> Receipt
+              </Button>
+            )}
+            <span className="text-xs text-muted-foreground">
+              {record.processor ? `By ${record.processor.firstName} ${record.processor.lastName}` : '-'}
+            </span>
+          </div>
         )}
+        <ReturnReceiptDialog returnId={record.id} open={receiptOpen} onOpenChange={setReceiptOpen} />
       </TableCell>
     </TableRow>
   );
