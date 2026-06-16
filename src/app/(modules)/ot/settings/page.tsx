@@ -26,6 +26,15 @@ import {
   useDeleteOperatingTheater, useOtSchedulingSettings, useUpdateOtSchedulingSettings,
   type OperatingTheater,
 } from '@/hooks/use-ot';
+import { useAuthStore } from '@/stores/auth-store';
+
+// Adding / editing / deleting operation theaters is a hospital-admin action
+// (the backend enforces the same). Other OT users see theaters read-only.
+function useIsHospitalAdmin() {
+  const roleSlug = useAuthStore((s) => s.user?.role?.slug);
+  const normalized = (roleSlug ?? '').toLowerCase().replace(/[\s-]+/g, '_');
+  return normalized === 'admin' || normalized === 'super_admin';
+}
 
 const STATUS_COLOR: Record<string, string> = {
   available: 'bg-emerald-100 text-emerald-700 border-emerald-300',
@@ -48,6 +57,7 @@ const theaterSchema = z.object({
 type TheaterForm = z.infer<typeof theaterSchema>;
 
 export default function OTSettingsPage() {
+  const isHospitalAdmin = useIsHospitalAdmin();
   const { data: theaters, isLoading } = useOperatingTheaters();
   const create = useCreateOperatingTheater();
   const update = useUpdateOperatingTheater();
@@ -79,9 +89,11 @@ export default function OTSettingsPage() {
         title="OT Settings"
         description="Configure operating theaters, equipment and preferences"
         action={
-          <Button onClick={openCreate} className="gap-1.5">
-            <Plus className="h-4 w-4" /> Add Theater
-          </Button>
+          isHospitalAdmin ? (
+            <Button onClick={openCreate} className="gap-1.5">
+              <Plus className="h-4 w-4" /> Add Theater
+            </Button>
+          ) : undefined
         }
       />
 
@@ -103,11 +115,17 @@ export default function OTSettingsPage() {
             <EmptyState
               icon={Monitor}
               title="No operating theaters configured"
-              description="Add operating theaters to start managing OT schedules and equipment."
+              description={
+                isHospitalAdmin
+                  ? 'Add operating theaters to start managing OT schedules and equipment.'
+                  : 'No operating theaters yet. Ask a hospital admin to add them.'
+              }
               action={
-                <Button onClick={openCreate} className="gap-2">
-                  <Plus className="h-4 w-4" /> Add Theater
-                </Button>
+                isHospitalAdmin ? (
+                  <Button onClick={openCreate} className="gap-2">
+                    <Plus className="h-4 w-4" /> Add Theater
+                  </Button>
+                ) : undefined
               }
             />
           </div>
@@ -152,20 +170,22 @@ export default function OTSettingsPage() {
                     </div>
                   )}
 
-                  <div className="flex items-center gap-2 mt-4 pt-3 border-t">
-                    <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={() => openEdit(t)}>
-                      <Pencil className="h-3.5 w-3.5" /> Edit
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="gap-1.5 text-xs text-red-600 hover:text-red-700"
-                      onClick={() => handleDelete(t)}
-                      disabled={remove.isPending}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" /> Delete
-                    </Button>
-                  </div>
+                  {isHospitalAdmin && (
+                    <div className="flex items-center gap-2 mt-4 pt-3 border-t">
+                      <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={() => openEdit(t)}>
+                        <Pencil className="h-3.5 w-3.5" /> Edit
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1.5 text-xs text-red-600 hover:text-red-700"
+                        onClick={() => handleDelete(t)}
+                        disabled={remove.isPending}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Delete
+                      </Button>
+                    </div>
+                  )}
                 </div>
               );
             })}
