@@ -17,6 +17,8 @@ import {
   Mail,
   Printer,
   RotateCcw,
+  Activity,
+  ShieldX,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
@@ -188,6 +190,21 @@ function PharmacyBatchesPageInner() {
   const { data: recalledItems } = useRecalledItems('all');
   const recalledDrugs = recalledItems?.recalledDrugs ?? [];
 
+  // Expiry overview (drug stock expiring within 90 days) — drives the summary
+  // cards. Capped at 1000 batches, which comfortably covers a tenant's near-
+  // expiry window. Value at risk = selling price × on-hand units.
+  const { data: expirySummaryData } = useExpiringBatches({ days: 90, limit: 1000 });
+  const expirySummary = useMemo(() => {
+    const rows = expirySummaryData?.data ?? [];
+    let within30 = 0;
+    let valueAtRisk = 0;
+    for (const b of rows) {
+      if (daysUntil(b.expiryDate) <= 30) within30 += 1;
+      valueAtRisk += (Number(b.sellingPrice) || 0) * (b.quantityInStock || 0);
+    }
+    return { within90: rows.length, within30, valueAtRisk };
+  }, [expirySummaryData]);
+
   const data = expiringDays ? expiringBatches.data : allBatches.data;
   const isLoading = expiringDays ? expiringBatches.isLoading : allBatches.isLoading;
   const batches = data?.data ?? [];
@@ -344,6 +361,39 @@ function PharmacyBatchesPageInner() {
             <Plus className="mr-1.5 h-4 w-4" />
             Add Batch
           </Button>
+        </div>
+      </div>
+
+      {/* Expiry overview — at-a-glance near-expiry exposure (drug stock). */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <button
+          onClick={() => { setExpiringDays(30); setRecalledOnly(false); setPage(1); }}
+          className="flex items-center justify-between rounded-xl bg-surface-container-lowest p-4 text-left shadow-sanctuary transition hover:ring-1 hover:ring-amber-500/30"
+        >
+          <div>
+            <p className="text-xs text-muted-foreground">Expiring ≤30 days</p>
+            <p className="mt-0.5 text-2xl font-bold text-amber-700">{expirySummary.within30}</p>
+          </div>
+          <AlertTriangle className="h-7 w-7 text-amber-500/60" />
+        </button>
+        <button
+          onClick={() => { setExpiringDays(90); setRecalledOnly(false); setPage(1); }}
+          className="flex items-center justify-between rounded-xl bg-surface-container-lowest p-4 text-left shadow-sanctuary transition hover:ring-1 hover:ring-primary/30"
+        >
+          <div>
+            <p className="text-xs text-muted-foreground">Expiring ≤90 days</p>
+            <p className="mt-0.5 text-2xl font-bold">{expirySummary.within90}</p>
+          </div>
+          <Activity className="h-7 w-7 text-muted-foreground/40" />
+        </button>
+        <div className="flex items-center justify-between rounded-xl bg-surface-container-lowest p-4 shadow-sanctuary">
+          <div>
+            <p className="text-xs text-muted-foreground">Value at risk (≤90 days)</p>
+            <p className="mt-0.5 text-2xl font-bold text-red-700 font-mono">
+              ₹{expirySummary.valueAtRisk.toFixed(2)}
+            </p>
+          </div>
+          <ShieldX className="h-7 w-7 text-red-500/50" />
         </div>
       </div>
 
@@ -668,6 +718,7 @@ function PharmacyBatchesPageInner() {
                   <TableHead>Expiry</TableHead>
                   <TableHead className="text-right">In Stock</TableHead>
                   <TableHead className="text-right">Selling</TableHead>
+                  <TableHead className="text-right">Value at risk</TableHead>
                   <TableHead className="text-center">Status</TableHead>
                   <TableHead className="text-right w-[200px]">Actions</TableHead>
                 </TableRow>
@@ -710,6 +761,15 @@ function PharmacyBatchesPageInner() {
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         {batch.sellingPrice != null ? `₹${Number(batch.sellingPrice).toFixed(2)}` : '-'}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        {(isExpired || remaining <= 90) && batch.quantityInStock > 0 && batch.sellingPrice != null ? (
+                          <span className={isExpired ? 'text-red-600' : 'text-amber-700'}>
+                            ₹{(Number(batch.sellingPrice) * batch.quantityInStock).toFixed(2)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-center">
                         {batch.isRecalled ? (
