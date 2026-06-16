@@ -93,7 +93,12 @@ interface FormState {
   manufacturingDate: string;
   expiryDate: string;
   supplierId: string;
+  // G2 purchase-side discount structure.
+  mrp: string;
   purchasePrice: string;
+  purchaseDiscountPercent: string;
+  gstPercent: string;
+  freeQuantity: string;
   sellingPrice: string;
   quantityReceived: string;
   // Edit-only: correct the on-hand stock for an existing batch.
@@ -107,7 +112,11 @@ const EMPTY_FORM: FormState = {
   manufacturingDate: '',
   expiryDate: '',
   supplierId: '',
+  mrp: '',
   purchasePrice: '',
+  purchaseDiscountPercent: '',
+  gstPercent: '',
+  freeQuantity: '',
   sellingPrice: '',
   quantityReceived: '',
   quantityInStock: '',
@@ -124,7 +133,12 @@ function formStateFromBatch(batch: DrugBatch): FormState {
     manufacturingDate: isoToDateInput(batch.manufacturingDate),
     expiryDate: isoToDateInput(batch.expiryDate),
     supplierId: batch.supplierId ?? '',
+    mrp: batch.mrp != null ? String(batch.mrp) : '',
     purchasePrice: batch.purchasePrice != null ? String(batch.purchasePrice) : '',
+    purchaseDiscountPercent:
+      batch.purchaseDiscountPercent != null ? String(batch.purchaseDiscountPercent) : '',
+    gstPercent: batch.gstPercent != null ? String(batch.gstPercent) : '',
+    freeQuantity: batch.freeQuantity != null ? String(batch.freeQuantity) : '',
     sellingPrice: batch.sellingPrice != null ? String(batch.sellingPrice) : '',
     quantityReceived: String(batch.quantityReceived),
     quantityInStock: String(batch.quantityInStock),
@@ -271,9 +285,19 @@ function PharmacyBatchesPageInner() {
       quantityInStock: stock,
       manufacturingDate: formData.manufacturingDate || null,
       supplierId: formData.supplierId || null,
+      mrp:
+        formData.mrp && !isNaN(parseFloat(formData.mrp)) ? parseFloat(formData.mrp) : null,
       purchasePrice:
         formData.purchasePrice && !isNaN(parseFloat(formData.purchasePrice))
           ? parseFloat(formData.purchasePrice)
+          : null,
+      purchaseDiscountPercent:
+        formData.purchaseDiscountPercent && !isNaN(parseFloat(formData.purchaseDiscountPercent))
+          ? parseFloat(formData.purchaseDiscountPercent)
+          : null,
+      gstPercent:
+        formData.gstPercent && !isNaN(parseFloat(formData.gstPercent))
+          ? parseFloat(formData.gstPercent)
           : null,
       sellingPrice:
         formData.sellingPrice && !isNaN(parseFloat(formData.sellingPrice))
@@ -298,19 +322,29 @@ function PharmacyBatchesPageInner() {
     if (!formData.drugId) return toast.error('Pick a drug from the formulary');
     if (!formData.batchNumber.trim()) return toast.error('Batch number is required');
     if (!formData.expiryDate) return toast.error('Expiry date is required');
-    const qty = parseInt(formData.quantityReceived, 10);
-    if (!qty || qty <= 0) return toast.error('Quantity received must be > 0');
+    const paidQty = parseInt(formData.quantityReceived, 10);
+    if (!paidQty || paidQty <= 0) return toast.error('Quantity received must be > 0');
+    const freeQty = parseInt(formData.freeQuantity, 10) || 0;
 
     const payload: CreateBatchInput = {
       drugId: formData.drugId,
       batchNumber: formData.batchNumber.trim(),
       expiryDate: formData.expiryDate,
-      quantityReceived: qty,
+      // Total received = paid + free; the free portion is recorded separately.
+      quantityReceived: paidQty + freeQty,
+      freeQuantity: freeQty,
     };
     if (formData.manufacturingDate) payload.manufacturingDate = formData.manufacturingDate;
     if (formData.supplierId) payload.supplierId = formData.supplierId;
+    if (formData.mrp && !isNaN(parseFloat(formData.mrp))) payload.mrp = parseFloat(formData.mrp);
     if (formData.purchasePrice && !isNaN(parseFloat(formData.purchasePrice))) {
       payload.purchasePrice = parseFloat(formData.purchasePrice);
+    }
+    if (formData.purchaseDiscountPercent && !isNaN(parseFloat(formData.purchaseDiscountPercent))) {
+      payload.purchaseDiscountPercent = parseFloat(formData.purchaseDiscountPercent);
+    }
+    if (formData.gstPercent && !isNaN(parseFloat(formData.gstPercent))) {
+      payload.gstPercent = parseFloat(formData.gstPercent);
     }
     if (formData.sellingPrice && !isNaN(parseFloat(formData.sellingPrice))) {
       payload.sellingPrice = parseFloat(formData.sellingPrice);
@@ -529,54 +563,134 @@ function PharmacyBatchesPageInner() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
-                {editingBatch ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-3 gap-3">
+                  {editingBatch ? (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="quantityInStock">Qty In Stock *</Label>
+                      <Input
+                        id="quantityInStock"
+                        type="number"
+                        min={0}
+                        value={formData.quantityInStock}
+                        onChange={(e) => updateField('quantityInStock', e.target.value)}
+                        placeholder="On-hand units"
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="quantityReceived">Qty Received *</Label>
+                        <Input
+                          id="quantityReceived"
+                          type="number"
+                          min={1}
+                          value={formData.quantityReceived}
+                          onChange={(e) => updateField('quantityReceived', e.target.value)}
+                          placeholder="e.g. 100"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="freeQuantity">Free Qty</Label>
+                        <Input
+                          id="freeQuantity"
+                          type="number"
+                          min={0}
+                          value={formData.freeQuantity}
+                          onChange={(e) => updateField('freeQuantity', e.target.value)}
+                          placeholder="e.g. 10"
+                        />
+                      </div>
+                    </>
+                  )}
                   <div className="space-y-1.5">
-                    <Label htmlFor="quantityInStock">Qty In Stock *</Label>
+                    <Label htmlFor="mrp">MRP</Label>
                     <Input
-                      id="quantityInStock"
+                      id="mrp"
                       type="number"
-                      min={0}
-                      value={formData.quantityInStock}
-                      onChange={(e) => updateField('quantityInStock', e.target.value)}
-                      placeholder="On-hand units"
+                      step="0.01"
+                      value={formData.mrp}
+                      onChange={(e) => updateField('mrp', e.target.value)}
+                      placeholder="0.00"
                     />
                   </div>
-                ) : (
+                </div>
+                <div className="grid grid-cols-4 gap-3">
                   <div className="space-y-1.5">
-                    <Label htmlFor="quantityReceived">Qty Received *</Label>
+                    <Label htmlFor="purchasePrice">Purchase Rate</Label>
                     <Input
-                      id="quantityReceived"
+                      id="purchasePrice"
                       type="number"
-                      min={1}
-                      value={formData.quantityReceived}
-                      onChange={(e) => updateField('quantityReceived', e.target.value)}
-                      placeholder="e.g. 100"
+                      step="0.01"
+                      value={formData.purchasePrice}
+                      onChange={(e) => updateField('purchasePrice', e.target.value)}
+                      placeholder="0.00"
                     />
                   </div>
-                )}
-                <div className="space-y-1.5">
-                  <Label htmlFor="purchasePrice">Purchase Price</Label>
-                  <Input
-                    id="purchasePrice"
-                    type="number"
-                    step="0.01"
-                    value={formData.purchasePrice}
-                    onChange={(e) => updateField('purchasePrice', e.target.value)}
-                    placeholder="0.00"
-                  />
+                  <div className="space-y-1.5">
+                    <Label htmlFor="purchaseDiscountPercent">Disc %</Label>
+                    <Input
+                      id="purchaseDiscountPercent"
+                      type="number"
+                      step="0.01"
+                      value={formData.purchaseDiscountPercent}
+                      onChange={(e) => updateField('purchaseDiscountPercent', e.target.value)}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="gstPercent">GST %</Label>
+                    <Input
+                      id="gstPercent"
+                      type="number"
+                      step="0.01"
+                      value={formData.gstPercent}
+                      onChange={(e) => updateField('gstPercent', e.target.value)}
+                      placeholder="12"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="sellingPrice">Selling Price</Label>
+                    <Input
+                      id="sellingPrice"
+                      type="number"
+                      step="0.01"
+                      value={formData.sellingPrice}
+                      onChange={(e) => updateField('sellingPrice', e.target.value)}
+                      placeholder="0.00"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="sellingPrice">Selling Price</Label>
-                  <Input
-                    id="sellingPrice"
-                    type="number"
-                    step="0.01"
-                    value={formData.sellingPrice}
-                    onChange={(e) => updateField('sellingPrice', e.target.value)}
-                    placeholder="0.00"
-                  />
-                </div>
+                {/* G2: live derived purchase economics */}
+                {(() => {
+                  const rate = parseFloat(formData.purchasePrice);
+                  if (!rate || isNaN(rate)) return null;
+                  const disc = parseFloat(formData.purchaseDiscountPercent) || 0;
+                  const gst = parseFloat(formData.gstPercent) || 0;
+                  const paid = parseInt(formData.quantityReceived || formData.quantityInStock, 10) || 0;
+                  const free = parseInt(formData.freeQuantity, 10) || 0;
+                  const total = paid + free || 1;
+                  const netRate = rate * (1 - disc / 100);
+                  const netValue = netRate * paid;
+                  const landingPerUnit = (netValue * (1 + gst / 100)) / total;
+                  const sell = parseFloat(formData.sellingPrice);
+                  const margin = !isNaN(sell) ? sell - landingPerUnit : null;
+                  const marginPct = margin != null && landingPerUnit ? (margin / landingPerUnit) * 100 : null;
+                  const f = (n: number) => `₹${n.toFixed(2)}`;
+                  return (
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-md bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
+                      <span>Net rate: <span className="font-medium text-foreground">{f(netRate)}</span></span>
+                      <span>Net value: <span className="font-medium text-foreground">{f(netValue)}</span></span>
+                      <span>Landing/unit: <span className="font-medium text-foreground">{f(landingPerUnit)}</span></span>
+                      {margin != null && (
+                        <span className={margin >= 0 ? 'text-emerald-600' : 'text-red-600'}>
+                          Margin/unit: <span className="font-medium">{f(margin)}</span>
+                          {marginPct != null ? ` (${marginPct.toFixed(1)}%)` : ''}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
             <DialogFooter>

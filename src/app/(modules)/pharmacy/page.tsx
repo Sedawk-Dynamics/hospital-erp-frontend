@@ -191,6 +191,8 @@ function PharmacyPOS() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [paymentMode, setPaymentMode] = useState<string>('Cash');
   const [amountTendered, setAmountTendered] = useState<string>('');
+  // G2: bill-level discount applied on top of any per-item discounts.
+  const [billDiscPct, setBillDiscPct] = useState<string>('');
   // G7: split payment — when on, the bill is settled across multiple tenders.
   const [splitMode, setSplitMode] = useState(false);
   const [tenders, setTenders] = useState<Array<{ id: string; method: string; amount: string }>>([
@@ -548,8 +550,13 @@ function PharmacyPOS() {
     return { subtotal, totalDiscount, afterDiscount, totalTax, rounded, roundOff, margin };
   }, [cart]);
 
+  // G2: bill-level discount on top of per-item discounts → final payable.
+  const billDiscPctNum = Math.min(100, Math.max(0, Number(billDiscPct) || 0));
+  const billDiscountValue = Math.round(summary.rounded * (billDiscPctNum / 100) * 100) / 100;
+  const payable = Math.max(0, Math.round((summary.rounded - billDiscountValue) * 100) / 100);
+
   const tenderedNum = Number(amountTendered) || 0;
-  const changeDue = Math.max(0, tenderedNum - summary.rounded);
+  const changeDue = Math.max(0, tenderedNum - payable);
 
   const fmt = (n: number) =>
     n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -582,7 +589,7 @@ function PharmacyPOS() {
             .filter((t) => Number(t.amount) > 0)
             .map((t) => ({ method: PAYMENT_METHOD_MAP[t.method] ?? 'cash', amount: Number(t.amount) }))
         : (() => {
-            const amt = amountTendered ? Math.min(tenderedNum, summary.rounded) : summary.rounded;
+            const amt = amountTendered ? Math.min(tenderedNum, payable) : payable;
             return amt > 0
               ? [{ method: PAYMENT_METHOD_MAP[paymentMode] ?? 'cash', amount: amt }]
               : [];
@@ -600,6 +607,7 @@ function PharmacyPOS() {
           discountPercent: c.discount || undefined,
         })),
       };
+      if (billDiscPctNum > 0) payload.billDiscountPercent = billDiscPctNum;
       if (tenderLines.length) payload.payments = tenderLines;
       const sale = await createSale.mutateAsync(payload);
       toast.success(`Bill ${sale.bill.billNumber} created`);
@@ -607,6 +615,7 @@ function PharmacyPOS() {
       setReceiptOpen(true);
       setCart([]);
       setAmountTendered('');
+      setBillDiscPct('');
       setSplitMode(false);
       setTenders([{ id: 'tender-1', method: 'Cash', amount: '' }]);
       setActivePrescriptionId(null);
@@ -1125,9 +1134,28 @@ function PharmacyPOS() {
                 </span>
               </div>
             )}
+            {/* G2: bill-level discount (in addition to per-item discounts) */}
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-muted-foreground">Bill Discount %</span>
+              <div className="flex items-center gap-2">
+                {billDiscountValue > 0 && (
+                  <span className="text-xs text-green-600">-₹{fmt(billDiscountValue)}</span>
+                )}
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.5"
+                  placeholder="0"
+                  value={billDiscPct}
+                  onChange={(e) => setBillDiscPct(e.target.value)}
+                  className="h-7 w-16 text-right"
+                />
+              </div>
+            </div>
             <div className="border-t pt-2 flex justify-between text-base">
               <span className="font-semibold">Payable Amount</span>
-              <span className="font-bold text-primary">{`₹${fmt(summary.rounded)}`}</span>
+              <span className="font-bold text-primary">{`₹${fmt(payable)}`}</span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Margin / Profit</span>
@@ -1185,7 +1213,7 @@ function PharmacyPOS() {
                   <Input
                     type="number"
                     min={0}
-                    placeholder={`Default: ₹${fmt(summary.rounded)} (full)`}
+                    placeholder={`Default: ₹${fmt(payable)} (full)`}
                     value={amountTendered}
                     onChange={(e) => setAmountTendered(e.target.value)}
                     className="h-9"
@@ -1193,10 +1221,10 @@ function PharmacyPOS() {
                   {tenderedNum > 0 && (
                     <div className="mt-1 flex justify-between text-xs">
                       <span className="text-muted-foreground">
-                        {tenderedNum >= summary.rounded ? 'Change to return' : 'Balance due'}
+                        {tenderedNum >= payable ? 'Change to return' : 'Balance due'}
                       </span>
-                      <span className={cn('font-medium', tenderedNum >= summary.rounded ? 'text-emerald-600' : 'text-amber-600')}>
-                        ₹{fmt(tenderedNum >= summary.rounded ? changeDue : summary.rounded - tenderedNum)}
+                      <span className={cn('font-medium', tenderedNum >= payable ? 'text-emerald-600' : 'text-amber-600')}>
+                        ₹{fmt(tenderedNum >= payable ? changeDue : payable - tenderedNum)}
                       </span>
                     </div>
                   )}
@@ -1251,7 +1279,7 @@ function PharmacyPOS() {
                         type="button"
                         onClick={() =>
                           setTenders((prev) => {
-                            const remaining = Math.max(0, summary.rounded - tendersTotal);
+                            const remaining = Math.max(0, payable - tendersTotal);
                             return [
                               ...prev,
                               {
@@ -1275,17 +1303,17 @@ function PharmacyPOS() {
                   <span
                     className={cn(
                       'font-medium',
-                      Math.abs(tendersTotal - summary.rounded) < 0.01
+                      Math.abs(tendersTotal - payable) < 0.01
                         ? 'text-emerald-600'
                         : 'text-amber-600',
                     )}
                   >
-                    ₹{fmt(tendersTotal)} / ₹{fmt(summary.rounded)}
+                    ₹{fmt(tendersTotal)} / ₹{fmt(payable)}
                   </span>
                 </div>
-                {tendersTotal < summary.rounded && (
+                {tendersTotal < payable && (
                   <p className="text-[11px] text-amber-600">
-                    Balance due ₹{fmt(summary.rounded - tendersTotal)} will remain unpaid on the bill.
+                    Balance due ₹{fmt(payable - tendersTotal)} will remain unpaid on the bill.
                   </p>
                 )}
               </div>

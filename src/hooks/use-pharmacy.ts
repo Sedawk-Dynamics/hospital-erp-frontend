@@ -60,7 +60,12 @@ export interface DrugBatch {
   manufacturingDate: string | null;
   expiryDate: string;
   supplierId: string | null;
+  // G2 purchase-side fields.
+  mrp?: number | string | null;
   purchasePrice: number | string | null;
+  purchaseDiscountPercent?: number | string | null;
+  gstPercent?: number | string | null;
+  freeQuantity?: number;
   sellingPrice: number | string | null;
   quantityReceived: number;
   quantityInStock: number;
@@ -74,6 +79,18 @@ export interface DrugBatch {
     'id' | 'drugName' | 'genericName' | 'strength' | 'dosageForm' | 'packSize' | 'looseUnitLabel' | 'taxPercent'
   >;
   supplier?: { id: string; name: string } | null;
+  // Derived purchase economics (G2) returned by the batch getters.
+  economics?: BatchEconomics;
+}
+
+// G2: derived purchase economics for a batch (computed server-side).
+export interface BatchEconomics {
+  netRate: number | null;
+  netPurchaseValue: number | null;
+  taxAmount: number | null;
+  landingPerUnit: number | null;
+  marginPerUnit: number | null;
+  marginPercent: number | null;
 }
 
 export interface DispenseRecord {
@@ -513,7 +530,12 @@ export interface CreateBatchInput {
   manufacturingDate?: string;
   expiryDate: string;
   supplierId?: string;
+  // G2 purchase-side discount structure.
+  mrp?: number;
   purchasePrice?: number;
+  purchaseDiscountPercent?: number;
+  gstPercent?: number;
+  freeQuantity?: number;
   sellingPrice?: number;
   quantityReceived: number;
 }
@@ -537,7 +559,10 @@ export interface UpdateBatchInput {
   manufacturingDate?: string | null;
   expiryDate?: string;
   supplierId?: string | null;
+  mrp?: number | null;
   purchasePrice?: number | null;
+  purchaseDiscountPercent?: number | null;
+  gstPercent?: number | null;
   sellingPrice?: number | null;
   quantityInStock?: number;
   isExpired?: boolean;
@@ -672,6 +697,9 @@ export interface CreatePharmacySaleInput {
   patientId?: string;
   prescriptionId?: string;
   items: PharmacySaleItemInput[];
+  // G2: bill-level discount, applied on top of per-item discounts.
+  billDiscountPercent?: number;
+  billDiscountAmount?: number;
   paymentMethod?: 'cash' | 'credit_card' | 'debit_card' | 'upi' | 'net_banking' | 'cheque' | 'other';
   amountPaid?: number;
   // G7: split payment — overrides paymentMethod/amountPaid when present.
