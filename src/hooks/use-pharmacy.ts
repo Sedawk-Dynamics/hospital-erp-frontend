@@ -1150,6 +1150,13 @@ export function useCreditNotesReport(params: { fromDate?: string; toDate?: strin
     queryFn: async () => (await apiGet<any>('/pharmacy/reports/credit-notes', { params })).data,
   });
 }
+// G17: narcotic / controlled-drug register (DI audit) — by user + date range.
+export function useNarcoticRegister(params: { fromDate?: string; toDate?: string; dispensedBy?: string; schedule?: string }) {
+  return useQuery({
+    queryKey: ['pharmacy', 'reports', 'narcotic', params],
+    queryFn: async () => (await apiGet<any>('/pharmacy/reports/narcotic-register', { params })).data,
+  });
+}
 
 // ============================================================
 // G16 — Emergency (Golden Hour) pre-registration buffer

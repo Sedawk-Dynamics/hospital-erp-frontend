@@ -18,12 +18,14 @@ import {
 } from '@/components/ui/table';
 import { toInputDateStr, formatDate, formatDateTime } from '@/lib/date-utils';
 import { useSuppliers } from '@/hooks/use-inventory';
+import { useUsersList } from '@/hooks/use-users';
 import {
   useDailyTransactionReport,
   usePurchaseReport,
   useStockValuationReport,
   useVendorWiseReport,
   useCreditNotesReport,
+  useNarcoticRegister,
 } from '@/hooks/use-pharmacy';
 
 const inr = (n: number | null | undefined) =>
@@ -298,6 +300,66 @@ function CreditNotesTab() {
   );
 }
 
+function NarcoticTab() {
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [userId, setUserId] = useState('');
+  const { data: usersData } = useUsersList({ limit: 100 });
+  const { data, isLoading } = useNarcoticRegister({
+    fromDate: from || undefined,
+    toDate: to || undefined,
+    dispensedBy: userId || undefined,
+  });
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-44" />
+        <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-44" />
+        <select value={userId} onChange={(e) => setUserId(e.target.value)} className="h-9 rounded-md border border-border bg-background px-2 text-sm">
+          <option value="">All users</option>
+          {(usersData?.data ?? []).map((u: any) => (
+            <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
+          ))}
+        </select>
+      </div>
+      <p className="text-xs text-muted-foreground">Dispenses of Schedule X / H1 / H drugs — for Drug Inspector audit.</p>
+      {isLoading ? <Skeleton className="h-32 w-full" /> : (data?.items ?? []).length === 0 ? (
+        <EmptyState icon={FileText} title="No controlled-drug dispenses" description="No scheduled-drug sales in this range." />
+      ) : (
+        <>
+          <Totals><span>Records: <b>{data.total}</b></span></Totals>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>Drug</TableHead>
+                <TableHead className="text-center">Sch.</TableHead>
+                <TableHead>Batch</TableHead>
+                <TableHead className="text-right">Qty</TableHead>
+                <TableHead>Patient</TableHead>
+                <TableHead>Dispensed by</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(data?.items ?? []).map((r: any) => (
+                <TableRow key={r.id}>
+                  <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{formatDateTime(r.date)}</TableCell>
+                  <TableCell className="font-medium">{r.drugName}</TableCell>
+                  <TableCell className="text-center"><Badge variant="outline">{r.schedule ?? '—'}</Badge></TableCell>
+                  <TableCell className="font-mono text-xs">{r.batchNumber ?? '—'}</TableCell>
+                  <TableCell className="text-right">{r.quantity}</TableCell>
+                  <TableCell className="text-sm">{r.patient ?? '—'}{r.patientMrn ? ` (${r.patientMrn})` : ''}</TableCell>
+                  <TableCell className="text-sm">{r.dispensedBy ?? '—'}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </>
+      )}
+    </div>
+  );
+}
+
 function StatutoryReportsInner() {
   return (
     <div className="space-y-4 animate-fade-in-up">
@@ -314,12 +376,14 @@ function StatutoryReportsInner() {
           <TabsTrigger value="valuation">Stock Valuation</TabsTrigger>
           <TabsTrigger value="vendor">Vendor-wise</TabsTrigger>
           <TabsTrigger value="credit">Credit Notes</TabsTrigger>
+          <TabsTrigger value="narcotic">Narcotic (DI)</TabsTrigger>
         </TabsList>
         <TabsContent value="daily"><DailyReport /></TabsContent>
         <TabsContent value="purchases"><PurchaseReportTab /></TabsContent>
         <TabsContent value="valuation"><ValuationTab /></TabsContent>
         <TabsContent value="vendor"><VendorWiseTab /></TabsContent>
         <TabsContent value="credit"><CreditNotesTab /></TabsContent>
+        <TabsContent value="narcotic"><NarcoticTab /></TabsContent>
       </Tabs>
     </div>
   );
