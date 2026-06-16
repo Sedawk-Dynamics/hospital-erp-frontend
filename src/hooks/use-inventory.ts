@@ -862,7 +862,8 @@ export type StockTransferStatus =
 export interface StockTransfer {
   id: string;
   transferNumber: string;
-  inventoryItemId: string;
+  inventoryItemId: string | null;
+  drugBatchId: string | null;
   fromDepartmentId: string | null;
   toDepartmentId: string | null;
   fromLocation: string | null;
@@ -883,9 +884,16 @@ export interface StockTransfer {
   rejectionReason: string | null;
   createdAt: string;
   updatedAt: string;
-  inventoryItem?: Pick<InventoryItem, 'id' | 'itemName' | 'itemCode' | 'unitOfMeasurement'> & {
+  inventoryItem?: (Pick<InventoryItem, 'id' | 'itemName' | 'itemCode' | 'unitOfMeasurement'> & {
     currentStock?: number;
-  };
+  }) | null;
+  // Pharmacy drug transfers reference a drug batch instead of an inventory item.
+  drugBatch?: {
+    id: string;
+    batchNumber: string;
+    quantityInStock?: number;
+    drug?: { drugName: string } | null;
+  } | null;
   fromDepartment?: { id: string; name: string } | null;
   toDepartment?: { id: string; name: string } | null;
   requester?: { id: string; firstName: string; lastName: string };
@@ -893,7 +901,9 @@ export interface StockTransfer {
 }
 
 export interface CreateStockTransferInput {
-  inventoryItemId: string;
+  // Exactly one of inventoryItemId / drugBatchId (drug batch = pharmacy stock).
+  inventoryItemId?: string;
+  drugBatchId?: string;
   fromDepartmentId?: string;
   toDepartmentId?: string;
   fromLocation?: string;
