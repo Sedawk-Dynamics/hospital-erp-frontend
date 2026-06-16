@@ -242,7 +242,6 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Expiry Tracking', href: '/inventory/expiring', icon: Activity },
       { label: 'Low Stock Alerts', href: '/inventory/low-stock', icon: HeartPulse },
       { label: 'Purchase Orders', href: '/inventory/purchase-orders', icon: ShoppingCart },
-      { label: 'Suppliers', href: '/inventory/suppliers', icon: Users },
       { label: 'Reports', href: '/inventory/reports', icon: BarChart3 },
       { label: 'Audit Logs', href: '/inventory/audit-logs', icon: FileCheck },
       { label: 'Settings', href: '/inventory/settings', icon: Settings },
