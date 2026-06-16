@@ -20,7 +20,6 @@ import {
   ClipboardList,
   Package,
   ShoppingCart,
-  Truck,
   FileText,
   Stethoscope,
   UtensilsCrossed,
@@ -140,9 +139,6 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
     sidebarItems: [
       { label: 'Home', href: '/ot', icon: Home },
       { label: 'Billing Transaction', href: '/ot/transactions', icon: ArrowLeftRight },
-      { label: 'OT Stocks', href: '/ot/stocks', icon: ClipboardList },
-      { label: 'Inventory', href: '/ot/inventory', icon: Package },
-      { label: 'Stock Transfer', href: '/ot/stock-transfer', icon: Truck },
       { label: 'Reports', href: '/ot/reports', icon: BarChart3 },
       { label: 'Settings', href: '/ot/settings', icon: Settings },
     ],
