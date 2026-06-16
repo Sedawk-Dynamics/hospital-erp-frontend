@@ -569,6 +569,19 @@ function PharmacyBatchesPageInner() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {/* G10: auto-filled vendor metadata so it isn't re-keyed per invoice */}
+                  {(() => {
+                    const s = suppliers.find((x) => x.id === formData.supplierId);
+                    if (!s) return null;
+                    const meta = [
+                      s.gstNumber ? `GSTIN ${s.gstNumber}` : null,
+                      s.licenseNumber ? `DL ${s.licenseNumber}` : null,
+                      s.phone || s.contactPerson || null,
+                    ].filter(Boolean);
+                    return meta.length ? (
+                      <p className="mt-1 text-[11px] text-muted-foreground">{meta.join(' · ')}</p>
+                    ) : null;
+                  })()}
                 </div>
               </div>
 
