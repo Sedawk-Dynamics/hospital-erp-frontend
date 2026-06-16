@@ -73,6 +73,12 @@ const STATUS_BADGE_CLASSES: Record<string, string> = {
   cancelled: 'bg-red-100 text-red-700 border-red-300',
 };
 
+const THEATER_STATUS_COLOR: Record<string, string> = {
+  available: 'bg-emerald-100 text-emerald-700 border-emerald-300',
+  in_use: 'bg-blue-100 text-blue-700 border-blue-300',
+  maintenance: 'bg-amber-100 text-amber-700 border-amber-300',
+};
+
 const SURGERY_TYPES = ['Major', 'Minor', 'Emergency', 'Elective', 'Day Case'];
 const SPECIALITIES = [
   'General Surgery',
@@ -213,6 +219,21 @@ export default function OTHomePage() {
     return counts;
   }, [allRequests]);
 
+  // Theater availability strip: theater status + how many (non-cancelled)
+  // surgeries each theater has booked for today.
+  const { data: theaters } = useOperatingTheaters();
+  const today = toInputDateStr();
+  const todayByTheater = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const r of allRequests) {
+      if (r.status === 'cancelled' || !r.scheduledDate || !r.otId) continue;
+      let d = '';
+      try { d = toInputDateStr(r.scheduledDate); } catch { d = ''; }
+      if (d === today) m[r.otId] = (m[r.otId] ?? 0) + 1;
+    }
+    return m;
+  }, [allRequests, today]);
+
   // Mutations
   const approveMutation = useApproveOTRequest();
   const updateMutation = useUpdateOTRequest();
@@ -296,6 +317,29 @@ export default function OTHomePage() {
           </button>
         ))}
       </div>
+
+      {/* Theater availability — status + today's bookings */}
+      {theaters && theaters.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-muted-foreground mb-1.5">Theater availability · today</p>
+          <div className="flex gap-2 overflow-x-auto pb-2">
+            {theaters.map((t) => (
+              <div key={t.id} className="min-w-[170px] rounded-lg border bg-card p-3 shadow-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-sm truncate">{t.name}</span>
+                  <Badge variant="outline" className={cn('text-[10px] shrink-0', THEATER_STATUS_COLOR[t.status] ?? '')}>
+                    {t.status.replace('_', ' ')}
+                  </Badge>
+                </div>
+                {t.location && <p className="text-xs text-muted-foreground truncate">{t.location}</p>}
+                <p className="text-xs text-muted-foreground mt-1">
+                  {todayByTheater[t.id] ?? 0} booked today
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Search + Date filter */}
       <div className="flex flex-col sm:flex-row gap-3">
