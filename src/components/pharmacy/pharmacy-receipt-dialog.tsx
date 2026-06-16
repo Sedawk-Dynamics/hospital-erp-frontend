@@ -14,6 +14,18 @@ const num = (n: number | string | null | undefined): number => {
 const inr = (n: number | string | null | undefined) =>
   `₹${num(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+// Friendly labels for the split-payment tender breakdown on the receipt.
+const PAYMENT_LABELS: Record<string, string> = {
+  cash: 'Cash',
+  credit_card: 'Credit Card',
+  debit_card: 'Debit Card',
+  upi: 'UPI',
+  net_banking: 'Bank Transfer',
+  insurance: 'Insurance',
+  cheque: 'Cheque',
+  other: 'Other',
+};
+
 function ageFromDob(dob: string | null): string {
   if (!dob) return '';
   const d = new Date(dob);
@@ -159,6 +171,16 @@ export function PharmacyReceiptDialog({
                   <div className="rule thin" />
                   <Row label="Grand Total" value={inr(bill.totalAmount)} bold />
                   <Row label="Paid" value={inr(bill.amountPaid)} />
+                  {/* G7: per-tender breakdown for split payments */}
+                  {(bill.payments?.length ?? 0) > 1 &&
+                    bill.payments.map((p) => (
+                      <Row
+                        key={p.id}
+                        label={`• ${PAYMENT_LABELS[p.paymentMethod] ?? p.paymentMethod}`}
+                        value={inr(p.amount)}
+                        muted
+                      />
+                    ))}
                   {change > 0 && <Row label="Change" value={inr(change)} />}
                   {num(bill.balanceDue) > 0 && <Row label="Balance Due" value={inr(bill.balanceDue)} bold />}
                 </div>

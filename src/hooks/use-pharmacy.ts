@@ -651,12 +651,31 @@ export interface PharmacySaleItemInput {
   unitPrice?: number;
 }
 
+export type PharmacyPaymentMethod =
+  | 'cash'
+  | 'credit_card'
+  | 'debit_card'
+  | 'upi'
+  | 'net_banking'
+  | 'insurance'
+  | 'cheque'
+  | 'other';
+
+// G7: a single tender in a split payment.
+export interface PharmacyTenderInput {
+  method: PharmacyPaymentMethod;
+  amount: number;
+  reference?: string;
+}
+
 export interface CreatePharmacySaleInput {
   patientId?: string;
   prescriptionId?: string;
   items: PharmacySaleItemInput[];
   paymentMethod?: 'cash' | 'credit_card' | 'debit_card' | 'upi' | 'net_banking' | 'cheque' | 'other';
   amountPaid?: number;
+  // G7: split payment — overrides paymentMethod/amountPaid when present.
+  payments?: PharmacyTenderInput[];
   notes?: string;
 }
 

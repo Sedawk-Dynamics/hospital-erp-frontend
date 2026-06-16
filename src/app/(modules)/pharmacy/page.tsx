@@ -38,6 +38,9 @@ import {
   type DrugBatch,
   type PrescriptionListItem,
   type PharmacySale,
+  type PharmacyPaymentMethod,
+  type PharmacyTenderInput,
+  type CreatePharmacySaleInput,
 } from '@/hooks/use-pharmacy';
 import { PharmacyReceiptDialog } from '@/components/pharmacy/pharmacy-receipt-dialog';
 
@@ -188,6 +191,11 @@ function PharmacyPOS() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [paymentMode, setPaymentMode] = useState<string>('Cash');
   const [amountTendered, setAmountTendered] = useState<string>('');
+  // G7: split payment — when on, the bill is settled across multiple tenders.
+  const [splitMode, setSplitMode] = useState(false);
+  const [tenders, setTenders] = useState<Array<{ id: string; method: string; amount: string }>>([
+    { id: 'tender-1', method: 'Cash', amount: '' },
+  ]);
 
   // --- Receipt ---
   const [receiptSale, setReceiptSale] = useState<PharmacySale | null>(null);
@@ -551,17 +559,36 @@ function PharmacyPOS() {
   // both OPTIONAL — a walk-in / OTC counter sale needs neither.
   const canCreateBill = cart.length > 0 && cartHasAllBatches;
 
-  const PAYMENT_METHOD_MAP: Record<string, 'cash' | 'credit_card' | 'upi' | 'net_banking'> = {
+  const PAYMENT_METHOD_MAP: Record<string, PharmacyPaymentMethod> = {
     Cash: 'cash',
     Card: 'credit_card',
     UPI: 'upi',
     'Bank Transfer': 'net_banking',
+    Insurance: 'insurance',
   };
+
+  // Sum of all split tenders entered (in split mode).
+  const tendersTotal = tenders.reduce((s, t) => s + (Number(t.amount) || 0), 0);
 
   // Bills the whole cart as one invoice, then opens the printable receipt.
   const runSale = async () => {
     try {
-      const sale = await createSale.mutateAsync({
+      // Build the tender line(s). Both modes go through payments[] so Insurance
+      // (and any future mode) works uniformly; the backend trims change and
+      // settles the bill. Split mode = one line per tender; single mode = one
+      // line for the chosen method at the tendered (or full) amount.
+      const tenderLines: PharmacyTenderInput[] = splitMode
+        ? tenders
+            .filter((t) => Number(t.amount) > 0)
+            .map((t) => ({ method: PAYMENT_METHOD_MAP[t.method] ?? 'cash', amount: Number(t.amount) }))
+        : (() => {
+            const amt = amountTendered ? Math.min(tenderedNum, summary.rounded) : summary.rounded;
+            return amt > 0
+              ? [{ method: PAYMENT_METHOD_MAP[paymentMode] ?? 'cash', amount: amt }]
+              : [];
+          })();
+
+      const payload: CreatePharmacySaleInput = {
         // Omitted for walk-in — backend bills it to the tenant Walk-in customer.
         patientId: selectedPatient?.id,
         prescriptionId: activePrescriptionId || undefined,
@@ -572,15 +599,16 @@ function PharmacyPOS() {
           saleUnit: c.saleUnit,
           discountPercent: c.discount || undefined,
         })),
-        paymentMethod: PAYMENT_METHOD_MAP[paymentMode] ?? 'cash',
-        // Omit when nothing was typed → backend records full payment at counter.
-        amountPaid: amountTendered ? Math.min(tenderedNum, summary.rounded) : undefined,
-      });
+      };
+      if (tenderLines.length) payload.payments = tenderLines;
+      const sale = await createSale.mutateAsync(payload);
       toast.success(`Bill ${sale.bill.billNumber} created`);
       setReceiptSale(sale);
       setReceiptOpen(true);
       setCart([]);
       setAmountTendered('');
+      setSplitMode(false);
+      setTenders([{ id: 'tender-1', method: 'Cash', amount: '' }]);
       setActivePrescriptionId(null);
       clearPatient();
     } catch (err: unknown) {
@@ -1109,47 +1137,157 @@ function PharmacyPOS() {
             </div>
           </div>
 
-          {/* Payment mode */}
+          {/* Payment — single mode, or G7 split across multiple tenders */}
           <div>
-            <p className="text-xs text-muted-foreground mb-2">Mode of Payment</p>
-            <div className="flex flex-wrap gap-2">
-              {['Cash', 'Card', 'UPI', 'Bank Transfer'].map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => setPaymentMode(mode)}
-                  className={cn(
-                    'rounded-full border px-3 py-1 text-xs transition-colors',
-                    paymentMode === mode
-                      ? 'border-primary/40 bg-primary/10 text-primary'
-                      : 'border-border text-muted-foreground hover:bg-muted/50',
-                  )}
-                >
-                  {mode}
-                </button>
-              ))}
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">Payment</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSplitMode((s) => !s);
+                  if (!splitMode) {
+                    // Seed the first tender with the balance for a quick split.
+                    setTenders([{ id: 'tender-1', method: paymentMode, amount: '' }]);
+                  }
+                }}
+                className={cn(
+                  'rounded-full border px-2.5 py-0.5 text-[11px] transition-colors',
+                  splitMode
+                    ? 'border-primary/40 bg-primary/10 text-primary'
+                    : 'border-border text-muted-foreground hover:bg-muted/50',
+                )}
+              >
+                {splitMode ? 'Split: ON' : 'Split payment'}
+              </button>
             </div>
-          </div>
 
-          {/* Amount tendered + change (mainly for cash) */}
-          <div>
-            <p className="text-xs text-muted-foreground mb-1">Amount Tendered</p>
-            <Input
-              type="number"
-              min={0}
-              placeholder={`Default: ₹${fmt(summary.rounded)} (full)`}
-              value={amountTendered}
-              onChange={(e) => setAmountTendered(e.target.value)}
-              className="h-9"
-            />
-            {tenderedNum > 0 && (
-              <div className="mt-1 flex justify-between text-xs">
-                <span className="text-muted-foreground">
-                  {tenderedNum >= summary.rounded ? 'Change to return' : 'Balance due'}
-                </span>
-                <span className={cn('font-medium', tenderedNum >= summary.rounded ? 'text-emerald-600' : 'text-amber-600')}>
-                  ₹{fmt(tenderedNum >= summary.rounded ? changeDue : summary.rounded - tenderedNum)}
-                </span>
+            {!splitMode ? (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  {['Cash', 'Card', 'UPI', 'Bank Transfer', 'Insurance'].map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setPaymentMode(mode)}
+                      className={cn(
+                        'rounded-full border px-3 py-1 text-xs transition-colors',
+                        paymentMode === mode
+                          ? 'border-primary/40 bg-primary/10 text-primary'
+                          : 'border-border text-muted-foreground hover:bg-muted/50',
+                      )}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-3">
+                  <p className="text-xs text-muted-foreground mb-1">Amount Tendered</p>
+                  <Input
+                    type="number"
+                    min={0}
+                    placeholder={`Default: ₹${fmt(summary.rounded)} (full)`}
+                    value={amountTendered}
+                    onChange={(e) => setAmountTendered(e.target.value)}
+                    className="h-9"
+                  />
+                  {tenderedNum > 0 && (
+                    <div className="mt-1 flex justify-between text-xs">
+                      <span className="text-muted-foreground">
+                        {tenderedNum >= summary.rounded ? 'Change to return' : 'Balance due'}
+                      </span>
+                      <span className={cn('font-medium', tenderedNum >= summary.rounded ? 'text-emerald-600' : 'text-amber-600')}>
+                        ₹{fmt(tenderedNum >= summary.rounded ? changeDue : summary.rounded - tenderedNum)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="space-y-2">
+                {tenders.map((t, idx) => (
+                  <div key={t.id} className="flex items-center gap-2">
+                    <select
+                      value={t.method}
+                      onChange={(e) =>
+                        setTenders((prev) =>
+                          prev.map((x) => (x.id === t.id ? { ...x, method: e.target.value } : x)),
+                        )
+                      }
+                      className="h-9 rounded-md border border-border bg-background px-2 text-xs"
+                    >
+                      {['Cash', 'Card', 'UPI', 'Bank Transfer', 'Insurance'].map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                    <Input
+                      type="number"
+                      min={0}
+                      placeholder="0.00"
+                      value={t.amount}
+                      onChange={(e) =>
+                        setTenders((prev) =>
+                          prev.map((x) => (x.id === t.id ? { ...x, amount: e.target.value } : x)),
+                        )
+                      }
+                      className="h-9 flex-1"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setTenders((prev) =>
+                          prev.length > 1 ? prev.filter((x) => x.id !== t.id) : prev,
+                        )
+                      }
+                      disabled={tenders.length <= 1}
+                      className="text-muted-foreground hover:text-destructive disabled:opacity-30"
+                      title="Remove tender"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                    {idx === tenders.length - 1 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setTenders((prev) => {
+                            const remaining = Math.max(0, summary.rounded - tendersTotal);
+                            return [
+                              ...prev,
+                              {
+                                id: `tender-${prev.length + 1}-${Date.now()}`,
+                                method: 'UPI',
+                                amount: remaining ? remaining.toFixed(2) : '',
+                              },
+                            ];
+                          })
+                        }
+                        className="text-primary hover:text-primary/80"
+                        title="Add another tender"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Allocated / Payable</span>
+                  <span
+                    className={cn(
+                      'font-medium',
+                      Math.abs(tendersTotal - summary.rounded) < 0.01
+                        ? 'text-emerald-600'
+                        : 'text-amber-600',
+                    )}
+                  >
+                    ₹{fmt(tendersTotal)} / ₹{fmt(summary.rounded)}
+                  </span>
+                </div>
+                {tendersTotal < summary.rounded && (
+                  <p className="text-[11px] text-amber-600">
+                    Balance due ₹{fmt(summary.rounded - tendersTotal)} will remain unpaid on the bill.
+                  </p>
+                )}
               </div>
             )}
           </div>
