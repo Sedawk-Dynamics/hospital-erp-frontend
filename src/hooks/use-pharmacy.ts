@@ -42,6 +42,8 @@ export interface FormularyItem {
   contraindications: string | null;
   // G9: reorder level (base units).
   minStock?: number | null;
+  // Vital/life-saving — bypasses the IP cash-patient credit-clearance gate.
+  isLifeSaving?: boolean;
   isActive: boolean;
   isRecalled: boolean;
   createdAt: string;
@@ -308,6 +310,7 @@ export interface CreateFormularyInput {
   minStock?: number;
   indications?: string;
   contraindications?: string;
+  isLifeSaving?: boolean;
   isActive?: boolean;
   // G1: set true to create even when a high-confidence near-duplicate exists.
   force?: boolean;
@@ -1224,6 +1227,8 @@ export function useDispenseFromWard() {
       quantity: number;
       admissionId?: string;
       reason?: string;
+      // Clearance given for an over-deposit cash IP patient (IP credit gate).
+      override?: boolean;
     }) =>
       (await apiPost<{ billId: string; billNumber: string; charged: number }>(
         '/pharmacy/ward-stock/dispense',
@@ -1231,7 +1236,31 @@ export function useDispenseFromWard() {
       )).data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pharmacy', 'ward-stock'] });
+      queryClient.invalidateQueries({ queryKey: ['pharmacy', 'credit-status'] });
     },
+  });
+}
+
+// IP credit & clearance check — the patient's live deposit-vs-bill picture.
+export interface CreditStatus {
+  patientId: string;
+  hasAdmission: boolean;
+  admissionId: string | null;
+  category: string; // cash | package | insurance | corporate
+  deposit: number;
+  billed: number;
+  balanceDue: number;
+  available: number;
+  exceeded: boolean;
+  requiresClearance: boolean;
+}
+
+export function useCreditStatus(patientId: string | null) {
+  return useQuery({
+    queryKey: ['pharmacy', 'credit-status', patientId],
+    queryFn: async () =>
+      (await apiGet<CreditStatus>('/pharmacy/credit-status', { params: { patientId } })).data,
+    enabled: !!patientId,
   });
 }
 

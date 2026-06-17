@@ -83,6 +83,7 @@ interface FormState {
   minStock: string;
   indications: string;
   contraindications: string;
+  isLifeSaving: boolean;
 }
 
 const EMPTY_FORM: FormState = {
@@ -100,6 +101,7 @@ const EMPTY_FORM: FormState = {
   minStock: '',
   indications: '',
   contraindications: '',
+  isLifeSaving: false,
 };
 
 function formStateFromItem(item: FormularyItem): FormState {
@@ -118,6 +120,7 @@ function formStateFromItem(item: FormularyItem): FormState {
     minStock: item.minStock != null ? String(item.minStock) : '',
     indications: item.indications ?? '',
     contraindications: item.contraindications ?? '',
+    isLifeSaving: item.isLifeSaving ?? false,
   };
 }
 
@@ -136,6 +139,7 @@ function formStateToInput(form: FormState): CreateFormularyInput {
   if (form.minStock && !isNaN(parseInt(form.minStock, 10))) out.minStock = parseInt(form.minStock, 10);
   if (form.indications.trim()) out.indications = form.indications.trim();
   if (form.contraindications.trim()) out.contraindications = form.contraindications.trim();
+  out.isLifeSaving = form.isLifeSaving;
   return out;
 }
 
@@ -206,7 +210,7 @@ function PharmacyInventoryPageInner() {
   const meta = data?.meta;
   const categories = categoriesData?.data ?? [];
 
-  const updateField = (field: keyof FormState, value: string) =>
+  const updateField = (field: keyof FormState, value: string | boolean) =>
     setFormData((prev) => ({ ...prev, [field]: value }));
 
   // Create a new formulary drug. On the first attempt (force=false) the server
@@ -553,6 +557,20 @@ function PharmacyInventoryPageInner() {
                   rows={2}
                 />
               </div>
+              <label className="flex items-start gap-2 rounded-md border p-2.5 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={formData.isLifeSaving}
+                  onChange={(e) => updateField('isLifeSaving', e.target.checked)}
+                />
+                <span>
+                  <span className="font-medium">Vital / life-saving drug</span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    Bypasses the IP cash-patient credit-clearance gate so emergency dosing is never withheld for money.
+                  </span>
+                </span>
+              </label>
               <p className="text-[11px] text-muted-foreground">
                 Supplier and batch-level info (mfg date, expiry, batch qty) are managed under Batches.
               </p>
@@ -648,7 +666,12 @@ function PharmacyInventoryPageInner() {
               <TableBody>
                 {items.map((item) => (
                   <TableRow key={item.id}>
-                    <TableCell className="font-medium">{item.drugName}</TableCell>
+                    <TableCell className="font-medium">
+                      {item.drugName}
+                      {item.isLifeSaving && (
+                        <Badge className="ml-2 bg-rose-500/10 text-rose-600 border-rose-500/20 text-[10px]">Life-saving</Badge>
+                      )}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">{item.genericName || '-'}</TableCell>
                     <TableCell>{item.category?.name || '-'}</TableCell>
                     <TableCell className="capitalize">{item.dosageForm || '-'}</TableCell>

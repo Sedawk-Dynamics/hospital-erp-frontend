@@ -3,7 +3,7 @@ import { PharmacyAdminGuard } from '@/components/pharmacy/pharmacy-admin-guard';
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Search, BedDouble } from 'lucide-react';
+import { Search, BedDouble, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -22,6 +22,7 @@ import {
   useWardLedger,
   useTransferToWard,
   useDispenseFromWard,
+  useCreditStatus,
   useBatches,
   type WardStockItem,
 } from '@/hooks/use-pharmacy';
@@ -86,9 +87,12 @@ function DispenseDialog({ wardId, stock, onDone }: { wardId: string; stock: Ward
   const [qty, setQty] = useState('');
   const [patientSearch, setPatientSearch] = useState('');
   const [patient, setPatient] = useState<{ id: string; name: string } | null>(null);
+  const [override, setOverride] = useState(false);
   const { data: patientResults } = usePatientSearch(patientSearch);
+  const { data: credit } = useCreditStatus(patient?.id ?? null);
   const dispense = useDispenseFromWard();
   const picked = stock.find((s) => s.drugBatchId === drugBatchId);
+  const blocked = !!credit?.requiresClearance && !override;
 
   async function submit() {
     const q = parseInt(qty, 10);
@@ -96,10 +100,11 @@ function DispenseDialog({ wardId, stock, onDone }: { wardId: string; stock: Ward
     if (!patient) return toast.error('Pick a patient');
     if (!q || q <= 0) return toast.error('Enter a quantity');
     if (picked && q > picked.quantityInStock) return toast.error('Not enough ward stock');
+    if (blocked) return toast.error('Credit limit exceeded — tick "Clearance given" or collect a top-up deposit');
     try {
-      const r = await dispense.mutateAsync({ wardId, drugBatchId, patientId: patient.id, quantity: q });
+      const r = await dispense.mutateAsync({ wardId, drugBatchId, patientId: patient.id, quantity: q, override });
       toast.success(`Dispensed — ${inr(r.charged)} posted to bill ${r.billNumber}`);
-      setDrugBatchId(null); setQty(''); setPatient(null); setPatientSearch('');
+      setDrugBatchId(null); setQty(''); setPatient(null); setPatientSearch(''); setOverride(false);
       onDone();
     } catch (err) {
       toast.error((err as Error).message ?? 'Dispense failed');
@@ -150,9 +155,36 @@ function DispenseDialog({ wardId, stock, onDone }: { wardId: string; stock: Ward
           </>
         )}
       </div>
+
+      {/* IP credit & clearance check (cash patient over deposit) */}
+      {patient && credit?.hasAdmission && (
+        credit.requiresClearance ? (
+          <div className="rounded-md border border-red-500/30 bg-red-500/5 p-3 text-sm">
+            <div className="flex items-center gap-2 font-medium text-red-600">
+              <ShieldAlert className="h-4 w-4" /> Credit Limit Exceeded — Clearance Required
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Running bill {inr(credit.billed)} exceeds deposit {inr(credit.deposit)} (over by {inr(Math.abs(credit.available))}).
+              Collect a top-up deposit, or dispense with clearance below. Life-saving drugs bypass this automatically.
+            </p>
+            <label className="mt-2 flex items-center gap-2 text-xs font-medium">
+              <input type="checkbox" checked={override} onChange={(e) => setOverride(e.target.checked)} />
+              Clearance given — dispense anyway
+            </label>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 p-2 text-xs text-emerald-700">
+            <ShieldCheck className="h-4 w-4" />
+            {credit.category === 'cash'
+              ? `Within deposit — ${inr(credit.available)} available of ${inr(credit.deposit)}`
+              : `${credit.category[0].toUpperCase()}${credit.category.slice(1)} patient — billed to advance/TPA, no counter payment`}
+          </div>
+        )
+      )}
+
       <div className="flex gap-2">
         <Input type="number" min={1} placeholder="Qty" value={qty} onChange={(e) => setQty(e.target.value)} className="w-28" />
-        <Button onClick={submit} disabled={dispense.isPending || !drugBatchId || !patient}>
+        <Button onClick={submit} disabled={dispense.isPending || !drugBatchId || !patient || blocked}>
           {dispense.isPending ? 'Dispensing…' : 'Dispense & bill'}
         </Button>
       </div>
