@@ -205,7 +205,8 @@ function CreateReturnDialog({ mode, onClose }: { mode: CreateMode; onClose: () =
 
 // Counter return: a walk-in / over-the-counter return that is NOT tied to a
 // patient or a bill. Just capture the medicine + quantity, with batch & expiry
-// optional. No patient lookup, no refund — stock is restored immediately.
+// optional. Stock is restored immediately. An optional refund amount (money
+// given to the walk-in customer) can be recorded — it shows on the return receipt.
 function CounterReturnDialog({ onClose }: { onClose: () => void }) {
   const [drugSearch, setDrugSearch] = useState('');
   const [drug, setDrug] = useState<FormularyItem | null>(null);
@@ -214,6 +215,7 @@ function CounterReturnDialog({ onClose }: { onClose: () => void }) {
   const [batchNumber, setBatchNumber] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
   const [reason, setReason] = useState('');
+  const [refundInput, setRefundInput] = useState('');
 
   const { data: formularyData, isLoading: searchLoading } = useFormulary({
     search: drugSearch.length >= 2 ? drugSearch : undefined,
@@ -231,6 +233,10 @@ function CounterReturnDialog({ onClose }: { onClose: () => void }) {
   const handleSubmit = async () => {
     if (!drug) return toast.error('Pick the medicine being returned');
     if (quantity <= 0) return toast.error('Enter a quantity');
+    const refundAmount = refundInput.trim() === '' ? undefined : Number(refundInput);
+    if (refundAmount != null && (isNaN(refundAmount) || refundAmount < 0)) {
+      return toast.error('Enter a valid refund amount');
+    }
     try {
       await createReturn.mutateAsync({
         returnType: 'counter_return',
@@ -240,8 +246,13 @@ function CounterReturnDialog({ onClose }: { onClose: () => void }) {
         batchNumber: batchNumber.trim() || undefined,
         expiryDate: expiryDate || undefined,
         reason: reason || undefined,
+        refundAmount,
       });
-      toast.success('Counter return recorded — stock restored');
+      toast.success(
+        refundAmount != null && refundAmount > 0
+          ? `Counter return recorded — stock restored, ${inr(refundAmount)} refunded`
+          : 'Counter return recorded — stock restored',
+      );
       onClose();
     } catch (err) {
       toast.error((err as Error).message ?? 'Failed to create return');
@@ -364,6 +375,22 @@ function CounterReturnDialog({ onClose }: { onClose: () => void }) {
           <p className="text-[11px] text-muted-foreground">
             Stock is restored immediately to the matching batch — or a new batch is created when both batch number and expiry are given.
           </p>
+
+          {/* 4. Optional refund / price given to the customer */}
+          <div>
+            <label className="text-xs font-medium">Refund amount — price given (optional) (₹)</label>
+            <Input
+              type="number"
+              min={0}
+              step="0.01"
+              value={refundInput}
+              onChange={(e) => setRefundInput(e.target.value)}
+              placeholder="0.00"
+            />
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Money handed back to the customer. Recorded on the return and shown on its receipt.
+            </p>
+          </div>
 
           <div>
             <label className="text-xs font-medium">Reason (optional)</label>
