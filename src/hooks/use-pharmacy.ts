@@ -981,6 +981,9 @@ export function useCreateReturn() {
       saleUnit?: 'pack' | 'loose';
       quantity: number;
       reason?: string;
+      // Money handed back to the customer on a patient return — overrides the
+      // billed price and is refunded against the original bill.
+      refundAmount?: number;
       // G5: vendor (expired/damaged) return supplier credit note.
       creditNoteNumber?: string;
       creditAmount?: number;

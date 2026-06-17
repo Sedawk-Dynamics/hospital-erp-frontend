@@ -1,16 +1,13 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
-  RotateCcw, Search, CheckCircle2, XCircle, Building2, User, Plus, ShoppingCart, Receipt,
+  RotateCcw, Search, Building2, User, ShoppingCart, Receipt,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Tabs, TabsContent, TabsList, TabsTrigger,
-} from '@/components/ui/tabs';
 import {
   Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
 } from '@/components/ui/table';
@@ -28,7 +25,7 @@ import { ReturnReceiptDialog } from '@/components/pharmacy/return-receipt-dialog
 import { usePatientSearch } from '@/hooks/use-hospital';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
 import {
-  useReturns, useCreateReturn, useProcessReturn, useBatches, useReturnableDispenses,
+  useReturns, useCreateReturn, useBatches, useReturnableDispenses,
   useFormulary,
   type PharmacyReturn, type ReturnableDispense, type FormularyItem,
 } from '@/hooks/use-pharmacy';
@@ -36,18 +33,15 @@ import {
 const inr = (n: number | string | null | undefined) =>
   n == null ? '—' : `₹${Number(n).toFixed(2)}`;
 
-type ReturnTab = 'all' | 'pending' | 'processed' | 'rejected';
 type CreateMode = 'patient_return' | 'vendor_return' | 'counter_return';
 
 export default function PharmacyReturnsPage() {
   const { isPharmacyAdmin } = usePharmacyRole();
-  const [tab, setTab] = useState<ReturnTab>('pending');
   const [createOpen, setCreateOpen] = useState<CreateMode | null>(null);
 
-  const { data, isLoading } = useReturns({
-    status: tab === 'all' ? undefined : tab,
-    limit: 50,
-  });
+  // Returns apply immediately now — there's no pending/approve workflow, so we
+  // just list every return.
+  const { data, isLoading } = useReturns({ limit: 50 });
   const records = data?.data ?? [];
 
   return (
@@ -56,7 +50,7 @@ export default function PharmacyReturnsPage() {
         <div>
           <h1 className="font-headline text-xl font-bold">Pharmacy Returns</h1>
           <p className="text-xs text-muted-foreground">
-            Counter returns just need the medicine + quantity (no patient). Patient returns restock & refund the original sale. Vendor returns log damaged/unsold stock.
+            Returns are applied immediately. Patient returns restock the medicine and refund the money you enter against the original bill. Counter returns just restock; vendor returns send damaged/unsold stock back to the supplier.
           </p>
         </div>
         <div className="flex gap-2">
@@ -77,53 +71,41 @@ export default function PharmacyReturnsPage() {
         </div>
       </div>
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as ReturnTab)}>
-        <TabsList>
-          <TabsTrigger value="pending">Pending</TabsTrigger>
-          <TabsTrigger value="processed">Processed</TabsTrigger>
-          <TabsTrigger value="rejected">Rejected</TabsTrigger>
-          <TabsTrigger value="all">All</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value={tab} className="mt-3">
-          <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary">
-            {isLoading ? (
-              <div className="p-4 space-y-3">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <Skeleton key={i} className="h-10 w-full" />
-                ))}
-              </div>
-            ) : records.length === 0 ? (
-              <EmptyState
-                icon={RotateCcw}
-                title="No returns"
-                description="Patient and vendor returns will appear here."
-              />
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Drug · Batch</TableHead>
-                    <TableHead>From</TableHead>
-                    <TableHead className="text-right">Qty</TableHead>
-                    <TableHead className="text-right">Refund</TableHead>
-                    <TableHead>Reason</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead className="text-center">Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {records.map((r) => (
-                    <ReturnRow key={r.id} record={r} />
-                  ))}
-                </TableBody>
-              </Table>
-            )}
+      <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary">
+        {isLoading ? (
+          <div className="p-4 space-y-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-10 w-full" />
+            ))}
           </div>
-        </TabsContent>
-      </Tabs>
+        ) : records.length === 0 ? (
+          <EmptyState
+            icon={RotateCcw}
+            title="No returns"
+            description="Patient, counter and vendor returns will appear here."
+          />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Type</TableHead>
+                <TableHead>Drug · Batch</TableHead>
+                <TableHead>From</TableHead>
+                <TableHead className="text-right">Qty</TableHead>
+                <TableHead className="text-right">Refund</TableHead>
+                <TableHead>Reason</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead className="text-right">Receipt</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {records.map((r) => (
+                <ReturnRow key={r.id} record={r} />
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </div>
 
       {createOpen && (
         <CreateReturnDialog
@@ -136,28 +118,7 @@ export default function PharmacyReturnsPage() {
 }
 
 function ReturnRow({ record }: { record: PharmacyReturn }) {
-  const processReturn = useProcessReturn();
   const [receiptOpen, setReceiptOpen] = useState(false);
-
-  const handleProcess = async (status: 'processed' | 'rejected') => {
-    try {
-      const updated = await processReturn.mutateAsync({ id: record.id, status });
-      if (status === 'processed') {
-        const refunded = updated?.refund?.amount ?? updated?.refundAmount;
-        toast.success(
-          refunded != null && Number(refunded) > 0
-            ? `Return processed — stock restored, ${inr(refunded)} refunded`
-            : 'Return processed — stock restored',
-        );
-        // G3: offer the printable acknowledgement straight away.
-        setReceiptOpen(true);
-      } else {
-        toast.success('Return rejected');
-      }
-    } catch (err) {
-      toast.error((err as Error).message ?? 'Failed to process return');
-    }
-  };
 
   const typeBadge =
     record.returnType === 'patient_return' ? (
@@ -177,12 +138,6 @@ function ReturnRow({ record }: { record: PharmacyReturn }) {
   const drugName =
     record.drug?.drugName ?? record.drugBatch?.drug?.drugName ?? '-';
   const batchLabel = record.drugBatch?.batchNumber ?? record.batchNumber ?? null;
-
-  const statusBadge = {
-    pending: <Badge className="bg-amber-500/10 text-amber-700 border-amber-500/20">Pending</Badge>,
-    processed: <Badge className="bg-emerald-500/10 text-emerald-700 border-emerald-500/20">Processed</Badge>,
-    rejected: <Badge className="bg-red-500/10 text-red-700 border-red-500/20">Rejected</Badge>,
-  }[record.status];
 
   return (
     <TableRow>
@@ -221,41 +176,17 @@ function ReturnRow({ record }: { record: PharmacyReturn }) {
       <TableCell className="text-xs text-muted-foreground">
         {formatDateTimeAmPm(record.createdAt)}
       </TableCell>
-      <TableCell className="text-center">{statusBadge}</TableCell>
       <TableCell className="text-right">
-        {record.status === 'pending' ? (
-          <div className="flex justify-end gap-1.5">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => handleProcess('processed')}
-              disabled={processReturn.isPending}
-            >
-              <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
-              Approve
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => handleProcess('rejected')}
-              disabled={processReturn.isPending}
-            >
-              <XCircle className="mr-1 h-3.5 w-3.5" />
-              Reject
-            </Button>
-          </div>
-        ) : (
-          <div className="flex items-center justify-end gap-2">
-            {record.status === 'processed' && (
-              <Button size="sm" variant="ghost" onClick={() => setReceiptOpen(true)} title="Print return receipt">
-                <Receipt className="mr-1 h-3.5 w-3.5" /> Receipt
-              </Button>
-            )}
+        <div className="flex items-center justify-end gap-2">
+          <Button size="sm" variant="ghost" onClick={() => setReceiptOpen(true)} title="Print return receipt">
+            <Receipt className="mr-1 h-3.5 w-3.5" /> Receipt
+          </Button>
+          {record.processor && (
             <span className="text-xs text-muted-foreground">
-              {record.processor ? `By ${record.processor.firstName} ${record.processor.lastName}` : '-'}
+              By {record.processor.firstName} {record.processor.lastName}
             </span>
-          </div>
-        )}
+          )}
+        </div>
         <ReturnReceiptDialog returnId={record.id} open={receiptOpen} onOpenChange={setReceiptOpen} />
       </TableCell>
     </TableRow>
@@ -274,7 +205,7 @@ function CreateReturnDialog({ mode, onClose }: { mode: CreateMode; onClose: () =
 
 // Counter return: a walk-in / over-the-counter return that is NOT tied to a
 // patient or a bill. Just capture the medicine + quantity, with batch & expiry
-// optional. No patient lookup, no refund — stock is restored on approval.
+// optional. No patient lookup, no refund — stock is restored immediately.
 function CounterReturnDialog({ onClose }: { onClose: () => void }) {
   const [drugSearch, setDrugSearch] = useState('');
   const [drug, setDrug] = useState<FormularyItem | null>(null);
@@ -310,7 +241,7 @@ function CounterReturnDialog({ onClose }: { onClose: () => void }) {
         expiryDate: expiryDate || undefined,
         reason: reason || undefined,
       });
-      toast.success('Counter return created — waiting for approval');
+      toast.success('Counter return recorded — stock restored');
       onClose();
     } catch (err) {
       toast.error((err as Error).message ?? 'Failed to create return');
@@ -431,7 +362,7 @@ function CounterReturnDialog({ onClose }: { onClose: () => void }) {
             </div>
           </div>
           <p className="text-[11px] text-muted-foreground">
-            On approval the stock is restored to the matching batch — or a new batch is created when both batch number and expiry are given.
+            Stock is restored immediately to the matching batch — or a new batch is created when both batch number and expiry are given.
           </p>
 
           <div>
@@ -466,6 +397,9 @@ function PatientReturnDialog({ onClose }: { onClose: () => void }) {
   const [selectedLine, setSelectedLine] = useState<ReturnableDispense | null>(null);
   const [quantity, setQuantity] = useState<number>(1);
   const [reason, setReason] = useState('');
+  // Money actually handed back to the customer (prefilled from the billed price,
+  // but the pharmacist can edit it). This is what gets refunded on the bill.
+  const [refundInput, setRefundInput] = useState('');
 
   const { data: patientResults } = usePatientSearch(patientSearch);
   const {
@@ -487,10 +421,19 @@ function PatientReturnDialog({ onClose }: { onClose: () => void }) {
   const refundPreview =
     selectedLine?.unitPrice != null ? selectedLine.unitPrice * quantity : null;
 
+  // Prefill the refund with the billed price whenever the line / qty changes.
+  useEffect(() => {
+    setRefundInput(refundPreview != null ? refundPreview.toFixed(2) : '');
+  }, [selectedLine?.id, quantity]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleSubmit = async () => {
     if (!selectedLine) return toast.error('Pick the original sale line to return against');
     if (quantity <= 0 || quantity > maxQty) {
       return toast.error(`Quantity must be between 1 and ${maxQty}`);
+    }
+    const refundAmount = refundInput.trim() === '' ? undefined : Number(refundInput);
+    if (refundAmount != null && (isNaN(refundAmount) || refundAmount < 0)) {
+      return toast.error('Enter a valid refund amount');
     }
     try {
       const created = await createReturn.mutateAsync({
@@ -498,11 +441,13 @@ function PatientReturnDialog({ onClose }: { onClose: () => void }) {
         dispensingRecordId: selectedLine.id,
         quantity,
         reason: reason || undefined,
+        refundAmount,
       });
+      const refunded = created?.refundAmount;
       toast.success(
-        created?.refundAmount != null
-          ? `Return created — ${inr(created.refundAmount)} refund pending approval`
-          : 'Return created — waiting for approval',
+        refunded != null && Number(refunded) > 0
+          ? `Return done — ${inr(refunded)} refunded to the bill`
+          : 'Return done — stock restored',
       );
       onClose();
     } catch (err) {
@@ -671,9 +616,19 @@ function PatientReturnDialog({ onClose }: { onClose: () => void }) {
                   }
                 />
               </div>
-              <div className="flex items-center justify-between rounded-md bg-emerald-500/5 border border-emerald-500/20 p-2 text-sm">
-                <span className="text-muted-foreground">Refund (at billed price)</span>
-                <span className="font-semibold text-emerald-700 font-mono">{inr(refundPreview)}</span>
+              <div>
+                <label className="text-xs font-medium">Refund amount — money given to customer (₹)</label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={refundInput}
+                  onChange={(e) => setRefundInput(e.target.value)}
+                  placeholder={refundPreview != null ? refundPreview.toFixed(2) : '0.00'}
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Prefilled from the billed price ({inr(refundPreview)}). Edit it to the amount you actually refund — it is credited against the original bill.
+                </p>
               </div>
             </>
           )}
@@ -737,7 +692,7 @@ function VendorReturnDialog({ onClose }: { onClose: () => void }) {
         creditNoteNumber: creditNoteNumber.trim() || undefined,
         creditAmount: creditAmount ? Number(creditAmount) : undefined,
       });
-      toast.success('Vendor return created — stock reduces on approval');
+      toast.success('Vendor return recorded — stock reduced');
       onClose();
     } catch (err) {
       toast.error((err as Error).message ?? 'Failed to create return');
