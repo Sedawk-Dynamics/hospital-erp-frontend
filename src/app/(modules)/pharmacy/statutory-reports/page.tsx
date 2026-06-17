@@ -122,6 +122,7 @@ function PurchaseReportTab() {
                 <TableHead>Date</TableHead>
                 <TableHead>Drug / Batch</TableHead>
                 <TableHead>Supplier</TableHead>
+                <TableHead>Invoice</TableHead>
                 <TableHead className="text-right">Qty (+free)</TableHead>
                 <TableHead className="text-right">Rate / Disc</TableHead>
                 <TableHead className="text-right">Net value</TableHead>
@@ -136,6 +137,14 @@ function PurchaseReportTab() {
                     <div className="text-xs font-mono text-muted-foreground">{b.batchNumber}</div>
                   </TableCell>
                   <TableCell className="text-sm">{b.supplier ?? '—'}</TableCell>
+                  <TableCell className="text-xs">
+                    {b.invoiceNumber ? (
+                      <>
+                        <div className="font-mono">{b.invoiceNumber}</div>
+                        {b.invoiceDate && <div className="text-muted-foreground">{formatDate(b.invoiceDate)}</div>}
+                      </>
+                    ) : '—'}
+                  </TableCell>
                   <TableCell className="text-right">{b.quantityReceived}{b.freeQuantity ? ` (+${b.freeQuantity})` : ''}</TableCell>
                   <TableCell className="text-right text-xs">{inr(b.purchaseRate)}{b.discountPercent ? ` / ${b.discountPercent}%` : ''}</TableCell>
                   <TableCell className="text-right font-mono">{inr(b.netPurchaseValue)}</TableCell>

@@ -109,6 +109,9 @@ interface FormState {
   freeQuantity: string;
   sellingPrice: string;
   quantityReceived: string;
+  // GRN invoice traceability.
+  invoiceNumber: string;
+  invoiceDate: string;
   // Edit-only: correct the on-hand stock for an existing batch.
   quantityInStock: string;
 }
@@ -127,6 +130,8 @@ const EMPTY_FORM: FormState = {
   freeQuantity: '',
   sellingPrice: '',
   quantityReceived: '',
+  invoiceNumber: '',
+  invoiceDate: '',
   quantityInStock: '',
 };
 
@@ -149,6 +154,8 @@ function formStateFromBatch(batch: DrugBatch): FormState {
     freeQuantity: batch.freeQuantity != null ? String(batch.freeQuantity) : '',
     sellingPrice: batch.sellingPrice != null ? String(batch.sellingPrice) : '',
     quantityReceived: String(batch.quantityReceived),
+    invoiceNumber: batch.invoiceNumber ?? '',
+    invoiceDate: isoToDateInput(batch.invoiceDate),
     quantityInStock: String(batch.quantityInStock),
   };
 }
@@ -323,6 +330,8 @@ function PharmacyBatchesPageInner() {
         formData.sellingPrice && !isNaN(parseFloat(formData.sellingPrice))
           ? parseFloat(formData.sellingPrice)
           : null,
+      invoiceNumber: formData.invoiceNumber.trim() || null,
+      invoiceDate: formData.invoiceDate || null,
     };
     try {
       await updateBatch.mutateAsync({ id: editingBatch.id, ...payload });
@@ -369,6 +378,8 @@ function PharmacyBatchesPageInner() {
     if (formData.sellingPrice && !isNaN(parseFloat(formData.sellingPrice))) {
       payload.sellingPrice = parseFloat(formData.sellingPrice);
     }
+    if (formData.invoiceNumber.trim()) payload.invoiceNumber = formData.invoiceNumber.trim();
+    if (formData.invoiceDate) payload.invoiceDate = formData.invoiceDate;
 
     try {
       await createBatch.mutateAsync(payload);
@@ -378,6 +389,26 @@ function PharmacyBatchesPageInner() {
       setDrugSearchInput('');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to create batch';
+      // Manual GRN Step 6: the batch number already exists — offer to fold the
+      // received quantity into it (Increase Quantity) instead of creating a dup.
+      if (/already exists/i.test(msg)) {
+        const ok = window.confirm(
+          `Batch "${formData.batchNumber.trim()}" already exists for this drug.\n\n` +
+            `Add the received ${paidQty + freeQty} unit(s) to the existing batch (Increase Quantity)?`,
+        );
+        if (ok) {
+          try {
+            await createBatch.mutateAsync({ ...payload, addToExisting: true });
+            toast.success('Quantity added to existing batch');
+            setCreateOpen(false);
+            setFormData(EMPTY_FORM);
+            setDrugSearchInput('');
+          } catch (err2) {
+            toast.error(err2 instanceof Error ? err2.message : 'Failed to update batch');
+          }
+        }
+        return;
+      }
       toast.error(msg);
     }
   };
@@ -582,6 +613,28 @@ function PharmacyBatchesPageInner() {
                       <p className="mt-1 text-[11px] text-muted-foreground">{meta.join(' · ')}</p>
                     ) : null;
                   })()}
+                </div>
+              </div>
+
+              {/* GRN invoice traceability (design-doc manual GRN Steps 1/8/9) */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="invoiceNumber">Invoice No.</Label>
+                  <Input
+                    id="invoiceNumber"
+                    value={formData.invoiceNumber}
+                    onChange={(e) => updateField('invoiceNumber', e.target.value)}
+                    placeholder="Supplier invoice number"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="invoiceDate">Invoice Date</Label>
+                  <Input
+                    id="invoiceDate"
+                    type="date"
+                    value={formData.invoiceDate}
+                    onChange={(e) => updateField('invoiceDate', e.target.value)}
+                  />
                 </div>
               </div>
 

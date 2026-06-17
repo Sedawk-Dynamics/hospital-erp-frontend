@@ -71,6 +71,8 @@ export interface DrugBatch {
   gstPercent?: number | string | null;
   freeQuantity?: number;
   sellingPrice: number | string | null;
+  invoiceNumber?: string | null;
+  invoiceDate?: string | null;
   quantityReceived: number;
   quantityInStock: number;
   isExpired: boolean;
@@ -573,6 +575,10 @@ export interface CreateBatchInput {
   freeQuantity?: number;
   sellingPrice?: number;
   quantityReceived: number;
+  // GRN invoice traceability + duplicate-batch "Increase Quantity".
+  invoiceNumber?: string;
+  invoiceDate?: string;
+  addToExisting?: boolean;
 }
 
 export function useCreateBatch() {
@@ -599,6 +605,8 @@ export interface UpdateBatchInput {
   purchaseDiscountPercent?: number | null;
   gstPercent?: number | null;
   sellingPrice?: number | null;
+  invoiceNumber?: string | null;
+  invoiceDate?: string | null;
   quantityInStock?: number;
   isExpired?: boolean;
   isRecalled?: boolean;
