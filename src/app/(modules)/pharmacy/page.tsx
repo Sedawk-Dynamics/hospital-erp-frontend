@@ -17,6 +17,7 @@ import {
   Check,
   CalendarClock,
   Siren,
+  Repeat,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
@@ -42,9 +43,11 @@ import {
   type PharmacyPaymentMethod,
   type PharmacyTenderInput,
   type CreatePharmacySaleInput,
+  type FormularyAlternative,
   useCreateEmergencyPatient,
   useCreditStatus,
 } from '@/hooks/use-pharmacy';
+import { DrugSubstitutesDialog } from '@/components/pharmacy/drug-substitutes-dialog';
 import { PharmacyReceiptDialog } from '@/components/pharmacy/pharmacy-receipt-dialog';
 import { EmergencyMergeDialog } from '@/components/pharmacy/emergency-merge-dialog';
 
@@ -177,6 +180,10 @@ function PharmacyPOS() {
   const [selectedPatient, setSelectedPatient] = useState<PatientResult | null>(null);
   // G7: IP advance picture for the selected patient (drives the Advance tender).
   const { data: creditStatus } = useCreditStatus(selectedPatient?.id ?? null);
+  // G8: drug whose same-composition alternatives are being shown (substitute search).
+  const [substituteFor, setSubstituteFor] = useState<
+    { id: string; drugName: string; genericName: string | null } | null
+  >(null);
   const [showPatientDropdown, setShowPatientDropdown] = useState(false);
   const patientDropdownRef = useRef<HTMLDivElement>(null);
   const [debouncedPatient, setDebouncedPatient] = useState('');
@@ -891,38 +898,71 @@ function PharmacyPOS() {
             ) : searchResults.length === 0 ? (
               <div className="px-4 py-3 text-sm text-muted-foreground text-center">No medicines found</div>
             ) : (
-              searchResults.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => addWalkInItem(item)}
-                  className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left hover:bg-muted/50 transition-colors border-b last:border-0"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground truncate">{item.drugName}</p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {item.genericName && `${item.genericName} · `}
-                      {item.dosageForm && `${item.dosageForm} `}
-                      {item.strength && `${item.strength}`}
-                      {item.manufacturer && ` · ${item.manufacturer}`}
-                    </p>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-sm font-semibold text-foreground">
-                      {item.price != null ? `₹${toNum(item.price).toFixed(2)}` : '-'}
-                      {item.price != null && (
-                        <span className="text-[10px] font-normal text-muted-foreground">
-                          {' '}/{looseUnitLabel(item.dosageForm, item.looseUnitLabel)}
-                        </span>
-                      )}
-                    </p>
-                    {packSummary(item.packSize, item.dosageForm, item.looseUnitLabel) && (
-                      <p className="text-[10px] text-muted-foreground">
-                        {packSummary(item.packSize, item.dosageForm, item.looseUnitLabel)}
+              searchResults.map((item) => {
+                const inStock = (item.totalStock ?? 0) > 0;
+                return (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between gap-2 px-4 py-2.5 hover:bg-muted/50 transition-colors border-b last:border-0"
+                  >
+                    {/* Main row — add the brand when stocked; out of stock opens substitutes */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        inStock
+                          ? addWalkInItem(item)
+                          : setSubstituteFor({ id: item.id, drugName: item.drugName, genericName: item.genericName })
+                      }
+                      className="min-w-0 flex-1 text-left"
+                    >
+                      <p className="text-sm font-medium text-foreground truncate">{item.drugName}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {item.genericName && `${item.genericName} · `}
+                        {item.dosageForm && `${item.dosageForm} `}
+                        {item.strength && `${item.strength}`}
+                        {item.manufacturer && ` · ${item.manufacturer}`}
                       </p>
-                    )}
+                      <p className="mt-0.5 text-[10px]">
+                        {inStock ? (
+                          <span className="text-emerald-600">In stock: {item.totalStock}</span>
+                        ) : (
+                          <span className="font-medium text-amber-600">Out of stock — tap for alternatives</span>
+                        )}
+                      </p>
+                    </button>
+                    <div className="flex flex-shrink-0 items-center gap-2">
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-foreground">
+                          {item.price != null ? `₹${toNum(item.price).toFixed(2)}` : '-'}
+                          {item.price != null && (
+                            <span className="text-[10px] font-normal text-muted-foreground">
+                              {' '}/{looseUnitLabel(item.dosageForm, item.looseUnitLabel)}
+                            </span>
+                          )}
+                        </p>
+                        {packSummary(item.packSize, item.dosageForm, item.looseUnitLabel) && (
+                          <p className="text-[10px] text-muted-foreground">
+                            {packSummary(item.packSize, item.dosageForm, item.looseUnitLabel)}
+                          </p>
+                        )}
+                      </div>
+                      {/* G8: alternative brands (same composition) */}
+                      {item.genericName && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSubstituteFor({ id: item.id, drugName: item.drugName, genericName: item.genericName })
+                          }
+                          className="rounded-md border px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-primary"
+                          title="Alternative brands (same composition)"
+                        >
+                          <Repeat className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </button>
-              ))
+                );
+              })
             )}
           </div>
         )}
@@ -1496,6 +1536,18 @@ function PharmacyPOS() {
 
       {/* G16: merge an emergency temp record into a registered patient */}
       <EmergencyMergeDialog open={mergeOpen} onOpenChange={setMergeOpen} />
+
+      {/* G8: same-composition alternative brands surfaced from the counter search */}
+      <DrugSubstitutesDialog
+        drug={substituteFor}
+        onOpenChange={(o) => !o && setSubstituteFor(null)}
+        onAdd={(alt: FormularyAlternative) => {
+          // FormularyAlternative carries the fields addWalkInItem reads; tax is
+          // re-derived server-side at billing, so the default is harmless.
+          addWalkInItem(alt as unknown as FormularyItem);
+          setSubstituteFor(null);
+        }}
+      />
     </div>
   );
 }
