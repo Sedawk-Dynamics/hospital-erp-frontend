@@ -232,6 +232,7 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Stock Transfer', href: '/inventory/stock-transfer', icon: ArrowLeftRight },
       { label: 'Low Stock Alerts', href: '/inventory/low-stock', icon: HeartPulse },
       { label: 'Purchase Orders', href: '/inventory/purchase-orders', icon: ShoppingCart },
+      { label: 'Vendors', href: '/inventory/suppliers', icon: Building2 },
       // Pharmacy drug-stock management (backed by /pharmacy/* endpoints).
       { label: 'Drug Catalog', href: '/inventory/drug-catalog', icon: Database },
       { label: 'Drug Formulary', href: '/inventory/drug-formulary', icon: Pill },
