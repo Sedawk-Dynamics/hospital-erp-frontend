@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Search, Plus, Pill, ChevronLeft, ChevronRight, Pencil, Trash2, PackagePlus, Package, Merge, AlertTriangle, Replace } from 'lucide-react';
+import { Search, Plus, Pill, ChevronLeft, ChevronRight, Pencil, Trash2, PackagePlus, Package, Merge, AlertTriangle, Replace, Lightbulb } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -35,6 +35,7 @@ import {
   useCreateFormularyItem,
   useUpdateFormularyItem,
   useDeleteFormularyItem,
+  useSuggestDrugMaster,
   useCreateBatch,
   usePharmacyCategories,
   useFormularyMatches,
@@ -204,7 +205,25 @@ function PharmacyInventoryPageInner() {
   const createItem = useCreateFormularyItem();
   const updateItem = useUpdateFormularyItem();
   const deleteItem = useDeleteFormularyItem();
+  const suggestMaster = useSuggestDrugMaster();
   const createBatch = useCreateBatch();
+
+  // G11: propose a manually-added (non-catalogue) drug for the national master.
+  const handleSuggestToMaster = async (item: FormularyItem) => {
+    if (!confirm(`Suggest "${item.drugName}" for the national drug master? A platform admin will review it.`)) return;
+    try {
+      await suggestMaster.mutateAsync({
+        name: item.drugName,
+        genericName: item.genericName,
+        manufacturer: item.manufacturer,
+        strength: item.strength,
+        dosageForm: item.dosageForm,
+      });
+      toast.success('Suggestion sent to the national master for review');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to send suggestion');
+    }
+  };
 
   const items = data?.data ?? [];
   const meta = data?.meta;
@@ -757,6 +776,18 @@ function PharmacyInventoryPageInner() {
                       >
                         <Merge className="h-4 w-4" />
                       </Button>
+                      {!item.drugMasterId && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleSuggestToMaster(item)}
+                          disabled={suggestMaster.isPending}
+                          className="h-8 w-8 p-0 text-muted-foreground hover:text-amber-600"
+                          title="Suggest this unlisted drug for the national master"
+                        >
+                          <Lightbulb className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button variant="ghost" size="sm" onClick={() => startEdit(item)} className="h-8 w-8 p-0" title="Edit">
                         <Pencil className="h-4 w-4" />
                       </Button>

@@ -44,6 +44,8 @@ export interface FormularyItem {
   minStock?: number | null;
   // Vital/life-saving — bypasses the IP cash-patient credit-clearance gate.
   isLifeSaving?: boolean;
+  // Linked national-catalogue entry (null = manually added, not from catalogue).
+  drugMasterId?: string | null;
   isActive: boolean;
   isRecalled: boolean;
   createdAt: string;
@@ -543,6 +545,23 @@ export function useCommitInward() {
 
 // Import a drug from the platform DrugMaster catalog into this tenant's
 // formulary (one-click "add to formulary"). Backend dedupes on drugMasterId.
+// G11: suggest an unlisted brand for addition to the national drug master. Lands
+// as an unpublished suggestion a platform admin reviews. Open to pharmacy users.
+export function useSuggestDrugMaster() {
+  return useMutation({
+    mutationFn: async (data: {
+      name: string;
+      genericName?: string | null;
+      manufacturer?: string | null;
+      strength?: string | null;
+      dosageForm?: string | null;
+    }) => {
+      const response = await apiPost('/drug-master/suggest', data);
+      return response.data;
+    },
+  });
+}
+
 export function useImportFormularyItem() {
   const queryClient = useQueryClient();
   return useMutation({
