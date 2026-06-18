@@ -160,6 +160,8 @@ export interface ReturnableDispense {
   unitPrice: number | null;
   quantityDispensed: number;
   remaining: number;
+  // §4.4: line marked non-returnable on the bill — cannot be returned.
+  nonReturnable?: boolean;
   dispensedAt: string;
 }
 
@@ -966,6 +968,8 @@ export interface PharmacySaleItemInput {
   saleUnit?: 'pack' | 'loose';
   discountPercent?: number;
   unitPrice?: number;
+  // §4.4: mark this line non-returnable on the bill (no patient return).
+  nonReturnable?: boolean;
 }
 
 export type PharmacyPaymentMethod =

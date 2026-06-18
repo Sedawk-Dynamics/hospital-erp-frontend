@@ -19,6 +19,7 @@ import {
   Siren,
   Repeat,
   FileText,
+  Ban,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
@@ -111,6 +112,8 @@ interface CartItem {
   // User-editable (quantity is in the chosen saleUnit)
   quantity: number;
   discount: number;
+  // §4.4: cashier marks this line non-returnable on the bill (opened/cold-chain).
+  nonReturnable?: boolean;
   // Stock check — always in BASE units
   availableQty: number;
   // Prescribed dosing context — populated for prescription rows so the cashier
@@ -651,6 +654,7 @@ function PharmacyPOS() {
           quantity: c.quantity,
           saleUnit: c.saleUnit,
           discountPercent: c.discount || undefined,
+          nonReturnable: c.nonReturnable || undefined,
         })),
       };
       if (billDiscPctNum > 0) payload.billDiscountPercent = billDiscPctNum;
@@ -1050,6 +1054,27 @@ function PharmacyPOS() {
                             )}
                           </div>
                         )}
+                        {/* §4.4: mark the line non-returnable on the bill */}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCart((prev) =>
+                              prev.map((c) =>
+                                c.rowKey === item.rowKey ? { ...c, nonReturnable: !c.nonReturnable } : c,
+                              ),
+                            )
+                          }
+                          className={cn(
+                            'mt-1 inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] transition-colors',
+                            item.nonReturnable
+                              ? 'border-amber-400 bg-amber-50 text-amber-700'
+                              : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',
+                          )}
+                          title="Mark this line non-returnable on the bill (no patient return)"
+                        >
+                          <Ban className="h-2.5 w-2.5" />
+                          {item.nonReturnable ? 'Non-returnable' : 'Mark non-returnable'}
+                        </button>
                       </td>
                       <td className="px-3 py-2.5">
                         <button

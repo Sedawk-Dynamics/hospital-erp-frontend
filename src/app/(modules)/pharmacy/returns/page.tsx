@@ -605,19 +605,25 @@ function PatientReturnDialog({ onClose }: { onClose: () => void }) {
                   {lines.map((l) => (
                     <button
                       key={l.id}
+                      disabled={l.nonReturnable}
                       onClick={() => { setSelectedLine(l); setQuantity(Math.min(1, l.remaining) || 1); }}
-                      className={`w-full px-3 py-2 text-left text-sm hover:bg-muted ${
+                      className={`w-full px-3 py-2 text-left text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent ${
                         selectedLine?.id === l.id ? 'bg-primary/10' : ''
                       }`}
                     >
                       <div className="flex justify-between">
-                        <span className="font-medium">{l.drugName}</span>
+                        <span className="font-medium">
+                          {l.drugName}
+                          {l.nonReturnable && (
+                            <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">Non-returnable</span>
+                          )}
+                        </span>
                         <span className="text-xs text-muted-foreground">{inr(l.unitPrice)}/{l.saleUnit === 'loose' ? (l.looseUnitLabel || 'unit') : 'pack'}</span>
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {l.billNumber && <span className="font-mono">{l.billNumber}</span>}
                         {l.batchNumber && <span className="font-mono"> · {l.batchNumber}</span>}
-                        <span> · {l.remaining} of {l.quantityDispensed} returnable</span>
+                        <span> · {l.nonReturnable ? 'marked non-returnable on the bill' : `${l.remaining} of ${l.quantityDispensed} returnable`}</span>
                       </div>
                     </button>
                   ))}
