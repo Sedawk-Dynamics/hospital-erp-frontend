@@ -82,7 +82,7 @@ import {
   useBatches,
   useCreateBatch,
   useUpdateBatch,
-  useFlagExpiredBatches,
+  useRunPharmacyExpiryAlerts,
   useExpiringBatches,
   useFormulary,
   useRecalledItems,
@@ -261,7 +261,7 @@ function PharmacyBatchesPageInner() {
 
   const createBatch = useCreateBatch();
   const updateBatch = useUpdateBatch();
-  const flagExpired = useFlagExpiredBatches();
+  const runExpiry = useRunPharmacyExpiryAlerts();
   const unrecall = useUnrecallBatch();
 
   const handleLiftRecall = async (batch: DrugBatch) => {
@@ -297,13 +297,18 @@ function PharmacyBatchesPageInner() {
     setCreateOpen(true);
   };
 
-  const handleFlagExpired = async () => {
+  const handleRunExpiry = async () => {
     try {
-      const res = await flagExpired.mutateAsync();
-      const n = res?.flagged ?? 0;
-      toast.success(n > 0 ? `Flagged ${n} expired batch${n === 1 ? '' : 'es'}` : 'No expired batches to flag');
+      const res = await runExpiry.mutateAsync();
+      const flagged = res?.expiredFlagged ?? 0;
+      const alerts = res?.expiryAlerts ?? 0;
+      const parts = [
+        flagged > 0 ? `${flagged} expired batch${flagged === 1 ? '' : 'es'} flagged` : null,
+        alerts > 0 ? `${alerts} near-expiry alert${alerts === 1 ? '' : 's'} sent` : null,
+      ].filter(Boolean);
+      toast.success(parts.length ? parts.join(' · ') : 'No expired or near-expiry stock found');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to flag expired batches');
+      toast.error(err instanceof Error ? err.message : 'Failed to run expiry check');
     }
   };
 
@@ -443,12 +448,12 @@ function PharmacyBatchesPageInner() {
           <Button
             size="sm"
             variant="outline"
-            onClick={handleFlagExpired}
-            disabled={flagExpired.isPending}
-            title="Flag every past-expiry batch so dispensing blocks them"
+            onClick={handleRunExpiry}
+            disabled={runExpiry.isPending}
+            title="Flag past-expiry batches and alert managers about near-expiry stock (per the configured threshold)"
           >
             <AlertTriangle className="mr-1.5 h-4 w-4" />
-            {flagExpired.isPending ? 'Flagging...' : 'Flag expired'}
+            {runExpiry.isPending ? 'Checking...' : 'Run expiry check'}
           </Button>
           <Button
             size="sm"

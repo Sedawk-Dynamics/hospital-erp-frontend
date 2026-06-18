@@ -854,6 +854,25 @@ export function useFlagExpiredBatches() {
   });
 }
 
+// G5: run the full expiry check now — flag expired batches + dispatch near-expiry
+// alerts to the configured recipients (the daily job does this automatically).
+export function useRunPharmacyExpiryAlerts() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const response = await apiPost<{ expiredFlagged: number; expiryAlerts: number }>(
+        '/pharmacy/maintenance/run-expiry-alerts',
+        {},
+      );
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
+    },
+  });
+}
+
 // ============================================================
 // Dispensing Hooks
 // ============================================================
