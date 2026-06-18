@@ -698,7 +698,7 @@ function EntryStep(props: {
 
       {/* Editable line table */}
       <div className="overflow-x-auto rounded-lg border">
-        <table className="w-full min-w-[960px] text-xs">
+        <table className="w-full min-w-[1040px] text-xs">
           <thead className="bg-muted/50 text-muted-foreground">
             <tr className="[&>th]:px-2 [&>th]:py-2 [&>th]:text-left [&>th]:font-medium">
               <th className="w-8">#</th>
@@ -711,6 +711,7 @@ function EntryStep(props: {
               <th className="w-16">MRP</th>
               <th className="w-16">Rate</th>
               <th className="w-14">Disc%</th>
+              <th className="w-16 text-right">Net</th>
               <th className="w-14">GST%</th>
               <th className="w-16">Sell</th>
               <th className="w-8"></th>
@@ -732,6 +733,15 @@ function EntryStep(props: {
                 <td><Input className={cell} type="number" step="0.01" value={l.mrp} onChange={(e) => updateLine(l.id, 'mrp', e.target.value)} /></td>
                 <td><Input className={cell} type="number" step="0.01" value={l.purchasePrice} onChange={(e) => updateLine(l.id, 'purchasePrice', e.target.value)} /></td>
                 <td><Input className={cell} type="number" step="0.01" value={l.purchaseDiscountPercent} onChange={(e) => updateLine(l.id, 'purchaseDiscountPercent', e.target.value)} /></td>
+                {/* G2: net purchase price (rate − line discount), per line */}
+                <td className="px-2 text-right tabular-nums text-muted-foreground">
+                  {(() => {
+                    const r = parseFloat(l.purchasePrice);
+                    if (!r || isNaN(r)) return '—';
+                    const d = parseFloat(l.purchaseDiscountPercent) || 0;
+                    return (r * (1 - d / 100)).toFixed(2);
+                  })()}
+                </td>
                 <td><Input className={cell} type="number" step="0.01" value={l.gstPercent} onChange={(e) => updateLine(l.id, 'gstPercent', e.target.value)} /></td>
                 <td><Input className={cell} type="number" step="0.01" value={l.sellingPrice} onChange={(e) => updateLine(l.id, 'sellingPrice', e.target.value)} /></td>
                 <td className="text-center">

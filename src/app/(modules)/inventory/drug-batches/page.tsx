@@ -729,7 +729,7 @@ function PharmacyBatchesPageInner() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-5 gap-3">
                   <div className="space-y-1.5">
                     <Label htmlFor="purchasePrice">Purchase Rate</Label>
                     <Input
@@ -750,6 +750,24 @@ function PharmacyBatchesPageInner() {
                       value={formData.purchaseDiscountPercent}
                       onChange={(e) => updateField('purchaseDiscountPercent', e.target.value)}
                       placeholder="0"
+                    />
+                  </div>
+                  {/* G2: net purchase price as a distinct (derived) field — rate − discount */}
+                  <div className="space-y-1.5">
+                    <Label>Net Rate</Label>
+                    <Input
+                      type="number"
+                      readOnly
+                      tabIndex={-1}
+                      className="bg-muted/40"
+                      placeholder="—"
+                      title="Net purchase price per unit = purchase rate − discount"
+                      value={(() => {
+                        const r = parseFloat(formData.purchasePrice);
+                        if (!r || isNaN(r)) return '';
+                        const d = parseFloat(formData.purchaseDiscountPercent) || 0;
+                        return (r * (1 - d / 100)).toFixed(2);
+                      })()}
                     />
                   </div>
                   <div className="space-y-1.5">
