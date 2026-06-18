@@ -1353,6 +1353,85 @@ export function useReorderList() {
   });
 }
 
+// G9: draft purchase orders for drugs.
+export interface DrugPurchaseOrderItem {
+  id: string;
+  drugId: string;
+  quantityOrdered: number;
+  drug?: { id: string; drugName: string; strength: string | null; manufacturer: string | null };
+}
+
+export interface DrugPurchaseOrder {
+  id: string;
+  supplierId: string | null;
+  orderNumber: string;
+  status: 'draft' | 'sent' | 'received' | 'cancelled';
+  notes: string | null;
+  createdAt: string;
+  supplier?: { id: string; name: string; gstNumber: string | null; phone: string | null; contactPerson: string | null } | null;
+  items: DrugPurchaseOrderItem[];
+}
+
+export function useDrugPurchaseOrders(status?: string) {
+  return useQuery({
+    queryKey: ['pharmacy', 'purchase-orders', status ?? 'all'],
+    queryFn: async () =>
+      (await apiGet<DrugPurchaseOrder[]>('/pharmacy/purchase-orders', {
+        params: status ? { status } : undefined,
+      })).data,
+  });
+}
+
+const invalidatePOs = (qc: ReturnType<typeof useQueryClient>) => {
+  qc.invalidateQueries({ queryKey: ['pharmacy', 'purchase-orders'] });
+  qc.invalidateQueries({ queryKey: ['pharmacy', 'reports', 'reorder'] });
+};
+
+export function useGeneratePurchaseOrders() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () =>
+      (await apiPost<{ created: number; skipped: number; purchaseOrders: DrugPurchaseOrder[] }>(
+        '/pharmacy/purchase-orders/generate',
+        {},
+      )).data,
+    onSuccess: () => invalidatePOs(qc),
+  });
+}
+
+export function useUpdateDrugPurchaseOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      ...data
+    }: {
+      id: string;
+      supplierId?: string | null;
+      notes?: string;
+      items?: Array<{ drugId: string; quantityOrdered: number }>;
+    }) => (await apiPut<DrugPurchaseOrder>(`/pharmacy/purchase-orders/${id}`, data)).data,
+    onSuccess: () => invalidatePOs(qc),
+  });
+}
+
+export function useSetDrugPurchaseOrderStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: 'sent' | 'received' | 'cancelled' }) =>
+      (await apiPatch<DrugPurchaseOrder>(`/pharmacy/purchase-orders/${id}/status`, { status })).data,
+    onSuccess: () => invalidatePOs(qc),
+  });
+}
+
+export function useDeleteDrugPurchaseOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => (await apiDelete(`/pharmacy/purchase-orders/${id}`)).data,
+    onSuccess: () => invalidatePOs(qc),
+  });
+}
+
 // ============================================================
 // G13 — Ward stock sub-module
 // ============================================================
