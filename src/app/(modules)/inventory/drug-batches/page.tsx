@@ -78,6 +78,7 @@ import {
 } from '@/components/pharmacy/stock-adjust-dialogs';
 import { BulkInwardDialog } from '@/components/pharmacy/bulk-inward-dialog';
 import { StockTakeDialog } from '@/components/pharmacy/stock-take-dialog';
+import { VendorFormDialog } from '@/components/inventory/vendor-form-dialog';
 import {
   useBatches,
   useCreateBatch,
@@ -181,6 +182,8 @@ function PharmacyBatchesPageInner() {
   const [bulkInwardOpen, setBulkInwardOpen] = useState(false);
   // G4: physical stock-take (count sheet → flagged variances → audited corrections).
   const [stockTakeOpen, setStockTakeOpen] = useState(false);
+  // G10: add a vendor inline from the receive-batch form.
+  const [addVendorOpen, setAddVendorOpen] = useState(false);
   const [editingBatch, setEditingBatch] = useState<DrugBatch | null>(null);
   const [formData, setFormData] = useState<FormState>(EMPTY_FORM);
 
@@ -495,6 +498,13 @@ function PharmacyBatchesPageInner() {
       {/* G4: physical stock-take — count sheet → flagged variances → audited corrections */}
       <StockTakeDialog open={stockTakeOpen} onOpenChange={setStockTakeOpen} />
 
+      {/* G10: add a distributor inline; auto-select it on the receive-batch form */}
+      <VendorFormDialog
+        open={addVendorOpen}
+        onOpenChange={setAddVendorOpen}
+        onSaved={(v) => updateField('supplierId', v.id)}
+      />
+
       {/* Expiry overview — at-a-glance near-expiry exposure (drug stock). */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <button
@@ -623,7 +633,17 @@ function PharmacyBatchesPageInner() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Supplier</Label>
+                  <div className="flex items-center justify-between">
+                    <Label>Supplier</Label>
+                    {/* G10: add a new distributor inline so it can be picked + auto-filled */}
+                    <button
+                      type="button"
+                      onClick={() => setAddVendorOpen(true)}
+                      className="text-[11px] text-primary hover:underline"
+                    >
+                      + New vendor
+                    </button>
+                  </div>
                   <Select
                     value={formData.supplierId}
                     onValueChange={(value) => updateField('supplierId', value ?? '')}

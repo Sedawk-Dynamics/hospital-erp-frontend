@@ -46,6 +46,7 @@ import {
   type FormularyMatch,
 } from '@/hooks/use-pharmacy';
 import { useSuppliers } from '@/hooks/use-inventory';
+import { VendorFormDialog } from '@/components/inventory/vendor-form-dialog';
 
 // ============================================================
 // G1 — Bulk Stock Inward (CSV / OCR / manual multi-row)
@@ -586,13 +587,28 @@ function EntryStep(props: {
   const money = (n: number) => `₹${n.toFixed(2)}`;
 
   const cell = 'h-8 text-xs';
+  const [addVendorOpen, setAddVendorOpen] = useState(false);
 
   return (
     <div className="space-y-4">
+      <VendorFormDialog
+        open={addVendorOpen}
+        onOpenChange={setAddVendorOpen}
+        onSaved={(v) => setSupplierId(v.id)}
+      />
       {/* Header: vendor (G10 auto-fill) + invoice */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="space-y-1.5">
-          <Label className="text-xs">Supplier</Label>
+          <div className="flex items-center justify-between">
+            <Label className="text-xs">Supplier</Label>
+            <button
+              type="button"
+              onClick={() => setAddVendorOpen(true)}
+              className="text-[11px] text-primary hover:underline"
+            >
+              + New vendor
+            </button>
+          </div>
           <Select value={supplierId} onValueChange={(v) => setSupplierId(v ?? '')}>
             <SelectTrigger className="w-full h-9"><SelectValue placeholder="Select supplier" /></SelectTrigger>
             <SelectContent>
