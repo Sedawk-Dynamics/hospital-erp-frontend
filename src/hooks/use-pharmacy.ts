@@ -1545,6 +1545,42 @@ export function useCreditStatus(patientId: string | null) {
   });
 }
 
+// §4.1 Flow 2: consolidated IP billing / TPA-submission summary for a patient.
+export interface IpBillingSummary {
+  patient: { id: string; mrn: string; firstName: string; lastName: string | null; phone: string | null };
+  admission: { id: string; billingCategory: string; depositAmount: number | string; admissionDate: string } | null;
+  category: string;
+  isTpa: boolean;
+  insurance: { insurer: string | null; tpa: string | null; policyNumber: string; planName: string | null } | null;
+  bills: Array<{
+    id: string;
+    billNumber: string;
+    billDate: string;
+    totalAmount: number | string;
+    amountPaid: number | string;
+    balanceDue: number | string;
+    status: string;
+    billItems: Array<{
+      description: string;
+      category: string;
+      quantity: number;
+      unitPrice: number | string;
+      totalAmount: number | string;
+    }>;
+  }>;
+  categoryTotals: Array<{ category: string; amount: number }>;
+  totals: { totalBilled: number; totalPaid: number; balanceDue: number; deposit: number; available: number };
+}
+
+export function useIpBillingSummary(patientId: string | null) {
+  return useQuery({
+    queryKey: ['pharmacy', 'billing-summary', patientId],
+    queryFn: async () =>
+      (await apiGet<IpBillingSummary>('/pharmacy/billing-summary', { params: { patientId } })).data,
+    enabled: !!patientId,
+  });
+}
+
 // ============================================================
 // G16 — Emergency (Golden Hour) pre-registration buffer
 // ============================================================

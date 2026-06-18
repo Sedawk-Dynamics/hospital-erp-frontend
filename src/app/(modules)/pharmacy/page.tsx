@@ -18,6 +18,7 @@ import {
   CalendarClock,
   Siren,
   Repeat,
+  FileText,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
@@ -48,6 +49,7 @@ import {
   useCreditStatus,
 } from '@/hooks/use-pharmacy';
 import { DrugSubstitutesDialog } from '@/components/pharmacy/drug-substitutes-dialog';
+import { BillingSummaryDialog } from '@/components/pharmacy/billing-summary-dialog';
 import { PharmacyReceiptDialog } from '@/components/pharmacy/pharmacy-receipt-dialog';
 import { EmergencyMergeDialog } from '@/components/pharmacy/emergency-merge-dialog';
 
@@ -184,6 +186,8 @@ function PharmacyPOS() {
   const [substituteFor, setSubstituteFor] = useState<
     { id: string; drugName: string; genericName: string | null } | null
   >(null);
+  // §4.1 Flow 2: consolidated IP billing / TPA summary for the selected patient.
+  const [billingSummaryOpen, setBillingSummaryOpen] = useState(false);
   const [showPatientDropdown, setShowPatientDropdown] = useState(false);
   const patientDropdownRef = useRef<HTMLDivElement>(null);
   const [debouncedPatient, setDebouncedPatient] = useState('');
@@ -845,6 +849,20 @@ function PharmacyPOS() {
         {/* G16: Emergency (Golden Hour) — mint a temp patient to dispense against
             immediately, and merge temp records into a real MRN after registration. */}
         <div className="ml-auto flex items-center gap-2">
+          {/* §4.1 Flow 2: consolidated IP billing / TPA-submission summary */}
+          {selectedPatient && creditStatus?.hasAdmission && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBillingSummaryOpen(true)}
+              title="View / print the patient's consolidated bills (TPA submission for insurance)"
+            >
+              <FileText className="mr-1.5 h-4 w-4" />
+              {creditStatus.category === 'insurance' || creditStatus.category === 'corporate'
+                ? 'TPA Summary'
+                : 'Billing'}
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -1536,6 +1554,13 @@ function PharmacyPOS() {
 
       {/* G16: merge an emergency temp record into a registered patient */}
       <EmergencyMergeDialog open={mergeOpen} onOpenChange={setMergeOpen} />
+
+      {/* §4.1 Flow 2: consolidated IP billing / TPA submission summary */}
+      <BillingSummaryDialog
+        patientId={selectedPatient?.id ?? null}
+        open={billingSummaryOpen}
+        onOpenChange={setBillingSummaryOpen}
+      />
 
       {/* G8: same-composition alternative brands surfaced from the counter search */}
       <DrugSubstitutesDialog
