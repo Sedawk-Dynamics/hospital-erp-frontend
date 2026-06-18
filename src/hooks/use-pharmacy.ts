@@ -494,6 +494,9 @@ export interface CommitInwardInput {
   supplierId?: string;
   invoiceNumber?: string;
   invoiceDate?: string;
+  // G2: whole-invoice (total-bill) purchase discount on top of per-line discounts.
+  invoiceDiscountPercent?: number;
+  invoiceDiscountAmount?: number;
   addToExisting?: boolean;
   lines: CommitInwardLine[];
 }
@@ -513,6 +516,14 @@ export interface CommitInwardResult {
     batchId?: string;
     message?: string;
   }>;
+  // G2: invoice purchase economics (gross → −line disc → −bill disc → net).
+  purchaseSummary?: {
+    grossValue: number;
+    lineDiscount: number;
+    invoiceDiscountPercent: number;
+    invoiceDiscount: number;
+    netValue: number;
+  };
 }
 
 // Step 2: commit the reviewed map-or-create decisions and post the stock.
