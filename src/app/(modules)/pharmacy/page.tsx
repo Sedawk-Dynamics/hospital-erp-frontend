@@ -43,6 +43,7 @@ import {
   type PharmacyTenderInput,
   type CreatePharmacySaleInput,
   useCreateEmergencyPatient,
+  useCreditStatus,
 } from '@/hooks/use-pharmacy';
 import { PharmacyReceiptDialog } from '@/components/pharmacy/pharmacy-receipt-dialog';
 import { EmergencyMergeDialog } from '@/components/pharmacy/emergency-merge-dialog';
@@ -174,6 +175,8 @@ function PharmacyPOS() {
   // --- Patient state ---
   const [patientSearch, setPatientSearch] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<PatientResult | null>(null);
+  // G7: IP advance picture for the selected patient (drives the Advance tender).
+  const { data: creditStatus } = useCreditStatus(selectedPatient?.id ?? null);
   const [showPatientDropdown, setShowPatientDropdown] = useState(false);
   const patientDropdownRef = useRef<HTMLDivElement>(null);
   const [debouncedPatient, setDebouncedPatient] = useState('');
@@ -591,7 +594,20 @@ function PharmacyPOS() {
     UPI: 'upi',
     'Bank Transfer': 'net_banking',
     Insurance: 'insurance',
+    Advance: 'advance',
   };
+  // G7: Advance Deduction is offered only for an admitted IP patient who has
+  // prepaid advance left (deposit − running bills). The backend re-validates.
+  const advanceAvailable =
+    creditStatus?.hasAdmission ? Math.max(0, creditStatus.available) : 0;
+  const paymentModes = [
+    'Cash',
+    'Card',
+    'UPI',
+    'Bank Transfer',
+    'Insurance',
+    ...(advanceAvailable > 0 ? ['Advance'] : []),
+  ];
 
   // Sum of all split tenders entered (in split mode).
   const tendersTotal = tenders.reduce((s, t) => s + (Number(t.amount) || 0), 0);
@@ -1232,10 +1248,17 @@ function PharmacyPOS() {
               </button>
             </div>
 
+            {/* G7: surface the IP advance the patient can settle against. */}
+            {advanceAvailable > 0 && (
+              <p className="mb-2 rounded-md bg-primary/5 px-2.5 py-1 text-[11px] text-primary">
+                Advance available: ₹{fmt(advanceAvailable)} — selectable as a payment mode.
+              </p>
+            )}
+
             {!splitMode ? (
               <>
                 <div className="flex flex-wrap gap-2">
-                  {['Cash', 'Card', 'UPI', 'Bank Transfer', 'Insurance'].map((mode) => (
+                  {paymentModes.map((mode) => (
                     <button
                       key={mode}
                       type="button"
@@ -1286,7 +1309,7 @@ function PharmacyPOS() {
                       }
                       className="h-9 rounded-md border border-border bg-background px-2 text-xs"
                     >
-                      {['Cash', 'Card', 'UPI', 'Bank Transfer', 'Insurance'].map((m) => (
+                      {paymentModes.map((m) => (
                         <option key={m} value={m}>
                           {m}
                         </option>

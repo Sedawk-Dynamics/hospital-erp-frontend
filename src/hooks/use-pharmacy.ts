@@ -955,6 +955,8 @@ export type PharmacyPaymentMethod =
   | 'upi'
   | 'net_banking'
   | 'insurance'
+  // G7: deduct from an admitted IP patient's prepaid advance.
+  | 'advance'
   | 'cheque'
   | 'other';
 
