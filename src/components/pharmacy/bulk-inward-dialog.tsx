@@ -1,0 +1,842 @@
+'use client';
+
+import { useMemo, useRef, useState } from 'react';
+import {
+  Upload,
+  Plus,
+  Trash2,
+  ArrowRight,
+  ArrowLeft,
+  Check,
+  Loader2,
+  PackageCheck,
+  ClipboardPaste,
+  Sparkles,
+  CircleCheck,
+  CircleX,
+} from 'lucide-react';
+import { toast } from 'sonner';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectTrigger,
+  SelectContent,
+  SelectItem,
+  SelectValue,
+} from '@/components/ui/select';
+import { cn } from '@/lib/utils';
+import {
+  useMatchInward,
+  useCommitInward,
+  type InwardMatchedLine,
+  type CommitInwardLine,
+  type CommitInwardResult,
+  type FormularyMatch,
+} from '@/hooks/use-pharmacy';
+import { useSuppliers } from '@/hooks/use-inventory';
+
+// ============================================================
+// G1 — Bulk Stock Inward (CSV / OCR / manual multi-row)
+// ============================================================
+// A distributor invoice arrives with many lines whose names drift from the
+// formulary ("Telmac 40 Tab" vs the on-file "Telmac 40"). Keyed in / pasted /
+// CSV-imported, each mismatch silently splits stock into two part-counts. This
+// wizard runs every incoming line through the fuzzy matcher, then forces a
+// side-by-side "existing vs incoming" review so the user maps to the existing
+// drug (no split) or knowingly creates a new one — before any stock is posted.
+
+interface DraftLine {
+  id: string;
+  drugName: string;
+  genericName: string;
+  manufacturer: string;
+  strength: string;
+  batchNumber: string;
+  expiryDate: string; // yyyy-MM-dd
+  manufacturingDate: string;
+  quantityReceived: string; // paid units
+  freeQuantity: string;
+  mrp: string;
+  purchasePrice: string;
+  purchaseDiscountPercent: string;
+  gstPercent: string;
+  sellingPrice: string;
+}
+
+interface Decision {
+  action: 'map' | 'create';
+  targetId: string | null;
+}
+
+type Step = 'entry' | 'review' | 'done';
+
+let rowSeq = 0;
+const nextId = () => `row-${++rowSeq}`;
+
+function emptyLine(): DraftLine {
+  return {
+    id: nextId(),
+    drugName: '',
+    genericName: '',
+    manufacturer: '',
+    strength: '',
+    batchNumber: '',
+    expiryDate: '',
+    manufacturingDate: '',
+    quantityReceived: '',
+    freeQuantity: '',
+    mrp: '',
+    purchasePrice: '',
+    purchaseDiscountPercent: '',
+    gstPercent: '',
+    sellingPrice: '',
+  };
+}
+
+// ── CSV / paste parsing ─────────────────────────────────────
+// Header synonyms a distributor CSV might use → our canonical field.
+const HEADER_MAP: Record<string, keyof DraftLine> = {
+  name: 'drugName', drug: 'drugName', product: 'drugName', item: 'drugName',
+  description: 'drugName', medicine: 'drugName', particulars: 'drugName',
+  generic: 'genericName', composition: 'genericName', salt: 'genericName',
+  manufacturer: 'manufacturer', mfr: 'manufacturer', company: 'manufacturer', mfg_company: 'manufacturer',
+  strength: 'strength', dose: 'strength', dosage: 'strength',
+  batch: 'batchNumber', batchno: 'batchNumber', batch_no: 'batchNumber', lot: 'batchNumber', bno: 'batchNumber',
+  expiry: 'expiryDate', exp: 'expiryDate', exp_date: 'expiryDate', expiry_date: 'expiryDate', expdate: 'expiryDate',
+  mfgdate: 'manufacturingDate', mfg_date: 'manufacturingDate', manufacturing_date: 'manufacturingDate',
+  qty: 'quantityReceived', quantity: 'quantityReceived', units: 'quantityReceived', received: 'quantityReceived',
+  free: 'freeQuantity', free_qty: 'freeQuantity', freeqty: 'freeQuantity',
+  mrp: 'mrp',
+  rate: 'purchasePrice', ptr: 'purchasePrice', purchase: 'purchasePrice', purchase_rate: 'purchasePrice', cost: 'purchasePrice', price: 'purchasePrice',
+  disc: 'purchaseDiscountPercent', discount: 'purchaseDiscountPercent', disc_percent: 'purchaseDiscountPercent',
+  gst: 'gstPercent', tax: 'gstPercent', gst_percent: 'gstPercent',
+  sell: 'sellingPrice', selling: 'sellingPrice', sale: 'sellingPrice', sale_rate: 'sellingPrice', mrp_sale: 'sellingPrice',
+};
+
+// Default positional order when the pasted text has no recognisable header row.
+const DEFAULT_ORDER: (keyof DraftLine)[] = [
+  'drugName', 'batchNumber', 'expiryDate', 'quantityReceived', 'mrp', 'purchasePrice', 'gstPercent', 'sellingPrice',
+];
+
+const normHeader = (s: string) => s.trim().toLowerCase().replace(/[\s.]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+
+// Split a CSV/TSV line, honouring "quoted, fields".
+function splitRow(line: string): string[] {
+  if (line.includes('\t')) return line.split('\t').map((c) => c.trim());
+  const out: string[] = [];
+  let cur = '';
+  let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQ && line[i + 1] === '"') { cur += '"'; i++; } else inQ = !inQ;
+    } else if (ch === ',' && !inQ) { out.push(cur.trim()); cur = ''; } else cur += ch;
+  }
+  out.push(cur.trim());
+  return out;
+}
+
+// Best-effort distributor expiry → yyyy-MM-dd. Handles MM/YY, MM/YYYY (→ end of
+// month), dd/MM/yyyy, dd-MM-yyyy and yyyy-MM-dd. Unparseable → '' (user fixes it).
+function parseExpiry(raw: string): string {
+  const s = raw.trim();
+  if (!s) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const lastDay = (y: number, m: number) => new Date(y, m, 0).getDate();
+  let m = s.match(/^(\d{1,2})[/\-](\d{2,4})$/); // MM/YY or MM/YYYY
+  if (m) {
+    const mon = Math.min(12, Math.max(1, parseInt(m[1], 10)));
+    let yr = parseInt(m[2], 10);
+    if (yr < 100) yr += 2000;
+    return `${yr}-${String(mon).padStart(2, '0')}-${String(lastDay(yr, mon)).padStart(2, '0')}`;
+  }
+  m = s.match(/^(\d{1,2})[/\-](\d{1,2})[/\-](\d{2,4})$/); // dd/MM/yyyy
+  if (m) {
+    const d = parseInt(m[1], 10);
+    const mon = parseInt(m[2], 10);
+    let yr = parseInt(m[3], 10);
+    if (yr < 100) yr += 2000;
+    return `${yr}-${String(mon).padStart(2, '0')}-${String(Math.min(d, lastDay(yr, mon))).padStart(2, '0')}`;
+  }
+  return '';
+}
+
+function parseTabular(text: string): DraftLine[] {
+  const rows = text.split(/\r?\n/).map((r) => r.trim()).filter(Boolean);
+  if (!rows.length) return [];
+  const first = splitRow(rows[0]).map(normHeader);
+  const hasHeader = first.some((h) => h in HEADER_MAP);
+  const order: (keyof DraftLine | null)[] = hasHeader
+    ? first.map((h) => HEADER_MAP[h] ?? null)
+    : DEFAULT_ORDER;
+  const dataRows = hasHeader ? rows.slice(1) : rows;
+  const out: DraftLine[] = [];
+  for (const r of dataRows) {
+    const cells = splitRow(r);
+    if (!cells.some((c) => c)) continue;
+    const line = emptyLine();
+    cells.forEach((cell, i) => {
+      const field = order[i];
+      if (!field || !cell) return;
+      line[field] = field === 'expiryDate' || field === 'manufacturingDate' ? parseExpiry(cell) : cell;
+    });
+    if (line.drugName) out.push(line);
+  }
+  return out;
+}
+
+const num = (s: string): number | undefined => {
+  const n = parseFloat(s);
+  return s.trim() !== '' && !isNaN(n) ? n : undefined;
+};
+const int = (s: string): number | undefined => {
+  const n = parseInt(s, 10);
+  return s.trim() !== '' && !isNaN(n) ? n : undefined;
+};
+
+function recBadge(rec: InwardMatchedLine['recommendation']) {
+  if (rec === 'map') return <Badge className="bg-amber-500/10 text-amber-700 border-amber-500/20">Likely duplicate</Badge>;
+  if (rec === 'review') return <Badge className="bg-blue-500/10 text-blue-700 border-blue-500/20">Possible match</Badge>;
+  return <Badge className="bg-emerald-500/10 text-emerald-700 border-emerald-500/20">New drug</Badge>;
+}
+
+export function BulkInwardDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [step, setStep] = useState<Step>('entry');
+  const [supplierId, setSupplierId] = useState('');
+  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [invoiceDate, setInvoiceDate] = useState('');
+  const [addToExisting, setAddToExisting] = useState(false);
+  const [lines, setLines] = useState<DraftLine[]>([emptyLine()]);
+  const [pasteText, setPasteText] = useState('');
+  const [showPaste, setShowPaste] = useState(false);
+
+  const [matched, setMatched] = useState<InwardMatchedLine[]>([]);
+  const [decisions, setDecisions] = useState<Decision[]>([]);
+  const [result, setResult] = useState<CommitInwardResult | null>(null);
+
+  const fileRef = useRef<HTMLInputElement>(null);
+  const { data: suppliersData } = useSuppliers({ limit: 100 });
+  const suppliers = suppliersData?.data ?? [];
+  const matchInward = useMatchInward();
+  const commitInward = useCommitInward();
+
+  const reset = () => {
+    setStep('entry');
+    setSupplierId('');
+    setInvoiceNumber('');
+    setInvoiceDate('');
+    setAddToExisting(false);
+    setLines([emptyLine()]);
+    setPasteText('');
+    setShowPaste(false);
+    setMatched([]);
+    setDecisions([]);
+    setResult(null);
+  };
+
+  const close = () => {
+    onOpenChange(false);
+    // Defer reset so the closing animation doesn't flash the entry step.
+    setTimeout(reset, 200);
+  };
+
+  const updateLine = (id: string, field: keyof DraftLine, value: string) =>
+    setLines((prev) => prev.map((l) => (l.id === id ? { ...l, [field]: value } : l)));
+  const addLine = () => setLines((prev) => [...prev, emptyLine()]);
+  const removeLine = (id: string) =>
+    setLines((prev) => (prev.length === 1 ? [emptyLine()] : prev.filter((l) => l.id !== id)));
+
+  const ingest = (text: string) => {
+    const parsed = parseTabular(text);
+    if (!parsed.length) {
+      toast.error('No rows found. Check the format — one medicine per line.');
+      return;
+    }
+    setLines((prev) => {
+      const existing = prev.filter((l) => l.drugName.trim());
+      return [...existing, ...parsed];
+    });
+    setPasteText('');
+    setShowPaste(false);
+    toast.success(`Loaded ${parsed.length} line${parsed.length === 1 ? '' : 's'}`);
+  };
+
+  const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => ingest(String(reader.result ?? ''));
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  // Validate + score the entered lines, then move to the review step.
+  const handleMatch = async () => {
+    const filled = lines.filter((l) => l.drugName.trim());
+    if (!filled.length) return toast.error('Add at least one medicine line');
+    for (const l of filled) {
+      if (!l.batchNumber.trim()) return toast.error(`Batch number missing for "${l.drugName}"`);
+      if (!l.expiryDate) return toast.error(`Expiry date missing for "${l.drugName}"`);
+      if (!int(l.quantityReceived) || int(l.quantityReceived)! <= 0)
+        return toast.error(`Quantity missing for "${l.drugName}"`);
+    }
+    try {
+      const res = await matchInward.mutateAsync(
+        filled.map((l) => ({
+          drugName: l.drugName.trim(),
+          genericName: l.genericName.trim() || undefined,
+          manufacturer: l.manufacturer.trim() || undefined,
+          strength: l.strength.trim() || undefined,
+        })),
+      );
+      // Keep only the filled lines, in the matched order.
+      setLines(filled);
+      setMatched(res);
+      setDecisions(
+        res.map((m) => ({
+          action: m.recommendation === 'create' ? 'create' : 'map',
+          targetId: m.suggestedFormularyId,
+        })),
+      );
+      setStep('review');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to match lines');
+    }
+  };
+
+  const setDecision = (i: number, patch: Partial<Decision>) =>
+    setDecisions((prev) => prev.map((d, idx) => (idx === i ? { ...d, ...patch } : d)));
+
+  const summary = useMemo(() => {
+    let map = 0, create = 0;
+    for (const d of decisions) {
+      if (d.action === 'map') map++;
+      else create++;
+    }
+    return { map, create };
+  }, [decisions]);
+
+  const handleCommit = async () => {
+    // Build the reviewed payload from each draft line + its decision.
+    const payloadLines: CommitInwardLine[] = lines.map((l, i) => {
+      const d = decisions[i];
+      const paid = int(l.quantityReceived) ?? 0;
+      const free = int(l.freeQuantity) ?? 0;
+      return {
+        action: d.action,
+        targetFormularyId: d.action === 'map' ? d.targetId ?? undefined : undefined,
+        drugName: l.drugName.trim(),
+        genericName: l.genericName.trim() || undefined,
+        manufacturer: l.manufacturer.trim() || undefined,
+        strength: l.strength.trim() || undefined,
+        batchNumber: l.batchNumber.trim(),
+        expiryDate: l.expiryDate,
+        manufacturingDate: l.manufacturingDate || undefined,
+        // Total received = paid + free; the free portion is recorded separately.
+        quantityReceived: paid + free,
+        freeQuantity: free || undefined,
+        mrp: num(l.mrp),
+        purchasePrice: num(l.purchasePrice),
+        purchaseDiscountPercent: num(l.purchaseDiscountPercent),
+        gstPercent: num(l.gstPercent),
+        sellingPrice: num(l.sellingPrice),
+      };
+    });
+
+    // A map decision with no chosen target can't be honoured — block early.
+    const orphan = payloadLines.findIndex((l) => l.action === 'map' && !l.targetFormularyId);
+    if (orphan >= 0) {
+      return toast.error(`Pick an existing drug to map "${payloadLines[orphan].drugName}" to, or switch it to "Create new".`);
+    }
+
+    try {
+      const res = await commitInward.mutateAsync({
+        supplierId: supplierId || undefined,
+        invoiceNumber: invoiceNumber.trim() || undefined,
+        invoiceDate: invoiceDate || undefined,
+        addToExisting,
+        lines: payloadLines,
+      });
+      setResult(res);
+      setStep('done');
+      if (res.failed > 0) {
+        toast.warning(`${res.batchesIn} line(s) posted, ${res.failed} failed`);
+      } else {
+        toast.success(`Stock inward complete — ${res.batchesIn} line(s) posted`);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to commit inward');
+    }
+  };
+
+  const selectedSupplier = suppliers.find((s) => s.id === supplierId);
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => (o ? onOpenChange(true) : close())}>
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <PackageCheck className="h-5 w-5 text-primary" />
+            Bulk Stock Inward
+          </DialogTitle>
+          <DialogDescription>
+            {step === 'entry' &&
+              'Key in, paste, or upload a distributor invoice. Each line is checked for an existing match before stock is posted — so the count never splits across near-duplicate names.'}
+            {step === 'review' &&
+              'Review each line. Map to an existing drug to keep stock together, or create a new one. Compare incoming vs. existing side by side.'}
+            {step === 'done' && 'Inward posted. Here is what happened to each line.'}
+          </DialogDescription>
+        </DialogHeader>
+
+        {/* Step indicator */}
+        <div className="flex items-center gap-2 text-xs">
+          {(['entry', 'review', 'done'] as Step[]).map((s, i) => (
+            <div key={s} className="flex items-center gap-2">
+              <span
+                className={cn(
+                  'flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold',
+                  step === s
+                    ? 'bg-primary text-primary-foreground'
+                    : (['entry', 'review', 'done'].indexOf(step) > i)
+                      ? 'bg-primary/20 text-primary'
+                      : 'bg-muted text-muted-foreground',
+                )}
+              >
+                {i + 1}
+              </span>
+              <span className={cn('capitalize', step === s ? 'font-medium' : 'text-muted-foreground')}>
+                {s === 'entry' ? 'Enter lines' : s}
+              </span>
+              {i < 2 && <ArrowRight className="h-3 w-3 text-muted-foreground" />}
+            </div>
+          ))}
+        </div>
+
+        <div className="flex-1 overflow-y-auto pr-1">
+          {step === 'entry' && (
+            <EntryStep
+              suppliers={suppliers}
+              supplierId={supplierId}
+              setSupplierId={setSupplierId}
+              selectedSupplier={selectedSupplier}
+              invoiceNumber={invoiceNumber}
+              setInvoiceNumber={setInvoiceNumber}
+              invoiceDate={invoiceDate}
+              setInvoiceDate={setInvoiceDate}
+              lines={lines}
+              updateLine={updateLine}
+              addLine={addLine}
+              removeLine={removeLine}
+              showPaste={showPaste}
+              setShowPaste={setShowPaste}
+              pasteText={pasteText}
+              setPasteText={setPasteText}
+              ingest={ingest}
+              fileRef={fileRef}
+              onFile={onFile}
+            />
+          )}
+
+          {step === 'review' && (
+            <ReviewStep lines={lines} matched={matched} decisions={decisions} setDecision={setDecision} />
+          )}
+
+          {step === 'done' && result && <DoneStep lines={lines} result={result} />}
+        </div>
+
+        <DialogFooter className="gap-2">
+          {step === 'entry' && (
+            <>
+              <Button variant="outline" onClick={close}>Cancel</Button>
+              <Button onClick={handleMatch} disabled={matchInward.isPending}>
+                {matchInward.isPending ? (
+                  <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Checking…</>
+                ) : (
+                  <><Sparkles className="mr-1.5 h-4 w-4" /> Match &amp; Review</>
+                )}
+              </Button>
+            </>
+          )}
+          {step === 'review' && (
+            <>
+              <div className="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
+                <span>{summary.map} mapping to existing</span>·<span>{summary.create} new</span>
+                <label className="ml-3 flex cursor-pointer items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 accent-primary"
+                    checked={addToExisting}
+                    onChange={(e) => setAddToExisting(e.target.checked)}
+                  />
+                  If batch exists, add to it
+                </label>
+              </div>
+              <Button variant="outline" onClick={() => setStep('entry')}>
+                <ArrowLeft className="mr-1.5 h-4 w-4" /> Back
+              </Button>
+              <Button onClick={handleCommit} disabled={commitInward.isPending}>
+                {commitInward.isPending ? (
+                  <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Posting…</>
+                ) : (
+                  <><PackageCheck className="mr-1.5 h-4 w-4" /> Commit Inward</>
+                )}
+              </Button>
+            </>
+          )}
+          {step === 'done' && (
+            <Button onClick={close}>Done</Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Step 1: enter / paste / upload lines ────────────────────
+function EntryStep(props: {
+  suppliers: { id: string; name: string }[];
+  supplierId: string;
+  setSupplierId: (v: string) => void;
+  selectedSupplier: { gstNumber: string | null; licenseNumber: string | null; phone: string | null; contactPerson: string | null } | undefined;
+  invoiceNumber: string;
+  setInvoiceNumber: (v: string) => void;
+  invoiceDate: string;
+  setInvoiceDate: (v: string) => void;
+  lines: DraftLine[];
+  updateLine: (id: string, field: keyof DraftLine, value: string) => void;
+  addLine: () => void;
+  removeLine: (id: string) => void;
+  showPaste: boolean;
+  setShowPaste: (v: boolean) => void;
+  pasteText: string;
+  setPasteText: (v: string) => void;
+  ingest: (text: string) => void;
+  fileRef: React.RefObject<HTMLInputElement | null>;
+  onFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
+}) {
+  const {
+    suppliers, supplierId, setSupplierId, selectedSupplier, invoiceNumber, setInvoiceNumber,
+    invoiceDate, setInvoiceDate, lines, updateLine, addLine, removeLine, showPaste, setShowPaste,
+    pasteText, setPasteText, ingest, fileRef, onFile,
+  } = props;
+
+  const cell = 'h-8 text-xs';
+
+  return (
+    <div className="space-y-4">
+      {/* Header: vendor (G10 auto-fill) + invoice */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="space-y-1.5">
+          <Label className="text-xs">Supplier</Label>
+          <Select value={supplierId} onValueChange={(v) => setSupplierId(v ?? '')}>
+            <SelectTrigger className="w-full h-9"><SelectValue placeholder="Select supplier" /></SelectTrigger>
+            <SelectContent>
+              {suppliers.map((s: { id: string; name: string }) => (
+                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {selectedSupplier && (
+            <p className="text-[11px] text-muted-foreground">
+              {[selectedSupplier.gstNumber ? `GSTIN ${selectedSupplier.gstNumber}` : null,
+                selectedSupplier.licenseNumber ? `DL ${selectedSupplier.licenseNumber}` : null,
+                selectedSupplier.phone || selectedSupplier.contactPerson || null]
+                .filter(Boolean).join(' · ')}
+            </p>
+          )}
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Invoice No.</Label>
+          <Input className="h-9" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} placeholder="Supplier invoice no." />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Invoice Date</Label>
+          <Input className="h-9" type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
+        </div>
+      </div>
+
+      {/* Import controls */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()}>
+          <Upload className="mr-1.5 h-4 w-4" /> Upload CSV
+        </Button>
+        <input ref={fileRef} type="file" accept=".csv,.txt,text/csv" className="hidden" onChange={onFile} />
+        <Button size="sm" variant="outline" onClick={() => setShowPaste(!showPaste)}>
+          <ClipboardPaste className="mr-1.5 h-4 w-4" /> Paste rows
+        </Button>
+        <span className="text-[11px] text-muted-foreground">
+          Columns: name, batch, expiry, qty, mrp, rate, gst, sell (a header row is auto-detected). OCR text can be pasted too.
+        </span>
+      </div>
+
+      {showPaste && (
+        <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+          <Textarea
+            rows={4}
+            value={pasteText}
+            onChange={(e) => setPasteText(e.target.value)}
+            placeholder={'Telmac 40 Tab, B23A01, 12/2026, 100, 85, 75, 12, 8.5\nPantop 40, P5512, 06/2027, 50, 120, 100, 12, 11'}
+            className="font-mono text-xs"
+          />
+          <div className="flex justify-end">
+            <Button size="sm" onClick={() => ingest(pasteText)} disabled={!pasteText.trim()}>
+              <Plus className="mr-1.5 h-4 w-4" /> Add to table
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Editable line table */}
+      <div className="overflow-x-auto rounded-lg border">
+        <table className="w-full min-w-[860px] text-xs">
+          <thead className="bg-muted/50 text-muted-foreground">
+            <tr className="[&>th]:px-2 [&>th]:py-2 [&>th]:text-left [&>th]:font-medium">
+              <th className="w-8">#</th>
+              <th className="min-w-[160px]">Medicine *</th>
+              <th>Strength</th>
+              <th>Batch *</th>
+              <th>Expiry *</th>
+              <th className="w-16">Qty *</th>
+              <th className="w-14">Free</th>
+              <th className="w-16">MRP</th>
+              <th className="w-16">Rate</th>
+              <th className="w-14">GST%</th>
+              <th className="w-16">Sell</th>
+              <th className="w-8"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((l, i) => (
+              <tr key={l.id} className="border-t [&>td]:px-1.5 [&>td]:py-1 align-top">
+                <td className="px-2 py-2 text-muted-foreground">{i + 1}</td>
+                <td>
+                  <Input className={cell} value={l.drugName} onChange={(e) => updateLine(l.id, 'drugName', e.target.value)} placeholder="e.g. Telmac 40 Tab" />
+                  <Input className={cn(cell, 'mt-1 text-muted-foreground')} value={l.genericName} onChange={(e) => updateLine(l.id, 'genericName', e.target.value)} placeholder="composition (optional)" />
+                </td>
+                <td><Input className={cell} value={l.strength} onChange={(e) => updateLine(l.id, 'strength', e.target.value)} placeholder="40mg" /></td>
+                <td><Input className={cell} value={l.batchNumber} onChange={(e) => updateLine(l.id, 'batchNumber', e.target.value)} placeholder="B23A01" /></td>
+                <td><Input className={cn(cell, 'w-[130px]')} type="date" value={l.expiryDate} onChange={(e) => updateLine(l.id, 'expiryDate', e.target.value)} /></td>
+                <td><Input className={cell} type="number" min={1} value={l.quantityReceived} onChange={(e) => updateLine(l.id, 'quantityReceived', e.target.value)} /></td>
+                <td><Input className={cell} type="number" min={0} value={l.freeQuantity} onChange={(e) => updateLine(l.id, 'freeQuantity', e.target.value)} /></td>
+                <td><Input className={cell} type="number" step="0.01" value={l.mrp} onChange={(e) => updateLine(l.id, 'mrp', e.target.value)} /></td>
+                <td><Input className={cell} type="number" step="0.01" value={l.purchasePrice} onChange={(e) => updateLine(l.id, 'purchasePrice', e.target.value)} /></td>
+                <td><Input className={cell} type="number" step="0.01" value={l.gstPercent} onChange={(e) => updateLine(l.id, 'gstPercent', e.target.value)} /></td>
+                <td><Input className={cell} type="number" step="0.01" value={l.sellingPrice} onChange={(e) => updateLine(l.id, 'sellingPrice', e.target.value)} /></td>
+                <td className="text-center">
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-red-600" onClick={() => removeLine(l.id)} title="Remove line">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <Button size="sm" variant="outline" onClick={addLine}>
+        <Plus className="mr-1.5 h-4 w-4" /> Add line
+      </Button>
+    </div>
+  );
+}
+
+// ── Step 2: side-by-side duplicate review ───────────────────
+function ReviewStep({
+  lines, matched, decisions, setDecision,
+}: {
+  lines: DraftLine[];
+  matched: InwardMatchedLine[];
+  decisions: Decision[];
+  setDecision: (i: number, patch: Partial<Decision>) => void;
+}) {
+  return (
+    <div className="space-y-3">
+      {matched.map((m, i) => {
+        const line = lines[i];
+        const decision = decisions[i];
+        const target = m.matches.find((x) => x.id === decision.targetId) ?? null;
+        const hasMatches = m.matches.length > 0;
+        return (
+          <div key={i} className="rounded-lg border bg-surface-container-lowest p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-xs text-muted-foreground">#{i + 1}</span>
+                <span className="truncate font-medium">{line.drugName}</span>
+                {recBadge(m.recommendation)}
+              </div>
+              {/* Map / Create toggle */}
+              <div className="flex items-center gap-1 rounded-md border p-0.5">
+                <button
+                  type="button"
+                  disabled={!hasMatches}
+                  onClick={() => setDecision(i, { action: 'map', targetId: decision.targetId ?? m.matches[0]?.id ?? null })}
+                  className={cn(
+                    'rounded px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-40',
+                    decision.action === 'map' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted',
+                  )}
+                >
+                  Map to existing
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDecision(i, { action: 'create' })}
+                  className={cn(
+                    'rounded px-2.5 py-1 text-xs font-medium transition-colors',
+                    decision.action === 'create' ? 'bg-emerald-600 text-white' : 'text-muted-foreground hover:bg-muted',
+                  )}
+                >
+                  Create new
+                </button>
+              </div>
+            </div>
+
+            {decision.action === 'map' ? (
+              <div className="mt-3 space-y-2">
+                {/* Candidate picker when >1 */}
+                {m.matches.length > 1 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {m.matches.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setDecision(i, { targetId: c.id })}
+                        className={cn(
+                          'flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors',
+                          decision.targetId === c.id ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:bg-muted',
+                        )}
+                      >
+                        {decision.targetId === c.id && <Check className="h-3 w-3 text-primary" />}
+                        <span className="truncate max-w-[180px]">{c.drugName}</span>
+                        <Badge variant="outline" className="font-mono text-[10px]">{c.score}%</Badge>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {/* Side-by-side: incoming (invoice) vs existing (system) */}
+                <CompareCards line={line} target={target} />
+              </div>
+            ) : (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Will be added to the formulary as a new drug, then stocked.
+                {hasMatches && ' (A similar drug exists — switch to “Map to existing” to avoid splitting stock.)'}
+              </p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function Field({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex justify-between gap-2">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="text-right font-medium">{value || '—'}</span>
+    </div>
+  );
+}
+
+function CompareCards({ line, target }: { line: DraftLine; target: FormularyMatch | null }) {
+  return (
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <div className="rounded-md border border-dashed bg-muted/20 p-2.5 text-xs">
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Incoming (invoice)</p>
+        <div className="space-y-0.5">
+          <Field label="Name" value={line.drugName} />
+          <Field label="Composition" value={line.genericName} />
+          <Field label="Manufacturer" value={line.manufacturer} />
+          <Field label="Strength" value={line.strength} />
+          <Field label="Receiving" value={`${(parseInt(line.quantityReceived, 10) || 0) + (parseInt(line.freeQuantity, 10) || 0)} units`} />
+        </div>
+      </div>
+      <div className={cn('rounded-md border p-2.5 text-xs', target ? 'border-primary/40 bg-primary/5' : 'border-dashed')}>
+        <div className="mb-1.5 flex items-center justify-between">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">Existing (in system)</p>
+          {target && <Badge variant="outline" className="font-mono text-[10px]">{target.score}% match</Badge>}
+        </div>
+        {target ? (
+          <div className="space-y-0.5">
+            <Field label="Name" value={target.drugName} />
+            <Field label="Composition" value={target.genericName} />
+            <Field label="Manufacturer" value={target.manufacturer} />
+            <Field label="Strength" value={target.strength} />
+            <Field label="Current stock" value={<span className="text-emerald-700">{target.totalStock} units</span>} />
+          </div>
+        ) : (
+          <p className="text-muted-foreground">No drug selected.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Step 3: result summary ──────────────────────────────────
+function DoneStep({ lines, result }: { lines: DraftLine[]; result: CommitInwardResult }) {
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Stat label="Lines" value={result.total} />
+        <Stat label="Mapped" value={result.mappedDrugs} tone="primary" />
+        <Stat label="New drugs" value={result.createdDrugs} tone="emerald" />
+        <Stat label="Failed" value={result.failed} tone={result.failed ? 'red' : undefined} />
+      </div>
+      <div className="space-y-1.5">
+        {result.results.map((r) => (
+          <div
+            key={r.index}
+            className={cn(
+              'flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm',
+              r.status === 'error' ? 'border-red-500/30 bg-red-500/5' : 'border-emerald-500/20 bg-emerald-500/5',
+            )}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              {r.status === 'ok' ? (
+                <CircleCheck className="h-4 w-4 shrink-0 text-emerald-600" />
+              ) : (
+                <CircleX className="h-4 w-4 shrink-0 text-red-600" />
+              )}
+              <span className="truncate font-medium">{r.drugName || lines[r.index]?.drugName}</span>
+              <Badge variant="outline" className="text-[10px] capitalize">{r.action}</Badge>
+            </div>
+            <span className={cn('text-xs', r.status === 'error' ? 'text-red-600' : 'text-muted-foreground')}>
+              {r.status === 'ok' ? 'Stock posted' : r.message}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value, tone }: { label: string; value: number; tone?: 'primary' | 'emerald' | 'red' }) {
+  return (
+    <div className="rounded-lg bg-surface-container-lowest p-3 shadow-sanctuary">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className={cn(
+        'mt-0.5 text-2xl font-bold',
+        tone === 'primary' && 'text-primary',
+        tone === 'emerald' && 'text-emerald-700',
+        tone === 'red' && 'text-red-700',
+      )}>{value}</p>
+    </div>
+  );
+}

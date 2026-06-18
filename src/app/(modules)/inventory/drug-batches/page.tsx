@@ -21,6 +21,7 @@ import {
   ShieldX,
   SlidersHorizontal,
   ClipboardList,
+  Boxes,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
@@ -74,6 +75,7 @@ import {
   AdjustStockDialog,
   StockAdjustmentsLogDialog,
 } from '@/components/pharmacy/stock-adjust-dialogs';
+import { BulkInwardDialog } from '@/components/pharmacy/bulk-inward-dialog';
 import {
   useBatches,
   useCreateBatch,
@@ -173,6 +175,8 @@ function PharmacyBatchesPageInner() {
   const [expiringDays, setExpiringDays] = useState<number | null>(null);
   const [recalledOnly, setRecalledOnly] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  // G1: bulk stock inward (CSV / OCR / manual) with fuzzy duplicate review.
+  const [bulkInwardOpen, setBulkInwardOpen] = useState(false);
   const [editingBatch, setEditingBatch] = useState<DrugBatch | null>(null);
   const [formData, setFormData] = useState<FormState>(EMPTY_FORM);
 
@@ -451,12 +455,24 @@ function PharmacyBatchesPageInner() {
             <ClipboardList className="mr-1.5 h-4 w-4" />
             Adjustments
           </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setBulkInwardOpen(true)}
+            title="Receive a whole distributor invoice — checks each line for duplicates first"
+          >
+            <Boxes className="mr-1.5 h-4 w-4" />
+            Bulk Stock In
+          </Button>
           <Button size="sm" onClick={startCreate}>
             <Plus className="mr-1.5 h-4 w-4" />
             Add Batch
           </Button>
         </div>
       </div>
+
+      {/* G1: bulk stock inward with fuzzy duplicate review (CSV / OCR / manual) */}
+      <BulkInwardDialog open={bulkInwardOpen} onOpenChange={setBulkInwardOpen} />
 
       {/* Expiry overview — at-a-glance near-expiry exposure (drug stock). */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
