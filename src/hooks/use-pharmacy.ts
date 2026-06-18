@@ -799,6 +799,45 @@ export function useStockAdjustments(params?: {
   });
 }
 
+// G4: physical stock-take — reconcile counted quantities into audited corrections.
+export interface StockTakeResult {
+  total: number;
+  matched: number;
+  adjusted: number;
+  failed: number;
+  netDelta: number;
+  valueDelta: number;
+  results: Array<{
+    batchId: string;
+    drugName: string | null;
+    batchNumber: string | null;
+    system: number;
+    counted: number;
+    delta: number;
+    valueDelta: number;
+    status: 'matched' | 'adjusted' | 'error';
+    message?: string;
+  }>;
+}
+
+export function useReconcileStockTake() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      reason: string;
+      lines: Array<{ batchId: string; countedQuantity: number; reason?: string }>;
+    }) => {
+      const response = await apiPost<StockTakeResult>('/pharmacy/stock-take/reconcile', data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
+      queryClient.invalidateQueries({ queryKey: ['pharmacy', 'stock-adjustments'] });
+    },
+  });
+}
+
 // Idempotent maintenance sweep: flags every past-expiry batch as expired so
 // the POS / dispensing guards block them. Returns the count flagged.
 export function useFlagExpiredBatches() {
