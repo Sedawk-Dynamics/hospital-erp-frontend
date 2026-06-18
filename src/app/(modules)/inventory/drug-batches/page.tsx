@@ -86,6 +86,8 @@ import {
   useRunPharmacyExpiryAlerts,
   useExpiringBatches,
   useFormulary,
+  usePharmacyCatalog,
+  useImportFormularyItem,
   useRecalledItems,
   useRecallAffectedPatients,
   useRecallBatch,
@@ -214,6 +216,32 @@ function PharmacyBatchesPageInner() {
     limit: 25,
   });
   const drugs = formulary?.data ?? [];
+
+  // G11: also search the national drug-master catalogue (drugs not yet in the
+  // formulary) so inward can pick a catalogue drug and import it in one step.
+  const catalogEnabled = createOpen && !editingBatch && debouncedDrugSearch.trim().length >= 2;
+  const { data: catalogResp } = usePharmacyCatalog(
+    { search: debouncedDrugSearch || undefined, imported: 'no', limit: 8 },
+    catalogEnabled,
+  );
+  const catalogDrugs = catalogEnabled ? catalogResp?.data ?? [] : [];
+  const importDrug = useImportFormularyItem();
+
+  const handleSelectCatalogDrug = async (c: { id: string }) => {
+    try {
+      const item = await importDrug.mutateAsync({ drugMasterId: c.id });
+      updateField('drugId', item.id);
+      updateField(
+        'drugLabel',
+        `${item.drugName}${item.strength ? ' ' + item.strength : ''}${item.dosageForm ? ' (' + item.dosageForm + ')' : ''}`,
+      );
+      setDrugComboOpen(false);
+      setDrugSearchInput('');
+      toast.success(`${item.drugName} added from catalogue`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to import from catalogue');
+    }
+  };
 
   const { data: suppliersData } = useSuppliers({ limit: 50 });
   const suppliers = suppliersData?.data ?? [];
@@ -615,6 +643,31 @@ function PharmacyBatchesPageInner() {
                             </CommandItem>
                           ))}
                         </CommandGroup>
+                        {/* G11: catalogue drugs not yet in the formulary — import on select */}
+                        {catalogDrugs.length > 0 && (
+                          <CommandGroup heading="From national catalogue">
+                            {catalogDrugs.map((c) => (
+                              <CommandItem
+                                key={`cat-${c.id}`}
+                                value={`cat-${c.id}`}
+                                disabled={importDrug.isPending}
+                                onSelect={() => handleSelectCatalogDrug(c)}
+                              >
+                                <Plus className="mr-2 h-4 w-4 text-primary" />
+                                <div className="flex flex-col">
+                                  <span>
+                                    {c.name}
+                                    {c.strength ? ` ${c.strength}` : ''}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground">
+                                    {c.genericName || ''}
+                                    {c.manufacturer ? ` · ${c.manufacturer}` : ''} · tap to import
+                                  </span>
+                                </div>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        )}
                       </CommandList>
                     </Command>
                   </PopoverContent>

@@ -580,13 +580,14 @@ export interface CatalogQueryParams extends PaginatedParams {
   imported?: 'yes' | 'no';
 }
 
-export function usePharmacyCatalog(params?: CatalogQueryParams) {
+export function usePharmacyCatalog(params?: CatalogQueryParams, enabled = true) {
   return useQuery({
     queryKey: ['pharmacy', 'catalog', params],
     queryFn: async () => {
       const response = await apiGet<CatalogItem[]>('/pharmacy/catalog', { params });
       return { data: response.data, meta: response.meta as PaginationMeta | undefined };
     },
+    enabled,
   });
 }
 
