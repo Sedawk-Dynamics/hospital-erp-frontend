@@ -223,6 +223,9 @@ export function BulkInwardDialog({
   const [supplierId, setSupplierId] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [invoiceDate, setInvoiceDate] = useState('');
+  // G2: whole-invoice (total-bill) purchase discount, on top of per-line discounts.
+  const [invoiceDiscPct, setInvoiceDiscPct] = useState('');
+  const [invoiceDiscAmt, setInvoiceDiscAmt] = useState('');
   const [addToExisting, setAddToExisting] = useState(false);
   const [lines, setLines] = useState<DraftLine[]>([emptyLine()]);
   const [pasteText, setPasteText] = useState('');
@@ -243,6 +246,8 @@ export function BulkInwardDialog({
     setSupplierId('');
     setInvoiceNumber('');
     setInvoiceDate('');
+    setInvoiceDiscPct('');
+    setInvoiceDiscAmt('');
     setAddToExisting(false);
     setLines([emptyLine()]);
     setPasteText('');
@@ -334,6 +339,34 @@ export function BulkInwardDialog({
     return { map, create };
   }, [decisions]);
 
+  // G2: live purchase economics — gross → −per-line discount → −total-bill
+  // discount → net (+GST = landing). Mirrors the backend fold so the user sees
+  // both discounts applied before committing. Free units carry no purchase value.
+  const purchaseTotals = useMemo(() => {
+    let gross = 0, afterLine = 0;
+    for (const l of lines) {
+      const rate = parseFloat(l.purchasePrice) || 0;
+      const paid = parseInt(l.quantityReceived, 10) || 0;
+      const disc = parseFloat(l.purchaseDiscountPercent) || 0;
+      gross += rate * paid;
+      afterLine += rate * (1 - disc / 100) * paid;
+    }
+    const invPct = parseFloat(invoiceDiscPct) || 0;
+    const invAmt = parseFloat(invoiceDiscAmt) || 0;
+    const billPct = Math.min(100, invPct + (afterLine > 0 ? (invAmt / afterLine) * 100 : 0));
+    const invoiceDisc = afterLine * (billPct / 100);
+    const net = afterLine - invoiceDisc;
+    let gst = 0;
+    for (const l of lines) {
+      const rate = parseFloat(l.purchasePrice) || 0;
+      const paid = parseInt(l.quantityReceived, 10) || 0;
+      const disc = parseFloat(l.purchaseDiscountPercent) || 0;
+      const g = parseFloat(l.gstPercent) || 0;
+      gst += rate * (1 - disc / 100) * (1 - billPct / 100) * paid * (g / 100);
+    }
+    return { gross, lineDisc: gross - afterLine, billPct, invoiceDisc, net, gst, landing: net + gst };
+  }, [lines, invoiceDiscPct, invoiceDiscAmt]);
+
   const handleCommit = async () => {
     // Build the reviewed payload from each draft line + its decision.
     const payloadLines: CommitInwardLine[] = lines.map((l, i) => {
@@ -372,6 +405,8 @@ export function BulkInwardDialog({
         supplierId: supplierId || undefined,
         invoiceNumber: invoiceNumber.trim() || undefined,
         invoiceDate: invoiceDate || undefined,
+        invoiceDiscountPercent: num(invoiceDiscPct),
+        invoiceDiscountAmount: num(invoiceDiscAmt),
         addToExisting,
         lines: payloadLines,
       });
@@ -441,6 +476,11 @@ export function BulkInwardDialog({
               setInvoiceNumber={setInvoiceNumber}
               invoiceDate={invoiceDate}
               setInvoiceDate={setInvoiceDate}
+              invoiceDiscPct={invoiceDiscPct}
+              setInvoiceDiscPct={setInvoiceDiscPct}
+              invoiceDiscAmt={invoiceDiscAmt}
+              setInvoiceDiscAmt={setInvoiceDiscAmt}
+              purchaseTotals={purchaseTotals}
               lines={lines}
               updateLine={updateLine}
               addLine={addLine}
@@ -520,6 +560,11 @@ function EntryStep(props: {
   setInvoiceNumber: (v: string) => void;
   invoiceDate: string;
   setInvoiceDate: (v: string) => void;
+  invoiceDiscPct: string;
+  setInvoiceDiscPct: (v: string) => void;
+  invoiceDiscAmt: string;
+  setInvoiceDiscAmt: (v: string) => void;
+  purchaseTotals: { gross: number; lineDisc: number; billPct: number; invoiceDisc: number; net: number; gst: number; landing: number };
   lines: DraftLine[];
   updateLine: (id: string, field: keyof DraftLine, value: string) => void;
   addLine: () => void;
@@ -534,9 +579,11 @@ function EntryStep(props: {
 }) {
   const {
     suppliers, supplierId, setSupplierId, selectedSupplier, invoiceNumber, setInvoiceNumber,
-    invoiceDate, setInvoiceDate, lines, updateLine, addLine, removeLine, showPaste, setShowPaste,
+    invoiceDate, setInvoiceDate, invoiceDiscPct, setInvoiceDiscPct, invoiceDiscAmt, setInvoiceDiscAmt,
+    purchaseTotals, lines, updateLine, addLine, removeLine, showPaste, setShowPaste,
     pasteText, setPasteText, ingest, fileRef, onFile,
   } = props;
+  const money = (n: number) => `₹${n.toFixed(2)}`;
 
   const cell = 'h-8 text-xs';
 
@@ -573,6 +620,51 @@ function EntryStep(props: {
         </div>
       </div>
 
+      {/* G2: total-bill purchase discount (whole invoice, on top of per-line) */}
+      <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-muted/20 p-3">
+        <div className="space-y-1.5">
+          <Label className="text-xs">Bill discount %</Label>
+          <Input
+            className="h-9 w-28"
+            type="number"
+            step="0.01"
+            min={0}
+            max={100}
+            value={invoiceDiscPct}
+            onChange={(e) => setInvoiceDiscPct(e.target.value)}
+            placeholder="0"
+          />
+        </div>
+        <span className="pb-2 text-xs text-muted-foreground">or</span>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Bill discount ₹</Label>
+          <Input
+            className="h-9 w-28"
+            type="number"
+            step="0.01"
+            min={0}
+            value={invoiceDiscAmt}
+            onChange={(e) => setInvoiceDiscAmt(e.target.value)}
+            placeholder="0.00"
+          />
+        </div>
+        {purchaseTotals.gross > 0 && (
+          <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+            <span>Gross: <span className="font-medium text-foreground">{money(purchaseTotals.gross)}</span></span>
+            {purchaseTotals.lineDisc > 0 && (
+              <span>− Line disc: <span className="font-medium text-foreground">{money(purchaseTotals.lineDisc)}</span></span>
+            )}
+            {purchaseTotals.invoiceDisc > 0 && (
+              <span>− Bill disc: <span className="font-medium text-amber-700">{money(purchaseTotals.invoiceDisc)}</span></span>
+            )}
+            <span>Net: <span className="font-semibold text-foreground">{money(purchaseTotals.net)}</span></span>
+            {purchaseTotals.gst > 0 && (
+              <span>+ GST: <span className="font-medium text-foreground">{money(purchaseTotals.gst)}</span> = <span className="font-semibold text-foreground">{money(purchaseTotals.landing)}</span></span>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Import controls */}
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()}>
@@ -606,7 +698,7 @@ function EntryStep(props: {
 
       {/* Editable line table */}
       <div className="overflow-x-auto rounded-lg border">
-        <table className="w-full min-w-[860px] text-xs">
+        <table className="w-full min-w-[960px] text-xs">
           <thead className="bg-muted/50 text-muted-foreground">
             <tr className="[&>th]:px-2 [&>th]:py-2 [&>th]:text-left [&>th]:font-medium">
               <th className="w-8">#</th>
@@ -618,6 +710,7 @@ function EntryStep(props: {
               <th className="w-14">Free</th>
               <th className="w-16">MRP</th>
               <th className="w-16">Rate</th>
+              <th className="w-14">Disc%</th>
               <th className="w-14">GST%</th>
               <th className="w-16">Sell</th>
               <th className="w-8"></th>
@@ -638,6 +731,7 @@ function EntryStep(props: {
                 <td><Input className={cell} type="number" min={0} value={l.freeQuantity} onChange={(e) => updateLine(l.id, 'freeQuantity', e.target.value)} /></td>
                 <td><Input className={cell} type="number" step="0.01" value={l.mrp} onChange={(e) => updateLine(l.id, 'mrp', e.target.value)} /></td>
                 <td><Input className={cell} type="number" step="0.01" value={l.purchasePrice} onChange={(e) => updateLine(l.id, 'purchasePrice', e.target.value)} /></td>
+                <td><Input className={cell} type="number" step="0.01" value={l.purchaseDiscountPercent} onChange={(e) => updateLine(l.id, 'purchaseDiscountPercent', e.target.value)} /></td>
                 <td><Input className={cell} type="number" step="0.01" value={l.gstPercent} onChange={(e) => updateLine(l.id, 'gstPercent', e.target.value)} /></td>
                 <td><Input className={cell} type="number" step="0.01" value={l.sellingPrice} onChange={(e) => updateLine(l.id, 'sellingPrice', e.target.value)} /></td>
                 <td className="text-center">
@@ -799,6 +893,18 @@ function DoneStep({ lines, result }: { lines: DraftLine[]; result: CommitInwardR
         <Stat label="New drugs" value={result.createdDrugs} tone="emerald" />
         <Stat label="Failed" value={result.failed} tone={result.failed ? 'red' : undefined} />
       </div>
+      {result.purchaseSummary && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
+          <span>Gross: <span className="font-medium text-foreground">₹{result.purchaseSummary.grossValue.toFixed(2)}</span></span>
+          {result.purchaseSummary.lineDiscount > 0 && (
+            <span>− Line disc: <span className="font-medium text-foreground">₹{result.purchaseSummary.lineDiscount.toFixed(2)}</span></span>
+          )}
+          {result.purchaseSummary.invoiceDiscount > 0 && (
+            <span>− Bill disc ({result.purchaseSummary.invoiceDiscountPercent}%): <span className="font-medium text-amber-700">₹{result.purchaseSummary.invoiceDiscount.toFixed(2)}</span></span>
+          )}
+          <span>Net purchase: <span className="font-semibold text-foreground">₹{result.purchaseSummary.netValue.toFixed(2)}</span></span>
+        </div>
+      )}
       <div className="space-y-1.5">
         {result.results.map((r) => (
           <div
