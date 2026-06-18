@@ -21,6 +21,7 @@ import {
   ShieldX,
   SlidersHorizontal,
   ClipboardList,
+  ClipboardCheck,
   Boxes,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -76,6 +77,7 @@ import {
   StockAdjustmentsLogDialog,
 } from '@/components/pharmacy/stock-adjust-dialogs';
 import { BulkInwardDialog } from '@/components/pharmacy/bulk-inward-dialog';
+import { StockTakeDialog } from '@/components/pharmacy/stock-take-dialog';
 import {
   useBatches,
   useCreateBatch,
@@ -177,6 +179,8 @@ function PharmacyBatchesPageInner() {
   const [createOpen, setCreateOpen] = useState(false);
   // G1: bulk stock inward (CSV / OCR / manual) with fuzzy duplicate review.
   const [bulkInwardOpen, setBulkInwardOpen] = useState(false);
+  // G4: physical stock-take (count sheet → flagged variances → audited corrections).
+  const [stockTakeOpen, setStockTakeOpen] = useState(false);
   const [editingBatch, setEditingBatch] = useState<DrugBatch | null>(null);
   const [formData, setFormData] = useState<FormState>(EMPTY_FORM);
 
@@ -449,6 +453,15 @@ function PharmacyBatchesPageInner() {
           <Button
             size="sm"
             variant="outline"
+            onClick={() => setStockTakeOpen(true)}
+            title="Count the shelf — flag and correct stock discrepancies"
+          >
+            <ClipboardCheck className="mr-1.5 h-4 w-4" />
+            Stock Take
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
             onClick={() => setAdjustLogOpen(true)}
             title="View the stock-adjustment discrepancy log"
           >
@@ -473,6 +486,9 @@ function PharmacyBatchesPageInner() {
 
       {/* G1: bulk stock inward with fuzzy duplicate review (CSV / OCR / manual) */}
       <BulkInwardDialog open={bulkInwardOpen} onOpenChange={setBulkInwardOpen} />
+
+      {/* G4: physical stock-take — count sheet → flagged variances → audited corrections */}
+      <StockTakeDialog open={stockTakeOpen} onOpenChange={setStockTakeOpen} />
 
       {/* Expiry overview — at-a-glance near-expiry exposure (drug stock). */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
