@@ -1522,6 +1522,31 @@ export function useDispenseFromWard() {
   });
 }
 
+// G13: return excess / near-expiry ward stock to the central pharmacy.
+export function useReturnWardStock() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { wardId: string; drugBatchId: string; quantity: number; reason?: string }) =>
+      (await apiPost('/pharmacy/ward-stock/return', data)).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pharmacy', 'ward-stock'] });
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+    },
+  });
+}
+
+// G13: correct a ward's on-hand count (breakage / miscount).
+export function useAdjustWardStock() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { wardId: string; drugBatchId: string; newQuantity: number; reason: string }) =>
+      (await apiPost('/pharmacy/ward-stock/adjust', data)).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pharmacy', 'ward-stock'] });
+    },
+  });
+}
+
 // IP credit & clearance check — the patient's live deposit-vs-bill picture.
 export interface CreditStatus {
   patientId: string;

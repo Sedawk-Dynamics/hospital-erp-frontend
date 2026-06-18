@@ -3,16 +3,20 @@ import { PharmacyAdminGuard } from '@/components/pharmacy/pharmacy-admin-guard';
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Search, BedDouble, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { Search, BedDouble, ShieldAlert, ShieldCheck, RotateCcw, SlidersHorizontal } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
 } from '@/components/ui/table';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { formatDate, formatDateTime } from '@/lib/date-utils';
 import { useWards } from '@/hooks/use-clinical';
@@ -22,6 +26,8 @@ import {
   useWardLedger,
   useTransferToWard,
   useDispenseFromWard,
+  useReturnWardStock,
+  useAdjustWardStock,
   useCreditStatus,
   useBatches,
   type WardStockItem,
@@ -197,6 +203,8 @@ function WardStockInner() {
   const [wardId, setWardId] = useState<string>('');
   const { data: stock = [], isLoading } = useWardStock(wardId || null);
   const { data: ledger = [] } = useWardLedger({ wardId: wardId || null });
+  // G13: return-to-central / count-correction on a ward stock line.
+  const [action, setAction] = useState<{ item: WardStockItem; mode: 'return' | 'adjust' } | null>(null);
 
   return (
     <div className="space-y-4 animate-fade-in-up">
@@ -241,6 +249,7 @@ function WardStockInner() {
                     <TableHead>Expiry</TableHead>
                     <TableHead className="text-right">On hand</TableHead>
                     <TableHead className="text-right">Price</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -253,6 +262,24 @@ function WardStockInner() {
                       <TableCell className="text-sm">{s.expiryDate ? formatDate(s.expiryDate) : '—'}</TableCell>
                       <TableCell className="text-right"><Badge variant="outline">{s.quantityInStock}</Badge></TableCell>
                       <TableCell className="text-right font-mono">{inr(s.sellingPrice)}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost" size="sm" className="h-8 px-2"
+                            title="Return to central pharmacy"
+                            onClick={() => setAction({ item: s, mode: 'return' })}
+                          >
+                            <RotateCcw className="mr-1 h-3.5 w-3.5" /> Return
+                          </Button>
+                          <Button
+                            variant="ghost" size="sm" className="h-8 w-8 p-0"
+                            title="Correct on-hand count"
+                            onClick={() => setAction({ item: s, mode: 'adjust' })}
+                          >
+                            <SlidersHorizontal className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -287,7 +314,10 @@ function WardStockInner() {
                       <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{formatDateTime(l.date)}</TableCell>
                       <TableCell>
                         <Badge className={cn(
-                          l.movementType === 'received' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : 'bg-sky-500/10 text-sky-600 border-sky-500/20',
+                          l.movementType === 'received' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
+                            : l.movementType === 'returned' ? 'bg-amber-500/10 text-amber-600 border-amber-500/20'
+                            : l.movementType === 'adjusted' ? 'bg-violet-500/10 text-violet-600 border-violet-500/20'
+                            : 'bg-sky-500/10 text-sky-600 border-sky-500/20',
                         )}>
                           {l.movementType}
                         </Badge>
@@ -306,7 +336,97 @@ function WardStockInner() {
           </TabsContent>
         </Tabs>
       )}
+
+      {action && (
+        <WardStockActionDialog
+          wardId={wardId}
+          item={action.item}
+          mode={action.mode}
+          onClose={() => setAction(null)}
+        />
+      )}
     </div>
+  );
+}
+
+// G13: return excess/near-expiry ward stock to central, or correct a ward count.
+function WardStockActionDialog({
+  wardId,
+  item,
+  mode,
+  onClose,
+}: {
+  wardId: string;
+  item: WardStockItem;
+  mode: 'return' | 'adjust';
+  onClose: () => void;
+}) {
+  const ret = useReturnWardStock();
+  const adj = useAdjustWardStock();
+  const [qty, setQty] = useState('');
+  const [count, setCount] = useState(String(item.quantityInStock));
+  const [reason, setReason] = useState('');
+  const pending = ret.isPending || adj.isPending;
+
+  const submit = async () => {
+    try {
+      if (mode === 'return') {
+        const q = parseInt(qty, 10);
+        if (!q || q <= 0) return toast.error('Enter a quantity');
+        if (q > item.quantityInStock) return toast.error('More than the ward has on hand');
+        await ret.mutateAsync({ wardId, drugBatchId: item.drugBatchId, quantity: q, reason: reason.trim() || undefined });
+        toast.success(`Returned ${q} unit(s) to central pharmacy`);
+      } else {
+        const c = parseInt(count, 10);
+        if (isNaN(c) || c < 0) return toast.error('Enter a valid count');
+        if (!reason.trim()) return toast.error('A reason is required');
+        await adj.mutateAsync({ wardId, drugBatchId: item.drugBatchId, newQuantity: c, reason: reason.trim() });
+        toast.success('Ward count corrected');
+      }
+      onClose();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed');
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{mode === 'return' ? 'Return to central pharmacy' : 'Correct ward count'}</DialogTitle>
+          <DialogDescription>
+            {item.drugName} · {item.batchNumber} · {item.quantityInStock} on hand
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-1">
+          {mode === 'return' ? (
+            <div className="space-y-1.5">
+              <Label>Quantity to return *</Label>
+              <Input type="number" min={1} max={item.quantityInStock} value={qty} onChange={(e) => setQty(e.target.value)} placeholder={`Up to ${item.quantityInStock}`} />
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <Label>Corrected on-hand count *</Label>
+              <Input type="number" min={0} value={count} onChange={(e) => setCount(e.target.value)} />
+            </div>
+          )}
+          <div className="space-y-1.5">
+            <Label>Reason {mode === 'adjust' ? '*' : '(optional)'}</Label>
+            <Input
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder={mode === 'return' ? 'e.g. near expiry, excess' : 'e.g. breakage, miscount'}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={submit} disabled={pending}>
+            {pending ? 'Saving…' : mode === 'return' ? 'Return' : 'Save correction'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
