@@ -430,6 +430,106 @@ export function useMergeFormulary() {
   });
 }
 
+// ============================================================
+// G1 — Bulk stock inward (CSV / OCR / manual multi-row)
+// ============================================================
+// One incoming distributor-invoice line as the matcher sees it.
+export interface InwardMatchLine {
+  drugName: string;
+  genericName?: string | null;
+  manufacturer?: string | null;
+  strength?: string | null;
+  dosageForm?: string | null;
+}
+
+export type InwardRecommendation = 'map' | 'review' | 'create';
+
+// A scored line + its candidate existing drugs (for the side-by-side review).
+export interface InwardMatchedLine {
+  index: number;
+  incoming: InwardMatchLine;
+  matches: FormularyMatch[];
+  recommendation: InwardRecommendation;
+  suggestedFormularyId: string | null;
+}
+
+// Step 1: score every incoming line against the formulary (no writes).
+export function useMatchInward() {
+  return useMutation({
+    mutationFn: async (lines: InwardMatchLine[]) => {
+      const response = await apiPost<{ lines: InwardMatchedLine[] }>('/pharmacy/inward/match', {
+        lines,
+      });
+      return response.data.lines;
+    },
+  });
+}
+
+// A reviewed line: the user's map-or-create decision + the batch to receive.
+export interface CommitInwardLine extends InwardMatchLine {
+  action: 'map' | 'create';
+  // Required when action === 'map' — the existing drug to add stock to.
+  targetFormularyId?: string;
+  categoryId?: string;
+  packSize?: number;
+  looseUnitLabel?: string;
+  batchNumber: string;
+  manufacturingDate?: string;
+  expiryDate: string;
+  // Total units received (paid + free); freeQuantity is the free portion of it.
+  quantityReceived: number;
+  freeQuantity?: number;
+  mrp?: number;
+  purchasePrice?: number;
+  purchaseDiscountPercent?: number;
+  gstPercent?: number;
+  sellingPrice?: number;
+  supplierId?: string;
+  invoiceNumber?: string;
+  invoiceDate?: string;
+  addToExisting?: boolean;
+}
+
+export interface CommitInwardInput {
+  supplierId?: string;
+  invoiceNumber?: string;
+  invoiceDate?: string;
+  addToExisting?: boolean;
+  lines: CommitInwardLine[];
+}
+
+export interface CommitInwardResult {
+  total: number;
+  createdDrugs: number;
+  mappedDrugs: number;
+  batchesIn: number;
+  failed: number;
+  results: Array<{
+    index: number;
+    drugName: string;
+    action: 'map' | 'create';
+    status: 'ok' | 'error';
+    formularyId?: string;
+    batchId?: string;
+    message?: string;
+  }>;
+}
+
+// Step 2: commit the reviewed map-or-create decisions and post the stock.
+export function useCommitInward() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: CommitInwardInput) => {
+      const response = await apiPost<CommitInwardResult>('/pharmacy/inward/commit', data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
+    },
+  });
+}
+
 // Import a drug from the platform DrugMaster catalog into this tenant's
 // formulary (one-click "add to formulary"). Backend dedupes on drugMasterId.
 export function useImportFormularyItem() {
