@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Search,
+  ScanLine,
   Plus,
   Minus,
   Trash2,
@@ -36,6 +37,8 @@ import {
   useFormulary,
   useBatchesByDrug,
   useCreatePharmacySale,
+  useResolveScan,
+  useCheckSaleCompliance,
   usePrescriptionQueue,
   usePrescriptionDetail,
   type FormularyItem,
@@ -202,6 +205,8 @@ function PharmacyPOS() {
 
   // --- Walk-in medicine search ---
   const [medicineSearch, setMedicineSearch] = useState('');
+  // Barcode-driven dispensing (spec Section 2) — the scan-to-add input.
+  const [scanCode, setScanCode] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -275,6 +280,8 @@ function PharmacyPOS() {
 
   // --- Mutation ---
   const createSale = useCreatePharmacySale();
+  const resolveScan = useResolveScan();
+  const checkCompliance = useCheckSaleCompliance();
   const createEmergency = useCreateEmergencyPatient();
 
   // G16: emergency-record merge dialog.
@@ -509,6 +516,34 @@ function PharmacyPOS() {
     searchInputRef.current?.focus();
   }, [activePrescriptionId, cart, autoSelectBatch]);
 
+  // Barcode-driven dispensing (spec Section 2): one scan resolves a GS1 DataMatrix /
+  // GTIN / internal batch barcode to a product and drops it onto the bill, FEFO by
+  // default (the scan's exact batch is honoured by autoSelectBatch when present).
+  const handleScan = useCallback(async (code: string) => {
+    const c = code.trim();
+    if (!c) return;
+    try {
+      const res = await resolveScan.mutateAsync(c);
+      addWalkInItem({
+        id: res.drug.id,
+        drugName: res.drug.drugName,
+        genericName: res.drug.genericName,
+        dosageForm: res.drug.dosageForm as FormularyItem['dosageForm'],
+        strength: res.drug.strength,
+        price: res.drug.price,
+        packSize: res.drug.packSize,
+        looseUnitLabel: res.drug.looseUnitLabel,
+        taxPercent: null,
+      } as unknown as FormularyItem);
+      toast.success(
+        `Added ${res.drug.drugName}${res.batch ? ` · batch ${res.batch.batchNumber}` : ''} (${res.resolvedVia.toUpperCase()})`,
+      );
+      setScanCode('');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No product matched this scan');
+    }
+  }, [resolveScan, addWalkInItem]);
+
   // Max quantity in the row's current unit (packs vs loose), given base stock.
   const maxQtyInUnit = (c: CartItem): number => {
     if (c.availableQty <= 0) return Infinity; // batch not chosen yet — no cap
@@ -629,6 +664,26 @@ function PharmacyPOS() {
   // Bills the whole cart as one invoice, then opens the printable receipt.
   const runSale = async () => {
     try {
+      // Automated compliance validation (spec Section 2): surface HSN/GST/Schedule
+      // warnings and hard-block a Schedule-X-without-Rx sale before charging.
+      const withBatch = cart.filter((c) => c.batchId);
+      if (withBatch.length) {
+        const comp = await checkCompliance.mutateAsync({
+          items: withBatch.map((c) => ({ drugBatchId: c.batchId as string })),
+          prescriptionId: activePrescriptionId || undefined,
+        });
+        if (!comp.ok) {
+          toast.error(comp.blockers.join(' '));
+          return;
+        }
+        if (comp.warnings.length) {
+          const proceed = window.confirm(
+            `Compliance notes:\n\n• ${comp.warnings.join('\n• ')}\n\nProceed with the sale?`,
+          );
+          if (!proceed) return;
+        }
+      }
+
       // Build the tender line(s). Both modes go through payments[] so Insurance
       // (and any future mode) works uniformly; the backend trims change and
       // settles the bill. Split mode = one line per tender; single mode = one
@@ -887,6 +942,25 @@ function PharmacyPOS() {
             ER records
           </Button>
         </div>
+      </div>
+
+      {/* Barcode scan-to-add (spec Section 2) — GS1 DataMatrix / GTIN / internal
+          batch barcode. Scanners append Enter, so submit on Enter. FEFO default. */}
+      <div className="relative max-w-lg">
+        <ScanLine className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary z-10" />
+        <Input
+          placeholder="Scan barcode (GS1 / GTIN / batch) to add to bill…"
+          value={scanCode}
+          onChange={(e) => setScanCode(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              void handleScan(scanCode);
+            }
+          }}
+          disabled={resolveScan.isPending}
+          className="pl-9 font-mono"
+        />
       </div>
 
       {/* Walk-in medicine search (disabled when prescription is loaded) */}

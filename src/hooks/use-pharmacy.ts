@@ -87,6 +87,10 @@ export interface DrugBatch {
   isExpired: boolean;
   isRecalled: boolean;
   recallReason: string | null;
+  // Barcode-driven traceability (spec Section 2): scannable code (internal Code-128
+  // minted at inward, or a scanned pack barcode) + the shelf/bin location.
+  barcode?: string | null;
+  storageLocation?: string | null;
   createdAt: string;
   updatedAt: string;
   drug?: Pick<
@@ -487,6 +491,57 @@ export function useMatchInward() {
       const response = await apiPost<{ lines: InwardMatchedLine[] }>('/pharmacy/inward/match', body);
       return response.data.lines;
     },
+  });
+}
+
+// Barcode-driven dispensing (spec Section 2): resolve one scan → product + batch.
+export interface ScanResult {
+  resolvedVia: 'gs1' | 'gtin' | 'batch';
+  gtin: string | null;
+  scannedBatchNumber: string | null;
+  drug: {
+    id: string;
+    drugName: string;
+    genericName: string | null;
+    strength: string | null;
+    dosageForm: string | null;
+    packSize: number | null;
+    looseUnitLabel: string | null;
+    price: number | null;
+    hsnCode: string | null;
+  };
+  batch: {
+    id: string;
+    batchNumber: string;
+    expiryDate: string;
+    manufacturingDate: string | null;
+    sellingPrice: number | null;
+    mrp: number | null;
+    quantityInStock: number;
+    storageLocation: string | null;
+    barcode: string | null;
+  } | null;
+  totalStock: number;
+}
+
+export function useResolveScan() {
+  return useMutation({
+    mutationFn: async (code: string) =>
+      (await apiGet<ScanResult>('/pharmacy/scan', { params: { code } })).data,
+  });
+}
+
+// Automated compliance pre-check (HSN/GST/Schedule rules) before a sale.
+export interface ComplianceResult {
+  ok: boolean;
+  blockers: string[];
+  warnings: string[];
+}
+
+export function useCheckSaleCompliance() {
+  return useMutation({
+    mutationFn: async (payload: { items: { drugBatchId: string }[]; prescriptionId?: string }) =>
+      (await apiPost<ComplianceResult>('/pharmacy/sales/compliance-check', payload)).data,
   });
 }
 

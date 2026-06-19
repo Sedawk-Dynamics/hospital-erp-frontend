@@ -1070,7 +1070,17 @@ function PharmacyBatchesPageInner() {
                   const isExpiringSoon = !isExpired && remaining <= 30;
                   return (
                     <TableRow key={batch.id}>
-                      <TableCell className="font-mono text-xs">{batch.batchNumber}</TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {batch.batchNumber}
+                        {batch.barcode && (
+                          <div className="text-[10px] text-muted-foreground" title="Scannable barcode">
+                            ▮ {batch.barcode}
+                          </div>
+                        )}
+                        {batch.storageLocation && (
+                          <div className="text-[10px] text-muted-foreground">📍 {batch.storageLocation}</div>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <div className="font-medium">{batch.drug?.drugName ?? '-'}</div>
                         <div className="text-xs text-muted-foreground">
