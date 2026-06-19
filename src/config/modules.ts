@@ -239,6 +239,7 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Drug Formulary', href: '/inventory/drug-formulary', icon: Pill },
       { label: 'Drug Batches', href: '/inventory/drug-batches', icon: PillBottle },
       { label: 'Distributor Mappings', href: '/inventory/distributor-mappings', icon: Link2 },
+      { label: 'Narcotics (NDPS)', href: '/inventory/ndps', icon: ShieldCheck },
       { label: 'Drug Orders', href: '/inventory/drug-purchase-orders', icon: ShoppingCart },
       { label: 'Drug GST', href: '/inventory/drug-gst', icon: FileText },
       { label: 'Reports', href: '/inventory/reports', icon: BarChart3 },

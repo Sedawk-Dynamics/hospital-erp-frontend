@@ -87,6 +87,7 @@ interface FormState {
   indications: string;
   contraindications: string;
   isLifeSaving: boolean;
+  isNarcotic: boolean;
 }
 
 const EMPTY_FORM: FormState = {
@@ -107,6 +108,7 @@ const EMPTY_FORM: FormState = {
   indications: '',
   contraindications: '',
   isLifeSaving: false,
+  isNarcotic: false,
 };
 
 function formStateFromItem(item: FormularyItem): FormState {
@@ -128,6 +130,7 @@ function formStateFromItem(item: FormularyItem): FormState {
     indications: item.indications ?? '',
     contraindications: item.contraindications ?? '',
     isLifeSaving: item.isLifeSaving ?? false,
+    isNarcotic: item.isNarcotic ?? false,
   };
 }
 
@@ -149,6 +152,7 @@ function formStateToInput(form: FormState): CreateFormularyInput {
   if (form.indications.trim()) out.indications = form.indications.trim();
   if (form.contraindications.trim()) out.contraindications = form.contraindications.trim();
   out.isLifeSaving = form.isLifeSaving;
+  out.isNarcotic = form.isNarcotic;
   return out;
 }
 
@@ -619,6 +623,20 @@ function PharmacyInventoryPageInner() {
                   <span className="font-medium">Vital / life-saving drug</span>
                   <span className="block text-[11px] text-muted-foreground">
                     Bypasses the IP cash-patient credit-clearance gate so emergency dosing is never withheld for money.
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2 rounded-md border p-2.5 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={formData.isNarcotic}
+                  onChange={(e) => updateField('isNarcotic', e.target.checked)}
+                />
+                <span>
+                  <span className="font-medium">NDPS narcotic drug</span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    Governs this drug under the narcotic accounting workflow (Form 3C/3E/3H, vault custody, dual-auth).
                   </span>
                 </span>
               </label>

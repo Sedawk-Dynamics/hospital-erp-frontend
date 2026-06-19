@@ -51,6 +51,8 @@ export interface FormularyItem {
   minStock?: number | null;
   // Vital/life-saving — bypasses the IP cash-patient credit-clearance gate.
   isLifeSaving?: boolean;
+  // NDPS narcotic — governed by the Form 3C/3E/3H accounting workflow.
+  isNarcotic?: boolean;
   // Linked national-catalogue entry (null = manually added, not from catalogue).
   drugMasterId?: string | null;
   isActive: boolean;
@@ -334,6 +336,7 @@ export interface CreateFormularyInput {
   indications?: string;
   contraindications?: string;
   isLifeSaving?: boolean;
+  isNarcotic?: boolean;
   isActive?: boolean;
   // G1: set true to create even when a high-confidence near-duplicate exists.
   force?: boolean;
