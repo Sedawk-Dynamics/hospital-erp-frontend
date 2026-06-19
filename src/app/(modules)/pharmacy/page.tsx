@@ -207,6 +207,8 @@ function PharmacyPOS() {
   const [medicineSearch, setMedicineSearch] = useState('');
   // Barcode-driven dispensing (spec Section 2) — the scan-to-add input.
   const [scanCode, setScanCode] = useState('');
+  // TTO — discharge / take-home medication (full packs, onto the final bill).
+  const [isTto, setIsTto] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -714,6 +716,7 @@ function PharmacyPOS() {
       };
       if (billDiscPctNum > 0) payload.billDiscountPercent = billDiscPctNum;
       if (tenderLines.length) payload.payments = tenderLines;
+      if (isTto) payload.isTto = true;
       const sale = await createSale.mutateAsync(payload);
       toast.success(`Bill ${sale.bill.billNumber} created`);
       setReceiptSale(sale);
@@ -722,6 +725,7 @@ function PharmacyPOS() {
       setAmountTendered('');
       setBillDiscPct('');
       setSplitMode(false);
+      setIsTto(false);
       setTenders([{ id: 'tender-1', method: 'Cash', amount: '' }]);
       setActivePrescriptionId(null);
       clearPatient();
@@ -962,6 +966,13 @@ function PharmacyPOS() {
           className="pl-9 font-mono"
         />
       </div>
+
+      {/* TTO — discharge / take-home medication (full packs, onto the final bill). */}
+      <label className="flex w-fit items-center gap-2 rounded-md border px-3 py-1.5 text-sm">
+        <input type="checkbox" checked={isTto} onChange={(e) => setIsTto(e.target.checked)} />
+        <span className="font-medium">Discharge / take-home meds (TTO)</span>
+        <span className="text-[11px] text-muted-foreground">full packs, added to the final hospital bill</span>
+      </label>
 
       {/* Walk-in medicine search (disabled when prescription is loaded) */}
       <div className="relative max-w-lg" ref={dropdownRef}>

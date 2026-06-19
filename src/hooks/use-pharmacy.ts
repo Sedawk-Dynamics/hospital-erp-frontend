@@ -53,6 +53,8 @@ export interface FormularyItem {
   isLifeSaving?: boolean;
   // NDPS narcotic — governed by the Form 3C/3E/3H accounting workflow.
   isNarcotic?: boolean;
+  // TPA/cashless reimbursability (false = patient pays out-of-pocket).
+  isReimbursable?: boolean;
   // Linked national-catalogue entry (null = manually added, not from catalogue).
   drugMasterId?: string | null;
   isActive: boolean;
@@ -337,6 +339,7 @@ export interface CreateFormularyInput {
   contraindications?: string;
   isLifeSaving?: boolean;
   isNarcotic?: boolean;
+  isReimbursable?: boolean;
   isActive?: boolean;
   // G1: set true to create even when a high-confidence near-duplicate exists.
   force?: boolean;
@@ -1118,6 +1121,8 @@ export interface CreatePharmacySaleInput {
   amountPaid?: number;
   // G7: split payment — overrides paymentMethod/amountPaid when present.
   payments?: PharmacyTenderInput[];
+  // TTO — flags the sale as discharge / take-home medication (full packs).
+  isTto?: boolean;
   notes?: string;
 }
 
@@ -1714,6 +1719,8 @@ export interface IpBillingSummary {
     }>;
   }>;
   categoryTotals: Array<{ category: string; amount: number }>;
+  // TPA reimbursable split + take-home (TTO) total from pharmacy dispenses.
+  pharmacySplit?: { reimbursable: number; nonReimbursable: number; takeHome: number };
   totals: { totalBilled: number; totalPaid: number; balanceDue: number; deposit: number; available: number };
 }
 

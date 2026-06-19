@@ -88,6 +88,7 @@ interface FormState {
   contraindications: string;
   isLifeSaving: boolean;
   isNarcotic: boolean;
+  isReimbursable: boolean;
 }
 
 const EMPTY_FORM: FormState = {
@@ -109,6 +110,7 @@ const EMPTY_FORM: FormState = {
   contraindications: '',
   isLifeSaving: false,
   isNarcotic: false,
+  isReimbursable: true,
 };
 
 function formStateFromItem(item: FormularyItem): FormState {
@@ -131,6 +133,7 @@ function formStateFromItem(item: FormularyItem): FormState {
     contraindications: item.contraindications ?? '',
     isLifeSaving: item.isLifeSaving ?? false,
     isNarcotic: item.isNarcotic ?? false,
+    isReimbursable: item.isReimbursable ?? true,
   };
 }
 
@@ -153,6 +156,7 @@ function formStateToInput(form: FormState): CreateFormularyInput {
   if (form.contraindications.trim()) out.contraindications = form.contraindications.trim();
   out.isLifeSaving = form.isLifeSaving;
   out.isNarcotic = form.isNarcotic;
+  out.isReimbursable = form.isReimbursable;
   return out;
 }
 
@@ -637,6 +641,20 @@ function PharmacyInventoryPageInner() {
                   <span className="font-medium">NDPS narcotic drug</span>
                   <span className="block text-[11px] text-muted-foreground">
                     Governs this drug under the narcotic accounting workflow (Form 3C/3E/3H, vault custody, dual-auth).
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2 rounded-md border p-2.5 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={formData.isReimbursable}
+                  onChange={(e) => updateField('isReimbursable', e.target.checked)}
+                />
+                <span>
+                  <span className="font-medium">TPA reimbursable</span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    Claimed from the insurer/TPA for cashless patients. Uncheck for disposables/consumables the patient pays out-of-pocket.
                   </span>
                 </span>
               </label>

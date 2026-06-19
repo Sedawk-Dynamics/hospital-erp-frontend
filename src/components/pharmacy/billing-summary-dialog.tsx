@@ -141,6 +141,32 @@ export function BillingSummaryDialog({
                 </div>
               )}
 
+              {/* TPA reimbursable split + take-home (TTO) — what the insurer
+                  pays vs what the patient settles out-of-pocket. */}
+              {s.pharmacySplit && (s.pharmacySplit.reimbursable > 0 || s.pharmacySplit.nonReimbursable > 0 || s.pharmacySplit.takeHome > 0) && (
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Pharmacy — reimbursable split
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <div className="rounded-md border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-sm">
+                      <span className="text-muted-foreground">Reimbursable (claim TPA): </span>
+                      <span className="font-medium text-emerald-700">{money(s.pharmacySplit.reimbursable)}</span>
+                    </div>
+                    <div className="rounded-md border border-amber-500/20 bg-amber-500/10 px-3 py-1.5 text-sm">
+                      <span className="text-muted-foreground">Non-reimbursable (patient pays): </span>
+                      <span className="font-medium text-amber-700">{money(s.pharmacySplit.nonReimbursable)}</span>
+                    </div>
+                    {s.pharmacySplit.takeHome > 0 && (
+                      <div className="rounded-md border px-3 py-1.5 text-sm">
+                        <span className="text-muted-foreground">Take-home (TTO): </span>
+                        <span className="font-medium">{money(s.pharmacySplit.takeHome)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Bills */}
               <div>
                 <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
