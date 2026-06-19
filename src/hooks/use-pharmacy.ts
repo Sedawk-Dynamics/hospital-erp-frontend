@@ -38,6 +38,13 @@ export interface FormularyItem {
   packSize: number | null;
   looseUnitLabel: string | null;
   taxPercent: number | string | null;
+  // Product Resolution Engine / compliance identity (GTIN-13 consumer unit,
+  // GTIN-14 case + units-per-case, HSN code, manufacturer product code).
+  gtin?: string | null;
+  casePackGtin?: string | null;
+  unitsPerCase?: number | null;
+  hsnCode?: string | null;
+  manufacturerCode?: string | null;
   indications: string | null;
   contraindications: string | null;
   // G9: reorder level (base units).
@@ -314,6 +321,12 @@ export interface CreateFormularyInput {
   looseUnitLabel?: string;
   taxPercent?: number;
   minStock?: number;
+  // Product Resolution Engine / compliance identity.
+  gtin?: string;
+  casePackGtin?: string;
+  unitsPerCase?: number;
+  hsnCode?: string;
+  manufacturerCode?: string;
   indications?: string;
   contraindications?: string;
   isLifeSaving?: boolean;
@@ -444,9 +457,13 @@ export interface InwardMatchLine {
   manufacturer?: string | null;
   strength?: string | null;
   dosageForm?: string | null;
+  // Product Resolution Engine: GTIN scanned/parsed off the invoice line.
+  gtin?: string | null;
 }
 
 export type InwardRecommendation = 'map' | 'review' | 'create';
+// How a line resolved to a drug, highest-confidence first (Product Resolution Engine).
+export type InwardResolvedVia = 'gtin' | 'distributor_map' | 'similarity' | 'none';
 
 // A scored line + its candidate existing drugs (for the side-by-side review).
 export interface InwardMatchedLine {
@@ -454,18 +471,54 @@ export interface InwardMatchedLine {
   incoming: InwardMatchLine;
   matches: FormularyMatch[];
   recommendation: InwardRecommendation;
+  resolvedVia: InwardResolvedVia;
+  confidence: number;
+  // GTIN-14 outer-case scan → this many consumer units per case.
+  caseMultiplier: number;
   suggestedFormularyId: string | null;
 }
 
-// Step 1: score every incoming line against the formulary (no writes).
+// Step 1: score every incoming line against the formulary (no writes). The
+// header supplier threads through so learned distributor mappings can resolve.
 export function useMatchInward() {
   return useMutation({
-    mutationFn: async (lines: InwardMatchLine[]) => {
-      const response = await apiPost<{ lines: InwardMatchedLine[] }>('/pharmacy/inward/match', {
-        lines,
-      });
+    mutationFn: async (payload: InwardMatchLine[] | { lines: InwardMatchLine[]; supplierId?: string }) => {
+      const body = Array.isArray(payload) ? { lines: payload } : payload;
+      const response = await apiPost<{ lines: InwardMatchedLine[] }>('/pharmacy/inward/match', body);
       return response.data.lines;
     },
+  });
+}
+
+// Product Resolution Engine: learned distributor → product mappings (admin).
+export interface DistributorMapping {
+  id: string;
+  externalName: string;
+  gtin: string | null;
+  supplier: string | null;
+  supplierId: string | null;
+  drugName: string | null;
+  drugStrength: string | null;
+  drugFormularyId: string;
+  confidence: number;
+  timesSeen: number;
+  lastSeenAt: string;
+}
+
+export function useDistributorMappings(params: { supplierId?: string; search?: string } = {}) {
+  return useQuery({
+    queryKey: ['pharmacy', 'distributor-mappings', params],
+    queryFn: async () =>
+      (await apiGet<{ items: DistributorMapping[]; total: number }>('/pharmacy/distributor-mappings', { params })).data,
+  });
+}
+
+export function useDeleteDistributorMapping() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) =>
+      (await apiDelete<{ id: string; deleted: boolean }>(`/pharmacy/distributor-mappings/${id}`)).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['pharmacy', 'distributor-mappings'] }),
   });
 }
 
@@ -474,9 +527,14 @@ export interface CommitInwardLine extends InwardMatchLine {
   action: 'map' | 'create';
   // Required when action === 'map' — the existing drug to add stock to.
   targetFormularyId?: string;
+  // Raw distributor line text stored as the learned-mapping key (defaults to drugName).
+  externalName?: string;
   categoryId?: string;
   packSize?: number;
   looseUnitLabel?: string;
+  // Product Resolution Engine identity carried onto a newly-created drug.
+  hsnCode?: string;
+  manufacturerCode?: string;
   batchNumber: string;
   manufacturingDate?: string;
   expiryDate: string;

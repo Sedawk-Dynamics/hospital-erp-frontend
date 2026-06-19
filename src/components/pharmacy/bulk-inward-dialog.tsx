@@ -64,6 +64,9 @@ interface DraftLine {
   genericName: string;
   manufacturer: string;
   strength: string;
+  // Product Resolution Engine: GTIN off the invoice/scan + HSN for compliance.
+  gtin: string;
+  hsnCode: string;
   batchNumber: string;
   expiryDate: string; // yyyy-MM-dd
   manufacturingDate: string;
@@ -93,6 +96,8 @@ function emptyLine(): DraftLine {
     genericName: '',
     manufacturer: '',
     strength: '',
+    gtin: '',
+    hsnCode: '',
     batchNumber: '',
     expiryDate: '',
     manufacturingDate: '',
@@ -114,6 +119,8 @@ const HEADER_MAP: Record<string, keyof DraftLine> = {
   generic: 'genericName', composition: 'genericName', salt: 'genericName',
   manufacturer: 'manufacturer', mfr: 'manufacturer', company: 'manufacturer', mfg_company: 'manufacturer',
   strength: 'strength', dose: 'strength', dosage: 'strength',
+  gtin: 'gtin', barcode: 'gtin', ean: 'gtin', upc: 'gtin', gs1: 'gtin',
+  hsn: 'hsnCode', hsn_code: 'hsnCode', hsncode: 'hsnCode',
   batch: 'batchNumber', batchno: 'batchNumber', batch_no: 'batchNumber', lot: 'batchNumber', bno: 'batchNumber',
   expiry: 'expiryDate', exp: 'expiryDate', exp_date: 'expiryDate', expiry_date: 'expiryDate', expdate: 'expiryDate',
   mfgdate: 'manufacturingDate', mfg_date: 'manufacturingDate', manufacturing_date: 'manufacturingDate',
@@ -207,9 +214,18 @@ const int = (s: string): number | undefined => {
   return s.trim() !== '' && !isNaN(n) ? n : undefined;
 };
 
-function recBadge(rec: InwardMatchedLine['recommendation']) {
-  if (rec === 'map') return <Badge className="bg-amber-500/10 text-amber-700 border-amber-500/20">Likely duplicate</Badge>;
-  if (rec === 'review') return <Badge className="bg-blue-500/10 text-blue-700 border-blue-500/20">Possible match</Badge>;
+// Product Resolution Engine badge — prefer how the line resolved (GTIN / learned
+// distributor map) over the raw recommendation, so the user can see why a line
+// auto-mapped without review.
+function recBadge(line: Pick<InwardMatchedLine, 'recommendation' | 'resolvedVia' | 'confidence'>) {
+  if (line.resolvedVia === 'gtin')
+    return <Badge className="bg-teal-500/10 text-teal-700 border-teal-500/20">GTIN match</Badge>;
+  if (line.resolvedVia === 'distributor_map')
+    return <Badge className="bg-violet-500/10 text-violet-700 border-violet-500/20">Auto (learned)</Badge>;
+  if (line.recommendation === 'map')
+    return <Badge className="bg-amber-500/10 text-amber-700 border-amber-500/20">Likely duplicate{line.confidence ? ` · ${line.confidence}%` : ''}</Badge>;
+  if (line.recommendation === 'review')
+    return <Badge className="bg-blue-500/10 text-blue-700 border-blue-500/20">Possible match{line.confidence ? ` · ${line.confidence}%` : ''}</Badge>;
   return <Badge className="bg-emerald-500/10 text-emerald-700 border-emerald-500/20">New drug</Badge>;
 }
 
@@ -305,14 +321,17 @@ export function BulkInwardDialog({
         return toast.error(`Quantity missing for "${l.drugName}"`);
     }
     try {
-      const res = await matchInward.mutateAsync(
-        filled.map((l) => ({
+      const res = await matchInward.mutateAsync({
+        // Header supplier threads through so learned distributor mappings resolve.
+        supplierId: supplierId || undefined,
+        lines: filled.map((l) => ({
           drugName: l.drugName.trim(),
           genericName: l.genericName.trim() || undefined,
           manufacturer: l.manufacturer.trim() || undefined,
           strength: l.strength.trim() || undefined,
+          gtin: l.gtin.trim() || undefined,
         })),
-      );
+      });
       // Keep only the filled lines, in the matched order.
       setLines(filled);
       setMatched(res);
@@ -377,10 +396,14 @@ export function BulkInwardDialog({
       return {
         action: d.action,
         targetFormularyId: d.action === 'map' ? d.targetId ?? undefined : undefined,
+        // Raw line text is the learned-mapping key; GTIN/HSN carry onto a new drug.
+        externalName: l.drugName.trim(),
         drugName: l.drugName.trim(),
         genericName: l.genericName.trim() || undefined,
         manufacturer: l.manufacturer.trim() || undefined,
         strength: l.strength.trim() || undefined,
+        gtin: l.gtin.trim() || undefined,
+        hsnCode: l.hsnCode.trim() || undefined,
         batchNumber: l.batchNumber.trim(),
         expiryDate: l.expiryDate,
         manufacturingDate: l.manufacturingDate || undefined,
@@ -740,6 +763,8 @@ function EntryStep(props: {
                 <td>
                   <Input className={cell} value={l.drugName} onChange={(e) => updateLine(l.id, 'drugName', e.target.value)} placeholder="e.g. Telmac 40 Tab" />
                   <Input className={cn(cell, 'mt-1 text-muted-foreground')} value={l.genericName} onChange={(e) => updateLine(l.id, 'genericName', e.target.value)} placeholder="composition (optional)" />
+                  {/* GTIN / barcode — auto-resolves the drug on the next import (Product Resolution Engine). */}
+                  <Input className={cn(cell, 'mt-1 font-mono text-muted-foreground')} value={l.gtin} onChange={(e) => updateLine(l.id, 'gtin', e.target.value)} placeholder="GTIN / barcode (optional)" />
                 </td>
                 <td><Input className={cell} value={l.strength} onChange={(e) => updateLine(l.id, 'strength', e.target.value)} placeholder="40mg" /></td>
                 <td><Input className={cell} value={l.batchNumber} onChange={(e) => updateLine(l.id, 'batchNumber', e.target.value)} placeholder="B23A01" /></td>
@@ -800,7 +825,7 @@ function ReviewStep({
               <div className="flex items-center gap-2 min-w-0">
                 <span className="text-xs text-muted-foreground">#{i + 1}</span>
                 <span className="truncate font-medium">{line.drugName}</span>
-                {recBadge(m.recommendation)}
+                {recBadge(m)}
               </div>
               {/* Map / Create toggle */}
               <div className="flex items-center gap-1 rounded-md border p-0.5">

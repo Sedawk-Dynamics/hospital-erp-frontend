@@ -82,6 +82,8 @@ interface FormState {
   looseUnitLabel: string;
   taxPercent: string;
   minStock: string;
+  gtin: string;
+  hsnCode: string;
   indications: string;
   contraindications: string;
   isLifeSaving: boolean;
@@ -100,6 +102,8 @@ const EMPTY_FORM: FormState = {
   looseUnitLabel: '',
   taxPercent: '',
   minStock: '',
+  gtin: '',
+  hsnCode: '',
   indications: '',
   contraindications: '',
   isLifeSaving: false,
@@ -119,6 +123,8 @@ function formStateFromItem(item: FormularyItem): FormState {
     looseUnitLabel: item.looseUnitLabel ?? '',
     taxPercent: item.taxPercent != null ? String(item.taxPercent) : '',
     minStock: item.minStock != null ? String(item.minStock) : '',
+    gtin: item.gtin ?? '',
+    hsnCode: item.hsnCode ?? '',
     indications: item.indications ?? '',
     contraindications: item.contraindications ?? '',
     isLifeSaving: item.isLifeSaving ?? false,
@@ -138,6 +144,8 @@ function formStateToInput(form: FormState): CreateFormularyInput {
   if (form.looseUnitLabel.trim()) out.looseUnitLabel = form.looseUnitLabel.trim();
   if (form.taxPercent && !isNaN(parseFloat(form.taxPercent))) out.taxPercent = parseFloat(form.taxPercent);
   if (form.minStock && !isNaN(parseInt(form.minStock, 10))) out.minStock = parseInt(form.minStock, 10);
+  if (form.gtin.trim()) out.gtin = form.gtin.trim();
+  if (form.hsnCode.trim()) out.hsnCode = form.hsnCode.trim();
   if (form.indications.trim()) out.indications = form.indications.trim();
   if (form.contraindications.trim()) out.contraindications = form.contraindications.trim();
   out.isLifeSaving = form.isLifeSaving;
@@ -553,6 +561,30 @@ function PharmacyInventoryPageInner() {
                     value={formData.minStock}
                     onChange={(e) => updateField('minStock', e.target.value)}
                     placeholder="e.g. 20"
+                  />
+                </div>
+              </div>
+              {/* Product Resolution Engine / compliance identity — GTIN resolves
+                  this drug instantly on the next stock inward (no fuzzy review). */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="gtin">GTIN / Barcode</Label>
+                  <Input
+                    id="gtin"
+                    className="font-mono"
+                    value={formData.gtin}
+                    onChange={(e) => updateField('gtin', e.target.value)}
+                    placeholder="e.g. 8901234567890"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="hsnCode">HSN Code</Label>
+                  <Input
+                    id="hsnCode"
+                    className="font-mono"
+                    value={formData.hsnCode}
+                    onChange={(e) => updateField('hsnCode', e.target.value)}
+                    placeholder="e.g. 3004"
                   />
                 </div>
               </div>
