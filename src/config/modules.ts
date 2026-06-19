@@ -4,6 +4,7 @@ import {
   ScanLine,
   Pill,
   Link2,
+  PackagePlus,
   Database,
   Scissors,
   UserRound,
@@ -123,6 +124,7 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       // Pharmacist surface (operational counter).
       { label: 'Billing', href: '/pharmacy', icon: Receipt },
       { label: 'Prescription Queue', href: '/pharmacy/queue', icon: ClipboardList },
+      { label: 'Pre-Pack Holds', href: '/pharmacy/pre-pack', icon: PackagePlus },
       { label: 'Returns', href: '/pharmacy/returns', icon: ArrowLeftRight },
       // pharmacy_admin only (management + financials). admin/super_admin bypass.
       { label: 'Billing Transaction', href: '/pharmacy/transactions', icon: ArrowLeftRight, restrictTo: ['pharmacy_admin'] },

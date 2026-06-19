@@ -1375,6 +1375,60 @@ export function useReturnDetail(id: string | null) {
   });
 }
 
+// OP pre-packing — Stock Hold / Pre-Packed (spec OP Step 1).
+export interface StockHold {
+  id: string;
+  status: 'held' | 'collected' | 'released';
+  createdAt: string;
+  collectedAt: string | null;
+  patient: { mrn: string; name: string } | null;
+  notes: string | null;
+  items: Array<{ id: string; drugName: string; strength: string | null; batchNumber: string | null; quantity: number; unitPrice: number | null }>;
+  total: number;
+}
+
+export function useStockHolds(params: { status?: string; patientId?: string } = {}) {
+  return useQuery({
+    queryKey: ['pharmacy', 'holds', params],
+    queryFn: async () => (await apiGet<{ items: StockHold[]; total: number }>('/pharmacy/holds', { params })).data,
+  });
+}
+
+export function usePrePackHold() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: { patientId?: string; prescriptionId?: string; notes?: string; items: { drugBatchId: string; quantity: number }[] }) =>
+      (await apiPost('/pharmacy/holds', body)).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pharmacy', 'holds'] });
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+    },
+  });
+}
+
+export function useCollectHold() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, payments }: { id: string; payments?: { method: string; amount: number }[] }) =>
+      (await apiPatch(`/pharmacy/holds/${id}/collect`, { payments })).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pharmacy', 'holds'] });
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+    },
+  });
+}
+
+export function useReleaseHold() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => (await apiPatch(`/pharmacy/holds/${id}/release`, {})).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pharmacy', 'holds'] });
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+    },
+  });
+}
+
 export function useProcessReturn() {
   const queryClient = useQueryClient();
   return useMutation({
