@@ -461,9 +461,9 @@ function PharmacyBatchesPageInner() {
     <div className="space-y-4 animate-fade-in-up">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-headline text-xl font-bold">Drug Batches</h1>
+          <h1 className="font-headline text-xl font-bold">Batches</h1>
           <p className="text-sm text-muted-foreground">
-            Receive stock, track expiry, and manage recalls. Recalled batches are auto-blocked from dispensing.
+            All pharmacy stock — receive batches, track low stock and expiry, and manage recalls. Recalled batches are auto-blocked from dispensing.
           </p>
         </div>
         <div className="flex items-center gap-2">

@@ -6,7 +6,6 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod/v4';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { formatDate } from '@/lib/date-utils';
-import { cn } from '@/lib/utils';
 import {
   ArrowLeftRight, Search, Plus, ArrowRight, Clock, CheckCircle2, XCircle, Truck,
   Send, Inbox, Loader2, ChevronLeft, ChevronRight, Ban,
@@ -85,9 +84,6 @@ type CreateForm = z.infer<typeof createSchema>;
 // free-typed location. Departments use the FK; wards + custom locations are
 // stored in the location text field (the model has no wardId).
 type EndpointType = 'department' | 'ward' | 'location';
-
-// What's being moved: a generic inventory item, or a pharmacy drug batch.
-type ItemKind = 'inventory' | 'drug';
 
 interface Dept { id: string; name: string }
 interface ItemRow { id: string; itemName: string; itemCode?: string | null; currentStock: number; unitOfMeasurement?: string | null }
@@ -417,31 +413,31 @@ function CreateTransferDialog({
   });
   const wards = wardsResp ?? [];
 
-  // What's being moved: a generic inventory item or a pharmacy drug batch.
-  const [itemKind, setItemKind] = useState<ItemKind>('inventory');
+  // Stock = drugs: ONE combined picker (no separate inventory / drug sections).
+  // A single search drives both the pharmacy-drug and inventory-item lookups and
+  // the results are shown together in one list.
+  const [pickSearch, setPickSearch] = useState('');
+  const pickEnabled = pickSearch.trim().length >= 2;
 
-  const [itemSearch, setItemSearch] = useState('');
   const { data: itemsResp } = useQuery({
-    queryKey: ['inventory', 'items', 'search', itemSearch],
+    queryKey: ['inventory', 'items', 'search', pickSearch],
     queryFn: async () => {
-      const r = await apiGet<ItemRow[]>('/inventory/items', { params: { search: itemSearch || undefined, isActive: true, limit: 30 } });
+      const r = await apiGet<ItemRow[]>('/inventory/items', { params: { search: pickSearch || undefined, isActive: true, limit: 20 } });
       return r.data;
     },
-    enabled: itemKind === 'inventory',
+    enabled: pickEnabled,
   });
   const items = itemsResp ?? [];
 
-  // Pharmacy drug batches (in-stock) for issuing drug stock from the pharmacy.
-  const [drugSearch, setDrugSearch] = useState('');
   const { data: drugsResp } = useQuery({
-    queryKey: ['pharmacy', 'batches', 'transfer-search', drugSearch],
+    queryKey: ['pharmacy', 'batches', 'transfer-search', pickSearch],
     queryFn: async () => {
       const r = await apiGet<DrugBatchRow[]>('/pharmacy/batches', {
-        params: { search: drugSearch || undefined, availableOnly: true, limit: 30 },
+        params: { search: pickSearch || undefined, availableOnly: true, limit: 20 },
       });
       return r.data;
     },
-    enabled: itemKind === 'drug',
+    enabled: pickEnabled,
   });
   const drugBatches = drugsResp ?? [];
 
@@ -508,19 +504,10 @@ function CreateTransferDialog({
 
   const close = () => {
     reset();
-    setItemSearch('');
-    setDrugSearch('');
-    setItemKind('inventory');
+    setPickSearch('');
     setFromType('department');
     setToType('department');
     onOpenChange(false);
-  };
-
-  // Switching item kind clears the other reference so only one is ever sent.
-  const changeItemKind = (k: ItemKind) => {
-    setItemKind(k);
-    setValue('inventoryItemId', '');
-    setValue('drugBatchId', '');
   };
 
   // Switching a side's type resets that side's department + location so the two
@@ -568,76 +555,11 @@ function CreateTransferDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 py-2">
-          {/* Item picker — generic inventory item OR a pharmacy drug batch */}
+          {/* Item picker — one combined search over pharmacy stock (drug batches)
+              and inventory items; stock and drugs are the same pool here. */}
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label>Item *</Label>
-              <div className="flex gap-0.5 rounded-md border p-0.5 text-xs">
-                <button
-                  type="button"
-                  onClick={() => changeItemKind('inventory')}
-                  className={cn('rounded px-2 py-1 transition', itemKind === 'inventory' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}
-                >
-                  Inventory
-                </button>
-                <button
-                  type="button"
-                  onClick={() => changeItemKind('drug')}
-                  className={cn('rounded px-2 py-1 transition', itemKind === 'drug' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}
-                >
-                  Pharmacy drug
-                </button>
-              </div>
-            </div>
-
-            {itemKind === 'inventory' ? (
-              selectedItem ? (
-                <div className="flex items-center justify-between rounded-md border px-3 py-2 bg-muted/30">
-                  <div>
-                    <span className="font-medium">{selectedItem.itemName}</span>
-                    {selectedItem.itemCode && (
-                      <span className="ml-2 text-xs text-muted-foreground">{selectedItem.itemCode}</span>
-                    )}
-                    <div className="text-xs text-muted-foreground">
-                      Current stock: {selectedItem.currentStock} {selectedItem.unitOfMeasurement ?? ''}
-                    </div>
-                  </div>
-                  <Button type="button" variant="ghost" size="sm" onClick={() => setValue('inventoryItemId', '')}>
-                    Change
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  <Input
-                    placeholder="Search items by name or code..."
-                    value={itemSearch}
-                    onChange={(e) => setItemSearch(e.target.value)}
-                  />
-                  {itemSearch.length >= 2 && (
-                    <div className="rounded-md border bg-popover max-h-40 overflow-y-auto shadow-md">
-                      {items.length === 0 ? (
-                        <div className="px-3 py-2 text-sm text-muted-foreground">No items found</div>
-                      ) : (
-                        items.map((it) => (
-                          <button
-                            type="button"
-                            key={it.id}
-                            className="w-full text-left px-3 py-2 text-sm hover:bg-muted border-b last:border-b-0"
-                            onClick={() => setValue('inventoryItemId', it.id, { shouldValidate: true })}
-                          >
-                            <span className="font-medium">{it.itemName}</span>
-                            {it.itemCode && <span className="ml-2 text-muted-foreground">{it.itemCode}</span>}
-                            <span className="ml-2 text-xs text-muted-foreground">
-                              stock: {it.currentStock} {it.unitOfMeasurement ?? ''}
-                            </span>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
-              )
-            ) : selectedDrug ? (
+            <Label>Item *</Label>
+            {selectedDrug ? (
               <div className="flex items-center justify-between rounded-md border px-3 py-2 bg-muted/30">
                 <div>
                   <span className="font-medium">{selectedDrug.drug?.drugName ?? 'Drug'}</span>
@@ -648,30 +570,61 @@ function CreateTransferDialog({
                   Change
                 </Button>
               </div>
+            ) : selectedItem ? (
+              <div className="flex items-center justify-between rounded-md border px-3 py-2 bg-muted/30">
+                <div>
+                  <span className="font-medium">{selectedItem.itemName}</span>
+                  {selectedItem.itemCode && (
+                    <span className="ml-2 text-xs text-muted-foreground">{selectedItem.itemCode}</span>
+                  )}
+                  <div className="text-xs text-muted-foreground">
+                    Current stock: {selectedItem.currentStock} {selectedItem.unitOfMeasurement ?? ''}
+                  </div>
+                </div>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setValue('inventoryItemId', '')}>
+                  Change
+                </Button>
+              </div>
             ) : (
               <div className="space-y-1">
                 <Input
-                  placeholder="Search pharmacy drugs by name or batch..."
-                  value={drugSearch}
-                  onChange={(e) => setDrugSearch(e.target.value)}
+                  placeholder="Search stock by name, batch or code..."
+                  value={pickSearch}
+                  onChange={(e) => setPickSearch(e.target.value)}
                 />
-                {drugSearch.length >= 2 && (
-                  <div className="rounded-md border bg-popover max-h-40 overflow-y-auto shadow-md">
-                    {drugBatches.length === 0 ? (
-                      <div className="px-3 py-2 text-sm text-muted-foreground">No in-stock drug batches found</div>
+                {pickEnabled && (
+                  <div className="rounded-md border bg-popover max-h-56 overflow-y-auto shadow-md divide-y">
+                    {drugBatches.length === 0 && items.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">No stock found</div>
                     ) : (
-                      drugBatches.map((b) => (
-                        <button
-                          type="button"
-                          key={b.id}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-muted border-b last:border-b-0"
-                          onClick={() => setValue('drugBatchId', b.id, { shouldValidate: true })}
-                        >
-                          <span className="font-medium">{b.drug?.drugName ?? 'Drug'}</span>
-                          <span className="ml-2 text-muted-foreground font-mono">batch {b.batchNumber}</span>
-                          <span className="ml-2 text-xs text-muted-foreground">stock: {b.quantityInStock}</span>
-                        </button>
-                      ))
+                      <>
+                        {drugBatches.map((b) => (
+                          <button
+                            type="button"
+                            key={`drug-${b.id}`}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
+                            onClick={() => { setValue('drugBatchId', b.id, { shouldValidate: true }); setValue('inventoryItemId', ''); }}
+                          >
+                            <span className="shrink-0 rounded bg-teal-100 px-1.5 py-0.5 text-[10px] font-medium text-teal-700">Pharmacy</span>
+                            <span className="truncate font-medium">{b.drug?.drugName ?? 'Drug'}</span>
+                            <span className="shrink-0 font-mono text-xs text-muted-foreground">batch {b.batchNumber}</span>
+                            <span className="ml-auto shrink-0 text-xs text-muted-foreground">stock: {b.quantityInStock}</span>
+                          </button>
+                        ))}
+                        {items.map((it) => (
+                          <button
+                            type="button"
+                            key={`item-${it.id}`}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
+                            onClick={() => { setValue('inventoryItemId', it.id, { shouldValidate: true }); setValue('drugBatchId', ''); }}
+                          >
+                            <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">Item</span>
+                            <span className="truncate font-medium">{it.itemName}</span>
+                            {it.itemCode && <span className="shrink-0 text-xs text-muted-foreground">{it.itemCode}</span>}
+                            <span className="ml-auto shrink-0 text-xs text-muted-foreground">stock: {it.currentStock} {it.unitOfMeasurement ?? ''}</span>
+                          </button>
+                        ))}
+                      </>
                     )}
                   </div>
                 )}
