@@ -1523,7 +1523,7 @@ function RecallDrugDialog({ onClose }: { onClose: () => void }) {
                   <div className="font-medium">{d.drugName}</div>
                   <div className="text-xs text-muted-foreground">
                     {d.genericName ?? ''}
-                    {d.category?.name ? ` · ${d.category.name}` : ''}
+                    {d.strength ? ` · ${d.strength}` : ''}
                   </div>
                 </button>
               ))}

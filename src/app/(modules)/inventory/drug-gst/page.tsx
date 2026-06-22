@@ -124,14 +124,14 @@ function GSTReportPageInner() {
             By Drug Category
           </h3>
           <p className="text-xs text-muted-foreground">
-            HSN code is not yet captured per drug. This view groups by drug category as a proxy.
+            HSN code is not yet captured per drug. This view groups by drug.
           </p>
         </div>
         {isLoading ? (
           <div className="p-4 space-y-2">
             {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
           </div>
-        ) : !data || data.byCategory.length === 0 ? (
+        ) : !data || data.byDrug.length === 0 ? (
           <EmptyState
             icon={Receipt}
             title="No GST data in range"
@@ -141,7 +141,7 @@ function GSTReportPageInner() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Category</TableHead>
+                <TableHead>Drug</TableHead>
                 <TableHead className="text-right">Total (incl. GST)</TableHead>
                 <TableHead className="text-right">Taxable</TableHead>
                 <TableHead className="text-right">GST</TableHead>
@@ -149,9 +149,9 @@ function GSTReportPageInner() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.byCategory.map((c) => (
-                <TableRow key={c.categoryId}>
-                  <TableCell className="font-medium">{c.categoryName}</TableCell>
+              {data.byDrug.map((c) => (
+                <TableRow key={c.drugId}>
+                  <TableCell className="font-medium">{c.drugName}</TableCell>
                   <TableCell className="text-right">{fmtINR(c.totalAmount)}</TableCell>
                   <TableCell className="text-right text-muted-foreground">{fmtINR(c.taxableValue)}</TableCell>
                   <TableCell className="text-right text-amber-700">{fmtINR(c.gstAmount)}</TableCell>

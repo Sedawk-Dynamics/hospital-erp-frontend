@@ -37,7 +37,6 @@ import {
   useDeleteFormularyItem,
   useSuggestDrugMaster,
   useCreateBatch,
-  usePharmacyCategories,
   useFormularyMatches,
   isDuplicateSuspected,
   type FormularyItem,
@@ -72,7 +71,6 @@ const DOSAGE_FORMS: DosageForm[] = [
 interface FormState {
   drugName: string;
   genericName: string;
-  categoryId: string;
   manufacturer: string;
   dosageForm: string;
   strength: string;
@@ -94,7 +92,6 @@ interface FormState {
 const EMPTY_FORM: FormState = {
   drugName: '',
   genericName: '',
-  categoryId: '',
   manufacturer: '',
   dosageForm: '',
   strength: '',
@@ -117,7 +114,6 @@ function formStateFromItem(item: FormularyItem): FormState {
   return {
     drugName: item.drugName,
     genericName: item.genericName ?? '',
-    categoryId: item.categoryId ?? '',
     manufacturer: item.manufacturer ?? '',
     dosageForm: item.dosageForm ?? '',
     strength: item.strength ?? '',
@@ -140,7 +136,6 @@ function formStateFromItem(item: FormularyItem): FormState {
 function formStateToInput(form: FormState): CreateFormularyInput {
   const out: CreateFormularyInput = { drugName: form.drugName.trim() };
   if (form.genericName.trim()) out.genericName = form.genericName.trim();
-  if (form.categoryId) out.categoryId = form.categoryId;
   if (form.manufacturer.trim()) out.manufacturer = form.manufacturer.trim();
   if (form.dosageForm) out.dosageForm = form.dosageForm as DosageForm;
   if (form.strength.trim()) out.strength = form.strength.trim();
@@ -217,7 +212,6 @@ function PharmacyInventoryPageInner() {
     search: search || undefined,
     stockStatus: stockFilter === 'all' ? undefined : stockFilter,
   });
-  const { data: categoriesData } = usePharmacyCategories();
   const createItem = useCreateFormularyItem();
   const updateItem = useUpdateFormularyItem();
   const deleteItem = useDeleteFormularyItem();
@@ -243,7 +237,6 @@ function PharmacyInventoryPageInner() {
 
   const items = data?.data ?? [];
   const meta = data?.meta;
-  const categories = categoriesData?.data ?? [];
 
   const updateField = (field: keyof FormState, value: string | boolean) =>
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -452,22 +445,6 @@ function PharmacyInventoryPageInner() {
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label>Category</Label>
-                  <Select
-                    value={formData.categoryId}
-                    onValueChange={(value) => updateField('categoryId', value ?? '')}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((cat) => (
-                        <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
                 <div className="space-y-1.5">
                   <Label>Dosage Form</Label>
                   <Select
@@ -739,7 +716,6 @@ function PharmacyInventoryPageInner() {
                 <TableRow>
                   <TableHead>Drug Name</TableHead>
                   <TableHead>Generic Name</TableHead>
-                  <TableHead>Category</TableHead>
                   <TableHead>Form</TableHead>
                   <TableHead>Strength</TableHead>
                   <TableHead className="text-center">Pack</TableHead>
@@ -760,7 +736,6 @@ function PharmacyInventoryPageInner() {
                       )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">{item.genericName || '-'}</TableCell>
-                    <TableCell>{item.category?.name || '-'}</TableCell>
                     <TableCell className="capitalize">{item.dosageForm || '-'}</TableCell>
                     <TableCell>{item.strength || '-'}</TableCell>
                     <TableCell className="text-center">

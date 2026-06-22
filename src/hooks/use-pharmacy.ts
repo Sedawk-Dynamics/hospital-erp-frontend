@@ -16,19 +16,10 @@ export type DosageForm =
   | 'inhaler'
   | 'other';
 
-export interface DrugCategory {
-  id: string;
-  name: string;
-  description: string | null;
-  createdAt: string;
-}
-
 export interface FormularyItem {
   id: string;
   drugName: string;
   genericName: string | null;
-  categoryId: string | null;
-  category?: { id: string; name: string } | null;
   manufacturer: string | null;
   dosageForm: DosageForm | null;
   strength: string | null;
@@ -197,7 +188,6 @@ interface PaginatedParams {
 }
 
 export interface FormularyQueryParams extends PaginatedParams {
-  categoryId?: string;
   dosageForm?: DosageForm;
   isActive?: boolean | string;
   stockStatus?: 'in' | 'out';
@@ -215,10 +205,6 @@ export interface BatchQueryParams extends PaginatedParams {
 // ============================================================
 
 export const pharmacyKeys = {
-  categories: {
-    all: ['pharmacy', 'categories'] as const,
-    list: (params?: PaginatedParams) => ['pharmacy', 'categories', 'list', params] as const,
-  },
   formulary: {
     all: ['pharmacy', 'formulary'] as const,
     list: (params?: FormularyQueryParams) => ['pharmacy', 'formulary', 'list', params] as const,
@@ -240,58 +226,6 @@ export const pharmacyKeys = {
   },
 };
 
-// ============================================================
-// Category Hooks
-// ============================================================
-
-export function usePharmacyCategories(params?: PaginatedParams) {
-  return useQuery({
-    queryKey: pharmacyKeys.categories.list(params),
-    queryFn: async () => {
-      const response = await apiGet<DrugCategory[]>('/pharmacy/categories', { params });
-      return { data: response.data, meta: response.meta as PaginationMeta | undefined };
-    },
-  });
-}
-
-export function useCreateCategory() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (data: { name: string; description?: string }) => {
-      const response = await apiPost<DrugCategory>('/pharmacy/categories', data);
-      return response.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: pharmacyKeys.categories.all });
-    },
-  });
-}
-
-export function useUpdateCategory() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, ...data }: { id: string; name?: string; description?: string | null }) => {
-      const response = await apiPut<DrugCategory>(`/pharmacy/categories/${id}`, data);
-      return response.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: pharmacyKeys.categories.all });
-    },
-  });
-}
-
-export function useDeleteCategory() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: string) => {
-      const response = await apiDelete(`/pharmacy/categories/${id}`);
-      return response.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: pharmacyKeys.categories.all });
-    },
-  });
-}
 
 // ============================================================
 // Formulary Hooks
@@ -321,7 +255,6 @@ export function useFormularyItem(id: string | null) {
 export interface CreateFormularyInput {
   drugName: string;
   genericName?: string;
-  categoryId?: string;
   manufacturer?: string;
   dosageForm?: DosageForm;
   strength?: string;
@@ -684,7 +617,6 @@ export interface CommitInwardLine extends InwardMatchLine {
   targetFormularyId?: string;
   // Raw distributor line text stored as the learned-mapping key (defaults to drugName).
   externalName?: string;
-  categoryId?: string;
   packSize?: number;
   looseUnitLabel?: string;
   // Product Resolution Engine identity carried onto a newly-created drug.
@@ -782,7 +714,7 @@ export function useSuggestDrugMaster() {
 export function useImportFormularyItem() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: { drugMasterId: string; categoryId?: string; price?: number }) => {
+    mutationFn: async (data: { drugMasterId: string; price?: number }) => {
       const response = await apiPost<FormularyItem>('/pharmacy/formulary/import', data);
       return response.data;
     },
@@ -831,7 +763,7 @@ export function usePharmacyCatalog(params?: CatalogQueryParams, enabled = true) 
 export function useImportFormularyBulk() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: { drugMasterIds: string[]; categoryId?: string }) => {
+    mutationFn: async (data: { drugMasterIds: string[] }) => {
       const response = await apiPost<{ requested: number; created: number; skipped: number }>(
         '/pharmacy/formulary/import-bulk',
         data,
@@ -2007,7 +1939,6 @@ export interface PharmacyAnalytics {
     rangeRevenue: number;
     rangeMargin: number;
     rangeTransactions: number;
-    revenueByCategory: { categoryId: string; categoryName: string; revenue: number }[];
   };
   topDrugs: { drugId: string; drugName: string; qty: number; revenue: number }[];
   expiry: {
@@ -2241,9 +2172,9 @@ export interface GstReport {
     igst: number;
     transactions: number;
   };
-  byCategory: Array<{
-    categoryId: string;
-    categoryName: string;
+  byDrug: Array<{
+    drugId: string;
+    drugName: string;
     taxableValue: number;
     gstAmount: number;
     totalAmount: number;

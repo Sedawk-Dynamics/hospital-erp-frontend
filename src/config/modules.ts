@@ -134,7 +134,6 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Ward Stock', href: '/pharmacy/ward-stock', icon: BedDouble, restrictTo: ['pharmacy_admin'] },
       { label: 'Stock Ledger', href: '/pharmacy/stock-ledger', icon: ClipboardList, restrictTo: ['pharmacy_admin'] },
       { label: 'Discount Policy', href: '/pharmacy/discount-policy', icon: Percent, restrictTo: ['pharmacy_admin'] },
-      { label: 'Settings', href: '/pharmacy/settings', icon: Settings, restrictTo: ['pharmacy_admin'] },
     ],
   },
 

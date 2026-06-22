@@ -80,36 +80,20 @@ function PharmacyReportsPageInner() {
         />
       </div>
 
-      {/* Sales by category + Top drugs */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <Card title="Revenue by Category" subtitle="Pulled from dispensed batches in the selected range.">
-          {data && data.sales.revenueByCategory.length > 0 ? (
-            <BarList
-              items={data.sales.revenueByCategory.map((c) => ({
-                label: c.categoryName,
-                value: c.revenue,
-                display: fmtINR(c.revenue),
-              }))}
-            />
-          ) : (
-            <Empty text={isLoading ? 'Loading…' : 'No categorised sales in range.'} />
-          )}
-        </Card>
-
-        <Card title="Top Dispensed Drugs" subtitle="By units dispensed.">
-          {data && data.topDrugs.length > 0 ? (
-            <BarList
-              items={data.topDrugs.slice(0, 10).map((d) => ({
-                label: d.drugName,
-                value: d.qty,
-                display: `${d.qty} units · ${fmtINR(d.revenue)}`,
-              }))}
-            />
-          ) : (
-            <Empty text={isLoading ? 'Loading…' : 'No dispenses in range.'} />
-          )}
-        </Card>
-      </div>
+      {/* Top drugs */}
+      <Card title="Top Dispensed Drugs" subtitle="By units dispensed in the selected range.">
+        {data && data.topDrugs.length > 0 ? (
+          <BarList
+            items={data.topDrugs.slice(0, 10).map((d) => ({
+              label: d.drugName,
+              value: d.qty,
+              display: `${d.qty} units · ${fmtINR(d.revenue)}`,
+            }))}
+          />
+        ) : (
+          <Empty text={isLoading ? 'Loading…' : 'No dispenses in range.'} />
+        )}
+      </Card>
 
       {/* Expiry */}
       <Card
