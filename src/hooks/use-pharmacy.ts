@@ -500,6 +500,98 @@ export function useMatchInward() {
   });
 }
 
+// ── OCR: a supplier invoice photo/PDF → inward lines (Gemini) ──
+export interface OcrInvoiceLine {
+  drugName: string;
+  genericName?: string | null;
+  manufacturer?: string | null;
+  strength?: string | null;
+  dosageForm?: string | null;
+  gtin?: string | null;
+  hsnCode?: string | null;
+  packSize?: number | null;
+  batchNumber?: string | null;
+  expiryDate?: string | null;
+  manufacturingDate?: string | null;
+  quantityReceived?: number | null;
+  freeQuantity?: number | null;
+  mrp?: number | null;
+  purchasePrice?: number | null;
+  purchaseDiscountPercent?: number | null;
+  gstPercent?: number | null;
+  sellingPrice?: number | null;
+}
+
+export interface OcrInwardResult {
+  model: string;
+  header: {
+    supplierName?: string | null;
+    supplierGstin?: string | null;
+    invoiceNumber?: string | null;
+    invoiceDate?: string | null;
+  };
+  lines: OcrInvoiceLine[];
+  warnings: string[];
+  // Pre-scored match result (same shape as /inward/match) so the UI can jump
+  // straight to the review step. Null when the server skipped matching.
+  match: { lines: InwardMatchedLine[] } | null;
+}
+
+// Upload an invoice image/PDF; the backend OCRs it and (optionally) scores the
+// lines through the same matcher as /inward/match. Multipart — pass a File.
+export function useOcrInward() {
+  return useMutation({
+    mutationFn: async ({ file, supplierId, match }: { file: File; supplierId?: string; match?: boolean }) => {
+      const form = new FormData();
+      form.append('invoice', file);
+      if (supplierId) form.append('supplierId', supplierId);
+      if (match === false) form.append('match', 'false');
+      const response = await apiPost<OcrInwardResult>('/pharmacy/inward/ocr', form);
+      return response.data;
+    },
+  });
+}
+
+// ── Scan at stock entry: one scan → a draft inward line ──
+export type InwardScanVia = 'formulary_gtin' | 'drugmaster_gtin' | 'gs1' | 'none';
+
+export interface InwardScanResult {
+  resolvedVia: InwardScanVia;
+  gtin: string | null;
+  // GTIN-14 outer-case scan → this many consumer units per case.
+  caseMultiplier: number;
+  parsed: {
+    gtin: string | null;
+    batchNumber: string | null;
+    expiryDate: string | null;
+    manufacturingDate: string | null;
+    serial: string | null;
+  };
+  // Set when the GTIN already maps to a tenant formulary drug (→ suggest 'map').
+  suggestedFormularyId: string | null;
+  // A ready-to-merge draft line (identity from formulary/catalog + parsed batch).
+  line: {
+    drugName: string;
+    genericName: string | null;
+    manufacturer: string | null;
+    strength: string | null;
+    dosageForm: string | null;
+    gtin: string | null;
+    hsnCode: string | null;
+    packSize: number | null;
+    batchNumber: string | null;
+    expiryDate: string | null;
+    manufacturingDate: string | null;
+  };
+}
+
+export function useInwardScan() {
+  return useMutation({
+    mutationFn: async (code: string) =>
+      (await apiGet<InwardScanResult>('/pharmacy/inward/scan', { params: { code } })).data,
+  });
+}
+
 // Barcode-driven dispensing (spec Section 2): resolve one scan → product + batch.
 export interface ScanResult {
   resolvedVia: 'gs1' | 'gtin' | 'batch';
@@ -596,6 +688,8 @@ export interface CommitInwardLine extends InwardMatchLine {
   // Product Resolution Engine identity carried onto a newly-created drug.
   hsnCode?: string;
   manufacturerCode?: string;
+  // Department / rack / cold-chain bin the batch is shelved in (per-batch).
+  storageLocation?: string;
   batchNumber: string;
   manufacturingDate?: string;
   expiryDate: string;

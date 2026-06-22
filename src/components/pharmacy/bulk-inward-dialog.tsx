@@ -14,6 +14,8 @@ import {
   Sparkles,
   CircleCheck,
   CircleX,
+  Camera,
+  ScanLine,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -40,10 +42,13 @@ import { cn } from '@/lib/utils';
 import {
   useMatchInward,
   useCommitInward,
+  useOcrInward,
+  useInwardScan,
   type InwardMatchedLine,
   type CommitInwardLine,
   type CommitInwardResult,
   type FormularyMatch,
+  type OcrInvoiceLine,
 } from '@/hooks/use-pharmacy';
 import { useSuppliers } from '@/hooks/use-inventory';
 import { VendorFormDialog } from '@/components/inventory/vendor-form-dialog';
@@ -67,6 +72,8 @@ interface DraftLine {
   // Product Resolution Engine: GTIN off the invoice/scan + HSN for compliance.
   gtin: string;
   hsnCode: string;
+  // Department / rack / cold-chain bin this batch is shelved in (mandatory).
+  storageLocation: string;
   batchNumber: string;
   expiryDate: string; // yyyy-MM-dd
   manufacturingDate: string;
@@ -98,6 +105,7 @@ function emptyLine(): DraftLine {
     strength: '',
     gtin: '',
     hsnCode: '',
+    storageLocation: '',
     batchNumber: '',
     expiryDate: '',
     manufacturingDate: '',
@@ -121,6 +129,8 @@ const HEADER_MAP: Record<string, keyof DraftLine> = {
   strength: 'strength', dose: 'strength', dosage: 'strength',
   gtin: 'gtin', barcode: 'gtin', ean: 'gtin', upc: 'gtin', gs1: 'gtin',
   hsn: 'hsnCode', hsn_code: 'hsnCode', hsncode: 'hsnCode',
+  storage: 'storageLocation', storage_location: 'storageLocation', location: 'storageLocation',
+  rack: 'storageLocation', shelf: 'storageLocation', bin: 'storageLocation', store: 'storageLocation',
   batch: 'batchNumber', batchno: 'batchNumber', batch_no: 'batchNumber', lot: 'batchNumber', bno: 'batchNumber',
   expiry: 'expiryDate', exp: 'expiryDate', exp_date: 'expiryDate', expiry_date: 'expiryDate', expdate: 'expiryDate',
   mfgdate: 'manufacturingDate', mfg_date: 'manufacturingDate', manufacturing_date: 'manufacturingDate',
@@ -252,11 +262,17 @@ export function BulkInwardDialog({
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [result, setResult] = useState<CommitInwardResult | null>(null);
 
+  // Mandatory storage location applied to any line that doesn't set its own.
+  const [defaultStorage, setDefaultStorage] = useState('');
+
   const fileRef = useRef<HTMLInputElement>(null);
+  const ocrRef = useRef<HTMLInputElement>(null);
   const { data: suppliersData } = useSuppliers({ limit: 100 });
   const suppliers = suppliersData?.data ?? [];
   const matchInward = useMatchInward();
   const commitInward = useCommitInward();
+  const ocrInward = useOcrInward();
+  const inwardScan = useInwardScan();
 
   const reset = () => {
     setStep('entry');
@@ -266,6 +282,7 @@ export function BulkInwardDialog({
     setInvoiceDiscPct('');
     setInvoiceDiscAmt('');
     setAddToExisting(false);
+    setDefaultStorage('');
     setLines([emptyLine()]);
     setPasteText('');
     setShowPaste(false);
@@ -310,6 +327,110 @@ export function BulkInwardDialog({
     e.target.value = '';
   };
 
+  const s = (v: number | null | undefined) => (v === null || v === undefined ? '' : String(v));
+  const ocrToDraft = (o: OcrInvoiceLine): DraftLine => ({
+    id: nextId(),
+    drugName: o.drugName ?? '',
+    genericName: o.genericName ?? '',
+    manufacturer: o.manufacturer ?? '',
+    strength: o.strength ?? '',
+    gtin: o.gtin ?? '',
+    hsnCode: o.hsnCode ?? '',
+    storageLocation: '',
+    batchNumber: o.batchNumber ?? '',
+    expiryDate: o.expiryDate ?? '',
+    manufacturingDate: o.manufacturingDate ?? '',
+    quantityReceived: s(o.quantityReceived),
+    freeQuantity: s(o.freeQuantity),
+    mrp: s(o.mrp),
+    purchasePrice: s(o.purchasePrice),
+    purchaseDiscountPercent: s(o.purchaseDiscountPercent),
+    gstPercent: s(o.gstPercent),
+    sellingPrice: s(o.sellingPrice),
+  });
+
+  // OCR: upload an invoice photo/PDF, seed the grid with the read lines, and let
+  // the user verify + fill storage before matching. Matching is skipped here
+  // (match=false) since the user reviews/edits the lines first.
+  const onOcrFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const res = await ocrInward.mutateAsync({ file, supplierId: supplierId || undefined, match: false });
+      if (!res.lines.length) {
+        toast.error(res.warnings[0] ?? 'No medicine lines could be read from this invoice.');
+        return;
+      }
+      const drafts = res.lines.map(ocrToDraft);
+      setLines((prev) => {
+        const existing = prev.filter((l) => l.drugName.trim());
+        return [...existing, ...drafts];
+      });
+      if (res.header.invoiceNumber) setInvoiceNumber(res.header.invoiceNumber);
+      if (res.header.invoiceDate) setInvoiceDate(res.header.invoiceDate);
+      if (!supplierId && res.header.supplierName) {
+        const norm = res.header.supplierName.trim().toLowerCase();
+        const m = suppliers.find(
+          (sp) => sp.name.toLowerCase().includes(norm) || norm.includes(sp.name.toLowerCase()),
+        );
+        if (m) setSupplierId(m.id);
+      }
+      toast.success(`OCR read ${drafts.length} line${drafts.length === 1 ? '' : 's'} — verify and add storage before matching.`);
+      res.warnings.slice(0, 4).forEach((w) => toast.warning(w));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not read the invoice');
+    }
+  };
+
+  // Scan a pack barcode / GS1 at stock entry → fill the last empty line (or add a
+  // new one) with the resolved drug identity + batch/expiry read off the pack.
+  const handleScan = async (code: string) => {
+    const c = code.trim();
+    if (!c) return;
+    try {
+      const res = await inwardScan.mutateAsync(c);
+      const L = res.line;
+      const seed: Omit<DraftLine, 'id'> = {
+        drugName: L.drugName || '',
+        genericName: L.genericName || '',
+        manufacturer: L.manufacturer || '',
+        strength: L.strength || '',
+        gtin: L.gtin || res.gtin || '',
+        hsnCode: L.hsnCode || '',
+        storageLocation: '',
+        batchNumber: L.batchNumber || '',
+        expiryDate: L.expiryDate || '',
+        manufacturingDate: L.manufacturingDate || '',
+        quantityReceived: '',
+        freeQuantity: '',
+        mrp: '',
+        purchasePrice: '',
+        purchaseDiscountPercent: '',
+        gstPercent: '',
+        sellingPrice: '',
+      };
+      setLines((prev) => {
+        const idx = prev.map((l) => l.drugName.trim()).lastIndexOf('');
+        if (idx >= 0) return prev.map((l, i) => (i === idx ? { ...seed, id: l.id } : l));
+        return [...prev, { ...seed, id: nextId() }];
+      });
+      if (res.resolvedVia === 'none' && !L.drugName) {
+        toast.warning('Barcode not recognised — batch/expiry filled where possible; complete the line manually.');
+      } else {
+        const via =
+          res.resolvedVia === 'formulary_gtin' ? 'in formulary'
+            : res.resolvedVia === 'drugmaster_gtin' ? 'from catalog'
+              : 'GS1 parsed';
+        toast.success(
+          `Scanned ${L.drugName || 'pack'} · ${via}${L.batchNumber ? ` · batch ${L.batchNumber}` : ''}`,
+        );
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Scan failed');
+    }
+  };
+
   // Validate + score the entered lines, then move to the review step.
   const handleMatch = async () => {
     const filled = lines.filter((l) => l.drugName.trim());
@@ -319,6 +440,9 @@ export function BulkInwardDialog({
       if (!l.expiryDate) return toast.error(`Expiry date missing for "${l.drugName}"`);
       if (!int(l.quantityReceived) || int(l.quantityReceived)! <= 0)
         return toast.error(`Quantity missing for "${l.drugName}"`);
+      // Storage location is mandatory — per-line, or via the default applied to all.
+      if (!l.storageLocation.trim() && !defaultStorage.trim())
+        return toast.error(`Storage location missing for "${l.drugName}" (set a default or fill the column)`);
     }
     try {
       const res = await matchInward.mutateAsync({
@@ -404,6 +528,8 @@ export function BulkInwardDialog({
         strength: l.strength.trim() || undefined,
         gtin: l.gtin.trim() || undefined,
         hsnCode: l.hsnCode.trim() || undefined,
+        // Mandatory storage: per-line value, else the dialog-wide default.
+        storageLocation: l.storageLocation.trim() || defaultStorage.trim() || undefined,
         batchNumber: l.batchNumber.trim(),
         expiryDate: l.expiryDate,
         manufacturingDate: l.manufacturingDate || undefined,
@@ -504,6 +630,8 @@ export function BulkInwardDialog({
               setInvoiceDiscPct={setInvoiceDiscPct}
               invoiceDiscAmt={invoiceDiscAmt}
               setInvoiceDiscAmt={setInvoiceDiscAmt}
+              defaultStorage={defaultStorage}
+              setDefaultStorage={setDefaultStorage}
               purchaseTotals={purchaseTotals}
               lines={lines}
               updateLine={updateLine}
@@ -516,6 +644,11 @@ export function BulkInwardDialog({
               ingest={ingest}
               fileRef={fileRef}
               onFile={onFile}
+              ocrRef={ocrRef}
+              onOcrFile={onOcrFile}
+              ocrPending={ocrInward.isPending}
+              onScan={handleScan}
+              scanPending={inwardScan.isPending}
             />
           )}
 
@@ -588,6 +721,8 @@ function EntryStep(props: {
   setInvoiceDiscPct: (v: string) => void;
   invoiceDiscAmt: string;
   setInvoiceDiscAmt: (v: string) => void;
+  defaultStorage: string;
+  setDefaultStorage: (v: string) => void;
   purchaseTotals: { gross: number; lineDisc: number; billPct: number; invoiceDisc: number; net: number; gst: number; landing: number };
   lines: DraftLine[];
   updateLine: (id: string, field: keyof DraftLine, value: string) => void;
@@ -600,13 +735,20 @@ function EntryStep(props: {
   ingest: (text: string) => void;
   fileRef: React.RefObject<HTMLInputElement | null>;
   onFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  ocrRef: React.RefObject<HTMLInputElement | null>;
+  onOcrFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  ocrPending: boolean;
+  onScan: (code: string) => void;
+  scanPending: boolean;
 }) {
   const {
     suppliers, supplierId, setSupplierId, selectedSupplier, invoiceNumber, setInvoiceNumber,
     invoiceDate, setInvoiceDate, invoiceDiscPct, setInvoiceDiscPct, invoiceDiscAmt, setInvoiceDiscAmt,
+    defaultStorage, setDefaultStorage,
     purchaseTotals, lines, updateLine, addLine, removeLine, showPaste, setShowPaste,
-    pasteText, setPasteText, ingest, fileRef, onFile,
+    pasteText, setPasteText, ingest, fileRef, onFile, ocrRef, onOcrFile, ocrPending, onScan, scanPending,
   } = props;
+  const [scanValue, setScanValue] = useState('');
   const money = (n: number) => `₹${n.toFixed(2)}`;
 
   const cell = 'h-8 text-xs';
@@ -657,6 +799,16 @@ function EntryStep(props: {
           <Label className="text-xs">Invoice Date</Label>
           <Input className="h-9" type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
         </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Default storage location *</Label>
+          <Input
+            className="h-9"
+            value={defaultStorage}
+            onChange={(e) => setDefaultStorage(e.target.value)}
+            placeholder="e.g. Main store · Rack A3"
+          />
+          <p className="text-[11px] text-muted-foreground">Applied to every line that has no storage of its own.</p>
+        </div>
       </div>
 
       {/* G2: total-bill purchase discount (whole invoice, on top of per-line) */}
@@ -706,6 +858,21 @@ function EntryStep(props: {
 
       {/* Import controls */}
       <div className="flex flex-wrap items-center gap-2">
+        {/* OCR — read a photo/PDF of the supplier invoice into lines (Gemini). */}
+        <Button size="sm" variant="outline" onClick={() => ocrRef.current?.click()} disabled={ocrPending}>
+          {ocrPending ? (
+            <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Reading invoice…</>
+          ) : (
+            <><Camera className="mr-1.5 h-4 w-4" /> Scan invoice (OCR)</>
+          )}
+        </Button>
+        <input
+          ref={ocrRef}
+          type="file"
+          accept="image/*,application/pdf,.pdf,.jpg,.jpeg,.png,.webp"
+          className="hidden"
+          onChange={onOcrFile}
+        />
         <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()}>
           <Upload className="mr-1.5 h-4 w-4" /> Upload CSV
         </Button>
@@ -713,10 +880,29 @@ function EntryStep(props: {
         <Button size="sm" variant="outline" onClick={() => setShowPaste(!showPaste)}>
           <ClipboardPaste className="mr-1.5 h-4 w-4" /> Paste rows
         </Button>
-        <span className="text-[11px] text-muted-foreground">
-          Columns: name, batch, expiry, qty, mrp, rate, gst, sell (a header row is auto-detected). OCR text can be pasted too.
-        </span>
+        {/* Barcode / GS1 scan → fills a line (drug + batch + expiry) with one scan. */}
+        <div className="relative flex items-center">
+          <ScanLine className="pointer-events-none absolute left-2 h-4 w-4 text-muted-foreground" />
+          <Input
+            className="h-8 w-52 pl-8 text-xs"
+            value={scanValue}
+            onChange={(e) => setScanValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                onScan(scanValue);
+                setScanValue('');
+              }
+            }}
+            placeholder="Scan barcode / GS1…"
+            disabled={scanPending}
+          />
+          {scanPending && <Loader2 className="absolute right-2 h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+        </div>
       </div>
+      <p className="-mt-2 text-[11px] text-muted-foreground">
+        Columns: name, batch, expiry, qty, mrp, rate, gst, sell, storage (a header row is auto-detected). Scan a pack to auto-fill a line.
+      </p>
 
       {showPaste && (
         <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
@@ -737,7 +923,7 @@ function EntryStep(props: {
 
       {/* Editable line table */}
       <div className="overflow-x-auto rounded-lg border">
-        <table className="w-full min-w-[1040px] text-xs">
+        <table className="w-full min-w-[1180px] text-xs">
           <thead className="bg-muted/50 text-muted-foreground">
             <tr className="[&>th]:px-2 [&>th]:py-2 [&>th]:text-left [&>th]:font-medium">
               <th className="w-8">#</th>
@@ -745,6 +931,7 @@ function EntryStep(props: {
               <th>Strength</th>
               <th>Batch *</th>
               <th>Expiry *</th>
+              <th className="min-w-[120px]">Storage *</th>
               <th className="w-16">Qty *</th>
               <th className="w-14">Free</th>
               <th className="w-16">MRP</th>
@@ -769,6 +956,7 @@ function EntryStep(props: {
                 <td><Input className={cell} value={l.strength} onChange={(e) => updateLine(l.id, 'strength', e.target.value)} placeholder="40mg" /></td>
                 <td><Input className={cell} value={l.batchNumber} onChange={(e) => updateLine(l.id, 'batchNumber', e.target.value)} placeholder="B23A01" /></td>
                 <td><Input className={cn(cell, 'w-[130px]')} type="date" value={l.expiryDate} onChange={(e) => updateLine(l.id, 'expiryDate', e.target.value)} /></td>
+                <td><Input className={cn(cell, 'min-w-[110px]')} value={l.storageLocation} onChange={(e) => updateLine(l.id, 'storageLocation', e.target.value)} placeholder={defaultStorage || 'Rack / Dept'} /></td>
                 <td><Input className={cell} type="number" min={1} value={l.quantityReceived} onChange={(e) => updateLine(l.id, 'quantityReceived', e.target.value)} /></td>
                 <td><Input className={cell} type="number" min={0} value={l.freeQuantity} onChange={(e) => updateLine(l.id, 'freeQuantity', e.target.value)} /></td>
                 <td><Input className={cell} type="number" step="0.01" value={l.mrp} onChange={(e) => updateLine(l.id, 'mrp', e.target.value)} /></td>
@@ -911,6 +1099,7 @@ function CompareCards({ line, target }: { line: DraftLine; target: FormularyMatc
           <Field label="Manufacturer" value={line.manufacturer} />
           <Field label="Strength" value={line.strength} />
           <Field label="Receiving" value={`${(parseInt(line.quantityReceived, 10) || 0) + (parseInt(line.freeQuantity, 10) || 0)} units`} />
+          <Field label="Storage" value={line.storageLocation} />
         </div>
       </div>
       <div className={cn('rounded-md border p-2.5 text-xs', target ? 'border-primary/40 bg-primary/5' : 'border-dashed')}>
