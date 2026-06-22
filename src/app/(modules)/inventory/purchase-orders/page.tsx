@@ -217,14 +217,14 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
 
   return (
     <Dialog open={true} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader><DialogTitle>New Purchase Order</DialogTitle></DialogHeader>
-        <div className="space-y-3">
+        <div className="flex-1 overflow-y-auto space-y-4 pr-1">
           <div className="grid grid-cols-2 gap-3">
-            <div>
+            <div className="space-y-1.5">
               <label className="text-xs font-medium">Supplier *</label>
               <Select value={supplierId || null} onValueChange={(v) => setSupplierId(v ?? '')}>
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   {/* Base UI renders the raw value by default — map it back to the name. */}
                   <SelectValue placeholder="Select supplier">
                     {(value) => suppliers.find((s) => s.id === value)?.name ?? 'Select supplier'}
@@ -237,13 +237,13 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
                 </SelectContent>
               </Select>
             </div>
-            <div>
+            <div className="space-y-1.5">
               <label className="text-xs font-medium">Expected delivery</label>
               <Input type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} />
             </div>
           </div>
 
-          <div>
+          <div className="space-y-1.5">
             <label className="text-xs font-medium">Add items / drugs</label>
             <Input placeholder="Search inventory items or our drugs..." value={search} onChange={(e) => setSearch(e.target.value)} />
             {search && ((itemsResp?.data?.length ?? 0) > 0 || drugs.length > 0) && (
@@ -281,6 +281,9 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
                   </div>
                 )}
               </div>
+            )}
+            {search && (itemsResp?.data?.length ?? 0) === 0 && drugs.length === 0 && (
+              <p className="text-xs text-muted-foreground">No items or drugs match &ldquo;{search}&rdquo;.</p>
             )}
           </div>
 
@@ -355,7 +358,7 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
             </div>
           )}
 
-          <div>
+          <div className="space-y-1.5">
             <label className="text-xs font-medium">Notes</label>
             <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
           </div>
