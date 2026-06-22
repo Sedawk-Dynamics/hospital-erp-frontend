@@ -178,6 +178,8 @@ interface PoLineSeed {
   kind: 'item' | 'drug';
   refId: string; // inventoryItemId or drugId
   itemName: string;
+  // Composition (drug) / item code — shown under the name everywhere.
+  subText?: string;
   quantityOrdered: number;
 }
 
@@ -197,12 +199,12 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
   const drugs = drugsResp?.data ?? [];
   const create = useCreatePurchaseOrder();
 
-  const addLine = (kind: 'item' | 'drug', refId: string, itemName: string) => {
+  const addLine = (kind: 'item' | 'drug', refId: string, itemName: string, subText?: string) => {
     if (items.some((i) => i.kind === kind && i.refId === refId)) {
       toast.error('Already added');
       return;
     }
-    setItems([...items, { kind, refId, itemName, quantityOrdered: 1 }]);
+    setItems([...items, { kind, refId, itemName, subText, quantityOrdered: 1 }]);
   };
 
   const handleSubmit = async () => {
@@ -266,7 +268,7 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
                     {itemsResp!.data.map((it) => (
                       <button
                         key={`item-${it.id}`}
-                        onClick={() => addLine('item', it.id, it.itemName)}
+                        onClick={() => addLine('item', it.id, it.itemName, it.itemCode ?? undefined)}
                         className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
                       >
                         <Badge variant="outline" className="shrink-0 text-[10px]">Item</Badge>
@@ -282,7 +284,14 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
                     {drugs.map((d) => (
                       <button
                         key={`drug-${d.id}`}
-                        onClick={() => addLine('drug', d.id, `${d.drugName}${d.strength ? ` ${d.strength}` : ''}`)}
+                        onClick={() =>
+                          addLine(
+                            'drug',
+                            d.id,
+                            `${d.drugName}${d.strength ? ` ${d.strength}` : ''}`,
+                            [d.genericName, d.manufacturer].filter(Boolean).join(' · ') || undefined,
+                          )
+                        }
                         className="flex w-full min-w-0 items-start gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
                       >
                         <Badge className="mt-0.5 shrink-0 bg-teal-500/10 text-teal-700 border-teal-500/20 text-[10px]">Drug</Badge>
@@ -325,14 +334,17 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
                     key={`${it.kind}-${it.refId}`}
                     className="grid grid-cols-[minmax(0,1fr)_6rem_2rem] items-center gap-2 px-3 py-1.5"
                   >
-                    <div className="flex min-w-0 items-center gap-1.5">
-                      <span className="truncate text-sm font-medium">{it.itemName}</span>
-                      <Badge
-                        variant="outline"
-                        className={cn('shrink-0 text-[10px]', it.kind === 'drug' && 'bg-teal-500/10 text-teal-700 border-teal-500/20')}
-                      >
-                        {it.kind === 'drug' ? 'Drug' : 'Item'}
-                      </Badge>
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate text-sm font-medium">{it.itemName}</span>
+                        <Badge
+                          variant="outline"
+                          className={cn('shrink-0 text-[10px]', it.kind === 'drug' && 'bg-teal-500/10 text-teal-700 border-teal-500/20')}
+                        >
+                          {it.kind === 'drug' ? 'Drug' : 'Item'}
+                        </Badge>
+                      </div>
+                      {it.subText && <p className="truncate text-xs text-muted-foreground">{it.subText}</p>}
                     </div>
                     <Input
                       type="number"
@@ -477,17 +489,24 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
                   const name = isDrug
                     ? `${it.drug?.drugName ?? 'Drug'}${it.drug?.strength ? ` ${it.drug.strength}` : ''}`
                     : it.inventoryItem?.itemName ?? '-';
+                  // Composition (drug) / item code, shown under the name.
+                  const subText = isDrug
+                    ? [it.drug?.genericName, it.drug?.manufacturer].filter(Boolean).join(' · ')
+                    : it.inventoryItem?.itemCode ?? '';
                   const receiving = data.status === 'approved' || data.status === 'partially_delivered';
                   return (
                     <TableRow key={it.id}>
                       <TableCell className="font-medium align-top">
-                        {name}
-                        <Badge
-                          variant="outline"
-                          className={cn('ml-2 text-[10px]', isDrug && 'bg-teal-500/10 text-teal-700 border-teal-500/20')}
-                        >
-                          {isDrug ? 'Drug' : 'Item'}
-                        </Badge>
+                        <div className="flex items-center gap-1.5">
+                          <span>{name}</span>
+                          <Badge
+                            variant="outline"
+                            className={cn('text-[10px]', isDrug && 'bg-teal-500/10 text-teal-700 border-teal-500/20')}
+                          >
+                            {isDrug ? 'Drug' : 'Item'}
+                          </Badge>
+                        </div>
+                        {subText && <p className="text-xs font-normal text-muted-foreground">{subText}</p>}
                       </TableCell>
                       <TableCell className="text-right align-top">{it.quantityOrdered}</TableCell>
                       <TableCell className="text-right align-top">{it.quantityReceived}</TableCell>

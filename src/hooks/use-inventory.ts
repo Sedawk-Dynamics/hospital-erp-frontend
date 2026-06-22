@@ -93,7 +93,14 @@ export interface PurchaseOrderItem {
   inventoryItem?: (Pick<InventoryItem, 'id' | 'itemName' | 'itemCode' | 'unitOfMeasurement'> & {
     currentStock?: number;
   }) | null;
-  drug?: { id: string; drugName: string; strength: string | null; dosageForm: string | null } | null;
+  drug?: {
+    id: string;
+    drugName: string;
+    genericName: string | null;
+    manufacturer: string | null;
+    strength: string | null;
+    dosageForm: string | null;
+  } | null;
 }
 
 export interface PurchaseOrder {
