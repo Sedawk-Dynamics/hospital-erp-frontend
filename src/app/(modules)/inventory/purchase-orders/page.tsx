@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
-  ShoppingCart, Plus, CheckCircle2, PackageCheck, X, Ban,
+  ShoppingCart, Plus, PackageCheck, X, Ban,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -27,13 +27,37 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/lib/date-utils';
 import {
-  usePurchaseOrders, useCreatePurchaseOrder, useApprovePurchaseOrder,
+  usePurchaseOrders, useCreatePurchaseOrder,
   useReceivePurchaseOrder, useCancelPurchaseOrder, usePurchaseOrder, useInventoryItems, useSuppliers,
   type PurchaseOrderStatus, type CreatePurchaseOrderInput, type ReceivePurchaseOrderLine,
 } from '@/hooks/use-inventory';
 import { useFormulary } from '@/hooks/use-pharmacy';
 
-type Tab = 'all' | 'draft' | 'approved' | 'delivered';
+type Tab = 'all' | 'created' | 'delivered';
+
+// Simplified lifecycle: a PO is Created (ready to receive) → Delivered. The
+// older draft/submitted/approved states all read as "Created".
+const STATUS_LABEL: Record<string, string> = {
+  draft: 'Created',
+  submitted: 'Created',
+  approved: 'Created',
+  partially_delivered: 'Partially delivered',
+  delivered: 'Delivered',
+  cancelled: 'Cancelled',
+};
+const STATUS_CLS: Record<string, string> = {
+  draft: 'bg-blue-500/10 text-blue-700 border-blue-500/20',
+  submitted: 'bg-blue-500/10 text-blue-700 border-blue-500/20',
+  approved: 'bg-blue-500/10 text-blue-700 border-blue-500/20',
+  partially_delivered: 'bg-orange-500/10 text-orange-700 border-orange-500/20',
+  delivered: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20',
+  cancelled: 'bg-red-500/10 text-red-700 border-red-500/20',
+};
+// Tab → the underlying status filter.
+const TAB_STATUS: Record<Exclude<Tab, 'all'>, PurchaseOrderStatus> = {
+  created: 'approved',
+  delivered: 'delivered',
+};
 
 export default function PurchaseOrdersPage() {
   const router = useRouter();
@@ -58,7 +82,7 @@ export default function PurchaseOrdersPage() {
   }, [searchParams, router]);
 
   const { data, isLoading } = usePurchaseOrders({
-    status: tab === 'all' ? undefined : (tab as PurchaseOrderStatus),
+    status: tab === 'all' ? undefined : TAB_STATUS[tab],
     limit: 50,
   });
   const orders = data?.data ?? [];
@@ -82,8 +106,7 @@ export default function PurchaseOrdersPage() {
       <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
         <TabsList>
           <TabsTrigger value="all">All</TabsTrigger>
-          <TabsTrigger value="draft">Draft</TabsTrigger>
-          <TabsTrigger value="approved">Approved</TabsTrigger>
+          <TabsTrigger value="created">Created</TabsTrigger>
           <TabsTrigger value="delivered">Delivered</TabsTrigger>
         </TabsList>
         <TabsContent value={tab} className="mt-3">
@@ -110,14 +133,7 @@ export default function PurchaseOrdersPage() {
                 </TableHeader>
                 <TableBody>
                   {orders.map((po) => {
-                    const statusCls = {
-                      draft: 'bg-slate-500/10 text-slate-700 border-slate-500/20',
-                      submitted: 'bg-blue-500/10 text-blue-700 border-blue-500/20',
-                      approved: 'bg-amber-500/10 text-amber-700 border-amber-500/20',
-                      partially_delivered: 'bg-orange-500/10 text-orange-700 border-orange-500/20',
-                      delivered: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20',
-                      cancelled: 'bg-red-500/10 text-red-700 border-red-500/20',
-                    }[po.status];
+                    const statusCls = STATUS_CLS[po.status];
                     return (
                       <TableRow key={po.id}>
                         <TableCell className="font-mono text-xs">{po.orderNumber}</TableCell>
@@ -131,7 +147,7 @@ export default function PurchaseOrdersPage() {
                           {po.totalAmount ? `₹${Number(po.totalAmount).toFixed(2)}` : '-'}
                         </TableCell>
                         <TableCell className="text-center">
-                          <Badge className={statusCls}>{po.status}</Badge>
+                          <Badge className={statusCls}>{STATUS_LABEL[po.status] ?? po.status}</Badge>
                         </TableCell>
                         <TableCell className="text-right">
                           <Button size="sm" variant="ghost" onClick={() => setDetailId(po.id)}>View</Button>
@@ -351,7 +367,6 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
 
 function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
   const { data, isLoading } = usePurchaseOrder(id);
-  const approve = useApprovePurchaseOrder();
   const receive = useReceivePurchaseOrder();
   const cancel = useCancelPurchaseOrder();
   const [recvMap, setRecvMap] = useState<Record<string, number>>({});
@@ -364,14 +379,6 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
       const cur = prev[poItemId] ?? { batchNumber: '', expiryDate: '', storageLocation: '' };
       return { ...prev, [poItemId]: { ...cur, ...patch } };
     });
-
-  const handleApprove = async () => {
-    if (!confirm('Approve this PO?')) return;
-    try {
-      await approve.mutateAsync(id);
-      toast.success('PO approved');
-    } catch (err) { toast.error((err as Error).message); }
-  };
 
   const handleCancel = async () => {
     const reason = window.prompt('Cancel this PO? Optionally enter a reason:');
@@ -435,7 +442,7 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
             <div className="grid grid-cols-3 gap-3 text-sm">
               <div><b>Order:</b> <span className="font-mono">{data.orderNumber}</span></div>
               <div><b>Supplier:</b> {data.supplier?.name}</div>
-              <div><b>Status:</b> {data.status}</div>
+              <div><b>Status:</b> {STATUS_LABEL[data.status] ?? data.status}</div>
               <div><b>Order Date:</b> {formatDate(data.orderDate)}</div>
               <div><b>Expected:</b> {data.expectedDeliveryDate ? formatDate(data.expectedDeliveryDate) : '-'}</div>
               <div><b>Total:</b> {data.totalAmount ? `₹${Number(data.totalAmount).toFixed(2)}` : '-'}</div>
@@ -556,11 +563,6 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
               disabled={cancel.isPending}
             >
               <Ban className="mr-1.5 h-4 w-4" /> Cancel PO
-            </Button>
-          )}
-          {data?.status === 'draft' && (
-            <Button onClick={handleApprove} disabled={approve.isPending}>
-              <CheckCircle2 className="mr-1.5 h-4 w-4" /> Approve
             </Button>
           )}
           {(data?.status === 'approved' || data?.status === 'partially_delivered') && (
