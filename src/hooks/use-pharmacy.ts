@@ -95,6 +95,8 @@ export interface DrugBatch {
   // minted at inward, or a scanned pack barcode) + the shelf/bin location.
   barcode?: string | null;
   storageLocation?: string | null;
+  // GS1 DataMatrix serial (AI 21) captured at receipt.
+  serialNumber?: string | null;
   createdAt: string;
   updatedAt: string;
   drug?: Pick<
@@ -921,10 +923,24 @@ export interface CreateBatchInput {
   freeQuantity?: number;
   sellingPrice?: number;
   quantityReceived: number;
+  // Barcode traceability: scanned pack barcode, shelf location, DataMatrix serial.
+  barcode?: string;
+  storageLocation?: string;
+  serialNumber?: string;
   // GRN invoice traceability + duplicate-batch "Increase Quantity".
   invoiceNumber?: string;
   invoiceDate?: string;
   addToExisting?: boolean;
+}
+
+// Remember an unknown barcode against a chosen drug (stock-entry fallback).
+export function useAttachBarcode() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { gtin: string; drugId: string }) =>
+      (await apiPost<{ ok: boolean; gtin: string; drugId: string }>('/pharmacy/barcodes/attach', data)).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all }),
+  });
 }
 
 export function useCreateBatch() {

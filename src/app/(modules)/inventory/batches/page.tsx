@@ -24,6 +24,7 @@ import {
   ClipboardCheck,
   Boxes,
   PackageX,
+  ScanLine,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
@@ -80,9 +81,12 @@ import {
 import { BulkInwardDialog } from '@/components/pharmacy/bulk-inward-dialog';
 import { StockTakeDialog } from '@/components/pharmacy/stock-take-dialog';
 import { VendorFormDialog } from '@/components/inventory/vendor-form-dialog';
+import { BarcodeScanner } from '@/components/shared/barcode-scanner';
 import {
   useBatches,
   useCreateBatch,
+  useInwardScan,
+  useAttachBarcode,
   useUpdateBatch,
   useRunPharmacyExpiryAlerts,
   useExpiringBatches,
@@ -121,6 +125,8 @@ interface FormState {
   // GRN invoice traceability.
   invoiceNumber: string;
   invoiceDate: string;
+  // GS1 DataMatrix serial (AI 21), read from the 2D scan.
+  serialNumber: string;
   // Edit-only: correct the on-hand stock for an existing batch.
   quantityInStock: string;
 }
@@ -141,6 +147,7 @@ const EMPTY_FORM: FormState = {
   quantityReceived: '',
   invoiceNumber: '',
   invoiceDate: '',
+  serialNumber: '',
   quantityInStock: '',
 };
 
@@ -165,6 +172,7 @@ function formStateFromBatch(batch: DrugBatch): FormState {
     quantityReceived: String(batch.quantityReceived),
     invoiceNumber: batch.invoiceNumber ?? '',
     invoiceDate: isoToDateInput(batch.invoiceDate),
+    serialNumber: batch.serialNumber ?? '',
     quantityInStock: String(batch.quantityInStock),
   };
 }
@@ -312,6 +320,10 @@ function PharmacyBatchesPageInner() {
   const updateBatch = useUpdateBatch();
   const runExpiry = useRunPharmacyExpiryAlerts();
   const unrecall = useUnrecallBatch();
+  const inwardScan = useInwardScan();
+  const attachBarcode = useAttachBarcode();
+  // An unrecognised scanned barcode — remembered against the chosen drug on save.
+  const [pendingBarcode, setPendingBarcode] = useState<string | null>(null);
 
   const handleLiftRecall = async (batch: DrugBatch) => {
     if (!confirm('Lift the recall on this batch? Dispensing will be allowed again.')) return;
@@ -329,12 +341,14 @@ function PharmacyBatchesPageInner() {
   const closeDialog = () => {
     setCreateOpen(false);
     setEditingBatch(null);
+    setPendingBarcode(null);
     setFormData(EMPTY_FORM);
     setDrugSearchInput('');
   };
 
   const startCreate = () => {
     setEditingBatch(null);
+    setPendingBarcode(null);
     setFormData(EMPTY_FORM);
     setDrugSearchInput('');
     setCreateOpen(true);
@@ -343,6 +357,7 @@ function PharmacyBatchesPageInner() {
   // Receive a batch for a specific out-of-stock drug — opens the form pre-filled.
   const startCreateForDrug = (drug: FormularyItem) => {
     setEditingBatch(null);
+    setPendingBarcode(null);
     setFormData({
       ...EMPTY_FORM,
       drugId: drug.id,
@@ -350,6 +365,46 @@ function PharmacyBatchesPageInner() {
     });
     setDrugSearchInput('');
     setCreateOpen(true);
+  };
+
+  // Two-step scan (scan 1D, then 2D). The inward-scan endpoint handles both: a
+  // plain GTIN identifies the medicine; a GS1 DataMatrix also yields batch /
+  // expiry / serial. Every field stays editable after a scan.
+  const handleScan = async (code: string) => {
+    try {
+      const res = await inwardScan.mutateAsync(code);
+      if (res.parsed.batchNumber) updateField('batchNumber', res.parsed.batchNumber);
+      if (res.parsed.expiryDate) updateField('expiryDate', res.parsed.expiryDate);
+      if (res.parsed.manufacturingDate) updateField('manufacturingDate', res.parsed.manufacturingDate);
+      if (res.parsed.serial) updateField('serialNumber', res.parsed.serial);
+      if (res.suggestedFormularyId) {
+        updateField('drugId', res.suggestedFormularyId);
+        updateField(
+          'drugLabel',
+          `${res.line.drugName}${res.line.strength ? ' ' + res.line.strength : ''}${res.line.dosageForm ? ' (' + res.line.dosageForm + ')' : ''}`,
+        );
+        setPendingBarcode(null);
+        toast.success(`Matched ${res.line.drugName}${res.parsed.batchNumber ? ` · batch ${res.parsed.batchNumber}` : ''}`);
+      } else {
+        if (res.gtin) setPendingBarcode(res.gtin);
+        if (res.line.drugName) {
+          toast.message(`Recognised "${res.line.drugName}" from the catalogue — search & select it below; we'll remember this barcode.`);
+        } else {
+          toast.warning('Barcode not recognised — pick the medicine below; we will remember this barcode.');
+        }
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Scan failed');
+    }
+  };
+
+  // After a batch is saved, link any unrecognised scanned barcode to the chosen
+  // drug so future 1D/2D scans resolve automatically.
+  const rememberPendingBarcode = (drugId: string) => {
+    if (pendingBarcode && drugId) {
+      void attachBarcode.mutateAsync({ gtin: pendingBarcode, drugId }).catch(() => {});
+      setPendingBarcode(null);
+    }
   };
 
   const startEdit = (batch: DrugBatch) => {
@@ -454,10 +509,12 @@ function PharmacyBatchesPageInner() {
     }
     if (formData.invoiceNumber.trim()) payload.invoiceNumber = formData.invoiceNumber.trim();
     if (formData.invoiceDate) payload.invoiceDate = formData.invoiceDate;
+    if (formData.serialNumber.trim()) payload.serialNumber = formData.serialNumber.trim();
 
     try {
       await createBatch.mutateAsync(payload);
       toast.success('Batch added');
+      rememberPendingBarcode(formData.drugId);
       setCreateOpen(false);
       setFormData(EMPTY_FORM);
       setDrugSearchInput('');
@@ -474,6 +531,7 @@ function PharmacyBatchesPageInner() {
           try {
             await createBatch.mutateAsync({ ...payload, addToExisting: true });
             toast.success('Quantity added to existing batch');
+            rememberPendingBarcode(formData.drugId);
             setCreateOpen(false);
             setFormData(EMPTY_FORM);
             setDrugSearchInput('');
@@ -622,6 +680,29 @@ function PharmacyBatchesPageInner() {
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-3 py-2 max-h-[60vh] overflow-y-auto pr-1">
+              {/* Two-step scan to auto-fill — scan the 1D barcode (medicine), then the
+                  2D DataMatrix (batch / expiry / serial). Every field stays editable. */}
+              {!editingBatch && (
+                <div className="space-y-2.5 rounded-lg border bg-muted/20 p-3">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+                    <ScanLine className="h-4 w-4" /> Scan to auto-fill (optional) — USB scanner or phone camera; every field stays editable
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">1) Product barcode (1D — EAN / GTIN)</Label>
+                    <BarcodeScanner onScan={handleScan} placeholder="Scan or type the product barcode…" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">2) DataMatrix (2D — batch, expiry, serial)</Label>
+                    <BarcodeScanner onScan={handleScan} placeholder="Scan or type the 2D DataMatrix…" />
+                  </div>
+                  {pendingBarcode && (
+                    <p className="text-[11px] text-amber-700">
+                      Barcode <span className="font-mono">{pendingBarcode}</span> isn&apos;t linked to a medicine yet — pick the medicine below and we&apos;ll remember it for next time.
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* Drug — picker on create; a batch can't change its drug, so it's read-only on edit */}
               {editingBatch ? (
                 <div className="space-y-1.5">
@@ -724,6 +805,14 @@ function PharmacyBatchesPageInner() {
                     value={formData.batchNumber}
                     onChange={(e) => updateField('batchNumber', e.target.value)}
                     placeholder="e.g. B23A001"
+                  />
+                  {/* GS1 DataMatrix serial (AI 21) — auto-filled by a 2D scan, editable. */}
+                  <Input
+                    id="serialNumber"
+                    value={formData.serialNumber}
+                    onChange={(e) => updateField('serialNumber', e.target.value)}
+                    placeholder="Serial (DataMatrix) — optional"
+                    className="mt-1 font-mono text-xs"
                   />
                 </div>
                 <div className="space-y-1.5">
