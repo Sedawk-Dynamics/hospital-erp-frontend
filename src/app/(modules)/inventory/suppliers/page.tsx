@@ -31,7 +31,7 @@ export default function VendorMasterPage() {
   const vendors = all.filter((s) =>
     !search.trim()
       ? true
-      : [s.name, s.gstNumber, s.contactPerson, s.phone].some((f) =>
+      : [s.name, s.gstNumber, s.phone].some((f) =>
           (f ?? '').toLowerCase().includes(search.toLowerCase()),
         ),
   );
@@ -116,7 +116,6 @@ export default function VendorMasterPage() {
                   <TableCell className="font-mono text-xs">{v.gstNumber ?? '-'}</TableCell>
                   <TableCell className="font-mono text-xs">{v.licenseNumber ?? '-'}</TableCell>
                   <TableCell className="text-sm">
-                    {v.contactPerson && <div>{v.contactPerson}</div>}
                     <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
                       {v.phone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{v.phone}</span>}
                       {v.email && <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />{v.email}</span>}

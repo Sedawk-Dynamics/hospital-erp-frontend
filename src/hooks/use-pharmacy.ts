@@ -1677,7 +1677,7 @@ export interface DrugPurchaseOrder {
   status: 'draft' | 'sent' | 'received' | 'cancelled';
   notes: string | null;
   createdAt: string;
-  supplier?: { id: string; name: string; gstNumber: string | null; phone: string | null; contactPerson: string | null } | null;
+  supplier?: { id: string; name: string; gstNumber: string | null; phone: string | null } | null;
   items: DrugPurchaseOrderItem[];
 }
 

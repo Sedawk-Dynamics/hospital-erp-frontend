@@ -847,7 +847,7 @@ function PharmacyBatchesPageInner() {
                     const meta = [
                       s.gstNumber ? `GSTIN ${s.gstNumber}` : null,
                       s.licenseNumber ? `DL ${s.licenseNumber}` : null,
-                      s.phone || s.contactPerson || null,
+                      s.phone || null,
                     ].filter(Boolean);
                     return meta.length ? (
                       <p className="mt-1 text-[11px] text-muted-foreground">{meta.join(' · ')}</p>

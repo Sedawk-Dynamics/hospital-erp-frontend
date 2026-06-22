@@ -44,7 +44,6 @@ export interface InventoryItem {
 export interface Supplier {
   id: string;
   name: string;
-  contactPerson: string | null;
   phone: string | null;
   email: string | null;
   address: string | null;
@@ -528,7 +527,6 @@ export function useSuppliers(params?: SupplierQueryParams) {
 
 export interface CreateSupplierInput {
   name: string;
-  contactPerson?: string;
   phone?: string;
   email?: string;
   address?: string;

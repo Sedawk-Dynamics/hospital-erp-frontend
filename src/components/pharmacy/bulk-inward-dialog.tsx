@@ -712,7 +712,7 @@ function EntryStep(props: {
   suppliers: { id: string; name: string }[];
   supplierId: string;
   setSupplierId: (v: string) => void;
-  selectedSupplier: { gstNumber: string | null; licenseNumber: string | null; phone: string | null; contactPerson: string | null } | undefined;
+  selectedSupplier: { gstNumber: string | null; licenseNumber: string | null; phone: string | null } | undefined;
   invoiceNumber: string;
   setInvoiceNumber: (v: string) => void;
   invoiceDate: string;
@@ -790,7 +790,7 @@ function EntryStep(props: {
             <p className="text-[11px] text-muted-foreground">
               {[selectedSupplier.gstNumber ? `GSTIN ${selectedSupplier.gstNumber}` : null,
                 selectedSupplier.licenseNumber ? `DL ${selectedSupplier.licenseNumber}` : null,
-                selectedSupplier.phone || selectedSupplier.contactPerson || null]
+                selectedSupplier.phone || null]
                 .filter(Boolean).join(' · ')}
             </p>
           )}

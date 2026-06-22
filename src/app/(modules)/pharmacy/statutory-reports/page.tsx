@@ -276,7 +276,6 @@ function VendorWiseTab() {
     vendor: v.supplierName,
     gstin: v.gstNumber ?? '',
     drugLicense: v.licenseNumber ?? '',
-    contact: v.contactPerson ?? '',
     phone: v.phone ?? '',
     totalPaid: v.totalPaid,
     medicines: v.medicineCount,
@@ -307,7 +306,6 @@ function VendorWiseTab() {
           <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3 lg:grid-cols-4">
             <MetaItem label="GSTIN" value={<span className="font-mono">{vendor.gstNumber}</span>} />
             <MetaItem label="Drug Licence" value={<span className="font-mono">{vendor.licenseNumber}</span>} />
-            <MetaItem label="Contact Person" value={vendor.contactPerson} />
             <MetaItem label="Phone" value={vendor.phone} />
             <MetaItem label="Email" value={vendor.email} />
             <div className="col-span-2 lg:col-span-2">
@@ -342,7 +340,7 @@ function VendorWiseTab() {
                 <TableRow key={v.supplierId}>
                   <TableCell>
                     <div className="font-medium">{v.supplierName}</div>
-                    {v.contactPerson && <div className="text-xs text-muted-foreground">{v.contactPerson}{v.phone ? ` · ${v.phone}` : ''}</div>}
+                    {v.phone && <div className="text-xs text-muted-foreground">{v.phone}</div>}
                   </TableCell>
                   <TableCell className="text-xs font-mono text-muted-foreground">
                     <div>{v.gstNumber ?? '—'}</div>
