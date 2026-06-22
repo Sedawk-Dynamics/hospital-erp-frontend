@@ -60,7 +60,6 @@ interface FormState {
   name: string;
   gstNumber: string;
   licenseNumber: string;
-  contactPerson: string;
   phone: string;
   email: string;
   address: string;
@@ -82,7 +81,6 @@ function VendorForm({
     name: vendor?.name ?? '',
     gstNumber: vendor?.gstNumber ?? '',
     licenseNumber: vendor?.licenseNumber ?? '',
-    contactPerson: vendor?.contactPerson ?? '',
     phone: vendor?.phone ?? '',
     email: vendor?.email ?? '',
     address: vendor?.address ?? '',
@@ -98,7 +96,6 @@ function VendorForm({
       name: form.name.trim(),
       gstNumber: form.gstNumber.trim() || undefined,
       licenseNumber: form.licenseNumber.trim() || undefined,
-      contactPerson: form.contactPerson.trim() || undefined,
       phone: form.phone.trim() || undefined,
       email: form.email.trim() || undefined,
       address: form.address.trim() || undefined,
@@ -142,19 +139,15 @@ function VendorForm({
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <Label htmlFor="v-contact">Contact person</Label>
-            <Input id="v-contact" value={form.contactPerson} onChange={(e) => set('contactPerson', e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
             <Label htmlFor="v-phone">Phone</Label>
             <Input id="v-phone" value={form.phone} onChange={(e) => set('phone', e.target.value)} />
           </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
             <Label htmlFor="v-email">Email</Label>
             <Input id="v-email" type="email" value={form.email} onChange={(e) => set('email', e.target.value)} />
           </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
             <Label>Supplies</Label>
             <Select value={form.supplyType} onValueChange={(v) => set('supplyType', (v ?? 'drugs') as SupplyType)}>
