@@ -163,7 +163,6 @@ interface PoLineSeed {
   refId: string; // inventoryItemId or drugId
   itemName: string;
   quantityOrdered: number;
-  unitPrice?: number;
 }
 
 function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initialItems?: PoLineSeed[] }) {
@@ -197,11 +196,10 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
       supplierId,
       expectedDeliveryDate: expectedDate || undefined,
       notes: notes || undefined,
-      items: items.map(({ kind, refId, quantityOrdered, unitPrice }) => ({
+      items: items.map(({ kind, refId, quantityOrdered }) => ({
         inventoryItemId: kind === 'item' ? refId : undefined,
         drugId: kind === 'drug' ? refId : undefined,
         quantityOrdered,
-        unitPrice,
       })),
     };
     try {
@@ -212,8 +210,6 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
       toast.error((err as Error).message ?? 'Failed');
     }
   };
-
-  const total = items.reduce((s, i) => s + (i.unitPrice ?? 0) * i.quantityOrdered, 0);
 
   return (
     <Dialog open={true} onOpenChange={(o) => !o && onClose()}>
@@ -288,21 +284,20 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
           </div>
 
           {items.length > 0 && (
-            // Compact grid (not the shared Table) so long drug names truncate and
-            // the rows always fit the dialog width — no horizontal scrollbar.
+            // Compact grid (not the shared Table) so long names truncate and rows
+            // always fit the width — no horizontal scrollbar. Price is captured at
+            // arrival, so a PO records only what + how many.
             <div className="overflow-hidden rounded-md border">
-              <div className="grid grid-cols-[minmax(0,1fr)_4rem_5rem_5rem_1.75rem] items-center gap-2 bg-muted/50 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <div className="grid grid-cols-[minmax(0,1fr)_6rem_2rem] items-center gap-2 bg-muted/50 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                 <span>Line</span>
                 <span className="text-center">Qty</span>
-                <span className="text-center">Unit ₹</span>
-                <span className="text-right">Total</span>
                 <span />
               </div>
               <div className="divide-y">
                 {items.map((it, idx) => (
                   <div
                     key={`${it.kind}-${it.refId}`}
-                    className="grid grid-cols-[minmax(0,1fr)_4rem_5rem_5rem_1.75rem] items-center gap-2 px-3 py-1.5"
+                    className="grid grid-cols-[minmax(0,1fr)_6rem_2rem] items-center gap-2 px-3 py-1.5"
                   >
                     <div className="flex min-w-0 items-center gap-1.5">
                       <span className="truncate text-sm font-medium">{it.itemName}</span>
@@ -323,21 +318,6 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
                       }}
                       className="h-8 w-full px-1 text-center"
                     />
-                    <Input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={it.unitPrice ?? ''}
-                      placeholder="0.00"
-                      onChange={(e) => {
-                        const v = e.target.value ? Number(e.target.value) : undefined;
-                        setItems(items.map((x, i) => (i === idx ? { ...x, unitPrice: v } : x)));
-                      }}
-                      className="h-8 w-full px-1 text-right"
-                    />
-                    <span className="text-right text-sm tabular-nums">
-                      ₹{((it.unitPrice ?? 0) * it.quantityOrdered).toFixed(2)}
-                    </span>
                     <Button
                       size="sm"
                       variant="ghost"
@@ -349,9 +329,8 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
                   </div>
                 ))}
               </div>
-              <div className="flex items-center justify-between border-t px-3 py-2">
-                <span className="text-xs text-muted-foreground">Total</span>
-                <span className="font-bold">₹{total.toFixed(2)}</span>
+              <div className="border-t px-3 py-2 text-xs text-muted-foreground">
+                {items.length} line{items.length === 1 ? '' : 's'} · price is entered when the stock arrives
               </div>
             </div>
           )}
@@ -376,6 +355,8 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
   const receive = useReceivePurchaseOrder();
   const cancel = useCancelPurchaseOrder();
   const [recvMap, setRecvMap] = useState<Record<string, number>>({});
+  // Purchase price entered at arrival (PO creation no longer captures price).
+  const [recvPrice, setRecvPrice] = useState<Record<string, number>>({});
   // Per-drug-line batch details captured at receipt (creates a real DrugBatch).
   const [recvBatch, setRecvBatch] = useState<Record<string, { batchNumber: string; expiryDate: string; storageLocation: string }>>({});
   const setBatch = (poItemId: string, patch: Partial<{ batchNumber: string; expiryDate: string; storageLocation: string }>) =>
@@ -410,6 +391,8 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
     for (const i of data.items ?? []) {
       const qty = recvMap[i.id] ?? 0;
       if (qty <= 0) continue;
+      const price = recvPrice[i.id];
+      const unitPrice = price && price > 0 ? price : undefined;
       if (i.drugId) {
         // Drug lines land as a real DrugBatch — batch + expiry are required.
         const b = recvBatch[i.id];
@@ -420,12 +403,13 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
         lines.push({
           purchaseOrderItemId: i.id,
           quantityReceived: qty,
+          unitPrice,
           batchNumber: b.batchNumber.trim(),
           expiryDate: b.expiryDate,
           storageLocation: b.storageLocation?.trim() || undefined,
         });
       } else {
-        lines.push({ purchaseOrderItemId: i.id, quantityReceived: qty });
+        lines.push({ purchaseOrderItemId: i.id, quantityReceived: qty, unitPrice });
       }
     }
     if (lines.length === 0) { toast.error('Enter received qty'); return; }
@@ -433,6 +417,7 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
       await receive.mutateAsync({ id, items: lines });
       toast.success('Items received & stock updated');
       setRecvMap({});
+      setRecvPrice({});
       setRecvBatch({});
     } catch (err) { toast.error((err as Error).message); }
   };
@@ -504,30 +489,47 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
                               const v = Math.max(0, Math.min(pending, Number(e.target.value) || 0));
                               setRecvMap({ ...recvMap, [it.id]: v });
                             }}
-                            className="h-8 w-20 ml-auto"
+                            className="h-8 w-32 ml-auto"
                           />
-                          {/* Drug lines receive into a real DrugBatch → need batch + expiry. */}
-                          {isDrug && (recvMap[it.id] ?? 0) > 0 && (
+                          {/* Price is captured at arrival; drug lines also need batch + expiry. */}
+                          {(recvMap[it.id] ?? 0) > 0 && (
                             <div className="mt-1.5 flex flex-col items-end gap-1">
                               <Input
-                                value={recvBatch[it.id]?.batchNumber ?? ''}
-                                onChange={(e) => setBatch(it.id, { batchNumber: e.target.value })}
-                                placeholder="Batch no. *"
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                value={recvPrice[it.id] ?? ''}
+                                onChange={(e) => {
+                                  const v = e.target.value ? Math.max(0, Number(e.target.value)) : 0;
+                                  setRecvPrice({ ...recvPrice, [it.id]: v });
+                                }}
+                                placeholder="Unit ₹ (purchase)"
+                                title="Purchase price per unit"
                                 className="h-7 w-32 text-xs"
                               />
-                              <Input
-                                type="date"
-                                value={recvBatch[it.id]?.expiryDate ?? ''}
-                                onChange={(e) => setBatch(it.id, { expiryDate: e.target.value })}
-                                title="Expiry *"
-                                className="h-7 w-32 text-xs"
-                              />
-                              <Input
-                                value={recvBatch[it.id]?.storageLocation ?? ''}
-                                onChange={(e) => setBatch(it.id, { storageLocation: e.target.value })}
-                                placeholder="Storage (rack)"
-                                className="h-7 w-32 text-xs"
-                              />
+                              {isDrug && (
+                                <>
+                                  <Input
+                                    value={recvBatch[it.id]?.batchNumber ?? ''}
+                                    onChange={(e) => setBatch(it.id, { batchNumber: e.target.value })}
+                                    placeholder="Batch no. *"
+                                    className="h-7 w-32 text-xs"
+                                  />
+                                  <Input
+                                    type="date"
+                                    value={recvBatch[it.id]?.expiryDate ?? ''}
+                                    onChange={(e) => setBatch(it.id, { expiryDate: e.target.value })}
+                                    title="Expiry *"
+                                    className="h-7 w-32 text-xs"
+                                  />
+                                  <Input
+                                    value={recvBatch[it.id]?.storageLocation ?? ''}
+                                    onChange={(e) => setBatch(it.id, { storageLocation: e.target.value })}
+                                    placeholder="Storage (rack)"
+                                    className="h-7 w-32 text-xs"
+                                  />
+                                </>
+                              )}
                             </div>
                           )}
                         </TableCell>

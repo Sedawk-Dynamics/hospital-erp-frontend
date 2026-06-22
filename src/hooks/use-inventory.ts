@@ -426,6 +426,8 @@ export interface CreatePurchaseOrderInput {
 export interface ReceivePurchaseOrderLine {
   purchaseOrderItemId: string;
   quantityReceived: number;
+  // Purchase price entered at arrival (PO creation no longer captures price).
+  unitPrice?: number;
   batchNumber?: string;
   expiryDate?: string;
   manufacturingDate?: string;
