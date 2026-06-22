@@ -6,7 +6,8 @@ export default function InventoryStockTransferPage() {
   return (
     <StockTransferBoard
       title="Stock Transfer"
-      description="Move inventory between departments — pharmacy, OT, ward, lab, warehouse and more"
+      description="Issue stock from the pharmacy store to a department, ward, or other location"
+      fromPharmacyOnly
     />
   );
 }

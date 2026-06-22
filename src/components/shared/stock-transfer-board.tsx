@@ -101,6 +101,12 @@ interface Props {
   /** When provided, locks the "from" / "to" side of every new transfer (e.g. OT module) */
   defaultFromDepartmentId?: string;
   defaultToDepartmentId?: string;
+  /**
+   * The inventory store IS the pharmacy store, so stock only ever moves OUT of
+   * the pharmacy. When true the source is fixed to the pharmacy store and the
+   * "From" picker is hidden — only the destination is chosen.
+   */
+  fromPharmacyOnly?: boolean;
 }
 
 export function StockTransferBoard({
@@ -108,6 +114,7 @@ export function StockTransferBoard({
   description = 'Move stock between departments — pharmacy, OT, ward, lab and warehouse',
   defaultFromDepartmentId,
   defaultToDepartmentId,
+  fromPharmacyOnly,
 }: Props) {
   const [statusFilter, setStatusFilter] = useState<StockTransferStatus | 'all'>('all');
   const [search, setSearch] = useState('');
@@ -340,6 +347,7 @@ export function StockTransferBoard({
         onOpenChange={setCreateOpen}
         defaultFromDepartmentId={defaultFromDepartmentId}
         defaultToDepartmentId={defaultToDepartmentId}
+        fromPharmacyOnly={fromPharmacyOnly}
       />
 
       <Dialog open={rejectingId !== null} onOpenChange={(o) => { if (!o) { setRejectingId(null); setRejectReason(''); } }}>
@@ -378,12 +386,13 @@ export function StockTransferBoard({
 }
 
 function CreateTransferDialog({
-  open, onOpenChange, defaultFromDepartmentId, defaultToDepartmentId,
+  open, onOpenChange, defaultFromDepartmentId, defaultToDepartmentId, fromPharmacyOnly,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   defaultFromDepartmentId?: string;
   defaultToDepartmentId?: string;
+  fromPharmacyOnly?: boolean;
 }) {
   const create = useCreateStockTransfer();
 
@@ -482,6 +491,20 @@ function CreateTransferDialog({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, pharmacyDeptId]);
+
+  // Inventory store == pharmacy store: pin the source to the pharmacy store —
+  // its department FK when a "Pharmacy" department exists, else a text location.
+  useEffect(() => {
+    if (!open || !fromPharmacyOnly) return;
+    if (pharmacyDeptId) {
+      setValue('fromDepartmentId', pharmacyDeptId);
+      setValue('fromLocation', '');
+    } else {
+      setValue('fromDepartmentId', '');
+      setValue('fromLocation', 'Pharmacy Store');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, pharmacyDeptId, fromPharmacyOnly]);
 
   const close = () => {
     reset();
@@ -659,20 +682,31 @@ function CreateTransferDialog({
             )}
           </div>
 
-          {/* From / To — each side can be a department, a ward, or a custom location */}
+          {/* Source: the pharmacy store (fixed) when fromPharmacyOnly; otherwise a
+              picker. Destination is a department, a ward, or a custom location. */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <EndpointPicker
-              label="From"
-              type={fromType}
-              onTypeChange={changeFromType}
-              deptId={watch('fromDepartmentId') ?? ''}
-              onDeptChange={(v) => { setValue('fromDepartmentId', v); setValue('fromLocation', ''); }}
-              location={watch('fromLocation') ?? ''}
-              onLocationChange={(v) => { setValue('fromLocation', v); setValue('fromDepartmentId', ''); }}
-              departments={departments}
-              wards={wards}
-              error={errors.fromDepartmentId?.message}
-            />
+            {fromPharmacyOnly ? (
+              <div>
+                <Label>From</Label>
+                <div className="mt-1.5 flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2">
+                  <Badge variant="outline" className="bg-teal-500/10 text-teal-700 border-teal-500/20">Pharmacy store</Badge>
+                  <span className="text-xs text-muted-foreground">Stock is always issued from here.</span>
+                </div>
+              </div>
+            ) : (
+              <EndpointPicker
+                label="From"
+                type={fromType}
+                onTypeChange={changeFromType}
+                deptId={watch('fromDepartmentId') ?? ''}
+                onDeptChange={(v) => { setValue('fromDepartmentId', v); setValue('fromLocation', ''); }}
+                location={watch('fromLocation') ?? ''}
+                onLocationChange={(v) => { setValue('fromLocation', v); setValue('fromDepartmentId', ''); }}
+                departments={departments}
+                wards={wards}
+                error={errors.fromDepartmentId?.message}
+              />
+            )}
             <EndpointPicker
               label="To"
               type={toType}
