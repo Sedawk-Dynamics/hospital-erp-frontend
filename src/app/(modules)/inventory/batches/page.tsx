@@ -23,6 +23,7 @@ import {
   ClipboardList,
   ClipboardCheck,
   Boxes,
+  PackageX,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
@@ -98,6 +99,7 @@ import {
   type CreateBatchInput,
   type UpdateBatchInput,
   type DrugBatch,
+  type FormularyItem,
 } from '@/hooks/use-pharmacy';
 import { useSuppliers, useInventorySettings } from '@/hooks/use-inventory';
 
@@ -179,6 +181,8 @@ function PharmacyBatchesPageInner() {
   const [drugFilter, setDrugFilter] = useState<string | null>(null);
   const [expiringDays, setExpiringDays] = useState<number | null>(null);
   const [recalledOnly, setRecalledOnly] = useState(false);
+  // "Not in stock" view — drugs with no available batch.
+  const [outOfStock, setOutOfStock] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   // G1: bulk stock inward (CSV / OCR / manual) with fuzzy duplicate review.
   const [bulkInwardOpen, setBulkInwardOpen] = useState(false);
@@ -290,6 +294,20 @@ function PharmacyBatchesPageInner() {
   const batches = data?.data ?? [];
   const meta = data?.meta;
 
+  // Out-of-stock drugs (no available batch) — powers the "Out of stock" card and
+  // view. When the view is inactive this fetches page 1 (no search) just for the
+  // count; when active it applies the search + pagination.
+  const outOfStockQuery = useFormulary({
+    stockStatus: 'out',
+    isActive: true,
+    search: outOfStock ? (search || undefined) : undefined,
+    page: outOfStock ? page : 1,
+    limit: 20,
+  });
+  const outOfStockDrugs = outOfStockQuery.data?.data ?? [];
+  const outOfStockTotal = outOfStockQuery.data?.meta?.total ?? 0;
+  const outOfStockMeta = outOfStockQuery.data?.meta;
+
   const createBatch = useCreateBatch();
   const updateBatch = useUpdateBatch();
   const runExpiry = useRunPharmacyExpiryAlerts();
@@ -318,6 +336,18 @@ function PharmacyBatchesPageInner() {
   const startCreate = () => {
     setEditingBatch(null);
     setFormData(EMPTY_FORM);
+    setDrugSearchInput('');
+    setCreateOpen(true);
+  };
+
+  // Receive a batch for a specific out-of-stock drug — opens the form pre-filled.
+  const startCreateForDrug = (drug: FormularyItem) => {
+    setEditingBatch(null);
+    setFormData({
+      ...EMPTY_FORM,
+      drugId: drug.id,
+      drugLabel: `${drug.drugName}${drug.strength ? ' ' + drug.strength : ''}${drug.dosageForm ? ' (' + drug.dosageForm + ')' : ''}`,
+    });
     setDrugSearchInput('');
     setCreateOpen(true);
   };
@@ -533,10 +563,21 @@ function PharmacyBatchesPageInner() {
         onSaved={(v) => updateField('supplierId', v.id)}
       />
 
-      {/* Expiry overview — at-a-glance near-expiry exposure (drug stock). */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      {/* Expiry + stock overview — at-a-glance exposure (drug stock). */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <button
-          onClick={() => { setExpiringDays(configuredDays); setRecalledOnly(false); setPage(1); }}
+          onClick={() => { setOutOfStock(true); setExpiringDays(null); setRecalledOnly(false); setPage(1); }}
+          className="flex items-center justify-between rounded-xl bg-surface-container-lowest p-4 text-left shadow-sanctuary transition hover:ring-1 hover:ring-red-500/30"
+          title="Drugs with no available stock"
+        >
+          <div>
+            <p className="text-xs text-muted-foreground">Out of stock</p>
+            <p className="mt-0.5 text-2xl font-bold text-red-700">{outOfStockTotal}</p>
+          </div>
+          <PackageX className="h-7 w-7 text-red-500/50" />
+        </button>
+        <button
+          onClick={() => { setExpiringDays(configuredDays); setRecalledOnly(false); setOutOfStock(false); setPage(1); }}
           className="flex items-center justify-between rounded-xl bg-surface-container-lowest p-4 text-left shadow-sanctuary transition hover:ring-1 hover:ring-amber-500/30"
           title="Alert threshold — configurable in Inventory Settings"
         >
@@ -549,7 +590,7 @@ function PharmacyBatchesPageInner() {
           <AlertTriangle className="h-7 w-7 text-amber-500/60" />
         </button>
         <button
-          onClick={() => { setExpiringDays(90); setRecalledOnly(false); setPage(1); }}
+          onClick={() => { setExpiringDays(90); setRecalledOnly(false); setOutOfStock(false); setPage(1); }}
           className="flex items-center justify-between rounded-xl bg-surface-container-lowest p-4 text-left shadow-sanctuary transition hover:ring-1 hover:ring-primary/30"
         >
           <div>
@@ -990,15 +1031,24 @@ function PharmacyBatchesPageInner() {
         <div className="ml-auto flex items-center gap-2">
           <Button
             size="sm"
-            variant={expiringDays === null && !recalledOnly ? 'default' : 'outline'}
-            onClick={() => { setExpiringDays(null); setRecalledOnly(false); setPage(1); }}
+            variant={expiringDays === null && !recalledOnly && !outOfStock ? 'default' : 'outline'}
+            onClick={() => { setExpiringDays(null); setRecalledOnly(false); setOutOfStock(false); setPage(1); }}
           >
             All
           </Button>
           <Button
             size="sm"
+            variant={outOfStock ? 'default' : 'outline'}
+            onClick={() => { setOutOfStock(true); setExpiringDays(null); setRecalledOnly(false); setPage(1); }}
+            className={outOfStock ? '' : 'text-red-600'}
+          >
+            <PackageX className="mr-1.5 h-3 w-3" />
+            Out of stock
+          </Button>
+          <Button
+            size="sm"
             variant={expiringDays === 30 ? 'default' : 'outline'}
-            onClick={() => { setExpiringDays(30); setRecalledOnly(false); setPage(1); }}
+            onClick={() => { setExpiringDays(30); setRecalledOnly(false); setOutOfStock(false); setPage(1); }}
           >
             <AlertTriangle className="mr-1.5 h-3 w-3" />
             Expiring ≤30 days
@@ -1006,14 +1056,14 @@ function PharmacyBatchesPageInner() {
           <Button
             size="sm"
             variant={expiringDays === 90 ? 'default' : 'outline'}
-            onClick={() => { setExpiringDays(90); setRecalledOnly(false); setPage(1); }}
+            onClick={() => { setExpiringDays(90); setRecalledOnly(false); setOutOfStock(false); setPage(1); }}
           >
             ≤90 days
           </Button>
           <Button
             size="sm"
             variant={recalledOnly ? 'default' : 'outline'}
-            onClick={() => { setRecalledOnly(true); setExpiringDays(null); setPage(1); }}
+            onClick={() => { setRecalledOnly(true); setExpiringDays(null); setOutOfStock(false); setPage(1); }}
             className={recalledOnly ? '' : 'text-red-600'}
           >
             <ShieldAlert className="mr-1.5 h-3 w-3" />
@@ -1024,7 +1074,16 @@ function PharmacyBatchesPageInner() {
 
       {/* Table */}
       <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary">
-        {isLoading ? (
+        {outOfStock ? (
+          <OutOfStockView
+            drugs={outOfStockDrugs}
+            isLoading={outOfStockQuery.isLoading}
+            meta={outOfStockMeta}
+            page={page}
+            setPage={setPage}
+            onReceive={startCreateForDrug}
+          />
+        ) : isLoading ? (
           <div className="p-4 space-y-3">
             {Array.from({ length: 8 }).map((_, i) => (
               <Skeleton key={i} className="h-10 w-full bg-muted/60" />
@@ -1496,4 +1555,93 @@ function AffectedPatientsDialog({ batchId, onClose }: { batchId: string; onClose
 // inventory_manager), so no extra role guard is needed.
 export default function DrugBatchesPage() {
   return <PharmacyBatchesPageInner />;
+}
+
+// "Not in stock" view — drugs (formulary) with no available batch, so staff can
+// see what to reorder and receive a batch in one click.
+function OutOfStockView({
+  drugs,
+  isLoading,
+  meta,
+  page,
+  setPage,
+  onReceive,
+}: {
+  drugs: FormularyItem[];
+  isLoading: boolean;
+  meta?: { page: number; limit: number; total: number; totalPages: number };
+  page: number;
+  setPage: (value: number | ((p: number) => number)) => void;
+  onReceive: (drug: FormularyItem) => void;
+}) {
+  if (isLoading) {
+    return (
+      <div className="p-4 space-y-3">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <Skeleton key={i} className="h-10 w-full bg-muted/60" />
+        ))}
+      </div>
+    );
+  }
+  if (drugs.length === 0) {
+    return (
+      <EmptyState
+        icon={PackageX}
+        title="Nothing out of stock"
+        description="Every active drug has available stock right now."
+      />
+    );
+  }
+  return (
+    <>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Drug</TableHead>
+            <TableHead>Composition</TableHead>
+            <TableHead>Manufacturer</TableHead>
+            <TableHead className="text-right">Reorder level</TableHead>
+            <TableHead className="text-center">Status</TableHead>
+            <TableHead className="text-right w-[140px]">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {drugs.map((d) => (
+            <TableRow key={d.id}>
+              <TableCell>
+                <div className="font-medium">{d.drugName}{d.strength ? ` ${d.strength}` : ''}</div>
+                {d.dosageForm && <div className="text-xs text-muted-foreground">{d.dosageForm}</div>}
+              </TableCell>
+              <TableCell className="text-muted-foreground">{d.genericName ?? '-'}</TableCell>
+              <TableCell className="text-muted-foreground">{d.manufacturer ?? '-'}</TableCell>
+              <TableCell className="text-right">{d.minStock ?? '-'}</TableCell>
+              <TableCell className="text-center">
+                <Badge variant="outline" className="bg-red-100 text-red-700 border-red-300">Out of stock</Badge>
+              </TableCell>
+              <TableCell className="text-right">
+                <Button size="sm" variant="outline" onClick={() => onReceive(d)}>
+                  <Plus className="mr-1.5 h-3.5 w-3.5" /> Receive
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      {meta && meta.totalPages > 1 && (
+        <div className="flex items-center justify-between border-t px-4 py-3 text-sm">
+          <span className="text-muted-foreground">
+            Page {meta.page} of {meta.totalPages} · {meta.total} out of stock
+          </span>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+              <ChevronLeft className="h-3.5 w-3.5 mr-1" /> Prev
+            </Button>
+            <Button size="sm" variant="outline" disabled={page >= meta.totalPages} onClick={() => setPage((p) => p + 1)}>
+              Next <ChevronRight className="h-3.5 w-3.5 ml-1" />
+            </Button>
+          </div>
+        </div>
+      )}
+    </>
+  );
 }
