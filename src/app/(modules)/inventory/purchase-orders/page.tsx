@@ -257,7 +257,7 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
 
           <div className="space-y-1.5">
             <label className="text-xs font-medium">Add items / drugs</label>
-            <Input placeholder="Search inventory items or our drugs..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Input placeholder="Search by name or composition (item / drug)..." value={search} onChange={(e) => setSearch(e.target.value)} />
             {search && ((itemsResp?.data?.length ?? 0) > 0 || drugs.length > 0) && (
               <div className="max-h-48 overflow-y-auto rounded-md border mt-1 divide-y">
                 {(itemsResp?.data?.length ?? 0) > 0 && (
@@ -283,11 +283,21 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
                       <button
                         key={`drug-${d.id}`}
                         onClick={() => addLine('drug', d.id, `${d.drugName}${d.strength ? ` ${d.strength}` : ''}`)}
-                        className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
+                        className="flex w-full min-w-0 items-start gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
                       >
-                        <Badge className="shrink-0 bg-teal-500/10 text-teal-700 border-teal-500/20 text-[10px]">Drug</Badge>
-                        <span className="truncate font-medium">{d.drugName}</span>
-                        {d.strength && <span className="shrink-0 text-xs text-muted-foreground">{d.strength}</span>}
+                        <Badge className="mt-0.5 shrink-0 bg-teal-500/10 text-teal-700 border-teal-500/20 text-[10px]">Drug</Badge>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="truncate font-medium">{d.drugName}</span>
+                            {d.strength && <span className="shrink-0 text-xs text-muted-foreground">{d.strength}</span>}
+                          </div>
+                          {/* Composition (formulary) + maker, so the drug is identified by its salt too. */}
+                          {(d.genericName || d.manufacturer) && (
+                            <p className="truncate text-xs text-muted-foreground">
+                              {[d.genericName, d.manufacturer].filter(Boolean).join(' · ')}
+                            </p>
+                          )}
+                        </div>
                       </button>
                     ))}
                   </div>
