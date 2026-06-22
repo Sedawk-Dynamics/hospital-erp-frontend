@@ -219,7 +219,7 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
     <Dialog open={true} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader><DialogTitle>New Purchase Order</DialogTitle></DialogHeader>
-        <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+        <div className="flex-1 space-y-4 overflow-y-auto overflow-x-hidden pr-1">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-xs font-medium">Supplier *</label>
@@ -255,11 +255,11 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
                       <button
                         key={`item-${it.id}`}
                         onClick={() => addLine('item', it.id, it.itemName)}
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
+                        className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
                       >
-                        <Badge variant="outline" className="text-[10px]">Item</Badge>
-                        <span className="font-medium">{it.itemName}</span>
-                        {it.itemCode && <span className="text-xs text-muted-foreground">{it.itemCode}</span>}
+                        <Badge variant="outline" className="shrink-0 text-[10px]">Item</Badge>
+                        <span className="truncate font-medium">{it.itemName}</span>
+                        {it.itemCode && <span className="shrink-0 text-xs text-muted-foreground">{it.itemCode}</span>}
                       </button>
                     ))}
                   </div>
@@ -271,11 +271,11 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
                       <button
                         key={`drug-${d.id}`}
                         onClick={() => addLine('drug', d.id, `${d.drugName}${d.strength ? ` ${d.strength}` : ''}`)}
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
+                        className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
                       >
-                        <Badge className="bg-teal-500/10 text-teal-700 border-teal-500/20 text-[10px]">Drug</Badge>
-                        <span className="font-medium">{d.drugName}</span>
-                        {d.strength && <span className="text-xs text-muted-foreground">{d.strength}</span>}
+                        <Badge className="shrink-0 bg-teal-500/10 text-teal-700 border-teal-500/20 text-[10px]">Drug</Badge>
+                        <span className="truncate font-medium">{d.drugName}</span>
+                        {d.strength && <span className="shrink-0 text-xs text-muted-foreground">{d.strength}</span>}
                       </button>
                     ))}
                   </div>
@@ -288,70 +288,68 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
           </div>
 
           {items.length > 0 && (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Line</TableHead>
-                    <TableHead className="w-24">Qty</TableHead>
-                    <TableHead className="w-28">Unit ₹</TableHead>
-                    <TableHead className="w-24 text-right">Total</TableHead>
-                    <TableHead className="w-10"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {items.map((it, idx) => (
-                    <TableRow key={`${it.kind}-${it.refId}`}>
-                      <TableCell className="text-sm">
-                        <span className="font-medium">{it.itemName}</span>
-                        <Badge
-                          variant="outline"
-                          className={cn('ml-2 text-[10px]', it.kind === 'drug' && 'bg-teal-500/10 text-teal-700 border-teal-500/20')}
-                        >
-                          {it.kind === 'drug' ? 'Drug' : 'Item'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          type="number"
-                          min={1}
-                          value={it.quantityOrdered}
-                          onChange={(e) => {
-                            const v = Math.max(1, Number(e.target.value) || 1);
-                            setItems(items.map((x, i) => i === idx ? { ...x, quantityOrdered: v } : x));
-                          }}
-                          className="h-8 w-20"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          value={it.unitPrice ?? ''}
-                          onChange={(e) => {
-                            const v = e.target.value ? Number(e.target.value) : undefined;
-                            setItems(items.map((x, i) => i === idx ? { ...x, unitPrice: v } : x));
-                          }}
-                          className="h-8 w-24"
-                        />
-                      </TableCell>
-                      <TableCell className="text-right text-sm">
-                        ₹{((it.unitPrice ?? 0) * it.quantityOrdered).toFixed(2)}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          size="sm" variant="ghost"
-                          onClick={() => setItems(items.filter((_, i) => i !== idx))}
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              <div className="px-4 py-2 border-t flex justify-between items-center">
+            // Compact grid (not the shared Table) so long drug names truncate and
+            // the rows always fit the dialog width — no horizontal scrollbar.
+            <div className="overflow-hidden rounded-md border">
+              <div className="grid grid-cols-[minmax(0,1fr)_4rem_5rem_5rem_1.75rem] items-center gap-2 bg-muted/50 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <span>Line</span>
+                <span className="text-center">Qty</span>
+                <span className="text-center">Unit ₹</span>
+                <span className="text-right">Total</span>
+                <span />
+              </div>
+              <div className="divide-y">
+                {items.map((it, idx) => (
+                  <div
+                    key={`${it.kind}-${it.refId}`}
+                    className="grid grid-cols-[minmax(0,1fr)_4rem_5rem_5rem_1.75rem] items-center gap-2 px-3 py-1.5"
+                  >
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate text-sm font-medium">{it.itemName}</span>
+                      <Badge
+                        variant="outline"
+                        className={cn('shrink-0 text-[10px]', it.kind === 'drug' && 'bg-teal-500/10 text-teal-700 border-teal-500/20')}
+                      >
+                        {it.kind === 'drug' ? 'Drug' : 'Item'}
+                      </Badge>
+                    </div>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={it.quantityOrdered}
+                      onChange={(e) => {
+                        const v = Math.max(1, Number(e.target.value) || 1);
+                        setItems(items.map((x, i) => (i === idx ? { ...x, quantityOrdered: v } : x)));
+                      }}
+                      className="h-8 w-full px-1 text-center"
+                    />
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={it.unitPrice ?? ''}
+                      placeholder="0.00"
+                      onChange={(e) => {
+                        const v = e.target.value ? Number(e.target.value) : undefined;
+                        setItems(items.map((x, i) => (i === idx ? { ...x, unitPrice: v } : x)));
+                      }}
+                      className="h-8 w-full px-1 text-right"
+                    />
+                    <span className="text-right text-sm tabular-nums">
+                      ₹{((it.unitPrice ?? 0) * it.quantityOrdered).toFixed(2)}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0 text-muted-foreground hover:text-red-600"
+                      onClick={() => setItems(items.filter((_, i) => i !== idx))}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center justify-between border-t px-3 py-2">
                 <span className="text-xs text-muted-foreground">Total</span>
                 <span className="font-bold">₹{total.toFixed(2)}</span>
               </div>
