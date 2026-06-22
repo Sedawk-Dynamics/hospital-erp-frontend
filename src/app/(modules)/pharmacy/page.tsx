@@ -52,6 +52,7 @@ import {
   useCreateEmergencyPatient,
   useCreditStatus,
 } from '@/hooks/use-pharmacy';
+import { useEffectiveDiscountPolicy, capForMargin } from '@/hooks/use-discount-policy';
 import { DrugSubstitutesDialog } from '@/components/pharmacy/drug-substitutes-dialog';
 import { BillingSummaryDialog } from '@/components/pharmacy/billing-summary-dialog';
 import { PharmacyReceiptDialog } from '@/components/pharmacy/pharmacy-receipt-dialog';
@@ -173,6 +174,14 @@ function computeItemTax(item: CartItem): number {
 function computeItemMargin(item: CartItem): number {
   const cost = item.purchasePrice * baseQtyOf(item);
   return computeItemNet(item) - cost;
+}
+
+// Gross profit margin % of a line (selling vs purchase, per unit) — the stable
+// input to the margin-based discount bands. Null when cost is unknown, so no
+// margin-derived cap can be applied.
+function marginPctOf(item: CartItem): number | null {
+  if (!item.purchasePrice || item.purchasePrice <= 0) return null;
+  return ((item.sellingPrice - item.purchasePrice) / item.purchasePrice) * 100;
 }
 
 // ============================================================
@@ -603,12 +612,30 @@ function PharmacyPOS() {
     setCart((prev) => prev.filter((c) => c.rowKey !== rowKey));
   };
 
+  // Margin-based discount policy (separate module) — a visual refinement that
+  // caps the per-line discount based on the item's profit margin. Read once; the
+  // cap is applied locally so there is no round-trip per keystroke.
+  const { data: discountPolicy } = useEffectiveDiscountPolicy();
+  const capForItem = (item: CartItem): number | null => {
+    if (!discountPolicy?.enabled) return null;
+    const mp = marginPctOf(item);
+    if (mp == null) return null;
+    return capForMargin(discountPolicy.rules, mp);
+  };
+
   const updateDiscount = (rowKey: string, discount: number) => {
-    setCart((prev) =>
-      prev.map((c) =>
-        c.rowKey === rowKey ? { ...c, discount: Math.min(100, Math.max(0, discount)) } : c,
-      ),
-    );
+    const item = cart.find((c) => c.rowKey === rowKey);
+    let d = Math.min(100, Math.max(0, Number.isFinite(discount) ? discount : 0));
+    // In 'cap' mode the configured band is an enforced ceiling; 'suggest' only hints.
+    if (item && discountPolicy?.enabled && discountPolicy.mode === 'cap') {
+      const cap = capForItem(item);
+      if (cap != null && d > cap) {
+        const mp = marginPctOf(item);
+        toast.warning(`Max ${cap}% discount allowed${mp != null ? ` (margin ${mp.toFixed(0)}%)` : ''}`);
+        d = cap;
+      }
+    }
+    setCart((prev) => prev.map((c) => (c.rowKey === rowKey ? { ...c, discount: d } : c)));
   };
 
   // --- Summary ---
@@ -1249,14 +1276,26 @@ function PharmacyPOS() {
                         </div>
                       </td>
                       <td className="px-3 py-2.5">
-                        <Input
-                          type="number"
-                          min={0}
-                          max={100}
-                          value={item.discount}
-                          onChange={(e) => updateDiscount(item.rowKey, Number(e.target.value))}
-                          className="h-7 w-16 text-center text-xs mx-auto"
-                        />
+                        {(() => {
+                          const cap = capForItem(item);
+                          return (
+                            <div className="flex flex-col items-center gap-0.5">
+                              <Input
+                                type="number"
+                                min={0}
+                                max={discountPolicy?.enabled && discountPolicy.mode === 'cap' && cap != null ? cap : 100}
+                                value={item.discount}
+                                onChange={(e) => updateDiscount(item.rowKey, Number(e.target.value))}
+                                className="h-7 w-16 text-center text-xs mx-auto"
+                              />
+                              {discountPolicy?.enabled && cap != null && (
+                                <span className="text-[10px] text-muted-foreground">
+                                  {discountPolicy.mode === 'cap' ? `max ${cap}%` : `up to ${cap}%`}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="px-3 py-2.5 text-right font-medium">
                         {`₹${fmt(computeItemNet(item))}`}
