@@ -83,14 +83,17 @@ export interface StockTransaction {
 export interface PurchaseOrderItem {
   id: string;
   purchaseOrderId: string;
-  inventoryItemId: string;
+  // A line references EITHER an inventory item OR a pharmacy drug (one is null).
+  inventoryItemId: string | null;
+  drugId: string | null;
   quantityOrdered: number;
   quantityReceived: number;
   unitPrice: number | string | null;
   totalPrice: number | string | null;
-  inventoryItem?: Pick<InventoryItem, 'id' | 'itemName' | 'itemCode' | 'unitOfMeasurement'> & {
+  inventoryItem?: (Pick<InventoryItem, 'id' | 'itemName' | 'itemCode' | 'unitOfMeasurement'> & {
     currentStock?: number;
-  };
+  }) | null;
+  drug?: { id: string; drugName: string; strength: string | null; dosageForm: string | null } | null;
 }
 
 export interface PurchaseOrder {
@@ -409,11 +412,26 @@ export interface CreatePurchaseOrderInput {
   supplierId: string;
   expectedDeliveryDate?: string;
   notes?: string;
+  // Each line carries exactly one of inventoryItemId / drugId.
   items: Array<{
-    inventoryItemId: string;
+    inventoryItemId?: string;
+    drugId?: string;
     quantityOrdered: number;
     unitPrice?: number;
   }>;
+}
+
+// Per-line receive payload. Drug lines additionally carry the batch/expiry (and
+// optional pricing/storage) needed to create a real DrugBatch on receipt.
+export interface ReceivePurchaseOrderLine {
+  purchaseOrderItemId: string;
+  quantityReceived: number;
+  batchNumber?: string;
+  expiryDate?: string;
+  manufacturingDate?: string;
+  mrp?: number;
+  sellingPrice?: number;
+  storageLocation?: string;
 }
 
 export function useCreatePurchaseOrder() {
@@ -450,7 +468,7 @@ export function useReceivePurchaseOrder() {
       items,
     }: {
       id: string;
-      items: Array<{ purchaseOrderItemId: string; quantityReceived: number }>;
+      items: ReceivePurchaseOrderLine[];
     }) => {
       const response = await apiPatch<PurchaseOrder>(`/inventory/purchase-orders/${id}/receive`, {
         items,

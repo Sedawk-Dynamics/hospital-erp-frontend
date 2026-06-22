@@ -24,12 +24,14 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import { formatDate } from '@/lib/date-utils';
 import {
   usePurchaseOrders, useCreatePurchaseOrder, useApprovePurchaseOrder,
   useReceivePurchaseOrder, useCancelPurchaseOrder, usePurchaseOrder, useInventoryItems, useSuppliers,
-  type PurchaseOrderStatus, type CreatePurchaseOrderInput,
+  type PurchaseOrderStatus, type CreatePurchaseOrderInput, type ReceivePurchaseOrderLine,
 } from '@/hooks/use-inventory';
+import { useFormulary } from '@/hooks/use-pharmacy';
 
 type Tab = 'all' | 'draft' | 'approved' | 'delivered';
 
@@ -48,7 +50,7 @@ export default function PurchaseOrdersPage() {
     const name = searchParams.get('reorderItemName');
     if (id && name) {
       const qty = Math.max(1, Number(searchParams.get('reorderQty')) || 1);
-      setSeedItems([{ inventoryItemId: id, itemName: name, quantityOrdered: qty }]);
+      setSeedItems([{ kind: 'item', refId: id, itemName: name, quantityOrdered: qty }]);
       setCreateOpen(true);
       // Drop the params so a later "New PO" opens blank.
       router.replace('/inventory/purchase-orders');
@@ -156,7 +158,9 @@ export default function PurchaseOrdersPage() {
 }
 
 interface PoLineSeed {
-  inventoryItemId: string;
+  // A line is either a generic inventory item or a pharmacy drug.
+  kind: 'item' | 'drug';
+  refId: string; // inventoryItemId or drugId
   itemName: string;
   quantityOrdered: number;
   unitPrice?: number;
@@ -171,27 +175,31 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
   const [items, setItems] = useState<PoLineSeed[]>(initialItems ?? []);
 
   const { data: itemsResp } = useInventoryItems({ search: search || undefined, limit: 20, isActive: true });
+  // Our own drugs (formulary) — so drugs can be purchased from a vendor too.
+  const { data: drugsResp } = useFormulary({ search: search || undefined, limit: 15, isActive: true });
   const { data: suppliersResp } = useSuppliers({ limit: 100, isActive: true });
   const suppliers = suppliersResp?.data ?? [];
+  const drugs = drugsResp?.data ?? [];
   const create = useCreatePurchaseOrder();
 
-  const addItem = (itemId: string, itemName: string) => {
-    if (items.some((i) => i.inventoryItemId === itemId)) {
-      toast.error('Item already added');
+  const addLine = (kind: 'item' | 'drug', refId: string, itemName: string) => {
+    if (items.some((i) => i.kind === kind && i.refId === refId)) {
+      toast.error('Already added');
       return;
     }
-    setItems([...items, { inventoryItemId: itemId, itemName, quantityOrdered: 1 }]);
+    setItems([...items, { kind, refId, itemName, quantityOrdered: 1 }]);
   };
 
   const handleSubmit = async () => {
     if (!supplierId) { toast.error('Pick a supplier'); return; }
-    if (items.length === 0) { toast.error('Add at least one item'); return; }
+    if (items.length === 0) { toast.error('Add at least one line'); return; }
     const data: CreatePurchaseOrderInput = {
       supplierId,
       expectedDeliveryDate: expectedDate || undefined,
       notes: notes || undefined,
-      items: items.map(({ inventoryItemId, quantityOrdered, unitPrice }) => ({
-        inventoryItemId,
+      items: items.map(({ kind, refId, quantityOrdered, unitPrice }) => ({
+        inventoryItemId: kind === 'item' ? refId : undefined,
+        drugId: kind === 'drug' ? refId : undefined,
         quantityOrdered,
         unitPrice,
       })),
@@ -236,20 +244,42 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
           </div>
 
           <div>
-            <label className="text-xs font-medium">Add items</label>
-            <Input placeholder="Search items..." value={search} onChange={(e) => setSearch(e.target.value)} />
-            {itemsResp && itemsResp.data.length > 0 && search && (
-              <div className="max-h-32 overflow-y-auto rounded-md border mt-1">
-                {itemsResp.data.map((it) => (
-                  <button
-                    key={it.id}
-                    onClick={() => addItem(it.id, it.itemName)}
-                    className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
-                  >
-                    <span className="font-medium">{it.itemName}</span>
-                    {it.itemCode && <span className="text-xs text-muted-foreground ml-2">{it.itemCode}</span>}
-                  </button>
-                ))}
+            <label className="text-xs font-medium">Add items / drugs</label>
+            <Input placeholder="Search inventory items or our drugs..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            {search && ((itemsResp?.data?.length ?? 0) > 0 || drugs.length > 0) && (
+              <div className="max-h-48 overflow-y-auto rounded-md border mt-1 divide-y">
+                {(itemsResp?.data?.length ?? 0) > 0 && (
+                  <div>
+                    <p className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Inventory items</p>
+                    {itemsResp!.data.map((it) => (
+                      <button
+                        key={`item-${it.id}`}
+                        onClick={() => addLine('item', it.id, it.itemName)}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
+                      >
+                        <Badge variant="outline" className="text-[10px]">Item</Badge>
+                        <span className="font-medium">{it.itemName}</span>
+                        {it.itemCode && <span className="text-xs text-muted-foreground">{it.itemCode}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {drugs.length > 0 && (
+                  <div>
+                    <p className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Our drugs (formulary)</p>
+                    {drugs.map((d) => (
+                      <button
+                        key={`drug-${d.id}`}
+                        onClick={() => addLine('drug', d.id, `${d.drugName}${d.strength ? ` ${d.strength}` : ''}`)}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
+                      >
+                        <Badge className="bg-teal-500/10 text-teal-700 border-teal-500/20 text-[10px]">Drug</Badge>
+                        <span className="font-medium">{d.drugName}</span>
+                        {d.strength && <span className="text-xs text-muted-foreground">{d.strength}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -259,7 +289,7 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Item</TableHead>
+                    <TableHead>Line</TableHead>
                     <TableHead className="w-24">Qty</TableHead>
                     <TableHead className="w-28">Unit ₹</TableHead>
                     <TableHead className="w-24 text-right">Total</TableHead>
@@ -268,8 +298,16 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
                 </TableHeader>
                 <TableBody>
                   {items.map((it, idx) => (
-                    <TableRow key={it.inventoryItemId}>
-                      <TableCell className="font-medium text-sm">{it.itemName}</TableCell>
+                    <TableRow key={`${it.kind}-${it.refId}`}>
+                      <TableCell className="text-sm">
+                        <span className="font-medium">{it.itemName}</span>
+                        <Badge
+                          variant="outline"
+                          className={cn('ml-2 text-[10px]', it.kind === 'drug' && 'bg-teal-500/10 text-teal-700 border-teal-500/20')}
+                        >
+                          {it.kind === 'drug' ? 'Drug' : 'Item'}
+                        </Badge>
+                      </TableCell>
                       <TableCell>
                         <Input
                           type="number"
@@ -337,6 +375,13 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
   const receive = useReceivePurchaseOrder();
   const cancel = useCancelPurchaseOrder();
   const [recvMap, setRecvMap] = useState<Record<string, number>>({});
+  // Per-drug-line batch details captured at receipt (creates a real DrugBatch).
+  const [recvBatch, setRecvBatch] = useState<Record<string, { batchNumber: string; expiryDate: string; storageLocation: string }>>({});
+  const setBatch = (poItemId: string, patch: Partial<{ batchNumber: string; expiryDate: string; storageLocation: string }>) =>
+    setRecvBatch((prev) => {
+      const cur = prev[poItemId] ?? { batchNumber: '', expiryDate: '', storageLocation: '' };
+      return { ...prev, [poItemId]: { ...cur, ...patch } };
+    });
 
   const handleApprove = async () => {
     if (!confirm('Approve this PO?')) return;
@@ -360,13 +405,34 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
 
   const handleReceive = async () => {
     if (!data) return;
-    const items = data.items?.filter((i) => (recvMap[i.id] ?? 0) > 0)
-      .map((i) => ({ purchaseOrderItemId: i.id, quantityReceived: recvMap[i.id] })) ?? [];
-    if (items.length === 0) { toast.error('Enter received qty'); return; }
+    const lines: ReceivePurchaseOrderLine[] = [];
+    for (const i of data.items ?? []) {
+      const qty = recvMap[i.id] ?? 0;
+      if (qty <= 0) continue;
+      if (i.drugId) {
+        // Drug lines land as a real DrugBatch — batch + expiry are required.
+        const b = recvBatch[i.id];
+        if (!b?.batchNumber?.trim() || !b?.expiryDate) {
+          toast.error(`Enter batch number & expiry for "${i.drug?.drugName ?? 'drug'}"`);
+          return;
+        }
+        lines.push({
+          purchaseOrderItemId: i.id,
+          quantityReceived: qty,
+          batchNumber: b.batchNumber.trim(),
+          expiryDate: b.expiryDate,
+          storageLocation: b.storageLocation?.trim() || undefined,
+        });
+      } else {
+        lines.push({ purchaseOrderItemId: i.id, quantityReceived: qty });
+      }
+    }
+    if (lines.length === 0) { toast.error('Enter received qty'); return; }
     try {
-      await receive.mutateAsync({ id, items });
+      await receive.mutateAsync({ id, items: lines });
       toast.success('Items received & stock updated');
       setRecvMap({});
+      setRecvBatch({});
     } catch (err) { toast.error((err as Error).message); }
   };
 
@@ -404,15 +470,28 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
               <TableBody>
                 {data.items?.map((it) => {
                   const pending = it.quantityOrdered - it.quantityReceived;
+                  const isDrug = !!it.drugId;
+                  const name = isDrug
+                    ? `${it.drug?.drugName ?? 'Drug'}${it.drug?.strength ? ` ${it.drug.strength}` : ''}`
+                    : it.inventoryItem?.itemName ?? '-';
+                  const receiving = data.status === 'approved' || data.status === 'partially_delivered';
                   return (
                     <TableRow key={it.id}>
-                      <TableCell className="font-medium">{it.inventoryItem?.itemName}</TableCell>
-                      <TableCell className="text-right">{it.quantityOrdered}</TableCell>
-                      <TableCell className="text-right">{it.quantityReceived}</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="font-medium align-top">
+                        {name}
+                        <Badge
+                          variant="outline"
+                          className={cn('ml-2 text-[10px]', isDrug && 'bg-teal-500/10 text-teal-700 border-teal-500/20')}
+                        >
+                          {isDrug ? 'Drug' : 'Item'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right align-top">{it.quantityOrdered}</TableCell>
+                      <TableCell className="text-right align-top">{it.quantityReceived}</TableCell>
+                      <TableCell className="text-right align-top">
                         {it.unitPrice ? `₹${Number(it.unitPrice).toFixed(2)}` : '-'}
                       </TableCell>
-                      {(data.status === 'approved' || data.status === 'partially_delivered') && (
+                      {receiving && (
                         <TableCell className="text-right">
                           <Input
                             type="number"
@@ -426,6 +505,30 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
                             }}
                             className="h-8 w-20 ml-auto"
                           />
+                          {/* Drug lines receive into a real DrugBatch → need batch + expiry. */}
+                          {isDrug && (recvMap[it.id] ?? 0) > 0 && (
+                            <div className="mt-1.5 flex flex-col items-end gap-1">
+                              <Input
+                                value={recvBatch[it.id]?.batchNumber ?? ''}
+                                onChange={(e) => setBatch(it.id, { batchNumber: e.target.value })}
+                                placeholder="Batch no. *"
+                                className="h-7 w-32 text-xs"
+                              />
+                              <Input
+                                type="date"
+                                value={recvBatch[it.id]?.expiryDate ?? ''}
+                                onChange={(e) => setBatch(it.id, { expiryDate: e.target.value })}
+                                title="Expiry *"
+                                className="h-7 w-32 text-xs"
+                              />
+                              <Input
+                                value={recvBatch[it.id]?.storageLocation ?? ''}
+                                onChange={(e) => setBatch(it.id, { storageLocation: e.target.value })}
+                                placeholder="Storage (rack)"
+                                className="h-7 w-32 text-xs"
+                              />
+                            </div>
+                          )}
                         </TableCell>
                       )}
                     </TableRow>
