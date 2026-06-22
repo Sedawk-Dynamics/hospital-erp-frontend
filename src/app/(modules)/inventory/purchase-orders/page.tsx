@@ -216,7 +216,12 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
             <div>
               <label className="text-xs font-medium">Supplier *</label>
               <Select value={supplierId || null} onValueChange={(v) => setSupplierId(v ?? '')}>
-                <SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger>
+                <SelectTrigger>
+                  {/* Base UI renders the raw value by default — map it back to the name. */}
+                  <SelectValue placeholder="Select supplier">
+                    {(value) => suppliers.find((s) => s.id === value)?.name ?? 'Select supplier'}
+                  </SelectValue>
+                </SelectTrigger>
                 <SelectContent>
                   {suppliers.map((s) => (
                     <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>

@@ -775,7 +775,11 @@ function EntryStep(props: {
             </button>
           </div>
           <Select value={supplierId} onValueChange={(v) => setSupplierId(v ?? '')}>
-            <SelectTrigger className="w-full h-9"><SelectValue placeholder="Select supplier" /></SelectTrigger>
+            <SelectTrigger className="w-full h-9">
+              <SelectValue placeholder="Select supplier">
+                {(value) => suppliers.find((s) => s.id === value)?.name ?? 'Select supplier'}
+              </SelectValue>
+            </SelectTrigger>
             <SelectContent>
               {suppliers.map((s: { id: string; name: string }) => (
                 <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
