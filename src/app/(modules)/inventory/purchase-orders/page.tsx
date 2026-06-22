@@ -476,7 +476,6 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
                   <TableHead>Item</TableHead>
                   <TableHead className="text-right">Ordered</TableHead>
                   <TableHead className="text-right">Received</TableHead>
-                  <TableHead className="text-right">Unit ₹</TableHead>
                   {data.status === 'approved' || data.status === 'partially_delivered' ? (
                     <TableHead className="text-right">Receive Now</TableHead>
                   ) : null}
@@ -510,9 +509,6 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
                       </TableCell>
                       <TableCell className="text-right align-top">{it.quantityOrdered}</TableCell>
                       <TableCell className="text-right align-top">{it.quantityReceived}</TableCell>
-                      <TableCell className="text-right align-top">
-                        {it.unitPrice ? `₹${Number(it.unitPrice).toFixed(2)}` : '-'}
-                      </TableCell>
                       {receiving && (
                         <TableCell className="text-right">
                           <Input
