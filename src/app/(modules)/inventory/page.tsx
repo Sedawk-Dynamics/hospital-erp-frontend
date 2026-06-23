@@ -5,6 +5,7 @@ import { ClipboardList, PillBottle } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { StockRegisterPanel } from '@/components/inventory/stock-register-panel';
 import { DrugBatchesPanel } from '@/components/inventory/drug-batches-panel';
+import { InventoryStockOverview } from '@/components/inventory/inventory-stock-overview';
 
 // Two inventory views merged onto one route:
 //  • "Stock Register" — the generic items master + stock-in log (InventoryItem).
@@ -34,6 +35,9 @@ export default function InventoryStockPage() {
 
   return (
     <div className="space-y-4 animate-fade-in-up">
+      {/* Unified summary across BOTH stock systems — leads the combined page. */}
+      <InventoryStockOverview />
+
       <Tabs value={tab} onValueChange={(value) => changeTab(value as InvTab)}>
         <TabsList>
           <TabsTrigger value="register">

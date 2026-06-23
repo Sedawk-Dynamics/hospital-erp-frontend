@@ -204,6 +204,7 @@ export const inventoryKeys = {
     detail: (id: string) => ['inventory', 'transfers', 'detail', id] as const,
   },
   settings: ['inventory', 'settings'] as const,
+  stockOverview: ['inventory', 'stock-overview'] as const,
   reports: {
     stockBalance: (params?: Record<string, unknown>) => ['inventory', 'reports', 'stock-balance', params] as const,
     deptConsumption: (params?: Record<string, unknown>) => ['inventory', 'reports', 'dept-consumption', params] as const,
@@ -1115,6 +1116,39 @@ export function useUpdateInventorySettings() {
       queryClient.invalidateQueries({ queryKey: inventoryKeys.settings });
       // New default threshold affects item creation; refresh item views too.
       queryClient.invalidateQueries({ queryKey: inventoryKeys.items.all });
+    },
+  });
+}
+
+// ============================================================
+// Unified Stock Overview (combined Inventory page summary)
+// ============================================================
+
+export interface StockOverviewSystem {
+  skus: number;
+  lowStock: number;
+  outOfStock: number;
+  expiring: number;
+  stockValue: number;
+}
+
+export interface StockOverview {
+  expiryAlertMonths: number;
+  // Drugs mapped to a generic inventory item (de-duped from combined.skus).
+  linkedSkus: number;
+  items: StockOverviewSystem;
+  drugs: StockOverviewSystem & { recalledBatches: number; valueAtRisk: number };
+  combined: StockOverviewSystem & { valueAtRisk: number };
+}
+
+// One summary spanning BOTH stock systems (generic items + pharmacy drug stock),
+// backed by GET /inventory/stock-overview. Powers the combined page header.
+export function useInventoryStockOverview() {
+  return useQuery({
+    queryKey: inventoryKeys.stockOverview,
+    queryFn: async () => {
+      const response = await apiGet<StockOverview>('/inventory/stock-overview');
+      return response.data;
     },
   });
 }
