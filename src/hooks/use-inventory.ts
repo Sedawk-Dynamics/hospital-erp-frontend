@@ -1241,6 +1241,7 @@ export interface CreateUnifiedDrugPayload {
   price?: number;
   minStock?: number;
   hsnCode?: string;
+  gtin?: string;
   indications?: string;
   contraindications?: string;
 }
