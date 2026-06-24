@@ -16,6 +16,7 @@ import {
   CircleX,
   Camera,
   ScanLine,
+  AlertTriangle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
@@ -319,6 +320,61 @@ function buildLinesFromRows(
   return out;
 }
 
+export interface LineIssues {
+  errors: string[];
+  warnings: string[];
+}
+
+// Per-line pre-commit validation. Errors block the Match step; warnings are
+// advisory (shown inline) so the user can proceed knowingly.
+function validateLine(l: DraftLine, all: DraftLine[], defaultStorage: string): LineIssues {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  if (!l.drugName.trim()) return { errors, warnings }; // blank row — ignored
+  const isItem = l.kind === 'item';
+
+  const qty = parseInt(l.quantityReceived, 10);
+  if (!l.quantityReceived.trim() || isNaN(qty) || qty <= 0) errors.push('Quantity must be greater than 0');
+
+  if (!isItem) {
+    if (!l.batchNumber.trim()) errors.push('Batch number is required');
+    if (!l.expiryDate) errors.push('Expiry date is required');
+    if (!l.storageLocation.trim() && !defaultStorage.trim()) errors.push('Storage location is required');
+  }
+
+  if (l.expiryDate) {
+    const exp = new Date(l.expiryDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (!isNaN(exp.getTime())) {
+      if (exp < today) warnings.push('Expiry date is in the past');
+      else {
+        const days = Math.floor((exp.getTime() - today.getTime()) / 86_400_000);
+        if (days <= 90) warnings.push(`Expires in ${days} day${days === 1 ? '' : 's'}`);
+      }
+    }
+    if (l.manufacturingDate && l.expiryDate < l.manufacturingDate) {
+      errors.push('Expiry is before the manufacturing date');
+    }
+  }
+
+  const rate = parseFloat(l.purchasePrice);
+  const sell = parseFloat(l.sellingPrice);
+  const mrp = parseFloat(l.mrp);
+  if (!isNaN(sell) && !isNaN(rate) && sell < rate) warnings.push('Selling price is below the purchase rate');
+  if (!isNaN(sell) && !isNaN(mrp) && sell > mrp) warnings.push('Selling price is above the MRP');
+
+  // Duplicate batch within this import (same medicine + batch number).
+  if (!isItem && l.batchNumber.trim()) {
+    const key = (x: DraftLine) => `${x.drugName.trim().toLowerCase()}|${x.batchNumber.trim().toLowerCase()}`;
+    if (all.some((o) => o.id !== l.id && o.kind !== 'item' && o.drugName.trim() && key(o) === key(l))) {
+      warnings.push('Duplicate batch already in this list');
+    }
+  }
+
+  return { errors, warnings };
+}
+
 const num = (s: string): number | undefined => {
   const n = parseFloat(s);
   return s.trim() !== '' && !isNaN(n) ? n : undefined;
@@ -585,16 +641,8 @@ export function BulkInwardDialog({
   const handleMatch = async () => {
     const filled = lines.filter((l) => l.drugName.trim());
     if (!filled.length) return toast.error('Add at least one line');
-    for (const l of filled) {
-      const isItem = l.kind === 'item';
-      // Batch / expiry / storage are mandatory for medicines only.
-      if (!isItem && !l.batchNumber.trim()) return toast.error(`Batch number missing for "${l.drugName}"`);
-      if (!isItem && !l.expiryDate) return toast.error(`Expiry date missing for "${l.drugName}"`);
-      if (!int(l.quantityReceived) || int(l.quantityReceived)! <= 0)
-        return toast.error(`Quantity missing for "${l.drugName}"`);
-      if (!isItem && !l.storageLocation.trim() && !defaultStorage.trim())
-        return toast.error(`Storage location missing for "${l.drugName}" (set a default or fill the column)`);
-    }
+    // Inline validation already flags each issue; block here as a safety net.
+    if (blockingErrors > 0) return toast.error('Fix the highlighted issues before continuing');
     try {
       const res = await matchInward.mutateAsync({
         // Header supplier threads through so learned distributor mappings resolve.
@@ -663,6 +711,13 @@ export function BulkInwardDialog({
     }
     return { gross, lineDisc: gross - afterLine, billPct, invoiceDisc, net, gst, landing: net + gst };
   }, [lines, invoiceDiscPct, invoiceDiscAmt]);
+
+  // Per-line validation — errors block Match, warnings are advisory (shown inline).
+  const lineIssues = useMemo(
+    () => lines.map((l) => validateLine(l, lines, defaultStorage)),
+    [lines, defaultStorage],
+  );
+  const blockingErrors = lineIssues.reduce((n, x) => n + x.errors.length, 0);
 
   const handleCommit = async () => {
     // Build the reviewed payload from each draft line + its decision.
@@ -816,6 +871,7 @@ export function BulkInwardDialog({
               ocrPending={ocrInward.isPending}
               onScan={handleScan}
               scanPending={inwardScan.isPending}
+              lineIssues={lineIssues}
             />
           )}
 
@@ -829,8 +885,13 @@ export function BulkInwardDialog({
         <DialogFooter className="gap-2">
           {step === 'entry' && (
             <>
+              {blockingErrors > 0 && (
+                <span className="mr-auto text-xs font-medium text-red-600">
+                  {blockingErrors} issue{blockingErrors === 1 ? '' : 's'} to fix
+                </span>
+              )}
               <Button variant="outline" onClick={close}>Cancel</Button>
-              <Button onClick={handleMatch} disabled={matchInward.isPending}>
+              <Button onClick={handleMatch} disabled={matchInward.isPending || blockingErrors > 0}>
                 {matchInward.isPending ? (
                   <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Checking…</>
                 ) : (
@@ -910,6 +971,7 @@ function EntryStep(props: {
   ocrPending: boolean;
   onScan: (code: string) => void;
   scanPending: boolean;
+  lineIssues: LineIssues[];
 }) {
   const {
     suppliers, supplierId, setSupplierId, selectedSupplier, invoiceNumber, setInvoiceNumber,
@@ -917,7 +979,7 @@ function EntryStep(props: {
     defaultStorage, setDefaultStorage,
     purchaseTotals, lines, updateLine, addLine, removeLine, showPaste, setShowPaste,
     pasteText, setPasteText, ingest, fileRef, onFile, xlsxRef, onXlsxFile,
-    ocrRef, onOcrFile, ocrPending, onScan, scanPending,
+    ocrRef, onOcrFile, ocrPending, onScan, scanPending, lineIssues,
   } = props;
   const [scanValue, setScanValue] = useState('');
   const money = (n: number) => `₹${n.toFixed(2)}`;
@@ -1130,9 +1192,26 @@ function EntryStep(props: {
             </tr>
           </thead>
           <tbody>
-            {lines.map((l, i) => (
+            {lines.map((l, i) => {
+              const issue = lineIssues[i];
+              const err = issue?.errors ?? [];
+              const warn = issue?.warnings ?? [];
+              return (
               <tr key={l.id} className="border-t [&>td]:px-1.5 [&>td]:py-1 align-top">
-                <td className="px-2 py-2 text-muted-foreground">{i + 1}</td>
+                <td className="px-2 py-2 text-muted-foreground">
+                  <div className="flex items-center gap-1">
+                    <span>{i + 1}</span>
+                    {err.length > 0 ? (
+                      <span title={err.join('\n')} className="inline-flex">
+                        <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
+                      </span>
+                    ) : warn.length > 0 ? (
+                      <span title={warn.join('\n')} className="inline-flex">
+                        <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                      </span>
+                    ) : null}
+                  </div>
+                </td>
                 <td>
                   <Input className={cell} value={l.drugName} onChange={(e) => updateLine(l.id, 'drugName', e.target.value)} placeholder="e.g. Telmac 40 Tab" />
                   <Input className={cn(cell, 'mt-1 text-muted-foreground')} value={l.genericName} onChange={(e) => updateLine(l.id, 'genericName', e.target.value)} placeholder="composition (optional)" />
@@ -1187,7 +1266,8 @@ function EntryStep(props: {
                   </Button>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
