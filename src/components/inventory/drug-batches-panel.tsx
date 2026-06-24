@@ -183,12 +183,25 @@ function daysUntil(date: string | Date): number {
   return Math.floor((target - now) / (1000 * 60 * 60 * 24));
 }
 
-// The full Drug Batches workspace, rendered as the "Drug Batches" tab of the
-// combined Inventory page (also reachable via /inventory?tab=batches).
-export function DrugBatchesPanel() {
+// The full Drug Batches workspace.
+//
+// • Standalone (default): the complete batch manager — header, summary cards,
+//   filters, recalls, bulk inward, stock-take.
+// • Embedded (`embedded` + `lockedDrugId`): scoped to ONE medicine and stripped of
+//   the global chrome, so the unified Storage list can drill into a single drug's
+//   batches inline while reusing every batch action (add / edit / recall / adjust).
+export function DrugBatchesPanel({
+  embedded = false,
+  lockedDrugId,
+  lockedDrugLabel,
+}: {
+  embedded?: boolean;
+  lockedDrugId?: string;
+  lockedDrugLabel?: string;
+} = {}) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [drugFilter, setDrugFilter] = useState<string | null>(null);
+  const [drugFilter, setDrugFilter] = useState<string | null>(lockedDrugId ?? null);
   const [expiringDays, setExpiringDays] = useState<number | null>(null);
   const [recalledOnly, setRecalledOnly] = useState(false);
   // "Not in stock" view — drugs with no available batch.
@@ -351,7 +364,12 @@ export function DrugBatchesPanel() {
   const startCreate = () => {
     setEditingBatch(null);
     setPendingBarcode(null);
-    setFormData(EMPTY_FORM);
+    // Embedded in a single medicine's row — lock the batch to that drug.
+    setFormData(
+      lockedDrugId
+        ? { ...EMPTY_FORM, drugId: lockedDrugId, drugLabel: lockedDrugLabel ?? '' }
+        : EMPTY_FORM,
+    );
     setDrugSearchInput('');
     setCreateOpen(true);
   };
@@ -548,73 +566,84 @@ export function DrugBatchesPanel() {
   };
 
   return (
-    <div className="space-y-4 animate-fade-in-up">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-headline text-xl font-bold">Batches</h1>
-          <p className="text-sm text-muted-foreground">
-            All pharmacy stock — receive batches, track low stock and expiry, and manage recalls. Recalled batches are auto-blocked from dispensing.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setDrugRecallOpen(true)}
-            title="Recall a drug and block all of its batches from dispensing"
-          >
-            <ShieldAlert className="mr-1.5 h-4 w-4 text-red-600" />
-            Recall Drug
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleRunExpiry}
-            disabled={runExpiry.isPending}
-            title="Flag past-expiry batches and alert managers about near-expiry stock (per the configured threshold)"
-          >
-            <AlertTriangle className="mr-1.5 h-4 w-4" />
-            {runExpiry.isPending ? 'Checking...' : 'Run expiry check'}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setStockTakeOpen(true)}
-            title="Count the shelf — flag and correct stock discrepancies"
-          >
-            <ClipboardCheck className="mr-1.5 h-4 w-4" />
-            Stock Take
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setAdjustLogOpen(true)}
-            title="View the stock-adjustment discrepancy log"
-          >
-            <ClipboardList className="mr-1.5 h-4 w-4" />
-            Adjustments
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setBulkInwardOpen(true)}
-            title="Receive a whole distributor invoice — checks each line for duplicates first"
-          >
-            <Boxes className="mr-1.5 h-4 w-4" />
-            Bulk Stock In
-          </Button>
+    <div className={embedded ? 'space-y-3' : 'space-y-4 animate-fade-in-up'}>
+      {embedded ? (
+        // Scoped to one medicine — only "Add Batch" here; the global batch actions
+        // (Bulk Stock In, Stock Take, Recall Drug, …) live in the Storage header.
+        <div className="flex items-center justify-end">
           <Button size="sm" onClick={startCreate}>
             <Plus className="mr-1.5 h-4 w-4" />
             Add Batch
           </Button>
         </div>
-      </div>
+      ) : (
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="font-headline text-xl font-bold">Batches</h1>
+            <p className="text-sm text-muted-foreground">
+              All pharmacy stock — receive batches, track low stock and expiry, and manage recalls. Recalled batches are auto-blocked from dispensing.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setDrugRecallOpen(true)}
+              title="Recall a drug and block all of its batches from dispensing"
+            >
+              <ShieldAlert className="mr-1.5 h-4 w-4 text-red-600" />
+              Recall Drug
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleRunExpiry}
+              disabled={runExpiry.isPending}
+              title="Flag past-expiry batches and alert managers about near-expiry stock (per the configured threshold)"
+            >
+              <AlertTriangle className="mr-1.5 h-4 w-4" />
+              {runExpiry.isPending ? 'Checking...' : 'Run expiry check'}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setStockTakeOpen(true)}
+              title="Count the shelf — flag and correct stock discrepancies"
+            >
+              <ClipboardCheck className="mr-1.5 h-4 w-4" />
+              Stock Take
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setAdjustLogOpen(true)}
+              title="View the stock-adjustment discrepancy log"
+            >
+              <ClipboardList className="mr-1.5 h-4 w-4" />
+              Adjustments
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setBulkInwardOpen(true)}
+              title="Receive a whole distributor invoice — checks each line for duplicates first"
+            >
+              <Boxes className="mr-1.5 h-4 w-4" />
+              Bulk Stock In
+            </Button>
+            <Button size="sm" onClick={startCreate}>
+              <Plus className="mr-1.5 h-4 w-4" />
+              Add Batch
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* G1: bulk stock inward with fuzzy duplicate review (CSV / OCR / manual) */}
-      <BulkInwardDialog open={bulkInwardOpen} onOpenChange={setBulkInwardOpen} />
+      {!embedded && <BulkInwardDialog open={bulkInwardOpen} onOpenChange={setBulkInwardOpen} />}
 
       {/* G4: physical stock-take — count sheet → flagged variances → audited corrections */}
-      <StockTakeDialog open={stockTakeOpen} onOpenChange={setStockTakeOpen} />
+      {!embedded && <StockTakeDialog open={stockTakeOpen} onOpenChange={setStockTakeOpen} />}
 
       {/* G10: add a distributor inline; auto-select it on the receive-batch form */}
       <VendorFormDialog
@@ -624,6 +653,7 @@ export function DrugBatchesPanel() {
       />
 
       {/* Expiry + stock overview — at-a-glance exposure (drug stock). */}
+      {!embedded && (
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <button
           onClick={() => { setOutOfStock(true); setExpiringDays(null); setRecalledOnly(false); setPage(1); }}
@@ -669,6 +699,7 @@ export function DrugBatchesPanel() {
           <ShieldX className="h-7 w-7 text-red-500/50" />
         </div>
       </div>
+      )}
 
       {/* Create / edit batch dialog */}
       <Dialog open={createOpen} onOpenChange={(open) => { if (!open) closeDialog(); else setCreateOpen(true); }}>
@@ -705,12 +736,13 @@ export function DrugBatchesPanel() {
                 </div>
               )}
 
-              {/* Drug — picker on create; a batch can't change its drug, so it's read-only on edit */}
-              {editingBatch ? (
+              {/* Drug — picker on create; read-only on edit (a batch can't change its
+                  drug) and when embedded in a single medicine's row (drug is fixed). */}
+              {editingBatch || lockedDrugId ? (
                 <div className="space-y-1.5">
                   <Label>Drug</Label>
                   <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm font-medium">
-                    {formData.drugLabel || '—'}
+                    {formData.drugLabel || lockedDrugLabel || '—'}
                   </div>
                 </div>
               ) : (
@@ -1067,6 +1099,7 @@ export function DrugBatchesPanel() {
         </Dialog>
 
       {/* Filters */}
+      {!embedded && (
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative w-full max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -1162,6 +1195,7 @@ export function DrugBatchesPanel() {
           </Button>
         </div>
       </div>
+      )}
 
       {/* Table */}
       <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary">
@@ -1467,7 +1501,7 @@ function RecallBatchDialog({ batch, onClose }: { batch: DrugBatch; onClose: () =
 }
 
 // --- Recall a whole drug (and every one of its batches) ---
-function RecallDrugDialog({ onClose }: { onClose: () => void }) {
+export function RecallDrugDialog({ onClose }: { onClose: () => void }) {
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [reason, setReason] = useState('');

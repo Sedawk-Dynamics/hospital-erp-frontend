@@ -283,7 +283,7 @@ function StockInLog({ onRecord }: { onRecord: () => void }) {
   );
 }
 
-function ItemDialog({ item, onClose }: { item: InventoryItem | null; onClose: () => void }) {
+export function ItemDialog({ item, onClose }: { item: InventoryItem | null; onClose: () => void }) {
   const isEdit = !!item;
   const [form, setForm] = useState<CreateItemInput & { isActive?: boolean }>({
     itemName: item?.itemName ?? '',
@@ -425,7 +425,7 @@ function ItemDialog({ item, onClose }: { item: InventoryItem | null; onClose: ()
 
 // Record incoming stock (moved here from the standalone Stock In page). When
 // opened from a row, `initialItem` pre-selects that item.
-function StockInDialog({ initialItem, onClose }: { initialItem: InventoryItem | null; onClose: () => void }) {
+export function StockInDialog({ initialItem, onClose }: { initialItem: InventoryItem | null; onClose: () => void }) {
   const [search, setSearch] = useState('');
   const [itemId, setItemId] = useState<string | null>(initialItem?.id ?? null);
   const [batchNumber, setBatchNumber] = useState('');
