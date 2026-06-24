@@ -205,6 +205,7 @@ export const inventoryKeys = {
   },
   settings: ['inventory', 'settings'] as const,
   stockOverview: ['inventory', 'stock-overview'] as const,
+  unifiedStock: (params?: Record<string, unknown>) => ['inventory', 'stock', 'unified', params] as const,
   reports: {
     stockBalance: (params?: Record<string, unknown>) => ['inventory', 'reports', 'stock-balance', params] as const,
     deptConsumption: (params?: Record<string, unknown>) => ['inventory', 'reports', 'dept-consumption', params] as const,
@@ -1149,6 +1150,107 @@ export function useInventoryStockOverview() {
     queryFn: async () => {
       const response = await apiGet<StockOverview>('/inventory/stock-overview');
       return response.data;
+    },
+  });
+}
+
+// ============================================================
+// Unified storage — one list of "things in storage" spanning generic inventory
+// items AND pharmacy drugs (batch stock rolled up), backed by GET /inventory/stock.
+// ============================================================
+
+export type UnifiedStockKind = 'item' | 'drug';
+
+export interface UnifiedStockRow {
+  kind: UnifiedStockKind;
+  // InventoryItem.id (kind=item) or DrugFormulary.id (kind=drug).
+  refId: string;
+  name: string;
+  code: string | null;
+  category: string;
+  unit: string | null;
+  currentStock: number;
+  reorderLevel: number | null;
+  costPerUnit: number | null;
+  sellingPrice: number | null;
+  tracksBatches: boolean;
+  batchCount: number;
+  nearestExpiry: string | null;
+  isRecalled: boolean;
+}
+
+export interface UnifiedStockParams extends PaginatedParams {
+  search?: string;
+  type?: 'all' | 'item' | 'drug';
+  category?: InventoryCategory;
+  stockStatus?: 'all' | 'low' | 'out' | 'expiring' | 'in';
+}
+
+export function useUnifiedStock(params?: UnifiedStockParams) {
+  return useQuery({
+    queryKey: inventoryKeys.unifiedStock(params as Record<string, unknown>),
+    queryFn: async () => {
+      const response = await apiGet<UnifiedStockRow[]>('/inventory/stock', { params });
+      return { data: response.data, meta: response.meta as PaginationMeta | undefined };
+    },
+  });
+}
+
+export interface CreateUnifiedItemPayload {
+  itemName: string;
+  itemCode?: string;
+  category: InventoryCategory;
+  description?: string;
+  unitOfMeasurement?: string;
+  minimumStockThreshold?: number;
+  currentStock?: number;
+  costPerUnit?: number;
+  sellingPricePerUnit?: number;
+}
+
+export interface CreateUnifiedDrugPayload {
+  drugName: string;
+  genericName?: string;
+  manufacturer?: string;
+  dosageForm?: string;
+  strength?: string;
+  unitOfMeasurement?: string;
+  looseUnitLabel?: string;
+  packSize?: number;
+  taxPercent?: number;
+  price?: number;
+  minStock?: number;
+  hsnCode?: string;
+  indications?: string;
+  contraindications?: string;
+}
+
+export interface CreateUnifiedStockInput {
+  kind: UnifiedStockKind;
+  force?: boolean;
+  item?: CreateUnifiedItemPayload;
+  drug?: CreateUnifiedDrugPayload;
+}
+
+export interface CreateUnifiedStockResult {
+  kind: UnifiedStockKind;
+  status: 'created' | 'duplicate_suspected';
+  item?: { id: string; [k: string]: unknown };
+  matches?: Array<{ id: string; drugName: string; score: number; [k: string]: unknown }>;
+}
+
+// One "New Item" flow — creates a generic item or a batch-tracked medicine.
+export function useCreateUnifiedStock() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: CreateUnifiedStockInput) => {
+      const response = await apiPost<CreateUnifiedStockResult>('/inventory/stock', data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.items.all });
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.stockOverview });
     },
   });
 }
