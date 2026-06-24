@@ -65,6 +65,10 @@ import { VendorFormDialog } from '@/components/inventory/vendor-form-dialog';
 
 interface DraftLine {
   id: string;
+  // 'drug' (medicine — matched to formulary, batch/expiry required) or 'item'
+  // (any other supply — matched to inventory items, batch/expiry optional).
+  kind: string;
+  category: string;
   drugName: string;
   genericName: string;
   manufacturer: string;
@@ -96,9 +100,21 @@ type Step = 'entry' | 'review' | 'done';
 let rowSeq = 0;
 const nextId = () => `row-${++rowSeq}`;
 
+// Per-line type. "Medicine" → drug (formulary + batches); anything else → a plain
+// inventory item of that category (stock-count only).
+const TYPE_OPTIONS = [
+  { value: 'drug', label: 'Medicine' },
+  { value: 'consumable', label: 'Consumable' },
+  { value: 'surgical_supply', label: 'Surgical' },
+  { value: 'equipment', label: 'Equipment' },
+  { value: 'other', label: 'Other' },
+];
+
 function emptyLine(): DraftLine {
   return {
     id: nextId(),
+    kind: 'drug',
+    category: '',
     drugName: '',
     genericName: '',
     manufacturer: '',
@@ -236,7 +252,7 @@ function recBadge(line: Pick<InwardMatchedLine, 'recommendation' | 'resolvedVia'
     return <Badge className="bg-amber-500/10 text-amber-700 border-amber-500/20">Likely duplicate{line.confidence ? ` · ${line.confidence}%` : ''}</Badge>;
   if (line.recommendation === 'review')
     return <Badge className="bg-blue-500/10 text-blue-700 border-blue-500/20">Possible match{line.confidence ? ` · ${line.confidence}%` : ''}</Badge>;
-  return <Badge className="bg-emerald-500/10 text-emerald-700 border-emerald-500/20">New drug</Badge>;
+  return <Badge className="bg-emerald-500/10 text-emerald-700 border-emerald-500/20">New</Badge>;
 }
 
 export function BulkInwardDialog({
@@ -330,6 +346,8 @@ export function BulkInwardDialog({
   const s = (v: number | null | undefined) => (v === null || v === undefined ? '' : String(v));
   const ocrToDraft = (o: OcrInvoiceLine): DraftLine => ({
     id: nextId(),
+    kind: 'drug',
+    category: '',
     drugName: o.drugName ?? '',
     genericName: o.genericName ?? '',
     manufacturer: o.manufacturer ?? '',
@@ -392,6 +410,8 @@ export function BulkInwardDialog({
       const res = await inwardScan.mutateAsync(c);
       const L = res.line;
       const seed: Omit<DraftLine, 'id'> = {
+        kind: 'drug',
+        category: '',
         drugName: L.drugName || '',
         genericName: L.genericName || '',
         manufacturer: L.manufacturer || '',
@@ -434,14 +454,15 @@ export function BulkInwardDialog({
   // Validate + score the entered lines, then move to the review step.
   const handleMatch = async () => {
     const filled = lines.filter((l) => l.drugName.trim());
-    if (!filled.length) return toast.error('Add at least one medicine line');
+    if (!filled.length) return toast.error('Add at least one line');
     for (const l of filled) {
-      if (!l.batchNumber.trim()) return toast.error(`Batch number missing for "${l.drugName}"`);
-      if (!l.expiryDate) return toast.error(`Expiry date missing for "${l.drugName}"`);
+      const isItem = l.kind === 'item';
+      // Batch / expiry / storage are mandatory for medicines only.
+      if (!isItem && !l.batchNumber.trim()) return toast.error(`Batch number missing for "${l.drugName}"`);
+      if (!isItem && !l.expiryDate) return toast.error(`Expiry date missing for "${l.drugName}"`);
       if (!int(l.quantityReceived) || int(l.quantityReceived)! <= 0)
         return toast.error(`Quantity missing for "${l.drugName}"`);
-      // Storage location is mandatory — per-line, or via the default applied to all.
-      if (!l.storageLocation.trim() && !defaultStorage.trim())
+      if (!isItem && !l.storageLocation.trim() && !defaultStorage.trim())
         return toast.error(`Storage location missing for "${l.drugName}" (set a default or fill the column)`);
     }
     try {
@@ -454,6 +475,8 @@ export function BulkInwardDialog({
           manufacturer: l.manufacturer.trim() || undefined,
           strength: l.strength.trim() || undefined,
           gtin: l.gtin.trim() || undefined,
+          kind: (l.kind === 'item' ? 'item' : 'drug') as 'drug' | 'item',
+          category: l.kind === 'item' ? l.category || 'other' : undefined,
         })),
       });
       // Keep only the filled lines, in the matched order.
@@ -517,9 +540,15 @@ export function BulkInwardDialog({
       const d = decisions[i];
       const paid = int(l.quantityReceived) ?? 0;
       const free = int(l.freeQuantity) ?? 0;
+      const isItem = l.kind === 'item';
       return {
         action: d.action,
-        targetFormularyId: d.action === 'map' ? d.targetId ?? undefined : undefined,
+        kind: isItem ? 'item' : 'drug',
+        category: isItem ? l.category || 'other' : undefined,
+        // Map target routes by kind: a medicine maps to a formulary drug, an item
+        // maps to an existing inventory item.
+        targetFormularyId: !isItem && d.action === 'map' ? d.targetId ?? undefined : undefined,
+        targetInventoryItemId: isItem && d.action === 'map' ? d.targetId ?? undefined : undefined,
         // Raw line text is the learned-mapping key; GTIN/HSN carry onto a new drug.
         externalName: l.drugName.trim(),
         drugName: l.drugName.trim(),
@@ -528,10 +557,10 @@ export function BulkInwardDialog({
         strength: l.strength.trim() || undefined,
         gtin: l.gtin.trim() || undefined,
         hsnCode: l.hsnCode.trim() || undefined,
-        // Mandatory storage: per-line value, else the dialog-wide default.
-        storageLocation: l.storageLocation.trim() || defaultStorage.trim() || undefined,
-        batchNumber: l.batchNumber.trim(),
-        expiryDate: l.expiryDate,
+        // Storage applies to medicine batches only (items have no batch entity).
+        storageLocation: isItem ? undefined : l.storageLocation.trim() || defaultStorage.trim() || undefined,
+        batchNumber: l.batchNumber.trim() || undefined,
+        expiryDate: l.expiryDate || undefined,
         manufacturingDate: l.manufacturingDate || undefined,
         // Total received = paid + free; the free portion is recorded separately.
         quantityReceived: paid + free,
@@ -545,9 +574,11 @@ export function BulkInwardDialog({
     });
 
     // A map decision with no chosen target can't be honoured — block early.
-    const orphan = payloadLines.findIndex((l) => l.action === 'map' && !l.targetFormularyId);
+    const orphan = payloadLines.findIndex(
+      (l) => l.action === 'map' && !l.targetFormularyId && !l.targetInventoryItemId,
+    );
     if (orphan >= 0) {
-      return toast.error(`Pick an existing drug to map "${payloadLines[orphan].drugName}" to, or switch it to "Create new".`);
+      return toast.error(`Pick an existing record to map "${payloadLines[orphan].drugName}" to, or switch it to "Create new".`);
     }
 
     try {
@@ -927,15 +958,16 @@ function EntryStep(props: {
 
       {/* Editable line table */}
       <div className="overflow-x-auto rounded-lg border">
-        <table className="w-full min-w-[1180px] text-xs">
+        <table className="w-full min-w-[1320px] text-xs">
           <thead className="bg-muted/50 text-muted-foreground">
             <tr className="[&>th]:px-2 [&>th]:py-2 [&>th]:text-left [&>th]:font-medium">
               <th className="w-8">#</th>
-              <th className="min-w-[160px]">Medicine *</th>
+              <th className="min-w-[150px]">Name *</th>
+              <th className="min-w-[110px]">Type</th>
               <th>Strength</th>
-              <th>Batch *</th>
-              <th>Expiry *</th>
-              <th className="min-w-[120px]">Storage *</th>
+              <th>Batch</th>
+              <th>Expiry</th>
+              <th className="min-w-[120px]">Storage</th>
               <th className="w-16">Qty *</th>
               <th className="w-14">Free</th>
               <th className="w-16">MRP</th>
@@ -957,8 +989,30 @@ function EntryStep(props: {
                   {/* GTIN / barcode — auto-resolves the drug on the next import (Product Resolution Engine). */}
                   <Input className={cn(cell, 'mt-1 font-mono text-muted-foreground')} value={l.gtin} onChange={(e) => updateLine(l.id, 'gtin', e.target.value)} placeholder="GTIN / barcode (optional)" />
                 </td>
+                <td>
+                  <Select
+                    value={l.kind === 'item' ? (l.category || 'consumable') : 'drug'}
+                    onValueChange={(v) => {
+                      const val = v ?? 'drug';
+                      if (val === 'drug') {
+                        updateLine(l.id, 'kind', 'drug');
+                        updateLine(l.id, 'category', '');
+                      } else {
+                        updateLine(l.id, 'kind', 'item');
+                        updateLine(l.id, 'category', val);
+                      }
+                    }}
+                  >
+                    <SelectTrigger className={cn(cell, 'min-w-[104px]')}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {TYPE_OPTIONS.map((t) => (
+                        <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </td>
                 <td><Input className={cell} value={l.strength} onChange={(e) => updateLine(l.id, 'strength', e.target.value)} placeholder="40mg" /></td>
-                <td><Input className={cell} value={l.batchNumber} onChange={(e) => updateLine(l.id, 'batchNumber', e.target.value)} placeholder="B23A01" /></td>
+                <td><Input className={cell} value={l.batchNumber} onChange={(e) => updateLine(l.id, 'batchNumber', e.target.value)} placeholder={l.kind === 'item' ? 'optional' : 'B23A01'} /></td>
                 <td><Input className={cn(cell, 'w-[130px]')} type="date" value={l.expiryDate} onChange={(e) => updateLine(l.id, 'expiryDate', e.target.value)} /></td>
                 <td><Input className={cn(cell, 'min-w-[110px]')} value={l.storageLocation} onChange={(e) => updateLine(l.id, 'storageLocation', e.target.value)} placeholder={defaultStorage || 'Rack / Dept'} /></td>
                 <td><Input className={cell} type="number" min={1} value={l.quantityReceived} onChange={(e) => updateLine(l.id, 'quantityReceived', e.target.value)} /></td>
@@ -1072,8 +1126,8 @@ function ReviewStep({
               </div>
             ) : (
               <p className="mt-2 text-xs text-muted-foreground">
-                Will be added to the formulary as a new drug, then stocked.
-                {hasMatches && ' (A similar drug exists — switch to “Map to existing” to avoid splitting stock.)'}
+                Will be added as a new {line.kind === 'item' ? 'inventory item' : 'drug'}, then stocked.
+                {hasMatches && ' (A similar record exists — switch to “Map to existing” to avoid splitting stock.)'}
               </p>
             )}
           </div>
@@ -1134,7 +1188,7 @@ function DoneStep({ lines, result }: { lines: DraftLine[]; result: CommitInwardR
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Lines" value={result.total} />
         <Stat label="Mapped" value={result.mappedDrugs} tone="primary" />
-        <Stat label="New drugs" value={result.createdDrugs} tone="emerald" />
+        <Stat label="New" value={result.createdDrugs} tone="emerald" />
         <Stat label="Failed" value={result.failed} tone={result.failed ? 'red' : undefined} />
       </div>
       {result.purchaseSummary && (

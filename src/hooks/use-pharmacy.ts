@@ -406,6 +406,10 @@ export interface InwardMatchLine {
   dosageForm?: string | null;
   // Product Resolution Engine: GTIN scanned/parsed off the invoice line.
   gtin?: string | null;
+  // A line can be a medicine (default — matched against the formulary) or any
+  // other stock item (matched against inventory items); category is set for items.
+  kind?: 'drug' | 'item';
+  category?: string | null;
 }
 
 export type InwardRecommendation = 'map' | 'review' | 'create';
@@ -615,8 +619,10 @@ export function useDeleteDistributorMapping() {
 // A reviewed line: the user's map-or-create decision + the batch to receive.
 export interface CommitInwardLine extends InwardMatchLine {
   action: 'map' | 'create';
-  // Required when action === 'map' — the existing drug to add stock to.
+  // Required when action === 'map' — the existing drug (medicine) to add stock to.
   targetFormularyId?: string;
+  // Required when action === 'map' for an item line — the existing inventory item.
+  targetInventoryItemId?: string;
   // Raw distributor line text stored as the learned-mapping key (defaults to drugName).
   externalName?: string;
   packSize?: number;
@@ -626,9 +632,10 @@ export interface CommitInwardLine extends InwardMatchLine {
   manufacturerCode?: string;
   // Department / rack / cold-chain bin the batch is shelved in (per-batch).
   storageLocation?: string;
-  batchNumber: string;
+  // Batch + expiry required for medicines; optional for other items.
+  batchNumber?: string;
   manufacturingDate?: string;
-  expiryDate: string;
+  expiryDate?: string;
   // Total units received (paid + free); freeQuantity is the free portion of it.
   quantityReceived: number;
   freeQuantity?: number;
