@@ -37,7 +37,7 @@ import { StockTakeDialog } from '@/components/pharmacy/stock-take-dialog';
 import { StockAdjustmentsLogDialog } from '@/components/pharmacy/stock-adjust-dialogs';
 
 type TypeFilter = 'all' | 'drug' | 'item';
-type StatusFilter = 'all' | 'low' | 'out' | 'expiring';
+type StatusFilter = 'all' | 'low' | 'out' | 'expiring' | 'recalled';
 
 const daysUntil = (d: string) => Math.floor((new Date(d).getTime() - Date.now()) / 86_400_000);
 const money = (n: number) =>
@@ -102,6 +102,7 @@ export function UnifiedStockPanel() {
     { value: 'low', label: 'Low stock' },
     { value: 'out', label: 'Out of stock' },
     { value: 'expiring', label: 'Expiring' },
+    { value: 'recalled', label: 'Recalled' },
   ];
 
   return (

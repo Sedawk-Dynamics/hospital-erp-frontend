@@ -1203,7 +1203,7 @@ export interface UnifiedStockParams extends PaginatedParams {
   search?: string;
   type?: 'all' | 'item' | 'drug';
   category?: InventoryCategory;
-  stockStatus?: 'all' | 'low' | 'out' | 'expiring' | 'in';
+  stockStatus?: 'all' | 'low' | 'out' | 'expiring' | 'in' | 'recalled';
 }
 
 export function useUnifiedStock(params?: UnifiedStockParams) {
