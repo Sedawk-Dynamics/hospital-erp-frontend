@@ -231,8 +231,9 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
     icon: Package,
     baseRoute: '/inventory',
     sidebarItems: [
-      // Stock Register + Drug Batches are merged onto one route as two tabs.
-      { label: 'Stock Register', href: '/inventory', icon: ClipboardList },
+      // Stock Register + Drug Batches are merged into ONE storage list: a row is a
+      // medicine (batch-tracked) or any other supply; medicines expand to batches.
+      { label: 'Storage', href: '/inventory', icon: ClipboardList },
       { label: 'Stock Out', href: '/inventory/stock-out', icon: ArrowRightLeft },
       { label: 'Stock Transfer', href: '/inventory/stock-transfer', icon: ArrowLeftRight },
       { label: 'Purchase Orders', href: '/inventory/purchase-orders', icon: ShoppingCart },
@@ -240,7 +241,7 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       // Pharmacy drug-stock management (backed by /pharmacy/* endpoints).
       { label: 'Drug Catalog', href: '/inventory/drug-catalog', icon: Database },
       { label: 'Drug Formulary', href: '/inventory/drug-formulary', icon: Pill },
-      { label: 'Batches', href: '/inventory?tab=batches', icon: PillBottle },
+      // Batches are now part of "Storage" (each medicine expands to its batches).
       { label: 'Distributor Mappings', href: '/inventory/distributor-mappings', icon: Link2 },
       { label: 'Narcotics (NDPS)', href: '/inventory/ndps', icon: ShieldCheck },
       { label: 'Surgical Kits (OT)', href: '/inventory/surgical-kits', icon: Scissors },

@@ -3,13 +3,13 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
-// Drug Batches was merged into the combined Inventory page as the "Drug Batches"
-// tab. This route is kept so existing links / bookmarks keep working — it simply
-// forwards to /inventory?tab=batches.
+// Drug Batches was merged into the unified Storage list at /inventory (medicines
+// expand inline to their batches). This route is kept so existing links / bookmarks
+// keep working — it simply forwards to /inventory.
 export default function DrugBatchesRedirectPage() {
   const router = useRouter();
   useEffect(() => {
-    router.replace('/inventory?tab=batches');
+    router.replace('/inventory');
   }, [router]);
   return null;
 }
