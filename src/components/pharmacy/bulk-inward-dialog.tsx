@@ -18,6 +18,7 @@ import {
   ScanLine,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import * as XLSX from 'xlsx';
 import {
   Dialog,
   DialogContent,
@@ -231,6 +232,93 @@ function parseTabular(text: string): DraftLine[] {
   return out;
 }
 
+// Mapping target fields the user can assign each spreadsheet column to.
+const MAP_FIELDS: { value: keyof DraftLine | 'ignore'; label: string }[] = [
+  { value: 'drugName', label: 'Name' },
+  { value: 'category', label: 'Type / Category' },
+  { value: 'genericName', label: 'Generic' },
+  { value: 'manufacturer', label: 'Manufacturer' },
+  { value: 'strength', label: 'Strength' },
+  { value: 'batchNumber', label: 'Batch' },
+  { value: 'expiryDate', label: 'Expiry' },
+  { value: 'manufacturingDate', label: 'Mfg date' },
+  { value: 'storageLocation', label: 'Storage' },
+  { value: 'quantityReceived', label: 'Qty' },
+  { value: 'freeQuantity', label: 'Free qty' },
+  { value: 'mrp', label: 'MRP' },
+  { value: 'purchasePrice', label: 'Purchase rate' },
+  { value: 'purchaseDiscountPercent', label: 'Discount %' },
+  { value: 'gstPercent', label: 'GST %' },
+  { value: 'sellingPrice', label: 'Selling price' },
+  { value: 'gtin', label: 'GTIN / barcode' },
+  { value: 'hsnCode', label: 'HSN code' },
+  { value: 'ignore', label: '— Ignore —' },
+];
+
+// Split a CSV/paste blob into a raw grid (no header interpretation yet).
+function rowsFromText(text: string): string[][] {
+  return text.split(/\r?\n/).map((r) => r.trim()).filter(Boolean).map(splitRow);
+}
+
+// Read the first sheet of an .xlsx/.xls workbook into a raw grid.
+async function rowsFromXlsx(file: File): Promise<string[][]> {
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: 'array' });
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  if (!sheet) return [];
+  const grid = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, blankrows: false, defval: '' });
+  return grid.map((row) => (row ?? []).map((c) => (c == null ? '' : String(c).trim())));
+}
+
+// Guess a field for each column from its header text (when a header row exists).
+function guessMapping(headerCells: string[]): (keyof DraftLine | 'ignore')[] {
+  return headerCells.map((h) => HEADER_MAP[normHeader(h)] ?? 'ignore');
+}
+
+// Does a row look like a header (any cell maps to a known field)?
+function looksLikeHeader(cells: string[]): boolean {
+  return cells.some((h) => normHeader(h) in HEADER_MAP);
+}
+
+// Normalise a free-text type/category cell → { kind, category }.
+function parseTypeCell(raw: string): { kind: string; category: string } {
+  const v = raw.trim().toLowerCase();
+  if (!v || ['drug', 'medicine', 'med', 'medicines', 'rx'].includes(v)) return { kind: 'drug', category: '' };
+  if (v.startsWith('consum')) return { kind: 'item', category: 'consumable' };
+  if (v.startsWith('surg')) return { kind: 'item', category: 'surgical_supply' };
+  if (v.startsWith('equip')) return { kind: 'item', category: 'equipment' };
+  return { kind: 'item', category: 'other' };
+}
+
+// Build draft lines from a raw grid + an explicit column→field mapping.
+function buildLinesFromRows(
+  rows: string[][],
+  mapping: (keyof DraftLine | 'ignore')[],
+  hasHeader: boolean,
+): DraftLine[] {
+  const dataRows = hasHeader ? rows.slice(1) : rows;
+  const out: DraftLine[] = [];
+  for (const cells of dataRows) {
+    if (!cells.some((c) => c && c.trim())) continue;
+    const line = emptyLine();
+    cells.forEach((cell, i) => {
+      const field = mapping[i];
+      if (!field || field === 'ignore' || !cell) return;
+      if (field === 'category') {
+        const t = parseTypeCell(cell);
+        line.kind = t.kind;
+        line.category = t.category;
+      } else if (field === 'expiryDate' || field === 'manufacturingDate') {
+        line[field] = parseExpiry(cell);
+      } else {
+        line[field] = cell;
+      }
+    });
+    if (line.drugName.trim()) out.push(line);
+  }
+  return out;
+}
+
 const num = (s: string): number | undefined => {
   const n = parseFloat(s);
   return s.trim() !== '' && !isNaN(n) ? n : undefined;
@@ -282,7 +370,10 @@ export function BulkInwardDialog({
   const [defaultStorage, setDefaultStorage] = useState('');
 
   const fileRef = useRef<HTMLInputElement>(null);
+  const xlsxRef = useRef<HTMLInputElement>(null);
   const ocrRef = useRef<HTMLInputElement>(null);
+  // Raw grid awaiting column mapping (from a CSV or Excel upload).
+  const [mapRows, setMapRows] = useState<string[][] | null>(null);
   const { data: suppliersData } = useSuppliers({ limit: 100 });
   const suppliers = suppliersData?.data ?? [];
   const matchInward = useMatchInward();
@@ -334,13 +425,52 @@ export function BulkInwardDialog({
     toast.success(`Loaded ${parsed.length} line${parsed.length === 1 ? '' : 's'}`);
   };
 
+  // CSV upload → raw grid → column-mapping step (so any distributor layout maps).
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => ingest(String(reader.result ?? ''));
+    reader.onload = () => {
+      const rows = rowsFromText(String(reader.result ?? ''));
+      if (!rows.length) {
+        toast.error('No rows found in the file.');
+        return;
+      }
+      setMapRows(rows);
+    };
     reader.readAsText(file);
+  };
+
+  // Excel (.xlsx/.xls) upload → first sheet → raw grid → column-mapping step.
+  const onXlsxFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     e.target.value = '';
+    if (!file) return;
+    try {
+      const rows = await rowsFromXlsx(file);
+      if (!rows.length) {
+        toast.error('No rows found in the spreadsheet.');
+        return;
+      }
+      setMapRows(rows);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not read the spreadsheet');
+    }
+  };
+
+  // Confirmed column mapping → append the built draft lines to the grid.
+  const applyMappedLines = (drafts: DraftLine[]) => {
+    if (!drafts.length) {
+      toast.error('No usable rows — check the column mapping (Name is required).');
+      return;
+    }
+    setLines((prev) => {
+      const existing = prev.filter((l) => l.drugName.trim());
+      return [...existing, ...drafts];
+    });
+    setMapRows(null);
+    toast.success(`Loaded ${drafts.length} line${drafts.length === 1 ? '' : 's'}`);
   };
 
   const s = (v: number | null | undefined) => (v === null || v === undefined ? '' : String(v));
@@ -606,6 +736,10 @@ export function BulkInwardDialog({
   const selectedSupplier = suppliers.find((s) => s.id === supplierId);
 
   return (
+    <>
+    {mapRows && (
+      <ColumnMappingDialog rows={mapRows} onClose={() => setMapRows(null)} onConfirm={applyMappedLines} />
+    )}
     <Dialog open={open} onOpenChange={(o) => (o ? onOpenChange(true) : close())}>
       <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
@@ -675,6 +809,8 @@ export function BulkInwardDialog({
               ingest={ingest}
               fileRef={fileRef}
               onFile={onFile}
+              xlsxRef={xlsxRef}
+              onXlsxFile={onXlsxFile}
               ocrRef={ocrRef}
               onOcrFile={onOcrFile}
               ocrPending={ocrInward.isPending}
@@ -735,6 +871,7 @@ export function BulkInwardDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    </>
   );
 }
 
@@ -766,6 +903,8 @@ function EntryStep(props: {
   ingest: (text: string) => void;
   fileRef: React.RefObject<HTMLInputElement | null>;
   onFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  xlsxRef: React.RefObject<HTMLInputElement | null>;
+  onXlsxFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
   ocrRef: React.RefObject<HTMLInputElement | null>;
   onOcrFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
   ocrPending: boolean;
@@ -777,7 +916,8 @@ function EntryStep(props: {
     invoiceDate, setInvoiceDate, invoiceDiscPct, setInvoiceDiscPct, invoiceDiscAmt, setInvoiceDiscAmt,
     defaultStorage, setDefaultStorage,
     purchaseTotals, lines, updateLine, addLine, removeLine, showPaste, setShowPaste,
-    pasteText, setPasteText, ingest, fileRef, onFile, ocrRef, onOcrFile, ocrPending, onScan, scanPending,
+    pasteText, setPasteText, ingest, fileRef, onFile, xlsxRef, onXlsxFile,
+    ocrRef, onOcrFile, ocrPending, onScan, scanPending,
   } = props;
   const [scanValue, setScanValue] = useState('');
   const money = (n: number) => `₹${n.toFixed(2)}`;
@@ -912,6 +1052,16 @@ function EntryStep(props: {
           <Upload className="mr-1.5 h-4 w-4" /> Upload CSV
         </Button>
         <input ref={fileRef} type="file" accept=".csv,.txt,text/csv" className="hidden" onChange={onFile} />
+        <Button size="sm" variant="outline" onClick={() => xlsxRef.current?.click()}>
+          <Upload className="mr-1.5 h-4 w-4" /> Upload Excel
+        </Button>
+        <input
+          ref={xlsxRef}
+          type="file"
+          accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+          className="hidden"
+          onChange={onXlsxFile}
+        />
         <Button size="sm" variant="outline" onClick={() => setShowPaste(!showPaste)}>
           <ClipboardPaste className="mr-1.5 h-4 w-4" /> Paste rows
         </Button>
@@ -1242,5 +1392,111 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: 'pr
         tone === 'red' && 'text-red-700',
       )}>{value}</p>
     </div>
+  );
+}
+
+// ── Column mapping — map an uploaded CSV/Excel sheet's columns to inward fields,
+// preview the result, then add the lines. Handles any distributor layout. ──────
+function ColumnMappingDialog({
+  rows,
+  onClose,
+  onConfirm,
+}: {
+  rows: string[][];
+  onClose: () => void;
+  onConfirm: (lines: DraftLine[]) => void;
+}) {
+  const colCount = Math.max(0, ...rows.map((r) => r.length));
+  const [hasHeader, setHasHeader] = useState(() => looksLikeHeader(rows[0] ?? []));
+  const [mapping, setMapping] = useState<(keyof DraftLine | 'ignore')[]>(() => {
+    const base = looksLikeHeader(rows[0] ?? [])
+      ? guessMapping(rows[0] ?? [])
+      : (DEFAULT_ORDER as (keyof DraftLine | 'ignore')[]);
+    return Array.from({ length: colCount }, (_, i) => base[i] ?? 'ignore');
+  });
+
+  const setCol = (i: number, v: keyof DraftLine | 'ignore') =>
+    setMapping((prev) => prev.map((m, idx) => (idx === i ? v : m)));
+
+  const headerRow = rows[0] ?? [];
+  const previewData = (hasHeader ? rows.slice(1) : rows).slice(0, 5);
+  const built = useMemo(() => buildLinesFromRows(rows, mapping, hasHeader), [rows, mapping, hasHeader]);
+  const hasName = mapping.includes('drugName');
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-4xl max-h-[88vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Map columns</DialogTitle>
+          <DialogDescription>
+            Match each column to a field — we auto-detected what we could. Adjust anything that looks off, then add the rows. Use “Type / Category” to mark a column that says whether a row is a medicine or another supply.
+          </DialogDescription>
+        </DialogHeader>
+
+        <label className="flex w-fit cursor-pointer items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            className="h-3.5 w-3.5 accent-primary"
+            checked={hasHeader}
+            onChange={(e) => setHasHeader(e.target.checked)}
+          />
+          First row is a header
+        </label>
+
+        <div className="flex-1 overflow-auto rounded-lg border">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-muted/70">
+              <tr className="[&>th]:px-2 [&>th]:py-2 [&>th]:text-left [&>th]:align-top">
+                {Array.from({ length: colCount }).map((_, i) => (
+                  <th key={i} className="min-w-[150px]">
+                    <Select
+                      value={mapping[i] ?? 'ignore'}
+                      onValueChange={(v) => setCol(i, (v ?? 'ignore') as keyof DraftLine | 'ignore')}
+                    >
+                      <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {MAP_FIELDS.map((f) => (
+                          <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {hasHeader && headerRow[i] && (
+                      <div className="mt-1 truncate text-[10px] font-normal text-muted-foreground" title={headerRow[i]}>
+                        {headerRow[i]}
+                      </div>
+                    )}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {previewData.map((r, ri) => (
+                <tr key={ri} className="border-t [&>td]:px-2 [&>td]:py-1">
+                  {Array.from({ length: colCount }).map((_, ci) => (
+                    <td
+                      key={ci}
+                      className={cn('max-w-[170px] truncate', mapping[ci] === 'ignore' && 'text-muted-foreground/40')}
+                    >
+                      {r[ci] ?? ''}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <DialogFooter className="items-center gap-2">
+          <span className="mr-auto text-xs text-muted-foreground">
+            {built.length} line{built.length === 1 ? '' : 's'} ready
+            {!hasName && ' · map a “Name” column to continue'}
+          </span>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => onConfirm(built)} disabled={!hasName || built.length === 0}>
+            <Plus className="mr-1.5 h-4 w-4" /> Add {built.length} line{built.length === 1 ? '' : 's'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
