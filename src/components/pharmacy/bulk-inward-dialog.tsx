@@ -15,7 +15,6 @@ import {
   CircleCheck,
   CircleX,
   Camera,
-  ScanLine,
   AlertTriangle,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -54,6 +53,7 @@ import {
 } from '@/hooks/use-pharmacy';
 import { useSuppliers } from '@/hooks/use-inventory';
 import { VendorFormDialog } from '@/components/inventory/vendor-form-dialog';
+import { BarcodeScanner } from '@/components/shared/barcode-scanner';
 
 // ============================================================
 // G1 — Bulk Stock Inward (CSV / OCR / manual multi-row)
@@ -979,9 +979,8 @@ function EntryStep(props: {
     defaultStorage, setDefaultStorage,
     purchaseTotals, lines, updateLine, addLine, removeLine, showPaste, setShowPaste,
     pasteText, setPasteText, ingest, fileRef, onFile, xlsxRef, onXlsxFile,
-    ocrRef, onOcrFile, ocrPending, onScan, scanPending, lineIssues,
+    ocrRef, onOcrFile, ocrPending, onScan, lineIssues,
   } = props;
-  const [scanValue, setScanValue] = useState('');
   const money = (n: number) => `₹${n.toFixed(2)}`;
 
   const cell = 'h-8 text-xs';
@@ -1127,24 +1126,10 @@ function EntryStep(props: {
         <Button size="sm" variant="outline" onClick={() => setShowPaste(!showPaste)}>
           <ClipboardPaste className="mr-1.5 h-4 w-4" /> Paste rows
         </Button>
-        {/* Barcode / GS1 scan → fills a line (drug + batch + expiry) with one scan. */}
-        <div className="relative flex items-center">
-          <ScanLine className="pointer-events-none absolute left-2 h-4 w-4 text-muted-foreground" />
-          <Input
-            className="h-8 w-52 pl-8 text-xs"
-            value={scanValue}
-            onChange={(e) => setScanValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                onScan(scanValue);
-                setScanValue('');
-              }
-            }}
-            placeholder="Scan barcode / GS1…"
-            disabled={scanPending}
-          />
-          {scanPending && <Loader2 className="absolute right-2 h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+        {/* Barcode / GS1 scan (USB scanner or phone camera) → fills a line with the
+            resolved drug + batch + expiry in one scan. Keep scanning to add more. */}
+        <div className="w-60">
+          <BarcodeScanner onScan={onScan} placeholder="Scan barcode / GS1…" />
         </div>
       </div>
       <p className="-mt-2 text-[11px] text-muted-foreground">
