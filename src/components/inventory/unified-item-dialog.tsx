@@ -11,7 +11,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
 import { BarcodeScanner } from '@/components/shared/barcode-scanner';
 import {
@@ -34,14 +34,16 @@ const CATEGORY_OPTIONS: { value: InventoryCategory; label: string }[] = [
 
 const DOSAGE_FORMS = ['tablet', 'capsule', 'syrup', 'injection', 'cream', 'drops', 'inhaler', 'other'];
 
-export function UnifiedItemDialog({
+// The New Item form body (no dialog chrome) — usable on a page or inside a dialog.
+// After a successful create it resets so the next item can be added straight away.
+export function UnifiedItemForm({
   defaultCategory = 'drug',
-  onClose,
   onCreated,
+  onCancel,
 }: {
   defaultCategory?: InventoryCategory;
-  onClose: () => void;
   onCreated?: (kind: 'drug' | 'item', refId?: string) => void;
+  onCancel?: () => void;
 }) {
   const [category, setCategory] = useState<InventoryCategory>(defaultCategory);
   const isMedicine = category === 'drug';
@@ -70,6 +72,25 @@ export function UnifiedItemDialog({
   const intNum = (v: string) => {
     const n = parseInt(v, 10);
     return v.trim() !== '' && !isNaN(n) ? n : undefined;
+  };
+
+  const reset = () => {
+    setCategory(defaultCategory);
+    setName('');
+    setGenericName('');
+    setManufacturer('');
+    setStrength('');
+    setDosageForm('');
+    setPackSize('');
+    setUnit('');
+    setBarcode('');
+    setHsnCode('');
+    setReorder('');
+    setPurchasePrice('');
+    setSellingPrice('');
+    setGst('');
+    setInitialStock('0');
+    setDescription('');
   };
 
   // 1D (GTIN/EAN) or 2D (GS1 DataMatrix) scan → resolve the product and auto-fill.
@@ -160,15 +181,161 @@ export function UnifiedItemDialog({
       }
       toast.success(isMedicine ? 'Medicine added to storage' : 'Item added to storage');
       onCreated?.(isMedicine ? 'drug' : 'item', result.item?.id as string | undefined);
-      onClose();
+      reset();
     } catch (err) {
       toast.error((err as Error).message ?? 'Failed to add to storage');
     }
   };
 
   return (
+    <div className="space-y-3">
+      {/* One scanner for both 1D barcodes and 2D DataMatrix. Switch between a
+          USB/handheld scanner (default) and the phone/laptop/USB camera. */}
+      <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+        <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+          <ScanLine className="h-4 w-4" /> Scan to auto-fill (optional) — reads 1D barcodes &amp; 2D DataMatrix
+          {scan.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+        </div>
+        <BarcodeScanner
+          onScan={handleScan}
+          withModeSwitch
+          defaultMode="scanner"
+          placeholder="Scan or type a barcode / DataMatrix…"
+        />
+      </div>
+
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label className="text-xs">Name *</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={isMedicine ? 'e.g. Paracetamol 500' : 'e.g. Surgical gloves'} />
+          </div>
+          <div>
+            <Label className="text-xs">Category *</Label>
+            <Select value={category} onValueChange={(v) => setCategory(v as InventoryCategory)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {CATEGORY_OPTIONS.map((c) => (
+                  <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label className="text-xs">Generic / composition</Label>
+            <Input value={genericName} onChange={(e) => setGenericName(e.target.value)} placeholder={isMedicine ? 'e.g. Acetaminophen' : 'optional'} />
+          </div>
+          <div>
+            <Label className="text-xs">Manufacturer / brand</Label>
+            <Input value={manufacturer} onChange={(e) => setManufacturer(e.target.value)} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <Label className="text-xs">Strength</Label>
+            <Input value={strength} onChange={(e) => setStrength(e.target.value)} placeholder="500 mg" />
+          </div>
+          <div>
+            <Label className="text-xs">Dosage form</Label>
+            <Select value={dosageForm} onValueChange={(v) => setDosageForm(v ?? '')}>
+              <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+              <SelectContent>
+                {DOSAGE_FORMS.map((d) => (
+                  <SelectItem key={d} value={d} className="capitalize">{d}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Pack size (units/pack)</Label>
+            <Input type="number" min={1} value={packSize} onChange={(e) => setPackSize(e.target.value)} placeholder="e.g. 10" />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <Label className="text-xs">Unit (tablet, box, ml…)</Label>
+            <Input value={unit} onChange={(e) => setUnit(e.target.value)} />
+          </div>
+          <div>
+            <Label className="text-xs">Barcode / GTIN / code</Label>
+            <Input value={barcode} onChange={(e) => setBarcode(e.target.value)} className="font-mono" />
+          </div>
+          <div>
+            <Label className="text-xs">HSN code</Label>
+            <Input value={hsnCode} onChange={(e) => setHsnCode(e.target.value)} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <Label className="text-xs">Reorder level</Label>
+            <Input type="number" min={0} value={reorder} onChange={(e) => setReorder(e.target.value)} placeholder="10" />
+          </div>
+          <div>
+            <Label className="text-xs">Purchase price (₹)</Label>
+            <Input type="number" min={0} step="0.01" value={purchasePrice} onChange={(e) => setPurchasePrice(e.target.value)} />
+          </div>
+          <div>
+            <Label className="text-xs">Selling price / MRP (₹)</Label>
+            <Input type="number" min={0} step="0.01" value={sellingPrice} onChange={(e) => setSellingPrice(e.target.value)} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <Label className="text-xs">GST %</Label>
+            <Input type="number" min={0} step="0.01" value={gst} onChange={(e) => setGst(e.target.value)} placeholder="12" />
+          </div>
+          {!isMedicine && (
+            <div>
+              <Label className="text-xs">Initial stock</Label>
+              <Input type="number" min={0} value={initialStock} onChange={(e) => setInitialStock(e.target.value)} />
+            </div>
+          )}
+        </div>
+
+        <div>
+          <Label className="text-xs">Description / notes</Label>
+          <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
+        </div>
+
+        <p className="text-[11px] text-muted-foreground">
+          {isMedicine
+            ? 'After adding the medicine, open its row to receive a batch (quantity, expiry, MRP…). For receiving many at once, use Bulk Stock Inward.'
+            : 'Stock for this item is tracked by count — use “Stock In” on its row to receive more.'}
+        </p>
+      </div>
+
+      <div className="flex justify-end gap-2 pt-1">
+        {onCancel && (
+          <Button variant="outline" onClick={onCancel}>Cancel</Button>
+        )}
+        <Button onClick={() => submit()} disabled={create.isPending}>
+          {create.isPending ? 'Adding…' : isMedicine ? 'Add Medicine' : 'Add Item'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// Dialog wrapper around the form (kept for any popup callers).
+export function UnifiedItemDialog({
+  defaultCategory = 'drug',
+  onClose,
+  onCreated,
+}: {
+  defaultCategory?: InventoryCategory;
+  onClose: () => void;
+  onCreated?: (kind: 'drug' | 'item', refId?: string) => void;
+}) {
+  return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[88vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>New Item</DialogTitle>
           <DialogDescription>
@@ -176,135 +343,14 @@ export function UnifiedItemDialog({
             batch &amp; expiry tracked; everything else is tracked by stock count. Same form for both.
           </DialogDescription>
         </DialogHeader>
-
-        {/* One scanner for both 1D barcodes and 2D DataMatrix. Switch between a
-            USB/handheld scanner (default) and the phone/laptop/USB camera. */}
-        <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
-          <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-            <ScanLine className="h-4 w-4" /> Scan to auto-fill (optional) — reads 1D barcodes &amp; 2D DataMatrix
-            {scan.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-          </div>
-          <BarcodeScanner
-            onScan={handleScan}
-            withModeSwitch
-            defaultMode="scanner"
-            placeholder="Scan or type a barcode / DataMatrix…"
-          />
-        </div>
-
-        <div className="max-h-[55vh] space-y-3 overflow-y-auto pr-1">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs">Name *</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={isMedicine ? 'e.g. Paracetamol 500' : 'e.g. Surgical gloves'} />
-            </div>
-            <div>
-              <Label className="text-xs">Category *</Label>
-              <Select value={category} onValueChange={(v) => setCategory(v as InventoryCategory)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {CATEGORY_OPTIONS.map((c) => (
-                    <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs">Generic / composition</Label>
-              <Input value={genericName} onChange={(e) => setGenericName(e.target.value)} placeholder={isMedicine ? 'e.g. Acetaminophen' : 'optional'} />
-            </div>
-            <div>
-              <Label className="text-xs">Manufacturer / brand</Label>
-              <Input value={manufacturer} onChange={(e) => setManufacturer(e.target.value)} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <Label className="text-xs">Strength</Label>
-              <Input value={strength} onChange={(e) => setStrength(e.target.value)} placeholder="500 mg" />
-            </div>
-            <div>
-              <Label className="text-xs">Dosage form</Label>
-              <Select value={dosageForm} onValueChange={(v) => setDosageForm(v ?? '')}>
-                <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>
-                  {DOSAGE_FORMS.map((d) => (
-                    <SelectItem key={d} value={d} className="capitalize">{d}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs">Pack size (units/pack)</Label>
-              <Input type="number" min={1} value={packSize} onChange={(e) => setPackSize(e.target.value)} placeholder="e.g. 10" />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <Label className="text-xs">Unit (tablet, box, ml…)</Label>
-              <Input value={unit} onChange={(e) => setUnit(e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs">Barcode / GTIN / code</Label>
-              <Input value={barcode} onChange={(e) => setBarcode(e.target.value)} className="font-mono" />
-            </div>
-            <div>
-              <Label className="text-xs">HSN code</Label>
-              <Input value={hsnCode} onChange={(e) => setHsnCode(e.target.value)} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <Label className="text-xs">Reorder level</Label>
-              <Input type="number" min={0} value={reorder} onChange={(e) => setReorder(e.target.value)} placeholder="10" />
-            </div>
-            <div>
-              <Label className="text-xs">Purchase price (₹)</Label>
-              <Input type="number" min={0} step="0.01" value={purchasePrice} onChange={(e) => setPurchasePrice(e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs">Selling price / MRP (₹)</Label>
-              <Input type="number" min={0} step="0.01" value={sellingPrice} onChange={(e) => setSellingPrice(e.target.value)} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <Label className="text-xs">GST %</Label>
-              <Input type="number" min={0} step="0.01" value={gst} onChange={(e) => setGst(e.target.value)} placeholder="12" />
-            </div>
-            {!isMedicine && (
-              <div>
-                <Label className="text-xs">Initial stock</Label>
-                <Input type="number" min={0} value={initialStock} onChange={(e) => setInitialStock(e.target.value)} />
-              </div>
-            )}
-          </div>
-
-          <div>
-            <Label className="text-xs">Description / notes</Label>
-            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
-          </div>
-
-          <p className="text-[11px] text-muted-foreground">
-            {isMedicine
-              ? 'After adding the medicine, open its row to receive a batch (quantity, expiry, MRP…).'
-              : 'Stock for this item is tracked by count — use “Stock In” on its row to receive more.'}
-          </p>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={() => submit()} disabled={create.isPending}>
-            {create.isPending ? 'Adding…' : isMedicine ? 'Add Medicine' : 'Add Item'}
-          </Button>
-        </DialogFooter>
+        <UnifiedItemForm
+          defaultCategory={defaultCategory}
+          onCancel={onClose}
+          onCreated={(kind, refId) => {
+            onCreated?.(kind, refId);
+            onClose();
+          }}
+        />
       </DialogContent>
     </Dialog>
   );

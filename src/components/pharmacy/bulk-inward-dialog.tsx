@@ -399,13 +399,9 @@ function recBadge(line: Pick<InwardMatchedLine, 'recommendation' | 'resolvedVia'
   return <Badge className="bg-emerald-500/10 text-emerald-700 border-emerald-500/20">New</Badge>;
 }
 
-export function BulkInwardDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
+// The full Bulk Stock Inward wizard body (no dialog chrome) — usable on a page or
+// inside a dialog. `onClose` is called by Cancel / Done to leave the flow.
+export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState<Step>('entry');
   const [supplierId, setSupplierId] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
@@ -454,11 +450,7 @@ export function BulkInwardDialog({
     setResult(null);
   };
 
-  const close = () => {
-    onOpenChange(false);
-    // Defer reset so the closing animation doesn't flash the entry step.
-    setTimeout(reset, 200);
-  };
+  const close = () => onClose();
 
   const updateLine = (id: string, field: keyof DraftLine, value: string) =>
     setLines((prev) => prev.map((l) => (l.id === id ? { ...l, [field]: value } : l)));
@@ -791,27 +783,20 @@ export function BulkInwardDialog({
   const selectedSupplier = suppliers.find((s) => s.id === supplierId);
 
   return (
-    <>
-    {mapRows && (
-      <ColumnMappingDialog rows={mapRows} onClose={() => setMapRows(null)} onConfirm={applyMappedLines} />
-    )}
-    <Dialog open={open} onOpenChange={(o) => (o ? onOpenChange(true) : close())}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <PackageCheck className="h-5 w-5 text-primary" />
-            Bulk Stock Inward
-          </DialogTitle>
-          <DialogDescription>
-            {step === 'entry' &&
-              'Key in, paste, or upload a distributor invoice. Each line is checked for an existing match before stock is posted — so the count never splits across near-duplicate names.'}
-            {step === 'review' &&
-              'Review each line. Map to an existing drug to keep stock together, or create a new one. Compare incoming vs. existing side by side.'}
-            {step === 'done' && 'Inward posted. Here is what happened to each line.'}
-          </DialogDescription>
-        </DialogHeader>
+    <div className="flex flex-col gap-3">
+      {mapRows && (
+        <ColumnMappingDialog rows={mapRows} onClose={() => setMapRows(null)} onConfirm={applyMappedLines} />
+      )}
 
-        {/* Step indicator */}
+      <p className="text-sm text-muted-foreground">
+        {step === 'entry' &&
+          'Key in, paste, or upload (CSV / Excel) a distributor invoice — medicines and other supplies alike. Each line is checked for an existing match before stock is posted, so the count never splits across near-duplicate names.'}
+        {step === 'review' &&
+          'Review each line. Map to an existing record to keep stock together, or create a new one. Compare incoming vs. existing side by side.'}
+        {step === 'done' && 'Inward posted. Here is what happened to each line.'}
+      </p>
+
+      {/* Step indicator */}
         <div className="flex items-center gap-2 text-xs">
           {(['entry', 'review', 'done'] as Step[]).map((s, i) => (
             <div key={s} className="flex items-center gap-2">
@@ -835,7 +820,7 @@ export function BulkInwardDialog({
           ))}
         </div>
 
-        <div className="flex-1 overflow-y-auto pr-1">
+        <div>
           {step === 'entry' && (
             <EntryStep
               suppliers={suppliers}
@@ -882,7 +867,7 @@ export function BulkInwardDialog({
           {step === 'done' && result && <DoneStep lines={lines} result={result} />}
         </div>
 
-        <DialogFooter className="gap-2">
+        <div className="flex items-center justify-end gap-2 border-t pt-3">
           {step === 'entry' && (
             <>
               {blockingErrors > 0 && (
@@ -927,12 +912,37 @@ export function BulkInwardDialog({
             </>
           )}
           {step === 'done' && (
-            <Button onClick={close}>Done</Button>
+            <>
+              <Button variant="outline" onClick={reset}>Receive more</Button>
+              <Button onClick={close}>Done</Button>
+            </>
           )}
-        </DialogFooter>
+        </div>
+    </div>
+  );
+}
+
+// Dialog wrapper around the bulk-inward wizard (kept for any popup callers).
+export function BulkInwardDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <PackageCheck className="h-5 w-5 text-primary" /> Bulk Stock Inward
+          </DialogTitle>
+        </DialogHeader>
+        <div className="flex-1 overflow-y-auto pr-1">
+          {open && <BulkInwardPanel onClose={() => onOpenChange(false)} />}
+        </div>
       </DialogContent>
     </Dialog>
-    </>
   );
 }
 

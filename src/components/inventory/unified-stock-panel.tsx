@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Boxes, Search, Plus, Pill, Edit2, PackagePlus, ChevronDown, ChevronRight,
   ChevronLeft, AlertTriangle, MoreHorizontal, ClipboardCheck, ClipboardList,
@@ -29,10 +30,8 @@ import {
 } from '@/hooks/use-inventory';
 import { useRunPharmacyExpiryAlerts } from '@/hooks/use-pharmacy';
 import { InventoryStockOverview } from './inventory-stock-overview';
-import { UnifiedItemDialog } from './unified-item-dialog';
 import { DrugBatchesPanel, RecallDrugDialog } from './drug-batches-panel';
 import { ItemDialog, StockInDialog } from './stock-register-panel';
-import { BulkInwardDialog } from '@/components/pharmacy/bulk-inward-dialog';
 import { StockTakeDialog } from '@/components/pharmacy/stock-take-dialog';
 import { StockAdjustmentsLogDialog } from '@/components/pharmacy/stock-adjust-dialogs';
 
@@ -56,15 +55,14 @@ export function UnifiedStockPanel() {
   const [page, setPage] = useState(1);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // Dialog state
-  const [newItemOpen, setNewItemOpen] = useState(false);
+  // Dialog state (New Item + Bulk Stock Inward now live on /inventory/add).
   const [stockInItem, setStockInItem] = useState<InventoryItem | null>(null);
   const [editItemId, setEditItemId] = useState<string | null>(null);
-  const [bulkInwardOpen, setBulkInwardOpen] = useState(false);
   const [stockTakeOpen, setStockTakeOpen] = useState(false);
   const [adjustLogOpen, setAdjustLogOpen] = useState(false);
   const [drugRecallOpen, setDrugRecallOpen] = useState(false);
 
+  const router = useRouter();
   const runExpiry = useRunPharmacyExpiryAlerts();
 
   useEffect(() => {
@@ -118,7 +116,7 @@ export function UnifiedStockPanel() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => setBulkInwardOpen(true)}>
+          <Button size="sm" variant="outline" onClick={() => router.push('/inventory/add?tab=bulk')}>
             <Boxes className="mr-1.5 h-4 w-4" /> Bulk Stock In
           </Button>
           <DropdownMenu>
@@ -140,7 +138,7 @@ export function UnifiedStockPanel() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button size="sm" onClick={() => setNewItemOpen(true)}>
+          <Button size="sm" onClick={() => router.push('/inventory/add')}>
             <Plus className="mr-1.5 h-4 w-4" /> New Item
           </Button>
         </div>
@@ -196,7 +194,7 @@ export function UnifiedStockPanel() {
               ? 'Try clearing the filters.'
               : 'Add your first medicine or supply to start tracking stock.'}
             action={
-              <Button size="sm" onClick={() => setNewItemOpen(true)}>
+              <Button size="sm" onClick={() => router.push('/inventory/add')}>
                 <Plus className="mr-1.5 h-4 w-4" /> New Item
               </Button>
             }
@@ -261,19 +259,10 @@ export function UnifiedStockPanel() {
         )}
       </div>
 
-      {/* Dialogs */}
-      <BulkInwardDialog open={bulkInwardOpen} onOpenChange={setBulkInwardOpen} />
+      {/* Dialogs (New Item + Bulk Stock Inward moved to /inventory/add) */}
       <StockTakeDialog open={stockTakeOpen} onOpenChange={setStockTakeOpen} />
       <StockAdjustmentsLogDialog open={adjustLogOpen} onOpenChange={setAdjustLogOpen} />
       {drugRecallOpen && <RecallDrugDialog onClose={() => setDrugRecallOpen(false)} />}
-      {newItemOpen && (
-        <UnifiedItemDialog
-          onClose={() => setNewItemOpen(false)}
-          onCreated={(kind, refId) => {
-            if (kind === 'drug' && refId) setExpandedId(`drug-${refId}`);
-          }}
-        />
-      )}
       {stockInItem && (
         <StockInDialog initialItem={stockInItem} onClose={() => setStockInItem(null)} />
       )}
