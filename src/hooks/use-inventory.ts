@@ -292,6 +292,8 @@ export function useCreateItem() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: inventoryKeys.items.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
     },
   });
 }
@@ -305,6 +307,8 @@ export function useUpdateItem() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: inventoryKeys.items.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
     },
   });
 }
@@ -317,6 +321,8 @@ export function useDeleteItem() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: inventoryKeys.items.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
     },
   });
 }
@@ -330,6 +336,8 @@ export function useFlagExpired() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: inventoryKeys.items.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
       queryClient.invalidateQueries({ queryKey: inventoryKeys.transactions.all });
     },
   });
@@ -380,6 +388,8 @@ export function useCreateStockTransaction() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: inventoryKeys.transactions.all });
       queryClient.invalidateQueries({ queryKey: inventoryKeys.items.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
     },
   });
 }
@@ -488,6 +498,8 @@ export function useReceivePurchaseOrder() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: inventoryKeys.purchaseOrders.all });
       queryClient.invalidateQueries({ queryKey: inventoryKeys.items.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
       queryClient.invalidateQueries({ queryKey: inventoryKeys.transactions.all });
     },
   });
@@ -663,6 +675,8 @@ export function useFulfillSupplyRequest() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: inventoryKeys.supplyRequests.all });
       queryClient.invalidateQueries({ queryKey: inventoryKeys.items.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
       queryClient.invalidateQueries({ queryKey: inventoryKeys.transactions.all });
     },
   });
@@ -1024,6 +1038,8 @@ export function useDispatchStockTransfer() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: inventoryKeys.transfers.all });
       queryClient.invalidateQueries({ queryKey: inventoryKeys.items.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
     },
   });
 }
@@ -1038,6 +1054,8 @@ export function useReceiveStockTransfer() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: inventoryKeys.transfers.all });
       queryClient.invalidateQueries({ queryKey: inventoryKeys.items.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
     },
   });
 }
@@ -1117,6 +1135,8 @@ export function useUpdateInventorySettings() {
       queryClient.invalidateQueries({ queryKey: inventoryKeys.settings });
       // New default threshold affects item creation; refresh item views too.
       queryClient.invalidateQueries({ queryKey: inventoryKeys.items.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
     },
   });
 }
@@ -1250,6 +1270,8 @@ export function useCreateUnifiedStock() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
       queryClient.invalidateQueries({ queryKey: inventoryKeys.items.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
       queryClient.invalidateQueries({ queryKey: inventoryKeys.stockOverview });
     },
   });
@@ -1265,6 +1287,8 @@ export function useRunInventoryAlerts() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: inventoryKeys.settings });
       queryClient.invalidateQueries({ queryKey: inventoryKeys.items.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
       queryClient.invalidateQueries({ queryKey: inventoryKeys.transactions.all });
     },
   });

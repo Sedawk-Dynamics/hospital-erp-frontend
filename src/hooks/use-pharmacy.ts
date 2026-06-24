@@ -388,6 +388,8 @@ export function useMergeFormulary() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
     },
   });
 }
@@ -687,6 +689,8 @@ export function useCommitInward() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
     },
   });
@@ -884,6 +888,8 @@ export function useCreateBatch() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
     },
   });
@@ -916,6 +922,8 @@ export function useUpdateBatch() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
       // A stock / expiry edit changes the formulary's derived in-stock view.
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
     },
@@ -945,6 +953,8 @@ export function useAdjustBatchStock() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
       queryClient.invalidateQueries({ queryKey: ['pharmacy', 'stock-adjustments'] });
     },
@@ -1015,6 +1025,8 @@ export function useReconcileStockTake() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
       queryClient.invalidateQueries({ queryKey: ['pharmacy', 'stock-adjustments'] });
     },
@@ -1032,6 +1044,8 @@ export function useFlagExpiredBatches() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
     },
   });
@@ -1051,6 +1065,8 @@ export function useRunPharmacyExpiryAlerts() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
     },
   });
@@ -1113,6 +1129,8 @@ export function useCreateDispense() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.dispensing.all });
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
       queryClient.invalidateQueries({ queryKey: ['prescriptions'] });
     },
   });
@@ -1227,6 +1245,8 @@ export function useCreatePharmacySale() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.dispensing.all });
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
       queryClient.invalidateQueries({ queryKey: ['prescriptions'] });
     },
   });
@@ -1302,6 +1322,8 @@ export function useCancelPharmacySale() {
       queryClient.invalidateQueries({ queryKey: ['pharmacy', 'sales'] });
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.dispensing.all });
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
       queryClient.invalidateQueries({ queryKey: ['prescriptions'] });
     },
   });
@@ -1352,6 +1374,8 @@ export function useCreateReturn() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.returns.all });
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
       queryClient.invalidateQueries({ queryKey: ['pharmacy', 'returnable'] });
     },
   });
@@ -1444,6 +1468,8 @@ export function usePrePackHold() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pharmacy', 'holds'] });
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
     },
   });
 }
@@ -1456,6 +1482,8 @@ export function useCollectHold() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pharmacy', 'holds'] });
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
     },
   });
 }
@@ -1467,6 +1495,8 @@ export function useReleaseHold() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pharmacy', 'holds'] });
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
     },
   });
 }
@@ -1481,6 +1511,8 @@ export function useProcessReturn() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.returns.all });
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
     },
   });
 }
@@ -1715,6 +1747,8 @@ export function useTransferToWard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pharmacy', 'ward-stock'] });
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
     },
   });
 }
@@ -1752,6 +1786,8 @@ export function useReturnWardStock() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pharmacy', 'ward-stock'] });
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
     },
   });
 }
@@ -2124,6 +2160,8 @@ export function useRecallBatch() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pharmacy', 'recalls'] });
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
     },
   });
 }
@@ -2138,6 +2176,8 @@ export function useUnrecallBatch() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pharmacy', 'recalls'] });
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
     },
   });
 }
@@ -2153,6 +2193,8 @@ export function useRecallDrug() {
       queryClient.invalidateQueries({ queryKey: ['pharmacy', 'recalls'] });
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
     },
   });
 }
