@@ -177,22 +177,19 @@ export function UnifiedItemDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {/* 1D + 2D barcode scan — auto-fills the form (USB scanner or phone camera). */}
-        <div className="space-y-2.5 rounded-lg border bg-muted/20 p-3">
+        {/* One scanner for both 1D barcodes and 2D DataMatrix. Switch between a
+            USB/handheld scanner (default) and the phone/laptop/USB camera. */}
+        <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
           <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-            <ScanLine className="h-4 w-4" /> Scan to auto-fill (optional)
+            <ScanLine className="h-4 w-4" /> Scan to auto-fill (optional) — reads 1D barcodes &amp; 2D DataMatrix
             {scan.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
           </div>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <div className="space-y-1">
-              <Label className="text-[11px]">1) Product barcode (1D — EAN / GTIN)</Label>
-              <BarcodeScanner onScan={handleScan} placeholder="Scan or type the product barcode…" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-[11px]">2) DataMatrix (2D — GS1 batch/expiry)</Label>
-              <BarcodeScanner onScan={handleScan} placeholder="Scan or type the 2D DataMatrix…" />
-            </div>
-          </div>
+          <BarcodeScanner
+            onScan={handleScan}
+            withModeSwitch
+            defaultMode="scanner"
+            placeholder="Scan or type a barcode / DataMatrix…"
+          />
         </div>
 
         <div className="max-h-[55vh] space-y-3 overflow-y-auto pr-1">
