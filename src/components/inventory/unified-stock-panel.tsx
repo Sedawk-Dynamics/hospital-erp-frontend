@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Boxes, Search, Plus, Pill, Edit2, PackagePlus, ChevronDown, ChevronRight,
+  Search, Plus, Pill, Edit2, PackagePlus, ChevronDown, ChevronRight,
   ChevronLeft, AlertTriangle, MoreHorizontal, ClipboardCheck, ClipboardList,
   ShieldAlert, Warehouse,
 } from 'lucide-react';
@@ -116,9 +116,6 @@ export function UnifiedStockPanel() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => router.push('/inventory/add?tab=bulk')}>
-            <Boxes className="mr-1.5 h-4 w-4" /> Bulk Stock In
-          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger render={<Button size="sm" variant="outline" />}>
               <MoreHorizontal className="h-4 w-4" />
@@ -139,7 +136,7 @@ export function UnifiedStockPanel() {
             </DropdownMenuContent>
           </DropdownMenu>
           <Button size="sm" onClick={() => router.push('/inventory/add')}>
-            <Plus className="mr-1.5 h-4 w-4" /> New Item
+            <Plus className="mr-1.5 h-4 w-4" /> Add Stock
           </Button>
         </div>
       </div>
@@ -195,7 +192,7 @@ export function UnifiedStockPanel() {
               : 'Add your first medicine or supply to start tracking stock.'}
             action={
               <Button size="sm" onClick={() => router.push('/inventory/add')}>
-                <Plus className="mr-1.5 h-4 w-4" /> New Item
+                <Plus className="mr-1.5 h-4 w-4" /> Add Stock
               </Button>
             }
           />

@@ -627,6 +627,9 @@ export interface CommitInwardLine extends InwardMatchLine {
   externalName?: string;
   packSize?: number;
   looseUnitLabel?: string;
+  // Full product-definition fields carried onto a newly-created product.
+  minStock?: number;
+  description?: string;
   // Product Resolution Engine identity carried onto a newly-created drug.
   hsnCode?: string;
   manufacturerCode?: string;

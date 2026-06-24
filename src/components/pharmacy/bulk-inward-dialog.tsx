@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { Fragment, useMemo, useRef, useState } from 'react';
 import {
   Upload,
   Plus,
@@ -16,6 +16,8 @@ import {
   CircleX,
   Camera,
   AlertTriangle,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
@@ -74,6 +76,13 @@ interface DraftLine {
   drugName: string;
   genericName: string;
   manufacturer: string;
+  // Full product-definition fields ("New Item" parity), edited in the row's
+  // expandable detail panel and carried onto a newly-created product.
+  dosageForm: string;
+  packSize: string;
+  unit: string;
+  minStock: string;
+  description: string;
   strength: string;
   // Product Resolution Engine: GTIN off the invoice/scan + HSN for compliance.
   gtin: string;
@@ -112,11 +121,18 @@ const TYPE_OPTIONS = [
   { value: 'other', label: 'Other' },
 ];
 
+const DOSAGE_FORMS = ['tablet', 'capsule', 'syrup', 'injection', 'cream', 'drops', 'inhaler', 'other'];
+
 function emptyLine(): DraftLine {
   return {
     id: nextId(),
     kind: 'drug',
     category: '',
+    dosageForm: '',
+    packSize: '',
+    unit: '',
+    minStock: '',
+    description: '',
     drugName: '',
     genericName: '',
     manufacturer: '',
@@ -159,6 +175,10 @@ const HEADER_MAP: Record<string, keyof DraftLine> = {
   disc: 'purchaseDiscountPercent', discount: 'purchaseDiscountPercent', disc_percent: 'purchaseDiscountPercent',
   gst: 'gstPercent', tax: 'gstPercent', gst_percent: 'gstPercent',
   sell: 'sellingPrice', selling: 'sellingPrice', sale: 'sellingPrice', sale_rate: 'sellingPrice', mrp_sale: 'sellingPrice',
+  form: 'dosageForm', dosage_form: 'dosageForm', dosageform: 'dosageForm',
+  pack: 'packSize', packsize: 'packSize', pack_size: 'packSize',
+  unit: 'unit', uom: 'unit', unit_of_measurement: 'unit',
+  reorder: 'minStock', minstock: 'minStock', min_stock: 'minStock', reorder_level: 'minStock', reorderlevel: 'minStock',
 };
 
 // Default positional order when the pasted text has no recognisable header row.
@@ -239,7 +259,12 @@ const MAP_FIELDS: { value: keyof DraftLine | 'ignore'; label: string }[] = [
   { value: 'category', label: 'Type / Category' },
   { value: 'genericName', label: 'Generic' },
   { value: 'manufacturer', label: 'Manufacturer' },
+  { value: 'dosageForm', label: 'Dosage form' },
   { value: 'strength', label: 'Strength' },
+  { value: 'packSize', label: 'Pack size' },
+  { value: 'unit', label: 'Unit' },
+  { value: 'minStock', label: 'Reorder level' },
+  { value: 'description', label: 'Description' },
   { value: 'batchNumber', label: 'Batch' },
   { value: 'expiryDate', label: 'Expiry' },
   { value: 'manufacturingDate', label: 'Mfg date' },
@@ -333,13 +358,19 @@ function validateLine(l: DraftLine, all: DraftLine[], defaultStorage: string): L
   if (!l.drugName.trim()) return { errors, warnings }; // blank row — ignored
   const isItem = l.kind === 'item';
 
+  // Quantity is optional — blank just registers the product (no stock received).
+  // If given it must be a positive whole number.
   const qty = parseInt(l.quantityReceived, 10);
-  if (!l.quantityReceived.trim() || isNaN(qty) || qty <= 0) errors.push('Quantity must be greater than 0');
+  const receiving = l.quantityReceived.trim() !== '' && !isNaN(qty) && qty > 0;
+  if (l.quantityReceived.trim() !== '' && (isNaN(qty) || qty <= 0)) {
+    errors.push('Quantity must be greater than 0 (or leave blank to just add the product)');
+  }
 
-  if (!isItem) {
-    if (!l.batchNumber.trim()) errors.push('Batch number is required');
-    if (!l.expiryDate) errors.push('Expiry date is required');
-    if (!l.storageLocation.trim() && !defaultStorage.trim()) errors.push('Storage location is required');
+  // Batch / expiry / storage are required only when receiving stock for a medicine.
+  if (!isItem && receiving) {
+    if (!l.batchNumber.trim()) errors.push('Batch number is required to receive stock');
+    if (!l.expiryDate) errors.push('Expiry date is required to receive stock');
+    if (!l.storageLocation.trim() && !defaultStorage.trim()) errors.push('Storage location is required to receive stock');
   }
 
   if (l.expiryDate) {
@@ -526,6 +557,11 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
     id: nextId(),
     kind: 'drug',
     category: '',
+    dosageForm: '',
+    packSize: '',
+    unit: '',
+    minStock: '',
+    description: '',
     drugName: o.drugName ?? '',
     genericName: o.genericName ?? '',
     manufacturer: o.manufacturer ?? '',
@@ -590,6 +626,11 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
       const seed: Omit<DraftLine, 'id'> = {
         kind: 'drug',
         category: '',
+        dosageForm: L.dosageForm || '',
+        packSize: L.packSize ? String(L.packSize) : '',
+        unit: '',
+        minStock: '',
+        description: '',
         drugName: L.drugName || '',
         genericName: L.genericName || '',
         manufacturer: L.manufacturer || '',
@@ -732,6 +773,12 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         genericName: l.genericName.trim() || undefined,
         manufacturer: l.manufacturer.trim() || undefined,
         strength: l.strength.trim() || undefined,
+        // Full product-definition fields carried onto a newly-created product.
+        dosageForm: l.dosageForm || undefined,
+        packSize: int(l.packSize),
+        looseUnitLabel: l.unit.trim() || undefined,
+        minStock: int(l.minStock),
+        description: l.description.trim() || undefined,
         gtin: l.gtin.trim() || undefined,
         hsnCode: l.hsnCode.trim() || undefined,
         // Storage applies to medicine batches only (items have no batch entity).
@@ -739,7 +786,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         batchNumber: l.batchNumber.trim() || undefined,
         expiryDate: l.expiryDate || undefined,
         manufacturingDate: l.manufacturingDate || undefined,
-        // Total received = paid + free; the free portion is recorded separately.
+        // Total received = paid + free (0 = just register the product, no stock).
         quantityReceived: paid + free,
         freeQuantity: free || undefined,
         mrp: num(l.mrp),
@@ -995,6 +1042,15 @@ function EntryStep(props: {
 
   const cell = 'h-8 text-xs';
   const [addVendorOpen, setAddVendorOpen] = useState(false);
+  // Rows whose "more details" panel (full product fields) is open.
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const toggleRow = (id: string) =>
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   return (
     <div className="space-y-4">
@@ -1143,7 +1199,7 @@ function EntryStep(props: {
         </div>
       </div>
       <p className="-mt-2 text-[11px] text-muted-foreground">
-        Columns: name, batch, expiry, qty, mrp, rate, gst, sell, storage (a header row is auto-detected). Scan a pack to auto-fill a line.
+        Add one line or many. Leave <b>Qty</b> blank to just register a product (no stock yet); fill it to also receive stock. Click <ChevronRight className="inline h-3 w-3" /> on a row for more details (dosage form, pack size, unit, reorder level, description). Scan / paste / upload to auto-fill.
       </p>
 
       {showPaste && (
@@ -1175,7 +1231,7 @@ function EntryStep(props: {
               <th>Batch</th>
               <th>Expiry</th>
               <th className="min-w-[120px]">Storage</th>
-              <th className="w-16">Qty *</th>
+              <th className="w-16">Qty</th>
               <th className="w-14">Free</th>
               <th className="w-16">MRP</th>
               <th className="w-16">Rate</th>
@@ -1192,7 +1248,8 @@ function EntryStep(props: {
               const err = issue?.errors ?? [];
               const warn = issue?.warnings ?? [];
               return (
-              <tr key={l.id} className="border-t [&>td]:px-1.5 [&>td]:py-1 align-top">
+              <Fragment key={l.id}>
+              <tr className="border-t [&>td]:px-1.5 [&>td]:py-1 align-top">
                 <td className="px-2 py-2 text-muted-foreground">
                   <div className="flex items-center gap-1">
                     <span>{i + 1}</span>
@@ -1256,11 +1313,66 @@ function EntryStep(props: {
                 <td><Input className={cell} type="number" step="0.01" value={l.gstPercent} onChange={(e) => updateLine(l.id, 'gstPercent', e.target.value)} /></td>
                 <td><Input className={cell} type="number" step="0.01" value={l.sellingPrice} onChange={(e) => updateLine(l.id, 'sellingPrice', e.target.value)} /></td>
                 <td className="text-center">
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-red-600" onClick={() => removeLine(l.id)} title="Remove line">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  <div className="flex items-center justify-center gap-0.5">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 text-muted-foreground"
+                      onClick={() => toggleRow(l.id)}
+                      title="More product details"
+                    >
+                      {expandedRows.has(l.id) ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                    </Button>
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-red-600" onClick={() => removeLine(l.id)} title="Remove line">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </td>
               </tr>
+              {expandedRows.has(l.id) && (
+                <tr className="bg-muted/20">
+                  <td colSpan={16} className="px-3 py-3">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      <div>
+                        <Label className="text-[11px]">Manufacturer / brand</Label>
+                        <Input className={cell} value={l.manufacturer} onChange={(e) => updateLine(l.id, 'manufacturer', e.target.value)} />
+                      </div>
+                      <div>
+                        <Label className="text-[11px]">Dosage form</Label>
+                        <Select value={l.dosageForm} onValueChange={(v) => updateLine(l.id, 'dosageForm', v ?? '')}>
+                          <SelectTrigger className={cell}><SelectValue placeholder="—" /></SelectTrigger>
+                          <SelectContent>
+                            {DOSAGE_FORMS.map((d) => (
+                              <SelectItem key={d} value={d} className="capitalize">{d}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-[11px]">Pack size (units/pack)</Label>
+                        <Input className={cell} type="number" min={1} value={l.packSize} onChange={(e) => updateLine(l.id, 'packSize', e.target.value)} />
+                      </div>
+                      <div>
+                        <Label className="text-[11px]">Unit (tablet, box, ml…)</Label>
+                        <Input className={cell} value={l.unit} onChange={(e) => updateLine(l.id, 'unit', e.target.value)} />
+                      </div>
+                      <div>
+                        <Label className="text-[11px]">Reorder level</Label>
+                        <Input className={cell} type="number" min={0} value={l.minStock} onChange={(e) => updateLine(l.id, 'minStock', e.target.value)} />
+                      </div>
+                      <div>
+                        <Label className="text-[11px]">HSN code</Label>
+                        <Input className={cell} value={l.hsnCode} onChange={(e) => updateLine(l.id, 'hsnCode', e.target.value)} />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <Label className="text-[11px]">Description / notes</Label>
+                        <Input className={cell} value={l.description} onChange={(e) => updateLine(l.id, 'description', e.target.value)} />
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </Fragment>
               );
             })}
           </tbody>
