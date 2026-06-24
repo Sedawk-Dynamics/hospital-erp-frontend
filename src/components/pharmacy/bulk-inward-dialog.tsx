@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   Upload,
   Plus,
@@ -15,7 +15,6 @@ import {
   CircleCheck,
   CircleX,
   Camera,
-  AlertTriangle,
   ChevronDown,
   ChevronRight,
 } from 'lucide-react';
@@ -993,6 +992,26 @@ export function BulkInwardDialog({
   );
 }
 
+// A compact labelled field used inside an entry card.
+function LineField({
+  label,
+  className,
+  children,
+}: {
+  label: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={cn('min-w-0 space-y-0.5', className)}>
+      <span className="block truncate text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
+
 // ── Step 1: enter / paste / upload lines ────────────────────
 function EntryStep(props: {
   suppliers: { id: string; name: string }[];
@@ -1219,60 +1238,39 @@ function EntryStep(props: {
         </div>
       )}
 
-      {/* Editable line table */}
-      <div className="overflow-x-auto rounded-lg border">
-        <table className="w-full min-w-[1320px] text-xs">
-          <thead className="bg-muted/50 text-muted-foreground">
-            <tr className="[&>th]:px-2 [&>th]:py-2 [&>th]:text-left [&>th]:font-medium">
-              <th className="w-8">#</th>
-              <th className="min-w-[150px]">Name *</th>
-              <th className="min-w-[110px]">Type</th>
-              <th>Strength</th>
-              <th>Batch</th>
-              <th>Expiry</th>
-              <th className="min-w-[120px]">Storage</th>
-              <th className="w-16">Qty</th>
-              <th className="w-14">Free</th>
-              <th className="w-16">MRP</th>
-              <th className="w-16">Rate</th>
-              <th className="w-14">Disc%</th>
-              <th className="w-16 text-right">Net</th>
-              <th className="w-14">GST%</th>
-              <th className="w-16">Sell</th>
-              <th className="w-8"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map((l, i) => {
-              const issue = lineIssues[i];
-              const err = issue?.errors ?? [];
-              const warn = issue?.warnings ?? [];
-              return (
-              <Fragment key={l.id}>
-              <tr className="border-t [&>td]:px-1.5 [&>td]:py-1 align-top">
-                <td className="px-2 py-2 text-muted-foreground">
-                  <div className="flex items-center gap-1">
-                    <span>{i + 1}</span>
-                    {err.length > 0 ? (
-                      <span title={err.join('\n')} className="inline-flex">
-                        <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
-                      </span>
-                    ) : warn.length > 0 ? (
-                      <span title={warn.join('\n')} className="inline-flex">
-                        <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-                      </span>
-                    ) : null}
+      {/* Editable lines — responsive cards (wrap to width, no horizontal scroll) */}
+      <div className="space-y-2">
+        {lines.map((l, i) => {
+          const issue = lineIssues[i];
+          const err = issue?.errors ?? [];
+          const warn = issue?.warnings ?? [];
+          const open = expandedRows.has(l.id);
+          const isItem = l.kind === 'item';
+          const rate = parseFloat(l.purchasePrice);
+          const net = !rate || isNaN(rate)
+            ? null
+            : (rate * (1 - (parseFloat(l.purchaseDiscountPercent) || 0) / 100)).toFixed(2);
+          return (
+            <div
+              key={l.id}
+              className={cn(
+                'rounded-lg border bg-surface-container-lowest p-3',
+                err.length > 0 ? 'border-red-500/40' : warn.length > 0 ? 'border-amber-500/40' : '',
+              )}
+            >
+              {/* Identity: number · name/generic/gtin · type · row actions */}
+              <div className="flex items-start gap-2">
+                <span className="mt-2 w-5 shrink-0 text-center text-xs text-muted-foreground">{i + 1}</span>
+                <div className="grid flex-1 gap-2 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+                  <div className="space-y-1">
+                    <Input className={cell} value={l.drugName} onChange={(e) => updateLine(l.id, 'drugName', e.target.value)} placeholder="Name *  ·  e.g. Telmac 40 Tab" />
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <Input className={cn(cell, 'text-muted-foreground')} value={l.genericName} onChange={(e) => updateLine(l.id, 'genericName', e.target.value)} placeholder="composition (optional)" />
+                      <Input className={cn(cell, 'font-mono text-muted-foreground')} value={l.gtin} onChange={(e) => updateLine(l.id, 'gtin', e.target.value)} placeholder="GTIN / barcode" />
+                    </div>
                   </div>
-                </td>
-                <td>
-                  <Input className={cell} value={l.drugName} onChange={(e) => updateLine(l.id, 'drugName', e.target.value)} placeholder="e.g. Telmac 40 Tab" />
-                  <Input className={cn(cell, 'mt-1 text-muted-foreground')} value={l.genericName} onChange={(e) => updateLine(l.id, 'genericName', e.target.value)} placeholder="composition (optional)" />
-                  {/* GTIN / barcode — auto-resolves the drug on the next import (Product Resolution Engine). */}
-                  <Input className={cn(cell, 'mt-1 font-mono text-muted-foreground')} value={l.gtin} onChange={(e) => updateLine(l.id, 'gtin', e.target.value)} placeholder="GTIN / barcode (optional)" />
-                </td>
-                <td>
                   <Select
-                    value={l.kind === 'item' ? (l.category || 'consumable') : 'drug'}
+                    value={isItem ? (l.category || 'consumable') : 'drug'}
                     onValueChange={(v) => {
                       const val = v ?? 'drug';
                       if (val === 'drug') {
@@ -1284,99 +1282,115 @@ function EntryStep(props: {
                       }
                     }}
                   >
-                    <SelectTrigger className={cn(cell, 'min-w-[104px]')}><SelectValue /></SelectTrigger>
+                    <SelectTrigger className={cn(cell, 'w-full')}><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {TYPE_OPTIONS.map((t) => (
                         <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                </td>
-                <td><Input className={cell} value={l.strength} onChange={(e) => updateLine(l.id, 'strength', e.target.value)} placeholder="40mg" /></td>
-                <td><Input className={cell} value={l.batchNumber} onChange={(e) => updateLine(l.id, 'batchNumber', e.target.value)} placeholder={l.kind === 'item' ? 'optional' : 'B23A01'} /></td>
-                <td><Input className={cn(cell, 'w-[130px]')} type="date" value={l.expiryDate} onChange={(e) => updateLine(l.id, 'expiryDate', e.target.value)} /></td>
-                <td><Input className={cn(cell, 'min-w-[110px]')} value={l.storageLocation} onChange={(e) => updateLine(l.id, 'storageLocation', e.target.value)} placeholder={defaultStorage || 'Rack / Dept'} /></td>
-                <td><Input className={cell} type="number" min={1} value={l.quantityReceived} onChange={(e) => updateLine(l.id, 'quantityReceived', e.target.value)} /></td>
-                <td><Input className={cell} type="number" min={0} value={l.freeQuantity} onChange={(e) => updateLine(l.id, 'freeQuantity', e.target.value)} /></td>
-                <td><Input className={cell} type="number" step="0.01" value={l.mrp} onChange={(e) => updateLine(l.id, 'mrp', e.target.value)} /></td>
-                <td><Input className={cell} type="number" step="0.01" value={l.purchasePrice} onChange={(e) => updateLine(l.id, 'purchasePrice', e.target.value)} /></td>
-                <td><Input className={cell} type="number" step="0.01" value={l.purchaseDiscountPercent} onChange={(e) => updateLine(l.id, 'purchaseDiscountPercent', e.target.value)} /></td>
-                {/* G2: net purchase price (rate − line discount), per line */}
-                <td className="px-2 text-right tabular-nums text-muted-foreground">
-                  {(() => {
-                    const r = parseFloat(l.purchasePrice);
-                    if (!r || isNaN(r)) return '—';
-                    const d = parseFloat(l.purchaseDiscountPercent) || 0;
-                    return (r * (1 - d / 100)).toFixed(2);
-                  })()}
-                </td>
-                <td><Input className={cell} type="number" step="0.01" value={l.gstPercent} onChange={(e) => updateLine(l.id, 'gstPercent', e.target.value)} /></td>
-                <td><Input className={cell} type="number" step="0.01" value={l.sellingPrice} onChange={(e) => updateLine(l.id, 'sellingPrice', e.target.value)} /></td>
-                <td className="text-center">
-                  <div className="flex items-center justify-center gap-0.5">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0 text-muted-foreground"
-                      onClick={() => toggleRow(l.id)}
-                      title="More product details"
-                    >
-                      {expandedRows.has(l.id) ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-red-600" onClick={() => removeLine(l.id)} title="Remove line">
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                </div>
+                <div className="flex shrink-0 items-center gap-0.5">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 text-muted-foreground"
+                    onClick={() => toggleRow(l.id)}
+                    title="More product details"
+                  >
+                    {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-red-600" onClick={() => removeLine(l.id)} title="Remove line">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Stock + pricing — wraps; no horizontal scroll at any width */}
+              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+                <LineField label="Strength">
+                  <Input className={cell} value={l.strength} onChange={(e) => updateLine(l.id, 'strength', e.target.value)} placeholder="40mg" />
+                </LineField>
+                <LineField label={isItem ? 'Batch (optional)' : 'Batch'}>
+                  <Input className={cell} value={l.batchNumber} onChange={(e) => updateLine(l.id, 'batchNumber', e.target.value)} placeholder={isItem ? 'optional' : 'B23A01'} />
+                </LineField>
+                <LineField label={isItem ? 'Expiry (optional)' : 'Expiry'}>
+                  <Input className={cell} type="date" value={l.expiryDate} onChange={(e) => updateLine(l.id, 'expiryDate', e.target.value)} />
+                </LineField>
+                <LineField label="Storage" className="col-span-2 sm:col-span-1">
+                  <Input className={cell} value={l.storageLocation} onChange={(e) => updateLine(l.id, 'storageLocation', e.target.value)} placeholder={defaultStorage || 'Rack / Dept'} />
+                </LineField>
+                <LineField label="Qty">
+                  <Input className={cell} type="number" min={1} value={l.quantityReceived} onChange={(e) => updateLine(l.id, 'quantityReceived', e.target.value)} placeholder="blank = no stock" />
+                </LineField>
+                <LineField label="Free">
+                  <Input className={cell} type="number" min={0} value={l.freeQuantity} onChange={(e) => updateLine(l.id, 'freeQuantity', e.target.value)} />
+                </LineField>
+                <LineField label="MRP">
+                  <Input className={cell} type="number" step="0.01" value={l.mrp} onChange={(e) => updateLine(l.id, 'mrp', e.target.value)} />
+                </LineField>
+                <LineField label="Rate">
+                  <Input className={cell} type="number" step="0.01" value={l.purchasePrice} onChange={(e) => updateLine(l.id, 'purchasePrice', e.target.value)} />
+                </LineField>
+                <LineField label="Disc %">
+                  <Input className={cell} type="number" step="0.01" value={l.purchaseDiscountPercent} onChange={(e) => updateLine(l.id, 'purchaseDiscountPercent', e.target.value)} />
+                </LineField>
+                <LineField label="Net">
+                  <div className="flex h-8 items-center px-1 text-xs tabular-nums text-muted-foreground">
+                    {net ? `₹${net}` : '—'}
                   </div>
-                </td>
-              </tr>
-              {expandedRows.has(l.id) && (
-                <tr className="bg-muted/20">
-                  <td colSpan={16} className="px-3 py-3">
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                      <div>
-                        <Label className="text-[11px]">Manufacturer / brand</Label>
-                        <Input className={cell} value={l.manufacturer} onChange={(e) => updateLine(l.id, 'manufacturer', e.target.value)} />
-                      </div>
-                      <div>
-                        <Label className="text-[11px]">Dosage form</Label>
-                        <Select value={l.dosageForm} onValueChange={(v) => updateLine(l.id, 'dosageForm', v ?? '')}>
-                          <SelectTrigger className={cell}><SelectValue placeholder="—" /></SelectTrigger>
-                          <SelectContent>
-                            {DOSAGE_FORMS.map((d) => (
-                              <SelectItem key={d} value={d} className="capitalize">{d}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label className="text-[11px]">Pack size (units/pack)</Label>
-                        <Input className={cell} type="number" min={1} value={l.packSize} onChange={(e) => updateLine(l.id, 'packSize', e.target.value)} />
-                      </div>
-                      <div>
-                        <Label className="text-[11px]">Unit (tablet, box, ml…)</Label>
-                        <Input className={cell} value={l.unit} onChange={(e) => updateLine(l.id, 'unit', e.target.value)} />
-                      </div>
-                      <div>
-                        <Label className="text-[11px]">Reorder level</Label>
-                        <Input className={cell} type="number" min={0} value={l.minStock} onChange={(e) => updateLine(l.id, 'minStock', e.target.value)} />
-                      </div>
-                      <div>
-                        <Label className="text-[11px]">HSN code</Label>
-                        <Input className={cell} value={l.hsnCode} onChange={(e) => updateLine(l.id, 'hsnCode', e.target.value)} />
-                      </div>
-                      <div className="sm:col-span-2">
-                        <Label className="text-[11px]">Description / notes</Label>
-                        <Input className={cell} value={l.description} onChange={(e) => updateLine(l.id, 'description', e.target.value)} />
-                      </div>
-                    </div>
-                  </td>
-                </tr>
+                </LineField>
+                <LineField label="GST %">
+                  <Input className={cell} type="number" step="0.01" value={l.gstPercent} onChange={(e) => updateLine(l.id, 'gstPercent', e.target.value)} />
+                </LineField>
+                <LineField label="Sell">
+                  <Input className={cell} type="number" step="0.01" value={l.sellingPrice} onChange={(e) => updateLine(l.id, 'sellingPrice', e.target.value)} />
+                </LineField>
+              </div>
+
+              {/* Inline validation messages */}
+              {(err.length > 0 || warn.length > 0) && (
+                <p className={cn('mt-1.5 text-[11px]', err.length > 0 ? 'text-red-600' : 'text-amber-600')}>
+                  {(err.length > 0 ? err : warn).join(' · ')}
+                </p>
               )}
-              </Fragment>
-              );
-            })}
-          </tbody>
-        </table>
+
+              {/* Expandable full product detail */}
+              {open && (
+                <div className="mt-2 grid grid-cols-2 gap-2 border-t pt-2 sm:grid-cols-3 md:grid-cols-4">
+                  <LineField label="Manufacturer / brand">
+                    <Input className={cell} value={l.manufacturer} onChange={(e) => updateLine(l.id, 'manufacturer', e.target.value)} />
+                  </LineField>
+                  <LineField label="Dosage form">
+                    <Select value={l.dosageForm} onValueChange={(v) => updateLine(l.id, 'dosageForm', v ?? '')}>
+                      <SelectTrigger className={cn(cell, 'w-full')}><SelectValue placeholder="—" /></SelectTrigger>
+                      <SelectContent>
+                        {DOSAGE_FORMS.map((d) => (
+                          <SelectItem key={d} value={d} className="capitalize">{d}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </LineField>
+                  <LineField label="Pack size (units/pack)">
+                    <Input className={cell} type="number" min={1} value={l.packSize} onChange={(e) => updateLine(l.id, 'packSize', e.target.value)} />
+                  </LineField>
+                  <LineField label="Unit (tablet, box, ml…)">
+                    <Input className={cell} value={l.unit} onChange={(e) => updateLine(l.id, 'unit', e.target.value)} />
+                  </LineField>
+                  <LineField label="Reorder level">
+                    <Input className={cell} type="number" min={0} value={l.minStock} onChange={(e) => updateLine(l.id, 'minStock', e.target.value)} />
+                  </LineField>
+                  <LineField label="HSN code">
+                    <Input className={cell} value={l.hsnCode} onChange={(e) => updateLine(l.id, 'hsnCode', e.target.value)} />
+                  </LineField>
+                  <LineField label="Description / notes" className="col-span-2">
+                    <Input className={cell} value={l.description} onChange={(e) => updateLine(l.id, 'description', e.target.value)} />
+                  </LineField>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <Button size="sm" variant="outline" onClick={addLine}>
