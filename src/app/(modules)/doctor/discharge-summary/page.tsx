@@ -11,6 +11,7 @@ import {
   type DischargeSummary,
 } from '@/hooks/use-doctor';
 import { useAuthStore } from '@/stores/auth-store';
+import { useAiStatus, useGenerateDischargeNarrative } from '@/hooks/use-ai';
 import { formatDate, toInputDateStr } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -34,6 +35,7 @@ import {
   Calendar,
   RefreshCw,
   Download,
+  Sparkles,
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { apiPost } from '@/lib/api';
@@ -106,6 +108,10 @@ export default function DischargeSummaryPage() {
   const updateMutation = useUpdateDischargeSummary();
   const signMutation = useSignDischargeSummary();
   const publishMutation = usePublishDischargeSummary();
+
+  // UC4: AI narrative generation (80/20 — drafts the narrative sections only).
+  const { data: aiStatus } = useAiStatus();
+  const aiNarrativeMutation = useGenerateDischargeNarrative();
 
   // Populate local form when summary loads
   useEffect(() => {
@@ -205,6 +211,24 @@ export default function DischargeSummaryPage() {
       setIsRefreshing(false);
     }
   }, [summaryData]);
+
+  const handleAiGenerate = useCallback(async () => {
+    if (!summaryData) return;
+    try {
+      const result = await aiNarrativeMutation.mutateAsync(summaryData.id);
+      const s = result?.suggestions;
+      if (s) {
+        // 80/20: AI fills the narrative sections; structured diagnoses/labs/meds
+        // stay as the exact DB-derived text. Doctor reviews before signing.
+        if (s.proceduresSummary) setProceduresSummary(s.proceduresSummary);
+        if (s.dischargeInstructions) setDischargeInstructions(s.dischargeInstructions);
+        if (s.followUpInstructions) setFollowUpInstructions(s.followUpInstructions);
+        toast.success('AI drafted the narrative — review and edit before signing');
+      }
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Failed to generate AI narrative');
+    }
+  }, [summaryData, aiNarrativeMutation]);
 
   const handleDownloadPdf = useCallback(async () => {
     if (!summaryData) return;
@@ -480,6 +504,20 @@ export default function DischargeSummaryPage() {
               >
                 <RefreshCw className={cn('h-3.5 w-3.5', isRefreshing && 'animate-spin')} />
                 {isRefreshing ? 'Refreshing...' : 'Refresh from Notes'}
+              </Button>
+            )}
+
+            {summaryData.status === 'draft' && aiStatus?.features.dischargeAi && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleAiGenerate}
+                disabled={aiNarrativeMutation.isPending}
+                className="gap-1.5 border-primary/40 text-primary hover:bg-primary/5"
+                title="Use AI to draft the hospital course, discharge instructions and follow-up from the admission data"
+              >
+                <Sparkles className={cn('h-3.5 w-3.5', aiNarrativeMutation.isPending && 'animate-pulse')} />
+                {aiNarrativeMutation.isPending ? 'Generating...' : 'Generate with AI'}
               </Button>
             )}
 
