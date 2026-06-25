@@ -23,6 +23,8 @@ import {
   Beaker,
   Ruler,
   Pill,
+  Stethoscope,
+  Sparkles,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -37,6 +39,8 @@ const NAV_ITEMS = [
   { href: '/super-admin/lab-templates', label: 'Lab Templates', icon: Beaker },
   { href: '/super-admin/lab-units', label: 'Lab Unit Groups', icon: Ruler },
   { href: '/super-admin/drug-master', label: 'Drug Master', icon: Pill },
+  { href: '/super-admin/icd-codes', label: 'ICD Codes', icon: Stethoscope },
+  { href: '/super-admin/ai-settings', label: 'AI Settings', icon: Sparkles },
   { href: '/super-admin/support', label: 'Support Tickets', icon: LifeBuoy },
   { href: '/super-admin/reports', label: 'Reports', icon: BarChart3 },
   { href: '/super-admin/settings', label: 'Settings', icon: Settings },
