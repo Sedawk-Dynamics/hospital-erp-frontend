@@ -57,6 +57,9 @@ import { usePatientDetail, useProgressNotes } from '@/hooks/use-doctor';
 import { useLatestVitals as useLatestVitalsNurse } from '@/hooks/use-nurse';
 import { NursingFormsPanel } from '@/components/doctor/nursing-forms-panel';
 import { ConsultationSummaryPanel } from '@/components/doctor/consultation-summary-panel';
+import { PatientAiAssistant } from '@/components/doctor/patient-ai-assistant';
+import { useAiStatus } from '@/hooks/use-ai';
+import { Sparkles } from 'lucide-react';
 import type { Patient, Appointment } from '@/types';
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -94,6 +97,9 @@ function TopBar({
 }) {
   const initials =
     `${patient.firstName?.[0] ?? ''}${patient.lastName?.[0] ?? ''}`.toUpperCase() || 'P';
+  const [aiOpen, setAiOpen] = useState(false);
+  const { data: aiStatus } = useAiStatus();
+  const patientName = `${patient.firstName} ${patient.lastName ?? ''}`.trim();
   return (
     <div className="sticky top-0 z-30 flex items-center gap-3 border-b border-outline-variant/30 bg-card/95 px-4 py-2 backdrop-blur-md print:hidden">
       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onBack}>
@@ -159,10 +165,38 @@ function TopBar({
         <BedDouble className="h-3.5 w-3.5" />
         Request IP
       </Button>
+      {aiStatus?.features.patientChat && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 gap-1 text-xs border-primary/40 text-primary hover:bg-primary/5"
+          onClick={() => setAiOpen(true)}
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          AI Assistant
+        </Button>
+      )}
       <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" onClick={() => window.print()}>
         <Printer className="h-3.5 w-3.5" />
         Print
       </Button>
+
+      {/* UC2: in-context patient AI assistant */}
+      <Dialog open={aiOpen} onOpenChange={setAiOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-primary" /> AI Assistant — {patientName}
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            AI decision-support chat for this patient
+          </DialogDescription>
+          <PatientAiAssistant
+            patientId={patient.id}
+            patientName={patientName}
+            scrollClassName="h-[52vh] min-h-[320px]"
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
