@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPost, apiPut } from '@/lib/api';
+import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 
 // ============================================================
 // Shared AI types
@@ -32,12 +32,18 @@ export function useAiStatus() {
 }
 
 // ============================================================
-// Super-admin: LLM provider configuration
+// Super-admin: per-hospital LLM provider configuration
 // ============================================================
 
 export interface AiConfig {
+  /** null = platform default scope; a uuid = a hospital override. */
+  tenantId: string | null;
+  /** true when a hospital is showing the inherited platform default. */
+  inherited: boolean;
   provider: 'gemini' | 'openai' | 'disabled';
   textModel: string;
+  fallbackModels: string[];
+  resolvedFallbacks: string[];
   temperature: number;
   maxOutputTokens: number;
   features: {
@@ -50,35 +56,97 @@ export interface AiConfig {
   updatedAt: string;
 }
 
-export function useAiConfig() {
+export interface AiModelInfo {
+  id: string;
+  label: string;
+  provider: 'gemini' | 'openai';
+  free: boolean;
+  limits: string;
+  notes?: string;
+  recommended?: boolean;
+}
+
+/** Catalog of selectable models + which providers have a key on the server. */
+export function useAiModels() {
   return useQuery({
-    queryKey: ['ai', 'config'],
+    queryKey: ['ai', 'models'],
     queryFn: async () => {
-      const res = await apiGet<AiConfig>('/ai/config');
+      const res = await apiGet<{ models: AiModelInfo[]; providerKeys: { gemini: boolean; openai: boolean } }>(
+        '/ai/models',
+      );
+      return res.data;
+    },
+    staleTime: 30 * 60 * 1000,
+  });
+}
+
+/** Config for a scope: tenantId omitted = platform default. */
+export function useAiConfig(tenantId?: string | null) {
+  return useQuery({
+    queryKey: ['ai', 'config', tenantId ?? 'platform'],
+    queryFn: async () => {
+      const res = await apiGet<AiConfig>('/ai/config', {
+        params: tenantId ? { tenantId } : undefined,
+      });
       return res.data;
     },
   });
 }
 
+export interface AiConfigSummary {
+  tenantId: string | null;
+  hospitalName: string | null;
+  provider: string;
+  textModel: string;
+  updatedAt: string;
+}
+
+export function useAiConfigs() {
+  return useQuery({
+    queryKey: ['ai', 'configs'],
+    queryFn: async () => {
+      const res = await apiGet<AiConfigSummary[]>('/ai/configs');
+      return res.data;
+    },
+  });
+}
+
+export interface UpdateAiConfigPayload {
+  tenantId?: string | null;
+  provider?: string;
+  textModel?: string;
+  fallbackModels?: string[];
+  temperature?: number;
+  maxOutputTokens?: number;
+  patientChatEnabled?: boolean;
+  platformChatEnabled?: boolean;
+  dischargeAiEnabled?: boolean;
+  radiologyAiEnabled?: boolean;
+}
+
 export function useUpdateAiConfig() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: Partial<{
-      provider: string;
-      textModel: string;
-      temperature: number;
-      maxOutputTokens: number;
-      patientChatEnabled: boolean;
-      platformChatEnabled: boolean;
-      dischargeAiEnabled: boolean;
-      radiologyAiEnabled: boolean;
-    }>) => {
+    mutationFn: async (data: UpdateAiConfigPayload) => {
       const res = await apiPut('/ai/config', data);
       return res.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['ai', 'config'] });
-      queryClient.invalidateQueries({ queryKey: ['ai', 'status'] });
+      queryClient.invalidateQueries({ queryKey: ['ai'] });
+    },
+  });
+}
+
+/** Remove a hospital override so it reverts to the platform default. */
+export function useResetAiConfig() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (tenantId: string) => {
+      const res = await apiDelete('/ai/config', { params: { tenantId } });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ai'] });
     },
   });
 }
