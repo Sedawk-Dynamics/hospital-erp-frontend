@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ModuleSidebar } from '@/components/layout/module-sidebar';
 import { ModuleHeader } from '@/components/layout/module-header';
+import { SupportAssistantWidget } from '@/components/ai/support-assistant-widget';
 import { useAuthStore } from '@/stores/auth-store';
 import { useClinicStore } from '@/stores/clinic-store';
 import { useSidebarStore } from '@/stores/sidebar-store';
@@ -65,6 +66,9 @@ export default function ModulesLayout({
           </div>
         </main>
       </div>
+
+      {/* UC3: global read-only support assistant (self-hides when disabled) */}
+      <SupportAssistantWidget />
     </div>
   );
 }
