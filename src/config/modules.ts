@@ -38,6 +38,7 @@ import {
   ShieldAlert,
   UserCog,
   Percent,
+  Sparkles,
   type LucideIcon,
 } from 'lucide-react';
 import type { ModuleKey } from '@/stores/module-store';
@@ -202,6 +203,7 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'MRD', href: '/doctor/mrd', icon: FolderArchive },
       { label: 'OT List', href: '/doctor/ot-list', icon: HeartPulse },
       { label: 'CDSS Alerts', href: '/doctor/cdss', icon: Activity },
+      { label: 'AI Assistant', href: '/doctor/ai-assistant', icon: Sparkles },
       { label: 'Settings', href: '/doctor/settings', icon: Settings },
     ],
   },
