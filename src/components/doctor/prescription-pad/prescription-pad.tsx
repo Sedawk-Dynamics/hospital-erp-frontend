@@ -46,6 +46,7 @@ import {
   getConsultationSectionText,
 } from '../consultation-completion/use-consultation-completion';
 import { VoiceInputButton } from '../voice-input-button';
+import { IcdCodeCombobox } from '@/components/clinical/icd-code-combobox';
 import { PhysicalObservationsPicker } from '../physical-observations-picker';
 import { SmartSuggestionsCard } from '../smart-suggestions-card';
 import { QtyCell } from '../prescription-qty-cell';
@@ -984,10 +985,17 @@ function DiagnosisSection({ form, pinSlot }: { form: any; pinSlot?: React.ReactN
         )}
         {fields.map((field, index) => (
           <div key={field.id} className="flex items-center gap-2">
-            <Input
-              placeholder="ICD Code"
-              className="h-8 text-xs w-24 shrink-0"
-              {...register(`diagnoses.${index}.icdCode`)}
+            {/* ICD-10 autocomplete — picking a code fills the name; free text
+                stays possible by editing the name field directly. */}
+            <IcdCodeCombobox
+              triggerSize="sm"
+              className="w-40 shrink-0"
+              value={form.watch(`diagnoses.${index}.icdCode`) || null}
+              onSelect={(icd) => {
+                form.setValue(`diagnoses.${index}.icdCode`, icd?.code ?? '');
+                if (icd) form.setValue(`diagnoses.${index}.diagnosisName`, icd.title);
+              }}
+              placeholder="ICD code"
             />
             <Input
               placeholder="Start typing Diagnosis..."
