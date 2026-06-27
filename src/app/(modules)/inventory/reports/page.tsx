@@ -2,11 +2,21 @@
 
 import Link from 'next/link';
 import {
-  Boxes, Building2, ShoppingCart, AlertTriangle, FileCheck, ArrowRight,
+  Boxes, Building2, ShoppingCart, AlertTriangle, FileCheck, ArrowRight, BarChart3,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
 
 const reportCards = [
+  {
+    title: 'Detailed Analysis',
+    description:
+      'Full one-page rollup: stock valuation by category, movement trend, low-stock, purchase spend, transfers, expiry/waste and department consumption — all with CSV export.',
+    icon: BarChart3,
+    href: '/inventory/reports/detailed',
+    color: 'text-primary',
+    bgColor: 'bg-primary/5',
+    borderColor: 'border-primary/30',
+  },
   {
     title: 'Stock Balance',
     description:

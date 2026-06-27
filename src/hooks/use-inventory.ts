@@ -738,6 +738,43 @@ export function useStockBalanceReport(params?: StockBalanceParams) {
   });
 }
 
+// ── Detailed Analysis report (single-call deep rollup) ──
+export interface InventoryDetailedReport {
+  period: { fromDate: string; toDate: string; days: number };
+  valuation: {
+    itemCount: number; units: number; costValue: number; retailValue: number; potentialMargin: number;
+    byCategory: { category: string; items: number; units: number; costValue: number; retailValue: number }[];
+  };
+  lowStock: { count: number; items: { itemName: string; itemCode: string; category: string; stock: number; minStock: number; deficit: number; unit: string }[] };
+  movements: {
+    stockIn: { qty: number; value: number }; stockOut: { qty: number; value: number };
+    adjustments: { qty: number; value: number }; returns: { qty: number; value: number }; expiredRemoval: { qty: number; value: number };
+    trend: { date: string; stockIn: number; stockOut: number }[];
+  };
+  topConsumed: { itemName: string; category: string; qty: number; value: number }[];
+  purchases: {
+    poCount: number; totalSpend: number;
+    byStatus: { status: string; count: number; value: number }[];
+    bySupplier: { supplierId: string; name: string; orders: number; value: number }[];
+  };
+  transfers: { count: number; byStatus: { status: string; count: number; qty: number }[] };
+  expiryWaste: {
+    summary: { expiringCount: number; expiredCount: number; returnCount: number; wasteValue: number; expiredQuantity: number; returnQuantity: number };
+    expiringSoon: { itemName: string; batchNumber: string; expiryDate: string; remaining: number; value: number }[];
+  };
+  departments: { departmentName: string; quantity: number; cost: number }[];
+}
+
+export function useInventoryDetailedReport(params?: { fromDate?: string; toDate?: string }) {
+  return useQuery({
+    queryKey: ['inventory', 'detailed-report', params],
+    queryFn: async () => {
+      const response = await apiGet<InventoryDetailedReport>('/inventory/reports/detailed', { params });
+      return response.data;
+    },
+  });
+}
+
 export interface DeptConsumptionParams {
   fromDate?: string;
   toDate?: string;
