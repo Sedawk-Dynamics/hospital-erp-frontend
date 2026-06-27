@@ -5,8 +5,6 @@ import {
   Upload,
   Plus,
   Trash2,
-  ArrowRight,
-  ArrowLeft,
   Check,
   Loader2,
   PackageCheck,
@@ -49,7 +47,6 @@ import {
   type InwardMatchedLine,
   type CommitInwardLine,
   type CommitInwardResult,
-  type FormularyMatch,
   type OcrInvoiceLine,
 } from '@/hooks/use-pharmacy';
 import { useSuppliers } from '@/hooks/use-inventory';
@@ -104,7 +101,8 @@ interface Decision {
   targetId: string | null;
 }
 
-type Step = 'entry' | 'review' | 'done';
+// Entry + inline match happen on ONE screen now; only the result is a separate step.
+type Step = 'entry' | 'done';
 
 let rowSeq = 0;
 const nextId = () => `row-${++rowSeq}`;
@@ -587,10 +585,8 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         return;
       }
       const drafts = res.lines.map(ocrToDraft);
-      setLines((prev) => {
-        const existing = prev.filter((l) => l.drugName.trim());
-        return [...existing, ...drafts];
-      });
+      const combined = [...lines.filter((l) => l.drugName.trim()), ...drafts];
+      setLines(combined);
       if (res.header.invoiceNumber) setInvoiceNumber(res.header.invoiceNumber);
       if (res.header.invoiceDate) setInvoiceDate(res.header.invoiceDate);
       if (!supplierId && res.header.supplierName) {
@@ -600,8 +596,11 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         );
         if (m) setSupplierId(m.id);
       }
-      toast.success(`OCR read ${drafts.length} line${drafts.length === 1 ? '' : 's'} — verify the details before matching.`);
+      toast.success(`OCR read ${drafts.length} line${drafts.length === 1 ? '' : 's'} — matching against your formulary…`);
       res.warnings.slice(0, 4).forEach((w) => toast.warning(w));
+      // Combine step 1 + 2: immediately score the read lines so each shows its
+      // related formulary drugs (with an add-new option) inline.
+      void handleMatch(combined);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not read the invoice');
     }
@@ -661,12 +660,17 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
     }
   };
 
-  // Validate + score the entered lines, then move to the review step.
-  const handleMatch = async () => {
-    const filled = lines.filter((l) => l.drugName.trim());
-    if (!filled.length) return toast.error('Add at least one line');
-    // Inline validation already flags each issue; block here as a safety net.
-    if (blockingErrors > 0) return toast.error('Fix the highlighted issues before continuing');
+  // Score the entered lines against the formulary and show inline matches on the
+  // SAME screen — each line gets its related drugs + map/add-new (no separate
+  // step). Matching only needs the product name; batch/expiry are validated later
+  // at "Receive stock". `srcLines` lets the OCR handler match freshly-read lines
+  // without waiting for React state to settle.
+  const handleMatch = async (srcLines: DraftLine[] = lines) => {
+    const filled = srcLines.filter((l) => l.drugName.trim());
+    if (!filled.length) {
+      toast.error('Add at least one line');
+      return;
+    }
     try {
       const res = await matchInward.mutateAsync({
         // Header supplier threads through so learned distributor mappings resolve.
@@ -681,7 +685,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
           category: l.kind === 'item' ? l.category || 'other' : undefined,
         })),
       });
-      // Keep only the filled lines, in the matched order.
+      // Keep only the filled lines so matched[i]/decisions[i] align with lines[i].
       setLines(filled);
       setMatched(res);
       setDecisions(
@@ -690,7 +694,6 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
           targetId: m.suggestedFormularyId,
         })),
       );
-      setStep('review');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to match lines');
     }
@@ -743,7 +746,18 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
   );
   const blockingErrors = lineIssues.reduce((n, x) => n + x.errors.length, 0);
 
+  // Matches are "current" only while their count lines up with the rows — adding
+  // or removing a row (or a fresh OCR/CSV load) drops this to false so the user
+  // re-runs "Find matches". Editing a cell keeps the per-index alignment intact.
+  const reviewing = matched.length > 0 && matched.length === lines.length;
+
   const handleCommit = async () => {
+    // Receiving stock needs batch/expiry per line — block on those here (matching
+    // earlier did not require them).
+    if (blockingErrors > 0) {
+      toast.error('Fix the highlighted issues before receiving stock');
+      return;
+    }
     // Build the reviewed payload from each draft line + its decision.
     const payloadLines: CommitInwardLine[] = lines.map((l, i) => {
       const d = decisions[i];
@@ -826,35 +840,9 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
 
       <p className="text-sm text-muted-foreground">
         {step === 'entry' &&
-          'Key in, paste, or upload (CSV / Excel) a distributor invoice — medicines and other supplies alike. Each line is checked for an existing match before stock is posted, so the count never splits across near-duplicate names.'}
-        {step === 'review' &&
-          'Review each line. Map to an existing record to keep stock together, or create a new one. Compare incoming vs. existing side by side.'}
+          'Key in, paste, scan or OCR a distributor invoice. Hit "Find matches" (auto-run after OCR) and each line shows its related formulary drugs inline — map to an existing one to keep stock together, or add it as new. Then receive the stock.'}
         {step === 'done' && 'Inward posted. Here is what happened to each line.'}
       </p>
-
-      {/* Step indicator */}
-        <div className="flex items-center gap-2 text-xs">
-          {(['entry', 'review', 'done'] as Step[]).map((s, i) => (
-            <div key={s} className="flex items-center gap-2">
-              <span
-                className={cn(
-                  'flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold',
-                  step === s
-                    ? 'bg-primary text-primary-foreground'
-                    : (['entry', 'review', 'done'].indexOf(step) > i)
-                      ? 'bg-primary/20 text-primary'
-                      : 'bg-muted text-muted-foreground',
-                )}
-              >
-                {i + 1}
-              </span>
-              <span className={cn('capitalize', step === s ? 'font-medium' : 'text-muted-foreground')}>
-                {s === 'entry' ? 'Enter lines' : s}
-              </span>
-              {i < 2 && <ArrowRight className="h-3 w-3 text-muted-foreground" />}
-            </div>
-          ))}
-        </div>
 
         <div>
           {step === 'entry' && (
@@ -892,11 +880,11 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
               onScan={handleScan}
               scanPending={inwardScan.isPending}
               lineIssues={lineIssues}
+              matched={matched}
+              decisions={decisions}
+              setDecision={setDecision}
+              reviewing={reviewing}
             />
-          )}
-
-          {step === 'review' && (
-            <ReviewStep lines={lines} matched={matched} decisions={decisions} setDecision={setDecision} />
           )}
 
           {step === 'done' && result && <DoneStep lines={lines} result={result} />}
@@ -905,45 +893,46 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         <div className="flex items-center justify-end gap-2 border-t pt-3">
           {step === 'entry' && (
             <>
-              {blockingErrors > 0 && (
-                <span className="mr-auto text-xs font-medium text-red-600">
-                  {blockingErrors} issue{blockingErrors === 1 ? '' : 's'} to fix
-                </span>
+              {reviewing ? (
+                <div className="mr-auto flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                  <span>{summary.map} mapping to existing</span>·<span>{summary.create} new</span>
+                  <label className="ml-1 flex cursor-pointer items-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      className="h-3.5 w-3.5 accent-primary"
+                      checked={addToExisting}
+                      onChange={(e) => setAddToExisting(e.target.checked)}
+                    />
+                    If batch exists, add to it
+                  </label>
+                  {blockingErrors > 0 && (
+                    <span className="font-medium text-red-600">{blockingErrors} issue{blockingErrors === 1 ? '' : 's'} to fix</span>
+                  )}
+                </div>
+              ) : (
+                blockingErrors > 0 && (
+                  <span className="mr-auto text-xs font-medium text-red-600">
+                    {blockingErrors} issue{blockingErrors === 1 ? '' : 's'} to fix
+                  </span>
+                )
               )}
               <Button variant="outline" onClick={close}>Cancel</Button>
-              <Button onClick={handleMatch} disabled={matchInward.isPending || blockingErrors > 0}>
+              <Button variant={reviewing ? 'outline' : 'default'} onClick={() => handleMatch()} disabled={matchInward.isPending}>
                 {matchInward.isPending ? (
-                  <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Checking…</>
+                  <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Matching…</>
                 ) : (
-                  <><Sparkles className="mr-1.5 h-4 w-4" /> Match &amp; Review</>
+                  <><Sparkles className="mr-1.5 h-4 w-4" /> {reviewing ? 'Re-match' : 'Find matches'}</>
                 )}
               </Button>
-            </>
-          )}
-          {step === 'review' && (
-            <>
-              <div className="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
-                <span>{summary.map} mapping to existing</span>·<span>{summary.create} new</span>
-                <label className="ml-3 flex cursor-pointer items-center gap-1.5">
-                  <input
-                    type="checkbox"
-                    className="h-3.5 w-3.5 accent-primary"
-                    checked={addToExisting}
-                    onChange={(e) => setAddToExisting(e.target.checked)}
-                  />
-                  If batch exists, add to it
-                </label>
-              </div>
-              <Button variant="outline" onClick={() => setStep('entry')}>
-                <ArrowLeft className="mr-1.5 h-4 w-4" /> Back
-              </Button>
-              <Button onClick={handleCommit} disabled={commitInward.isPending}>
-                {commitInward.isPending ? (
-                  <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Posting…</>
-                ) : (
-                  <><PackageCheck className="mr-1.5 h-4 w-4" /> Commit Inward</>
-                )}
-              </Button>
+              {reviewing && (
+                <Button onClick={handleCommit} disabled={commitInward.isPending || blockingErrors > 0}>
+                  {commitInward.isPending ? (
+                    <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Posting…</>
+                  ) : (
+                    <><PackageCheck className="mr-1.5 h-4 w-4" /> Receive stock</>
+                  )}
+                </Button>
+              )}
             </>
           )}
           {step === 'done' && (
@@ -1036,6 +1025,11 @@ function EntryStep(props: {
   onScan: (code: string) => void;
   scanPending: boolean;
   lineIssues: LineIssues[];
+  // Inline formulary match per line (combined entry + review).
+  matched: InwardMatchedLine[];
+  decisions: Decision[];
+  setDecision: (i: number, patch: Partial<Decision>) => void;
+  reviewing: boolean;
 }) {
   const {
     suppliers, supplierId, setSupplierId, selectedSupplier, invoiceNumber, setInvoiceNumber,
@@ -1043,6 +1037,7 @@ function EntryStep(props: {
     purchaseTotals, lines, updateLine, addLine, removeLine, showPaste, setShowPaste,
     pasteText, setPasteText, ingest, fileRef, onFile, xlsxRef, onXlsxFile,
     ocrRef, onOcrFile, ocrEnabled, ocrPending, onScan, lineIssues,
+    matched, decisions, setDecision, reviewing,
   } = props;
   const money = (n: number) => `₹${n.toFixed(2)}`;
 
@@ -1365,6 +1360,17 @@ function EntryStep(props: {
                   </LineField>
                 </div>
               )}
+
+              {/* Inline formulary match — related drugs from stock + add-new,
+                  shown right on the row once matches have been found. */}
+              {reviewing && matched[i] && decisions[i] && (
+                <LineMatchControl
+                  line={l}
+                  m={matched[i]}
+                  decision={decisions[i]}
+                  onDecision={(patch) => setDecision(i, patch)}
+                />
+              )}
             </div>
           );
         })}
@@ -1377,133 +1383,90 @@ function EntryStep(props: {
   );
 }
 
-// ── Step 2: side-by-side duplicate review ───────────────────
-function ReviewStep({
-  lines, matched, decisions, setDecision,
+// Inline per-line formulary match — related drugs from stock (pick one to map) +
+// an "Add as new" option, shown right on the entry row. Replaces the old separate
+// review step so entry + match live on one screen.
+function LineMatchControl({
+  line, m, decision, onDecision,
 }: {
-  lines: DraftLine[];
-  matched: InwardMatchedLine[];
-  decisions: Decision[];
-  setDecision: (i: number, patch: Partial<Decision>) => void;
+  line: DraftLine;
+  m: InwardMatchedLine;
+  decision: Decision;
+  onDecision: (patch: Partial<Decision>) => void;
 }) {
+  const target = m.matches.find((x) => x.id === decision.targetId) ?? null;
+  const hasMatches = m.matches.length > 0;
   return (
-    <div className="space-y-3">
-      {matched.map((m, i) => {
-        const line = lines[i];
-        const decision = decisions[i];
-        const target = m.matches.find((x) => x.id === decision.targetId) ?? null;
-        const hasMatches = m.matches.length > 0;
-        return (
-          <div key={i} className="rounded-lg border bg-surface-container-lowest p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-xs text-muted-foreground">#{i + 1}</span>
-                <span className="truncate font-medium">{line.drugName}</span>
-                {recBadge(m)}
-              </div>
-              {/* Map / Create toggle */}
-              <div className="flex items-center gap-1 rounded-md border p-0.5">
-                <button
-                  type="button"
-                  disabled={!hasMatches}
-                  onClick={() => setDecision(i, { action: 'map', targetId: decision.targetId ?? m.matches[0]?.id ?? null })}
-                  className={cn(
-                    'rounded px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-40',
-                    decision.action === 'map' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted',
-                  )}
-                >
-                  Map to existing
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDecision(i, { action: 'create' })}
-                  className={cn(
-                    'rounded px-2.5 py-1 text-xs font-medium transition-colors',
-                    decision.action === 'create' ? 'bg-emerald-600 text-white' : 'text-muted-foreground hover:bg-muted',
-                  )}
-                >
-                  Create new
-                </button>
-              </div>
-            </div>
-
-            {decision.action === 'map' ? (
-              <div className="mt-3 space-y-2">
-                {/* Candidate picker when >1 */}
-                {m.matches.length > 1 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {m.matches.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => setDecision(i, { targetId: c.id })}
-                        className={cn(
-                          'flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors',
-                          decision.targetId === c.id ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:bg-muted',
-                        )}
-                      >
-                        {decision.targetId === c.id && <Check className="h-3 w-3 text-primary" />}
-                        <span className="truncate max-w-[180px]">{c.drugName}</span>
-                        <Badge variant="outline" className="font-mono text-[10px]">{c.score}%</Badge>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {/* Side-by-side: incoming (invoice) vs existing (system) */}
-                <CompareCards line={line} target={target} />
-              </div>
-            ) : (
-              <p className="mt-2 text-xs text-muted-foreground">
-                Will be added as a new {line.kind === 'item' ? 'inventory item' : 'drug'}, then stocked.
-                {hasMatches && ' (A similar record exists — switch to “Map to existing” to avoid splitting stock.)'}
-              </p>
+    <div className="mt-2 rounded-md border border-primary/15 bg-primary/[0.03] p-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-xs">
+          <span className="font-semibold uppercase tracking-wide text-muted-foreground">Match</span>
+          {recBadge(m)}
+          {!hasMatches && <span className="text-muted-foreground">no similar drug in stock</span>}
+        </div>
+        {/* Map / Add-new toggle */}
+        <div className="flex items-center gap-1 rounded-md border p-0.5">
+          <button
+            type="button"
+            disabled={!hasMatches}
+            onClick={() => onDecision({ action: 'map', targetId: decision.targetId ?? m.matches[0]?.id ?? null })}
+            className={cn(
+              'rounded px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-40',
+              decision.action === 'map' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted',
             )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function Field({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex justify-between gap-2">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="text-right font-medium">{value || '—'}</span>
-    </div>
-  );
-}
-
-function CompareCards({ line, target }: { line: DraftLine; target: FormularyMatch | null }) {
-  return (
-    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-      <div className="rounded-md border border-dashed bg-muted/20 p-2.5 text-xs">
-        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Incoming (invoice)</p>
-        <div className="space-y-0.5">
-          <Field label="Name" value={line.drugName} />
-          <Field label="Composition" value={line.genericName} />
-          <Field label="Manufacturer" value={line.manufacturer} />
-          <Field label="Strength" value={line.strength} />
-          <Field label="Receiving" value={`${(parseInt(line.quantityReceived, 10) || 0) + (parseInt(line.freeQuantity, 10) || 0)} units`} />
+          >
+            Map to existing
+          </button>
+          <button
+            type="button"
+            onClick={() => onDecision({ action: 'create' })}
+            className={cn(
+              'rounded px-2.5 py-1 text-xs font-medium transition-colors',
+              decision.action === 'create' ? 'bg-emerald-600 text-white' : 'text-muted-foreground hover:bg-muted',
+            )}
+          >
+            Add as new
+          </button>
         </div>
       </div>
-      <div className={cn('rounded-md border p-2.5 text-xs', target ? 'border-primary/40 bg-primary/5' : 'border-dashed')}>
-        <div className="mb-1.5 flex items-center justify-between">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">Existing (in system)</p>
-          {target && <Badge variant="outline" className="font-mono text-[10px]">{target.score}% match</Badge>}
+
+      {decision.action === 'map' ? (
+        <div className="mt-2 space-y-2">
+          {/* Related drugs from stock — pick which one to add this batch to. */}
+          {hasMatches && (
+            <div className="flex flex-wrap gap-1.5">
+              {m.matches.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => onDecision({ targetId: c.id })}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors',
+                    decision.targetId === c.id ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:bg-muted',
+                  )}
+                >
+                  {decision.targetId === c.id && <Check className="h-3 w-3 text-primary" />}
+                  <span className="truncate max-w-[160px]">{c.drugName}</span>
+                  {c.strength && <span className="text-muted-foreground">{c.strength}</span>}
+                  <Badge variant="outline" className="font-mono text-[10px]">{c.score}%</Badge>
+                  <span className="text-[10px] text-emerald-700">stock {c.totalStock}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {target && (
+            <p className="text-[11px] text-muted-foreground">
+              Stock will be added to <span className="font-medium text-foreground">{target.drugName}</span>
+              {target.strength ? ` ${target.strength}` : ''} — no duplicate created.
+            </p>
+          )}
         </div>
-        {target ? (
-          <div className="space-y-0.5">
-            <Field label="Name" value={target.drugName} />
-            <Field label="Composition" value={target.genericName} />
-            <Field label="Manufacturer" value={target.manufacturer} />
-            <Field label="Strength" value={target.strength} />
-            <Field label="Current stock" value={<span className="text-emerald-700">{target.totalStock} units</span>} />
-          </div>
-        ) : (
-          <p className="text-muted-foreground">No drug selected.</p>
-        )}
-      </div>
+      ) : (
+        <p className="mt-1.5 text-[11px] text-muted-foreground">
+          Will be added as a new {line.kind === 'item' ? 'inventory item' : 'drug'}, then stocked.
+          {hasMatches && ' A similar record exists — switch to “Map to existing” to avoid splitting stock.'}
+        </p>
+      )}
     </div>
   );
 }
