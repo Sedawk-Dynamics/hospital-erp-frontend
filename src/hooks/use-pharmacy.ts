@@ -487,7 +487,12 @@ export function useOcrInward() {
       form.append('invoice', file);
       if (supplierId) form.append('supplierId', supplierId);
       if (match === false) form.append('match', 'false');
-      const response = await apiPost<OcrInwardResult>('/pharmacy/inward/ocr', form);
+      // Clear the default application/json header so the browser sets
+      // multipart/form-data with its boundary — otherwise multer sees no file
+      // and the request 400s. (Same override the lab/imaging uploads use.)
+      const response = await apiPost<OcrInwardResult>('/pharmacy/inward/ocr', form, {
+        headers: { 'Content-Type': undefined },
+      });
       return response.data;
     },
   });
