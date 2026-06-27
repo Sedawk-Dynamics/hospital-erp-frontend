@@ -84,9 +84,12 @@ export default function AiSettingsPage() {
     temperature: 0.4,
     maxOutputTokens: 1024,
     patientChatEnabled: true,
+    bloodReportEnabled: true,
     platformChatEnabled: true,
     dischargeAiEnabled: true,
     radiologyAiEnabled: false,
+    progressNotesAiEnabled: true,
+    ocrInvoiceEnabled: true,
   });
 
   useEffect(() => {
@@ -98,9 +101,12 @@ export default function AiSettingsPage() {
         temperature: config.temperature,
         maxOutputTokens: config.maxOutputTokens,
         patientChatEnabled: config.features.patientChatEnabled,
+        bloodReportEnabled: config.features.bloodReportEnabled,
         platformChatEnabled: config.features.platformChatEnabled,
         dischargeAiEnabled: config.features.dischargeAiEnabled,
         radiologyAiEnabled: config.features.radiologyAiEnabled,
+        progressNotesAiEnabled: config.features.progressNotesAiEnabled,
+        ocrInvoiceEnabled: config.features.ocrInvoiceEnabled,
       });
     }
   }, [config]);
@@ -306,14 +312,36 @@ export default function AiSettingsPage() {
             </CardContent>
           </Card>
 
-          {/* Feature flags */}
+          {/* Feature flags — one switch per place AI is used, so a hospital can
+              block AI in any single surface independently. */}
           <Card>
-            <CardHeader><CardTitle className="text-sm">Features</CardTitle></CardHeader>
-            <CardContent className="divide-y divide-foreground/5">
-              <FeatureRow title="Patient AI assistant (doctors)" description="UC2 — conversational analysis of a patient's record." checked={form.patientChatEnabled} onChange={(v) => set('patientChatEnabled', v)} />
-              <FeatureRow title="Platform support assistant" description="UC3 — read-only how-to + own-org data questions." checked={form.platformChatEnabled} onChange={(v) => set('platformChatEnabled', v)} />
-              <FeatureRow title="Discharge summary generation" description="UC4 — AI drafts the narrative sections." checked={form.dischargeAiEnabled} onChange={(v) => set('dischargeAiEnabled', v)} />
-              <FeatureRow title="Radiology image diagnosis" description="UC2.1 — DICOM/image interpretation. Deferred from the MVP." checked={form.radiologyAiEnabled} onChange={(v) => set('radiologyAiEnabled', v)} badge="Coming soon" />
+            <CardHeader>
+              <CardTitle className="text-sm">AI features by place</CardTitle>
+              <p className="text-xs text-muted-foreground">Turn AI off for any specific surface. A disabled feature hides its button and its endpoint refuses the request.</p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Clinical — Doctor</p>
+                <div className="divide-y divide-foreground/5">
+                  <FeatureRow title="Patient AI assistant" description="UC2 — conversational analysis of a patient's record." checked={form.patientChatEnabled} onChange={(v) => set('patientChatEnabled', v)} />
+                  <FeatureRow title="Blood report analysis" description="UC2.2 — health-score + flags from lab results." checked={form.bloodReportEnabled} onChange={(v) => set('bloodReportEnabled', v)} />
+                  <FeatureRow title="Progress-note smart suggestions" description="AI next-step suggestions on the SOAP pad." checked={form.progressNotesAiEnabled} onChange={(v) => set('progressNotesAiEnabled', v)} />
+                  <FeatureRow title="Discharge summary generation" description="UC4 — AI drafts the narrative sections." checked={form.dischargeAiEnabled} onChange={(v) => set('dischargeAiEnabled', v)} />
+                  <FeatureRow title="Radiology image diagnosis" description="UC2.1 — DICOM/image interpretation." checked={form.radiologyAiEnabled} onChange={(v) => set('radiologyAiEnabled', v)} badge="Coming soon" />
+                </div>
+              </div>
+              <div>
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Operations</p>
+                <div className="divide-y divide-foreground/5">
+                  <FeatureRow title="Invoice OCR scan (Add Stock)" description="Reads a supplier invoice photo/PDF into stock lines." checked={form.ocrInvoiceEnabled} onChange={(v) => set('ocrInvoiceEnabled', v)} />
+                </div>
+              </div>
+              <div>
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Platform</p>
+                <div className="divide-y divide-foreground/5">
+                  <FeatureRow title="Support assistant" description="UC3 — read-only how-to + own-org data questions." checked={form.platformChatEnabled} onChange={(v) => set('platformChatEnabled', v)} />
+                </div>
+              </div>
             </CardContent>
           </Card>
 

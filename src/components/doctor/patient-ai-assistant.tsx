@@ -161,6 +161,8 @@ export function PatientAiAssistant({
           label: 'Analyse blood report',
           icon: <Activity className="h-3 w-3" />,
           onClick: analyseBloodReport,
+          disabled: !!status && !status.features.bloodReport,
+          title: status && !status.features.bloodReport ? 'Blood report analysis is disabled by your administrator' : undefined,
         },
         {
           label: 'Suggest next steps',

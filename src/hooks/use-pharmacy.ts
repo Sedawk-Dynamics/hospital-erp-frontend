@@ -447,6 +447,7 @@ export interface OcrInvoiceLine {
   manufacturer?: string | null;
   strength?: string | null;
   dosageForm?: string | null;
+  unit?: string | null;
   gtin?: string | null;
   hsnCode?: string | null;
   packSize?: number | null;

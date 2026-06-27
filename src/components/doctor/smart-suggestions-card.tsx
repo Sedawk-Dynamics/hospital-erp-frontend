@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Loader2, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useSmartSuggestions, type SmartSuggestionsInput } from '@/hooks/use-doctor';
+import { useAiStatus } from '@/hooks/use-ai';
 import { toast } from 'sonner';
 
 export interface SmartSuggestionsCardProps {
@@ -15,7 +16,11 @@ export interface SmartSuggestionsCardProps {
 
 export function SmartSuggestionsCard({ buildInput, onAdopt }: SmartSuggestionsCardProps) {
   const mut = useSmartSuggestions();
+  const { data: aiStatus } = useAiStatus();
   const [suggestions, setSuggestions] = useState<string[]>([]);
+
+  // Hidden when a super-admin has disabled progress-note AI for this hospital.
+  if (aiStatus && !aiStatus.features.progressNotesAi) return null;
 
   const fetchSuggestions = async () => {
     try {

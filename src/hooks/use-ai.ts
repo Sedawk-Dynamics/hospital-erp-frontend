@@ -13,9 +13,12 @@ export interface AiStatus {
   model: string | null;
   features: {
     patientChat: boolean;
+    bloodReport: boolean;
     platformChat: boolean;
     dischargeAi: boolean;
     radiologyAi: boolean;
+    progressNotesAi: boolean;
+    ocrInvoice: boolean;
   };
 }
 
@@ -48,9 +51,12 @@ export interface AiConfig {
   maxOutputTokens: number;
   features: {
     patientChatEnabled: boolean;
+    bloodReportEnabled: boolean;
     platformChatEnabled: boolean;
     dischargeAiEnabled: boolean;
     radiologyAiEnabled: boolean;
+    progressNotesAiEnabled: boolean;
+    ocrInvoiceEnabled: boolean;
   };
   providerKeys: { gemini: boolean; openai: boolean };
   updatedAt: string;
@@ -119,9 +125,12 @@ export interface UpdateAiConfigPayload {
   temperature?: number;
   maxOutputTokens?: number;
   patientChatEnabled?: boolean;
+  bloodReportEnabled?: boolean;
   platformChatEnabled?: boolean;
   dischargeAiEnabled?: boolean;
   radiologyAiEnabled?: boolean;
+  progressNotesAiEnabled?: boolean;
+  ocrInvoiceEnabled?: boolean;
 }
 
 export function useUpdateAiConfig() {

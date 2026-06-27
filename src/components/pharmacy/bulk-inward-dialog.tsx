@@ -53,6 +53,7 @@ import {
   type OcrInvoiceLine,
 } from '@/hooks/use-pharmacy';
 import { useSuppliers } from '@/hooks/use-inventory';
+import { useAiStatus } from '@/hooks/use-ai';
 import { VendorFormDialog } from '@/components/inventory/vendor-form-dialog';
 import { BarcodeScanner } from '@/components/shared/barcode-scanner';
 
@@ -451,6 +452,9 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
   const matchInward = useMatchInward();
   const commitInward = useCommitInward();
   const ocrInward = useOcrInward();
+  // Super-admin can disable invoice OCR per hospital; hide the affordance when off.
+  const { data: aiStatus } = useAiStatus();
+  const ocrEnabled = !aiStatus || aiStatus.features.ocrInvoice;
   const inwardScan = useInwardScan();
 
   const reset = () => {
@@ -545,9 +549,10 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
     id: nextId(),
     kind: 'drug',
     category: '',
-    dosageForm: '',
-    packSize: '',
-    unit: '',
+    // Auto-filled from the scanned invoice (editable in the line's detail panel).
+    dosageForm: o.dosageForm ?? '',
+    packSize: s(o.packSize),
+    unit: o.unit ?? '',
     minStock: '',
     description: '',
     drugName: o.drugName ?? '',
@@ -595,7 +600,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         );
         if (m) setSupplierId(m.id);
       }
-      toast.success(`OCR read ${drafts.length} line${drafts.length === 1 ? '' : 's'} — verify and add storage before matching.`);
+      toast.success(`OCR read ${drafts.length} line${drafts.length === 1 ? '' : 's'} — verify the details before matching.`);
       res.warnings.slice(0, 4).forEach((w) => toast.warning(w));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not read the invoice');
@@ -882,6 +887,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
               onXlsxFile={onXlsxFile}
               ocrRef={ocrRef}
               onOcrFile={onOcrFile}
+              ocrEnabled={ocrEnabled}
               ocrPending={ocrInward.isPending}
               onScan={handleScan}
               scanPending={inwardScan.isPending}
@@ -1025,6 +1031,7 @@ function EntryStep(props: {
   onXlsxFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
   ocrRef: React.RefObject<HTMLInputElement | null>;
   onOcrFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  ocrEnabled: boolean;
   ocrPending: boolean;
   onScan: (code: string) => void;
   scanPending: boolean;
@@ -1035,7 +1042,7 @@ function EntryStep(props: {
     invoiceDate, setInvoiceDate, invoiceDiscPct, setInvoiceDiscPct, invoiceDiscAmt, setInvoiceDiscAmt,
     purchaseTotals, lines, updateLine, addLine, removeLine, showPaste, setShowPaste,
     pasteText, setPasteText, ingest, fileRef, onFile, xlsxRef, onXlsxFile,
-    ocrRef, onOcrFile, ocrPending, onScan, lineIssues,
+    ocrRef, onOcrFile, ocrEnabled, ocrPending, onScan, lineIssues,
   } = props;
   const money = (n: number) => `₹${n.toFixed(2)}`;
 
@@ -1149,14 +1156,17 @@ function EntryStep(props: {
 
       {/* Import controls */}
       <div className="flex flex-wrap items-center gap-2">
-        {/* OCR — read a photo/PDF of the supplier invoice into lines (Gemini). */}
-        <Button size="sm" variant="outline" onClick={() => ocrRef.current?.click()} disabled={ocrPending}>
-          {ocrPending ? (
-            <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Reading invoice…</>
-          ) : (
-            <><Camera className="mr-1.5 h-4 w-4" /> Scan invoice (OCR)</>
-          )}
-        </Button>
+        {/* OCR — read a photo/PDF of the supplier invoice into lines (Gemini).
+            Hidden when a super-admin has disabled invoice OCR for this hospital. */}
+        {ocrEnabled && (
+          <Button size="sm" variant="outline" onClick={() => ocrRef.current?.click()} disabled={ocrPending}>
+            {ocrPending ? (
+              <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Reading invoice…</>
+            ) : (
+              <><Camera className="mr-1.5 h-4 w-4" /> Scan invoice (OCR)</>
+            )}
+          </Button>
+        )}
         <input
           ref={ocrRef}
           type="file"
