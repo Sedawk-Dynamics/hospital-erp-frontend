@@ -36,9 +36,16 @@ function PharmacyReportsPageInner() {
             Sales, expiry, stock usage and batch-wise inventory analysis.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>
-          <RefreshCw className="mr-1.5 h-4 w-4" /> Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <a href="/pharmacy/reports/detailed">
+            <Button size="sm" className="gap-1.5">
+              <BarChart3 className="h-4 w-4" /> Detailed Analysis
+            </Button>
+          </a>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            <RefreshCw className="mr-1.5 h-4 w-4" /> Refresh
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-end gap-2">

@@ -2038,6 +2038,50 @@ export function usePharmacyAnalytics(params?: { fromDate?: string; toDate?: stri
   });
 }
 
+// ── Detailed Analysis report (single-call deep rollup) ──
+export interface PharmacyDetailedReport {
+  period: { fromDate: string; toDate: string; days: number };
+  sales: {
+    revenue: number; cost: number; grossProfit: number; marginPct: number;
+    lines: number; itemsSold: number; bills: number;
+    avgBillValue: number; avgLineValue: number; perDayRevenue: number;
+  };
+  trend: { date: string; revenue: number; profit: number; lines: number; qty: number }[];
+  byDosageForm: { form: string; qty: number; revenue: number; sharePct: number }[];
+  topByRevenue: { drugId: string; drugName: string; qty: number; revenue: number; profit: number; marginPct: number }[];
+  topByQuantity: { drugId: string; drugName: string; qty: number; revenue: number; profit: number; marginPct: number }[];
+  abc: Record<'A' | 'B' | 'C', { count: number; revenue: number; sharePct: number }>;
+  dispensers: { userId: string; name: string; lines: number; qty: number; revenue: number }[];
+  returns: {
+    count: number; quantity: number; refundValue: number; returnRatePct: number;
+    byType: { type: string; count: number; quantity: number; value: number }[];
+  };
+  valuation: {
+    batchCount: number; drugCount: number; costValue: number; retailValue: number;
+    potentialMargin: number; marginPct: number;
+    byForm: { form: string; costValue: number; retailValue: number; units: number }[];
+  };
+  expiry: {
+    expiredBatches: number; expiredValue: number; valueAtRisk: number;
+    near30: { count: number; value: number }; near60: { count: number; value: number }; near90: { count: number; value: number };
+    upcoming: { drugName: string; batchNumber: string; expiryDate: string; qty: number; value: number }[];
+  };
+  deadStock: { count: number; value: number; items: { drugName: string; stock: number; value: number }[] };
+  lowStock: { count: number; items: { drugName: string; stock: number; minStock: number; deficit: number }[] };
+  gst: { totalTax: number; taxableValue: number; byRate: { rate: number; taxable: number; tax: number; lines: number }[] };
+  purchases: { total: number; suppliers: { supplierId: string; name: string; purchaseValue: number; batches: number; units: number }[] };
+}
+
+export function usePharmacyDetailedReport(params?: { fromDate?: string; toDate?: string }) {
+  return useQuery({
+    queryKey: ['pharmacy', 'detailed-report', params],
+    queryFn: async () => {
+      const response = await apiGet<PharmacyDetailedReport>('/pharmacy/reports/detailed', { params });
+      return response.data;
+    },
+  });
+}
+
 // ============================================================
 // Stock Ledger (batch-wise movement register)
 // ============================================================
