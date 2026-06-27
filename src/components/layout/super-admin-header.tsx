@@ -1,6 +1,7 @@
 'use client';
 
-import { Bell, HelpCircle, LogOut, User } from 'lucide-react';
+import { Bell, HelpCircle, LogOut, User, ArrowLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,11 +13,19 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useAuthStore } from '@/stores/auth-store';
 import { getRolePortalLabel } from '@/config/role-modules';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 
 export function SuperAdminHeader() {
   const { user, logout } = useAuthStore();
   const router = useRouter();
+  const pathname = usePathname();
+
+  // Show "Back" on every super-admin sub-page (deeper than the dashboard root).
+  const isSubPage = pathname !== '/super-admin';
+  const goBack = () => {
+    if (typeof window !== 'undefined' && window.history.length > 1) router.back();
+    else router.push('/super-admin');
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -33,9 +42,23 @@ export function SuperAdminHeader() {
     <header className="sticky top-0 z-40 flex h-20 items-center justify-between bg-background/80 backdrop-blur-xl px-8">
       {/* Left side */}
       <div className="flex items-center gap-8">
-        <h1 className="font-headline font-extrabold text-2xl text-primary tracking-tight">
-          {portalLabel}
-        </h1>
+        <div className="flex items-center gap-2">
+          {isSubPage && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={goBack}
+              title="Go back"
+              className="shrink-0 text-on-surface-variant hover:text-primary hover:bg-surface-container-high rounded-lg"
+            >
+              <ArrowLeft className="h-5 w-5" />
+              <span className="sr-only">Back</span>
+            </Button>
+          )}
+          <h1 className="font-headline font-extrabold text-2xl text-primary tracking-tight">
+            {portalLabel}
+          </h1>
+        </div>
         <div className="relative hidden sm:block">
           <svg
             className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-outline"

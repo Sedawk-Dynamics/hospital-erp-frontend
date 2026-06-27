@@ -1,6 +1,6 @@
 'use client';
 
-import { Menu, Bell, HelpCircle, LogOut, Building2, Settings, ArrowLeftRight, Search, User, CreditCard } from 'lucide-react';
+import { Menu, Bell, HelpCircle, LogOut, Building2, Settings, ArrowLeftRight, Search, User, CreditCard, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -28,6 +28,16 @@ export function ModuleHeader() {
   const router = useRouter();
 
   const activeModule = getModuleFromPathname(pathname);
+  const baseRoute = activeModule ? MODULE_REGISTRY[activeModule]?.baseRoute : null;
+  // Show "Back" on every sub-page (anything deeper than the module's home).
+  const isSubPage = !!baseRoute && pathname !== baseRoute;
+
+  // Prefer real browser history; fall back to the module home on a direct/deep
+  // load so the button is never a dead end.
+  const goBack = () => {
+    if (typeof window !== 'undefined' && window.history.length > 1) router.back();
+    else if (baseRoute) router.push(baseRoute);
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -59,10 +69,25 @@ export function ModuleHeader() {
           <span className="sr-only">Toggle menu</span>
         </Button>
 
-        {/* App name / module label — code.html: font-headline font-extrabold text-2xl text-primary tracking-tight */}
-        <h1 className="font-headline font-extrabold text-2xl text-primary tracking-tight hidden sm:block">
-          {moduleLabel || clinicName}&nbsp;
-        </h1>
+        {/* Back button (sub-pages only) + module label */}
+        <div className="flex items-center gap-2">
+          {isSubPage && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={goBack}
+              title="Go back"
+              className="shrink-0 text-on-surface-variant hover:text-primary hover:bg-surface-container-high rounded-lg"
+            >
+              <ArrowLeft className="h-5 w-5" />
+              <span className="sr-only">Back</span>
+            </Button>
+          )}
+          {/* App name / module label — code.html: font-headline font-extrabold text-2xl text-primary tracking-tight */}
+          <h1 className="font-headline font-extrabold text-2xl text-primary tracking-tight hidden sm:block">
+            {moduleLabel || clinicName}&nbsp;
+          </h1>
+        </div>
 
         {/* Search bar — code.html: relative group, bg-surface-container-low, rounded-xl, pl-12 pr-6 py-2.5 w-80 */}
         <div className="relative hidden md:block group">
