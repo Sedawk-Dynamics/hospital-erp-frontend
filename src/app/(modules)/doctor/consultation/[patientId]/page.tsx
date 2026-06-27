@@ -183,7 +183,7 @@ function TopBar({
 
       {/* UC2: in-context patient AI assistant */}
       <Dialog open={aiOpen} onOpenChange={setAiOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="flex max-h-[88vh] min-h-[55vh] w-[calc(100%-2rem)] flex-col sm:max-w-3xl">
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary" /> AI Assistant — {patientName}
           </DialogTitle>
@@ -193,7 +193,8 @@ function TopBar({
           <PatientAiAssistant
             patientId={patient.id}
             patientName={patientName}
-            scrollClassName="h-[52vh] min-h-[320px]"
+            className="min-h-0 flex-1"
+            scrollClassName="min-h-0"
           />
         </DialogContent>
       </Dialog>

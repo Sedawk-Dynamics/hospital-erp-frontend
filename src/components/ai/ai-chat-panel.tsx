@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Send, Sparkles } from 'lucide-react';
+import { MarkdownMessage } from '@/components/ai/markdown-message';
 
 export interface AiChatMessage {
   role: 'user' | 'assistant';
@@ -82,13 +83,13 @@ export function AiChatPanel({
             <div key={i} className={cn('flex', m.role === 'user' ? 'justify-end' : 'justify-start')}>
               <div
                 className={cn(
-                  'max-w-[85%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap break-words',
+                  'rounded-2xl px-3.5 py-2 text-sm break-words',
                   m.role === 'user'
-                    ? 'bg-primary text-on-primary rounded-br-sm'
-                    : 'bg-surface-container-high text-foreground rounded-bl-sm',
+                    ? 'max-w-[85%] whitespace-pre-wrap bg-primary text-on-primary rounded-br-sm'
+                    : 'max-w-[92%] bg-surface-container-high text-foreground rounded-bl-sm',
                 )}
               >
-                {m.content}
+                {m.role === 'assistant' ? <MarkdownMessage content={m.content} /> : m.content}
                 {m.extra}
               </div>
             </div>
