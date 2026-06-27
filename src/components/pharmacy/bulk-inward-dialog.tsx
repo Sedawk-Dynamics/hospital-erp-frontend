@@ -15,6 +15,8 @@ import {
   Camera,
   ChevronDown,
   ChevronRight,
+  Search,
+  Undo2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
@@ -52,6 +54,7 @@ import {
 } from '@/hooks/use-pharmacy';
 import { useSuppliers } from '@/hooks/use-inventory';
 import { useAiStatus } from '@/hooks/use-ai';
+import { useDrugMasterSearch } from '@/hooks/use-drug-master';
 import { VendorFormDialog } from '@/components/inventory/vendor-form-dialog';
 import { BarcodeScanner } from '@/components/shared/barcode-scanner';
 
@@ -87,6 +90,12 @@ interface DraftLine {
   hsnCode: string;
   // Set when this line was seeded from a DrugMaster catalog match (create-from-catalog).
   drugMasterId?: string;
+  // The scanned/typed identity captured before a catalog pick overwrote it, so
+  // the user can "Undo" back to the original scanned name.
+  catalogBackup?: {
+    drugName: string; genericName: string; manufacturer: string; strength: string;
+    dosageForm: string; packSize: string; hsnCode: string; gtin: string;
+  };
   batchNumber: string;
   expiryDate: string; // yyyy-MM-dd
   manufacturingDate: string;
@@ -102,6 +111,24 @@ interface DraftLine {
 interface Decision {
   action: 'map' | 'create';
   targetId: string | null;
+}
+
+// Column-mappable text fields of a draft line — excludes the structured
+// `catalogBackup` (a nested object), which is never set via CSV/column mapping.
+type DraftCol = Exclude<keyof DraftLine, 'catalogBackup'>;
+
+// Normalised shape a catalog drug (auto-match chip OR free search result) is
+// adopted onto a line as.
+interface CatalogPick {
+  drugMasterId: string;
+  drugName: string;
+  genericName?: string | null;
+  manufacturer?: string | null;
+  strength?: string | null;
+  dosageForm?: string | null;
+  packSize?: number | null;
+  hsnCode?: string | null;
+  gtin?: string | null;
 }
 
 // Entry + inline match happen on ONE screen now; only the result is a separate step.
@@ -153,7 +180,7 @@ function emptyLine(): DraftLine {
 
 // ── CSV / paste parsing ─────────────────────────────────────
 // Header synonyms a distributor CSV might use → our canonical field.
-const HEADER_MAP: Record<string, keyof DraftLine> = {
+const HEADER_MAP: Record<string, DraftCol> = {
   name: 'drugName', drug: 'drugName', product: 'drugName', item: 'drugName',
   description: 'drugName', medicine: 'drugName', particulars: 'drugName',
   generic: 'genericName', composition: 'genericName', salt: 'genericName',
@@ -178,7 +205,7 @@ const HEADER_MAP: Record<string, keyof DraftLine> = {
 };
 
 // Default positional order when the pasted text has no recognisable header row.
-const DEFAULT_ORDER: (keyof DraftLine)[] = [
+const DEFAULT_ORDER: (DraftCol)[] = [
   'drugName', 'batchNumber', 'expiryDate', 'quantityReceived', 'mrp', 'purchasePrice', 'gstPercent', 'sellingPrice',
 ];
 
@@ -230,7 +257,7 @@ function parseTabular(text: string): DraftLine[] {
   if (!rows.length) return [];
   const first = splitRow(rows[0]).map(normHeader);
   const hasHeader = first.some((h) => h in HEADER_MAP);
-  const order: (keyof DraftLine | null)[] = hasHeader
+  const order: (DraftCol | null)[] = hasHeader
     ? first.map((h) => HEADER_MAP[h] ?? null)
     : DEFAULT_ORDER;
   const dataRows = hasHeader ? rows.slice(1) : rows;
@@ -250,7 +277,7 @@ function parseTabular(text: string): DraftLine[] {
 }
 
 // Mapping target fields the user can assign each spreadsheet column to.
-const MAP_FIELDS: { value: keyof DraftLine | 'ignore'; label: string }[] = [
+const MAP_FIELDS: { value: DraftCol | 'ignore'; label: string }[] = [
   { value: 'drugName', label: 'Name' },
   { value: 'category', label: 'Type / Category' },
   { value: 'genericName', label: 'Generic' },
@@ -292,7 +319,7 @@ async function rowsFromXlsx(file: File): Promise<string[][]> {
 }
 
 // Guess a field for each column from its header text (when a header row exists).
-function guessMapping(headerCells: string[]): (keyof DraftLine | 'ignore')[] {
+function guessMapping(headerCells: string[]): (DraftCol | 'ignore')[] {
   return headerCells.map((h) => HEADER_MAP[normHeader(h)] ?? 'ignore');
 }
 
@@ -314,7 +341,7 @@ function parseTypeCell(raw: string): { kind: string; category: string } {
 // Build draft lines from a raw grid + an explicit column→field mapping.
 function buildLinesFromRows(
   rows: string[][],
-  mapping: (keyof DraftLine | 'ignore')[],
+  mapping: (DraftCol | 'ignore')[],
   hasHeader: boolean,
 ): DraftLine[] {
   const dataRows = hasHeader ? rows.slice(1) : rows;
@@ -476,7 +503,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
 
   const close = () => onClose();
 
-  const updateLine = (id: string, field: keyof DraftLine, value: string) =>
+  const updateLine = (id: string, field: DraftCol, value: string) =>
     setLines((prev) => prev.map((l) => (l.id === id ? { ...l, [field]: value } : l)));
   const addLine = () => setLines((prev) => [...prev, emptyLine()]);
   const removeLine = (id: string) =>
@@ -705,29 +732,46 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
   const setDecision = (i: number, patch: Partial<Decision>) =>
     setDecisions((prev) => prev.map((d, idx) => (idx === i ? { ...d, ...patch } : d)));
 
-  // User picked a DrugMaster catalog suggestion for line i (the formulary had no
-  // good match). Adopt the catalog drug's identity onto the line + link it, and
-  // mark "create" so commit imports it into the formulary and stocks it.
-  const pickCatalog = (i: number, c: FormularyMatch) => {
+  // User picked a DrugMaster catalog drug for line i — either an auto-match chip
+  // or a free-search result. Adopt its identity onto the line + link it, and mark
+  // "create" so commit imports it into the formulary and stocks it. The original
+  // scanned/typed identity is captured (once) so "Undo" can restore it.
+  const pickCatalog = (i: number, c: CatalogPick) => {
+    setLines((prev) =>
+      prev.map((l, idx) => {
+        if (idx !== i) return l;
+        const catalogBackup = l.catalogBackup ?? {
+          drugName: l.drugName, genericName: l.genericName, manufacturer: l.manufacturer,
+          strength: l.strength, dosageForm: l.dosageForm, packSize: l.packSize,
+          hsnCode: l.hsnCode, gtin: l.gtin,
+        };
+        return {
+          ...l,
+          catalogBackup,
+          drugName: c.drugName || l.drugName,
+          genericName: c.genericName ?? l.genericName,
+          manufacturer: c.manufacturer ?? l.manufacturer,
+          strength: c.strength ?? l.strength,
+          dosageForm: (c.dosageForm as string) ?? l.dosageForm,
+          packSize: c.packSize != null ? String(c.packSize) : l.packSize,
+          hsnCode: c.hsnCode ?? l.hsnCode,
+          gtin: c.gtin ?? l.gtin,
+          drugMasterId: c.drugMasterId,
+        };
+      }),
+    );
+    setDecision(i, { action: 'create', targetId: null });
+  };
+
+  // Undo a catalog pick — restore the scanned/typed identity and unlink.
+  const undoCatalog = (i: number) => {
     setLines((prev) =>
       prev.map((l, idx) =>
-        idx === i
-          ? {
-              ...l,
-              drugName: c.drugName || l.drugName,
-              genericName: c.genericName ?? l.genericName,
-              manufacturer: c.manufacturer ?? l.manufacturer,
-              strength: c.strength ?? l.strength,
-              dosageForm: (c.dosageForm as string) ?? l.dosageForm,
-              packSize: c.packSize != null ? String(c.packSize) : l.packSize,
-              hsnCode: c.hsnCode ?? l.hsnCode,
-              gtin: c.gtin ?? l.gtin,
-              drugMasterId: c.drugMasterId ?? undefined,
-            }
+        idx === i && l.catalogBackup
+          ? { ...l, ...l.catalogBackup, drugMasterId: undefined, catalogBackup: undefined }
           : l,
       ),
     );
-    setDecision(i, { action: 'create', targetId: null });
   };
 
   const summary = useMemo(() => {
@@ -914,6 +958,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
               decisions={decisions}
               setDecision={setDecision}
               onPickCatalog={pickCatalog}
+              onUndoCatalog={undoCatalog}
               reviewing={reviewing}
             />
           )}
@@ -1037,7 +1082,7 @@ function EntryStep(props: {
   setInvoiceDiscAmt: (v: string) => void;
   purchaseTotals: { gross: number; lineDisc: number; billPct: number; invoiceDisc: number; net: number; gst: number; landing: number };
   lines: DraftLine[];
-  updateLine: (id: string, field: keyof DraftLine, value: string) => void;
+  updateLine: (id: string, field: DraftCol, value: string) => void;
   addLine: () => void;
   removeLine: (id: string) => void;
   showPaste: boolean;
@@ -1060,7 +1105,8 @@ function EntryStep(props: {
   matched: InwardMatchedLine[];
   decisions: Decision[];
   setDecision: (i: number, patch: Partial<Decision>) => void;
-  onPickCatalog: (i: number, c: FormularyMatch) => void;
+  onPickCatalog: (i: number, c: CatalogPick) => void;
+  onUndoCatalog: (i: number) => void;
   reviewing: boolean;
 }) {
   const {
@@ -1069,7 +1115,7 @@ function EntryStep(props: {
     purchaseTotals, lines, updateLine, addLine, removeLine, showPaste, setShowPaste,
     pasteText, setPasteText, ingest, fileRef, onFile, xlsxRef, onXlsxFile,
     ocrRef, onOcrFile, ocrEnabled, ocrPending, onScan, lineIssues,
-    matched, decisions, setDecision, onPickCatalog, reviewing,
+    matched, decisions, setDecision, onPickCatalog, onUndoCatalog, reviewing,
   } = props;
   const money = (n: number) => `₹${n.toFixed(2)}`;
 
@@ -1402,6 +1448,7 @@ function EntryStep(props: {
                   decision={decisions[i]}
                   onDecision={(patch) => setDecision(i, patch)}
                   onPickCatalog={(c) => onPickCatalog(i, c)}
+                  onUndoCatalog={() => onUndoCatalog(i)}
                 />
               )}
             </div>
@@ -1421,18 +1468,34 @@ function EntryStep(props: {
 //  • DrugMaster catalog matches → "From drug catalog" (pick one → import + stock)
 // so OCR never dead-ends on a blank "create new" when a similar drug exists.
 function LineMatchControl({
-  line, m, decision, onDecision, onPickCatalog,
+  line, m, decision, onDecision, onPickCatalog, onUndoCatalog,
 }: {
   line: DraftLine;
   m: InwardMatchedLine;
   decision: Decision;
   onDecision: (patch: Partial<Decision>) => void;
-  onPickCatalog: (c: FormularyMatch) => void;
+  onPickCatalog: (c: CatalogPick) => void;
+  onUndoCatalog: () => void;
 }) {
   const formularyMatches = m.matches.filter((c) => c.source !== 'catalog');
   const catalogMatches = m.matches.filter((c) => c.source === 'catalog');
   const hasFormulary = formularyMatches.length > 0;
   const target = formularyMatches.find((x) => x.id === decision.targetId) ?? null;
+
+  // Free-text catalog search (in addition to the auto-suggested chips).
+  const [search, setSearch] = useState('');
+  const { data: searchResults } = useDrugMasterSearch(search, search.trim().length >= 2);
+
+  const matchToPick = (c: FormularyMatch): CatalogPick => ({
+    drugMasterId: c.drugMasterId ?? '',
+    drugName: c.drugName, genericName: c.genericName, manufacturer: c.manufacturer,
+    strength: c.strength, dosageForm: c.dosageForm as string | null,
+    packSize: c.packSize, hsnCode: c.hsnCode, gtin: c.gtin,
+  });
+
+  // Show the catalog picker whenever the line is being created new (or has
+  // catalog suggestions) — that's when searching the catalog is useful.
+  const showCatalog = catalogMatches.length > 0 || decision.action === 'create';
   return (
     <div className="mt-2 rounded-md border border-primary/15 bg-primary/[0.03] p-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1507,36 +1570,87 @@ function LineMatchControl({
         </p>
       )}
 
-      {/* Catalog fallback — most-similar drugs from the platform catalog. Picking
-          one adopts its identity and imports it on receive (no blank create). */}
-      {catalogMatches.length > 0 && (
+      {/* Catalog picker — search the platform catalog OR pick a closest match.
+          Picking one adopts its identity and imports it on receive. */}
+      {showCatalog && (
         <div className="mt-2 border-t border-primary/10 pt-2">
-          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            From drug catalog {!hasFormulary && '— closest matches'}
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {catalogMatches.map((c) => {
-              const picked = !!line.drugMasterId && line.drugMasterId === c.drugMasterId;
-              return (
-                <button
-                  key={c.drugMasterId}
-                  type="button"
-                  onClick={() => onPickCatalog(c)}
-                  title="Use this catalog drug — imports it into your formulary and stocks it"
-                  className={cn(
-                    'flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors',
-                    picked ? 'border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500' : 'hover:bg-muted',
-                  )}
-                >
-                  {picked ? <Check className="h-3 w-3 text-emerald-600" /> : <Plus className="h-3 w-3 text-muted-foreground" />}
-                  <span className="truncate max-w-[180px]">{c.drugName}</span>
-                  {c.strength && <span className="text-muted-foreground">{c.strength}</span>}
-                  {c.manufacturer && <span className="hidden text-muted-foreground sm:inline">· {c.manufacturer}</span>}
-                  <Badge variant="outline" className="font-mono text-[10px]">{c.score}%</Badge>
-                </button>
-              );
-            })}
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              From drug catalog {!hasFormulary && catalogMatches.length > 0 && '— closest matches'}
+            </p>
+            {line.drugMasterId && line.catalogBackup && (
+              <button
+                type="button"
+                onClick={onUndoCatalog}
+                title={`Undo — use the scanned name "${line.catalogBackup.drugName}"`}
+                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-amber-700 hover:bg-amber-50"
+              >
+                <Undo2 className="h-3 w-3" /> Undo — use scanned “{line.catalogBackup.drugName}”
+              </button>
+            )}
           </div>
+
+          {/* Free-text search of the whole catalog */}
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search the drug catalog by name…"
+              className="h-7 pl-7 text-xs"
+            />
+            {search.trim().length >= 2 && (searchResults?.length ?? 0) > 0 && (
+              <div className="absolute z-20 mt-1 max-h-52 w-full overflow-y-auto rounded-md border bg-popover shadow-lg sanctuary-scrollbar">
+                {searchResults!.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => {
+                      onPickCatalog({
+                        drugMasterId: r.id, drugName: r.name, genericName: r.genericName,
+                        manufacturer: r.manufacturer, strength: r.strength,
+                        dosageForm: r.dosageForm as string | null,
+                      });
+                      setSearch('');
+                    }}
+                    className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs hover:bg-muted"
+                  >
+                    <Plus className="h-3 w-3 shrink-0 text-muted-foreground" />
+                    <span className="truncate font-medium">{r.name}</span>
+                    {r.strength && <span className="shrink-0 text-muted-foreground">{r.strength}</span>}
+                    {r.manufacturer && <span className="truncate text-muted-foreground">· {r.manufacturer}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Auto-suggested closest catalog drugs */}
+          {catalogMatches.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {catalogMatches.map((c) => {
+                const picked = !!line.drugMasterId && line.drugMasterId === c.drugMasterId;
+                return (
+                  <button
+                    key={c.drugMasterId}
+                    type="button"
+                    onClick={() => onPickCatalog(matchToPick(c))}
+                    title="Use this catalog drug — imports it into your formulary and stocks it"
+                    className={cn(
+                      'flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors',
+                      picked ? 'border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500' : 'hover:bg-muted',
+                    )}
+                  >
+                    {picked ? <Check className="h-3 w-3 text-emerald-600" /> : <Plus className="h-3 w-3 text-muted-foreground" />}
+                    <span className="truncate max-w-[180px]">{c.drugName}</span>
+                    {c.strength && <span className="text-muted-foreground">{c.strength}</span>}
+                    {c.manufacturer && <span className="hidden text-muted-foreground sm:inline">· {c.manufacturer}</span>}
+                    <Badge variant="outline" className="font-mono text-[10px]">{c.score}%</Badge>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1620,14 +1734,14 @@ function ColumnMappingDialog({
 }) {
   const colCount = Math.max(0, ...rows.map((r) => r.length));
   const [hasHeader, setHasHeader] = useState(() => looksLikeHeader(rows[0] ?? []));
-  const [mapping, setMapping] = useState<(keyof DraftLine | 'ignore')[]>(() => {
+  const [mapping, setMapping] = useState<(DraftCol | 'ignore')[]>(() => {
     const base = looksLikeHeader(rows[0] ?? [])
       ? guessMapping(rows[0] ?? [])
-      : (DEFAULT_ORDER as (keyof DraftLine | 'ignore')[]);
+      : (DEFAULT_ORDER as (DraftCol | 'ignore')[]);
     return Array.from({ length: colCount }, (_, i) => base[i] ?? 'ignore');
   });
 
-  const setCol = (i: number, v: keyof DraftLine | 'ignore') =>
+  const setCol = (i: number, v: DraftCol | 'ignore') =>
     setMapping((prev) => prev.map((m, idx) => (idx === i ? v : m)));
 
   const headerRow = rows[0] ?? [];
@@ -1663,7 +1777,7 @@ function ColumnMappingDialog({
                   <th key={i} className="min-w-[150px]">
                     <Select
                       value={mapping[i] ?? 'ignore'}
-                      onValueChange={(v) => setCol(i, (v ?? 'ignore') as keyof DraftLine | 'ignore')}
+                      onValueChange={(v) => setCol(i, (v ?? 'ignore') as DraftCol | 'ignore')}
                     >
                       <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
                       <SelectContent>
