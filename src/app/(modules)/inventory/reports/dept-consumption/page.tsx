@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toInputDateStr } from '@/lib/date-utils';
 import { Building2, ChevronDown, ChevronRight, IndianRupee, Package, Pill } from 'lucide-react';
@@ -127,9 +127,8 @@ export default function DeptConsumptionReportPage() {
               {rows.map((row) => {
                 const open = expanded.has(row.departmentId);
                 return (
-                  <>
+                  <Fragment key={row.departmentId}>
                     <tr
-                      key={row.departmentId}
                       className="border-b cursor-pointer hover:bg-muted/30"
                       onClick={() => toggle(row.departmentId)}
                     >
@@ -177,7 +176,7 @@ export default function DeptConsumptionReportPage() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 );
               })}
             </tbody>
