@@ -292,6 +292,12 @@ export interface FormularyMatch {
   drugMasterId: string | null;
   totalStock: number;
   score: number;
+  // 'formulary' = already in this hospital's list (map to it); 'catalog' = a
+  // platform DrugMaster suggestion (pick → create/import + stock). Defaults to
+  // 'formulary' when absent.
+  source?: 'formulary' | 'catalog';
+  hsnCode?: string | null;
+  gtin?: string | null;
 }
 
 // useCreateFormularyItem returns either the created item, or — when the server
@@ -627,6 +633,9 @@ export interface CommitInwardLine extends InwardMatchLine {
   targetFormularyId?: string;
   // Required when action === 'map' for an item line — the existing inventory item.
   targetInventoryItemId?: string;
+  // Set on a 'create' line seeded from the DrugMaster catalog — links the new
+  // formulary row to the catalog drug.
+  drugMasterId?: string;
   // Raw distributor line text stored as the learned-mapping key (defaults to drugName).
   externalName?: string;
   packSize?: number;

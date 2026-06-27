@@ -47,6 +47,7 @@ import {
   type InwardMatchedLine,
   type CommitInwardLine,
   type CommitInwardResult,
+  type FormularyMatch,
   type OcrInvoiceLine,
 } from '@/hooks/use-pharmacy';
 import { useSuppliers } from '@/hooks/use-inventory';
@@ -84,6 +85,8 @@ interface DraftLine {
   // Product Resolution Engine: GTIN off the invoice/scan + HSN for compliance.
   gtin: string;
   hsnCode: string;
+  // Set when this line was seeded from a DrugMaster catalog match (create-from-catalog).
+  drugMasterId?: string;
   batchNumber: string;
   expiryDate: string; // yyyy-MM-dd
   manufacturingDate: string;
@@ -702,6 +705,31 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
   const setDecision = (i: number, patch: Partial<Decision>) =>
     setDecisions((prev) => prev.map((d, idx) => (idx === i ? { ...d, ...patch } : d)));
 
+  // User picked a DrugMaster catalog suggestion for line i (the formulary had no
+  // good match). Adopt the catalog drug's identity onto the line + link it, and
+  // mark "create" so commit imports it into the formulary and stocks it.
+  const pickCatalog = (i: number, c: FormularyMatch) => {
+    setLines((prev) =>
+      prev.map((l, idx) =>
+        idx === i
+          ? {
+              ...l,
+              drugName: c.drugName || l.drugName,
+              genericName: c.genericName ?? l.genericName,
+              manufacturer: c.manufacturer ?? l.manufacturer,
+              strength: c.strength ?? l.strength,
+              dosageForm: (c.dosageForm as string) ?? l.dosageForm,
+              packSize: c.packSize != null ? String(c.packSize) : l.packSize,
+              hsnCode: c.hsnCode ?? l.hsnCode,
+              gtin: c.gtin ?? l.gtin,
+              drugMasterId: c.drugMasterId ?? undefined,
+            }
+          : l,
+      ),
+    );
+    setDecision(i, { action: 'create', targetId: null });
+  };
+
   const summary = useMemo(() => {
     let map = 0, create = 0;
     for (const d of decisions) {
@@ -772,6 +800,8 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         // maps to an existing inventory item.
         targetFormularyId: !isItem && d.action === 'map' ? d.targetId ?? undefined : undefined,
         targetInventoryItemId: isItem && d.action === 'map' ? d.targetId ?? undefined : undefined,
+        // A 'create' seeded from the catalog links the new formulary row to the master.
+        drugMasterId: d.action === 'create' ? l.drugMasterId || undefined : undefined,
         // Raw line text is the learned-mapping key; GTIN/HSN carry onto a new drug.
         externalName: l.drugName.trim(),
         drugName: l.drugName.trim(),
@@ -883,6 +913,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
               matched={matched}
               decisions={decisions}
               setDecision={setDecision}
+              onPickCatalog={pickCatalog}
               reviewing={reviewing}
             />
           )}
@@ -1029,6 +1060,7 @@ function EntryStep(props: {
   matched: InwardMatchedLine[];
   decisions: Decision[];
   setDecision: (i: number, patch: Partial<Decision>) => void;
+  onPickCatalog: (i: number, c: FormularyMatch) => void;
   reviewing: boolean;
 }) {
   const {
@@ -1037,7 +1069,7 @@ function EntryStep(props: {
     purchaseTotals, lines, updateLine, addLine, removeLine, showPaste, setShowPaste,
     pasteText, setPasteText, ingest, fileRef, onFile, xlsxRef, onXlsxFile,
     ocrRef, onOcrFile, ocrEnabled, ocrPending, onScan, lineIssues,
-    matched, decisions, setDecision, reviewing,
+    matched, decisions, setDecision, onPickCatalog, reviewing,
   } = props;
   const money = (n: number) => `₹${n.toFixed(2)}`;
 
@@ -1369,6 +1401,7 @@ function EntryStep(props: {
                   m={matched[i]}
                   decision={decisions[i]}
                   onDecision={(patch) => setDecision(i, patch)}
+                  onPickCatalog={(c) => onPickCatalog(i, c)}
                 />
               )}
             </div>
@@ -1383,33 +1416,39 @@ function EntryStep(props: {
   );
 }
 
-// Inline per-line formulary match — related drugs from stock (pick one to map) +
-// an "Add as new" option, shown right on the entry row. Replaces the old separate
-// review step so entry + match live on one screen.
+// Inline per-line match — shown right on the entry row. Two sources:
+//  • formulary matches → "Map to existing" (keeps stock together)
+//  • DrugMaster catalog matches → "From drug catalog" (pick one → import + stock)
+// so OCR never dead-ends on a blank "create new" when a similar drug exists.
 function LineMatchControl({
-  line, m, decision, onDecision,
+  line, m, decision, onDecision, onPickCatalog,
 }: {
   line: DraftLine;
   m: InwardMatchedLine;
   decision: Decision;
   onDecision: (patch: Partial<Decision>) => void;
+  onPickCatalog: (c: FormularyMatch) => void;
 }) {
-  const target = m.matches.find((x) => x.id === decision.targetId) ?? null;
-  const hasMatches = m.matches.length > 0;
+  const formularyMatches = m.matches.filter((c) => c.source !== 'catalog');
+  const catalogMatches = m.matches.filter((c) => c.source === 'catalog');
+  const hasFormulary = formularyMatches.length > 0;
+  const target = formularyMatches.find((x) => x.id === decision.targetId) ?? null;
   return (
     <div className="mt-2 rounded-md border border-primary/15 bg-primary/[0.03] p-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs">
           <span className="font-semibold uppercase tracking-wide text-muted-foreground">Match</span>
           {recBadge(m)}
-          {!hasMatches && <span className="text-muted-foreground">no similar drug in stock</span>}
+          {!hasFormulary && catalogMatches.length === 0 && (
+            <span className="text-muted-foreground">no similar drug found</span>
+          )}
         </div>
         {/* Map / Add-new toggle */}
         <div className="flex items-center gap-1 rounded-md border p-0.5">
           <button
             type="button"
-            disabled={!hasMatches}
-            onClick={() => onDecision({ action: 'map', targetId: decision.targetId ?? m.matches[0]?.id ?? null })}
+            disabled={!hasFormulary}
+            onClick={() => onDecision({ action: 'map', targetId: decision.targetId ?? formularyMatches[0]?.id ?? null })}
             className={cn(
               'rounded px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-40',
               decision.action === 'map' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted',
@@ -1430,30 +1469,28 @@ function LineMatchControl({
         </div>
       </div>
 
-      {decision.action === 'map' ? (
+      {decision.action === 'map' && hasFormulary ? (
         <div className="mt-2 space-y-2">
-          {/* Related drugs from stock — pick which one to add this batch to. */}
-          {hasMatches && (
-            <div className="flex flex-wrap gap-1.5">
-              {m.matches.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => onDecision({ targetId: c.id })}
-                  className={cn(
-                    'flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors',
-                    decision.targetId === c.id ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:bg-muted',
-                  )}
-                >
-                  {decision.targetId === c.id && <Check className="h-3 w-3 text-primary" />}
-                  <span className="truncate max-w-[160px]">{c.drugName}</span>
-                  {c.strength && <span className="text-muted-foreground">{c.strength}</span>}
-                  <Badge variant="outline" className="font-mono text-[10px]">{c.score}%</Badge>
-                  <span className="text-[10px] text-emerald-700">stock {c.totalStock}</span>
-                </button>
-              ))}
-            </div>
-          )}
+          {/* In-stock drugs — pick which one to add this batch to. */}
+          <div className="flex flex-wrap gap-1.5">
+            {formularyMatches.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => onDecision({ targetId: c.id })}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors',
+                  decision.targetId === c.id ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:bg-muted',
+                )}
+              >
+                {decision.targetId === c.id && <Check className="h-3 w-3 text-primary" />}
+                <span className="truncate max-w-[160px]">{c.drugName}</span>
+                {c.strength && <span className="text-muted-foreground">{c.strength}</span>}
+                <Badge variant="outline" className="font-mono text-[10px]">{c.score}%</Badge>
+                <span className="text-[10px] text-emerald-700">stock {c.totalStock}</span>
+              </button>
+            ))}
+          </div>
           {target && (
             <p className="text-[11px] text-muted-foreground">
               Stock will be added to <span className="font-medium text-foreground">{target.drugName}</span>
@@ -1463,9 +1500,44 @@ function LineMatchControl({
         </div>
       ) : (
         <p className="mt-1.5 text-[11px] text-muted-foreground">
-          Will be added as a new {line.kind === 'item' ? 'inventory item' : 'drug'}, then stocked.
-          {hasMatches && ' A similar record exists — switch to “Map to existing” to avoid splitting stock.'}
+          {line.drugMasterId
+            ? 'Identity taken from the drug catalog — will be added to your formulary, then stocked.'
+            : `Will be added as a new ${line.kind === 'item' ? 'inventory item' : 'drug'}, then stocked.`}
+          {hasFormulary && ' A similar record exists — switch to “Map to existing” to avoid splitting stock.'}
         </p>
+      )}
+
+      {/* Catalog fallback — most-similar drugs from the platform catalog. Picking
+          one adopts its identity and imports it on receive (no blank create). */}
+      {catalogMatches.length > 0 && (
+        <div className="mt-2 border-t border-primary/10 pt-2">
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            From drug catalog {!hasFormulary && '— closest matches'}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {catalogMatches.map((c) => {
+              const picked = !!line.drugMasterId && line.drugMasterId === c.drugMasterId;
+              return (
+                <button
+                  key={c.drugMasterId}
+                  type="button"
+                  onClick={() => onPickCatalog(c)}
+                  title="Use this catalog drug — imports it into your formulary and stocks it"
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors',
+                    picked ? 'border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500' : 'hover:bg-muted',
+                  )}
+                >
+                  {picked ? <Check className="h-3 w-3 text-emerald-600" /> : <Plus className="h-3 w-3 text-muted-foreground" />}
+                  <span className="truncate max-w-[180px]">{c.drugName}</span>
+                  {c.strength && <span className="text-muted-foreground">{c.strength}</span>}
+                  {c.manufacturer && <span className="hidden text-muted-foreground sm:inline">· {c.manufacturer}</span>}
+                  <Badge variant="outline" className="font-mono text-[10px]">{c.score}%</Badge>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       )}
     </div>
   );
