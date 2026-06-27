@@ -83,9 +83,8 @@ export interface DrugBatch {
   isRecalled: boolean;
   recallReason: string | null;
   // Barcode-driven traceability (spec Section 2): scannable code (internal Code-128
-  // minted at inward, or a scanned pack barcode) + the shelf/bin location.
+  // minted at inward, or a scanned pack barcode).
   barcode?: string | null;
-  storageLocation?: string | null;
   // GS1 DataMatrix serial (AI 21) captured at receipt.
   serialNumber?: string | null;
   createdAt: string;
@@ -562,7 +561,6 @@ export interface ScanResult {
     sellingPrice: number | null;
     mrp: number | null;
     quantityInStock: number;
-    storageLocation: string | null;
     barcode: string | null;
   } | null;
   totalStock: number;
@@ -638,8 +636,6 @@ export interface CommitInwardLine extends InwardMatchLine {
   // Product Resolution Engine identity carried onto a newly-created drug.
   hsnCode?: string;
   manufacturerCode?: string;
-  // Department / rack / cold-chain bin the batch is shelved in (per-batch).
-  storageLocation?: string;
   // Batch + expiry required for medicines; optional for other items.
   batchNumber?: string;
   manufacturingDate?: string;
@@ -874,9 +870,8 @@ export interface CreateBatchInput {
   freeQuantity?: number;
   sellingPrice?: number;
   quantityReceived: number;
-  // Barcode traceability: scanned pack barcode, shelf location, DataMatrix serial.
+  // Barcode traceability: scanned pack barcode + DataMatrix serial.
   barcode?: string;
-  storageLocation?: string;
   serialNumber?: string;
   // GRN invoice traceability + duplicate-batch "Increase Quantity".
   invoiceNumber?: string;

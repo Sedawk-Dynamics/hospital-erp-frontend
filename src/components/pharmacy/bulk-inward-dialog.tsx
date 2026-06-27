@@ -86,8 +86,6 @@ interface DraftLine {
   // Product Resolution Engine: GTIN off the invoice/scan + HSN for compliance.
   gtin: string;
   hsnCode: string;
-  // Department / rack / cold-chain bin this batch is shelved in (mandatory).
-  storageLocation: string;
   batchNumber: string;
   expiryDate: string; // yyyy-MM-dd
   manufacturingDate: string;
@@ -138,7 +136,6 @@ function emptyLine(): DraftLine {
     strength: '',
     gtin: '',
     hsnCode: '',
-    storageLocation: '',
     batchNumber: '',
     expiryDate: '',
     manufacturingDate: '',
@@ -162,8 +159,6 @@ const HEADER_MAP: Record<string, keyof DraftLine> = {
   strength: 'strength', dose: 'strength', dosage: 'strength',
   gtin: 'gtin', barcode: 'gtin', ean: 'gtin', upc: 'gtin', gs1: 'gtin',
   hsn: 'hsnCode', hsn_code: 'hsnCode', hsncode: 'hsnCode',
-  storage: 'storageLocation', storage_location: 'storageLocation', location: 'storageLocation',
-  rack: 'storageLocation', shelf: 'storageLocation', bin: 'storageLocation', store: 'storageLocation',
   batch: 'batchNumber', batchno: 'batchNumber', batch_no: 'batchNumber', lot: 'batchNumber', bno: 'batchNumber',
   expiry: 'expiryDate', exp: 'expiryDate', exp_date: 'expiryDate', expiry_date: 'expiryDate', expdate: 'expiryDate',
   mfgdate: 'manufacturingDate', mfg_date: 'manufacturingDate', manufacturing_date: 'manufacturingDate',
@@ -267,7 +262,6 @@ const MAP_FIELDS: { value: keyof DraftLine | 'ignore'; label: string }[] = [
   { value: 'batchNumber', label: 'Batch' },
   { value: 'expiryDate', label: 'Expiry' },
   { value: 'manufacturingDate', label: 'Mfg date' },
-  { value: 'storageLocation', label: 'Storage' },
   { value: 'quantityReceived', label: 'Qty' },
   { value: 'freeQuantity', label: 'Free qty' },
   { value: 'mrp', label: 'MRP' },
@@ -351,7 +345,7 @@ export interface LineIssues {
 
 // Per-line pre-commit validation. Errors block the Match step; warnings are
 // advisory (shown inline) so the user can proceed knowingly.
-function validateLine(l: DraftLine, all: DraftLine[], defaultStorage: string): LineIssues {
+function validateLine(l: DraftLine, all: DraftLine[]): LineIssues {
   const errors: string[] = [];
   const warnings: string[] = [];
   if (!l.drugName.trim()) return { errors, warnings }; // blank row — ignored
@@ -365,11 +359,10 @@ function validateLine(l: DraftLine, all: DraftLine[], defaultStorage: string): L
     errors.push('Quantity must be greater than 0 (or leave blank to just add the product)');
   }
 
-  // Batch / expiry / storage are required only when receiving stock for a medicine.
+  // Batch / expiry are required only when receiving stock for a medicine.
   if (!isItem && receiving) {
     if (!l.batchNumber.trim()) errors.push('Batch number is required to receive stock');
     if (!l.expiryDate) errors.push('Expiry date is required to receive stock');
-    if (!l.storageLocation.trim() && !defaultStorage.trim()) errors.push('Storage location is required to receive stock');
   }
 
   if (l.expiryDate) {
@@ -448,9 +441,6 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [result, setResult] = useState<CommitInwardResult | null>(null);
 
-  // Mandatory storage location applied to any line that doesn't set its own.
-  const [defaultStorage, setDefaultStorage] = useState('');
-
   const fileRef = useRef<HTMLInputElement>(null);
   const xlsxRef = useRef<HTMLInputElement>(null);
   const ocrRef = useRef<HTMLInputElement>(null);
@@ -471,7 +461,6 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
     setInvoiceDiscPct('');
     setInvoiceDiscAmt('');
     setAddToExisting(false);
-    setDefaultStorage('');
     setLines([emptyLine()]);
     setPasteText('');
     setShowPaste(false);
@@ -567,7 +556,6 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
     strength: o.strength ?? '',
     gtin: o.gtin ?? '',
     hsnCode: o.hsnCode ?? '',
-    storageLocation: '',
     batchNumber: o.batchNumber ?? '',
     expiryDate: o.expiryDate ?? '',
     manufacturingDate: o.manufacturingDate ?? '',
@@ -636,7 +624,6 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         strength: L.strength || '',
         gtin: L.gtin || res.gtin || '',
         hsnCode: L.hsnCode || '',
-        storageLocation: '',
         batchNumber: L.batchNumber || '',
         expiryDate: L.expiryDate || '',
         manufacturingDate: L.manufacturingDate || '',
@@ -746,8 +733,8 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
 
   // Per-line validation — errors block Match, warnings are advisory (shown inline).
   const lineIssues = useMemo(
-    () => lines.map((l) => validateLine(l, lines, defaultStorage)),
-    [lines, defaultStorage],
+    () => lines.map((l) => validateLine(l, lines)),
+    [lines],
   );
   const blockingErrors = lineIssues.reduce((n, x) => n + x.errors.length, 0);
 
@@ -780,8 +767,6 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         description: l.description.trim() || undefined,
         gtin: l.gtin.trim() || undefined,
         hsnCode: l.hsnCode.trim() || undefined,
-        // Storage applies to medicine batches only (items have no batch entity).
-        storageLocation: isItem ? undefined : l.storageLocation.trim() || defaultStorage.trim() || undefined,
         batchNumber: l.batchNumber.trim() || undefined,
         expiryDate: l.expiryDate || undefined,
         manufacturingDate: l.manufacturingDate || undefined,
@@ -881,8 +866,6 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
               setInvoiceDiscPct={setInvoiceDiscPct}
               invoiceDiscAmt={invoiceDiscAmt}
               setInvoiceDiscAmt={setInvoiceDiscAmt}
-              defaultStorage={defaultStorage}
-              setDefaultStorage={setDefaultStorage}
               purchaseTotals={purchaseTotals}
               lines={lines}
               updateLine={updateLine}
@@ -1026,8 +1009,6 @@ function EntryStep(props: {
   setInvoiceDiscPct: (v: string) => void;
   invoiceDiscAmt: string;
   setInvoiceDiscAmt: (v: string) => void;
-  defaultStorage: string;
-  setDefaultStorage: (v: string) => void;
   purchaseTotals: { gross: number; lineDisc: number; billPct: number; invoiceDisc: number; net: number; gst: number; landing: number };
   lines: DraftLine[];
   updateLine: (id: string, field: keyof DraftLine, value: string) => void;
@@ -1052,7 +1033,6 @@ function EntryStep(props: {
   const {
     suppliers, supplierId, setSupplierId, selectedSupplier, invoiceNumber, setInvoiceNumber,
     invoiceDate, setInvoiceDate, invoiceDiscPct, setInvoiceDiscPct, invoiceDiscAmt, setInvoiceDiscAmt,
-    defaultStorage, setDefaultStorage,
     purchaseTotals, lines, updateLine, addLine, removeLine, showPaste, setShowPaste,
     pasteText, setPasteText, ingest, fileRef, onFile, xlsxRef, onXlsxFile,
     ocrRef, onOcrFile, ocrPending, onScan, lineIssues,
@@ -1119,16 +1099,6 @@ function EntryStep(props: {
         <div className="space-y-1.5">
           <Label className="text-xs">Invoice Date</Label>
           <Input className="h-9" type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">Default storage location *</Label>
-          <Input
-            className="h-9"
-            value={defaultStorage}
-            onChange={(e) => setDefaultStorage(e.target.value)}
-            placeholder="e.g. Main store · Rack A3"
-          />
-          <p className="text-[11px] text-muted-foreground">Applied to every line that has no storage of its own.</p>
         </div>
       </div>
 
@@ -1316,9 +1286,6 @@ function EntryStep(props: {
                 </LineField>
                 <LineField label={isItem ? 'Expiry (optional)' : 'Expiry'}>
                   <Input className={cell} type="date" value={l.expiryDate} onChange={(e) => updateLine(l.id, 'expiryDate', e.target.value)} />
-                </LineField>
-                <LineField label="Storage" className="col-span-2 sm:col-span-1">
-                  <Input className={cell} value={l.storageLocation} onChange={(e) => updateLine(l.id, 'storageLocation', e.target.value)} placeholder={defaultStorage || 'Rack / Dept'} />
                 </LineField>
                 <LineField label="Qty">
                   <Input className={cell} type="number" min={1} value={l.quantityReceived} onChange={(e) => updateLine(l.id, 'quantityReceived', e.target.value)} placeholder="blank = no stock" />
@@ -1508,7 +1475,6 @@ function CompareCards({ line, target }: { line: DraftLine; target: FormularyMatc
           <Field label="Manufacturer" value={line.manufacturer} />
           <Field label="Strength" value={line.strength} />
           <Field label="Receiving" value={`${(parseInt(line.quantityReceived, 10) || 0) + (parseInt(line.freeQuantity, 10) || 0)} units`} />
-          <Field label="Storage" value={line.storageLocation} />
         </div>
       </div>
       <div className={cn('rounded-md border p-2.5 text-xs', target ? 'border-primary/40 bg-primary/5' : 'border-dashed')}>

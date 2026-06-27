@@ -1261,9 +1261,6 @@ export function DrugBatchesPanel({
                             ▮ {batch.barcode}
                           </div>
                         )}
-                        {batch.storageLocation && (
-                          <div className="text-[10px] text-muted-foreground">📍 {batch.storageLocation}</div>
-                        )}
                       </TableCell>
                       <TableCell>
                         <div className="font-medium">{batch.drug?.drugName ?? '-'}</div>

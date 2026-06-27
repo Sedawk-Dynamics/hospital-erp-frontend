@@ -451,7 +451,6 @@ export interface ReceivePurchaseOrderLine {
   manufacturingDate?: string;
   mrp?: number;
   sellingPrice?: number;
-  storageLocation?: string;
 }
 
 export function useCreatePurchaseOrder() {

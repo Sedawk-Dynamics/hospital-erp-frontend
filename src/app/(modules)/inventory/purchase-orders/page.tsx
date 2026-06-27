@@ -395,10 +395,10 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
   // Purchase price entered at arrival (PO creation no longer captures price).
   const [recvPrice, setRecvPrice] = useState<Record<string, number>>({});
   // Per-drug-line batch details captured at receipt (creates a real DrugBatch).
-  const [recvBatch, setRecvBatch] = useState<Record<string, { batchNumber: string; expiryDate: string; storageLocation: string }>>({});
-  const setBatch = (poItemId: string, patch: Partial<{ batchNumber: string; expiryDate: string; storageLocation: string }>) =>
+  const [recvBatch, setRecvBatch] = useState<Record<string, { batchNumber: string; expiryDate: string }>>({});
+  const setBatch = (poItemId: string, patch: Partial<{ batchNumber: string; expiryDate: string }>) =>
     setRecvBatch((prev) => {
-      const cur = prev[poItemId] ?? { batchNumber: '', expiryDate: '', storageLocation: '' };
+      const cur = prev[poItemId] ?? { batchNumber: '', expiryDate: '' };
       return { ...prev, [poItemId]: { ...cur, ...patch } };
     });
 
@@ -435,7 +435,6 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
           unitPrice,
           batchNumber: b.batchNumber.trim(),
           expiryDate: b.expiryDate,
-          storageLocation: b.storageLocation?.trim() || undefined,
         });
       } else {
         lines.push({ purchaseOrderItemId: i.id, quantityReceived: qty, unitPrice });
@@ -552,12 +551,6 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
                                     value={recvBatch[it.id]?.expiryDate ?? ''}
                                     onChange={(e) => setBatch(it.id, { expiryDate: e.target.value })}
                                     title="Expiry *"
-                                    className="h-7 w-32 text-xs"
-                                  />
-                                  <Input
-                                    value={recvBatch[it.id]?.storageLocation ?? ''}
-                                    onChange={(e) => setBatch(it.id, { storageLocation: e.target.value })}
-                                    placeholder="Storage (rack)"
                                     className="h-7 w-32 text-xs"
                                   />
                                 </>
