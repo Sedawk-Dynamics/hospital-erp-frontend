@@ -53,6 +53,18 @@ function FeatureRow({ title, description, checked, onChange, disabled, badge }: 
 }
 
 const PLATFORM = '__platform__';
+// Backend caps fallbackModels at 5 — keep the UI in lockstep so a save never 400s.
+const MAX_FALLBACKS = 5;
+
+// Keep numeric inputs within the ranges the backend enforces (temperature 0–2,
+// maxOutputTokens 64–8192). An empty / NaN field (e.g. the user clears the box)
+// or an out-of-range value would otherwise be sent verbatim and rejected with a
+// generic "Validation error". Falls back to a sane default when not a number.
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
 
 export default function AiSettingsPage() {
   const [scope, setScope] = useState<string>(PLATFORM); // PLATFORM or a tenantId
@@ -105,7 +117,15 @@ export default function AiSettingsPage() {
 
   const handleSave = async () => {
     try {
-      await update.mutateAsync({ tenantId, ...form });
+      // Final safety net: guarantee the payload is always within the backend's
+      // allowed ranges regardless of what's currently in the number fields.
+      await update.mutateAsync({
+        tenantId,
+        ...form,
+        temperature: clampNumber(form.temperature, 0, 2, 0.4),
+        maxOutputTokens: Math.round(clampNumber(form.maxOutputTokens, 64, 8192, 1024)),
+        fallbackModels: form.fallbackModels.slice(0, MAX_FALLBACKS),
+      });
       toast.success(tenantId ? 'Hospital AI settings saved' : 'Platform AI settings saved');
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? 'Failed to save');
@@ -248,9 +268,15 @@ export default function AiSettingsPage() {
                         <button
                           key={m.id}
                           type="button"
-                          onClick={() =>
-                            set('fallbackModels', on ? form.fallbackModels.filter((x) => x !== m.id) : [...form.fallbackModels, m.id])
-                          }
+                          onClick={() => {
+                            if (on) {
+                              set('fallbackModels', form.fallbackModels.filter((x) => x !== m.id));
+                            } else if (form.fallbackModels.length >= MAX_FALLBACKS) {
+                              toast.warning(`Up to ${MAX_FALLBACKS} fallback models`);
+                            } else {
+                              set('fallbackModels', [...form.fallbackModels, m.id]);
+                            }
+                          }}
                           className={cn(
                             'rounded-full border px-2.5 py-1 text-xs transition-colors',
                             on ? 'border-primary bg-primary/10 text-primary' : 'border-foreground/15 text-muted-foreground hover:bg-surface-container-high',
@@ -270,11 +296,11 @@ export default function AiSettingsPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label className="text-xs mb-1">Temperature ({form.temperature.toFixed(2)})</Label>
-                  <Input type="number" min={0} max={2} step={0.1} value={form.temperature} onChange={(e) => set('temperature', Number(e.target.value))} />
+                  <Input type="number" min={0} max={2} step={0.1} value={form.temperature} onChange={(e) => set('temperature', Number(e.target.value))} onBlur={() => set('temperature', clampNumber(form.temperature, 0, 2, 0.4))} />
                 </div>
                 <div>
                   <Label className="text-xs mb-1">Max output tokens</Label>
-                  <Input type="number" min={64} max={8192} step={64} value={form.maxOutputTokens} onChange={(e) => set('maxOutputTokens', Number(e.target.value))} />
+                  <Input type="number" min={64} max={8192} step={64} value={form.maxOutputTokens} onChange={(e) => set('maxOutputTokens', Number(e.target.value))} onBlur={() => set('maxOutputTokens', Math.round(clampNumber(form.maxOutputTokens, 64, 8192, 1024)))} />
                 </div>
               </div>
             </CardContent>
