@@ -246,7 +246,6 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       // Batches are now part of "Storage" (each medicine expands to its batches).
       { label: 'Distributor Mappings', href: '/inventory/distributor-mappings', icon: Link2 },
       { label: 'Narcotics (NDPS)', href: '/inventory/ndps', icon: ShieldCheck },
-      { label: 'Surgical Kits (OT)', href: '/inventory/surgical-kits', icon: Scissors },
       { label: 'Drug Orders', href: '/inventory/drug-purchase-orders', icon: ShoppingCart },
       { label: 'Drug GST', href: '/inventory/drug-gst', icon: FileText },
       { label: 'Reports', href: '/inventory/reports', icon: BarChart3 },
