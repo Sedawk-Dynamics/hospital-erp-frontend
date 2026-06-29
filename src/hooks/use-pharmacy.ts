@@ -419,7 +419,7 @@ export interface InwardMatchLine {
 
 export type InwardRecommendation = 'map' | 'review' | 'create';
 // How a line resolved to a drug, highest-confidence first (Product Resolution Engine).
-export type InwardResolvedVia = 'gtin' | 'distributor_map' | 'similarity' | 'none';
+export type InwardResolvedVia = 'gtin' | 'similarity' | 'none';
 
 // A scored line + its candidate existing drugs (for the side-by-side review).
 export interface InwardMatchedLine {
@@ -435,7 +435,7 @@ export interface InwardMatchedLine {
 }
 
 // Step 1: score every incoming line against the formulary (no writes). The
-// header supplier threads through so learned distributor mappings can resolve.
+// header supplier threads through so it can be recorded on each received batch.
 export function useMatchInward() {
   return useMutation({
     mutationFn: async (payload: InwardMatchLine[] | { lines: InwardMatchLine[]; supplierId?: string }) => {
@@ -591,38 +591,6 @@ export function useCheckSaleCompliance() {
   return useMutation({
     mutationFn: async (payload: { items: { drugBatchId: string }[]; prescriptionId?: string }) =>
       (await apiPost<ComplianceResult>('/pharmacy/sales/compliance-check', payload)).data,
-  });
-}
-
-// Product Resolution Engine: learned distributor → product mappings (admin).
-export interface DistributorMapping {
-  id: string;
-  externalName: string;
-  gtin: string | null;
-  supplier: string | null;
-  supplierId: string | null;
-  drugName: string | null;
-  drugStrength: string | null;
-  drugFormularyId: string;
-  confidence: number;
-  timesSeen: number;
-  lastSeenAt: string;
-}
-
-export function useDistributorMappings(params: { supplierId?: string; search?: string } = {}) {
-  return useQuery({
-    queryKey: ['pharmacy', 'distributor-mappings', params],
-    queryFn: async () =>
-      (await apiGet<{ items: DistributorMapping[]; total: number }>('/pharmacy/distributor-mappings', { params })).data,
-  });
-}
-
-export function useDeleteDistributorMapping() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: string) =>
-      (await apiDelete<{ id: string; deleted: boolean }>(`/pharmacy/distributor-mappings/${id}`)).data,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['pharmacy', 'distributor-mappings'] }),
   });
 }
 

@@ -3,7 +3,6 @@ import {
   FlaskConical,
   ScanLine,
   Pill,
-  Link2,
   PackagePlus,
   Database,
   Scissors,
@@ -244,7 +243,6 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Drug Catalog', href: '/inventory/drug-catalog', icon: Database },
       { label: 'Drug Formulary', href: '/inventory/drug-formulary', icon: Pill },
       // Batches are now part of "Storage" (each medicine expands to its batches).
-      { label: 'Distributor Mappings', href: '/inventory/distributor-mappings', icon: Link2 },
       { label: 'Narcotics (NDPS)', href: '/inventory/ndps', icon: ShieldCheck },
       { label: 'Drug Orders', href: '/inventory/drug-purchase-orders', icon: ShoppingCart },
       { label: 'Drug GST', href: '/inventory/drug-gst', icon: FileText },

@@ -442,8 +442,6 @@ const int = (s: string): number | undefined => {
 function recBadge(line: Pick<InwardMatchedLine, 'recommendation' | 'resolvedVia' | 'confidence'>) {
   if (line.resolvedVia === 'gtin')
     return <Badge className="bg-teal-500/10 text-teal-700 border-teal-500/20">GTIN match</Badge>;
-  if (line.resolvedVia === 'distributor_map')
-    return <Badge className="bg-violet-500/10 text-violet-700 border-violet-500/20">Auto (learned)</Badge>;
   if (line.recommendation === 'map')
     return <Badge className="bg-amber-500/10 text-amber-700 border-amber-500/20">Likely duplicate{line.confidence ? ` · ${line.confidence}%` : ''}</Badge>;
   if (line.recommendation === 'review')
@@ -703,7 +701,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
     }
     try {
       const res = await matchInward.mutateAsync({
-        // Header supplier threads through so learned distributor mappings resolve.
+        // Header supplier threads through so it can be recorded on each batch.
         supplierId: supplierId || undefined,
         lines: filled.map((l) => ({
           drugName: l.drugName.trim(),
