@@ -630,7 +630,10 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
       // related formulary drugs (with an add-new option) inline.
       void handleMatch(combined);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Could not read the invoice');
+      // Prefer the backend's actionable message (e.g. "AI quota exhausted")
+      // over axios's generic "Request failed with status code 500".
+      const apiMsg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(apiMsg || (err instanceof Error ? err.message : 'Could not read the invoice'));
     }
   };
 
