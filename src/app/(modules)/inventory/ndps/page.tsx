@@ -2,7 +2,7 @@
 
 import { PharmacyAdminGuard } from '@/components/pharmacy/pharmacy-admin-guard';
 import { useState } from 'react';
-import { ShieldCheck, PackagePlus, ArrowLeftRight, Syringe, Trash2, CalendarClock, Download, Search } from 'lucide-react';
+import { ShieldCheck, PackagePlus, ArrowLeftRight, Syringe, Trash2, CalendarClock, Download, FileText, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -43,6 +43,21 @@ function useUserOpts(): UserOpt[] {
   return (data?.data ?? []).map((u: { id: string; firstName: string; lastName?: string }) => ({
     id: u.id, label: `${u.firstName} ${u.lastName ?? ''}`.trim(),
   }));
+}
+
+// Fetch a statutory register PDF (blob) and trigger a browser download.
+async function downloadPdf(url: string, params: Record<string, string | undefined>, filename: string) {
+  const { apiClient } = await import('@/lib/api');
+  const res = await apiClient.get(url, { params, responseType: 'blob' });
+  const blob = new Blob([res.data], { type: 'application/pdf' });
+  const href = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = href;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(href), 1000);
 }
 
 function Select({ value, onChange, options, placeholder }: { value: string; onChange: (v: string) => void; options: { id: string; label: string }[]; placeholder: string }) {
@@ -299,9 +314,17 @@ function RegisterTab() {
           <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-40" />
           <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />
         </div>
-        <Button variant="outline" size="sm" disabled={rows.length === 0} onClick={() => downloadCsv(`ndps-register-${formType}.csv`, exportRows)}>
-          <Download className="mr-1.5 h-4 w-4" /> Export CSV
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" disabled={rows.length === 0} onClick={() => downloadCsv(`ndps-register-${formType}.csv`, exportRows)}>
+            <Download className="mr-1.5 h-4 w-4" /> Export CSV
+          </Button>
+          <Button variant="outline" size="sm" disabled={rows.length === 0} onClick={async () => {
+            try { await downloadPdf('/ndps/register/pdf', { formType, fromDate: from || undefined, toDate: to || undefined }, `ndps-form-${formType}.pdf`); }
+            catch (e) { toast.error(e instanceof Error ? e.message : 'PDF export failed'); }
+          }}>
+            <FileText className="mr-1.5 h-4 w-4" /> Export PDF
+          </Button>
+        </div>
       </div>
       {isLoading ? <Skeleton className="h-40 w-full" /> : rows.length === 0 ? (
         <EmptyState icon={ShieldCheck} title="No entries" description="Nothing recorded for this form in the selected range." />
@@ -366,9 +389,17 @@ function DailyTab() {
           <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-40" />
           <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />
         </div>
-        <Button variant="outline" size="sm" disabled={runClose.isPending} onClick={async () => { await runClose.mutateAsync(toInputDateStr()); toast.success('Form 3H closed for today'); }}>
-          <CalendarClock className="mr-1.5 h-4 w-4" /> Run today&apos;s close
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" disabled={rows.length === 0} onClick={async () => {
+            try { await downloadPdf('/ndps/daily-balances/pdf', { fromDate: from || undefined, toDate: to || undefined }, 'ndps-form-3H.pdf'); }
+            catch (e) { toast.error(e instanceof Error ? e.message : 'PDF export failed'); }
+          }}>
+            <FileText className="mr-1.5 h-4 w-4" /> Export PDF (3H)
+          </Button>
+          <Button variant="outline" size="sm" disabled={runClose.isPending} onClick={async () => { await runClose.mutateAsync(toInputDateStr()); toast.success('Form 3H closed for today'); }}>
+            <CalendarClock className="mr-1.5 h-4 w-4" /> Run today&apos;s close
+          </Button>
+        </div>
       </div>
       {isLoading ? <Skeleton className="h-40 w-full" /> : rows.length === 0 ? (
         <EmptyState icon={CalendarClock} title="No daily accounts yet" description="Run the close to write today's Form 3H." />
