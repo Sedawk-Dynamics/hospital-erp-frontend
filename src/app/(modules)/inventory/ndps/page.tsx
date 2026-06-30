@@ -164,8 +164,9 @@ function ConsumptionDialog({ open, onOpenChange }: { open: boolean; onOpenChange
   const submit = async () => {
     if (!f.drugFormularyId || !f.fromLocationId || !f.quantity || !f.patientId || !f.doctorRegNo || !f.bedNumber || !f.diagnosis) return toast.error('All Form 3E fields are mandatory');
     try {
-      await consume.mutateAsync({ drugFormularyId: f.drugFormularyId, fromLocationId: f.fromLocationId, quantity: parseInt(f.quantity, 10), patientId: f.patientId, doctorRegNo: f.doctorRegNo, bedNumber: f.bedNumber, diagnosis: f.diagnosis });
-      toast.success('Consumption recorded (Form 3E)');
+      const res = await consume.mutateAsync({ drugFormularyId: f.drugFormularyId, fromLocationId: f.fromLocationId, quantity: parseInt(f.quantity, 10), patientId: f.patientId, doctorRegNo: f.doctorRegNo, bedNumber: f.bedNumber, diagnosis: f.diagnosis });
+      const charged = (res as { billing?: { charged?: number } } | undefined)?.billing?.charged;
+      toast.success(typeof charged === 'number' ? `Consumption recorded (Form 3E) · ₹${charged.toLocaleString('en-IN')} billed to patient` : 'Consumption recorded (Form 3E)');
       onOpenChange(false);
       setF({ drugFormularyId: '', fromLocationId: '', quantity: '', patientId: '', patientLabel: '', doctorRegNo: '', bedNumber: '', diagnosis: '' });
       setPatientSearch('');
