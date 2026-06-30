@@ -1,8 +1,8 @@
 'use client';
 
 import { PharmacyAdminGuard } from '@/components/pharmacy/pharmacy-admin-guard';
-import { useState } from 'react';
-import { ShieldCheck, PackagePlus, ArrowLeftRight, Syringe, Trash2, CalendarClock, Download, FileText, Search } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { ShieldCheck, PackagePlus, ArrowLeftRight, Syringe, Trash2, CalendarClock, Download, FileText, Search, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,7 +25,7 @@ import { usePatientSearch } from '@/hooks/use-hospital';
 import {
   useNdpsLocations, useNdpsStockByLocation, useNdpsRegister, useNdpsDailyBalances,
   useNdpsReceiveConsignment, useNdpsTransfer, useNdpsConsumption, useNdpsDisposal,
-  useNdpsRunDailyClose, useNdpsVerifyDaily,
+  useNdpsRunDailyClose, useNdpsVerifyDaily, useNdpsUploadEvidence,
 } from '@/hooks/use-ndps';
 
 type DrugOpt = { id: string; label: string };
@@ -225,6 +225,9 @@ function DisposalDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
   const { data: locations } = useNdpsLocations();
   const locOpts = (locations ?? []).map((l) => ({ id: l.id, label: l.name }));
   const dispose = useNdpsDisposal();
+  const uploadEvidence = useNdpsUploadEvidence();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [evidenceName, setEvidenceName] = useState('');
   const [f, setF] = useState({ drugFormularyId: '', locationId: '', quantity: '', reasonCode: 'breakage', referenceNumber: '', coSignById: '', attachmentUrl: '' });
   const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }));
   const submit = async () => {
@@ -234,7 +237,17 @@ function DisposalDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
       toast.success('Disposal logged');
       onOpenChange(false);
       setF({ drugFormularyId: '', locationId: '', quantity: '', reasonCode: 'breakage', referenceNumber: '', coSignById: '', attachmentUrl: '' });
+      setEvidenceName('');
     } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed'); }
+  };
+  const onPickFile = async (file: File) => {
+    try {
+      const r = await uploadEvidence.mutateAsync(file);
+      set('attachmentUrl', r.fileUrl);
+      setEvidenceName(r.fileName);
+      toast.success('Evidence photo uploaded');
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Upload failed'); }
+    finally { if (fileRef.current) fileRef.current.value = ''; }
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -250,7 +263,23 @@ function DisposalDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
           <div className="space-y-1"><Label>Reason *</Label><Select value={f.reasonCode} onChange={(v) => set('reasonCode', v)} options={[{ id: 'breakage', label: 'Breakage' }, { id: 'contamination', label: 'Contamination' }, { id: 'expiry', label: 'Expiry' }, { id: 'other', label: 'Other' }]} placeholder="Reason" /></div>
           <div className="space-y-1"><Label>Reference no *</Label><Input value={f.referenceNumber} onChange={(e) => set('referenceNumber', e.target.value)} placeholder="FIR / destruction memo" /></div>
           <div className="space-y-1"><Label>Medical director co-sign *</Label><Select value={f.coSignById} onChange={(v) => set('coSignById', v)} options={users} placeholder="Co-signing director" /></div>
-          <div className="space-y-1"><Label>Evidence URL</Label><Input value={f.attachmentUrl} onChange={(e) => set('attachmentUrl', e.target.value)} placeholder="Photo link (optional)" /></div>
+          <div className="space-y-1">
+            <Label>Evidence photo</Label>
+            {f.attachmentUrl ? (
+              <div className="flex items-center justify-between rounded-md border px-2 py-1.5 text-sm">
+                <span className="truncate text-xs">{evidenceName || 'Uploaded'}</span>
+                <Button variant="ghost" size="sm" onClick={() => { set('attachmentUrl', ''); setEvidenceName(''); }}>Remove</Button>
+              </div>
+            ) : (
+              <>
+                <input ref={fileRef} type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp"
+                  onChange={(e) => { const file = e.target.files?.[0]; if (file) onPickFile(file); }} />
+                <Button variant="outline" size="sm" className="w-full" disabled={uploadEvidence.isPending} onClick={() => fileRef.current?.click()}>
+                  <Upload className="mr-1.5 h-4 w-4" /> {uploadEvidence.isPending ? 'Uploading…' : 'Upload photo'}
+                </Button>
+              </>
+            )}
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

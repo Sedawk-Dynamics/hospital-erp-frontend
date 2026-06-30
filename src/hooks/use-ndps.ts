@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPost, apiPatch } from '@/lib/api';
+import { apiGet, apiPost, apiPatch, apiClient } from '@/lib/api';
 
 // ============================================================
 // NDPS Narcotic Accounting (Form 3C/3E/3H + Inspector Dashboard)
@@ -145,6 +145,20 @@ export function useNdpsDisposal() {
       referenceNumber: string; coSignById: string; attachmentUrl?: string; notes?: string;
     }) => (await apiPost('/ndps/disposals', body)).data,
     onSuccess: () => invalidateAll(qc),
+  });
+}
+
+export function useNdpsUploadEvidence() {
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      // Axios infers the multipart boundary — an explicit Content-Type breaks it.
+      const { data } = await apiClient.post('/ndps/disposals/evidence', fd, {
+        headers: { 'Content-Type': undefined as unknown as string },
+      });
+      return (data as { data: { fileUrl: string; fileName: string } }).data;
+    },
   });
 }
 

@@ -24,6 +24,7 @@ vi.mock('@/hooks/use-ndps', () => ({
   useNdpsCreateLocation: () => mutation(),
   useNdpsRunDailyClose: () => mutation(),
   useNdpsVerifyDaily: () => mutation(),
+  useNdpsUploadEvidence: () => mutation(),
 }));
 vi.mock('@/hooks/use-pharmacy', () => ({ useFormulary: () => ({ data: { data: [] } }) }));
 vi.mock('@/hooks/use-users', () => ({ useUsersList: () => ({ data: { data: [] } }) }));
@@ -62,5 +63,12 @@ describe('NdpsPage (Narcotic Accounting — Inspector + lifecycle)', () => {
     await userEvent.click(screen.getByRole('button', { name: /Receive \(3C\)/i }));
     expect(await screen.findByText(/Receive NDPS consignment/i)).toBeInTheDocument();
     expect(screen.getByText(/Form 3C consignment no/i)).toBeInTheDocument();
+  });
+
+  it('disposal dialog offers an evidence photo upload', async () => {
+    render(<NdpsPage />);
+    await userEvent.click(screen.getByRole('button', { name: /Disposal/i }));
+    expect(await screen.findByText(/broken \/ spoiled disposal/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Upload photo/i })).toBeInTheDocument();
   });
 });
