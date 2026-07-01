@@ -5,19 +5,10 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: __dirname,
   },
-  async headers() {
-    return [
-      {
-        source: "/:path*",
-        headers: [
-          { key: "Access-Control-Allow-Origin", value: "*" },
-          { key: "Access-Control-Allow-Methods", value: "GET,POST,PUT,PATCH,DELETE,OPTIONS" },
-          { key: "Access-Control-Allow-Headers", value: "Content-Type, Authorization, X-Tenant-Id, X-Tenant-Slug" },
-          { key: "Access-Control-Expose-Headers", value: "X-Total-Count" },
-        ],
-      },
-    ];
-  },
+  // NOTE: CORS is handled by the backend API (api.cenaps.in). The frontend
+  // serves its own pages same-origin, so it needs no CORS headers of its own.
+  // (Previously this block set Access-Control-Allow-Origin: * on every page,
+  // which was a no-op at best and misleading at worst.)
 };
 
 export default nextConfig;
