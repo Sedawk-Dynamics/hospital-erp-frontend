@@ -121,8 +121,10 @@ export const ROLE_PERMISSIONS: Record<string, PermissionDef[]> = {
   front_desk: [
     { module: 'patients', action: 'read' }, { module: 'patients', action: 'create' }, { module: 'patients', action: 'update' },
     { module: 'appointments', action: 'read' }, { module: 'appointments', action: 'create' }, { module: 'appointments', action: 'update' },
-    { module: 'billing', action: 'read' }, { module: 'payments', action: 'read' }, { module: 'payments', action: 'create' },
-    { module: 'billing', action: 'create' },
+    // Front desk owns IP billing end to end: generate + discount + finalize + collect.
+    { module: 'billing', action: 'read' }, { module: 'billing', action: 'create' },
+    { module: 'billing', action: 'update' }, { module: 'billing', action: 'approve' },
+    { module: 'payments', action: 'read' }, { module: 'payments', action: 'create' },
     { module: 'departments', action: 'read' },
     { module: 'forms', action: 'read' }, { module: 'forms', action: 'create' }, { module: 'forms', action: 'approve' },
   ],

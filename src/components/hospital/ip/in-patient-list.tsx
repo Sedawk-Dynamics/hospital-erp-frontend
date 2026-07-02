@@ -54,16 +54,15 @@ import { toast } from 'sonner';
 import type { Admission, Patient, DoctorProfile, BedWithStatus } from '@/types';
 import { BillGeneratorDialog } from '@/components/hospital/billing/bill-generator-dialog';
 import { AdvancePaymentDialog } from '@/components/hospital/billing/week12-dialogs';
-import { useAuthStore } from '@/stores/auth-store';
+import { usePermissions } from '@/hooks/use-permissions';
 
-// Generating a bill or collecting advance are billing actions — the backend
-// requires billing:create / payments:create, which only admin/super_admin hold
-// on the hospital surface. Gate the menu items so non-billing roles don't see
-// buttons that would 403.
+// Generating a bill or collecting advance are billing actions. Gate on the
+// real billing:create permission so the billing / cash counter (front desk,
+// cashier, billing admin, admin) sees them and clinical roles (doctor, nurse,
+// lab, etc.) don't — instead of hardcoding admin-only.
 function useCanBillToHospital() {
-  const roleSlug = useAuthStore((s) => s.user?.role?.slug);
-  const n = (roleSlug ?? '').toLowerCase().replace(/[\s-]+/g, '_');
-  return n === 'admin' || n === 'super_admin';
+  const { canAccess } = usePermissions();
+  return canAccess('billing', 'create');
 }
 
 // ---------------------------------------------------------------------------
