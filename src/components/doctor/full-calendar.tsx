@@ -24,6 +24,13 @@ interface FullCalendarProps {
   onApplyLeaveForDate?: (date: Date) => void;
   /** If set, cells become clickable with "pencil" affordance (used by admin view). */
   onEditDate?: (date: Date) => void;
+  /** Currently selected date — rendered with a highlight (used by the booking picker). */
+  selectedDate?: Date | null;
+  /**
+   * If set, clicking a day (month cell or week/day header) selects it.
+   * Takes precedence over onEditDate/onCellClick for the day-selection gesture.
+   */
+  onSelectDate?: (date: Date) => void;
 }
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -161,7 +168,7 @@ export function FullCalendar(props: FullCalendarProps) {
 
 // ── Month View ────────────────────────────────────────────────
 
-function MonthView({ anchorDate, schedules, leaves, overrides, appointments, onCellClick, onEditDate }: FullCalendarProps) {
+function MonthView({ anchorDate, schedules, leaves, overrides, appointments, onCellClick, onEditDate, selectedDate, onSelectDate }: FullCalendarProps) {
   const monthStart = startOfMonth(anchorDate);
   const monthEnd = endOfMonth(anchorDate);
   const gridStart = startOfWeek(monthStart);
@@ -170,7 +177,7 @@ function MonthView({ anchorDate, schedules, leaves, overrides, appointments, onC
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const interactive = !!onCellClick || !!onEditDate;
+  const interactive = !!onCellClick || !!onEditDate || !!onSelectDate;
 
   return (
     <div className="rounded-xl border overflow-hidden bg-card">
@@ -199,9 +206,11 @@ function MonthView({ anchorDate, schedules, leaves, overrides, appointments, onC
 
           const isFullDayLeave = approvedLeave && leaveIsFullDay(approvedLeave);
           const isDayOff = resolved.isDayOff;
+          const isSelected = !!selectedDate && sameDate(date, selectedDate);
 
           const handleClick = () => {
-            if (onEditDate) onEditDate(date);
+            if (onSelectDate) onSelectDate(date);
+            else if (onEditDate) onEditDate(date);
             else if (onCellClick) onCellClick(date);
           };
 
@@ -217,6 +226,7 @@ function MonthView({ anchorDate, schedules, leaves, overrides, appointments, onC
                 interactive && 'cursor-pointer hover:bg-primary/5 hover:ring-1 hover:ring-primary/40 transition-all',
                 resolved.isOverride && !isDayOff && 'bg-primary-container/10',
                 isDayOff && 'bg-surface-container-high',
+                isSelected && 'ring-2 ring-inset ring-primary bg-primary/10',
               )}
             >
               <div className="flex items-center justify-between">
@@ -316,6 +326,7 @@ function DayView(props: FullCalendarProps) {
 
 function TimeGrid({
   days, schedules, leaves, overrides, appointments, showToday, onApplyLeaveForDate, onEditDate,
+  selectedDate, onSelectDate,
 }: FullCalendarProps & {
   days: Date[];
   showToday?: boolean;
@@ -354,18 +365,22 @@ function TimeGrid({
         <div className={cn('flex-shrink-0 border-r', gutterWidth)} />
         {days.map((d) => {
           const isToday = sameDate(d, today) && showToday;
+          const isSelected = !!selectedDate && sameDate(d, selectedDate);
           return (
             <div
               key={d.toISOString()}
+              onClick={onSelectDate ? () => onSelectDate(d) : undefined}
               className={cn(
                 'flex-1 px-2 py-2 text-center border-r last:border-r-0',
                 isToday && 'bg-primary/10',
+                onSelectDate && 'cursor-pointer hover:bg-primary/5 transition-colors',
+                isSelected && 'bg-primary/15 ring-1 ring-inset ring-primary',
               )}
             >
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
                 {d.toLocaleDateString(undefined, { weekday: 'short' })}
               </p>
-              <p className={cn('text-sm font-bold', isToday && 'text-primary')}>
+              <p className={cn('text-sm font-bold', (isToday || isSelected) && 'text-primary')}>
                 {formatDate(d)}
               </p>
             </div>
@@ -397,6 +412,7 @@ function TimeGrid({
           {/* Day columns */}
           {days.map((d) => {
             const isToday = sameDate(d, today);
+            const isSelectedCol = !!selectedDate && sameDate(d, selectedDate);
 
             // Resolve shifts (override > weekly). Also surface override metadata.
             const resolved = resolveShifts(d, schedules, overrides);
@@ -415,7 +431,11 @@ function TimeGrid({
             return (
               <div
                 key={d.toISOString()}
-                className={cn('flex-1 relative border-r last:border-r-0', isToday && 'bg-primary/5')}
+                className={cn(
+                  'flex-1 relative border-r last:border-r-0',
+                  isToday && 'bg-primary/5',
+                  isSelectedCol && 'bg-primary/10',
+                )}
               >
                 {/* Hour grid lines */}
                 {hourLabels.map((h, i) => (
