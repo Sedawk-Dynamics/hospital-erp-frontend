@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import {
   ChevronLeft,
@@ -101,15 +101,14 @@ export function DoctorCalendarPicker({
   const effectiveMinDate = minDate ?? toInputDateStr();
 
   const [view, setView] = useState<CalendarView>('month');
+  // The calendar frames the selected date on mount. Callers that keep this
+  // component mounted across separate "sessions" (e.g. a reused dialog) should
+  // pass a `key` so it remounts and re-frames when the selected date is reset
+  // externally. In-calendar day clicks stay within the visible range, so no
+  // render-time sync is needed after mount.
   const [anchorDate, setAnchorDate] = useState<Date>(
     () => parseInputDate(selectedDate) ?? new Date(),
   );
-
-  // Follow the externally-selected date so the calendar always frames it.
-  useEffect(() => {
-    const d = parseInputDate(selectedDate);
-    if (d) setAnchorDate(d);
-  }, [selectedDate]);
 
   // Query window covering the visible range (with a little padding for month).
   const { fromDate, toDate } = useMemo(() => {

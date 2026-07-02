@@ -4,9 +4,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { z } from 'zod/v4';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { toInputDateStr, getCurrentISTTime, isToday } from '@/lib/date-utils';
+import { toInputDateStr, formatDate } from '@/lib/date-utils';
 import { toast } from 'sonner';
-import { Search, Loader2, UserRound, Clock } from 'lucide-react';
+import { Search, Loader2, UserRound, CalendarDays } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -29,7 +29,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-import { usePatientSearch, useDoctorsList, useAvailableSlots } from '@/hooks/use-hospital';
+import { usePatientSearch, useDoctorsList } from '@/hooks/use-hospital';
+import { DoctorCalendarPicker } from '@/components/hospital/doctor-calendar-picker';
 import { apiPost, apiGet } from '@/lib/api';
 import type { Patient, Appointment } from '@/types';
 import { useQuery } from '@tanstack/react-query';
@@ -112,21 +113,6 @@ export function CreateAppointmentDialog({
   const watchedDate = watch('appointmentDate');
   const watchedStartTime = watch('startTime');
 
-  // Fetch available slots when doctor and date are selected
-  const {
-    data: slotsData,
-    isLoading: slotsLoading,
-  } = useAvailableSlots(watchedDoctorId, watchedDate);
-
-  // Show all slots but mark past/booked status
-  const allSlots = slotsData?.slots ?? [];
-  const currentTime = getCurrentISTTime();
-  const isTodaySelected = isToday(watchedDate);
-  const slots = allSlots.map((slot) => ({
-    ...slot,
-    isPast: isTodaySelected && slot.startTime < currentTime,
-  }));
-
   // Reset form when dialog closes
   useEffect(() => {
     if (!open) {
@@ -171,6 +157,13 @@ export function CreateAppointmentDialog({
     [setValue]
   );
 
+  const handleDateSelect = useCallback(
+    (date: string) => {
+      setValue('appointmentDate', date, { shouldValidate: true });
+    },
+    [setValue]
+  );
+
   const onSubmit = async (data: AppointmentFormData) => {
     try {
       await apiPost<Appointment>('/appointments', {
@@ -198,19 +191,21 @@ export function CreateAppointmentDialog({
     }
   };
 
-  const hasDoctorAndDate = !!watchedDoctorId && !!watchedDate;
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-5xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>New Appointment</DialogTitle>
           <DialogDescription>
-            Schedule a new outpatient appointment.
+            Schedule a new outpatient appointment — pick a slot from the
+            doctor&apos;s calendar.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,360px)_1fr]">
+            {/* LEFT: appointment details */}
+            <div className="space-y-4">
           {/* Patient Search */}
           <div className="space-y-1.5">
             <Label htmlFor="patient-search">Patient *</Label>
@@ -307,100 +302,6 @@ export function CreateAppointmentDialog({
             )}
           </div>
 
-          {/* Date */}
-          <div className="space-y-1.5">
-            <Label htmlFor="appointment-date">Date *</Label>
-            <Input
-              id="appointment-date"
-              type="date"
-              min={toInputDateStr()}
-              {...register('appointmentDate')}
-            />
-            {errors.appointmentDate && (
-              <p className="text-xs text-destructive">
-                {errors.appointmentDate.message}
-              </p>
-            )}
-          </div>
-
-          {/* Available Slots */}
-          <div className="space-y-1.5">
-            <Label className="flex items-center gap-1.5">
-              <Clock className="h-3.5 w-3.5" />
-              Time Slot *
-            </Label>
-
-            {!hasDoctorAndDate && (
-              <p className="text-sm text-muted-foreground">
-                Select a doctor and date to view available slots.
-              </p>
-            )}
-
-            {hasDoctorAndDate && slotsLoading && (
-              <div className="flex items-center justify-center py-6">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                <span className="ml-2 text-sm text-muted-foreground">
-                  Loading available slots...
-                </span>
-              </div>
-            )}
-
-            {hasDoctorAndDate && !slotsLoading && slots.length === 0 && (
-              <div className="rounded-md border border-dashed p-4 text-center">
-                <p className="text-sm text-muted-foreground">
-                  No slots available for this doctor on the selected date.
-                </p>
-              </div>
-            )}
-
-            {hasDoctorAndDate && !slotsLoading && slots.length > 0 && (
-              <div className="max-h-48 overflow-y-auto rounded-md border p-2">
-                <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
-                  {slots.map((slot) => {
-                    const isSelected = watchedStartTime === slot.startTime;
-                    const isDisabled = !slot.available || slot.isPast;
-                    const isOnLeave = !slot.available && (slot as any).onLeave;
-                    return (
-                      <Button
-                        key={slot.startTime}
-                        type="button"
-                        variant={isSelected ? 'default' : 'outline'}
-                        size="sm"
-                        disabled={isDisabled}
-                        className={
-                          isOnLeave
-                            ? 'opacity-80 cursor-not-allowed bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/40'
-                            : !slot.available
-                              ? 'opacity-60 cursor-not-allowed bg-red-50 text-red-400 border-red-200 line-through dark:bg-red-950/20 dark:text-red-400/60 dark:border-red-900/30'
-                              : slot.isPast
-                                ? 'opacity-40 cursor-not-allowed text-muted-foreground'
-                                : isSelected
-                                  ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                                  : 'hover:bg-primary/10 hover:text-primary hover:border-primary'
-                        }
-                        onClick={() => handleSlotSelect(slot.startTime, slot.endTime)}
-                      >
-                        <span className="flex flex-col items-center leading-tight">
-                          <span>{slot.startTime}</span>
-                          {!slot.available && (
-                            <span className="text-[9px] font-bold">{isOnLeave ? 'On Leave' : 'Booked'}</span>
-                          )}
-                        </span>
-                      </Button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {errors.startTime && (
-              <p className="text-xs text-destructive">{errors.startTime.message}</p>
-            )}
-            {errors.endTime && (
-              <p className="text-xs text-destructive">{errors.endTime.message}</p>
-            )}
-          </div>
-
           {/* Type and Priority */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
@@ -468,6 +369,51 @@ export function CreateAppointmentDialog({
               rows={3}
               {...register('notes')}
             />
+          </div>
+            </div>
+
+            {/* RIGHT: doctor calendar + slot picker */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <CalendarDays className="h-3.5 w-3.5" />
+                Doctor&apos;s Calendar &amp; Time Slot *
+              </Label>
+
+              {!watchedDoctorId ? (
+                <div className="flex min-h-[280px] flex-col items-center justify-center rounded-md border border-dashed p-6 text-center">
+                  <CalendarDays className="mb-2 h-8 w-8 text-muted-foreground/60" />
+                  <p className="text-sm text-muted-foreground">
+                    Select a doctor to view their calendar and available time
+                    slots.
+                  </p>
+                </div>
+              ) : (
+                <DoctorCalendarPicker
+                  doctorId={watchedDoctorId}
+                  selectedDate={watchedDate}
+                  selectedStartTime={watchedStartTime}
+                  onDateChange={handleDateSelect}
+                  onSlotSelect={handleSlotSelect}
+                />
+              )}
+
+              {(errors.appointmentDate || errors.startTime || errors.endTime) && (
+                <p className="text-xs text-destructive">
+                  {errors.appointmentDate?.message ||
+                    errors.startTime?.message ||
+                    errors.endTime?.message}
+                </p>
+              )}
+
+              {watchedStartTime && watchedDate && (
+                <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
+                  <span className="text-muted-foreground">Selected slot: </span>
+                  <span className="font-semibold text-foreground">
+                    {formatDate(watchedDate)} at {watchedStartTime}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
 
           <DialogFooter>
