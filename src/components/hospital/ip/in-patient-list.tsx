@@ -16,6 +16,8 @@ import {
   CheckCircle2,
   ExternalLink,
   UserPlus,
+  Receipt,
+  Wallet,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -50,6 +52,19 @@ import { apiGet, apiPost, apiPatch } from '@/lib/api';
 import { formatDate, formatDateTime, toInputDateStr } from '@/lib/date-utils';
 import { toast } from 'sonner';
 import type { Admission, Patient, DoctorProfile, BedWithStatus } from '@/types';
+import { BillGeneratorDialog } from '@/components/hospital/billing/bill-generator-dialog';
+import { AdvancePaymentDialog } from '@/components/hospital/billing/week12-dialogs';
+import { useAuthStore } from '@/stores/auth-store';
+
+// Generating a bill or collecting advance are billing actions — the backend
+// requires billing:create / payments:create, which only admin/super_admin hold
+// on the hospital surface. Gate the menu items so non-billing roles don't see
+// buttons that would 403.
+function useCanBillToHospital() {
+  const roleSlug = useAuthStore((s) => s.user?.role?.slug);
+  const n = (roleSlug ?? '').toLowerCase().replace(/[\s-]+/g, '_');
+  return n === 'admin' || n === 'super_admin';
+}
 
 // ---------------------------------------------------------------------------
 // Stat items for the filter row
@@ -1420,8 +1435,19 @@ function RowActionsMenu({
   const [transferOpen, setTransferOpen] = useState(false);
   const [dischargeOpen, setDischargeOpen] = useState(false);
   const [slipOpen, setSlipOpen] = useState(false);
+  const [billOpen, setBillOpen] = useState(false);
+  const [advanceOpen, setAdvanceOpen] = useState(false);
 
+  const canBill = useCanBillToHospital();
   const isActive = admission.status === 'admitted';
+
+  // Patient payload shared by the billing dialogs.
+  const billingPatient = {
+    id: admission.patient?.id ?? admission.patientId,
+    firstName: admission.patient?.firstName ?? '',
+    lastName: admission.patient?.lastName ?? '',
+    mrn: admission.patient?.mrn ?? null,
+  };
 
   return (
     <>
@@ -1450,6 +1476,21 @@ function RowActionsMenu({
             <Printer className="mr-2 h-4 w-4" />
             Print Admission Slip
           </DropdownMenuItem>
+          {canBill && (
+            <>
+              <DropdownMenuSeparator />
+              {isActive && (
+                <DropdownMenuItem onClick={() => setAdvanceOpen(true)}>
+                  <Wallet className="mr-2 h-4 w-4" />
+                  Collect Advance
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={() => setBillOpen(true)}>
+                <Receipt className="mr-2 h-4 w-4" />
+                Generate Final Bill
+              </DropdownMenuItem>
+            </>
+          )}
           {isActive && (
             <>
               <DropdownMenuSeparator />
@@ -1481,6 +1522,23 @@ function RowActionsMenu({
         open={slipOpen}
         onOpenChange={setSlipOpen}
       />
+
+      {canBill && (
+        <>
+          {/* Final settlement bill — auto-pulls room + all clinical charges. */}
+          <BillGeneratorDialog
+            open={billOpen}
+            onOpenChange={setBillOpen}
+            initialPatient={billingPatient}
+          />
+          {/* Advance / deposit collection against the admitted patient. */}
+          <AdvancePaymentDialog
+            open={advanceOpen}
+            onOpenChange={setAdvanceOpen}
+            patient={billingPatient}
+          />
+        </>
+      )}
     </>
   );
 }
