@@ -1,18 +1,21 @@
 'use client';
 
 import { useState } from 'react';
-import { CreditCard, Download } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
-import { apiGet } from '@/lib/api';
+import { CreditCard, Download, Wallet, Loader2 } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { apiGet, apiPost } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/lib/date-utils';
 import { Button } from '@/components/ui/button';
 import { HospitalFilter } from '../_components/hospital-filter';
 import { usePatientProfileStore } from '@/stores/patient-profile-store';
+import { useAuthStore } from '@/stores/auth-store';
 
 export default function PatientBillingPage() {
   const [hospitalFilter, setHospitalFilter] = useState('');
   const { selectedProfileId } = usePatientProfileStore();
+  const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
     queryKey: ['patient', 'bills', hospitalFilter, selectedProfileId],
@@ -24,6 +27,7 @@ export default function PatientBillingPage() {
         id: string; billNumber: string; total: number; paidAmount: number;
         balanceAmount: number; status: string; createdAt: string;
         billItems?: Array<{ description?: string; totalAmount?: number }>;
+        patient?: { tenant?: { name?: string } };
       }>>('/patient-portal/billing', { params });
       return res.data ?? [];
     },
@@ -128,9 +132,25 @@ export default function PatientBillingPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Button variant="ghost" size="icon-sm">
-                      <Download className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center justify-end gap-1.5">
+                      {Number(bill.balanceAmount) > 0 &&
+                        (bill.status === 'pending' || bill.status === 'partially_paid') && (
+                          <PayNowButton
+                            bill={{
+                              id: bill.id,
+                              billNumber: bill.billNumber,
+                              balanceAmount: Number(bill.balanceAmount),
+                            }}
+                            hospitalName={bill.patient?.tenant?.name}
+                            onPaid={() =>
+                              queryClient.invalidateQueries({ queryKey: ['patient', 'bills'] })
+                            }
+                          />
+                        )}
+                      <Button variant="ghost" size="icon-sm">
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -139,5 +159,89 @@ export default function PatientBillingPage() {
         </table>
       </div>
     </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Pay Now — opens Razorpay checkout for an outstanding bill.
+// Backend (POST /patient-portal/create-bill-payment-order) scopes the bill to
+// the logged-in patient, so a patient can only pay their own bills. The
+// balance is settled by the Razorpay webhook, so the row simply refetches.
+// checkout.js is loaded globally in the root layout.
+// ────────────────────────────────────────────────────────────────────────
+function PayNowButton({
+  bill,
+  hospitalName,
+  onPaid,
+}: {
+  bill: { id: string; billNumber: string; balanceAmount: number };
+  hospitalName?: string;
+  onPaid: () => void;
+}) {
+  const { user } = useAuthStore();
+  const [processing, setProcessing] = useState(false);
+
+  const pay = async () => {
+    if (typeof window === 'undefined' || !window.Razorpay) {
+      toast.error('Payment gateway is still loading — try again in a moment.');
+      return;
+    }
+    setProcessing(true);
+    try {
+      const orderRes = await apiPost<{
+        orderId: string;
+        amount: number;
+        currency: string;
+        keyId: string;
+      }>('/patient-portal/create-bill-payment-order', { billId: bill.id });
+      const order = orderRes.data;
+      if (!order) throw new Error('Failed to create payment order');
+
+      const rzp = new window.Razorpay({
+        key: order.keyId,
+        amount: order.amount,
+        currency: order.currency,
+        name: hospitalName || 'Hospital',
+        description: `Bill ${bill.billNumber}`,
+        order_id: order.orderId,
+        handler: async (response: RazorpayResponse) => {
+          try {
+            await apiPost('/patient-portal/verify-payment', {
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            });
+            toast.success('Payment successful!');
+            onPaid();
+          } catch {
+            toast.error('Payment verification failed. Contact the hospital for help.');
+          } finally {
+            setProcessing(false);
+          }
+        },
+        prefill: {
+          name: user ? `${user.firstName} ${user.lastName}` : '',
+          email: user?.email ?? '',
+          contact: user?.phone ?? '',
+        },
+        theme: { color: '#0a685a' },
+        modal: { ondismiss: () => setProcessing(false) },
+      });
+      rzp.open();
+    } catch (err: unknown) {
+      setProcessing(false);
+      toast.error(err instanceof Error ? err.message : 'Failed to initiate payment');
+    }
+  };
+
+  return (
+    <Button size="sm" className="gap-1.5 text-xs" disabled={processing} onClick={pay}>
+      {processing ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : (
+        <Wallet className="h-3.5 w-3.5" />
+      )}
+      Pay Now
+    </Button>
   );
 }
