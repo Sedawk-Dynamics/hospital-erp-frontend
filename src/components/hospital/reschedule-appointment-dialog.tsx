@@ -15,14 +15,9 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 
-import {
-  useCancelAppointment,
-  useAvailableSlots,
-  hospitalKeys,
-} from '@/hooks/use-hospital';
+import { useCancelAppointment } from '@/hooks/use-hospital';
+import { DoctorCalendarPicker } from '@/components/hospital/doctor-calendar-picker';
 import { apiPost } from '@/lib/api';
 import type { Appointment } from '@/types';
 
@@ -62,14 +57,6 @@ export function RescheduleAppointmentDialog({
     endTime: string;
   } | null>(null);
   const [isRescheduling, setIsRescheduling] = useState(false);
-
-  // Fetch available slots for the selected doctor + date
-  const { data: slotsData, isLoading: slotsLoading } = useAvailableSlots(
-    appointment?.doctorId ?? '',
-    selectedDate
-  );
-
-  const availableSlots = (slotsData?.slots ?? []).filter((s) => s.available);
 
   // Reset state when dialog opens/closes
   useEffect(() => {
@@ -131,78 +118,40 @@ export function RescheduleAppointmentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-3xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Reschedule Appointment</DialogTitle>
           <DialogDescription>
             Pick a new date and time slot for{' '}
             <span className="font-label text-on-surface-variant">
               {patientName}
-            </span>
-            .
+            </span>{' '}
+            from the doctor&apos;s calendar.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          {/* Date Picker */}
-          <div className="space-y-1.5">
-            <Label htmlFor="reschedule-date">New Date</Label>
-            <Input
-              id="reschedule-date"
-              type="date"
-              value={selectedDate}
-              min={toInputDateStr()}
-              onChange={(e) => setSelectedDate(e.target.value)}
+        <div className="space-y-3">
+          {appointment?.doctorId && (
+            <DoctorCalendarPicker
+              key={`${appointment.id}-${open}`}
+              doctorId={appointment.doctorId}
+              selectedDate={selectedDate}
+              selectedStartTime={selectedSlot?.startTime}
+              onDateChange={setSelectedDate}
+              onSlotSelect={(startTime, endTime) =>
+                setSelectedSlot({ startTime, endTime })
+              }
             />
-          </div>
+          )}
 
-          {/* Slot Grid */}
-          <div className="space-y-1.5">
-            <Label>Available Slots</Label>
-
-            {slotsLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                <span className="ml-2 text-sm text-muted-foreground">
-                  Loading slots...
-                </span>
-              </div>
-            ) : availableSlots.length === 0 ? (
-              <p className="py-4 text-center text-sm text-muted-foreground">
-                No available slots for this date.
-              </p>
-            ) : (
-              <div className="max-h-48 overflow-y-auto rounded-lg border p-2">
-                <div className="grid grid-cols-4 gap-2">
-                  {availableSlots.map((slot) => {
-                    const isSelected =
-                      selectedSlot?.startTime === slot.startTime &&
-                      selectedSlot?.endTime === slot.endTime;
-
-                    return (
-                      <button
-                        key={`${slot.startTime}-${slot.endTime}`}
-                        type="button"
-                        onClick={() =>
-                          setSelectedSlot({
-                            startTime: slot.startTime,
-                            endTime: slot.endTime,
-                          })
-                        }
-                        className={`rounded-md border px-2 py-1.5 text-xs font-medium transition-colors ${
-                          isSelected
-                            ? 'bg-primary text-primary-foreground border-primary'
-                            : 'hover:bg-accent hover:text-accent-foreground'
-                        }`}
-                      >
-                        {slot.startTime}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
+          {selectedSlot && (
+            <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
+              <span className="text-muted-foreground">New slot: </span>
+              <span className="font-semibold text-foreground">
+                {selectedDate} at {selectedSlot.startTime}
+              </span>
+            </div>
+          )}
         </div>
 
         <DialogFooter>
