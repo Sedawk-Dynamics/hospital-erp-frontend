@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/stores/auth-store';
 import { useSidebarStore } from '@/stores/sidebar-store';
+import { PlatformLogo } from '@/components/branding/platform-logo';
 import {
   Bell,
   Building2,
@@ -89,18 +90,27 @@ function SidebarNav({
     <div className="flex flex-col h-full w-full">
       {/* Brand + Pin */}
       <div className="mb-8 flex items-center px-6 w-full overflow-hidden">
-        <div className="min-w-[40px] h-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
-          <HeartPulse className="h-5 w-5 text-primary" />
-        </div>
-        <div className={cn(
-          'ml-4 flex-1 min-w-0 whitespace-nowrap transition-opacity duration-300',
-          labelVisibility,
-        )}>
-          <h2 className="text-primary font-bold text-xl tracking-tighter font-headline">
-            Sanctuary
-          </h2>
-          <p className="text-xs text-slate-400 font-medium font-label">Patient Portal</p>
-        </div>
+        <PlatformLogo
+          variant="light"
+          alt="Sanctuary"
+          className="h-10 w-auto max-w-[170px] object-contain shrink-0"
+          fallback={
+            <>
+              <div className="min-w-[40px] h-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
+                <HeartPulse className="h-5 w-5 text-primary" />
+              </div>
+              <div className={cn(
+                'ml-4 flex-1 min-w-0 whitespace-nowrap transition-opacity duration-300',
+                labelVisibility,
+              )}>
+                <h2 className="text-primary font-bold text-xl tracking-tighter font-headline">
+                  Sanctuary
+                </h2>
+                <p className="text-xs text-slate-400 font-medium font-label">Patient Portal</p>
+              </div>
+            </>
+          }
+        />
         {onTogglePin && !mobile && (
           <button
             onClick={onTogglePin}
@@ -273,9 +283,16 @@ export default function PatientPortalLayout({ children }: { children: React.Reac
             >
               <Menu className="h-5 w-5" />
             </button>
-            <h1 className="font-headline font-extrabold text-2xl text-primary tracking-tight hidden sm:block">
-              Sanctuary&nbsp;
-            </h1>
+            <PlatformLogo
+              variant="light"
+              alt="Sanctuary"
+              className="h-9 w-auto max-w-[180px] object-contain hidden sm:block"
+              fallback={
+                <h1 className="font-headline font-extrabold text-2xl text-primary tracking-tight hidden sm:block">
+                  Sanctuary&nbsp;
+                </h1>
+              }
+            />
             <div className="relative hidden md:block">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-outline" />
               <input
@@ -292,8 +309,13 @@ export default function PatientPortalLayout({ children }: { children: React.Reac
               <Bell className="h-5 w-5" />
               <span className="absolute top-2 right-2 w-2 h-2 bg-error rounded-full ring-2 ring-background" />
             </button>
-            <button className="p-2 text-on-surface-variant hover:bg-surface-container-high rounded-lg transition-colors hidden sm:flex">
+            <button
+              onClick={() => router.push('/help')}
+              title="User Guide"
+              className="p-2 text-on-surface-variant hover:bg-surface-container-high rounded-lg transition-colors hidden sm:flex"
+            >
               <HelpCircle className="h-5 w-5" />
+              <span className="sr-only">User Guide</span>
             </button>
             <div className="h-8 w-[1px] bg-outline-variant/30 hidden sm:block" />
             <div className="flex items-center gap-3">

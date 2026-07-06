@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Activity, LogOut, Building2, User } from 'lucide-react';
+import { PlatformLogo } from '@/components/branding/platform-logo';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -62,8 +63,17 @@ export default function OnboardingLayout({
       {/* Top bar */}
       <header className="relative z-10 flex items-center justify-between px-6 py-4 border-b border-border/50 bg-background/60 backdrop-blur-sm">
         <div className="flex items-center gap-2">
-          <Activity className="h-6 w-6 text-primary" />
-          <span className="text-lg font-bold text-foreground">Hospital ERP</span>
+          <PlatformLogo
+            variant="light"
+            alt="Hospital ERP"
+            className="h-9 w-auto max-w-[190px] object-contain"
+            fallback={
+              <>
+                <Activity className="h-6 w-6 text-primary" />
+                <span className="text-lg font-bold text-foreground">Hospital ERP</span>
+              </>
+            }
+          />
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground hidden sm:block">

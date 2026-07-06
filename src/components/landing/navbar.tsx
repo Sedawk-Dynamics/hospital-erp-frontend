@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Activity, Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { PlatformLogo } from '@/components/branding/platform-logo';
 
 const navLinks = [
   { label: 'Features', href: '/features' },
@@ -34,12 +35,21 @@ export function Navbar() {
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8 h-20">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2.5 shrink-0">
-          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
-            <Activity className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <span className="font-headline text-lg font-extrabold text-on-surface tracking-tight">Hospital ERP</span>
-          </div>
+          <PlatformLogo
+            variant="light"
+            alt="Hospital ERP"
+            className="h-10 w-auto max-w-[200px] object-contain"
+            fallback={
+              <>
+                <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <Activity className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <span className="font-headline text-lg font-extrabold text-on-surface tracking-tight">Hospital ERP</span>
+                </div>
+              </>
+            }
+          />
         </Link>
 
         {/* Desktop nav links */}

@@ -209,10 +209,16 @@ export interface PlatformChatResponse {
   reply: string;
   mode: 'data' | 'help';
   intent?: string;
+  /** true when a data figure was refused because the role may not see it. */
+  restricted?: boolean;
+  /** help-mode scope: 'in' = tailored steps, 'out' = task belongs to another role. */
+  scope?: 'in' | 'out';
+  /** the role label the answer was tailored to (help mode). */
+  role?: string;
   data?: { label: string; value: string };
   sources?: string[];
-  model: string;
-  provider: string;
+  model?: string;
+  provider?: string;
 }
 
 export function usePlatformAiChat() {

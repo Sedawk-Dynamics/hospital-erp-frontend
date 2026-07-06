@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { SuperAdminSidebar } from '@/components/layout/super-admin-sidebar';
 import { SuperAdminHeader } from '@/components/layout/super-admin-header';
+import { SupportAssistantWidget } from '@/components/ai/support-assistant-widget';
 import { useAuthStore } from '@/stores/auth-store';
 import { useSidebarStore } from '@/stores/sidebar-store';
 
@@ -62,6 +63,8 @@ export default function SuperAdminLayout({
           </div>
         </main>
       </div>
+      {/* Role-aware Support Assistant — tailored to the super_admin role */}
+      <SupportAssistantWidget />
     </div>
   );
 }

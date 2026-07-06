@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { HeartPulse, LogOut, CreditCard, User } from 'lucide-react';
+import { PlatformLogo } from '@/components/branding/platform-logo';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -61,12 +62,21 @@ export default function SelectionLayout({
       {/* Header — matches code.html top bar */}
       <header className="sticky top-0 z-30 flex h-20 items-center justify-between bg-background/80 backdrop-blur-xl px-8">
         <div className="flex items-center gap-3">
-          <div className="min-w-[40px] h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-            <HeartPulse className="h-5 w-5 text-primary" />
-          </div>
-          <h1 className="font-headline font-bold text-xl text-primary tracking-tight">
-            {process.env.NEXT_PUBLIC_APP_NAME || 'Hospital ERP'}
-          </h1>
+          <PlatformLogo
+            variant="light"
+            alt={process.env.NEXT_PUBLIC_APP_NAME || 'Hospital ERP'}
+            className="h-11 w-auto max-w-[210px] object-contain"
+            fallback={
+              <>
+                <div className="min-w-[40px] h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                  <HeartPulse className="h-5 w-5 text-primary" />
+                </div>
+                <h1 className="font-headline font-bold text-xl text-primary tracking-tight">
+                  {process.env.NEXT_PUBLIC_APP_NAME || 'Hospital ERP'}
+                </h1>
+              </>
+            }
+          />
         </div>
 
         <div className="flex items-center gap-4">

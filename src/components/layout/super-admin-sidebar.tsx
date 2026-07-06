@@ -25,7 +25,9 @@ import {
   Pill,
   Stethoscope,
   Sparkles,
+  Image as ImageIcon,
 } from 'lucide-react';
+import { PlatformLogo } from '@/components/branding/platform-logo';
 
 const NAV_ITEMS = [
   { href: '/super-admin', label: 'Dashboard', icon: LayoutDashboard },
@@ -41,6 +43,7 @@ const NAV_ITEMS = [
   { href: '/super-admin/drug-master', label: 'Drug Master', icon: Pill },
   { href: '/super-admin/icd-codes', label: 'ICD Codes', icon: Stethoscope },
   { href: '/super-admin/ai-settings', label: 'AI Settings', icon: Sparkles },
+  { href: '/super-admin/branding', label: 'Branding', icon: ImageIcon },
   { href: '/super-admin/support', label: 'Support Tickets', icon: LifeBuoy },
   { href: '/super-admin/reports', label: 'Reports', icon: BarChart3 },
   { href: '/super-admin/settings', label: 'Settings', icon: Settings },
@@ -65,18 +68,27 @@ export function SuperAdminSidebar() {
       {/* Logo / Brand */}
       <div className="mb-8 flex items-center justify-between px-6 w-full overflow-hidden">
         <div className="flex items-center min-w-0">
-          <div className="min-w-[40px] h-10 w-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
-            <ShieldCheck className="h-5 w-5 text-primary" />
-          </div>
-          <div
-            className={cn(
-              'ml-4 whitespace-nowrap transition-opacity duration-300',
-              isPinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-            )}
-          >
-            <h2 className="text-primary font-bold text-xl tracking-tighter">Platform</h2>
-            <p className="text-xs text-slate-400 font-medium">Super Admin</p>
-          </div>
+          <PlatformLogo
+            variant="light"
+            alt="Platform"
+            className="h-10 w-auto max-w-[150px] object-contain shrink-0"
+            fallback={
+              <>
+                <div className="min-w-[40px] h-10 w-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
+                  <ShieldCheck className="h-5 w-5 text-primary" />
+                </div>
+                <div
+                  className={cn(
+                    'ml-4 whitespace-nowrap transition-opacity duration-300',
+                    isPinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                  )}
+                >
+                  <h2 className="text-primary font-bold text-xl tracking-tighter">Platform</h2>
+                  <p className="text-xs text-slate-400 font-medium">Super Admin</p>
+                </div>
+              </>
+            }
+          />
         </div>
         {/* Pin / Unpin button — visible when expanded */}
         <button

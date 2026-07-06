@@ -86,9 +86,14 @@ export function SuperAdminHeader() {
           <span className="absolute top-2 right-2 w-2 h-2 bg-error rounded-full ring-2 ring-background" />
         </button>
 
-        {/* Help */}
-        <button className="p-2 text-on-surface-variant hover:bg-surface-container-high rounded-lg transition-colors">
+        {/* Help — opens the in-app User Guide (/help) */}
+        <button
+          onClick={() => router.push('/help')}
+          title="User Guide"
+          className="p-2 text-on-surface-variant hover:bg-surface-container-high rounded-lg transition-colors"
+        >
           <HelpCircle className="h-5 w-5" />
+          <span className="sr-only">User Guide</span>
         </button>
 
         {/* Divider */}

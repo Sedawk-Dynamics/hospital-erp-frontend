@@ -7,6 +7,7 @@ import { useSidebarStore } from '@/stores/sidebar-store';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
+import { PlatformLogo } from '@/components/branding/platform-logo';
 import {
   LayoutDashboard,
   Users,
@@ -166,12 +167,21 @@ function SidebarContent({ collapsed = false }: { collapsed?: boolean }) {
         'flex items-center gap-2 px-4 h-16 border-b border-sidebar-border shrink-0',
         collapsed && 'justify-center px-2'
       )}>
-        <Activity className="h-7 w-7 text-primary shrink-0" />
-        {!collapsed && (
-          <span className="font-bold text-lg text-sidebar-foreground truncate">
-            {process.env.NEXT_PUBLIC_APP_NAME || 'Hospital ERP'}
-          </span>
-        )}
+        <PlatformLogo
+          variant="light"
+          alt={process.env.NEXT_PUBLIC_APP_NAME || 'Hospital ERP'}
+          className={cn('w-auto object-contain', collapsed ? 'h-7 max-w-[36px]' : 'h-8 max-w-[160px]')}
+          fallback={
+            <>
+              <Activity className="h-7 w-7 text-primary shrink-0" />
+              {!collapsed && (
+                <span className="font-bold text-lg text-sidebar-foreground truncate">
+                  {process.env.NEXT_PUBLIC_APP_NAME || 'Hospital ERP'}
+                </span>
+              )}
+            </>
+          }
+        />
       </div>
 
       {/* Nav */}

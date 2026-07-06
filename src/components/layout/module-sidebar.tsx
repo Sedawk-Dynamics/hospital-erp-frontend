@@ -8,6 +8,7 @@ import { useSidebarStore } from '@/stores/sidebar-store';
 import { MODULE_REGISTRY, getModuleFromPathname, type NavItem } from '@/config/modules';
 import { getModulesForRole, getRolePortalLabel } from '@/config/role-modules';
 import { useAuthStore } from '@/stores/auth-store';
+import { PlatformLogo } from '@/components/branding/platform-logo';
 
 function normalizeRoleSlug(slug?: string | null): string {
   return (slug ?? '').toLowerCase().replace(/[\s-]+/g, '_');
@@ -96,18 +97,27 @@ function SidebarContent({
     <div className="flex flex-col h-full w-full">
       {/* Brand + Pin button */}
       <div className="mb-12 flex items-center px-6 w-full overflow-hidden">
-        <div className="min-w-[40px] h-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
-          <HeartPulse className="h-5 w-5 text-primary" />
-        </div>
-        <div className={cn(
-          'ml-4 flex-1 whitespace-nowrap transition-opacity duration-300',
-          labelVisibility
-        )}>
-          <h2 className="text-primary font-bold text-xl tracking-tighter font-headline">
-            {process.env.NEXT_PUBLIC_APP_NAME || 'Sanctuary'}
-          </h2>
-          <p className="text-xs text-slate-400 font-medium font-label">{portalLabel}</p>
-        </div>
+        <PlatformLogo
+          variant="light"
+          alt={process.env.NEXT_PUBLIC_APP_NAME || 'Logo'}
+          className="h-10 w-auto max-w-[170px] object-contain shrink-0"
+          fallback={
+            <>
+              <div className="min-w-[40px] h-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
+                <HeartPulse className="h-5 w-5 text-primary" />
+              </div>
+              <div className={cn(
+                'ml-4 flex-1 whitespace-nowrap transition-opacity duration-300',
+                labelVisibility
+              )}>
+                <h2 className="text-primary font-bold text-xl tracking-tighter font-headline">
+                  {process.env.NEXT_PUBLIC_APP_NAME || 'Sanctuary'}
+                </h2>
+                <p className="text-xs text-slate-400 font-medium font-label">{portalLabel}</p>
+              </div>
+            </>
+          }
+        />
         {/* Pin / Unpin button — visible on hover or when pinned */}
         {onTogglePin && (
           <button
