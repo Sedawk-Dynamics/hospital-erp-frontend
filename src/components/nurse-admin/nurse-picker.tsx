@@ -113,17 +113,28 @@ export function NursePicker({
         </span>
         <span className="ml-auto flex items-center gap-1 opacity-60">
           {clearable && value ? (
-            <button
-              type="button"
+            // role="button" span, not <button> — this lives inside the
+            // PopoverTrigger's <button>, and nested buttons are invalid HTML.
+            <span
+              role="button"
+              tabIndex={0}
+              onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
                 onChange('');
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onChange('');
+                }
               }}
               className="rounded-sm p-0.5 hover:bg-muted"
               aria-label="Clear"
             >
               <X className="h-3 w-3" />
-            </button>
+            </span>
           ) : null}
           <ChevronsUpDown className="h-3.5 w-3.5" />
         </span>

@@ -131,25 +131,50 @@ export function useConsultationCompletion() {
         const hasMedicines = formData.medicines.length > 0;
         const hasFollowUp = !!formData.followUpDate;
         const rxBuildItems = () =>
-          formData.medicines.map((med) => ({
-            drugId: med.drugId || undefined,
-            drugName: med.drugName,
-            dosage: med.dose || med.strength || med.dosage || '',
-            frequency: encodeFrequency(med.frequency, med.timing, med.isPrn),
-            duration: med.durationValue ? encodeDuration(med.durationValue, med.durationUnit) : undefined,
-            route: med.route || 'oral',
-            instructions: med.instructions || undefined,
-            // Per-intake dose multiplier (units each occasion, default 1).
-            doseQuantity: med.doseQuantity && med.doseQuantity > 0 ? med.doseQuantity : 1,
-            // Use the doctor's explicit count when given; otherwise auto-derive
-            // it from the dose pattern × duration × dose (e.g. 1-1-1 for 3 days
-            // with dose 2 → 18) so the pharmacist receives a billable quantity.
-            quantity:
-              typeof med.quantity === 'number'
-                ? med.quantity
-                : calcQuantity(med.frequency, med.durationValue, med.durationUnit, med.doseQuantity) ?? undefined,
-            isPrn: med.isPrn ?? false,
-          }));
+          formData.medicines
+            // Drop blank rows — a medicine is meaningless without a name, and
+            // the backend rejects an empty drugName.
+            .filter((med) => med.drugName && med.drugName.trim())
+            .map((med) => {
+              // The backend requires non-empty `dosage` and `frequency`
+              // (min length 1), but the consultation form keeps both optional
+              // (quick entry / drafts). Fall back to sensible values instead of
+              // POSTing '' — otherwise the whole submit 400s with a generic
+              // "Validation error". Dosage falls back to the per-intake dose
+              // (e.g. "1 tab"); frequency falls back to "As directed".
+              const doseCount = med.doseQuantity && med.doseQuantity > 0 ? med.doseQuantity : 1;
+              const dosage =
+                med.dose ||
+                med.strength ||
+                med.dosage ||
+                `${doseCount} ${getDoseUnitLabel(med.dosageForm)}`;
+              const frequency =
+                encodeFrequency(med.frequency, med.timing, med.isPrn) || 'As directed';
+              // Use the doctor's explicit count when given (must be a positive
+              // integer for the backend); otherwise auto-derive it from the
+              // dose pattern × duration × dose (e.g. 1-1-1 for 3 days with dose
+              // 2 → 18) so the pharmacist receives a billable quantity.
+              const explicitQty =
+                typeof med.quantity === 'number' && med.quantity > 0
+                  ? Math.round(med.quantity)
+                  : undefined;
+              return {
+                drugId: med.drugId || undefined,
+                drugName: med.drugName.trim(),
+                dosage,
+                frequency,
+                duration: med.durationValue ? encodeDuration(med.durationValue, med.durationUnit) : undefined,
+                route: med.route || 'oral',
+                instructions: med.instructions || undefined,
+                // Per-intake dose multiplier (units each occasion, default 1).
+                doseQuantity: doseCount,
+                quantity:
+                  explicitQty ??
+                  calcQuantity(med.frequency, med.durationValue, med.durationUnit, med.doseQuantity) ??
+                  undefined,
+                isPrn: med.isPrn ?? false,
+              };
+            });
 
         if (editMode?.prescriptionId) {
           // Single PUT that updates header fields + atomically replaces
@@ -239,7 +264,20 @@ export function useConsultationCompletion() {
         setCurrentStep('');
         return { visitId, prescriptionId, progressNoteId };
       } catch (err: any) {
-        const message = err?.response?.data?.message || err?.message || 'Failed to complete consultation';
+        // Prefer the backend's per-field validation messages (e.g. "Dosage is
+        // required") over the generic "Validation error" wrapper so the doctor
+        // can see what actually needs fixing.
+        const data = err?.response?.data;
+        const fieldErrors =
+          Array.isArray(data?.errors) && data.errors.length
+            ? data.errors
+                .map((e: any) => e?.message)
+                .filter(Boolean)
+                .slice(0, 3)
+                .join('; ')
+            : '';
+        const message =
+          fieldErrors || data?.message || err?.message || 'Failed to complete consultation';
         setError(message);
         setIsSubmitting(false);
         setCurrentStep('');

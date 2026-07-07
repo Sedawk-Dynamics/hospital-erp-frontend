@@ -132,6 +132,9 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Reports', href: '/pharmacy/reports', icon: BarChart3, restrictTo: ['pharmacy_admin'] },
       { label: 'Statutory Reports', href: '/pharmacy/statutory-reports', icon: FileText, restrictTo: ['pharmacy_admin'] },
       { label: 'Ward Stock', href: '/pharmacy/ward-stock', icon: BedDouble, restrictTo: ['pharmacy_admin'] },
+      // IP medication indents (ward→pharmacy fulfilment) + OT surgical kits.
+      { label: 'Med Indents', href: '/pharmacy/indents', icon: ClipboardCheck },
+      { label: 'OT Kits', href: '/pharmacy/ot-kits', icon: Package },
       { label: 'Stock Ledger', href: '/pharmacy/stock-ledger', icon: ClipboardList, restrictTo: ['pharmacy_admin'] },
       { label: 'Discount Policy', href: '/pharmacy/discount-policy', icon: Percent, restrictTo: ['pharmacy_admin'] },
     ],
@@ -144,6 +147,7 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
     baseRoute: '/ot',
     sidebarItems: [
       { label: 'Home', href: '/ot', icon: Home },
+      { label: 'Surgical Kits', href: '/ot/kits', icon: Package },
       { label: 'Billing Transaction', href: '/ot/transactions', icon: ArrowLeftRight },
       { label: 'Reports', href: '/ot/reports', icon: BarChart3 },
       { label: 'Settings', href: '/ot/settings', icon: Settings },
@@ -222,6 +226,7 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Patient Forms', href: '/nurse/forms', icon: FileText },
       { label: 'Shift Handover', href: '/nurse/handover', icon: ArrowRightLeft },
       { label: 'Orders & Ward', href: '/nurse/orders', icon: ClipboardCheck },
+      { label: 'Med Indents', href: '/nurse/indents', icon: PillBottle },
       { label: 'Settings', href: '/nurse/settings', icon: Settings },
     ],
   },

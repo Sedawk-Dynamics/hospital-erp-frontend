@@ -487,21 +487,6 @@ export function useFinalizeBill() {
   });
 }
 
-export function useCollectPayment() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (data: { billId: string; amount: number; method: string; transactionId?: string; notes?: string }) => {
-      const response = await apiPost<Payment>('/billing/payments', data);
-      return response.data ?? null;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['hospital', 'payments'] });
-      queryClient.invalidateQueries({ queryKey: ['hospital', 'bills'] });
-      queryClient.invalidateQueries({ queryKey: ['hospital', 'collection-summary'] });
-    },
-  });
-}
-
 export type FrontdeskPaymentMethod =
   | 'cash'
   | 'credit_card'
