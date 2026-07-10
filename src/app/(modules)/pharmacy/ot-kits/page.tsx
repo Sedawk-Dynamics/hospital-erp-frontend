@@ -3,16 +3,11 @@
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
-  Search,
-  Plus,
   Loader2,
   Eye,
   Ban,
   PackageOpen,
   ClipboardList,
-  Trash2,
-  Pencil,
-  X,
   Boxes,
   ScanLine,
 } from 'lucide-react';
@@ -44,19 +39,14 @@ import { cn } from '@/lib/utils';
 import { formatDate } from '@/lib/date-utils';
 import {
   useSurgicalTemplates,
-  useCreateSurgicalTemplate,
-  useUpdateSurgicalTemplate,
-  useDeleteSurgicalTemplate,
   useOtKitIssues,
-  useRequestKit,
   useIssueKit,
   useReconcileKit,
   useCancelKit,
   type SurgicalTemplate,
   type OtKitIssue,
 } from '@/hooks/use-ot-kit';
-import { useFormulary } from '@/hooks/use-pharmacy';
-import { usePatientSearch, useDoctorsList } from '@/hooks/use-hospital';
+import { SurgicalTemplatesTab } from '@/components/ot-kit/surgical-templates-tab';
 
 // ============================================================
 // Constants + helpers
@@ -100,11 +90,6 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-let _uidCounter = 0;
-function uid() {
-  _uidCounter += 1;
-  return `row-${Date.now()}-${_uidCounter}`;
-}
 
 // ============================================================
 // Page
@@ -137,7 +122,7 @@ export default function OtKitsPage() {
           <KitIssuesTab />
         </TabsContent>
         <TabsContent value="templates">
-          <TemplatesTab />
+          <SurgicalTemplatesTab />
         </TabsContent>
       </Tabs>
     </div>
@@ -150,7 +135,7 @@ export default function OtKitsPage() {
 
 function KitIssuesTab() {
   const [statusFilter, setStatusFilter] = useState('all');
-  const [requestOpen, setRequestOpen] = useState(false);
+  const [issueTarget, setIssueTarget] = useState<OtKitIssue | null>(null);
   const [reconcileTarget, setReconcileTarget] = useState<OtKitIssue | null>(null);
   const [viewTarget, setViewTarget] = useState<OtKitIssue | null>(null);
   const [cancelTarget, setCancelTarget] = useState<OtKitIssue | null>(null);
@@ -160,29 +145,17 @@ function KitIssuesTab() {
   );
   const issues = data?.items ?? [];
 
-  // Templates: used both by the request dialog and to resolve template names in the table.
+  // Templates: resolve the requested kit's name + items (for the issue dialog).
   const { data: tplData } = useSurgicalTemplates({ includeInactive: true });
-  const templateName = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const t of tplData?.items ?? []) m.set(t.id, t.name);
+  const templateById = useMemo(() => {
+    const m = new Map<string, SurgicalTemplate>();
+    for (const t of tplData?.items ?? []) m.set(t.id, t);
     return m;
   }, [tplData]);
 
-  const issueMutation = useIssueKit();
-
-  const handleIssue = (issue: OtKitIssue) => {
-    issueMutation.mutate(
-      { issueId: issue.id },
-      {
-        onSuccess: () => toast.success(`Kit ${issue.issueNumber} issued to theatre`),
-        onError: (err: any) => toast.error(err?.message ?? 'Failed to issue kit'),
-      },
-    );
-  };
-
   return (
     <div className="space-y-4 pt-2">
-      {/* Toolbar */}
+      {/* Toolbar — requests arrive from the OT nurse; the pharmacy only issues + reconciles. */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="w-full sm:w-56">
           <Select value={statusFilter} onValueChange={(v: string | null) => setStatusFilter(v ?? 'all')}>
@@ -198,10 +171,9 @@ function KitIssuesTab() {
             </SelectContent>
           </Select>
         </div>
-        {/* Requests normally come from the OT nurse; pharmacy can also raise one on behalf. */}
-        <Button variant="outline" onClick={() => setRequestOpen(true)}>
-          <Plus className="mr-1.5 h-4 w-4" /> Request on behalf
-        </Button>
+        <p className="text-xs text-muted-foreground">
+          Kit requests come from the OT nurse (OT → Surgical Kits).
+        </p>
       </div>
 
       {isError && (
@@ -242,8 +214,9 @@ function KitIssuesTab() {
                   <td colSpan={7} className="px-4 py-12 text-center">
                     <PackageOpen className="mx-auto h-8 w-8 text-muted-foreground/40" />
                     <p className="mt-2 text-sm text-muted-foreground">
-                      No kit issues found
-                      {statusFilter !== 'all' ? ` with "${statusLabel(statusFilter)}" status` : ''}.
+                      No kit requests
+                      {statusFilter !== 'all' ? ` with "${statusLabel(statusFilter)}" status` : ''}. OT nurses
+                      request kits from OT → Surgical Kits; they land here for you to issue.
                     </p>
                   </td>
                 </tr>
@@ -258,7 +231,7 @@ function KitIssuesTab() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
-                      {issue.templateId ? (templateName.get(issue.templateId) ?? '—') : '—'}
+                      {issue.templateId ? (templateById.get(issue.templateId)?.name ?? '—') : '—'}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{issue.items?.length ?? 0}</td>
                     <td className="px-4 py-3">
@@ -274,14 +247,9 @@ function KitIssuesTab() {
                             size="sm"
                             variant="ghost"
                             className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                            onClick={() => handleIssue(issue)}
-                            disabled={issueMutation.isPending}
+                            onClick={() => setIssueTarget(issue)}
                           >
-                            {issueMutation.isPending ? (
-                              <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <PackageOpen className="mr-1 h-3.5 w-3.5" />
-                            )}
+                            <PackageOpen className="mr-1 h-3.5 w-3.5" />
                             Issue Kit
                           </Button>
                         )}
@@ -326,18 +294,20 @@ function KitIssuesTab() {
         </div>
       </div>
 
-      <RequestKitDialog
-        open={requestOpen}
-        onOpenChange={setRequestOpen}
-        templates={tplData?.items ?? []}
-      />
+      {issueTarget && (
+        <IssueKitDialog
+          issue={issueTarget}
+          template={issueTarget.templateId ? templateById.get(issueTarget.templateId) : undefined}
+          onClose={() => setIssueTarget(null)}
+        />
+      )}
       {reconcileTarget && (
         <ReconcileKitDialog issue={reconcileTarget} onClose={() => setReconcileTarget(null)} />
       )}
       {viewTarget && (
         <IssueDetailsDialog
           issue={viewTarget}
-          templateName={viewTarget.templateId ? templateName.get(viewTarget.templateId) : undefined}
+          templateName={viewTarget.templateId ? templateById.get(viewTarget.templateId)?.name : undefined}
           onClose={() => setViewTarget(null)}
         />
       )}
@@ -349,184 +319,115 @@ function KitIssuesTab() {
 }
 
 // ============================================================
-// Request Kit dialog — patient + template + notes
+// Bulk Issue & Transit Lock dialog (design doc III, step 2 — Pharmacy Action)
+// The pharmacist picks the pre-packed crate, (optionally) scans the kit's master
+// barcode, and issues it: every item leaves active pharmacy stock (FEFO) into the
+// Virtual OT Ledger under this patient's OT session — NOT billed yet.
 // ============================================================
 
-function RequestKitDialog({
-  open,
-  onOpenChange,
-  templates,
+function IssueKitDialog({
+  issue,
+  template,
+  onClose,
 }: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  templates: SurgicalTemplate[];
+  issue: OtKitIssue;
+  template?: SurgicalTemplate;
+  onClose: () => void;
 }) {
-  const [patientQuery, setPatientQuery] = useState('');
-  const [patient, setPatient] = useState<{ id: string; name: string; mrn?: string } | null>(null);
-  const [templateId, setTemplateId] = useState('');
-  const [notes, setNotes] = useState('');
+  const issueMutation = useIssueKit();
+  const [scan, setScan] = useState('');
 
-  const { data: patients, isLoading: patientsLoading } = usePatientSearch(patientQuery);
-  const requestMutation = useRequestKit();
-
-  const reset = () => {
-    setPatientQuery('');
-    setPatient(null);
-    setTemplateId('');
-    setNotes('');
-  };
-
-  const handleClose = () => {
-    onOpenChange(false);
-    reset();
-  };
+  const items = template?.items ?? [];
+  const expectedBarcode = template?.kitBarcode?.trim() || null;
+  const scanMismatch = !!scan.trim() && !!expectedBarcode && scan.trim() !== expectedBarcode;
 
   const submit = () => {
-    if (!patient) {
-      toast.error('Select a patient');
+    if (scanMismatch) {
+      toast.error('Scanned barcode does not match this kit');
       return;
     }
-    requestMutation.mutate(
-      {
-        patientId: patient.id,
-        templateId: templateId || undefined,
-        notes: notes.trim() || undefined,
-      },
+    // The request already carries the template — issue expands it to FEFO batches.
+    issueMutation.mutate(
+      { issueId: issue.id },
       {
         onSuccess: () => {
-          toast.success('Kit requested');
-          handleClose();
+          toast.success(`Kit ${issue.issueNumber} issued — moved to the Virtual OT Ledger (unbilled)`);
+          onClose();
         },
-        onError: (err: any) => toast.error(err?.message ?? 'Failed to request kit'),
+        onError: (err: any) => toast.error(err?.message ?? 'Failed to issue kit'),
       },
     );
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => (v ? onOpenChange(true) : handleClose())}>
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Request OT Kit</DialogTitle>
+          <DialogTitle>Bulk Issue &amp; Transit Lock — {issue.issueNumber}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 py-1">
-          {/* Patient */}
-          <div className="space-y-1.5">
-            <Label>Patient *</Label>
-            {patient ? (
-              <div className="flex items-center justify-between rounded-md border px-3 py-2 bg-muted/30">
-                <div>
-                  <span className="font-medium">{patient.name}</span>
-                  {patient.mrn && (
-                    <span className="ml-2 text-xs text-muted-foreground">MRN: {patient.mrn}</span>
-                  )}
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setPatient(null);
-                    setPatientQuery('');
-                  }}
-                >
-                  Change
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    placeholder="Search by patient name or MRN..."
-                    value={patientQuery}
-                    onChange={(e) => setPatientQuery(e.target.value)}
-                    className="pl-9"
-                  />
-                </div>
-                {patientQuery.length >= 2 && (
-                  <div className="rounded-md border bg-popover max-h-40 overflow-y-auto shadow-md">
-                    {patientsLoading ? (
-                      <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
-                        <Loader2 className="h-3 w-3 animate-spin" /> Searching...
-                      </div>
-                    ) : patients && patients.length > 0 ? (
-                      patients.map((p) => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() =>
-                            setPatient({
-                              id: p.id,
-                              name: `${p.firstName} ${p.lastName ?? ''}`.trim(),
-                              mrn: p.mrn ?? undefined,
-                            })
-                          }
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-muted transition-colors border-b last:border-b-0"
-                        >
-                          <span className="font-medium">
-                            {p.firstName} {p.lastName}
-                          </span>
-                          {p.mrn && <span className="ml-2 text-muted-foreground">MRN: {p.mrn}</span>}
-                          {p.phone && <span className="ml-2 text-muted-foreground">{p.phone}</span>}
-                        </button>
-                      ))
-                    ) : (
-                      <div className="px-3 py-2 text-sm text-muted-foreground">No patients found</div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+        <p className="text-sm text-muted-foreground">
+          For <b>{issue.patientName ?? issue.patientId}</b>. Pick the pre-packed crate and issue it — every item
+          below leaves active pharmacy stock (earliest-expiry / FEFO batch) and moves into the
+          <b> Virtual OT Ledger</b> bound to this OT session. It is <b>not billed yet</b>; after surgery you reconcile
+          to bill only what was consumed.
+        </p>
 
-          {/* Template */}
+        {/* Optional kit master barcode scan (design-doc step 2) */}
+        {expectedBarcode && (
           <div className="space-y-1.5">
-            <Label>Preference-card template</Label>
-            <Select
-              value={templateId || 'none'}
-              onValueChange={(v: string | null) => setTemplateId(v === 'none' ? '' : (v ?? ''))}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select a template" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">— No template —</SelectItem>
-                {templates
-                  .filter((t) => t.isActive)
-                  .map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name}
-                      {t.procedureName ? ` · ${t.procedureName}` : ''}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              The template's items become the requested kit. It is expanded to FEFO batches when the kit is issued.
-            </p>
+            <Label>Scan kit master barcode</Label>
+            <div className="relative">
+              <ScanLine className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={scan}
+                onChange={(e) => setScan(e.target.value)}
+                placeholder={`Expected: ${expectedBarcode}`}
+                className="pl-9 font-mono"
+              />
+            </div>
+            {scanMismatch && <p className="text-xs text-red-500">Scanned barcode does not match this kit.</p>}
           </div>
+        )}
 
-          {/* Notes */}
-          <div className="space-y-1.5">
-            <Label>Notes</Label>
-            <textarea
-              rows={3}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Optional notes for this kit..."
-              className={TEXTAREA_CLS}
-            />
+        {/* Kit contents */}
+        {items.length > 0 ? (
+          <div className="rounded-lg border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/40">
+                  <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                    Kit item
+                  </th>
+                  <th className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                    Qty (from active stock)
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((it) => (
+                  <tr key={it.id} className="border-b last:border-b-0">
+                    <td className="px-3 py-2 font-medium">{it.drugName ?? it.drugFormularyId}</td>
+                    <td className="px-3 py-2 text-right font-mono">{it.defaultQuantity}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
+        ) : (
+          <div className="flex items-center gap-2 rounded-md border border-dashed px-3 py-3 text-sm text-muted-foreground">
+            <Boxes className="h-4 w-4" />
+            This request has no template items to expand — check with the OT nurse.
+          </div>
+        )}
 
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={handleClose}>
+          <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="button" onClick={submit} disabled={requestMutation.isPending}>
-            {requestMutation.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-            Request Kit
+          <Button onClick={submit} disabled={issueMutation.isPending || scanMismatch || items.length === 0}>
+            {issueMutation.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+            Issue to Theatre
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -586,12 +487,13 @@ function ReconcileKitDialog({ issue, onClose }: { issue: OtKitIssue; onClose: ()
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Reconcile OT Kit — {issue.issueNumber}</DialogTitle>
+          <DialogTitle>Post-OT Reconciliation — {issue.issueNumber}</DialogTitle>
         </DialogHeader>
 
         <p className="text-sm text-muted-foreground">
-          Scan/enter the <b>unused</b> items returned to the pharmacy. Consumed = Issued − Returned. Only
-          consumed items are billed to the patient; unused units are reversed into active stock.
+          Pull up the OT session and scan/enter the <b>unused</b> items returned to the pharmacy.
+          Consumed = Issued − Returned. Net billing posts <b>only the consumed items</b> to the patient&apos;s
+          main bill; unused units are reversed back into active pharmacy stock.
         </p>
 
         <div className="rounded-lg border overflow-hidden">
@@ -627,9 +529,10 @@ function ReconcileKitDialog({ issue, onClose }: { issue: OtKitIssue; onClose: ()
                     <tr key={it.id} className="border-b last:border-b-0">
                       <td className="px-3 py-2">
                         <div className="font-medium">{it.drugName ?? it.drugFormularyId}</div>
-                        {it.looseUnitLabel && (
-                          <div className="text-xs text-muted-foreground">{it.looseUnitLabel}</div>
-                        )}
+                        <div className="text-xs text-muted-foreground">
+                          {it.batchNumber ? `Batch ${it.batchNumber}` : 'No batch (short-issued)'}
+                          {it.looseUnitLabel ? ` · ${it.looseUnitLabel}` : ''}
+                        </div>
                       </td>
                       <td className="px-3 py-2 text-right font-mono">{it.issuedQty}</td>
                       <td className="px-3 py-2">
@@ -772,9 +675,10 @@ function IssueDetailsDialog({
                     <tr key={it.id} className="border-b last:border-b-0">
                       <td className="px-3 py-2">
                         <div className="font-medium">{it.drugName ?? it.drugFormularyId}</div>
-                        {it.looseUnitLabel && (
-                          <div className="text-xs text-muted-foreground">{it.looseUnitLabel}</div>
-                        )}
+                        <div className="text-xs text-muted-foreground">
+                          {it.batchNumber ? `Batch ${it.batchNumber}` : 'No batch (short-issued)'}
+                          {it.looseUnitLabel ? ` · ${it.looseUnitLabel}` : ''}
+                        </div>
                       </td>
                       <td className="px-3 py-2 text-right font-mono">{it.issuedQty}</td>
                       <td className="px-3 py-2 text-right font-mono">{it.returnedQty ?? 0}</td>
@@ -854,463 +758,6 @@ function CancelKitDialog({ issue, onClose }: { issue: OtKitIssue; onClose: () =>
           <Button variant="destructive" onClick={submit} disabled={cancel.isPending}>
             {cancel.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
             Cancel Kit
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ============================================================
-// Tab 2 — Templates (surgical preference cards)
-// ============================================================
-
-function TemplatesTab() {
-  const [editing, setEditing] = useState<SurgicalTemplate | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<SurgicalTemplate | null>(null);
-
-  const { data, isLoading, isError } = useSurgicalTemplates({ includeInactive: true });
-  const templates = data?.items ?? [];
-
-  return (
-    <div className="space-y-4 pt-2">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          Preference cards — the default drug/consumable pack a surgeon needs for a procedure.
-        </p>
-        <Button onClick={() => setCreating(true)}>
-          <Plus className="mr-1.5 h-4 w-4" /> New Template
-        </Button>
-      </div>
-
-      {isError && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          Failed to load templates. Please try again.
-        </div>
-      )}
-
-      {isLoading ? (
-        <div className="flex items-center gap-2 px-1 py-12 text-sm text-muted-foreground">
-          <Loader2 className="h-5 w-5 animate-spin text-primary" /> Loading templates...
-        </div>
-      ) : !isError && templates.length === 0 ? (
-        <div className="rounded-xl border border-dashed py-12 text-center">
-          <ClipboardList className="mx-auto h-8 w-8 text-muted-foreground/40" />
-          <p className="mt-2 text-sm text-muted-foreground">
-            No preference-card templates yet. Create one to speed up kit requests.
-          </p>
-        </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {templates.map((t) => (
-            <div
-              key={t.id}
-              className="flex flex-col rounded-xl bg-surface-container-lowest shadow-sanctuary overflow-hidden"
-            >
-              <div className="p-4 pb-2">
-                <div className="flex items-start justify-between gap-2">
-                  <h3 className="truncate font-headline text-sm font-bold text-on-surface">{t.name}</h3>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      'shrink-0 text-[10px]',
-                      t.isActive
-                        ? 'bg-teal-100 text-teal-700 border-teal-300'
-                        : 'bg-gray-100 text-gray-600 border-gray-300',
-                    )}
-                  >
-                    {t.isActive ? 'Active' : 'Retired'}
-                  </Badge>
-                </div>
-                {t.procedureName && (
-                  <p className="mt-0.5 text-xs text-muted-foreground">{t.procedureName}</p>
-                )}
-              </div>
-              <div className="flex-1 space-y-1.5 px-4 py-1">
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Boxes className="h-3.5 w-3.5" />
-                  {t.items?.length ?? 0} item{(t.items?.length ?? 0) === 1 ? '' : 's'}
-                </div>
-                {t.kitBarcode && (
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <ScanLine className="h-3.5 w-3.5" />
-                    <span className="font-mono">{t.kitBarcode}</span>
-                  </div>
-                )}
-              </div>
-              <div className="mt-2 flex items-center justify-end gap-1 border-t bg-surface-container-low p-2">
-                <Button variant="ghost" size="sm" onClick={() => setEditing(t)}>
-                  <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                  onClick={() => setDeleteTarget(t)}
-                >
-                  <Trash2 className="mr-1 h-3.5 w-3.5" /> Retire
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {(creating || editing) && (
-        <TemplateDialog
-          template={editing}
-          onClose={() => {
-            setCreating(false);
-            setEditing(null);
-          }}
-        />
-      )}
-      {deleteTarget && (
-        <DeleteTemplateDialog template={deleteTarget} onClose={() => setDeleteTarget(null)} />
-      )}
-    </div>
-  );
-}
-
-// ============================================================
-// Template create / edit dialog
-// ============================================================
-
-interface TplItemState {
-  key: string;
-  drugFormularyId: string;
-  drugName: string;
-  defaultQuantity: number;
-}
-
-function TemplateDialog({
-  template,
-  onClose,
-}: {
-  template: SurgicalTemplate | null;
-  onClose: () => void;
-}) {
-  const isEdit = !!template;
-  const create = useCreateSurgicalTemplate();
-  const update = useUpdateSurgicalTemplate();
-  const { data: doctors } = useDoctorsList();
-
-  const [name, setName] = useState(template?.name ?? '');
-  const [procedureName, setProcedureName] = useState(template?.procedureName ?? '');
-  const [doctorId, setDoctorId] = useState(template?.doctorId ?? '');
-  const [kitBarcode, setKitBarcode] = useState(template?.kitBarcode ?? '');
-  const [notes, setNotes] = useState(template?.notes ?? '');
-  const [items, setItems] = useState<TplItemState[]>(() =>
-    (template?.items ?? []).map((i) => ({
-      key: uid(),
-      drugFormularyId: i.drugFormularyId,
-      drugName: i.drugName ?? '',
-      defaultQuantity: i.defaultQuantity,
-    })),
-  );
-
-  const doctorOptions = useMemo(
-    () =>
-      (doctors ?? []).map((d) => ({
-        id: d.id || d.userId,
-        name: `Dr. ${d.user?.firstName ?? ''} ${d.user?.lastName ?? ''}`.trim(),
-      })),
-    [doctors],
-  );
-
-  const addItem = () =>
-    setItems((prev) => [...prev, { key: uid(), drugFormularyId: '', drugName: '', defaultQuantity: 1 }]);
-  const updateItem = (key: string, patch: Partial<TplItemState>) =>
-    setItems((prev) => prev.map((i) => (i.key === key ? { ...i, ...patch } : i)));
-  const removeItem = (key: string) => setItems((prev) => prev.filter((i) => i.key !== key));
-
-  const pending = create.isPending || update.isPending;
-
-  const submit = () => {
-    if (!name.trim()) {
-      toast.error('Template name is required');
-      return;
-    }
-    const filled = items.filter((i) => i.drugFormularyId);
-    if (filled.length === 0) {
-      toast.error('Add at least one item');
-      return;
-    }
-    if (filled.some((i) => !i.defaultQuantity || i.defaultQuantity <= 0)) {
-      toast.error('Every item needs a quantity of at least 1');
-      return;
-    }
-
-    const input = {
-      name: name.trim(),
-      procedureName: procedureName.trim() || undefined,
-      doctorId: doctorId || undefined,
-      kitBarcode: kitBarcode.trim() || undefined,
-      notes: notes.trim() || undefined,
-      items: filled.map((i) => ({
-        drugFormularyId: i.drugFormularyId,
-        defaultQuantity: i.defaultQuantity,
-      })),
-    };
-
-    const onSuccess = () => {
-      toast.success(isEdit ? 'Template updated' : 'Template created');
-      onClose();
-    };
-    const onError = (err: any) => toast.error(err?.message ?? 'Failed to save template');
-
-    if (isEdit && template) {
-      update.mutate({ id: template.id, ...input }, { onSuccess, onError });
-    } else {
-      create.mutate(input, { onSuccess, onError });
-    }
-  };
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{isEdit ? 'Edit Template' : 'New Preference-Card Template'}</DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-4 py-1">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>Name *</Label>
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Dr. Rao — Lap Chole Kit"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Procedure</Label>
-              <Input
-                value={procedureName}
-                onChange={(e) => setProcedureName(e.target.value)}
-                placeholder="e.g. Laparoscopic Cholecystectomy"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>Surgeon</Label>
-              <Select
-                value={doctorId || 'none'}
-                onValueChange={(v: string | null) => setDoctorId(v === 'none' ? '' : (v ?? ''))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select surgeon" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">— Unassigned —</SelectItem>
-                  {doctorOptions.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>
-                      {d.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Kit barcode</Label>
-              <Input
-                value={kitBarcode}
-                onChange={(e) => setKitBarcode(e.target.value)}
-                placeholder="Optional — scannable kit code"
-              />
-            </div>
-          </div>
-
-          {/* Items */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Kit items *</Label>
-              <Button type="button" variant="outline" size="sm" onClick={addItem}>
-                <Plus className="mr-1 h-3.5 w-3.5" /> Add item
-              </Button>
-            </div>
-            {items.length === 0 ? (
-              <div className="rounded-md border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
-                No items yet. Add the drugs/consumables that make up this kit.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {items.map((item) => (
-                  <TemplateItemRow
-                    key={item.key}
-                    item={item}
-                    onChange={(patch) => updateItem(item.key, patch)}
-                    onRemove={() => removeItem(item.key)}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>Notes</Label>
-            <textarea
-              rows={2}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Optional notes for this template..."
-              className={TEXTAREA_CLS}
-            />
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={submit} disabled={pending}>
-            {pending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-            {isEdit ? 'Save Changes' : 'Create Template'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// One template item row = drug picker + quantity + remove.
-function TemplateItemRow({
-  item,
-  onChange,
-  onRemove,
-}: {
-  item: TplItemState;
-  onChange: (patch: Partial<TplItemState>) => void;
-  onRemove: () => void;
-}) {
-  const [search, setSearch] = useState('');
-  const fq = useFormulary({ search: search.trim() || undefined });
-  const drugs = fq.data?.data ?? [];
-
-  return (
-    <div className="rounded-md border p-2.5">
-      <div className="flex items-start gap-2">
-        <div className="flex-1 space-y-1.5">
-          {item.drugFormularyId ? (
-            <div className="flex items-center justify-between rounded-md bg-muted/40 px-2.5 py-1.5">
-              <span className="text-sm font-medium">{item.drugName || item.drugFormularyId}</span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7"
-                onClick={() => onChange({ drugFormularyId: '', drugName: '' })}
-              >
-                Change
-              </Button>
-            </div>
-          ) : (
-            <>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Search drug / consumable..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-              {search.trim().length >= 2 && (
-                <div className="max-h-40 overflow-y-auto rounded-md border bg-popover shadow-md">
-                  {fq.isLoading ? (
-                    <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
-                      <Loader2 className="h-3 w-3 animate-spin" /> Searching...
-                    </div>
-                  ) : drugs.length > 0 ? (
-                    drugs.slice(0, 8).map((d) => (
-                      <button
-                        key={d.id}
-                        type="button"
-                        onClick={() => {
-                          onChange({ drugFormularyId: d.id, drugName: d.drugName });
-                          setSearch('');
-                        }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-muted transition-colors border-b last:border-b-0"
-                      >
-                        <span className="font-medium">{d.drugName}</span>
-                        {d.strength && <span className="ml-2 text-xs text-muted-foreground">{d.strength}</span>}
-                        {d.genericName && (
-                          <span className="ml-2 text-xs text-muted-foreground">{d.genericName}</span>
-                        )}
-                      </button>
-                    ))
-                  ) : (
-                    <div className="px-3 py-2 text-sm text-muted-foreground">No drugs found</div>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        <div className="w-24">
-          <Input
-            type="number"
-            min={1}
-            value={item.defaultQuantity}
-            onChange={(e) => onChange({ defaultQuantity: Math.max(1, Math.floor(Number(e.target.value) || 0)) })}
-            className="text-right"
-            aria-label="Quantity"
-          />
-        </div>
-
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9 text-muted-foreground hover:text-red-600"
-          onClick={onRemove}
-          title="Remove item"
-        >
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// Delete / retire template
-// ============================================================
-
-function DeleteTemplateDialog({ template, onClose }: { template: SurgicalTemplate; onClose: () => void }) {
-  const del = useDeleteSurgicalTemplate();
-
-  const submit = () => {
-    del.mutate(template.id, {
-      onSuccess: () => {
-        toast.success('Template retired');
-        onClose();
-      },
-      onError: (err: any) => toast.error(err?.message ?? 'Failed to retire template'),
-    });
-  };
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Retire Template</DialogTitle>
-        </DialogHeader>
-        <p className="text-sm text-muted-foreground">
-          Retire <b>{template.name}</b>? It will no longer be selectable for new kit requests. Existing kit
-          issues are unaffected.
-        </p>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Keep
-          </Button>
-          <Button variant="destructive" onClick={submit} disabled={del.isPending}>
-            {del.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-            Retire
           </Button>
         </DialogFooter>
       </DialogContent>

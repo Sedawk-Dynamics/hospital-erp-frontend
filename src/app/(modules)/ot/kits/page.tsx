@@ -5,8 +5,9 @@
 // This is the OT NURSE side of the OT-Kit workflow: pick a scheduled surgery +
 // the surgeon's preference-card template and send a bulk request to the pharmacy,
 // then track it as the pharmacy issues (transit-locks) and later reconciles/
-// net-bills it. Issuing, reconciling and editing templates all live on the
-// PHARMACY side (/pharmacy/ot-kits) — the OT nurse only requests & tracks.
+// net-bills it. Issuing and reconciling stay on the PHARMACY side
+// (/pharmacy/ot-kits); the OT nurse requests, tracks, and can also maintain the
+// surgeon preference-card templates (shared master data, edited here too).
 // ============================================================
 
 import { useMemo, useState } from 'react';
@@ -19,8 +20,6 @@ import {
   Ban,
   PackageOpen,
   ClipboardList,
-  Boxes,
-  ScanLine,
   Stethoscope,
   ArrowRight,
 } from 'lucide-react';
@@ -55,6 +54,7 @@ import {
 } from '@/hooks/use-ot-kit';
 import { useOTRequests, type OTRequest } from '@/hooks/use-ot';
 import { usePatientSearch } from '@/hooks/use-hospital';
+import { SurgicalTemplatesTab } from '@/components/ot-kit/surgical-templates-tab';
 
 // ============================================================
 // Helpers
@@ -117,7 +117,7 @@ export default function OtKitRequestsPage() {
           <RequestsTab />
         </TabsContent>
         <TabsContent value="cards">
-          <PreferenceCardsTab />
+          <SurgicalTemplatesTab />
         </TabsContent>
       </Tabs>
     </div>
@@ -323,11 +323,15 @@ function RequestKitDialog({
       toast.error('Select a scheduled surgery or a patient');
       return;
     }
+    if (!templateId) {
+      toast.error('Select the surgeon’s preference-card kit');
+      return;
+    }
     requestMutation.mutate(
       {
         patientId: resolvedPatient.id,
         otRequestId: otRequestId || undefined,
-        templateId: templateId || undefined,
+        templateId,
         notes: notes.trim() || undefined,
       },
       {
@@ -428,15 +432,14 @@ function RequestKitDialog({
             </div>
           )}
 
-          {/* Template */}
+          {/* Template — required (design doc: the OT nurse clicks the required surgical template) */}
           <div className="space-y-1.5">
-            <Label>Preference-card kit</Label>
-            <Select value={templateId || 'none'} onValueChange={(v: string | null) => setTemplateId(v === 'none' ? '' : (v ?? ''))}>
+            <Label>Surgeon&apos;s preference-card kit *</Label>
+            <Select value={templateId || null} onValueChange={(v: string | null) => setTemplateId(v ?? '')}>
               <SelectTrigger>
-                <SelectValue placeholder="Select a kit template" />
+                <SelectValue placeholder="Select the required surgical kit" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">— No template (pharmacy builds it) —</SelectItem>
                 {suggestedTemplates.map((t) => (
                   <SelectItem key={t.id} value={t.id}>
                     {t.name}
@@ -446,9 +449,15 @@ function RequestKitDialog({
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">
-              The kit&apos;s items are the bundle the pharmacy issues to the theatre (expanded to FEFO batches at issue).
-            </p>
+            {suggestedTemplates.length === 0 ? (
+              <p className="text-xs text-amber-600">
+                No preference cards yet — create one in the “Preference Cards” tab (or the pharmacy can).
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                The kit&apos;s items are the bundle the pharmacy issues whole to the theatre (expanded to FEFO batches on issue).
+              </p>
+            )}
           </div>
 
           {/* Notes */}
@@ -580,71 +589,5 @@ function WithdrawDialog({ issue, onClose }: { issue: OtKitIssue; onClose: () => 
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-// ============================================================
-// Tab 2 — Preference Cards (READ-ONLY reference; CRUD lives in Pharmacy)
-// ============================================================
-
-function PreferenceCardsTab() {
-  const { data, isLoading, isError } = useSurgicalTemplates();
-  const templates = data?.items ?? [];
-
-  return (
-    <div className="space-y-4 pt-2">
-      <p className="text-sm text-muted-foreground">
-        The surgeon preference cards you can request. Cards are maintained by the pharmacy (Pharmacy → OT Kits → Templates).
-      </p>
-
-      {isError && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">Failed to load preference cards.</div>
-      )}
-
-      {isLoading ? (
-        <div className="flex items-center gap-2 px-1 py-12 text-sm text-muted-foreground">
-          <Loader2 className="h-5 w-5 animate-spin text-primary" /> Loading preference cards...
-        </div>
-      ) : !isError && templates.length === 0 ? (
-        <div className="rounded-xl border border-dashed py-12 text-center">
-          <ClipboardList className="mx-auto h-8 w-8 text-muted-foreground/40" />
-          <p className="mt-2 text-sm text-muted-foreground">No preference cards yet. Ask the pharmacy to create one.</p>
-        </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {templates.map((t) => (
-            <div key={t.id} className="flex flex-col rounded-xl bg-surface-container-lowest shadow-sanctuary overflow-hidden">
-              <div className="p-4 pb-2">
-                <h3 className="truncate font-headline text-sm font-bold text-on-surface">{t.name}</h3>
-                {t.procedureName && <p className="mt-0.5 text-xs text-muted-foreground">{t.procedureName}</p>}
-              </div>
-              <div className="flex-1 space-y-1.5 px-4 py-1">
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Boxes className="h-3.5 w-3.5" />
-                  {t.items?.length ?? 0} item{(t.items?.length ?? 0) === 1 ? '' : 's'}
-                </div>
-                {t.kitBarcode && (
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <ScanLine className="h-3.5 w-3.5" />
-                    <span className="font-mono">{t.kitBarcode}</span>
-                  </div>
-                )}
-                {(t.items?.length ?? 0) > 0 && (
-                  <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
-                    {t.items!.slice(0, 6).map((i) => (
-                      <li key={i.id} className="flex justify-between gap-2">
-                        <span className="truncate">{i.drugName ?? i.drugFormularyId}</span>
-                        <span className="font-mono shrink-0">× {i.defaultQuantity}</span>
-                      </li>
-                    ))}
-                    {(t.items?.length ?? 0) > 6 && <li className="italic">+ {(t.items!.length - 6)} more…</li>}
-                  </ul>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
   );
 }

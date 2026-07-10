@@ -78,6 +78,9 @@ export interface NursingNote {
 
 export interface PrescriptionItem {
   id?: string;
+  // Formulary link (DrugFormulary.id) when the doctor picked from the formulary;
+  // null for free-text lines. Used to pre-fill a pharmacy indent from the Rx.
+  drugId?: string | null;
   drugName: string;
   genericName?: string;
   dosage: string;
@@ -564,6 +567,13 @@ export function useUpdateNursingNote() {
 // Prescriptions & eMAR
 // ============================================================
 
+// The API returns prescription lines under Prisma's relation name
+// `prescriptionItems`, but every consumer reads `items`. Normalize so the
+// `items` contract is always populated regardless of which key the API sends.
+function normalizeRxItems<T extends { items?: unknown[]; prescriptionItems?: unknown[] }>(rx: T): T {
+  return { ...rx, items: rx.items ?? rx.prescriptionItems ?? [] } as T;
+}
+
 export function useActivePrescriptions(params?: {
   patientId?: string;
   admissionId?: string;
@@ -582,7 +592,7 @@ export function useActivePrescriptions(params?: {
           prescriptionType: params?.prescriptionType || 'ip',
         },
       });
-      return res;
+      return { ...res, data: (res.data ?? []).map(normalizeRxItems) };
     },
   });
 }

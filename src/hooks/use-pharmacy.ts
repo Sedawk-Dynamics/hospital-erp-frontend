@@ -189,6 +189,7 @@ interface PaginatedParams {
 export interface FormularyQueryParams extends PaginatedParams {
   dosageForm?: DosageForm;
   isActive?: boolean | string;
+  isNarcotic?: boolean;
   stockStatus?: 'in' | 'out';
 }
 

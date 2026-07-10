@@ -18,6 +18,8 @@ export interface MedicationIndentItem {
   saleUnit: 'pack' | 'loose' | string;
   dispensedBatchId?: string | null;
   dispensedQty?: number | null;
+  dispensingRecordId?: string | null;
+  returnedQty?: number | null;
   unitPrice?: number | null;
   lineTotal?: number | null;
   acknowledged: boolean;
@@ -115,6 +117,15 @@ export function useDispenseIndent() {
   return useMutation({
     mutationFn: async ({ id, batches }: { id: string; batches?: Array<{ itemId: string; drugBatchId: string }> }) =>
       (await apiPatch<MedicationIndent>(`/indents/${id}/dispense`, { batches })).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: indentKeys.all }),
+  });
+}
+
+export function useReturnIndent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, items, reason }: { id: string; items: Array<{ itemId: string; returnQty: number }>; reason?: string }) =>
+      (await apiPost<MedicationIndent>(`/indents/${id}/return`, { items, reason })).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: indentKeys.all }),
   });
 }

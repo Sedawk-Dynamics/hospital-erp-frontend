@@ -25,17 +25,81 @@ import { usePatientSearch } from '@/hooks/use-hospital';
 import {
   useNdpsLocations, useNdpsStockByLocation, useNdpsRegister, useNdpsDailyBalances,
   useNdpsReceiveConsignment, useNdpsTransfer, useNdpsConsumption, useNdpsDisposal,
-  useNdpsRunDailyClose, useNdpsVerifyDaily, useNdpsUploadEvidence,
+  useNdpsRunDailyClose, useNdpsVerifyDaily, useNdpsUploadEvidence, useNdpsCreateLocation,
 } from '@/hooks/use-ndps';
 
 type DrugOpt = { id: string; label: string };
 type UserOpt = { id: string; label: string };
 
-function useNarcoticDrugs(): DrugOpt[] {
-  const { data } = useFormulary({ limit: 300, isActive: true });
-  return (data?.data ?? [])
-    .filter((d) => (d as { isNarcotic?: boolean }).isNarcotic)
-    .map((d) => ({ id: d.id, label: `${d.drugName}${d.strength ? ` ${d.strength}` : ''}` }));
+// Searchable narcotic-drug picker (autocomplete). The dropdown stays hidden until
+// the field is focused / typed into (it does NOT show by default), then floats
+// over the form and filters server-side by isNarcotic + the typed text. Only
+// drugs flagged "NDPS narcotic" in Inventory → Drug Formulary appear here.
+function NarcoticDrugPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [search, setSearch] = useState('');
+  const [label, setLabel] = useState('');
+  const [open, setOpen] = useState(false);
+  const { data, isLoading } = useFormulary({ isNarcotic: true, isActive: true, search: search.trim() || undefined, limit: 50 });
+  const drugs = (data?.data ?? []).filter((d) => (d as { isNarcotic?: boolean }).isNarcotic);
+
+  if (value && label) {
+    return (
+      <div className="flex h-9 items-center justify-between rounded-md border border-border bg-background px-2">
+        <span className="truncate text-sm">{label}</span>
+        <button
+          type="button"
+          className="ml-2 shrink-0 text-xs font-medium text-primary hover:underline"
+          onClick={() => { onChange(''); setLabel(''); setSearch(''); setOpen(false); }}
+        >
+          Change
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => window.setTimeout(() => setOpen(false), 120)}
+          placeholder="Search narcotic drug by name / generic…"
+          className="h-9 pl-8"
+        />
+      </div>
+      {open && (
+        <div className="absolute left-0 right-0 z-50 mt-1 max-h-44 overflow-y-auto rounded-md border border-border bg-popover shadow-md">
+          {isLoading ? (
+            <div className="px-2 py-2 text-sm text-muted-foreground">Searching…</div>
+          ) : drugs.length ? (
+            drugs.map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => { onChange(d.id); setLabel(`${d.drugName}${d.strength ? ` ${d.strength}` : ''}`); setSearch(''); setOpen(false); }}
+                className="block w-full border-b border-border/60 px-2 py-1.5 text-left text-sm last:border-b-0 hover:bg-muted"
+              >
+                <span className="font-medium">{d.drugName}{d.strength ? ` ${d.strength}` : ''}</span>
+                {(d as { genericName?: string | null }).genericName ? (
+                  <span className="ml-1 text-xs text-muted-foreground">· {(d as { genericName?: string | null }).genericName}</span>
+                ) : null}
+              </button>
+            ))
+          ) : (
+            <div className="px-2 py-2 text-xs text-muted-foreground">
+              {search.trim()
+                ? 'No matching narcotic drugs.'
+                : 'No narcotic drugs found. Flag a drug as “NDPS narcotic” in Inventory → Drug Formulary first.'}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function useUserOpts(): UserOpt[] {
@@ -69,9 +133,64 @@ function Select({ value, onChange, options, placeholder }: { value: string; onCh
   );
 }
 
+// Live "available at this location" hint for the deducting dialogs (transfer /
+// consume / dispose): shows the current balance of the chosen narcotic at the
+// chosen location so the user sees, before submitting, whether there is stock —
+// avoiding the "Insufficient narcotic stock" error. NDPS flow: receive (Form 3C)
+// into the vault → transfer to a sub-store → consume/dispose from there.
+function LocationBalanceHint({ drugFormularyId, locationId, requestedQty }: { drugFormularyId: string; locationId: string; requestedQty?: number }) {
+  const { data } = useNdpsStockByLocation(drugFormularyId || undefined);
+  const drug = (data?.items ?? []).find((d) => d.drugId === drugFormularyId);
+  const available = drug?.locations.find((l) => l.locationId === locationId)?.quantity ?? 0;
+  const short = requestedQty != null && requestedQty > 0 && requestedQty > available;
+  const tone = available === 0 || short ? 'text-amber-600' : 'text-emerald-600';
+  return (
+    <p className={`col-span-2 -mt-1 text-xs ${tone}`}>
+      Available at this location: <b>{available}</b> unit(s)
+      {available === 0 && ' — receive a Form 3C consignment into the vault and transfer stock here first.'}
+      {available > 0 && short ? ` — not enough for ${requestedQty}.` : ''}
+    </p>
+  );
+}
+
+// ── New NDPS location (sub-store cart) dialog ───────────────
+// Sub-stores (ICU/OT carts) are where vault stock is transferred to and then
+// dispensed from (Form 3E). Without one, the Transfer "To" and the Consume
+// "Sub-store" dropdowns are empty — so this lets the pharmacy admin create them.
+function LocationDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+  const create = useNdpsCreateLocation();
+  const [f, setF] = useState({ name: '', type: 'sub_store' });
+  const submit = async () => {
+    if (!f.name.trim()) return toast.error('Enter a location name (e.g. ICU Cart A).');
+    try {
+      await create.mutateAsync({ name: f.name.trim(), type: f.type });
+      toast.success('NDPS location created');
+      onOpenChange(false);
+      setF({ name: '', type: 'sub_store' });
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed'); }
+  };
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>New NDPS location</DialogTitle>
+          <DialogDescription>Create a sub-store cart (e.g. ICU Cart, OT Cart) to transfer vault stock into and dispense from.</DialogDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2 space-y-1"><Label>Name *</Label><Input value={f.name} onChange={(e) => setF((p) => ({ ...p, name: e.target.value }))} placeholder="e.g. ICU Cart A" /></div>
+          <div className="col-span-2 space-y-1"><Label>Type</Label><Select value={f.type} onChange={(v) => setF((p) => ({ ...p, type: v }))} options={[{ id: 'sub_store', label: 'Sub-store (cart)' }, { id: 'main_vault', label: 'Main vault' }]} placeholder="Type" /></div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={submit} disabled={create.isPending}>Create location</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Form 3C inward dialog ───────────────────────────────────
 function ReceiveDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const drugs = useNarcoticDrugs();
   const recv = useNdpsReceiveConsignment();
   const [f, setF] = useState({ drugFormularyId: '', quantity: '', ndpsLicenseNumber: '', form3cNumber: '', transportDetails: '', grossWeight: '', batchNumber: '', expiryDate: '' });
   const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }));
@@ -92,7 +211,7 @@ function ReceiveDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
           <DialogDescription>Records the consignment into the Central Vault with its statutory provenance.</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2 space-y-1"><Label>Narcotic drug *</Label><Select value={f.drugFormularyId} onChange={(v) => set('drugFormularyId', v)} options={drugs} placeholder="Select narcotic drug" /></div>
+          <div className="col-span-2 space-y-1"><Label>Narcotic drug *</Label><NarcoticDrugPicker value={f.drugFormularyId} onChange={(v) => set('drugFormularyId', v)} /></div>
           <div className="space-y-1"><Label>Quantity *</Label><Input type="number" min={1} value={f.quantity} onChange={(e) => set('quantity', e.target.value)} /></div>
           <div className="space-y-1"><Label>Gross weight</Label><Input value={f.grossWeight} onChange={(e) => set('grossWeight', e.target.value)} placeholder="e.g. 1.2 kg" /></div>
           <div className="space-y-1"><Label>NDPS licence no. *</Label><Input value={f.ndpsLicenseNumber} onChange={(e) => set('ndpsLicenseNumber', e.target.value)} /></div>
@@ -112,7 +231,6 @@ function ReceiveDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
 
 // ── Transfer (dual-auth challan) dialog ─────────────────────
 function TransferDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const drugs = useNarcoticDrugs();
   const users = useUserOpts();
   const { data: locations } = useNdpsLocations();
   const locOpts = (locations ?? []).map((l) => ({ id: l.id, label: `${l.name} (${l.type === 'main_vault' ? 'Vault' : 'Sub-store'})` }));
@@ -136,10 +254,11 @@ function TransferDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
           <DialogDescription>Move stock between locations. A second custodian must co-sign (dual-authentication).</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2 space-y-1"><Label>Narcotic drug *</Label><Select value={f.drugFormularyId} onChange={(v) => set('drugFormularyId', v)} options={drugs} placeholder="Select narcotic drug" /></div>
+          <div className="col-span-2 space-y-1"><Label>Narcotic drug *</Label><NarcoticDrugPicker value={f.drugFormularyId} onChange={(v) => set('drugFormularyId', v)} /></div>
           <div className="space-y-1"><Label>From *</Label><Select value={f.fromLocationId} onChange={(v) => set('fromLocationId', v)} options={locOpts} placeholder="Source" /></div>
           <div className="space-y-1"><Label>To *</Label><Select value={f.toLocationId} onChange={(v) => set('toLocationId', v)} options={locOpts} placeholder="Destination" /></div>
           <div className="space-y-1"><Label>Quantity *</Label><Input type="number" min={1} value={f.quantity} onChange={(e) => set('quantity', e.target.value)} /></div>
+          {f.drugFormularyId && f.fromLocationId && <LocationBalanceHint drugFormularyId={f.drugFormularyId} locationId={f.fromLocationId} requestedQty={parseInt(f.quantity, 10) || undefined} />}
           <div className="space-y-1"><Label>Receiving custodian *</Label><Select value={f.counterpartyId} onChange={(v) => set('counterpartyId', v)} options={users} placeholder="Co-signing person" /></div>
         </div>
         <DialogFooter>
@@ -153,7 +272,6 @@ function TransferDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
 
 // ── Form 3E consumption dialog ──────────────────────────────
 function ConsumptionDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const drugs = useNarcoticDrugs();
   const { data: locations } = useNdpsLocations();
   const subStores = (locations ?? []).filter((l) => l.type === 'sub_store').map((l) => ({ id: l.id, label: l.name }));
   const consume = useNdpsConsumption();
@@ -162,7 +280,14 @@ function ConsumptionDialog({ open, onOpenChange }: { open: boolean; onOpenChange
   const [f, setF] = useState({ drugFormularyId: '', fromLocationId: '', quantity: '', patientId: '', patientLabel: '', doctorRegNo: '', bedNumber: '', diagnosis: '' });
   const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }));
   const submit = async () => {
-    if (!f.drugFormularyId || !f.fromLocationId || !f.quantity || !f.patientId || !f.doctorRegNo || !f.bedNumber || !f.diagnosis) return toast.error('All Form 3E fields are mandatory');
+    // Per-field validation so the pharmacist knows exactly what's missing.
+    if (!f.drugFormularyId) return toast.error('Select a narcotic drug.');
+    if (!f.fromLocationId) return toast.error('Select the sub-store to dispense from — click “New Sub-store” if the list is empty.');
+    if (!f.quantity || parseInt(f.quantity, 10) <= 0) return toast.error('Enter a valid dose quantity.');
+    if (!f.patientId) return toast.error('Select the patient.');
+    if (!f.doctorRegNo.trim()) return toast.error("Enter the prescriber's registration number (NMC).");
+    if (!f.bedNumber.trim()) return toast.error("Enter the patient's bed number.");
+    if (!f.diagnosis.trim()) return toast.error('Enter the diagnosis / justification.');
     try {
       const res = await consume.mutateAsync({ drugFormularyId: f.drugFormularyId, fromLocationId: f.fromLocationId, quantity: parseInt(f.quantity, 10), patientId: f.patientId, doctorRegNo: f.doctorRegNo, bedNumber: f.bedNumber, diagnosis: f.diagnosis });
       const charged = (res as { billing?: { charged?: number } } | undefined)?.billing?.charged;
@@ -180,9 +305,11 @@ function ConsumptionDialog({ open, onOpenChange }: { open: boolean; onOpenChange
           <DialogDescription>Bedside administration — the prescriber reg no, bed and diagnosis are mandatory for the statutory record.</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2 space-y-1"><Label>Narcotic drug *</Label><Select value={f.drugFormularyId} onChange={(v) => set('drugFormularyId', v)} options={drugs} placeholder="Select narcotic drug" /></div>
-          <div className="space-y-1"><Label>Sub-store *</Label><Select value={f.fromLocationId} onChange={(v) => set('fromLocationId', v)} options={subStores} placeholder="Cart" /></div>
+          <div className="col-span-2 space-y-1"><Label>Narcotic drug *</Label><NarcoticDrugPicker value={f.drugFormularyId} onChange={(v) => set('drugFormularyId', v)} /></div>
+          <div className="space-y-1"><Label>Sub-store *</Label><Select value={f.fromLocationId} onChange={(v) => set('fromLocationId', v)} options={subStores} placeholder={subStores.length ? 'Select sub-store' : 'No sub-store yet'} /></div>
           <div className="space-y-1"><Label>Dose qty *</Label><Input type="number" min={1} value={f.quantity} onChange={(e) => set('quantity', e.target.value)} /></div>
+          {subStores.length === 0 && <p className="col-span-2 -mt-1 text-xs text-amber-600">No sub-store cart exists yet — close this, click “New Sub-store”, then Transfer vault stock into it.</p>}
+          {f.drugFormularyId && f.fromLocationId && <LocationBalanceHint drugFormularyId={f.drugFormularyId} locationId={f.fromLocationId} requestedQty={parseInt(f.quantity, 10) || undefined} />}
           <div className="col-span-2 space-y-1">
             <Label>Patient *</Label>
             {f.patientId ? (
@@ -221,7 +348,6 @@ function ConsumptionDialog({ open, onOpenChange }: { open: boolean; onOpenChange
 
 // ── Disposal dialog ─────────────────────────────────────────
 function DisposalDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const drugs = useNarcoticDrugs();
   const users = useUserOpts();
   const { data: locations } = useNdpsLocations();
   const locOpts = (locations ?? []).map((l) => ({ id: l.id, label: l.name }));
@@ -258,9 +384,10 @@ function DisposalDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
           <DialogDescription>Non-clinical loss — requires a reference number and the medical director&apos;s co-sign.</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2 space-y-1"><Label>Narcotic drug *</Label><Select value={f.drugFormularyId} onChange={(v) => set('drugFormularyId', v)} options={drugs} placeholder="Select narcotic drug" /></div>
+          <div className="col-span-2 space-y-1"><Label>Narcotic drug *</Label><NarcoticDrugPicker value={f.drugFormularyId} onChange={(v) => set('drugFormularyId', v)} /></div>
           <div className="space-y-1"><Label>Location *</Label><Select value={f.locationId} onChange={(v) => set('locationId', v)} options={locOpts} placeholder="Location" /></div>
           <div className="space-y-1"><Label>Quantity *</Label><Input type="number" min={1} value={f.quantity} onChange={(e) => set('quantity', e.target.value)} /></div>
+          {f.drugFormularyId && f.locationId && <LocationBalanceHint drugFormularyId={f.drugFormularyId} locationId={f.locationId} requestedQty={parseInt(f.quantity, 10) || undefined} />}
           <div className="space-y-1"><Label>Reason *</Label><Select value={f.reasonCode} onChange={(v) => set('reasonCode', v)} options={[{ id: 'breakage', label: 'Breakage' }, { id: 'contamination', label: 'Contamination' }, { id: 'expiry', label: 'Expiry' }, { id: 'other', label: 'Other' }]} placeholder="Reason" /></div>
           <div className="space-y-1"><Label>Reference no *</Label><Input value={f.referenceNumber} onChange={(e) => set('referenceNumber', e.target.value)} placeholder="FIR / destruction memo" /></div>
           <div className="space-y-1"><Label>Medical director co-sign *</Label><Select value={f.coSignById} onChange={(v) => set('coSignById', v)} options={users} placeholder="Co-signing director" /></div>
@@ -477,7 +604,7 @@ function DailyTab() {
 }
 
 function NdpsInner() {
-  const [dialog, setDialog] = useState<null | 'receive' | 'transfer' | 'consume' | 'dispose'>(null);
+  const [dialog, setDialog] = useState<null | 'receive' | 'transfer' | 'consume' | 'dispose' | 'location'>(null);
   return (
     <div className="space-y-4 animate-fade-in-up">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -486,6 +613,7 @@ function NdpsInner() {
           <p className="text-xs text-muted-foreground">Form 3C / 3E / 3H statutory accounting with vault-to-bedside chain of custody.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" onClick={() => setDialog('location')}><PackagePlus className="mr-1.5 h-4 w-4 rotate-45" /> New Sub-store</Button>
           <Button size="sm" onClick={() => setDialog('receive')}><PackagePlus className="mr-1.5 h-4 w-4" /> Receive (3C)</Button>
           <Button size="sm" variant="outline" onClick={() => setDialog('transfer')}><ArrowLeftRight className="mr-1.5 h-4 w-4" /> Transfer</Button>
           <Button size="sm" variant="outline" onClick={() => setDialog('consume')}><Syringe className="mr-1.5 h-4 w-4" /> Consume (3E)</Button>
@@ -504,6 +632,7 @@ function NdpsInner() {
         <TabsContent value="daily"><DailyTab /></TabsContent>
       </Tabs>
 
+      <LocationDialog open={dialog === 'location'} onOpenChange={(o) => setDialog(o ? 'location' : null)} />
       <ReceiveDialog open={dialog === 'receive'} onOpenChange={(o) => setDialog(o ? 'receive' : null)} />
       <TransferDialog open={dialog === 'transfer'} onOpenChange={(o) => setDialog(o ? 'transfer' : null)} />
       <ConsumptionDialog open={dialog === 'consume'} onOpenChange={(o) => setDialog(o ? 'consume' : null)} />

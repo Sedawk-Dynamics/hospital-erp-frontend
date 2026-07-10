@@ -19,6 +19,8 @@ import {
   PackageCheck,
   ClipboardList,
   ShieldAlert,
+  Undo2,
+  Receipt,
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -49,12 +51,13 @@ import {
   useDeliverIndent,
   useCancelIndent,
   useRaiseIndent,
+  useReturnIndent,
   type MedicationIndent,
   type MedicationIndentItem,
 } from '@/hooks/use-indents';
 import { useWards } from '@/hooks/use-clinical';
 import { usePatientSearch } from '@/hooks/use-hospital';
-import { useFormulary } from '@/hooks/use-pharmacy';
+import { useFormulary, useIpBillingSummary } from '@/hooks/use-pharmacy';
 
 // ============================================================
 // Constants & small helpers
@@ -165,6 +168,8 @@ export default function PharmacyIndentsPage() {
   const [viewTarget, setViewTarget] = useState<MedicationIndent | null>(null);
   const [approveTarget, setApproveTarget] = useState<MedicationIndent | null>(null);
   const [cancelTarget, setCancelTarget] = useState<MedicationIndent | null>(null);
+  const [returnTarget, setReturnTarget] = useState<MedicationIndent | null>(null);
+  const [billingTarget, setBillingTarget] = useState<MedicationIndent | null>(null);
   const [raiseOpen, setRaiseOpen] = useState(false);
 
   const dispenseMutation = useDispenseIndent();
@@ -390,6 +395,29 @@ export default function PharmacyIndentsPage() {
                               Mark Delivered
                             </Button>
                           )}
+                          {['dispensed', 'delivered', 'acknowledged'].includes(ind.status) && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                title="Return unused medicine to pharmacy (credit the IP bill)"
+                                onClick={() => setReturnTarget(ind)}
+                              >
+                                <Undo2 className="mr-1 h-3.5 w-3.5" />
+                                Return
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 text-slate-600 hover:text-slate-700 hover:bg-slate-50"
+                                title="IP billing summary (reimbursable / non-reimbursable)"
+                                onClick={() => setBillingTarget(ind)}
+                              >
+                                <Receipt className="h-4 w-4" />
+                              </Button>
+                            </>
+                          )}
                           {(ind.status === 'raised' || ind.status === 'approved') && (
                             <Button
                               size="sm"
@@ -431,6 +459,12 @@ export default function PharmacyIndentsPage() {
       )}
       {cancelTarget && (
         <CancelIndentDialog indent={cancelTarget} onClose={() => setCancelTarget(null)} />
+      )}
+      {returnTarget && (
+        <ReturnIndentDialog indent={returnTarget} onClose={() => setReturnTarget(null)} />
+      )}
+      {billingTarget && (
+        <BillingSummaryDialog indent={billingTarget} onClose={() => setBillingTarget(null)} />
       )}
       {viewTarget && (
         <IndentDetailsDialog
@@ -597,6 +631,285 @@ function CancelIndentDialog({
           <Button variant="destructive" onClick={submit} disabled={cancel.isPending}>
             {cancel.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
             Cancel Indent
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============================================================
+// IP Return-to-Stock (RTS) dialog — design doc IP feature #2
+// The ward returns unused / un-administered medicine; the pharmacist records it,
+// the batch is restocked and the patient's running IP bill is credited.
+// ============================================================
+
+function ReturnIndentDialog({
+  indent,
+  onClose,
+}: {
+  indent: MedicationIndent;
+  onClose: () => void;
+}) {
+  const ret = useReturnIndent();
+  const [reason, setReason] = useState('');
+  const [qty, setQty] = useState<Record<string, string>>({});
+
+  // Only dispensed lines with something still on the ward are returnable.
+  const returnable = (indent.items ?? []).map((it) => {
+    const dispensed = it.dispensedQty ?? 0;
+    const already = it.returnedQty ?? 0;
+    const remaining = Math.max(0, dispensed - already);
+    // Credit per sale-unit = the line's billed value spread over the dispensed qty.
+    const perUnitCredit = dispensed > 0 ? Number(it.lineTotal ?? 0) / dispensed : 0;
+    return { it, dispensed, already, remaining, perUnitCredit };
+  });
+  const anyReturnable = returnable.some((r) => r.remaining > 0);
+
+  const creditPreview = returnable.reduce((sum, r) => {
+    const n = Math.min(r.remaining, Math.max(0, Math.trunc(Number(qty[r.it.id] || 0))));
+    return sum + n * r.perUnitCredit;
+  }, 0);
+
+  const submit = () => {
+    const items = returnable
+      .map((r) => ({ itemId: r.it.id, returnQty: Math.min(r.remaining, Math.max(0, Math.trunc(Number(qty[r.it.id] || 0)))) }))
+      .filter((x) => x.returnQty > 0);
+    if (items.length === 0) return toast.error('Enter a quantity to return on at least one line');
+    ret.mutate(
+      { id: indent.id, items, reason: reason.trim() || undefined },
+      {
+        onSuccess: () => {
+          toast.success("Returned to pharmacy — the patient's IP bill was credited");
+          onClose();
+        },
+        onError: (err: any) => toast.error(err?.message ?? 'Failed to process the return'),
+      },
+    );
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Return to pharmacy · {indent.indentNumber}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-1">
+          <p className="text-sm text-muted-foreground">
+            Record unused medicine returned from the ward for <b>{indent.patientName ?? 'the patient'}</b>.
+            Returned units are added back to the original batch and credited to the running IP bill.
+          </p>
+          {!anyReturnable ? (
+            <div className="rounded-md border bg-muted/40 px-4 py-6 text-center text-sm text-muted-foreground">
+              Nothing left to return — every dispensed unit has already been returned.
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
+                    <th className="px-3 py-2 font-medium">Drug</th>
+                    <th className="px-3 py-2 font-medium text-center">Dispensed</th>
+                    <th className="px-3 py-2 font-medium text-center">Returned</th>
+                    <th className="px-3 py-2 font-medium text-center">Return now</th>
+                    <th className="px-3 py-2 font-medium text-right">Credit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {returnable.map(({ it, dispensed, already, remaining, perUnitCredit }) => {
+                    const n = Math.min(remaining, Math.max(0, Math.trunc(Number(qty[it.id] || 0))));
+                    const unit = it.saleUnit === 'loose' ? it.looseUnitLabel || 'loose' : 'pack';
+                    return (
+                      <tr key={it.id} className="border-b last:border-b-0">
+                        <td className="px-3 py-2">
+                          <div className="font-medium">{it.drugName ?? it.drugFormularyId}</div>
+                          <div className="text-[11px] text-muted-foreground capitalize">{unit}</div>
+                        </td>
+                        <td className="px-3 py-2 text-center">{dispensed}</td>
+                        <td className="px-3 py-2 text-center text-muted-foreground">{already || '—'}</td>
+                        <td className="px-3 py-2 text-center">
+                          {remaining > 0 ? (
+                            <Input
+                              type="number"
+                              min={0}
+                              max={remaining}
+                              value={qty[it.id] ?? ''}
+                              placeholder="0"
+                              onChange={(e) => setQty((q) => ({ ...q, [it.id]: e.target.value }))}
+                              className="w-20 mx-auto text-center"
+                            />
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                          {remaining > 0 && (
+                            <div className="mt-0.5 text-[10px] text-muted-foreground">max {remaining}</div>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono">{n > 0 ? inr(n * perUnitCredit) : '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <Label>Reason (optional)</Label>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={2}
+              placeholder="e.g. medication changed, patient discharged early..."
+              className="flex min-h-[56px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </div>
+
+          {creditPreview > 0 && (
+            <div className="flex items-center justify-between rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
+              <span className="font-medium text-emerald-700">Total credit to IP bill</span>
+              <span className="font-mono font-semibold text-emerald-700">{inr(creditPreview)}</span>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={submit} disabled={ret.isPending || !anyReturnable || creditPreview <= 0}>
+            {ret.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+            Process Return
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============================================================
+// IP Billing Summary dialog — Cashless / TPA split (design doc IP feature #4).
+// Shows the reimbursable (claim from insurer) vs non-reimbursable (collect from
+// patient) vs take-home split, plus the running deposit / balance picture.
+// ============================================================
+
+function BillingSummaryDialog({
+  indent,
+  onClose,
+}: {
+  indent: MedicationIndent;
+  onClose: () => void;
+}) {
+  const { data, isLoading, isError } = useIpBillingSummary(indent.patientId);
+
+  const money = (n?: number | string | null) => `₹${Number(n ?? 0).toFixed(2)}`;
+  const split = data?.pharmacySplit;
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex flex-wrap items-center gap-2">
+            IP Billing Summary · {indent.patientName ?? 'Patient'}
+            {data?.category && (
+              <Badge variant="outline" className="text-[10px] capitalize">
+                {data.category}
+              </Badge>
+            )}
+            {data?.isTpa && (
+              <Badge variant="outline" className="bg-indigo-100 text-indigo-700 border-indigo-300 text-[10px]">
+                Cashless / TPA
+              </Badge>
+            )}
+          </DialogTitle>
+        </DialogHeader>
+
+        {isLoading ? (
+          <div className="py-10 text-center">
+            <Loader2 className="mx-auto h-6 w-6 animate-spin text-primary" />
+          </div>
+        ) : isError || !data ? (
+          <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            Could not load the billing summary.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {data.isTpa && data.insurance && (
+              <div className="rounded-md border bg-indigo-50/50 p-3 text-sm grid grid-cols-2 gap-x-4 gap-y-1">
+                <p><span className="text-muted-foreground">Insurer:</span> {data.insurance.insurer ?? '—'}</p>
+                <p><span className="text-muted-foreground">TPA:</span> {data.insurance.tpa ?? '—'}</p>
+                <p><span className="text-muted-foreground">Policy:</span> {data.insurance.policyNumber}</p>
+                <p><span className="text-muted-foreground">Plan:</span> {data.insurance.planName ?? '—'}</p>
+              </div>
+            )}
+
+            {/* Money picture */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {[
+                { label: 'Deposit', val: data.totals.deposit },
+                { label: 'Billed', val: data.totals.totalBilled },
+                { label: 'Paid', val: data.totals.totalPaid },
+                { label: 'Balance', val: data.totals.balanceDue },
+              ].map((c) => (
+                <div key={c.label} className="rounded-lg border bg-card px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{c.label}</div>
+                  <div className="font-mono text-sm font-semibold">{money(c.val)}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Pharmacy reimbursable split */}
+            {split && (
+              <div className="rounded-lg border p-3">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Pharmacy — TPA split
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2">
+                    <div className="text-[10px] uppercase tracking-wide text-emerald-700">Reimbursable</div>
+                    <div className="font-mono text-sm font-semibold text-emerald-700">{money(split.reimbursable)}</div>
+                    <div className="text-[10px] text-muted-foreground">Claim from insurer</div>
+                  </div>
+                  <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                    <div className="text-[10px] uppercase tracking-wide text-amber-700">Non-reimbursable</div>
+                    <div className="font-mono text-sm font-semibold text-amber-700">{money(split.nonReimbursable)}</div>
+                    <div className="text-[10px] text-muted-foreground">Collect from patient</div>
+                  </div>
+                  <div className="rounded-md border border-violet-200 bg-violet-50 px-3 py-2">
+                    <div className="text-[10px] uppercase tracking-wide text-violet-700">Take-home (TTO)</div>
+                    <div className="font-mono text-sm font-semibold text-violet-700">{money(split.takeHome)}</div>
+                    <div className="text-[10px] text-muted-foreground">Discharge meds</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Charges by category */}
+            {data.categoryTotals.length > 0 && (
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
+                      <th className="px-3 py-2 font-medium">Service category</th>
+                      <th className="px-3 py-2 font-medium text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.categoryTotals.map((c) => (
+                      <tr key={c.category} className="border-b last:border-b-0">
+                        <td className="px-3 py-2 capitalize">{c.category}</td>
+                        <td className="px-3 py-2 text-right font-mono">{money(c.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Close
           </Button>
         </DialogFooter>
       </DialogContent>

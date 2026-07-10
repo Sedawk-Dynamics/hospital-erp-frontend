@@ -53,6 +53,18 @@ const appointmentSchema = z.object({
 
 type AppointmentFormData = z.infer<typeof appointmentSchema>;
 
+const TYPE_LABELS: Record<string, string> = {
+  consultation: 'Consultation',
+  follow_up: 'Follow Up',
+  procedure: 'Procedure',
+};
+
+const PRIORITY_LABELS: Record<string, string> = {
+  normal: 'Normal',
+  urgent: 'Urgent',
+  emergency: 'Emergency',
+};
+
 // ============================================================
 // Props
 // ============================================================
@@ -280,7 +292,23 @@ export function CreateAppointmentDialog({
                   onValueChange={(v: string | null) => field.onChange(v ?? '')}
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder={doctorsLoading ? 'Loading...' : 'Select doctor'} />
+                    <SelectValue placeholder={doctorsLoading ? 'Loading...' : 'Select doctor'}>
+                      {(value) => {
+                        const doc = doctors.find((d) => d.id === value);
+                        if (!doc) return doctorsLoading ? 'Loading...' : 'Select doctor';
+                        return (
+                          <span className="flex items-center gap-1.5 truncate">
+                            <UserRound className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                            <span className="truncate">{doc.name}</span>
+                            {doc.specialization && (
+                              <span className="text-xs text-muted-foreground">
+                                ({doc.specialization})
+                              </span>
+                            )}
+                          </span>
+                        );
+                      }}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {doctors.map((doc) => (
@@ -315,7 +343,9 @@ export function CreateAppointmentDialog({
                     onValueChange={(v: string | null) => field.onChange(v ?? 'consultation')}
                   >
                     <SelectTrigger className="w-full">
-                      <SelectValue />
+                      <SelectValue>
+                        {(value) => TYPE_LABELS[value as string] ?? 'Select type'}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="consultation">Consultation</SelectItem>
@@ -337,7 +367,9 @@ export function CreateAppointmentDialog({
                     onValueChange={(v: string | null) => field.onChange(v ?? 'normal')}
                   >
                     <SelectTrigger className="w-full">
-                      <SelectValue />
+                      <SelectValue>
+                        {(value) => PRIORITY_LABELS[value as string] ?? 'Select priority'}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="normal">Normal</SelectItem>

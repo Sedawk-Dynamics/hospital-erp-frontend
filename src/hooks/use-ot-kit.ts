@@ -43,6 +43,7 @@ export interface OtKitIssueItem {
   lineTotal?: number | null;
   drugName?: string;
   looseUnitLabel?: string | null;
+  batchNumber?: string | null;
 }
 
 export interface OtKitIssue {

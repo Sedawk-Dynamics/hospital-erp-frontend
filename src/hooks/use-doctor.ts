@@ -664,12 +664,19 @@ interface PrescriptionParams {
   search?: string;
 }
 
+// The API returns prescription lines under Prisma's relation name
+// `prescriptionItems`, but every consumer reads `items`. Normalize so the
+// `items` contract is always populated regardless of which key the API sends.
+function normalizeRxItems<T extends { items?: unknown[]; prescriptionItems?: unknown[] }>(rx: T): T {
+  return { ...rx, items: rx.items ?? rx.prescriptionItems ?? [] } as T;
+}
+
 export function usePrescriptions(params?: PrescriptionParams) {
   return useQuery({
     queryKey: doctorKeys.prescriptions.list(params as Record<string, unknown>),
     queryFn: async () => {
       const response = await apiGet<Prescription[]>('/prescriptions', { params });
-      return { data: response.data, meta: response.meta as PaginationMeta };
+      return { data: (response.data ?? []).map(normalizeRxItems), meta: response.meta as PaginationMeta };
     },
   });
 }
@@ -696,7 +703,9 @@ export function useCreatePrescription() {
           dosage: item.dosage,
           frequency: item.frequency,
           duration: item.duration,
-          route: item.route ?? 'oral',
+          // Backend enum accepts lowercase routes only ('oral', 'iv', ...);
+          // UI option labels are capitalized ('Oral', 'IV'), so normalize here.
+          route: (item.route ?? 'oral').toLowerCase(),
           instructions: item.instructions,
           quantity: item.quantity,
         })),
@@ -1097,7 +1106,7 @@ export function usePrescriptionDetail(id: string) {
     queryKey: doctorKeys.prescriptions.detail(id),
     queryFn: async () => {
       const response = await apiGet<Prescription>(`/prescriptions/${id}`);
-      return response.data;
+      return response.data ? normalizeRxItems(response.data) : response.data;
     },
     enabled: !!id,
   });

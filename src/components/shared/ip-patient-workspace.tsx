@@ -18,8 +18,9 @@
 // discharge. Anyone can deep-link out to the dedicated pages with the
 // admissionId / patientId pre-filled.
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { toast } from 'sonner';
 import {
   Activity,
   AlertTriangle,
@@ -47,8 +48,19 @@ import {
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useRaiseIndent } from '@/hooks/use-indents';
 import { cn } from '@/lib/utils';
 
 // Base-UI Button doesn't support `asChild`; use the `render` prop with a Link
@@ -466,6 +478,147 @@ function DoseList({
 
 // ── Active prescriptions panel ─────────────────────────────────────────────
 
+// Raise a pharmacy indent pre-filled from the patient's active IP prescription(s)
+// — the "nurse asks pharmacy to send those medicines" hand-off. Carries the
+// prescriptionId + admissionId so the pharmacy dispense posts to this admission's
+// bill and the indent stays traceable back to the doctor's order.
+function SendToPharmacyDialog({
+  open,
+  onOpenChange,
+  prescriptions,
+  patientId,
+  admissionId,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  prescriptions: Prescription[];
+  patientId: string;
+  admissionId: string;
+}) {
+  const raise = useRaiseIndent();
+  const [saleUnit, setSaleUnit] = useState<'loose' | 'pack'>('loose');
+
+  // Rx lines that map to a formulary drug (drugId) can be indented directly.
+  const mappable = useMemo(
+    () =>
+      prescriptions.flatMap((rx, ri) =>
+        (rx.items ?? [])
+          .filter((it) => !!it.drugId)
+          .map((it, ii) => ({
+            key: `${rx.id}-${ri}-${ii}`,
+            rxId: rx.id,
+            drugFormularyId: it.drugId as string,
+            drugName: it.drugName,
+            defaultQty: it.quantity && it.quantity > 0 ? it.quantity : 1,
+          })),
+      ),
+    [prescriptions],
+  );
+  const unmappable = useMemo(
+    () => prescriptions.flatMap((rx) => (rx.items ?? []).filter((it) => !it.drugId).map((it) => it.drugName)),
+    [prescriptions],
+  );
+
+  const [qty, setQty] = useState<Record<string, number>>({});
+  useEffect(() => {
+    if (open) {
+      const init: Record<string, number> = {};
+      mappable.forEach((m) => { init[m.key] = m.defaultQty; });
+      setQty(init);
+      setSaleUnit('loose');
+    }
+  }, [open, mappable]);
+
+  const handleSubmit = async () => {
+    const items = mappable
+      .filter((m) => (qty[m.key] ?? 0) > 0)
+      .map((m) => ({ drugFormularyId: m.drugFormularyId, requestedQty: qty[m.key], saleUnit }));
+    if (!items.length) {
+      toast.error('Enter a quantity for at least one medicine');
+      return;
+    }
+    // Link the indent to a single prescription when all lines come from one Rx.
+    const rxIds = new Set(mappable.filter((m) => (qty[m.key] ?? 0) > 0).map((m) => m.rxId));
+    try {
+      await raise.mutateAsync({
+        patientId,
+        admissionId,
+        prescriptionId: rxIds.size === 1 ? [...rxIds][0] : undefined,
+        items,
+      });
+      toast.success('Indent sent to pharmacy');
+      onOpenChange(false);
+    } catch {
+      toast.error('Failed to send indent to pharmacy');
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <PillBottle className="h-5 w-5 text-primary" /> Send to Pharmacy
+          </DialogTitle>
+          <DialogDescription>
+            Raise a medication indent from the active prescription. The pharmacy approves
+            (credit check), dispenses against a batch, and posts the charge to this
+            admission&apos;s bill.
+          </DialogDescription>
+        </DialogHeader>
+
+        {mappable.length === 0 ? (
+          <p className="py-4 text-sm text-muted-foreground">
+            No prescription lines are linked to a pharmacy formulary drug. Add the drugs
+            directly on the pharmacy indent screen.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Dispense as</span>
+              <Select value={saleUnit} onValueChange={(v) => { if (v) setSaleUnit(v as 'loose' | 'pack'); }}>
+                <SelectTrigger className="h-8 w-36 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="loose">Loose units</SelectItem>
+                  <SelectItem value="pack">Full packs</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              {mappable.map((m) => (
+                <div key={m.key} className="flex items-center gap-2 rounded-md border p-2">
+                  <span className="flex-1 truncate text-sm font-medium">{m.drugName}</span>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={qty[m.key] ?? 0}
+                    onChange={(e) => setQty((prev) => ({ ...prev, [m.key]: Math.max(0, parseInt(e.target.value) || 0) }))}
+                    className="h-8 w-20 text-sm"
+                  />
+                  <span className="w-10 text-xs text-muted-foreground">{saleUnit === 'loose' ? 'units' : 'packs'}</span>
+                </div>
+              ))}
+            </div>
+            {unmappable.length > 0 && (
+              <p className="text-[11px] text-muted-foreground">
+                Not linked to formulary (add manually at pharmacy): {unmappable.join(', ')}
+              </p>
+            )}
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button size="sm" onClick={handleSubmit} disabled={raise.isPending || mappable.length === 0}>
+            {raise.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PillBottle className="h-3.5 w-3.5" />}
+            Send to Pharmacy
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function PrescriptionsPanel({ admissionId, patientId, role }: { admissionId: string; patientId: string; role: WorkspaceRole }) {
   const { data, isLoading } = useActivePrescriptions({
     admissionId,
@@ -474,6 +627,7 @@ function PrescriptionsPanel({ admissionId, patientId, role }: { admissionId: str
   });
 
   const prescriptions = useMemo(() => unwrapList<Prescription>(data), [data]);
+  const [sendOpen, setSendOpen] = useState(false);
 
   return (
     <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4">
@@ -482,12 +636,32 @@ function PrescriptionsPanel({ admissionId, patientId, role }: { admissionId: str
           <Pill className="h-4 w-4 text-primary" />
           Active IP Prescriptions
         </h2>
-        {role === 'doctor' && (
-          <LinkButton size="sm" variant="outline" className="h-7 gap-1 text-xs" href={`/doctor/prescriptions?patientId=${patientId}&admissionId=${admissionId}`}>
-            <Plus className="h-3 w-3" /> New Rx
-          </LinkButton>
-        )}
+        <div className="flex items-center gap-2">
+          {(role === 'nurse' || role === 'doctor') && prescriptions.length > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1 text-xs"
+              onClick={() => setSendOpen(true)}
+            >
+              <PillBottle className="h-3 w-3" /> Send to Pharmacy
+            </Button>
+          )}
+          {role === 'doctor' && (
+            <LinkButton size="sm" variant="outline" className="h-7 gap-1 text-xs" href={`/doctor/prescriptions?patientId=${patientId}&admissionId=${admissionId}`}>
+              <Plus className="h-3 w-3" /> New Rx
+            </LinkButton>
+          )}
+        </div>
       </div>
+
+      <SendToPharmacyDialog
+        open={sendOpen}
+        onOpenChange={setSendOpen}
+        prescriptions={prescriptions}
+        patientId={patientId}
+        admissionId={admissionId}
+      />
 
       {isLoading ? (
         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />

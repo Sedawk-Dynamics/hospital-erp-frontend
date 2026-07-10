@@ -35,6 +35,7 @@ import {
   ClipboardCheck,
   ShieldCheck,
   ShieldAlert,
+  Siren,
   UserCog,
   Percent,
   Sparkles,
@@ -135,6 +136,8 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       // IP medication indents (ward→pharmacy fulfilment) + OT surgical kits.
       { label: 'Med Indents', href: '/pharmacy/indents', icon: ClipboardCheck },
       { label: 'OT Kits', href: '/pharmacy/ot-kits', icon: Package },
+      // Emergency / Casualty "Golden Hour" — trauma pseudo-ID + bypass dispense + merge.
+      { label: 'Emergency', href: '/pharmacy/emergency', icon: Siren },
       { label: 'Stock Ledger', href: '/pharmacy/stock-ledger', icon: ClipboardList, restrictTo: ['pharmacy_admin'] },
       { label: 'Discount Policy', href: '/pharmacy/discount-policy', icon: Percent, restrictTo: ['pharmacy_admin'] },
     ],
