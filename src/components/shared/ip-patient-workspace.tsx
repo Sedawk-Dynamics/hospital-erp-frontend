@@ -60,7 +60,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useRaiseIndent } from '@/hooks/use-indents';
+import { useRaiseIndent, useIndents, useConfirmIndent, useCancelIndent } from '@/hooks/use-indents';
 import { cn } from '@/lib/utils';
 
 // Base-UI Button doesn't support `asChild`; use the `render` prop with a Link
@@ -619,6 +619,58 @@ function SendToPharmacyDialog({
   );
 }
 
+// Auto-created draft indents (from the doctor's IP order — G1). The ward nurse
+// reviews and sends them to pharmacy, or dismisses them, without re-typing.
+function PharmacyDraftsSection({ patientId, admissionId, role }: { patientId: string; admissionId: string; role: WorkspaceRole }) {
+  const { data } = useIndents({ patientId, status: 'draft' });
+  const confirm = useConfirmIndent();
+  const cancel = useCancelIndent();
+  const drafts = useMemo(
+    () => (data?.items ?? []).filter((d) => !d.admissionId || d.admissionId === admissionId),
+    [data, admissionId],
+  );
+  if ((role !== 'nurse' && role !== 'doctor') || drafts.length === 0) return null;
+
+  const onConfirm = async (id: string) => {
+    try { await confirm.mutateAsync({ id }); toast.success('Sent to pharmacy'); }
+    catch { toast.error('Could not send the draft to pharmacy'); }
+  };
+  const onDismiss = async (id: string) => {
+    try { await cancel.mutateAsync({ id, reason: 'Dismissed from ward' }); toast.success('Draft dismissed'); }
+    catch { toast.error('Could not dismiss the draft'); }
+  };
+
+  return (
+    <div className="mb-3 rounded-md border border-amber-300 bg-amber-50/60 p-3">
+      <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-amber-800">
+        <PillBottle className="h-3.5 w-3.5" /> Pending pharmacy request (auto-filled from the order)
+      </p>
+      <div className="space-y-2">
+        {drafts.map((d) => (
+          <div key={d.id} className="rounded-md border bg-card px-3 py-2 text-xs">
+            <div className="mb-1 flex items-center justify-between">
+              <span className="font-medium text-foreground">{d.indentNumber}</span>
+              <span className="text-[10px] text-muted-foreground">{d.items.length} item(s)</span>
+            </div>
+            <p className="text-muted-foreground">
+              {d.items.map((it) => `${it.drugName ?? 'drug'} ×${it.requestedQty}`).join(', ')}
+            </p>
+            <div className="mt-2 flex justify-end gap-2">
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => onDismiss(d.id)} disabled={cancel.isPending}>
+                Dismiss
+              </Button>
+              <Button size="sm" className="h-7 gap-1 text-xs" onClick={() => onConfirm(d.id)} disabled={confirm.isPending}>
+                {confirm.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <PillBottle className="h-3 w-3" />}
+                Confirm &amp; Send
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function PrescriptionsPanel({ admissionId, patientId, role }: { admissionId: string; patientId: string; role: WorkspaceRole }) {
   const { data, isLoading } = useActivePrescriptions({
     admissionId,
@@ -662,6 +714,8 @@ function PrescriptionsPanel({ admissionId, patientId, role }: { admissionId: str
         patientId={patientId}
         admissionId={admissionId}
       />
+
+      <PharmacyDraftsSection patientId={patientId} admissionId={admissionId} role={role} />
 
       {isLoading ? (
         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />

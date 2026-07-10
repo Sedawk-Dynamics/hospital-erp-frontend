@@ -7,7 +7,7 @@ import { apiGet, apiPost, apiPatch } from '@/lib/api';
 // acknowledge (ward nurse verifies the batch).
 // ============================================================
 
-export type IndentStatus = 'raised' | 'approved' | 'dispensed' | 'delivered' | 'acknowledged' | 'cancelled';
+export type IndentStatus = 'draft' | 'raised' | 'approved' | 'dispensed' | 'delivered' | 'acknowledged' | 'cancelled';
 
 export interface MedicationIndentItem {
   id: string;
@@ -99,6 +99,17 @@ export function useRaiseIndent() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (data: RaiseIndentInput) => (await apiPost<MedicationIndent>('/indents', data)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: indentKeys.all }),
+  });
+}
+
+// Confirm an auto-created DRAFT indent (from the doctor's Rx) → raise it to pharmacy.
+// Optionally replace the item lines with the nurse's edits.
+export function useConfirmIndent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, items, priority, notes }: { id: string; items?: RaiseIndentInput['items']; priority?: string; notes?: string }) =>
+      (await apiPatch<MedicationIndent>(`/indents/${id}/confirm`, { items, priority, notes })).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: indentKeys.all }),
   });
 }
