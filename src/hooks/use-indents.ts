@@ -114,6 +114,16 @@ export function useConfirmIndent() {
   });
 }
 
+// TTO / discharge meds: raise a full-pack TTO indent from a discharge prescription.
+export function useCreateTtoIndent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (prescriptionId: string) =>
+      (await apiPost<MedicationIndent>(`/indents/from-prescription/${prescriptionId}/tto`, {})).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: indentKeys.all }),
+  });
+}
+
 export function useApproveIndent() {
   const qc = useQueryClient();
   return useMutation({

@@ -60,7 +60,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useRaiseIndent, useIndents, useConfirmIndent, useCancelIndent } from '@/hooks/use-indents';
+import { useRaiseIndent, useIndents, useConfirmIndent, useCancelIndent, useCreateTtoIndent } from '@/hooks/use-indents';
 import { cn } from '@/lib/utils';
 
 // Base-UI Button doesn't support `asChild`; use the `render` prop with a Link
@@ -680,6 +680,20 @@ function PrescriptionsPanel({ admissionId, patientId, role }: { admissionId: str
 
   const prescriptions = useMemo(() => unwrapList<Prescription>(data), [data]);
   const [sendOpen, setSendOpen] = useState(false);
+  const createTto = useCreateTtoIndent();
+
+  const onSendTto = async () => {
+    // TTO the most recent active IP prescription (the discharge Rx); full packs are
+    // computed on the server from each drug's pack size.
+    const rx = prescriptions[0];
+    if (!rx) return;
+    try {
+      await createTto.mutateAsync(rx.id);
+      toast.success('Discharge meds (TTO) sent to pharmacy in full packs');
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? 'Could not send discharge meds to pharmacy');
+    }
+  };
 
   return (
     <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4">
@@ -697,6 +711,17 @@ function PrescriptionsPanel({ admissionId, patientId, role }: { admissionId: str
               onClick={() => setSendOpen(true)}
             >
               <PillBottle className="h-3 w-3" /> Send to Pharmacy
+            </Button>
+          )}
+          {(role === 'nurse' || role === 'doctor') && prescriptions.length > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1 text-xs"
+              onClick={onSendTto}
+              disabled={createTto.isPending}
+            >
+              {createTto.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <PillBottle className="h-3 w-3" />} Discharge meds (TTO)
             </Button>
           )}
           {role === 'doctor' && (
