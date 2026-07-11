@@ -1194,6 +1194,19 @@ function TransferDialog({
 // ---------------------------------------------------------------------------
 // DischargeDialog
 // ---------------------------------------------------------------------------
+// G5 (2.1): shape of the assembled final-bill summary returned by the discharge API.
+type DischargeBillingSummary = {
+  finalBillId: string | null;
+  totalBilled: number;
+  totalPaid: number;
+  totalBalanceDue: number;
+  depositAmount: number;
+  advanceApplied: number;
+  netAfterDeposit: number;
+  refundDue: number;
+  bills: Array<{ billNumber: string; status: string; totalAmount: number; balanceDue: number }>;
+};
+
 function DischargeDialog({
   admission,
   open,
@@ -1206,42 +1219,74 @@ function DischargeDialog({
   const queryClient = useQueryClient();
   const [dischargeDate, setDischargeDate] = useState(toInputDateStr());
   const [notes, setNotes] = useState('');
+  // G5 (2.1): the discharge response carries the assembled final-bill summary.
+  const [summary, setSummary] = useState<DischargeBillingSummary | null>(null);
+
+  useEffect(() => { if (open) setSummary(null); }, [open]);
 
   const dischargeMutation = useMutation({
-    mutationFn: () =>
-      apiPatch(`/clinical/admissions/${admission.id}/discharge`, {
-        dischargeDate,
-        notes: notes || undefined,
-      }),
-    onSuccess: () => {
+    mutationFn: async () =>
+      (await apiPatch<{ dischargeBilling?: DischargeBillingSummary | null }>(
+        `/clinical/admissions/${admission.id}/discharge`,
+        { dischargeDate, notes: notes || undefined },
+      )).data?.dischargeBilling ?? null,
+    onSuccess: (billing) => {
       toast.success('Patient discharged successfully');
       queryClient.invalidateQueries({ queryKey: ['hospital', 'admissions'] });
       queryClient.invalidateQueries({ queryKey: ['hospital', 'beds'] });
       queryClient.invalidateQueries({ queryKey: ['hospital', 'occupancy'] });
       queryClient.invalidateQueries({ queryKey: ['infrastructure', 'beds'] });
       queryClient.invalidateQueries({ queryKey: ['beds-available'] });
-      onOpenChange(false);
+      // Keep the dialog open to show the final-bill summary; close if none.
+      if (billing) setSummary(billing); else onOpenChange(false);
     },
     onError: (err: Error) => {
       toast.error(err.message || 'Discharge failed');
     },
   });
+  const money = (n: number) => `₹${(n ?? 0).toFixed(2)}`;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Discharge Patient</DialogTitle>
+          <DialogTitle>{summary ? 'Discharged — Final Bill' : 'Discharge Patient'}</DialogTitle>
           <DialogDescription>
-            Discharge{' '}
-            <strong>
-              {admission.patient?.firstName} {admission.patient?.lastName}
-            </strong>
-            ?
+            {summary ? (
+              <>Final bill assembled for <strong>{admission.patient?.firstName} {admission.patient?.lastName}</strong>.</>
+            ) : (
+              <>Discharge <strong>{admission.patient?.firstName} {admission.patient?.lastName}</strong>?</>
+            )}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4 py-2">
+        {summary && (
+          <div className="grid gap-2 py-2">
+            <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm space-y-1">
+              <div className="flex justify-between"><span className="text-muted-foreground">Total billed</span><span className="font-medium">{money(summary.totalBilled)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Paid</span><span>{money(summary.totalPaid)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Balance due</span><span className="font-medium">{money(summary.totalBalanceDue)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Deposit</span><span>{money(summary.depositAmount)}</span></div>
+              {summary.advanceApplied > 0 && (
+                <div className="flex justify-between"><span className="text-muted-foreground">Advance applied</span><span>{money(summary.advanceApplied)}</span></div>
+              )}
+              <div className="my-1 border-t" />
+              {summary.refundDue > 0 ? (
+                <div className="flex justify-between text-emerald-700"><span className="font-semibold">Refund due to patient</span><span className="font-semibold">{money(summary.refundDue)}</span></div>
+              ) : (
+                <div className="flex justify-between text-foreground"><span className="font-semibold">Net payable (after deposit)</span><span className="font-semibold">{money(summary.netAfterDeposit)}</span></div>
+              )}
+            </div>
+            {summary.bills.length > 0 && (
+              <div className="text-[11px] text-muted-foreground">
+                {summary.bills.length} bill(s): {summary.bills.map((b) => `${b.billNumber} (${b.status})`).join(', ')}
+              </div>
+            )}
+            <p className="text-[11px] text-muted-foreground">Collect the net payable / issue the refund at the billing counter.</p>
+          </div>
+        )}
+
+        <div className={summary ? 'hidden' : 'grid gap-4 py-2'}>
           <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm space-y-1">
             <p>
               <span className="text-muted-foreground">Ward:</span> {admission.ward?.name ?? '-'}
@@ -1277,16 +1322,22 @@ function DischargeDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={() => dischargeMutation.mutate()}
-            disabled={dischargeMutation.isPending}
-          >
-            {dischargeMutation.isPending ? 'Discharging...' : 'Confirm Discharge'}
-          </Button>
+          {summary ? (
+            <Button onClick={() => onOpenChange(false)}>Done</Button>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => dischargeMutation.mutate()}
+                disabled={dischargeMutation.isPending}
+              >
+                {dischargeMutation.isPending ? 'Discharging...' : 'Confirm Discharge'}
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
