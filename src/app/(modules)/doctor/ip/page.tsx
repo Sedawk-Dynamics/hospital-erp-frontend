@@ -66,7 +66,10 @@ export default function DoctorIPHomePage() {
     doctorUserId: user?.id,
     status: statusFilter,
     search: search || undefined,
-    date: fromDate,
+    // Currently-admitted patients must stay on the list until they are
+    // discharged, regardless of when they were admitted — so the date filter
+    // only scopes the historical (discharged / transferred / …) views.
+    date: activeFilter === 'admitted' ? undefined : fromDate,
     wardId: selectedWard !== 'all' ? selectedWard : undefined,
   });
 
@@ -216,10 +219,16 @@ export default function DoctorIPHomePage() {
       {/* Search */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span>From Date:</span>
-          <span className="font-semibold text-foreground">{formatDate(fromDate)}</span>
-          <span className="ml-2">To Date:</span>
-          <span className="font-semibold text-foreground">{formatDate(toDate)}</span>
+          {activeFilter === 'admitted' ? (
+            <span className="font-semibold text-foreground">Showing all current in-patients (until discharged)</span>
+          ) : (
+            <>
+              <span>From Date:</span>
+              <span className="font-semibold text-foreground">{formatDate(fromDate)}</span>
+              <span className="ml-2">To Date:</span>
+              <span className="font-semibold text-foreground">{formatDate(toDate)}</span>
+            </>
+          )}
         </div>
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
