@@ -82,7 +82,7 @@ import { LabOrderDetailDialog } from '@/components/shared/lab-order-detail-dialo
 import { IpPrescriptionDialog } from '@/components/doctor/ip-prescription-dialog';
 import { LabOrderDialog } from '@/components/doctor/lab-order-dialog';
 import { ImagingRequestDialog } from '@/components/doctor/imaging-request-dialog';
-import { IpLedgerPanel } from '@/components/shared/ip-ledger-panel';
+import { IpLedgerPanel, IpActivityLog } from '@/components/shared/ip-ledger-panel';
 import { useAuthStore } from '@/stores/auth-store';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
@@ -1212,6 +1212,7 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
           <TabsTrigger value="progress">Progress Notes</TabsTrigger>
           <TabsTrigger value="orders">Orders</TabsTrigger>
           <TabsTrigger value="ledger">Billing / Ledger</TabsTrigger>
+          <TabsTrigger value="activity">Activity Log</TabsTrigger>
           <TabsTrigger value="patient">Patient Info</TabsTrigger>
         </TabsList>
 
@@ -1249,6 +1250,10 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
 
         <TabsContent value="ledger" className="pt-4">
           <IpLedgerPanel admissionId={admissionId} patientId={patientId} role={role} />
+        </TabsContent>
+
+        <TabsContent value="activity" className="pt-4">
+          <IpActivityLog admissionId={admissionId} />
         </TabsContent>
 
         <TabsContent value="patient" className="pt-4">

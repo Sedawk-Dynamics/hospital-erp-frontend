@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import {
   Plus, Loader2, Receipt, Wallet, Stethoscope, LogIn, LogOut, UserCog,
-  FlaskConical, ScanLine, Pill, History,
+  FlaskConical, ScanLine, Pill, History, Activity, NotebookPen,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -216,57 +216,119 @@ function DoctorVisitDialog({
 
 // ------------------------------------------------------------ Activity log
 
-const EVENT_STYLE: Record<ActivityEvent['type'], { icon: typeof Stethoscope; color: string; bg: string }> = {
-  admission: { icon: LogIn, color: 'text-emerald-700', bg: 'bg-emerald-100' },
-  discharge: { icon: LogOut, color: 'text-slate-700', bg: 'bg-slate-200' },
-  doctor_visit: { icon: Stethoscope, color: 'text-primary', bg: 'bg-primary/10' },
-  charge: { icon: Receipt, color: 'text-amber-700', bg: 'bg-amber-100' },
-  nurse_assignment: { icon: UserCog, color: 'text-blue-700', bg: 'bg-blue-100' },
-  lab_order: { icon: FlaskConical, color: 'text-violet-700', bg: 'bg-violet-100' },
-  imaging_request: { icon: ScanLine, color: 'text-cyan-700', bg: 'bg-cyan-100' },
-  prescription: { icon: Pill, color: 'text-rose-700', bg: 'bg-rose-100' },
+const EVENT_STYLE: Record<ActivityEvent['type'], { icon: typeof Stethoscope; color: string; bg: string; label: string }> = {
+  admission: { icon: LogIn, color: 'text-emerald-700', bg: 'bg-emerald-100', label: 'Admission' },
+  discharge: { icon: LogOut, color: 'text-slate-700', bg: 'bg-slate-200', label: 'Discharge' },
+  doctor_visit: { icon: Stethoscope, color: 'text-primary', bg: 'bg-primary/10', label: 'Doctor visit' },
+  progress_note: { icon: NotebookPen, color: 'text-teal-700', bg: 'bg-teal-100', label: 'Progress note' },
+  vitals: { icon: Activity, color: 'text-pink-700', bg: 'bg-pink-100', label: 'Vitals' },
+  charge: { icon: Receipt, color: 'text-amber-700', bg: 'bg-amber-100', label: 'Charge' },
+  payment: { icon: Wallet, color: 'text-green-700', bg: 'bg-green-100', label: 'Payment' },
+  nurse_assignment: { icon: UserCog, color: 'text-blue-700', bg: 'bg-blue-100', label: 'Nurse' },
+  lab_order: { icon: FlaskConical, color: 'text-violet-700', bg: 'bg-violet-100', label: 'Lab' },
+  imaging_request: { icon: ScanLine, color: 'text-cyan-700', bg: 'bg-cyan-100', label: 'Imaging' },
+  prescription: { icon: Pill, color: 'text-rose-700', bg: 'bg-rose-100', label: 'Prescription' },
 };
 
-function ActivityTimeline({ admissionId }: { admissionId: string }) {
+const ALL_TYPES = Object.keys(EVENT_STYLE) as ActivityEvent['type'][];
+
+/**
+ * The full admit-to-discharge activity log — a detailed, filterable timeline.
+ * Same care-team access as the ledger (gated server-side).
+ */
+export function IpActivityLog({ admissionId }: { admissionId: string }) {
   const { data, isLoading } = useAdmissionActivity(admissionId);
+  const [filter, setFilter] = useState<ActivityEvent['type'] | 'all'>('all');
+
+  const events = data?.events ?? [];
+  const present = ALL_TYPES.filter((t) => events.some((e) => e.type === t));
+  const shown = filter === 'all' ? events : events.filter((e) => e.type === filter);
 
   return (
-    <div className="mt-4 rounded-xl border bg-card p-4">
-      <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-        <History className="h-4 w-4 text-primary" />
-        Activity Log
-        <span className="text-[11px] font-normal text-muted-foreground">— admit to discharge</span>
-      </h3>
+    <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4">
+      <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+          <History className="h-4 w-4 text-primary" />
+          Activity Log
+          <span className="text-[11px] font-normal text-muted-foreground">— full record, admit to discharge</span>
+        </h2>
+        {data && (
+          <span className="text-[11px] text-muted-foreground">
+            {data.count} event{data.count === 1 ? '' : 's'}
+            {data.admittedAt && <> · admitted {formatDateTimeAmPm(data.admittedAt)}</>}
+            {data.dischargedAt ? <> · discharged {formatDateTimeAmPm(data.dischargedAt)}</> : <> · ongoing</>}
+          </span>
+        )}
+      </div>
+
+      {/* Type filters */}
+      {present.length > 1 && (
+        <div className="mb-4 mt-2 flex flex-wrap gap-1.5">
+          <button
+            type="button" onClick={() => setFilter('all')}
+            className={cn('rounded-full border px-2.5 py-0.5 text-[11px] transition-colors', filter === 'all' ? 'border-primary bg-primary/10 text-primary' : 'bg-card text-muted-foreground hover:bg-accent')}
+          >
+            All ({events.length})
+          </button>
+          {present.map((t) => {
+            const s = EVENT_STYLE[t];
+            const n = events.filter((e) => e.type === t).length;
+            return (
+              <button
+                key={t} type="button" onClick={() => setFilter(t)}
+                className={cn('inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] transition-colors', filter === t ? 'border-primary bg-primary/10 text-primary' : 'bg-card text-muted-foreground hover:bg-accent')}
+              >
+                <s.icon className={cn('h-3 w-3', filter === t ? 'text-primary' : s.color)} />
+                {s.label} ({n})
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {isLoading ? (
-        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading activity…</div>
       ) : !data ? (
         <p className="text-xs text-muted-foreground">Activity log unavailable.</p>
-      ) : data.events.length === 0 ? (
+      ) : shown.length === 0 ? (
         <p className="text-xs text-muted-foreground">No activity recorded yet.</p>
       ) : (
-        <ol className="relative space-y-3 pl-1">
-          {data.events.map((e, i) => {
+        <ol className="relative space-y-4 pl-1">
+          {shown.map((e, i) => {
             const s = EVENT_STYLE[e.type] ?? EVENT_STYLE.charge;
             const Icon = s.icon;
+            const meta = e.meta ? Object.entries(e.meta) : [];
             return (
               <li key={i} className="relative flex gap-3">
-                {/* connector line */}
-                {i < data.events.length - 1 && <span className="absolute left-[13px] top-7 h-[calc(100%-4px)] w-px bg-border" />}
-                <span className={cn('z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full', s.bg)}>
-                  <Icon className={cn('h-3.5 w-3.5', s.color)} />
+                {i < shown.length - 1 && <span className="absolute left-[15px] top-8 h-[calc(100%+4px)] w-px bg-border" />}
+                <span className={cn('z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full', s.bg)}>
+                  <Icon className={cn('h-4 w-4', s.color)} />
                 </span>
-                <div className="min-w-0 flex-1 pb-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-medium text-foreground">{e.title}</p>
-                    <span className="shrink-0 text-[10px] text-muted-foreground">{formatDateTimeAmPm(e.at)}</span>
+                <div className="min-w-0 flex-1 rounded-lg border bg-card px-3 py-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm font-medium text-foreground">{e.title}</p>
+                    <span className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground">{formatDateTimeAmPm(e.at)}</span>
                   </div>
-                  {e.detail && <p className="mt-0.5 text-[11px] text-muted-foreground break-words">{e.detail}</p>}
-                  <div className="mt-0.5 flex flex-wrap items-center gap-2">
-                    {e.actor && <span className="text-[10px] text-muted-foreground">by {e.actor}</span>}
+                  {e.detail && <p className="mt-1 text-xs text-muted-foreground break-words">{e.detail}</p>}
+
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                    {e.actor && <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"><UserCog className="h-3 w-3" /> {e.actor}</span>}
                     {e.status && <Badge variant="outline" className="text-[9px] capitalize">{e.status.replace(/_/g, ' ')}</Badge>}
-                    {typeof e.amount === 'number' && e.amount > 0 && <span className="text-[10px] font-medium text-foreground">{money(e.amount)}</span>}
+                    {typeof e.amount === 'number' && e.amount > 0 && (
+                      <span className="ml-auto text-xs font-semibold text-foreground">{money(e.amount)}</span>
+                    )}
                   </div>
+
+                  {meta.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5 border-t pt-2">
+                      {meta.map(([k, v]) => (
+                        <span key={k} className="inline-flex items-center gap-1 rounded-md bg-muted/50 px-1.5 py-0.5 text-[10px]">
+                          <span className="uppercase tracking-wide text-muted-foreground">{k}</span>
+                          <span className="font-medium text-foreground capitalize">{v}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </li>
             );
@@ -286,9 +348,8 @@ export function IpLedgerPanel({ admissionId, role }: { admissionId: string; pati
   const isTpa = ledger?.billingCategory === 'insurance' || ledger?.billingCategory === 'corporate';
 
   return (
-    <div>
-      <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4">
-        <div className="mb-3 flex items-center justify-between gap-2">
+    <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
             <Receipt className="h-4 w-4 text-primary" />
             Billing Ledger
@@ -391,15 +452,11 @@ export function IpLedgerPanel({ admissionId, role }: { admissionId: string; pati
                 </table>
               </div>
             )}
-            <p className="text-[11px] text-muted-foreground">
-              <span className="text-amber-600">Pending</span> = auto-charges (bed days, doctor fee, lab, imaging, pharmacy) not yet posted — they are billed automatically at discharge.
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* Detailed admit-to-discharge activity log (same access as the ledger). */}
-      <ActivityTimeline admissionId={admissionId} />
+          <p className="text-[11px] text-muted-foreground">
+            <span className="text-amber-600">Pending</span> = auto-charges (bed days, doctor fee, lab, imaging, pharmacy) not yet posted — they are billed automatically at discharge.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

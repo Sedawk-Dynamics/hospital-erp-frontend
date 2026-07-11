@@ -94,20 +94,28 @@ export function useRecordDoctorVisit(admissionId: string) {
 
 // --- Activity log: the full admit -> discharge timeline for this admission ---
 
+export type ActivityEventType =
+  | 'admission' | 'nurse_assignment' | 'vitals' | 'doctor_visit' | 'progress_note'
+  | 'charge' | 'payment' | 'lab_order' | 'imaging_request' | 'prescription' | 'discharge';
+
 export interface ActivityEvent {
   at: string;
-  type: 'admission' | 'nurse_assignment' | 'doctor_visit' | 'charge' | 'lab_order' | 'imaging_request' | 'prescription' | 'discharge';
+  type: ActivityEventType;
   title: string;
   detail?: string;
   actor?: string;
   amount?: number;
   status?: string;
+  meta?: Record<string, string>;
 }
 
 export interface AdmissionActivity {
   admissionId: string;
   status: string;
   discharged: boolean;
+  admittedAt: string | null;
+  dischargedAt: string | null;
+  count: number;
   events: ActivityEvent[];
 }
 
