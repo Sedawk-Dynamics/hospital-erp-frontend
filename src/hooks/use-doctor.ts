@@ -1297,6 +1297,8 @@ export interface DischargeSummary {
   visitId: string;
   patientId: string;
   doctorId: string;
+  // Set on the publish response: true when publishing also discharged the patient.
+  discharged?: boolean;
   admissionDate?: string;
   dischargeDate?: string;
   diagnosesSummary?: string;
@@ -1403,7 +1405,12 @@ export function usePublishDischargeSummary() {
       return response.data;
     },
     onSuccess: () => {
+      // Publishing the summary discharges the patient — refresh admissions
+      // (doctor + hospital lists) and the discharge-summary status caches.
       queryClient.invalidateQueries({ queryKey: doctorKeys.dischargeSummary.all });
+      queryClient.invalidateQueries({ queryKey: doctorKeys.admissions.all });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'admissions'] });
+      queryClient.invalidateQueries({ queryKey: ['discharge-summary', 'by-admission'] });
     },
   });
 }

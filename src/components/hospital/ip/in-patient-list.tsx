@@ -19,6 +19,9 @@ import {
   Receipt,
   PieChart,
   Wallet,
+  Loader2,
+  FileText,
+  FileWarning,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -57,6 +60,7 @@ import { BillGeneratorDialog } from '@/components/hospital/billing/bill-generato
 import { AdvancePaymentDialog } from '@/components/hospital/billing/week12-dialogs';
 import { BillingSummaryDialog } from '@/components/pharmacy/billing-summary-dialog';
 import { usePermissions } from '@/hooks/use-permissions';
+import { useAuthStore } from '@/stores/auth-store';
 
 // Generating a bill or collecting advance are billing actions. Gate on the
 // real billing:create permission so the billing / cash counter (front desk,
@@ -1237,6 +1241,11 @@ function DischargeDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const { user } = useAuthStore();
+  const roles = user?.roles ?? (user?.role?.name ? [user.role.name] : []);
+  const canForce = roles.some((r) => r === 'admin' || r === 'super_admin');
+
   const [dischargeDate, setDischargeDate] = useState(toInputDateStr());
   const [notes, setNotes] = useState('');
   // G5 (2.1): the discharge response carries the assembled final-bill summary.
@@ -1244,11 +1253,30 @@ function DischargeDialog({
 
   useEffect(() => { if (open) setSummary(null); }, [open]);
 
+  // The published discharge summary is the doctor's sign-off for discharge.
+  // Fetch its status so we can prompt the user to complete it if it's missing.
+  const dsQuery = useQuery({
+    queryKey: ['discharge-summary', 'by-admission', admission.id],
+    queryFn: async () => {
+      try {
+        return (await apiGet<{ status: 'draft' | 'finalized' | 'published' }>(
+          `/mrd/discharge-summary/by-admission/${admission.id}`,
+        )).data;
+      } catch {
+        return null; // 404 = no summary yet
+      }
+    },
+    enabled: open,
+    retry: false,
+  });
+  const dsStatus = dsQuery.data?.status;
+  const published = dsStatus === 'published';
+
   const dischargeMutation = useMutation({
-    mutationFn: async () =>
+    mutationFn: async (opts?: { force?: boolean }) =>
       (await apiPatch<{ dischargeBilling?: DischargeBillingSummary | null }>(
         `/clinical/admissions/${admission.id}/discharge`,
-        { dischargeDate, notes: notes || undefined },
+        { dischargeDate, notes: notes || undefined, force: opts?.force || undefined },
       )).data?.dischargeBilling ?? null,
     onSuccess: (billing) => {
       toast.success('Patient discharged successfully');
@@ -1265,6 +1293,11 @@ function DischargeDialog({
     },
   });
   const money = (n: number) => `₹${(n ?? 0).toFixed(2)}`;
+
+  const openDischargeSummary = () => {
+    onOpenChange(false);
+    router.push(`/doctor/discharge-summary?admissionId=${admission.id}`);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1306,44 +1339,90 @@ function DischargeDialog({
           </div>
         )}
 
-        <div className={summary ? 'hidden' : 'grid gap-4 py-2'}>
-          <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm space-y-1">
-            <p>
-              <span className="text-muted-foreground">Ward:</span> {admission.ward?.name ?? '-'}
-            </p>
-            <p>
-              <span className="text-muted-foreground">Bed:</span>{' '}
-              {admission.bed?.bedNumber ?? '-'}
-            </p>
-            <p>
-              <span className="text-muted-foreground">Admitted:</span>{' '}
-              {admission.admissionDate ? formatDate(admission.admissionDate) : '-'}
-            </p>
-          </div>
+        {!summary && (
+          dsQuery.isLoading ? (
+            <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Checking discharge summary…
+            </div>
+          ) : !published ? (
+            // Discharge summary not published yet — the doctor must complete it first.
+            <div className="grid gap-3 py-2">
+              <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-3">
+                <div className="flex items-start gap-2">
+                  <FileWarning className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                  <div className="text-sm">
+                    <p className="font-medium text-amber-800">Discharge summary required</p>
+                    <p className="mt-0.5 text-[13px] text-amber-700">
+                      The doctor must complete and <strong>publish</strong> the discharge summary before this patient can be discharged. Publishing the summary discharges the patient automatically.
+                    </p>
+                    <p className="mt-1.5 text-[11px] text-amber-700">
+                      Current status:{' '}
+                      <strong className="capitalize">{dsStatus ?? 'not started'}</strong>
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm space-y-1">
+                <p><span className="text-muted-foreground">Ward:</span> {admission.ward?.name ?? '-'}</p>
+                <p><span className="text-muted-foreground">Bed:</span> {admission.bed?.bedNumber ?? '-'}</p>
+                <p><span className="text-muted-foreground">Admitted:</span> {admission.admissionDate ? formatDate(admission.admissionDate) : '-'}</p>
+              </div>
+            </div>
+          ) : (
+            // Published summary → normal discharge confirmation.
+            <div className="grid gap-4 py-2">
+              <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm space-y-1">
+                <p><span className="text-muted-foreground">Ward:</span> {admission.ward?.name ?? '-'}</p>
+                <p><span className="text-muted-foreground">Bed:</span> {admission.bed?.bedNumber ?? '-'}</p>
+                <p><span className="text-muted-foreground">Admitted:</span> {admission.admissionDate ? formatDate(admission.admissionDate) : '-'}</p>
+              </div>
 
-          <div className="grid gap-1.5">
-            <Label>Discharge Date *</Label>
-            <Input
-              type="date"
-              value={dischargeDate}
-              onChange={(e) => setDischargeDate(e.target.value)}
-            />
-          </div>
+              <div className="grid gap-1.5">
+                <Label>Discharge Date *</Label>
+                <Input
+                  type="date"
+                  value={dischargeDate}
+                  onChange={(e) => setDischargeDate(e.target.value)}
+                />
+              </div>
 
-          <div className="grid gap-1.5">
-            <Label>Notes</Label>
-            <Textarea
-              placeholder="Discharge notes..."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={2}
-            />
-          </div>
-        </div>
+              <div className="grid gap-1.5">
+                <Label>Notes</Label>
+                <Textarea
+                  placeholder="Discharge notes..."
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                />
+              </div>
+            </div>
+          )
+        )}
 
         <DialogFooter>
           {summary ? (
             <Button onClick={() => onOpenChange(false)}>Done</Button>
+          ) : dsQuery.isLoading ? (
+            <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
+          ) : !published ? (
+            <>
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button className="gap-1.5" onClick={openDischargeSummary}>
+                <FileText className="h-4 w-4" /> Open discharge summary
+              </Button>
+              {canForce && (
+                <Button
+                  variant="ghost"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => dischargeMutation.mutate({ force: true })}
+                  disabled={dischargeMutation.isPending}
+                >
+                  {dischargeMutation.isPending ? 'Discharging…' : 'Discharge without summary'}
+                </Button>
+              )}
+            </>
           ) : (
             <>
               <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -1351,7 +1430,7 @@ function DischargeDialog({
               </Button>
               <Button
                 variant="destructive"
-                onClick={() => dischargeMutation.mutate()}
+                onClick={() => dischargeMutation.mutate({})}
                 disabled={dischargeMutation.isPending}
               >
                 {dischargeMutation.isPending ? 'Discharging...' : 'Confirm Discharge'}

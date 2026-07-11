@@ -252,7 +252,11 @@ export default function DischargeSummaryPage() {
     try {
       const published = await publishMutation.mutateAsync(summaryData.id);
       if (published) setSummaryData(published);
-      toast.success('Discharge summary published — patient notified via portal & email');
+      toast.success(
+        published?.discharged
+          ? 'Discharge summary published — patient discharged & notified'
+          : 'Discharge summary published — patient notified via portal & email',
+      );
     } catch {
       toast.error('Failed to publish discharge summary');
     }
