@@ -160,6 +160,8 @@ function AdmissionDialog({
   const [expectedDischarge, setExpectedDischarge] = useState('');
   const [admissionReason, setAdmissionReason] = useState('');
   const [depositAmount, setDepositAmount] = useState('');
+  // How this IP stay settles — drives the credit gate + TPA reimbursable split.
+  const [billingCategory, setBillingCategory] = useState<'cash' | 'package' | 'insurance' | 'corporate'>('cash');
   const [checklist, setChecklist] = useState<Record<string, boolean>>({});
 
   // Debounced patient search
@@ -296,6 +298,7 @@ function AdmissionDialog({
         expectedDischargeDate: expectedDischarge || undefined,
         admissionReason: admissionReason || undefined,
         depositAmount: depositAmount ? parseFloat(depositAmount) : 0,
+        billingCategory,
       });
       return admissionRes.data;
     },
@@ -343,6 +346,7 @@ function AdmissionDialog({
     setExpectedDischarge('');
     setAdmissionReason('');
     setDepositAmount('');
+    setBillingCategory('cash');
     setChecklist({});
     setStep('details');
   }, [initialMode]);
@@ -751,7 +755,7 @@ function AdmissionDialog({
               </div>
 
               {/* Deposit */}
-              <div className="grid gap-1.5 col-span-2">
+              <div className="grid gap-1.5">
                 <Label>Deposit / Advance Amount (₹)</Label>
                 <Input
                   type="number"
@@ -760,6 +764,20 @@ function AdmissionDialog({
                   value={depositAmount}
                   onChange={(e) => setDepositAmount(e.target.value)}
                 />
+              </div>
+
+              {/* Billing category — cash vs insurance / corporate (TPA) */}
+              <div className="grid gap-1.5">
+                <Label>Billing Category</Label>
+                <Select value={billingCategory} onValueChange={(v) => { if (v) setBillingCategory(v as typeof billingCategory); }}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="package">Package</SelectItem>
+                    <SelectItem value="insurance">Insurance (TPA)</SelectItem>
+                    <SelectItem value="corporate">Corporate (TPA)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
