@@ -202,7 +202,6 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Home', href: '/doctor', icon: Home },
       { label: 'IP Home', href: '/doctor/ip', icon: BedDouble },
       { label: 'Schedule & Leaves', href: '/doctor/schedule', icon: CalendarClock },
-      { label: 'Prescriptions', href: '/doctor/prescriptions', icon: ClipboardPlus },
       { label: 'Discharge Summary', href: '/doctor/discharge-summary', icon: FileCheck },
       { label: 'Nutrition Chart', href: '/doctor/nutrition-chart', icon: UtensilsCrossed },
       { label: 'Registry', href: '/doctor/registry', icon: FileBarChart },

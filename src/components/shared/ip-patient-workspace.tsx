@@ -917,11 +917,6 @@ function OrdersPanel({ admissionId, patientId, role }: { admissionId: string; pa
             <FlaskConical className="h-4 w-4 text-primary" />
             Lab Orders
           </h2>
-          {role === 'doctor' && (
-            <LinkButton size="sm" variant="outline" className="h-7 gap-1 text-xs" href={`/doctor/prescriptions?patientId=${patientId}&admissionId=${admissionId}&tab=lab`}>
-              <Plus className="h-3 w-3" /> Order
-            </LinkButton>
-          )}
         </div>
 
         {labLoading ? (
@@ -974,11 +969,6 @@ function OrdersPanel({ admissionId, patientId, role }: { admissionId: string; pa
             <ImageIcon className="h-4 w-4 text-primary" />
             Imaging Requests
           </h2>
-          {role === 'doctor' && (
-            <LinkButton size="sm" variant="outline" className="h-7 gap-1 text-xs" href={`/doctor/prescriptions?patientId=${patientId}&admissionId=${admissionId}&tab=imaging`}>
-              <Plus className="h-3 w-3" /> Request
-            </LinkButton>
-          )}
         </div>
 
         {imgLoading ? (
