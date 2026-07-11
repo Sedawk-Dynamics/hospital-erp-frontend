@@ -82,6 +82,7 @@ import { LabOrderDetailDialog } from '@/components/shared/lab-order-detail-dialo
 import { IpPrescriptionDialog } from '@/components/doctor/ip-prescription-dialog';
 import { LabOrderDialog } from '@/components/doctor/lab-order-dialog';
 import { ImagingRequestDialog } from '@/components/doctor/imaging-request-dialog';
+import { IpLedgerPanel } from '@/components/shared/ip-ledger-panel';
 import { useAuthStore } from '@/stores/auth-store';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
@@ -198,6 +199,16 @@ function HeaderStrip({
                 Dr. {admission.doctor.user.firstName} {admission.doctor.user.lastName}
               </span>
             )}
+            {(() => {
+              const na = (admission as unknown as { nurseAssignments?: Array<{ nurse?: { firstName?: string; lastName?: string }; shiftType?: string }> }).nurseAssignments?.[0];
+              if (!na?.nurse) return null;
+              return (
+                <span className="inline-flex items-center gap-1" title="Assigned nurse">
+                  <HeartPulse className="h-3.5 w-3.5" />
+                  {`Nurse ${na.nurse.firstName ?? ''} ${na.nurse.lastName ?? ''}`.trim()}{na.shiftType ? ` · ${na.shiftType}` : ''}
+                </span>
+              );
+            })()}
             <span className="inline-flex items-center gap-1">
               <Calendar className="h-3.5 w-3.5" />
               Admitted {formatDate(admission.admissionDate)}
@@ -1200,6 +1211,7 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
           <TabsTrigger value="charting">Nursing Charting</TabsTrigger>
           <TabsTrigger value="progress">Progress Notes</TabsTrigger>
           <TabsTrigger value="orders">Orders</TabsTrigger>
+          <TabsTrigger value="ledger">Billing / Ledger</TabsTrigger>
           <TabsTrigger value="patient">Patient Info</TabsTrigger>
         </TabsList>
 
@@ -1233,6 +1245,10 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
 
         <TabsContent value="orders" className="pt-4">
           <OrdersPanel admissionId={admissionId} patientId={patientId} role={role} />
+        </TabsContent>
+
+        <TabsContent value="ledger" className="pt-4">
+          <IpLedgerPanel admissionId={admissionId} patientId={patientId} role={role} />
         </TabsContent>
 
         <TabsContent value="patient" className="pt-4">
