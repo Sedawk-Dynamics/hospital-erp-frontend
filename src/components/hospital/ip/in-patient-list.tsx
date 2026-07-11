@@ -17,6 +17,7 @@ import {
   ExternalLink,
   UserPlus,
   Receipt,
+  PieChart,
   Wallet,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -54,6 +55,7 @@ import { toast } from 'sonner';
 import type { Admission, Patient, DoctorProfile, BedWithStatus } from '@/types';
 import { BillGeneratorDialog } from '@/components/hospital/billing/bill-generator-dialog';
 import { AdvancePaymentDialog } from '@/components/hospital/billing/week12-dialogs';
+import { BillingSummaryDialog } from '@/components/pharmacy/billing-summary-dialog';
 import { usePermissions } from '@/hooks/use-permissions';
 
 // Generating a bill or collecting advance are billing actions. Gate on the
@@ -1487,6 +1489,7 @@ function RowActionsMenu({
   const [slipOpen, setSlipOpen] = useState(false);
   const [billOpen, setBillOpen] = useState(false);
   const [advanceOpen, setAdvanceOpen] = useState(false);
+  const [summaryOpen, setSummaryOpen] = useState(false);
 
   const canBill = useCanBillToHospital();
   const isActive = admission.status === 'admitted';
@@ -1539,6 +1542,10 @@ function RowActionsMenu({
                 <Receipt className="mr-2 h-4 w-4" />
                 Generate Final Bill
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSummaryOpen(true)}>
+                <PieChart className="mr-2 h-4 w-4" />
+                Billing Summary (TPA split)
+              </DropdownMenuItem>
             </>
           )}
           {isActive && (
@@ -1556,6 +1563,12 @@ function RowActionsMenu({
           )}
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <BillingSummaryDialog
+        patientId={billingPatient.id}
+        open={summaryOpen}
+        onOpenChange={setSummaryOpen}
+      />
 
       <TransferDialog
         admission={admission}
