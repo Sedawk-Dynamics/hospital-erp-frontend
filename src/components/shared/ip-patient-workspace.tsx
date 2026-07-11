@@ -79,6 +79,8 @@ import { useAdmissionDetail, usePatientVitals, useLatestVitals, useActivePrescri
 import { useEmarSchedules, type EmarSchedule } from '@/hooks/use-emar';
 import { useProgressNotes, useLabOrders, useImagingRequests, usePatientDetail } from '@/hooks/use-doctor';
 import { LabOrderDetailDialog } from '@/components/shared/lab-order-detail-dialog';
+import { IpPrescriptionDialog } from '@/components/doctor/ip-prescription-dialog';
+import { useAuthStore } from '@/stores/auth-store';
 
 import type { NurseAdmission, NursingNote, Prescription, Vital } from '@/hooks/use-nurse';
 
@@ -141,10 +143,12 @@ function HeaderStrip({
   admission,
   role,
   backHref,
+  onNewRx,
 }: {
   admission: NurseAdmission;
   role: WorkspaceRole;
   backHref: string;
+  onNewRx?: () => void;
 }) {
 
   const patient = admission.patient;
@@ -213,10 +217,10 @@ function HeaderStrip({
         <div className="hidden md:flex items-center gap-1.5">
           {role === 'doctor' && (
             <>
-              <LinkButton variant="outline" size="sm" className="gap-1.5" href={`/doctor/prescriptions?patientId=${admission.patientId}&admissionId=${admission.id}`}>
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={onNewRx}>
                 <Pill className="h-3.5 w-3.5" />
                 Prescribe
-              </LinkButton>
+              </Button>
               <LinkButton variant="outline" size="sm" className="gap-1.5" href={`/doctor/discharge-summary?admissionId=${admission.id}`}>
                 <FileText className="h-3.5 w-3.5" />
                 Discharge Summary
@@ -671,7 +675,7 @@ function PharmacyDraftsSection({ patientId, admissionId, role }: { patientId: st
   );
 }
 
-function PrescriptionsPanel({ admissionId, patientId, role }: { admissionId: string; patientId: string; role: WorkspaceRole }) {
+function PrescriptionsPanel({ admissionId, patientId, role, onNewRx }: { admissionId: string; patientId: string; role: WorkspaceRole; onNewRx?: () => void }) {
   const { data, isLoading } = useActivePrescriptions({
     admissionId,
     prescriptionType: 'ip',
@@ -725,9 +729,9 @@ function PrescriptionsPanel({ admissionId, patientId, role }: { admissionId: str
             </Button>
           )}
           {role === 'doctor' && (
-            <LinkButton size="sm" variant="outline" className="h-7 gap-1 text-xs" href={`/doctor/prescriptions?patientId=${patientId}&admissionId=${admissionId}`}>
+            <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={onNewRx}>
               <Plus className="h-3 w-3" /> New Rx
-            </LinkButton>
+            </Button>
           )}
         </div>
       </div>
@@ -1116,6 +1120,8 @@ function PatientPanel({ patientId }: { patientId: string }) {
 
 export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPatientWorkspaceProps) {
   const back = backHref ?? defaultBackHref(role);
+  const { user } = useAuthStore();
+  const [rxOpen, setRxOpen] = useState(false);
   const { data: admissionResp, isLoading, error } = useAdmissionDetail(admissionId);
 
   const admission = useMemo(
@@ -1144,10 +1150,22 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
   }
 
   const patientId = admission.patientId;
+  const onNewRx = role === 'doctor' ? () => setRxOpen(true) : undefined;
+  const rxPatientName = `${admission.patient?.firstName ?? ''} ${admission.patient?.lastName ?? ''}`.trim() || 'Patient';
 
   return (
     <div className="space-y-4 animate-fade-in-up">
-      <HeaderStrip admission={admission} role={role} backHref={back} />
+      {role === 'doctor' && (
+        <IpPrescriptionDialog
+          open={rxOpen}
+          onOpenChange={setRxOpen}
+          patientId={patientId}
+          patientName={rxPatientName}
+          mrn={admission.patient?.mrn}
+          doctorUserId={user?.id ?? ''}
+        />
+      )}
+      <HeaderStrip admission={admission} role={role} backHref={back} onNewRx={onNewRx} />
       <LatestVitalsStrip patientId={patientId} role={role} admissionId={admissionId} />
 
       <Tabs defaultValue="overview" className="w-full">
@@ -1165,7 +1183,7 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
         <TabsContent value="overview" className="space-y-4 pt-4">
           <EmarTodayPanel admissionId={admissionId} role={role} />
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <PrescriptionsPanel admissionId={admissionId} patientId={patientId} role={role} />
+            <PrescriptionsPanel admissionId={admissionId} patientId={patientId} role={role} onNewRx={onNewRx} />
             <ProgressNotesPanel admissionId={admissionId} patientId={patientId} role={role} />
           </div>
         </TabsContent>
@@ -1175,7 +1193,7 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
         </TabsContent>
 
         <TabsContent value="prescriptions" className="pt-4">
-          <PrescriptionsPanel admissionId={admissionId} patientId={patientId} role={role} />
+          <PrescriptionsPanel admissionId={admissionId} patientId={patientId} role={role} onNewRx={onNewRx} />
         </TabsContent>
 
         <TabsContent value="vitals" className="pt-4">

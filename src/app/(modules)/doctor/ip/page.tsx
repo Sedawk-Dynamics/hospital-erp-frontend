@@ -32,6 +32,7 @@ import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
 import { useDoctorAdmissions, useDischargePatient, useCreateProgressNote } from '@/hooks/use-doctor';
 import { apiPost } from '@/lib/api';
+import { IpPrescriptionDialog } from '@/components/doctor/ip-prescription-dialog';
 
 const ipStatItems = [
   { key: 'all', label: 'All', color: 'text-on-surface' },
@@ -51,6 +52,7 @@ export default function DoctorIPHomePage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [noteDialogOpen, setNoteDialogOpen] = useState(false);
+  const [rxTarget, setRxTarget] = useState<{ patientId: string; name: string; mrn?: string } | null>(null);
   const [selectedPatientId, setSelectedPatientId] = useState('');
   const [selectedAdmissionId, setSelectedAdmissionId] = useState('');
   const [noteContent, setNoteContent] = useState('');
@@ -397,9 +399,11 @@ export default function DoctorIPHomePage() {
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() =>
-                                  router.push(
-                                    `/doctor/prescriptions?patientId=${admission.patientId}&admissionId=${admission.id}`,
-                                  )
+                                  setRxTarget({
+                                    patientId: admission.patientId,
+                                    name: patient ? `${patient.firstName} ${patient.lastName}`.trim() : 'Patient',
+                                    mrn: patient?.mrn,
+                                  })
                                 }
                               >
                                 Add Prescription
@@ -466,6 +470,18 @@ export default function DoctorIPHomePage() {
           </div>
         </div>
       </div>
+
+      {/* Write IP prescription inline (no redirect) */}
+      {rxTarget && (
+        <IpPrescriptionDialog
+          open={!!rxTarget}
+          onOpenChange={(o) => { if (!o) setRxTarget(null); }}
+          patientId={rxTarget.patientId}
+          patientName={rxTarget.name}
+          mrn={rxTarget.mrn}
+          doctorUserId={user?.id ?? ''}
+        />
+      )}
 
       {/* Add Note Dialog */}
       <Dialog open={noteDialogOpen} onOpenChange={setNoteDialogOpen}>

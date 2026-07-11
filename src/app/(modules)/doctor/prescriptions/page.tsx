@@ -1,8 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { usePatient } from '@/hooks/use-hospital';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   usePrescriptions,
   useCreatePrescription,
@@ -159,31 +157,6 @@ export default function EPrescriptionPage() {
   const [selectedPrescriptionId, setSelectedPrescriptionId] = useState('');
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [prescriptionToCancel, setPrescriptionToCancel] = useState<string | null>(null);
-
-  // Arriving from an IP patient (…?patientId=&admissionId=&type=ip) pre-fills and
-  // auto-opens the create dialog with the patient locked — no re-searching.
-  const searchParams = useSearchParams();
-  const urlPatientId = searchParams.get('patientId') ?? undefined;
-  const urlAdmissionId = searchParams.get('admissionId') ?? undefined;
-  const urlType = (searchParams.get('type') as 'op' | 'ip' | null) ?? undefined;
-  const { data: presetPatientData } = usePatient(urlPatientId ?? '');
-  const presetPatient = urlPatientId && presetPatientData
-    ? {
-        id: presetPatientData.id,
-        firstName: presetPatientData.firstName ?? '',
-        lastName: presetPatientData.lastName ?? '',
-        mrn: presetPatientData.mrn ?? undefined,
-      }
-    : null;
-  const presetType: 'op' | 'ip' | undefined = urlType ?? (urlAdmissionId ? 'ip' : undefined);
-
-  const openedFromUrl = useRef(false);
-  useEffect(() => {
-    if (urlPatientId && !openedFromUrl.current) {
-      openedFromUrl.current = true;
-      setCreateDialogOpen(true);
-    }
-  }, [urlPatientId]);
 
   // Fetch prescriptions
   const { data: prescriptionsData, isLoading } = usePrescriptions({
@@ -440,9 +413,6 @@ export default function EPrescriptionPage() {
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
         userId={user?.id || ''}
-        presetPatient={presetPatient}
-        presetType={presetType}
-        lockPatient={!!urlPatientId}
       />
 
       {/* View Prescription Dialog */}
@@ -503,18 +473,10 @@ function CreatePrescriptionDialog({
   open,
   onOpenChange,
   userId,
-  presetPatient,
-  presetType,
-  lockPatient,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   userId: string;
-  // When opened from an IP patient's context, the patient + type are pre-filled
-  // so the doctor doesn't re-search — write the prescription straight away.
-  presetPatient?: { id: string; firstName: string; lastName: string; mrn?: string } | null;
-  presetType?: 'op' | 'ip';
-  lockPatient?: boolean;
 }) {
   const createMutation = useCreatePrescription();
 
@@ -592,29 +554,25 @@ function CreatePrescriptionDialog({
   // Step 3: Notes
   const [notes, setNotes] = useState('');
 
-  // Initialize the form whenever the dialog opens — honoring a preset patient /
-  // type passed from the IP context so the doctor never re-searches the patient.
-  useEffect(() => {
-    if (!open) return;
-    setStep(1);
-    setPatientQuery('');
-    setDebouncedPatientQuery('');
-    setSelectedPatient(presetPatient ?? null);
-    setShowPatientDropdown(false);
-    setPrescriptionType(presetType ?? 'op');
-    setVisits([]);
-    setSelectedVisitId('');
-    setDrugItems([]);
-    setDrugSearchQuery('');
-    setDebouncedDrugQuery('');
-    setShowDrugDropdown(false);
-    setCurrentDrugItem(emptyDrugItem());
-    setAllergyDrugName('');
-    setNotes('');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, presetPatient?.id, presetType]);
-
+  // Reset form on open/close
   const handleOpenChange = useCallback((isOpen: boolean) => {
+    if (isOpen) {
+      setStep(1);
+      setPatientQuery('');
+      setDebouncedPatientQuery('');
+      setSelectedPatient(null);
+      setShowPatientDropdown(false);
+      setPrescriptionType('op');
+      setVisits([]);
+      setSelectedVisitId('');
+      setDrugItems([]);
+      setDrugSearchQuery('');
+      setDebouncedDrugQuery('');
+      setShowDrugDropdown(false);
+      setCurrentDrugItem(emptyDrugItem());
+      setAllergyDrugName('');
+      setNotes('');
+    }
     onOpenChange(isOpen);
   }, [onOpenChange]);
 
@@ -745,11 +703,9 @@ function CreatePrescriptionDialog({
                       MRN: {selectedPatient.mrn || '-'}
                     </p>
                   </div>
-                  {!lockPatient && (
-                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setSelectedPatient(null)}>
-                      Change
-                    </Button>
-                  )}
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setSelectedPatient(null)}>
+                    Change
+                  </Button>
                 </div>
               ) : (
                 <div className="relative">
