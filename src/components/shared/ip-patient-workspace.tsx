@@ -80,7 +80,11 @@ import { useEmarSchedules, type EmarSchedule } from '@/hooks/use-emar';
 import { useProgressNotes, useLabOrders, useImagingRequests, usePatientDetail } from '@/hooks/use-doctor';
 import { LabOrderDetailDialog } from '@/components/shared/lab-order-detail-dialog';
 import { IpPrescriptionDialog } from '@/components/doctor/ip-prescription-dialog';
+import { LabOrderDialog } from '@/components/doctor/lab-order-dialog';
+import { ImagingRequestDialog } from '@/components/doctor/imaging-request-dialog';
 import { useAuthStore } from '@/stores/auth-store';
+import { useQuery } from '@tanstack/react-query';
+import { apiGet } from '@/lib/api';
 
 import type { NurseAdmission, NursingNote, Prescription, Vital } from '@/hooks/use-nurse';
 
@@ -894,6 +898,18 @@ function OrdersPanel({ admissionId, patientId, role }: { admissionId: string; pa
   const { data: imagingData, isLoading: imgLoading } = useImagingRequests({ patientId, limit: 10 });
 
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
+  const [labOpen, setLabOpen] = useState(false);
+  const [imgOpen, setImgOpen] = useState(false);
+  const canOrder = role === 'doctor';
+
+  // Resolve the patient's active IP visit — the lab / imaging order dialogs bind
+  // the order to a visit.
+  const { data: visitData } = useQuery({
+    queryKey: ['ipws-active-visit', patientId],
+    queryFn: async () => (await apiGet<Array<{ id: string; visitType: string }>>('/clinical/visits', { params: { patientId, status: 'active', limit: 5 } })).data ?? [],
+    enabled: canOrder && !!patientId,
+  });
+  const visitId = (visitData?.find((v) => v.visitType === 'ip') ?? visitData?.[0])?.id ?? '';
 
   const labs = labData?.data ?? [];
   const imaging = imagingData?.data ?? [];
@@ -917,6 +933,11 @@ function OrdersPanel({ admissionId, patientId, role }: { admissionId: string; pa
             <FlaskConical className="h-4 w-4 text-primary" />
             Lab Orders
           </h2>
+          {canOrder && (
+            <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setLabOpen(true)} disabled={!visitId} title={visitId ? 'Order labs' : 'No active visit'}>
+              <Plus className="h-3 w-3" /> Order
+            </Button>
+          )}
         </div>
 
         {labLoading ? (
@@ -969,6 +990,11 @@ function OrdersPanel({ admissionId, patientId, role }: { admissionId: string; pa
             <ImageIcon className="h-4 w-4 text-primary" />
             Imaging Requests
           </h2>
+          {canOrder && (
+            <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setImgOpen(true)} disabled={!visitId} title={visitId ? 'Request imaging' : 'No active visit'}>
+              <Plus className="h-3 w-3" /> Request
+            </Button>
+          )}
         </div>
 
         {imgLoading ? (
@@ -991,6 +1017,13 @@ function OrdersPanel({ admissionId, patientId, role }: { admissionId: string; pa
           </ul>
         )}
       </div>
+
+      {canOrder && (
+        <>
+          <LabOrderDialog open={labOpen} onOpenChange={setLabOpen} patientId={patientId} visitId={visitId} />
+          <ImagingRequestDialog open={imgOpen} onOpenChange={setImgOpen} patientId={patientId} visitId={visitId} />
+        </>
+      )}
     </div>
   );
 }
