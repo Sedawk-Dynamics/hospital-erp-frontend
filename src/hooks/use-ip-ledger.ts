@@ -40,6 +40,7 @@ export interface AdmissionLedger {
 
 export const ipLedgerKeys = {
   detail: (admissionId: string) => ['ip-ledger', admissionId] as const,
+  activity: (admissionId: string) => ['ip-ledger-activity', admissionId] as const,
 };
 
 export function useAdmissionLedger(admissionId: string | null) {
@@ -67,6 +68,53 @@ export function useAddIpCharge(admissionId: string) {
       (await apiPost(`/billing/admissions/${admissionId}/charges`, data)).data,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ipLedgerKeys.detail(admissionId) });
+      qc.invalidateQueries({ queryKey: ipLedgerKeys.activity(admissionId) });
     },
+  });
+}
+
+// --- Doctor visit: a doctor logs a visit/review round (+ optional visit fee) ---
+
+export interface RecordDoctorVisitInput {
+  review?: string;
+  fee?: number;
+}
+
+export function useRecordDoctorVisit(admissionId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: RecordDoctorVisitInput) =>
+      (await apiPost(`/billing/admissions/${admissionId}/doctor-visit`, data)).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ipLedgerKeys.detail(admissionId) });
+      qc.invalidateQueries({ queryKey: ipLedgerKeys.activity(admissionId) });
+    },
+  });
+}
+
+// --- Activity log: the full admit -> discharge timeline for this admission ---
+
+export interface ActivityEvent {
+  at: string;
+  type: 'admission' | 'nurse_assignment' | 'doctor_visit' | 'charge' | 'lab_order' | 'imaging_request' | 'prescription' | 'discharge';
+  title: string;
+  detail?: string;
+  actor?: string;
+  amount?: number;
+  status?: string;
+}
+
+export interface AdmissionActivity {
+  admissionId: string;
+  status: string;
+  discharged: boolean;
+  events: ActivityEvent[];
+}
+
+export function useAdmissionActivity(admissionId: string | null) {
+  return useQuery({
+    queryKey: ipLedgerKeys.activity(admissionId ?? ''),
+    queryFn: async () => (await apiGet<AdmissionActivity>(`/billing/admissions/${admissionId}/activity`)).data,
+    enabled: !!admissionId,
   });
 }
