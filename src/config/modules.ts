@@ -271,7 +271,6 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Policies', href: '/insurance/policies', icon: ClipboardCheck },
       { label: 'Insurers', href: '/insurance/insurers', icon: Building2 },
       { label: 'TPA Providers', href: '/insurance/tpa', icon: Users },
-      { label: 'TPA Logs', href: '/insurance/tpa-logs', icon: FileText },
       { label: 'Reports', href: '/insurance/reports', icon: BarChart3 },
       { label: 'Settings', href: '/insurance/settings', icon: Settings },
     ],

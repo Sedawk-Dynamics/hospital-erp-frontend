@@ -9,7 +9,6 @@ import {
   RotateCcw,
   Download,
   Split,
-  MessageSquarePlus,
   X,
   IndianRupee,
   Banknote,
@@ -47,9 +46,6 @@ import {
   useResubmitClaim,
   useCancelClaim,
   useExportClaim,
-  useTpaLogs,
-  useCreateTpaLog,
-  useTpas,
   useSplitBill,
   type ClaimStatus,
 } from '@/hooks/use-insurance';
@@ -82,8 +78,6 @@ function inr(value: number | null | undefined) {
 export default function ClaimDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { data: claim, isLoading } = useClaim(id);
-  const { data: tpaLogs } = useTpaLogs({ claimId: id });
-  const { data: tpas } = useTpas({ isActive: true, limit: 100 });
 
   const [approveOpen, setApproveOpen] = useState(false);
   const [partialOpen, setPartialOpen] = useState(false);
@@ -91,7 +85,6 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
   const [settleOpen, setSettleOpen] = useState(false);
   const [resubmitOpen, setResubmitOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
-  const [logOpen, setLogOpen] = useState(false);
 
   const [approvedAmount, setApprovedAmount] = useState('');
   const [approveNotes, setApproveNotes] = useState('');
@@ -102,14 +95,6 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
   const [resubmitAmount, setResubmitAmount] = useState('');
   const [cancelReason, setCancelReason] = useState('');
 
-  const [logForm, setLogForm] = useState({
-    tpaId: '',
-    direction: 'outbound' as 'inbound' | 'outbound',
-    communicationType: 'email' as 'email' | 'phone' | 'portal' | 'letter',
-    subject: '',
-    content: '',
-  });
-
   const submitMut = useSubmitClaim();
   const approveMut = useApproveClaim();
   const partialMut = usePartialApproveClaim();
@@ -118,7 +103,6 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
   const resubmitMut = useResubmitClaim();
   const cancelMut = useCancelClaim();
   const exportMut = useExportClaim();
-  const createLogMut = useCreateTpaLog();
   const splitMut = useSplitBill();
 
   if (isLoading || !claim) {
@@ -242,25 +226,6 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
       toast.error(err?.response?.data?.message ?? 'Failed');
     }
   }
-  async function doLog() {
-    if (!logForm.tpaId) return toast.error('Pick a TPA');
-    try {
-      await createLogMut.mutateAsync({
-        tpaId: logForm.tpaId,
-        claimId: id,
-        direction: logForm.direction,
-        communicationType: logForm.communicationType,
-        subject: logForm.subject.trim() || undefined,
-        content: logForm.content.trim() || undefined,
-      });
-      toast.success('Communication logged');
-      setLogOpen(false);
-      setLogForm({ ...logForm, subject: '', content: '' });
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Log failed');
-    }
-  }
-
   const isOpen = ['submitted', 'under_review', 'resubmitted'].includes(claim.status);
   const isApproved = ['approved', 'partially_approved', 'partially_settled'].includes(claim.status);
   const isResubmittable = ['rejected', 'partially_approved'].includes(claim.status);
@@ -422,13 +387,6 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
             <Button onClick={doApplySplit} variant="outline" className="justify-start gap-1.5">
               <Split className="size-4 text-cyan-700" /> Re-apply Bill Split
             </Button>
-            <Button
-              onClick={() => setLogOpen(true)}
-              variant="outline"
-              className="justify-start gap-1.5"
-            >
-              <MessageSquarePlus className="size-4" /> Log TPA Communication
-            </Button>
             {claim.status !== 'cancelled' && claim.status !== 'settled' && (
               <Button
                 onClick={() => {
@@ -440,46 +398,6 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
               >
                 <X className="size-4" /> Cancel Claim
               </Button>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* TPA logs */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>TPA Communication Log</CardTitle>
-            <CardDescription>Every message in or out with the TPA</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {tpaLogs?.data?.length ? (
-              tpaLogs.data.map((l) => (
-                <div
-                  key={l.id}
-                  className={cn(
-                    'rounded-lg border px-3 py-2 text-sm',
-                    l.direction === 'inbound'
-                      ? 'border-emerald-200 bg-emerald-50/50'
-                      : 'border-sky-200 bg-sky-50/50',
-                  )}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="text-xs font-bold uppercase tracking-wider">
-                      {l.direction} · {l.communicationType ?? 'note'} · {l.tpa?.name}
-                    </div>
-                    <div className="text-xs text-on-surface-variant">
-                      {formatDateTime(l.createdAt)}
-                    </div>
-                  </div>
-                  {l.subject && <div className="font-medium">{l.subject}</div>}
-                  {l.content && (
-                    <div className="whitespace-pre-wrap text-on-surface-variant">{l.content}</div>
-                  )}
-                </div>
-              ))
-            ) : (
-              <div className="rounded-lg border border-dashed border-outline-variant/40 px-3 py-6 text-center text-xs text-on-surface-variant">
-                No TPA communication logged yet.
-              </div>
             )}
           </CardContent>
         </Card>
@@ -694,97 +612,6 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
             </Button>
             <Button variant="destructive" onClick={doCancel} disabled={cancelMut.isPending}>
               Cancel Claim
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={logOpen} onOpenChange={setLogOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Log TPA Communication</DialogTitle>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2">
-              <Label>TPA</Label>
-              <Select
-                value={logForm.tpaId || null}
-                onValueChange={(v) => v && setLogForm({ ...logForm, tpaId: v as string })}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Pick TPA" />
-                </SelectTrigger>
-                <SelectContent>
-                  {tpas?.data?.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Direction</Label>
-              <Select
-                value={logForm.direction}
-                onValueChange={(v) =>
-                  v && setLogForm({ ...logForm, direction: v as 'inbound' | 'outbound' })
-                }
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="outbound">Outbound (hospital → TPA)</SelectItem>
-                  <SelectItem value="inbound">Inbound (TPA → hospital)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Channel</Label>
-              <Select
-                value={logForm.communicationType}
-                onValueChange={(v) =>
-                  v &&
-                  setLogForm({
-                    ...logForm,
-                    communicationType: v as 'email' | 'phone' | 'portal' | 'letter',
-                  })
-                }
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="email">Email</SelectItem>
-                  <SelectItem value="phone">Phone</SelectItem>
-                  <SelectItem value="portal">Portal</SelectItem>
-                  <SelectItem value="letter">Letter</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="col-span-2">
-              <Label>Subject</Label>
-              <Input
-                value={logForm.subject}
-                onChange={(e) => setLogForm({ ...logForm, subject: e.target.value })}
-              />
-            </div>
-            <div className="col-span-2">
-              <Label>Content</Label>
-              <Textarea
-                rows={4}
-                value={logForm.content}
-                onChange={(e) => setLogForm({ ...logForm, content: e.target.value })}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setLogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={doLog} disabled={createLogMut.isPending}>
-              Log
             </Button>
           </DialogFooter>
         </DialogContent>

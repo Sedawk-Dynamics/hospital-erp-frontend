@@ -126,21 +126,6 @@ export interface PreAuthRequest {
   };
 }
 
-export interface TpaLog {
-  id: string;
-  tenantId: string;
-  tpaId: string;
-  claimId?: string | null;
-  communicationType?: 'email' | 'phone' | 'portal' | 'letter' | null;
-  direction?: 'inbound' | 'outbound' | null;
-  subject?: string | null;
-  content?: string | null;
-  createdAt: string;
-  tpa?: { id: string; name: string };
-  claim?: { id: string; claimNumber?: string | null };
-  communicator?: { id: string; firstName: string; lastName?: string | null };
-}
-
 export interface DashboardData {
   claims: {
     pending: number;
@@ -196,7 +181,6 @@ export const insuranceKeys = {
   claim: (id: string) => ['insurance', 'claim', id] as const,
   preAuths: (params?: Record<string, unknown>) => ['insurance', 'pre-auth', params] as const,
   preAuth: (id: string) => ['insurance', 'pre-auth', id] as const,
-  tpaLogs: (params?: Record<string, unknown>) => ['insurance', 'tpa-logs', params] as const,
   reports: (kind: string, params?: Record<string, unknown>) =>
     ['insurance', 'reports', kind, params] as const,
   expiringClaims: (withinDays?: number) => ['insurance', 'claims', 'expiring', withinDays] as const,
@@ -725,43 +709,6 @@ export function useCancelPreAuth() {
 // ============================================================
 // TPA Logs
 // ============================================================
-
-export function useTpaLogs(params?: {
-  tpaId?: string;
-  claimId?: string;
-  direction?: 'inbound' | 'outbound';
-  fromDate?: string;
-  toDate?: string;
-  search?: string;
-  page?: number;
-  limit?: number;
-}) {
-  return useQuery({
-    queryKey: insuranceKeys.tpaLogs(params as Record<string, unknown>),
-    queryFn: async () => {
-      const res = await apiGet<TpaLog[]>('/insurance/tpa-logs', { params });
-      return { data: res.data, meta: res.meta! };
-    },
-  });
-}
-
-export function useCreateTpaLog() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (body: {
-      tpaId: string;
-      claimId?: string;
-      communicationType?: 'email' | 'phone' | 'portal' | 'letter';
-      direction?: 'inbound' | 'outbound';
-      subject?: string;
-      content?: string;
-    }) => {
-      const res = await apiPost<TpaLog>('/insurance/tpa-logs', body);
-      return res.data;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance'] }),
-  });
-}
 
 // ============================================================
 // Calc + Bill split

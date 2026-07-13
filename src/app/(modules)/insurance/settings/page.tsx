@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Settings, Building2, Users, ShieldCheck, FileText } from 'lucide-react';
+import { Settings, Building2, Users, ShieldCheck } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 
 const ENTRIES = [
@@ -22,12 +22,6 @@ const ENTRIES = [
     title: 'Patient Policies',
     description: 'Assign policies to patients — multiple per patient is supported.',
     icon: ShieldCheck,
-  },
-  {
-    href: '/insurance/tpa-logs',
-    title: 'TPA Logs',
-    description: 'Audit trail of every back-and-forth with TPAs.',
-    icon: FileText,
   },
 ];
 
