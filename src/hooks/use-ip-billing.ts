@@ -16,6 +16,17 @@ export interface IpClaim {
   policy?: { policyNumber?: string; insurer?: { name: string } | null; tpa?: { name: string } | null } | null;
 }
 
+// Deposit position for an admission (on file / applied / refunded + the
+// deposit-adjusted patient balance and how much is now refundable).
+export interface IpDeposit {
+  onFile: number;
+  applied: number;
+  refunded: number;
+  available: number;
+  refundable: number;
+  balanceAfterDeposit: number;
+}
+
 export interface IpBill {
   id: string;
   billNumber: string;
@@ -30,9 +41,46 @@ export interface IpBill {
   patient?: { id: string; mrn: string | null; firstName: string; lastName: string } | null;
   admission?: {
     id: string; billingCategory: string | null; status: string;
+    depositAmount?: number | string | null;
+    admissionDate?: string | null; dischargeDate?: string | null;
     ward?: { name: string } | null; bed?: { bedNumber: string } | null;
   } | null;
   insuranceClaims?: IpClaim[];
+  deposit?: IpDeposit;
+}
+
+// The IP billing worklist: one row per admission, from the moment of admission.
+export function useIpAdmissions(search?: string) {
+  return useQuery({
+    queryKey: ['hospital', 'ip-bills', search ?? ''],
+    queryFn: async () =>
+      (await apiGet<IpBill[]>('/billing/ip-admissions', {
+        params: { limit: 100, includeDischarged: true, ...(search ? { search } : {}) },
+      })).data,
+  });
+}
+
+// Cut the deposit from the running IP bill.
+export function useApplyDeposit() {
+  const invalidate = useIpBillingInvalidate();
+  return useMutation({
+    mutationFn: async (v: { admissionId: string; amount?: number }) =>
+      (await apiPost(`/billing/admissions/${v.admissionId}/apply-deposit`, v.amount != null ? { amount: v.amount } : {})).data,
+    onSuccess: invalidate,
+  });
+}
+
+// Return the unused deposit to the patient.
+export function useRefundDeposit() {
+  const invalidate = useIpBillingInvalidate();
+  return useMutation({
+    mutationFn: async (v: { admissionId: string; amount?: number; reason?: string }) =>
+      (await apiPost(`/billing/admissions/${v.admissionId}/refund-deposit`, {
+        ...(v.amount != null ? { amount: v.amount } : {}),
+        ...(v.reason ? { reason: v.reason } : {}),
+      })).data,
+    onSuccess: invalidate,
+  });
 }
 
 function useIpBillingInvalidate() {

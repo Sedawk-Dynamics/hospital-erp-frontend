@@ -1,14 +1,13 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Loader2, ShieldCheck, RefreshCw, BedDouble, ArrowRightLeft } from 'lucide-react';
-import { apiGet } from '@/lib/api';
+import { useQueryClient } from '@tanstack/react-query';
+import { Search, Loader2, ShieldCheck, RefreshCw, BedDouble, ArrowRightLeft, Undo2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { type IpBill } from '@/hooks/use-ip-billing';
+import { useIpAdmissions, type IpBill } from '@/hooks/use-ip-billing';
 import { IpBillingDetailDialog } from '@/components/hospital/billing/ip-billing-detail-dialog';
 
 // IP billing section: one consolidated bill per admission, shown separately from
@@ -42,36 +41,10 @@ export function IpBillingTab() {
   const [search, setSearch] = useState('');
   const [detailBill, setDetailBill] = useState<IpBill | null>(null);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['hospital', 'ip-bills', search],
-    queryFn: async () =>
-      (await apiGet<IpBill[]>('/billing', { params: { billType: 'ip', limit: 50, ...(search ? { search } : {}) } })).data,
-  });
-  const bills = useMemo(() => data ?? [], [data]);
-
-  // One row per ADMISSION: an admission's charges live on a single consolidated
-  // bill, but legacy data may have >1 bill (old FIN- + IPW-). Group by admission
-  // and aggregate so the biller sees one line per stay.
-  const grouped = useMemo(() => {
-    const map = new Map<string, IpBill[]>();
-    for (const b of bills) {
-      const key = b.admissionId ?? b.id;
-      const arr = map.get(key);
-      if (arr) arr.push(b); else map.set(key, [b]);
-    }
-    return [...map.values()].map((group) => {
-      const primary = group.find((b) => ['draft', 'pending', 'partially_paid'].includes(b.status)) ?? group[0];
-      const claim = group.map((b) => b.insuranceClaims?.[0]).find(Boolean) ?? null;
-      return {
-        ...primary,
-        totalAmount: group.reduce((s, b) => s + n(b.totalAmount), 0),
-        amountPaid: group.reduce((s, b) => s + n(b.amountPaid), 0),
-        balanceDue: group.reduce((s, b) => s + n(b.balanceDue), 0),
-        insuranceClaims: claim ? [claim] : (primary.insuranceClaims ?? []),
-        _count: group.length,
-      } as IpBill & { _count: number };
-    });
-  }, [bills]);
+  // One row per ADMISSION — listed from the moment the patient is admitted
+  // (the endpoint ensures each active admission has its running IP bill).
+  const { data, isLoading } = useIpAdmissions(search || undefined);
+  const grouped = useMemo(() => data ?? [], [data]);
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ['hospital', 'ip-bills'] });
@@ -92,9 +65,9 @@ export function IpBillingTab() {
       </div>
 
       {isLoading ? (
-        <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading IP bills…</div>
+        <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading IP patients…</div>
       ) : grouped.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">No IP bills yet.</p>
+        <p className="py-8 text-center text-sm text-muted-foreground">No IP patients admitted.</p>
       ) : (
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full text-sm">
@@ -103,7 +76,8 @@ export function IpBillingTab() {
                 <th className="px-3 py-2">Patient</th>
                 <th className="px-3 py-2">Category</th>
                 <th className="px-3 py-2">Bill</th>
-                <th className="px-3 py-2 text-right">Total</th>
+                <th className="px-3 py-2 text-right">Charges</th>
+                <th className="px-3 py-2 text-right">Deposit</th>
                 <th className="px-3 py-2 text-right">Insurer / Patient</th>
                 <th className="px-3 py-2">TPA / Claim</th>
                 <th className="px-3 py-2 text-right">Actions</th>
@@ -115,6 +89,8 @@ export function IpBillingTab() {
                 const liveClaim = claim && !['cancelled', 'rejected'].includes(claim.status);
                 const cat = (b.admission?.billingCategory ?? 'cash').toLowerCase();
                 const canTransfer = !!b.admissionId && isInsurance(cat) && !liveClaim;
+                const dep = b.deposit;
+                const refundable = n(dep?.refundable);
                 return (
                   <tr key={b.admissionId ?? b.id} className="border-t align-top">
                     <td className="px-3 py-2">
@@ -126,17 +102,32 @@ export function IpBillingTab() {
                           {[b.admission?.ward?.name, b.admission?.bed?.bedNumber].filter(Boolean).join(' · ')}
                         </div>
                       )}
+                      {b.admission?.status === 'discharged' && (
+                        <div className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">discharged</div>
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <Badge className={cn('text-[10px] capitalize', CATEGORY_BADGE[cat] ?? CATEGORY_BADGE.cash)}>{cat}</Badge>
                     </td>
                     <td className="px-3 py-2">
-                      <div className="font-mono text-[11px]">{b.billNumber}{b._count > 1 ? <span className="text-muted-foreground"> +{b._count - 1}</span> : null}</div>
+                      <div className="font-mono text-[11px]">{b.billNumber}</div>
                       <div className="text-[10px] uppercase text-muted-foreground">{b.status.replace('_', ' ')}</div>
                     </td>
                     <td className="px-3 py-2 text-right">
                       <div className="font-medium">{money(b.totalAmount)}</div>
-                      <div className="text-[10px] text-muted-foreground">bal {money(b.balanceDue)}</div>
+                      <div className="text-[10px] text-muted-foreground">after deposit {money(dep?.balanceAfterDeposit ?? b.balanceDue)}</div>
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {n(dep?.onFile) > 0 ? (
+                        <>
+                          <div className="font-medium text-teal-700">{money(dep?.onFile)}</div>
+                          {refundable > 0 && (
+                            <div className="text-[10px] text-emerald-600">refund {money(refundable)}</div>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-right">
                       {liveClaim ? (
@@ -180,7 +171,13 @@ export function IpBillingTab() {
                             <ShieldCheck className="h-3.5 w-3.5" /> With TPA
                           </span>
                         )}
-                        <Button size="sm" className="h-7 gap-1 text-[11px]" onClick={() => setDetailBill(b)} title="Open the full IP bill — edit charges, discount, collect, TPA">
+                        {refundable > 0 && (
+                          <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px] border-emerald-300 text-emerald-700"
+                            onClick={() => setDetailBill(b)} title="Return the unused deposit to the patient">
+                            <Undo2 className="h-3 w-3" /> Return deposit
+                          </Button>
+                        )}
+                        <Button size="sm" className="h-7 gap-1 text-[11px]" onClick={() => setDetailBill(b)} title="Open the full IP bill — charges, deposit, discount, collect, TPA">
                           Manage
                         </Button>
                       </div>
@@ -193,7 +190,7 @@ export function IpBillingTab() {
         </div>
       )}
       <p className="text-[11px] text-muted-foreground">
-        Each IP admission has <strong>one</strong> consolidated bill with all costs. Click <strong>Manage</strong> to edit charges, apply a discount, collect from the patient, or <strong>Transfer to TPA</strong> &amp; record TPA settlements (paid / remaining tracked) — all in one place.
+        Every admitted IP patient shows here from day one — one <strong>consolidated bill</strong> that builds up as charges are posted. The <strong>deposit</strong> is cut from the running balance, and its unused part can be <strong>returned</strong> to the patient (e.g. when insurance covers the charges in full). Click <strong>Manage</strong> to post charges, apply the deposit, discount, collect, <strong>Transfer to TPA</strong> &amp; record settlements.
       </p>
 
       <IpBillingDetailDialog bill={detailBill} open={!!detailBill} onOpenChange={(o) => { if (!o) setDetailBill(null); }} />

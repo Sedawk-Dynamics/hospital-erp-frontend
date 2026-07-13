@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   Loader2, ArrowRightLeft, ShieldCheck, Percent, Wallet, BedDouble, ReceiptText, RefreshCw,
+  PiggyBank, Undo2,
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -17,7 +18,7 @@ import { IpLedgerPanel } from '@/components/shared/ip-ledger-panel';
 import { CollectBillPaymentDialog } from '@/components/hospital/billing/collect-bill-payment-dialog';
 import {
   useTransferToTpa, useRecordTpaSettlement, useSetBillDiscount, useConsolidateIpBill,
-  useSetBillItemReimbursable, useBillPayments,
+  useSetBillItemReimbursable, useBillPayments, useApplyDeposit, useRefundDeposit,
   type IpBill,
 } from '@/hooks/use-ip-billing';
 import { useAdmissionLedger } from '@/hooks/use-ip-ledger';
@@ -45,6 +46,8 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
   const discount = useSetBillDiscount();
   const consolidate = useConsolidateIpBill();
   const setReimbursable = useSetBillItemReimbursable();
+  const applyDeposit = useApplyDeposit();
+  const refundDeposit = useRefundDeposit();
   const qc = useQueryClient();
   const admissionId = bill?.admissionId ?? '';
   const { data: ledger } = useAdmissionLedger(open ? admissionId : null);
@@ -83,6 +86,14 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
   const doConsolidate = async () => {
     try { await consolidate.mutateAsync(admissionId); toast.success('All charges pulled onto the bill.'); }
     catch (e) { toast.error((e as Error).message || 'Could not generate the bill.'); }
+  };
+  const doApplyDeposit = async () => {
+    try { await applyDeposit.mutateAsync({ admissionId }); toast.success('Deposit applied — cut from the bill balance.'); }
+    catch (e) { toast.error((e as Error).message || 'Could not apply the deposit.'); }
+  };
+  const doRefundDeposit = async () => {
+    try { await refundDeposit.mutateAsync({ admissionId }); toast.success('Deposit returned to the patient.'); }
+    catch (e) { toast.error((e as Error).message || 'Could not return the deposit.'); }
   };
   const toggleLine = async (itemId: string, toInsurance: boolean) => {
     try { await setReimbursable.mutateAsync({ itemId, isReimbursable: toInsurance }); }
@@ -191,6 +202,42 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
             </Button>
           </div>
         </div>
+
+        {/* Deposit — cut from the bill as it builds; return the unused part */}
+        {n(ledger?.totals.deposit) > 0 && (
+          <div className="rounded-xl border border-teal-300 bg-teal-50/40 p-3">
+            <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
+              <PiggyBank className="h-4 w-4 text-teal-700" /> Deposit
+              <span className="text-[11px] font-normal text-muted-foreground">— collected at admission, cut from the running bill</span>
+            </h3>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <Stat label="On file" value={money(ledger?.totals.deposit)} className="text-teal-700" />
+              <Stat label="Applied to bill" value={money(ledger?.totals.depositApplied)} />
+              <Stat label="Balance after deposit" value={money(ledger?.totals.balanceAfterDeposit)} className="text-amber-700" />
+              <Stat label="Refundable" value={money(ledger?.totals.refundable)} className="text-emerald-700" />
+            </div>
+            {n(ledger?.totals.depositRefunded) > 0 && (
+              <p className="mt-1.5 text-[11px] text-muted-foreground">Already returned: {money(ledger?.totals.depositRefunded)}</p>
+            )}
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={doApplyDeposit}
+                disabled={applyDeposit.isPending || n(ledger?.totals.depositAvailable) <= 0}
+                title="Cut the deposit from the current bill balance">
+                {applyDeposit.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wallet className="h-3.5 w-3.5" />}
+                Apply deposit to bill
+              </Button>
+              <Button size="sm" className="h-8 gap-1.5 bg-emerald-600 hover:bg-emerald-700" onClick={doRefundDeposit}
+                disabled={refundDeposit.isPending || n(ledger?.totals.refundable) <= 0}
+                title="Return the unused deposit to the patient (e.g. insurance covered the charges)">
+                {refundDeposit.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />}
+                Return deposit
+              </Button>
+              {n(ledger?.totals.refundable) > 0 && (
+                <span className="text-[11px] text-emerald-700">Insurance / payments cover the charges — {money(ledger?.totals.refundable)} can be returned.</span>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* TPA connection */}
         <div className={cn('rounded-xl border p-3', isInsurance(cat) ? 'border-purple-300 bg-purple-50/40' : 'bg-card')}>

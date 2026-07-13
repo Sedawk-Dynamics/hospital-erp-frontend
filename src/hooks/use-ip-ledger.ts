@@ -31,8 +31,14 @@ export interface AdmissionLedger {
     pending: number;
     grandTotal: number;
     paid: number;
+    cashPaid: number;
+    insuranceCovered: number;
     deposit: number;
+    depositApplied: number;
+    depositRefunded: number;
+    depositAvailable: number;
     balanceAfterDeposit: number;
+    refundable: number;
     reimbursable: number;
     nonReimbursable: number;
   };
