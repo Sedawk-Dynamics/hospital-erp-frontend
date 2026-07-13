@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiPatch, apiPut, apiDelete } from '@/lib/api';
 import type { Patient, Appointment, DoctorProfile } from '@/types';
+import type { HospitalBranding } from '@/hooks/use-hospital-branding';
 
 // ============================================================
 // Types
@@ -1373,7 +1374,7 @@ export interface DischargeVitalRow {
 }
 
 export interface DischargeDocument {
-  hospital: { name: string; address: string | null; phone: string | null; email: string | null; website: string | null; licenseNumber: string | null; accreditation: string | null };
+  hospital: HospitalBranding;
   meta: { id: string; status: string; signedAt: string | null; signerName: string | null; attestation: string | null; generatedAt: string };
   patient: { name: string; mrn: string | null; age: number | null; gender: string | null; dob: string | null; bloodGroup: string | null; phone: string | null; address: string | null; maritalStatus: string | null; nationality: string | null };
   emergencyContact: { name: string; relationship: string; phone: string } | null;

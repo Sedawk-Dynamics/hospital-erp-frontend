@@ -2,6 +2,8 @@
 
 import { forwardRef } from 'react';
 import type { DischargeDocument, DischargeVitalRow } from '@/hooks/use-doctor';
+import { resolveLogoUrl } from '@/hooks/use-branding';
+import { cn } from '@/lib/utils';
 
 // A fully-detailed, print-ready IP discharge summary. Rendered on screen as a
 // preview and printed as-is (the @media print block below isolates this node so
@@ -17,8 +19,8 @@ const dash = (v?: string | number | null) => (v === null || v === undefined || v
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="mt-4 break-inside-avoid">
-      <h3 className="mb-1.5 flex items-center gap-2 border-b border-[#0f766e]/30 pb-1 text-[11px] font-bold uppercase tracking-wider text-[#0f5049]">
-        <span className="inline-block h-3 w-[3px] rounded bg-[#0f766e]" />
+      <h3 className="mb-1.5 flex items-center gap-2 border-b border-slate-200 pb-1 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--brand)' }}>
+        <span className="inline-block h-3 w-[3px] rounded" style={{ backgroundColor: 'var(--brand)' }} />
         {title}
       </h3>
       <div className="text-[12.5px] leading-relaxed text-[#1a2332]">{children}</div>
@@ -36,9 +38,9 @@ function Table({ head, rows }: { head: string[]; rows: (string | number | null)[
     <div className="overflow-x-auto">
       <table className="w-full border-collapse text-[11.5px]">
         <thead>
-          <tr className="bg-[#0f766e] text-white">
+          <tr className="text-white" style={{ backgroundColor: 'var(--brand)' }}>
             {head.map((h) => (
-              <th key={h} className="border border-[#0f766e] px-2 py-1 text-left font-semibold">{h}</th>
+              <th key={h} className="border px-2 py-1 text-left font-semibold" style={{ borderColor: 'var(--brand)' }}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -84,8 +86,16 @@ export const DischargeSummaryDocument = forwardRef<HTMLDivElement, { doc: Discha
       ['Emergency Contact', doc.emergencyContact ? `${doc.emergencyContact.name} (${doc.emergencyContact.relationship}) · ${doc.emergencyContact.phone}` : '—'],
     ];
 
+    const h = doc.hospital;
+    const accent = /^#[0-9a-fA-F]{6}$/.test(h.accentColor) ? h.accentColor : '#0f766e';
+    const addressLine = [h.addressLine1, h.addressLine2, [h.city, h.state].filter(Boolean).join(', '), h.pincode, h.country].filter(Boolean).join(', ');
+    const contact = [h.phone, h.altPhone, h.email, h.website].filter(Boolean).join('  •  ');
+    const reg = [h.registrationNo ? `Reg. No: ${h.registrationNo}` : '', h.gstin ? `GSTIN: ${h.gstin}` : '', h.accreditation || ''].filter(Boolean).join('  •  ');
+    const logo = h.showLogo && h.logoUrl ? resolveLogoUrl(h.logoUrl) : null;
+    const leftLayout = h.headerStyle === 'left';
+
     return (
-      <div id="discharge-doc-print" ref={ref} className="mx-auto max-w-[820px] bg-white p-8 text-[#1a2332] shadow-sm ring-1 ring-black/5 print:max-w-none print:p-0 print:shadow-none print:ring-0">
+      <div id="discharge-doc-print" ref={ref} style={{ ['--brand' as string]: accent }} className="mx-auto max-w-[820px] bg-white p-8 text-[#1a2332] shadow-sm ring-1 ring-black/5 print:max-w-none print:p-0 print:shadow-none print:ring-0">
         <style>{`
           @media print {
             body * { visibility: hidden !important; }
@@ -97,22 +107,21 @@ export const DischargeSummaryDocument = forwardRef<HTMLDivElement, { doc: Discha
         `}</style>
 
         {/* Letterhead */}
-        <header className="text-center">
-          <h1 className="text-[20px] font-bold tracking-tight text-[#132029]">{doc.hospital.name}</h1>
-          {doc.hospital.address && <p className="text-[11px] text-[#5b6472]">{doc.hospital.address}</p>}
-          {(doc.hospital.phone || doc.hospital.email || doc.hospital.website) && (
-            <p className="text-[11px] text-[#5b6472]">
-              {[doc.hospital.phone, doc.hospital.email, doc.hospital.website].filter(Boolean).join('  •  ')}
-            </p>
+        <header className={cn('flex gap-4', leftLayout ? 'items-center text-left' : 'flex-col items-center text-center')}>
+          {logo && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={logo} alt="" className={cn('object-contain', leftLayout ? 'h-16 w-16' : 'h-14')} />
           )}
-          {(doc.hospital.licenseNumber || doc.hospital.accreditation) && (
-            <p className="text-[10px] text-[#5b6472]">
-              {[doc.hospital.licenseNumber ? `Reg. No: ${doc.hospital.licenseNumber}` : '', doc.hospital.accreditation].filter(Boolean).join('  •  ')}
-            </p>
-          )}
+          <div className={leftLayout ? 'min-w-0 flex-1' : ''}>
+            <h1 className="text-[20px] font-bold tracking-tight text-[#132029]">{h.name}</h1>
+            {h.tagline && <p className="text-[11px] italic" style={{ color: accent }}>{h.tagline}</p>}
+            {addressLine && <p className="text-[11px] text-[#5b6472]">{addressLine}</p>}
+            {contact && <p className="text-[11px] text-[#5b6472]">{contact}</p>}
+            {reg && <p className="text-[10px] text-[#5b6472]">{reg}</p>}
+          </div>
         </header>
 
-        <div className="mt-3 flex items-center justify-center rounded bg-[#0f766e] py-1.5">
+        <div className="mt-3 flex items-center justify-center rounded py-1.5" style={{ backgroundColor: accent }}>
           <h2 className="text-[13px] font-bold uppercase tracking-[0.2em] text-white">Discharge Summary</h2>
         </div>
         {doc.meta.status !== 'published' && (
@@ -257,7 +266,7 @@ export const DischargeSummaryDocument = forwardRef<HTMLDivElement, { doc: Discha
         </div>
 
         <p className="mt-6 border-t border-[#d3d8de] pt-2 text-center text-[9px] text-[#6b7280]">
-          This is a computer-generated discharge summary. In case of any emergency, contact the hospital immediately.
+          {h.footerText || 'This is a computer-generated discharge summary. In case of any emergency, contact the hospital immediately.'}
         </p>
       </div>
     );

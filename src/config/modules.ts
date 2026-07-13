@@ -76,6 +76,7 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Billing Transaction', href: '/hospital/transactions', icon: ArrowLeftRight },
       { label: 'Reports', href: '/hospital/reports', icon: BarChart3 },
       { label: 'Settings', href: '/hospital/settings', icon: Settings },
+      { label: 'PDF Builder', href: '/hospital/pdf-builder', icon: FileText, restrictTo: ['admin', 'super_admin'] },
       { label: 'Dashboard', href: '/hospital/dashboard', icon: LayoutDashboard },
     ],
   },
