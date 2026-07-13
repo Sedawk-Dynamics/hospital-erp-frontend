@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Search, Loader2, ShieldCheck, RefreshCw, BedDouble, ArrowRightLeft, Undo2 } from 'lucide-react';
+import { Search, Loader2, ShieldCheck, RefreshCw, BedDouble, Undo2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -88,7 +88,6 @@ export function IpBillingTab() {
                 const claim = b.insuranceClaims?.[0];
                 const liveClaim = claim && !['cancelled', 'rejected'].includes(claim.status);
                 const cat = (b.admission?.billingCategory ?? 'cash').toLowerCase();
-                const canTransfer = !!b.admissionId && isInsurance(cat) && !liveClaim;
                 const dep = b.deposit;
                 const refundable = n(dep?.refundable);
                 return (
@@ -153,22 +152,18 @@ export function IpBillingTab() {
                           </div>
                         </div>
                       ) : isInsurance(cat) ? (
-                        <span className="text-[11px] text-amber-600">Not transferred</span>
+                        <span className="inline-flex items-center gap-1 text-[11px] text-purple-700">
+                          <ShieldCheck className="h-3.5 w-3.5" /> Connected — claim on charges
+                        </span>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex items-center justify-end gap-1.5">
-                        {canTransfer && (
-                          <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px]"
-                            onClick={() => setDetailBill(b)} title="Open the bill and transfer to the TPA">
-                            <ArrowRightLeft className="h-3 w-3" /> Transfer to TPA
-                          </Button>
-                        )}
-                        {liveClaim && (
-                          <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700">
-                            <ShieldCheck className="h-3.5 w-3.5" /> With TPA
+                        {isInsurance(cat) && (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700" title="Insurance patient — auto-connected to the TPA at booking (no manual transfer)">
+                            <ShieldCheck className="h-3.5 w-3.5" /> {liveClaim ? 'With TPA' : 'Connected to TPA'}
                           </span>
                         )}
                         {refundable > 0 && (
@@ -190,7 +185,7 @@ export function IpBillingTab() {
         </div>
       )}
       <p className="text-[11px] text-muted-foreground">
-        Every admitted IP patient shows here from day one — one <strong>consolidated bill</strong> that builds up as charges are posted. The <strong>deposit</strong> is cut from the running balance, and its unused part can be <strong>returned</strong> to the patient (e.g. when insurance covers the charges in full). Click <strong>Manage</strong> to post charges, apply the deposit, discount, collect, <strong>Transfer to TPA</strong> &amp; record settlements.
+        Every admitted IP patient shows here from day one — one <strong>consolidated bill</strong> that builds up as charges are posted. The <strong>deposit</strong> is cut from the running balance, and its unused part can be <strong>returned</strong> to the patient (e.g. when insurance covers the charges in full). Insurance / corporate patients are <strong>auto-connected to the TPA</strong> at booking — the claim is raised and kept in sync as charges accrue (no manual transfer). Click <strong>Manage</strong> to post charges, apply the deposit, discount, collect &amp; record TPA settlements.
       </p>
 
       <IpBillingDetailDialog bill={detailBill} open={!!detailBill} onOpenChange={(o) => { if (!o) setDetailBill(null); }} />

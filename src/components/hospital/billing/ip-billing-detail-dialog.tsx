@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  Loader2, ArrowRightLeft, ShieldCheck, Percent, Wallet, BedDouble, ReceiptText, RefreshCw,
+  Loader2, ShieldCheck, Percent, Wallet, BedDouble, ReceiptText, RefreshCw,
   PiggyBank, Undo2,
 } from 'lucide-react';
 import {
@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
 import { IpLedgerPanel } from '@/components/shared/ip-ledger-panel';
 import { CollectBillPaymentDialog } from '@/components/hospital/billing/collect-bill-payment-dialog';
 import {
-  useTransferToTpa, useRecordTpaSettlement, useSetBillDiscount, useConsolidateIpBill,
+  useRecordTpaSettlement, useSetBillDiscount, useConsolidateIpBill,
   useSetBillItemReimbursable, useBillPayments, useApplyDeposit, useRefundDeposit,
   type IpBill,
 } from '@/hooks/use-ip-billing';
@@ -41,7 +41,6 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
 }) {
-  const transfer = useTransferToTpa();
   const settle = useRecordTpaSettlement();
   const discount = useSetBillDiscount();
   const consolidate = useConsolidateIpBill();
@@ -64,15 +63,6 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
   const liveClaim = claim && !['cancelled', 'rejected'].includes(claim.status);
   const patientName = `${bill.patient?.firstName ?? ''} ${bill.patient?.lastName ?? ''}`.trim();
 
-  const doTransfer = async () => {
-    try {
-      const res: any = await transfer.mutateAsync({ admissionId });
-      const via = res?.policy?.tpa?.name || res?.policy?.insurer?.name;
-      toast.success(via && via !== 'Pending TPA Assignment'
-        ? `Sent to ${via} — claim raised.`
-        : 'Sent to TPA — the insurance team will fill in the policy & process the claim.');
-    } catch (e) { toast.error((e as Error).message || 'Transfer to TPA failed.'); }
-  };
   const doSettle = async () => {
     if (!(payAmt > 0)) { toast.error('Enter the amount the TPA paid.'); return; }
     try { await settle.mutateAsync({ admissionId, paidAmount: payAmt }); toast.success('TPA payment recorded.'); setPayAmt(0); }
@@ -246,13 +236,13 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
           </h3>
 
           {!liveClaim ? (
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-start gap-2 rounded-lg border border-purple-200 bg-purple-50/50 px-3 py-2">
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
               <p className="text-sm text-muted-foreground">
-                Hand this bill to the TPA — the insurance team fills in the policy, coverage &amp; approvals. Insurer-tagged lines are claimed.
+                {isInsurance(cat)
+                  ? <><strong className="text-purple-700">Connected to the TPA.</strong> Because the patient was booked as {cat}, the claim is raised automatically once there are charges and kept in sync as the bill builds — no manual transfer needed. The insurance team fills in the policy &amp; approvals; insurer-tagged lines are claimed.</>
+                  : <>This is a <strong>{cat}</strong> patient — settled directly, not through a TPA. Change the billing category on the admission to route it to insurance.</>}
               </p>
-              <Button size="sm" className="gap-1.5" onClick={doTransfer} disabled={transfer.isPending}>
-                {transfer.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRightLeft className="h-4 w-4" />} Transfer to TPA
-              </Button>
             </div>
           ) : (
             <div className="space-y-2.5">
