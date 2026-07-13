@@ -1936,6 +1936,21 @@ export function useSetPharmacyOrderStatus() {
   });
 }
 
+// Dispense an IP prescription from the queue → bills the patient's IP ledger
+// (hospital bill), not the pharmacy counter.
+export function useDispenseIpPrescription() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (prescriptionId: string) =>
+      (await apiPost(`/pharmacy/queue/${prescriptionId}/dispense-ip`, {})).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['prescriptions', 'queue'] });
+      queryClient.invalidateQueries({ queryKey: ['ip-ledger'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'ip-bills'] });
+    },
+  });
+}
+
 export function usePrescriptionQueue(params?: PrescriptionQueueParams) {
   return useQuery({
     queryKey: ['prescriptions', 'queue', params],

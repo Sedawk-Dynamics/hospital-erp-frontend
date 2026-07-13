@@ -14,6 +14,7 @@ import {
   BedDouble,
   Wallet,
   CheckCircle2,
+  Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
@@ -42,6 +43,7 @@ import { formatBaseQty, packLooseBreakdown } from '@/lib/pharmacy-units';
 import {
   usePrescriptionQueue,
   useSetPharmacyOrderStatus,
+  useDispenseIpPrescription,
   type PrescriptionListItem,
   type PrescriptionQueueParams,
   type PharmacyOrderStatus,
@@ -105,9 +107,20 @@ export default function PrescriptionQueuePage() {
   const records = data?.data ?? [];
   const meta = data?.meta;
   const setOrderStatus = useSetPharmacyOrderStatus();
+  const ipDispense = useDispenseIpPrescription();
+  const ipDispensing = ipDispense.isPending;
 
   const handleDispense = (rx: PrescriptionListItem) => {
     router.push(`/pharmacy?prescriptionId=${rx.id}`);
+  };
+
+  const handleIpDispense = async (rx: PrescriptionListItem) => {
+    try {
+      await ipDispense.mutateAsync(rx.id);
+      toast.success("Dispensed to the patient's IP bill.");
+    } catch (e) {
+      toast.error((e as Error)?.message || 'Could not dispense to the IP bill.');
+    }
   };
 
   const advanceOrder = async (rx: PrescriptionListItem) => {
@@ -335,7 +348,9 @@ export default function PrescriptionQueuePage() {
                             return (
                               <div className="flex flex-col items-center gap-1">
                                 <Badge className={orderStatusBadge[cur]}>{ipStatusLabel(cur)}</Badge>
-                                {cur !== 'collected' && (
+                                {/* Prep tracking only — the terminal 'collected' state
+                                    comes from the actual Dispense action, not a manual step. */}
+                                {(cur === 'ordered' || cur === 'preparing') && (
                                   <Button
                                     size="sm"
                                     variant="outline"
@@ -343,7 +358,6 @@ export default function PrescriptionQueuePage() {
                                     disabled={setOrderStatus.isPending}
                                     onClick={() => advanceOrder(rx)}
                                   >
-                                    {cur === 'ready' ? <CheckCircle2 className="mr-1 h-3 w-3" /> : null}
                                     {nextOrderLabel[cur as Exclude<PharmacyOrderStatus, 'collected'>]}
                                   </Button>
                                 )}
@@ -356,18 +370,28 @@ export default function PrescriptionQueuePage() {
                       </TableCell>
                       <TableCell className="text-right">
                         {rx.prescriptionType === 'ip' ? (
-                          // IP meds are billed to the hospital IP bill — dispensed
-                          // from the Ward Indents queue, never sold at the counter.
-                          <div className="flex flex-col items-end gap-0.5">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => router.push('/pharmacy/indents')}
-                            >
-                              Ward Indent <ArrowRight className="ml-1 h-3 w-3" />
-                            </Button>
-                            <span className="text-[10px] text-muted-foreground">Billed to IP bill</span>
-                          </div>
+                          // IP meds are billed to the hospital IP bill (patient
+                          // ledger), never sold at the pharmacy counter.
+                          rx.pharmacyStatus === 'collected' ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700">
+                              <CheckCircle2 className="h-3.5 w-3.5" /> Dispensed to IP bill
+                            </span>
+                          ) : (
+                            <div className="flex flex-col items-end gap-0.5">
+                              <Button
+                                size="sm"
+                                disabled={ipDispensing || rx.prescriptionItems.length === 0}
+                                onClick={() => handleIpDispense(rx)}
+                                title="Dispense these meds and post the charge to the patient's IP bill"
+                              >
+                                {ipDispensing && ipDispense.variables === rx.id
+                                  ? <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                                  : null}
+                                Dispense to IP bill
+                              </Button>
+                              <span className="text-[10px] text-muted-foreground">Billed to patient ledger</span>
+                            </div>
+                          )
                         ) : (
                           <Button
                             size="sm"

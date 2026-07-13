@@ -131,8 +131,6 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Reports', href: '/pharmacy/reports', icon: BarChart3, restrictTo: ['pharmacy_admin'] },
       { label: 'Statutory Reports', href: '/pharmacy/statutory-reports', icon: FileText, restrictTo: ['pharmacy_admin'] },
       { label: 'Ward Stock', href: '/pharmacy/ward-stock', icon: BedDouble, restrictTo: ['pharmacy_admin'] },
-      // IP medication indents (ward→pharmacy fulfilment) + OT surgical kits.
-      { label: 'Med Indents', href: '/pharmacy/indents', icon: ClipboardCheck },
       // All medicines dispensed to IP patients (billed to the hospital IP bill).
       { label: 'IP Medicines', href: '/pharmacy/ip-medicines', icon: Pill },
       { label: 'OT Kits', href: '/pharmacy/ot-kits', icon: Package },
@@ -228,7 +226,6 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Patient Forms', href: '/nurse/forms', icon: FileText },
       { label: 'Shift Handover', href: '/nurse/handover', icon: ArrowRightLeft },
       { label: 'Orders & Ward', href: '/nurse/orders', icon: ClipboardCheck },
-      { label: 'Med Indents', href: '/nurse/indents', icon: PillBottle },
       { label: 'Settings', href: '/nurse/settings', icon: Settings },
     ],
   },
