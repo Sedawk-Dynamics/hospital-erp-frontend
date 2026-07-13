@@ -6,7 +6,46 @@ import { Select as SelectPrimitive } from "@base-ui/react/select"
 import { cn } from "@/lib/utils"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
-const Select = SelectPrimitive.Root
+// Walk the JSX children and collect { value -> label } from every <SelectItem>,
+// so base-ui's <Select.Value> shows the selected item's LABEL instead of the raw
+// value (which for id-valued selects is a UUID). This makes every dropdown show
+// the name without each call site having to pass an `items` map.
+function collectSelectItems(
+  children: React.ReactNode,
+  acc: Record<string, React.ReactNode>,
+) {
+  React.Children.forEach(children, (child) => {
+    if (!React.isValidElement(child)) return
+    if (child.type === SelectItem) {
+      const value = (child.props as { value?: unknown }).value
+      if (value != null && value !== "") {
+        acc[String(value)] = (child.props as { children?: React.ReactNode }).children
+      }
+      return // don't descend into an item's own content
+    }
+    const nested = (child.props as { children?: React.ReactNode })?.children
+    if (nested != null) collectSelectItems(nested, acc)
+  })
+}
+
+function Select<Value = string, Multiple extends boolean | undefined = false>({
+  children,
+  items,
+  ...props
+}: SelectPrimitive.Root.Props<Value, Multiple>) {
+  const derivedItems = React.useMemo(() => {
+    if (items) return items // explicit items win
+    const acc: Record<string, React.ReactNode> = {}
+    collectSelectItems(children, acc)
+    return Object.keys(acc).length > 0 ? acc : undefined
+  }, [children, items])
+
+  return (
+    <SelectPrimitive.Root items={derivedItems as never} {...(props as object)}>
+      {children}
+    </SelectPrimitive.Root>
+  )
+}
 
 function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   return (
