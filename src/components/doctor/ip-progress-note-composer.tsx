@@ -55,7 +55,6 @@ export function IpProgressNoteComposer({
   const [objective, setObjective] = useState('');
   const [assessment, setAssessment] = useState('');
   const [plan, setPlan] = useState('');
-  const [pinToDischarge, setPinToDischarge] = useState(false);
   const [billVisit, setBillVisit] = useState(defaultBillVisit);
 
   // Bind the note to the patient's active IP visit (the ProgressNote row needs a
@@ -75,7 +74,7 @@ export function IpProgressNoteComposer({
 
   const reset = () => {
     setCondition('stable'); setSubjective(''); setObjective('');
-    setAssessment(''); setPlan(''); setPinToDischarge(false); setBillVisit(defaultBillVisit);
+    setAssessment(''); setPlan(''); setBillVisit(defaultBillVisit);
   };
 
   const anyFilled = [subjective, objective, assessment, plan].some((s) => s.trim());
@@ -104,10 +103,6 @@ export function IpProgressNoteComposer({
         objective: free(objective),
         assessment: free(assessment),
         plan: free(plan),
-        pinToDischargeSummary: pinToDischarge,
-        pins: pinToDischarge
-          ? [{ dischargeSection: 'hospital_course', content: buildContent() }]
-          : undefined,
       });
       // "Adding a visit" optionally also posts the doctor's visit fee to the IP bill.
       if (billVisit) {
@@ -170,15 +165,12 @@ export function IpProgressNoteComposer({
           <SoapField label="Assessment" hint="Clinical impression / progress" value={assessment} onChange={setAssessment} />
           <SoapField label="Plan" hint="Today's plan, order changes, next steps" value={plan} onChange={setPlan} />
 
-          <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
-            <label className="flex items-center gap-2 text-xs">
-              <input type="checkbox" checked={pinToDischarge} onChange={(e) => setPinToDischarge(e.target.checked)} className="h-3.5 w-3.5 accent-primary" />
-              Pin to discharge summary (hospital course)
-            </label>
+          <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3">
             <label className="flex items-center gap-2 text-xs">
               <input type="checkbox" checked={billVisit} onChange={(e) => setBillVisit(e.target.checked)} className="h-3.5 w-3.5 accent-primary" />
               <Stethoscope className="h-3.5 w-3.5 text-primary" /> Bill this visit (post consultation fee)
             </label>
+            <p className="text-[11px] text-muted-foreground">This note flows into the discharge summary&apos;s hospital course automatically — no need to pin.</p>
           </div>
         </div>
 
