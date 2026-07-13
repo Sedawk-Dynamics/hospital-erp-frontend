@@ -17,9 +17,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
 import {
-  useAdmissionLedger, useAddIpCharge, useRecordDoctorVisit, useRemoveIpCharge, useAdmissionActivity,
+  useAdmissionLedger, useAddIpCharge, useRemoveIpCharge, useAdmissionActivity,
   type ActivityEvent, type LedgerLine,
 } from '@/hooks/use-ip-ledger';
+import { IpProgressNoteComposer } from '@/components/doctor/ip-progress-note-composer';
 
 type Role = 'doctor' | 'nurse' | 'admin';
 
@@ -150,29 +151,28 @@ function AddChargeDialog({
 
 // ------------------------------------------------------------- Doctor visit
 
-// One press = 1 doctor visit. The fee is the doctor's admin-configured
-// consultationFee, resolved server-side (not entered here).
-function RecordVisitButton({ admissionId }: { admissionId: string }) {
-  const record = useRecordDoctorVisit(admissionId);
-
-  const onClick = async () => {
-    try {
-      const res = await record.mutateAsync({});
-      const fee = Number(res?.fee ?? 0);
-      toast.success(fee > 0 ? `Doctor visit added — ₹${fee.toFixed(2)}` : 'Doctor visit added (no fee configured)');
-    } catch (e) {
-      toast.error((e as Error)?.message || 'Failed to record the visit.');
-    }
-  };
-
+// A doctor visit is recorded by WRITING the round's IP progress note (the visit
+// note goes into the admission's running log); the note composer optionally posts
+// the consultation fee at the same time. This keeps "a visit" tied to "a note".
+function RecordVisitButton({ admissionId, patientId }: { admissionId: string; patientId: string }) {
+  const [open, setOpen] = useState(false);
   return (
-    <Button
-      size="sm" variant="outline" className="h-7 gap-1 text-xs"
-      onClick={onClick} disabled={record.isPending}
-      title="Adds one doctor visit at the fee set by the hospital admin"
-    >
-      {record.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Stethoscope className="h-3 w-3" />} Add visit
-    </Button>
+    <>
+      <Button
+        size="sm" variant="outline" className="h-7 gap-1 text-xs"
+        onClick={() => setOpen(true)}
+        title="Record a doctor visit — write the round's progress note (and optionally bill the visit)"
+      >
+        <Stethoscope className="h-3 w-3" /> Add visit
+      </Button>
+      <IpProgressNoteComposer
+        open={open}
+        onOpenChange={setOpen}
+        patientId={patientId}
+        admissionId={admissionId}
+        defaultBillVisit
+      />
+    </>
   );
 }
 
@@ -303,7 +303,7 @@ export function IpActivityLog({ admissionId }: { admissionId: string }) {
 
 // --------------------------------------------------------------- The panel
 
-export function IpLedgerPanel({ admissionId, role }: { admissionId: string; patientId: string; role: Role }) {
+export function IpLedgerPanel({ admissionId, patientId, role }: { admissionId: string; patientId: string; role: Role }) {
   const { data: ledger, isLoading } = useAdmissionLedger(admissionId);
   const [addOpen, setAddOpen] = useState(false);
   const removeCharge = useRemoveIpCharge(admissionId);
@@ -333,7 +333,7 @@ export function IpLedgerPanel({ admissionId, role }: { admissionId: string; pati
             )}
           </h2>
           <div className="flex items-center gap-2">
-            {role === 'doctor' && <RecordVisitButton admissionId={admissionId} />}
+            {role === 'doctor' && <RecordVisitButton admissionId={admissionId} patientId={patientId} />}
             <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setAddOpen(true)}>
               <Plus className="h-3 w-3" /> Add charge
             </Button>

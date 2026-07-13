@@ -82,6 +82,7 @@ import { IpPrescriptionDialog } from '@/components/doctor/ip-prescription-dialog
 import { LabOrderDialog } from '@/components/doctor/lab-order-dialog';
 import { ImagingRequestDialog } from '@/components/doctor/imaging-request-dialog';
 import { IpLedgerPanel, IpActivityLog } from '@/components/shared/ip-ledger-panel';
+import { IpProgressNoteComposer } from '@/components/doctor/ip-progress-note-composer';
 import { useAuthStore } from '@/stores/auth-store';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
@@ -566,27 +567,44 @@ function PrescriptionsPanel({ admissionId, patientId, role, onNewRx }: { admissi
 // ── Progress notes panel ───────────────────────────────────────────────────
 
 function ProgressNotesPanel({ admissionId, patientId, role }: { admissionId: string; patientId: string; role: WorkspaceRole }) {
-  const { data, isLoading } = useProgressNotes({ patientId, limit: 20 });
-  const ipNotes = useMemo(() => (data?.data ?? []).slice(0, 8), [data]);
+  const { data, isLoading, refetch } = useProgressNotes({ admissionId, limit: 30 });
+  // IP running log — this admission's notes, newest first.
+  const ipNotes = useMemo(() => data?.data ?? [], [data]);
+  const [composerOpen, setComposerOpen] = useState(false);
 
   return (
     <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          <FileText className="h-4 w-4 text-primary" />
-          Progress Notes
-        </h2>
-        {role === 'doctor' && (
-          <LinkButton size="sm" variant="outline" className="h-7 gap-1 text-xs" href={`/doctor/progress-notes?patientId=${patientId}&admissionId=${admissionId}`}>
-            <Plus className="h-3 w-3" /> Add note
+        <div>
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <FileText className="h-4 w-4 text-primary" />
+            IP Progress Notes
+          </h2>
+          <p className="text-[11px] text-muted-foreground">Running clinical log for the whole admission — a note per visit / round.</p>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <LinkButton size="sm" variant="ghost" className="h-7 gap-1 text-xs" href={`/doctor/progress-notes?patientId=${patientId}&admissionId=${admissionId}`}>
+            Full timeline
           </LinkButton>
-        )}
+          {role === 'doctor' && (
+            <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setComposerOpen(true)}>
+              <Plus className="h-3 w-3" /> Add visit note
+            </Button>
+          )}
+        </div>
       </div>
 
       {isLoading ? (
         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
       ) : ipNotes.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No progress notes yet.</p>
+        <div className="rounded-md border border-dashed py-6 text-center">
+          <p className="text-xs text-muted-foreground">No progress notes yet for this admission.</p>
+          {role === 'doctor' && (
+            <Button size="sm" variant="outline" className="mt-2 h-7 gap-1 text-xs" onClick={() => setComposerOpen(true)}>
+              <Plus className="h-3 w-3" /> Write the first visit note
+            </Button>
+          )}
+        </div>
       ) : (
         <ul className="space-y-2">
           {ipNotes.map((n) => (
@@ -600,12 +618,22 @@ function ProgressNotesPanel({ admissionId, patientId, role }: { admissionId: str
                   {formatDateTime(n.createdAt)}
                 </span>
               </div>
-              <p className="line-clamp-3 whitespace-pre-wrap text-muted-foreground">
+              <p className="whitespace-pre-wrap text-muted-foreground">
                 {n.content || '—'}
               </p>
             </li>
           ))}
         </ul>
+      )}
+
+      {role === 'doctor' && (
+        <IpProgressNoteComposer
+          open={composerOpen}
+          onOpenChange={setComposerOpen}
+          patientId={patientId}
+          admissionId={admissionId}
+          onCreated={() => refetch()}
+        />
       )}
     </div>
   );
