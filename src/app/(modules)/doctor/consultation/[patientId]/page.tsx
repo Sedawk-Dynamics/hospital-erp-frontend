@@ -53,7 +53,8 @@ import { AdmissionRequestDialog } from '@/components/doctor/admission-request-di
 import { OrdersPanel } from '@/components/doctor/orders-panel';
 import { AmendmentHistoryDialog } from '@/components/doctor/progress-notes-amendment-history';
 import { cn } from '@/lib/utils';
-import { usePatientDetail, useProgressNotes } from '@/hooks/use-doctor';
+import { usePatientDetail, useProgressNotes, usePrescriptions, usePrescriptionDetail } from '@/hooks/use-doctor';
+import { printPrescription } from '@/lib/print-prescription';
 import { useLatestVitals as useLatestVitalsNurse } from '@/hooks/use-nurse';
 import { NursingFormsPanel } from '@/components/doctor/nursing-forms-panel';
 import { ConsultationSummaryPanel } from '@/components/doctor/consultation-summary-panel';
@@ -100,6 +101,29 @@ function TopBar({
   const [aiOpen, setAiOpen] = useState(false);
   const { data: aiStatus } = useAiStatus();
   const patientName = `${patient.firstName} ${patient.lastName ?? ''}`.trim();
+
+  // "Print" prints the patient's LATEST prescription (formatted), not the raw page.
+  const { data: rxData } = usePrescriptions({ patientId: patient.id, limit: 5 });
+  const latestRx = useMemo(() => {
+    const list = rxData?.data ?? [];
+    return [...list].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+  }, [rxData]);
+  const [printRxId, setPrintRxId] = useState<string | null>(null);
+  const { data: rxDetail, isFetching: rxFetching } = usePrescriptionDetail(printRxId ?? '');
+  useEffect(() => {
+    if (printRxId && rxDetail && rxDetail.id === printRxId) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      printPrescription(rxDetail as any);
+      setPrintRxId(null);
+    }
+  }, [printRxId, rxDetail]);
+  const handlePrintLatest = () => {
+    if (!latestRx) {
+      toast.error('No prescription to print yet for this patient.');
+      return;
+    }
+    setPrintRxId(latestRx.id);
+  };
   return (
     <div className="sticky top-0 z-30 flex items-center gap-3 border-b border-outline-variant/30 bg-card/95 px-4 py-2 backdrop-blur-md print:hidden">
       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onBack}>
@@ -176,8 +200,19 @@ function TopBar({
           AI Assistant
         </Button>
       )}
-      <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" onClick={() => window.print()}>
-        <Printer className="h-3.5 w-3.5" />
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-8 gap-1 text-xs"
+        onClick={handlePrintLatest}
+        disabled={!!printRxId && rxFetching}
+        title="Print the patient's latest prescription"
+      >
+        {!!printRxId && rxFetching ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Printer className="h-3.5 w-3.5" />
+        )}
         Print
       </Button>
 
