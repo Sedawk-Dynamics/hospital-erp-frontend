@@ -21,6 +21,7 @@ import {
   Repeat,
   FileText,
   Ban,
+  ShieldCheck,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
@@ -37,6 +38,7 @@ import {
   useFormulary,
   useBatchesByDrug,
   useCreatePharmacySale,
+  useDispenseIpPrescription,
   useResolveScan,
   useCheckSaleCompliance,
   usePrescriptionQueue,
@@ -190,6 +192,7 @@ function marginPctOf(item: CartItem): number | null {
 
 function PharmacyPOS() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const initialPrescriptionId = searchParams.get('prescriptionId');
 
   // --- Patient state ---
@@ -289,6 +292,9 @@ function PharmacyPOS() {
 
   // --- Mutation ---
   const createSale = useCreatePharmacySale();
+  const dispenseIp = useDispenseIpPrescription();
+  // IP prescription → billed to the patient's hospital IP ledger, ₹0 collected here.
+  const isIp = activePrescription?.prescriptionType === 'ip';
   const resolveScan = useResolveScan();
   const checkCompliance = useCheckSaleCompliance();
   const createEmergency = useCreateEmergencyPatient();
@@ -651,7 +657,8 @@ function PharmacyPOS() {
   // G2: bill-level discount on top of per-item discounts → final payable.
   const billDiscPctNum = Math.min(100, Math.max(0, Number(billDiscPct) || 0));
   const billDiscountValue = Math.round(summary.rounded * (billDiscPctNum / 100) * 100) / 100;
-  const payable = Math.max(0, Math.round((summary.rounded - billDiscountValue) * 100) / 100);
+  // IP: nothing is collected at the pharmacy — the charge goes to the IP ledger.
+  const payable = isIp ? 0 : Math.max(0, Math.round((summary.rounded - billDiscountValue) * 100) / 100);
 
   const tenderedNum = Number(amountTendered) || 0;
   const changeDue = Math.max(0, tenderedNum - payable);
@@ -661,8 +668,9 @@ function PharmacyPOS() {
 
   const cartHasAllBatches = cart.length > 0 && cart.every((c) => c.batchId !== null);
   // A bill needs a cart with a batch per line. Patient AND prescription are
-  // both OPTIONAL — a walk-in / OTC counter sale needs neither.
-  const canCreateBill = cart.length > 0 && cartHasAllBatches;
+  // both OPTIONAL — a walk-in / OTC counter sale needs neither. For an IP Rx we
+  // dispense straight from the prescription (FEFO) → only the Rx is required.
+  const canCreateBill = isIp ? !!activePrescriptionId : cart.length > 0 && cartHasAllBatches;
 
   const PAYMENT_METHOD_MAP: Record<string, PharmacyPaymentMethod> = {
     Cash: 'cash',
@@ -690,6 +698,21 @@ function PharmacyPOS() {
 
   // Bills the whole cart as one invoice, then opens the printable receipt.
   const runSale = async () => {
+    // IP prescription: dispense straight to the patient's hospital IP ledger — no
+    // counter sale, ₹0 collected here. Uses the prescription's own lines (FEFO).
+    if (isIp && activePrescriptionId) {
+      try {
+        await dispenseIp.mutateAsync(activePrescriptionId);
+        toast.success("Dispensed — billed to the patient's IP ledger (₹0 at the pharmacy).");
+        setCart([]);
+        setActivePrescriptionId(null);
+        clearPatient();
+        router.push('/pharmacy/queue');
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : 'Could not dispense to the IP ledger');
+      }
+      return;
+    }
     try {
       // Automated compliance validation (spec Section 2): surface HSN/GST/Schedule
       // warnings and hard-block a Schedule-X-without-Rx sale before charging.
@@ -759,6 +782,13 @@ function PharmacyPOS() {
   };
 
   const handleCreateBill = async () => {
+    // IP: dispensed straight from the prescription lines to the hospital ledger —
+    // there is no cart to validate, so skip the counter-sale guards.
+    if (isIp) {
+      if (!activePrescriptionId) return toast.error('No IP prescription selected');
+      await runSale();
+      return;
+    }
     if (cart.length === 0) return toast.error('Add at least one medicine to the cart');
     if (!cartHasAllBatches) return toast.error('Please select a batch for each medicine');
 
@@ -1420,7 +1450,19 @@ function PharmacyPOS() {
             </div>
           </div>
 
+          {isIp && (
+            <div className="flex items-start gap-1.5 rounded-lg border border-purple-300 bg-purple-50/40 px-3 py-2 text-xs text-purple-800">
+              <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>
+                <strong>IP patient</strong> — nothing is collected at the pharmacy. The medicine cost is
+                posted to the patient&apos;s <strong>hospital IP ledger</strong> and settled in Hospital
+                Billing.
+              </span>
+            </div>
+          )}
+
           {/* Payment — single mode, or G7 split across multiple tenders */}
+          {!isIp && (
           <div>
             <div className="mb-2 flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Payment</p>
@@ -1581,22 +1623,31 @@ function PharmacyPOS() {
               </div>
             )}
           </div>
+          )}
 
           <div className="flex gap-2">
+            {!isIp && (
+              <Button
+                variant="outline"
+                className="flex-1"
+                disabled={cart.length === 0}
+                onClick={handleSaveDraft}
+              >
+                Save Draft
+              </Button>
+            )}
             <Button
-              variant="outline"
               className="flex-1"
-              disabled={cart.length === 0}
-              onClick={handleSaveDraft}
-            >
-              Save Draft
-            </Button>
-            <Button
-              className="flex-1"
-              disabled={!canCreateBill || createSale.isPending}
+              disabled={!canCreateBill || createSale.isPending || dispenseIp.isPending}
               onClick={handleCreateBill}
             >
-              {createSale.isPending ? 'Billing...' : 'Generate Bill'}
+              {isIp
+                ? dispenseIp.isPending
+                  ? 'Dispensing…'
+                  : 'Dispense to IP ledger'
+                : createSale.isPending
+                  ? 'Billing...'
+                  : 'Generate Bill'}
             </Button>
           </div>
         </div>

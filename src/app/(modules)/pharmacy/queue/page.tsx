@@ -45,7 +45,6 @@ import {
   type PrescriptionQueueParams,
   type PharmacyOrderStatus,
 } from '@/hooks/use-pharmacy';
-import { IpDispenseBillingDialog } from '@/components/pharmacy/ip-dispense-billing-dialog';
 
 const statusBadge: Record<PrescriptionListItem['status'], string> = {
   active: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
@@ -95,7 +94,6 @@ export default function PrescriptionQueuePage() {
   const records = data?.data ?? [];
   const meta = data?.meta;
   const setOrderStatus = useSetPharmacyOrderStatus();
-  const [ipBillingRx, setIpBillingRx] = useState<PrescriptionListItem | null>(null);
 
   const handleDispense = (rx: PrescriptionListItem) => {
     router.push(`/pharmacy?prescriptionId=${rx.id}`);
@@ -347,10 +345,11 @@ export default function PrescriptionQueuePage() {
                               <Button
                                 size="sm"
                                 disabled={rx.prescriptionItems.length === 0}
-                                onClick={() => setIpBillingRx(rx)}
-                                title="Open IP billing — dispense and post the charge to the patient's IP ledger (₹0 at the counter)"
+                                onClick={() => handleDispense(rx)}
+                                title="Open billing — IP is flagged, ₹0 at the counter, billed to the patient's IP ledger"
                               >
                                 Dispense to IP bill
+                                <ArrowRight className="ml-1 h-3 w-3" />
                               </Button>
                               <span className="text-[10px] text-muted-foreground">Billed to patient ledger</span>
                             </div>
@@ -392,12 +391,6 @@ export default function PrescriptionQueuePage() {
           </>
         )}
       </div>
-
-      <IpDispenseBillingDialog
-        rx={ipBillingRx}
-        open={!!ipBillingRx}
-        onOpenChange={(o) => { if (!o) setIpBillingRx(null); }}
-      />
     </div>
   );
 }
