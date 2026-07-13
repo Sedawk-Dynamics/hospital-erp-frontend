@@ -1553,6 +1553,13 @@ export interface PrescriptionListItem {
     doseQuantity: number | string | null;
     quantity: number | null;
     isPrn: boolean;
+    // Pack/loose config from the stocked drug (null for free-text items) — lets
+    // the queue break the total into packs + loose units.
+    drug?: {
+      packSize: number | null;
+      looseUnitLabel: string | null;
+      dosageForm: string | null;
+    } | null;
   }>;
 }
 

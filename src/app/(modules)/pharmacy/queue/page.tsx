@@ -38,6 +38,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
 import { calcQuantityFromStrings } from '@/lib/dosage-calc';
+import { formatBaseQty, packLooseBreakdown } from '@/lib/pharmacy-units';
 import {
   usePrescriptionQueue,
   useSetPharmacyOrderStatus,
@@ -271,24 +272,33 @@ export default function PrescriptionQueuePage() {
                               const sig = [it.frequency, it.duration, dose > 1 ? `× ${dose}` : null]
                                 .filter(Boolean)
                                 .join(' · ');
+                              const dosageForm = it.drug?.dosageForm ?? null;
+                              const looseLabel = it.drug?.looseUnitLabel ?? null;
+                              // Total as tablets/caps/ml, plus a pack + loose breakdown
+                              // so the pharmacist knows how to pick stock.
+                              const totalLabel = qty != null ? formatBaseQty(qty, dosageForm, looseLabel) : null;
+                              const breakdown = qty != null ? packLooseBreakdown(qty, it.drug?.packSize, dosageForm, looseLabel) : null;
                               return (
                                 <div key={it.id} className="flex items-start gap-1.5">
                                   <Pill className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                                   <span className="min-w-0 text-sm leading-tight">
                                     <span className="font-medium">{it.drugName}</span>
                                     {it.dosage ? <span className="text-muted-foreground"> {it.dosage}</span> : null}
-                                    {(sig || qty != null || it.isPrn) && (
+                                    {(sig || totalLabel || it.isPrn) && (
                                       <span className="mt-0.5 block text-[11px] text-muted-foreground">
                                         {sig}
-                                        {qty != null ? (
+                                        {totalLabel != null ? (
                                           <>
                                             {sig ? ' → ' : ''}
                                             <span
                                               className="font-semibold text-foreground"
-                                              title="Total units (tablets/caps/ml) to dispense — not packs"
+                                              title="Total units to dispense (dose × duration)"
                                             >
-                                              {qty} units
+                                              {totalLabel}
                                             </span>
+                                            {breakdown && (
+                                              <span className="text-muted-foreground"> ({breakdown})</span>
+                                            )}
                                           </>
                                         ) : it.isPrn ? (
                                           <>{sig ? ' · ' : ''}<span className="font-medium">PRN</span></>

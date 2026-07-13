@@ -64,3 +64,26 @@ export function packSummary(
   const unit = looseUnitLabel(dosageForm, configured);
   return `1 pack = ${packSize} ${pluralizeUnit(packSize, unit)}`;
 }
+
+/**
+ * Break a total base-unit count into whole packs + loose sub-units, e.g. a total
+ * of 18 tablets with packSize 10 → "1 pack + 8 loose". Returns null when the
+ * drug isn't packed (packSize ≤ 1) or the whole count fits in loose units — so
+ * the caller can just show "<n> tablets" alone. This is the "tablet pack vs
+ * loose" breakdown the pharmacist needs to pick stock.
+ */
+export function packLooseBreakdown(
+  count: number,
+  packSize?: number | null,
+  dosageForm?: string | null,
+  configured?: string | null,
+): string | null {
+  if (!packSize || packSize <= 1 || !Number.isFinite(count) || count <= 0) return null;
+  const packs = Math.floor(count / packSize);
+  const loose = count % packSize;
+  if (packs === 0) return null; // all loose — the plain "<n> units" already says it
+  const unit = looseUnitLabel(dosageForm, configured);
+  const packStr = `${packs} pack${packs > 1 ? 's' : ''}`;
+  if (loose === 0) return packStr;
+  return `${packStr} + ${loose} loose ${pluralizeUnit(loose, unit)}`;
+}
