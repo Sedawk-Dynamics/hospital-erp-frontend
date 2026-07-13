@@ -234,8 +234,9 @@ function MedCard({ index, med, patientId, onUpdate, onUpdateMany, onRemove }: {
           </Button>
         </div>
 
-        {/* Responsive field grid: 2 cols (mobile) → 3 (sm) → 6 (lg) */}
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        {/* Responsive field grid: 2 cols (mobile) → 3 (sm+). Kept at 3 so each
+            field — especially Duration (value + unit) — has room to render. */}
+        <div className="grid grid-cols-2 gap-x-2 gap-y-2.5 sm:grid-cols-3">
           <Field label="Dose">
             <div className="flex items-center gap-1">
               <Input
@@ -271,8 +272,8 @@ function MedCard({ index, med, patientId, onUpdate, onUpdateMany, onRemove }: {
           </Field>
           <Field label="Duration">
             <div className="flex items-center gap-1">
-              <Input placeholder="7" type="number" className="h-8 w-full px-1 text-center text-xs" value={med.durationValue || ''} onChange={(e) => onUpdate(index, 'durationValue', e.target.value)} />
-              <select className="h-8 rounded-md border border-input bg-background px-0.5 text-[10px] shrink-0" value={med.durationUnit || 'days'} onChange={(e) => onUpdate(index, 'durationUnit', e.target.value)}>
+              <Input placeholder="7" type="number" className="h-8 w-10 min-w-0 flex-1 px-1 text-center text-xs" value={med.durationValue || ''} onChange={(e) => onUpdate(index, 'durationValue', e.target.value)} />
+              <select className="h-8 w-16 shrink-0 rounded-md border border-input bg-background px-1 text-[11px]" value={med.durationUnit || 'days'} onChange={(e) => onUpdate(index, 'durationUnit', e.target.value)}>
                 {DURATION_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
               </select>
             </div>
