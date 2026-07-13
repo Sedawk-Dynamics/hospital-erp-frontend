@@ -52,12 +52,45 @@ export function useConsolidateIpBill() {
   });
 }
 
+export interface TransferToTpaInput {
+  admissionId: string;
+  policyId?: string;
+  newPolicy?: {
+    insurerName: string;
+    tpaName?: string;
+    policyNumber?: string;
+    coverageAmount?: number;
+    coPayPercent?: number;
+    deductibleAmount?: number;
+  };
+}
 export function useTransferToTpa() {
   const invalidate = useIpBillingInvalidate();
   return useMutation({
-    mutationFn: async (admissionId: string) =>
-      (await apiPost<{ policy?: { tpa?: { name: string } | null; insurer?: { name: string } | null } }>(`/billing/admissions/${admissionId}/transfer-to-tpa`, {})).data,
+    mutationFn: async (v: TransferToTpaInput) =>
+      (await apiPost<{ policy?: { tpa?: { name: string } | null; insurer?: { name: string } | null } }>(
+        `/billing/admissions/${v.admissionId}/transfer-to-tpa`,
+        { policyId: v.policyId, newPolicy: v.newPolicy },
+      )).data,
     onSuccess: invalidate,
+  });
+}
+
+// A patient's existing insurance policies (to pick from at transfer time).
+export interface PatientPolicy {
+  id: string;
+  policyNumber: string;
+  status: string;
+  validFrom?: string;
+  validTo?: string;
+  insurer?: { name: string } | null;
+  tpa?: { name: string } | null;
+}
+export function usePatientPolicies(patientId: string | null) {
+  return useQuery({
+    queryKey: ['patient-policies', patientId],
+    queryFn: async () => (await apiGet<PatientPolicy[]>(`/insurance/policies/by-patient/${patientId}`)).data,
+    enabled: !!patientId,
   });
 }
 

@@ -3,13 +3,12 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, Loader2, ShieldCheck, RefreshCw, BedDouble, ArrowRightLeft } from 'lucide-react';
-import { toast } from 'sonner';
 import { apiGet } from '@/lib/api';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { useTransferToTpa, type IpBill } from '@/hooks/use-ip-billing';
+import { type IpBill } from '@/hooks/use-ip-billing';
 import { IpBillingDetailDialog } from '@/components/hospital/billing/ip-billing-detail-dialog';
 
 // IP billing section: one consolidated bill per admission, shown separately from
@@ -41,7 +40,6 @@ const CATEGORY_BADGE: Record<string, string> = {
 export function IpBillingTab() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
-  const [busyId, setBusyId] = useState<string | null>(null);
   const [detailBill, setDetailBill] = useState<IpBill | null>(null);
 
   const { data, isLoading } = useQuery({
@@ -80,16 +78,6 @@ export function IpBillingTab() {
     qc.invalidateQueries({ queryKey: ['ip-ledger'] });
   };
 
-  const transfer = useTransferToTpa();
-
-  const runTransfer = async (admissionId: string) => {
-    setBusyId(admissionId);
-    try {
-      const res: any = await transfer.mutateAsync(admissionId);
-      toast.success(`Transferred to ${res?.policy?.tpa?.name || res?.policy?.insurer?.name || 'the TPA'} — claim raised.`);
-    } catch (e) { toast.error((e as Error).message || 'Transfer to TPA failed.'); }
-    finally { setBusyId(null); }
-  };
 
   return (
     <div className="space-y-3">
@@ -127,7 +115,6 @@ export function IpBillingTab() {
                 const liveClaim = claim && !['cancelled', 'rejected'].includes(claim.status);
                 const cat = (b.admission?.billingCategory ?? 'cash').toLowerCase();
                 const canTransfer = !!b.admissionId && isInsurance(cat) && !liveClaim;
-                const busy = busyId === b.admissionId;
                 return (
                   <tr key={b.admissionId ?? b.id} className="border-t align-top">
                     <td className="px-3 py-2">
@@ -183,9 +170,9 @@ export function IpBillingTab() {
                     <td className="px-3 py-2">
                       <div className="flex items-center justify-end gap-1.5">
                         {canTransfer && (
-                          <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px]" disabled={busy}
-                            onClick={() => runTransfer(b.admissionId!)} title="Raise an insurance claim and hand the bill to the TPA">
-                            {busy && transfer.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowRightLeft className="h-3 w-3" />} Transfer to TPA
+                          <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px]"
+                            onClick={() => setDetailBill(b)} title="Open the bill and transfer to the TPA">
+                            <ArrowRightLeft className="h-3 w-3" /> Transfer to TPA
                           </Button>
                         )}
                         {liveClaim && (
