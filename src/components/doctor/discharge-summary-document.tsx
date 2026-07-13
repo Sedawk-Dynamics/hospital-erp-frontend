@@ -87,10 +87,21 @@ export const DischargeSummaryDocument = forwardRef<HTMLDivElement, { doc: Discha
     ];
 
     const h = doc.hospital;
+    const sh = h.show;
     const accent = /^#[0-9a-fA-F]{6}$/.test(h.accentColor) ? h.accentColor : '#0f766e';
-    const addressLine = [h.addressLine1, h.addressLine2, [h.city, h.state].filter(Boolean).join(', '), h.pincode, h.country].filter(Boolean).join(', ');
-    const contact = [h.phone, h.altPhone, h.email, h.website].filter(Boolean).join('  •  ');
-    const reg = [h.registrationNo ? `Reg. No: ${h.registrationNo}` : '', h.gstin ? `GSTIN: ${h.gstin}` : '', h.accreditation || ''].filter(Boolean).join('  •  ');
+    const showTagline = sh.tagline && !!h.tagline;
+    const addressLine = sh.address
+      ? [h.addressLine1, h.addressLine2, [h.city, h.state].filter(Boolean).join(', '), h.pincode, h.country].filter(Boolean).join(', ')
+      : '';
+    const contact = [
+      sh.phone ? h.phone : null, sh.phone ? h.altPhone : null,
+      sh.email ? h.email : null, sh.website ? h.website : null,
+    ].filter(Boolean).join('  •  ');
+    const reg = [
+      sh.registrationNo && h.registrationNo ? `Reg. No: ${h.registrationNo}` : '',
+      sh.gstin && h.gstin ? `GSTIN: ${h.gstin}` : '',
+      sh.accreditation ? h.accreditation || '' : '',
+    ].filter(Boolean).join('  •  ');
     const logo = h.showLogo && h.logoUrl ? resolveLogoUrl(h.logoUrl) : null;
     const leftLayout = h.headerStyle === 'left';
 
@@ -114,7 +125,7 @@ export const DischargeSummaryDocument = forwardRef<HTMLDivElement, { doc: Discha
           )}
           <div className={leftLayout ? 'min-w-0 flex-1' : ''}>
             <h1 className="text-[20px] font-bold tracking-tight text-[#132029]">{h.name}</h1>
-            {h.tagline && <p className="text-[11px] italic" style={{ color: accent }}>{h.tagline}</p>}
+            {showTagline && <p className="text-[11px] italic" style={{ color: accent }}>{h.tagline}</p>}
             {addressLine && <p className="text-[11px] text-[#5b6472]">{addressLine}</p>}
             {contact && <p className="text-[11px] text-[#5b6472]">{contact}</p>}
             {reg && <p className="text-[10px] text-[#5b6472]">{reg}</p>}
@@ -265,9 +276,11 @@ export const DischargeSummaryDocument = forwardRef<HTMLDivElement, { doc: Discha
           </div>
         </div>
 
-        <p className="mt-6 border-t border-[#d3d8de] pt-2 text-center text-[9px] text-[#6b7280]">
-          {h.footerText || 'This is a computer-generated discharge summary. In case of any emergency, contact the hospital immediately.'}
-        </p>
+        {sh.footer && (
+          <p className="mt-6 border-t border-[#d3d8de] pt-2 text-center text-[9px] text-[#6b7280]">
+            {h.footerText || 'This is a computer-generated discharge summary. In case of any emergency, contact the hospital immediately.'}
+          </p>
+        )}
       </div>
     );
   },

@@ -12,15 +12,33 @@ import { cn } from '@/lib/utils';
 import { resolveLogoUrl } from '@/hooks/use-branding';
 import {
   useHospitalBranding, useUpdateHospitalBranding, useUploadBrandingLogo, useRemoveBrandingLogo,
-  fetchBrandingPreviewUrl, type HospitalBranding,
+  fetchBrandingPreviewUrl, DEFAULT_ACCENT, type HospitalBranding, type BrandingVisibility,
 } from '@/hooks/use-hospital-branding';
+
+const ALL_VISIBLE: BrandingVisibility = {
+  tagline: true, address: true, phone: true, email: true, website: true,
+  registrationNo: true, gstin: true, accreditation: true, footer: true,
+};
 
 const EMPTY: HospitalBranding = {
   name: '', tagline: null, logoUrl: null, showLogo: true, headerStyle: 'centered',
   addressLine1: null, addressLine2: null, city: null, state: null, pincode: null, country: null,
   phone: null, altPhone: null, email: null, website: null, registrationNo: null, gstin: null,
-  accreditation: null, footerText: null, accentColor: '#0f766e',
+  accreditation: null, footerText: null, accentColor: DEFAULT_ACCENT, show: { ...ALL_VISIBLE },
 };
+
+// The fields the admin can hide, in display order.
+const VISIBILITY_FIELDS: Array<{ key: keyof BrandingVisibility; label: string }> = [
+  { key: 'tagline', label: 'Tagline' },
+  { key: 'address', label: 'Address' },
+  { key: 'phone', label: 'Phone number(s)' },
+  { key: 'email', label: 'Email' },
+  { key: 'website', label: 'Website' },
+  { key: 'registrationNo', label: 'Registration / License No' },
+  { key: 'gstin', label: 'GSTIN' },
+  { key: 'accreditation', label: 'Accreditation' },
+  { key: 'footer', label: 'Footer note' },
+];
 
 export default function PdfBuilderPage() {
   const { data, isLoading } = useHospitalBranding();
@@ -40,6 +58,8 @@ export default function PdfBuilderPage() {
 
   const set = <K extends keyof HospitalBranding>(k: K, v: HospitalBranding[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
+  const setShow = (k: keyof BrandingVisibility, v: boolean) =>
+    setForm((f) => ({ ...f, show: { ...f.show, [k]: v } }));
   const setStr = (k: keyof HospitalBranding) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     set(k, (e.target.value || null) as HospitalBranding[typeof k]);
 
@@ -145,15 +165,19 @@ export default function PdfBuilderPage() {
                 <div>
                   <Label className="mb-1 block text-xs">Accent colour</Label>
                   <div className="flex items-center gap-2">
-                    <input type="color" value={form.accentColor} onChange={(e) => set('accentColor', e.target.value)} className="h-9 w-12 cursor-pointer rounded border" />
+                    <input type="color" value={form.accentColor} onChange={(e) => set('accentColor', e.target.value)} className="h-9 w-11 cursor-pointer rounded border" />
                     <Input value={form.accentColor} onChange={(e) => set('accentColor', e.target.value)} className="h-9 flex-1" />
+                    <Button
+                      size="sm" variant="ghost" className="h-9 shrink-0 px-2 text-[11px]"
+                      onClick={() => set('accentColor', DEFAULT_ACCENT)}
+                      disabled={form.accentColor.toLowerCase() === DEFAULT_ACCENT}
+                      title="Reset the accent colour to the default"
+                    >
+                      Default
+                    </Button>
                   </div>
                 </div>
               </div>
-              <label className="flex items-center gap-2 text-xs">
-                <input type="checkbox" checked={form.showLogo} onChange={(e) => set('showLogo', e.target.checked)} className="h-3.5 w-3.5 accent-primary" />
-                Show the logo on documents
-              </label>
             </CardContent>
           </Card>
 
@@ -195,6 +219,19 @@ export default function PdfBuilderPage() {
               </Field>
             </CardContent>
           </Card>
+
+          {/* What shows on the PDF */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Show on the document</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 gap-2">
+              <Toggle label="Logo" checked={form.showLogo} onChange={(v) => set('showLogo', v)} />
+              {VISIBILITY_FIELDS.map((f) => (
+                <Toggle key={f.key} label={f.label} checked={form.show[f.key]} onChange={(v) => setShow(f.key, v)} />
+              ))}
+            </CardContent>
+          </Card>
         </div>
 
         {/* ---- Right: live PDF preview ---- */}
@@ -230,5 +267,14 @@ function Field({ label, className, children }: { label: string; className?: stri
       <Label className="mb-1 block text-xs text-muted-foreground">{label}</Label>
       {children}
     </div>
+  );
+}
+
+function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="flex items-center gap-2 rounded-md border bg-background px-2.5 py-1.5 text-xs">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-3.5 w-3.5 accent-primary" />
+      <span className={checked ? 'text-foreground' : 'text-muted-foreground line-through'}>{label}</span>
+    </label>
   );
 }

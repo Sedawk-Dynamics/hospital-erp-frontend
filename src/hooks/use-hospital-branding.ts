@@ -6,6 +6,20 @@ import apiClient from '@/lib/api-client';
 // Everything the hospital configures here is inherited by every PDF and print
 // the system produces.
 
+export interface BrandingVisibility {
+  tagline: boolean;
+  address: boolean;
+  phone: boolean;
+  email: boolean;
+  website: boolean;
+  registrationNo: boolean;
+  gstin: boolean;
+  accreditation: boolean;
+  footer: boolean;
+}
+
+export const DEFAULT_ACCENT = '#0f766e';
+
 export interface HospitalBranding {
   name: string;
   tagline: string | null;
@@ -27,6 +41,7 @@ export interface HospitalBranding {
   accreditation: string | null;
   footerText: string | null;
   accentColor: string;
+  show: BrandingVisibility;
 }
 
 export function useHospitalBranding() {
