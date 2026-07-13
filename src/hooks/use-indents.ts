@@ -44,6 +44,7 @@ export interface MedicationIndent {
   priority?: string | null;
   notes?: string | null;
   billId?: string | null;
+  billNumber?: string | null;
   raisedById: string;
   approvedById?: string | null;
   approvedAt?: string | null;

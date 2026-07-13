@@ -62,6 +62,7 @@ export interface OtKitIssue {
   reconciledById?: string | null;
   reconciledAt?: string | null;
   billId?: string | null;
+  billNumber?: string | null;
   notes?: string | null;
   items: OtKitIssueItem[];
   createdAt: string;

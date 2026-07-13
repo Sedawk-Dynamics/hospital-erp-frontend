@@ -225,7 +225,7 @@ function KitIssuesTab() {
                   <tr key={issue.id} className="border-b last:border-b-0 hover:bg-muted/30 transition-colors">
                     <td className="px-4 py-3 font-mono text-xs font-medium">{issue.issueNumber}</td>
                     <td className="px-4 py-3">
-                      <div className="font-medium text-foreground">{issue.patientName ?? issue.patientId}</div>
+                      <div className="font-medium text-foreground">{issue.patientName ?? '—'}</div>
                       {issue.patientMrn && (
                         <div className="text-xs text-muted-foreground">MRN: {issue.patientMrn}</div>
                       )}
@@ -367,7 +367,7 @@ function IssueKitDialog({
         </DialogHeader>
 
         <p className="text-sm text-muted-foreground">
-          For <b>{issue.patientName ?? issue.patientId}</b>. Pick the pre-packed crate and issue it — every item
+          For <b>{issue.patientName ?? '—'}</b>. Pick the pre-packed crate and issue it — every item
           below leaves active pharmacy stock (earliest-expiry / FEFO batch) and moves into the
           <b> Virtual OT Ledger</b> bound to this OT session. It is <b>not billed yet</b>; after surgery you reconcile
           to bill only what was consumed.
@@ -616,7 +616,7 @@ function IssueDetailsDialog({
         <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
           <div>
             <span className="text-xs text-muted-foreground">Patient</span>
-            <div className="font-medium">{issue.patientName ?? issue.patientId}</div>
+            <div className="font-medium">{issue.patientName ?? '—'}</div>
           </div>
           <div>
             <span className="text-xs text-muted-foreground">MRN</span>
@@ -628,7 +628,7 @@ function IssueDetailsDialog({
           </div>
           <div>
             <span className="text-xs text-muted-foreground">Bill</span>
-            <div className="font-medium">{issue.billId ?? '—'}</div>
+            <div className="font-medium">{issue.billNumber ?? '—'}</div>
           </div>
           <div>
             <span className="text-xs text-muted-foreground">Issued at</span>

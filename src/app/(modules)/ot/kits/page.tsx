@@ -198,7 +198,7 @@ function RequestsTab() {
                   <tr key={issue.id} className="border-b last:border-b-0 hover:bg-muted/30 transition-colors">
                     <td className="px-4 py-3 font-mono text-xs font-medium">{issue.issueNumber}</td>
                     <td className="px-4 py-3">
-                      <div className="font-medium text-foreground">{issue.patientName ?? issue.patientId}</div>
+                      <div className="font-medium text-foreground">{issue.patientName ?? '—'}</div>
                       {issue.patientMrn && <div className="text-xs text-muted-foreground">MRN: {issue.patientMrn}</div>}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
@@ -495,7 +495,7 @@ function RequestDetailsDialog({ issue, templateName, onClose }: { issue: OtKitIs
         </DialogHeader>
 
         <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-          <div><span className="text-xs text-muted-foreground">Patient</span><div className="font-medium">{issue.patientName ?? issue.patientId}</div></div>
+          <div><span className="text-xs text-muted-foreground">Patient</span><div className="font-medium">{issue.patientName ?? '—'}</div></div>
           <div><span className="text-xs text-muted-foreground">MRN</span><div className="font-medium">{issue.patientMrn ?? '—'}</div></div>
           <div><span className="text-xs text-muted-foreground">Kit</span><div className="font-medium">{templateName ?? '—'}</div></div>
           <div><span className="text-xs text-muted-foreground">Issued at</span><div className="font-medium">{issue.issuedAt ? formatDate(issue.issuedAt) : '—'}</div></div>

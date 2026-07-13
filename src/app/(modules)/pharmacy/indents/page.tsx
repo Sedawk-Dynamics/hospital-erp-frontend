@@ -967,7 +967,7 @@ function IndentDetailsDialog({
             {dispensed && indent.billId && (
               <p>
                 <span className="text-muted-foreground">Billed to:</span>{' '}
-                <span className="font-mono">{indent.billId}</span>
+                <span className="font-mono">{indent.billNumber ?? '—'}</span>
               </p>
             )}
           </div>
