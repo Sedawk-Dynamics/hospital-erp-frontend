@@ -1,4 +1,26 @@
 import { formatDateTimeAmPm } from './date-utils';
+import apiClient from '@/lib/api-client';
+
+/**
+ * Open the hospital-BRANDED prescription PDF (letterhead / accent / footer set by
+ * the hospital admin in the PDF Builder). Renders server-side and opens it in a
+ * new tab so the user can print or Save-as-PDF. Preferred over the client-side
+ * HTML printer below.
+ */
+export async function openPrescriptionPdf(prescriptionId: string): Promise<void> {
+  const res = await apiClient.get(`/prescriptions/${prescriptionId}/pdf`, { responseType: 'blob' });
+  const url = URL.createObjectURL(res.data as Blob);
+  const w = window.open(url, '_blank');
+  if (!w) {
+    // Popup blocked — fall back to a same-gesture anchor click.
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.click();
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
 
 interface PrintablePrescription {
   id: string;

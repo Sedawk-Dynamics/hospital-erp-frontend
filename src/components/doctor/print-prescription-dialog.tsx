@@ -17,10 +17,9 @@ import { toast } from 'sonner';
 import {
   usePatientSearch,
   usePrescriptions,
-  usePrescriptionDetail,
 } from '@/hooks/use-doctor';
 import { useAuthStore } from '@/stores/auth-store';
-import { printPrescription } from '@/lib/print-prescription';
+import { openPrescriptionPdf } from '@/lib/print-prescription';
 import { formatDate } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
 import type { SelectedPatient } from './patient-visit-picker';
@@ -43,7 +42,7 @@ export function PrintPrescriptionDialog({
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedRxId, setSelectedRxId] = useState<string>('');
-  const [pendingPrintId, setPendingPrintId] = useState<string | null>(null);
+  const [printingId, setPrintingId] = useState<string | null>(null);
 
   // Reset when dialog opens/closes
   useEffect(() => {
@@ -53,7 +52,7 @@ export function PrintPrescriptionDialog({
       setDebouncedQuery('');
       setShowDropdown(false);
       setSelectedRxId('');
-      setPendingPrintId(null);
+      setPrintingId(null);
     } else {
       setSelectedPatient(initialPatient);
     }
@@ -74,18 +73,6 @@ export function PrintPrescriptionDialog({
   );
   const prescriptions = useMemo(() => rxData?.data ?? [], [rxData]);
 
-  // When user clicks Print on a row, fetch full detail (with items) and print once loaded
-  const { data: detailToPrint, isFetching: detailFetching } = usePrescriptionDetail(
-    pendingPrintId ?? '',
-  );
-
-  useEffect(() => {
-    if (pendingPrintId && detailToPrint && detailToPrint.id === pendingPrintId) {
-      printPrescription(detailToPrint as any);
-      setPendingPrintId(null);
-    }
-  }, [pendingPrintId, detailToPrint]);
-
   const handleSelectPatient = useCallback(
     (p: { id: string; firstName?: string; lastName?: string; mrn?: string }) => {
       setSelectedPatient({
@@ -103,9 +90,17 @@ export function PrintPrescriptionDialog({
   );
 
   const handlePrintRx = useCallback(
-    (rxId: string) => {
+    async (rxId: string) => {
       setSelectedRxId(rxId);
-      setPendingPrintId(rxId);
+      setPrintingId(rxId);
+      try {
+        // Hospital-branded PDF (PDF Builder letterhead / accent / footer).
+        await openPrescriptionPdf(rxId);
+      } catch {
+        toast.error('Could not open the prescription PDF.');
+      } finally {
+        setPrintingId(null);
+      }
     },
     [],
   );
@@ -226,7 +221,7 @@ export function PrintPrescriptionDialog({
                     const itemCount = rx.items?.length ?? 0;
                     const firstDrug = rx.items?.[0]?.drugName || '—';
                     const moreCount = itemCount > 1 ? ` +${itemCount - 1}` : '';
-                    const loading = pendingPrintId === rx.id && detailFetching;
+                    const loading = printingId === rx.id;
                     return (
                       <div
                         key={rx.id}
