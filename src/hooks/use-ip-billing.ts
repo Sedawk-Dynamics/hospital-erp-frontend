@@ -1,5 +1,5 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiPost, apiPatch } from '@/lib/api';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiGet, apiPost, apiPatch } from '@/lib/api';
 
 // Shared types + mutations for the unified IP billing section.
 
@@ -76,5 +76,31 @@ export function useSetBillDiscount() {
     mutationFn: async (v: { billId: string; discountType: 'percentage' | 'fixed'; discountValue: number; reason?: string }) =>
       (await apiPatch(`/billing/${v.billId}/discount`, { discountType: v.discountType, discountValue: v.discountValue, reason: v.reason })).data,
     onSuccess: invalidate,
+  });
+}
+
+// Line-level insurance split: mark a bill line insurance-eligible / patient-only.
+export function useSetBillItemReimbursable() {
+  const invalidate = useIpBillingInvalidate();
+  return useMutation({
+    mutationFn: async (v: { itemId: string; isReimbursable: boolean | null }) =>
+      (await apiPatch(`/billing/bill-items/${v.itemId}/reimbursable`, { isReimbursable: v.isReimbursable })).data,
+    onSuccess: invalidate,
+  });
+}
+
+// Payment history (installments) for a bill.
+export interface BillPayment {
+  id: string;
+  amount: number | string;
+  paymentDate: string;
+  paymentMethod: string;
+  status: string;
+}
+export function useBillPayments(billId: string | null) {
+  return useQuery({
+    queryKey: ['bill-payments', billId],
+    queryFn: async () => (await apiGet<BillPayment[]>('/payments', { params: { billId, limit: 50 } })).data,
+    enabled: !!billId,
   });
 }

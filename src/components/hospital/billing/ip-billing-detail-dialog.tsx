@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   Loader2, ArrowRightLeft, ShieldCheck, Percent, Wallet, BedDouble, ReceiptText, RefreshCw,
@@ -16,8 +17,11 @@ import { IpLedgerPanel } from '@/components/shared/ip-ledger-panel';
 import { CollectBillPaymentDialog } from '@/components/hospital/billing/collect-bill-payment-dialog';
 import {
   useTransferToTpa, useRecordTpaSettlement, useSetBillDiscount, useConsolidateIpBill,
+  useSetBillItemReimbursable, useBillPayments,
   type IpBill,
 } from '@/hooks/use-ip-billing';
+import { useAdmissionLedger } from '@/hooks/use-ip-ledger';
+import { formatDate } from '@/lib/date-utils';
 
 const n = (v: number | string | null | undefined) => Number(v ?? 0);
 const money = (v: number | string | null | undefined) => `₹${n(v).toFixed(2)}`;
@@ -40,6 +44,11 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
   const settle = useRecordTpaSettlement();
   const discount = useSetBillDiscount();
   const consolidate = useConsolidateIpBill();
+  const setReimbursable = useSetBillItemReimbursable();
+  const qc = useQueryClient();
+  const admissionId = bill?.admissionId ?? '';
+  const { data: ledger } = useAdmissionLedger(open ? admissionId : null);
+  const { data: payments } = useBillPayments(open ? (bill?.id ?? null) : null);
 
   const [discType, setDiscType] = useState<'percentage' | 'fixed'>('fixed');
   const [discValue, setDiscValue] = useState<number>(0);
@@ -47,7 +56,6 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
   const [collectOpen, setCollectOpen] = useState(false);
 
   if (!bill) return null;
-  const admissionId = bill.admissionId!;
   const cat = (bill.admission?.billingCategory ?? 'cash').toLowerCase();
   const claim = bill.insuranceClaims?.[0];
   const liveClaim = claim && !['cancelled', 'rejected'].includes(claim.status);
@@ -73,6 +81,13 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
     try { await consolidate.mutateAsync(admissionId); toast.success('All charges pulled onto the bill.'); }
     catch (e) { toast.error((e as Error).message || 'Could not generate the bill.'); }
   };
+  const toggleLine = async (itemId: string, toInsurance: boolean) => {
+    try { await setReimbursable.mutateAsync({ itemId, isReimbursable: toInsurance }); }
+    catch (e) { toast.error((e as Error).message || 'Could not update the line.'); }
+  };
+
+  // Posted (real) bill lines — only these can be split insurance vs patient.
+  const postedLines = (ledger?.lines ?? []).filter((l) => l.status === 'posted' && !l.isAutoPulled);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -101,6 +116,40 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
         {/* The single consolidated, editable IP bill (add / remove charges). */}
         <IpLedgerPanel admissionId={admissionId} patientId={bill.patient?.id ?? ''} role="admin" />
 
+        {/* Line-level insurance split — which charges the insurer covers vs the
+            patient always pays. Only relevant for insurance / corporate patients. */}
+        {isInsurance(cat) && postedLines.length > 0 && (
+          <div className="rounded-xl border bg-card p-3">
+            <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
+              <ShieldCheck className="h-4 w-4 text-primary" /> Insurance split
+              <span className="text-[11px] font-normal text-muted-foreground">— tag each charge insurer-covered or patient-only</span>
+            </h3>
+            <div className="space-y-1.5">
+              {postedLines.map((l) => {
+                const patientOnly = l.isReimbursable === false;
+                return (
+                  <div key={l.id} className="flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm">
+                    <span className="min-w-0 flex-1 truncate">{l.description} <span className="text-muted-foreground">· {money(l.totalAmount)}</span></span>
+                    <div className="flex shrink-0 overflow-hidden rounded-md border">
+                      <button type="button" disabled={setReimbursable.isPending}
+                        onClick={() => toggleLine(l.id, true)}
+                        className={cn('px-2 py-0.5 text-[11px]', !patientOnly ? 'bg-purple-600 text-white' : 'bg-background text-muted-foreground hover:bg-accent')}>
+                        Insurer
+                      </button>
+                      <button type="button" disabled={setReimbursable.isPending}
+                        onClick={() => toggleLine(l.id, false)}
+                        className={cn('px-2 py-0.5 text-[11px]', patientOnly ? 'bg-amber-500 text-white' : 'bg-background text-muted-foreground hover:bg-accent')}>
+                        Patient
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="mt-1.5 text-[11px] text-muted-foreground">Changing a tag re-splits the bill (and the claim, if already transferred).</p>
+          </div>
+        )}
+
         {/* Bill actions: discount + collect patient payment */}
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-xl border bg-card p-3">
@@ -119,13 +168,23 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
           </div>
 
           <div className="rounded-xl border bg-card p-3">
-            <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold"><Wallet className="h-4 w-4 text-primary" /> Patient payment</h3>
+            <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold"><Wallet className="h-4 w-4 text-primary" /> Patient payment <span className="text-[11px] font-normal text-muted-foreground">— pay in parts</span></h3>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Balance due</span>
-              <span className="font-semibold">{money(bill.balanceDue)}</span>
+              <span className="text-muted-foreground">Paid / balance</span>
+              <span className="font-medium">{money(bill.amountPaid)} / <span className="font-semibold">{money(bill.balanceDue)}</span></span>
             </div>
+            {(payments ?? []).filter((p) => p.status !== 'failed' && p.status !== 'reversed').length > 0 && (
+              <div className="mt-1.5 max-h-24 space-y-0.5 overflow-y-auto border-t pt-1.5">
+                {(payments ?? []).filter((p) => p.status !== 'failed' && p.status !== 'reversed').map((p, i) => (
+                  <div key={p.id} className="flex items-center justify-between text-[11px]">
+                    <span className="text-muted-foreground">#{i + 1} · {formatDate(p.paymentDate)} · {p.paymentMethod}</span>
+                    <span className="font-medium">{money(p.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             <Button size="sm" variant="outline" className="mt-2 w-full" onClick={() => setCollectOpen(true)} disabled={n(bill.balanceDue) <= 0}>
-              Collect from patient
+              Collect part payment
             </Button>
           </div>
         </div>
@@ -176,6 +235,11 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
         open={collectOpen}
         onOpenChange={setCollectOpen}
         bill={{ id: bill.id, billNumber: bill.billNumber, balanceDue: n(bill.balanceDue), patientName }}
+        onCollected={() => {
+          qc.invalidateQueries({ queryKey: ['hospital', 'ip-bills'] });
+          qc.invalidateQueries({ queryKey: ['bill-payments', bill.id] });
+          qc.invalidateQueries({ queryKey: ['ip-ledger', admissionId] });
+        }}
       />
     </Dialog>
   );

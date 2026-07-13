@@ -160,11 +160,11 @@ export const ROLES: RoleGuide[] = [
     slug: 'billing_admin', name: 'Billing Admin', tier: 'head', portal: 'Billing Portal', perm: '13 permissions',
     mods: ['Hospital'],
     who: 'The billing / accounts manager. Full financial control — creates, finalizes, deletes & exports bills, processes and approves payments, refunds and discounts, and settles credit.',
-    can: ['Create, edit, finalize, delete & export bills', 'Process, update & approve payments; approve refunds; apply discounts', 'Work Billing, Transactions and Credit Settlement (insurance / corporate / patient)', 'View billing & financial reports and revenue'],
+    can: ['Create, edit, finalize, delete & export bills', 'Process, update & approve payments; approve refunds; apply discounts', 'Work Billing & Transactions; handle IP patient billing end-to-end (edit, split, Transfer to TPA, record TPA settlements)', 'View billing & financial reports and revenue'],
     cant: ['Clinical operations, pharmacy, inventory or HR'],
     wf: [
       { t: 'Create & finalize a bill', s: ['Open `Hospital → Hospital Billing` and select / create the patient\'s bill.', 'Add services from the tariff list; apply any discount.', '**Finalize** the bill, then take payment at the Cash Counter.'] },
-      { t: 'Settle credit', s: ['Open `Hospital → Credit Settlement`.', 'Pick the tab — **Insurance**, **Corporate** or **Patient / Provider**.', 'Reconcile and settle the outstanding amount against the payer.'] },
+      { t: 'IP patient billing + TPA', s: ['Open `Hospital → Hospital Billing → IP Patients` and click **Manage** on the patient.', 'Edit charges, tag each line **Insurer** or **Patient**, apply a discount, and collect part-payments from the patient.', 'For insurance patients, **Transfer to TPA** to raise the claim, then **Record TPA payment** as the TPA settles (paid / remaining tracked).'] },
     ],
     ask: [
       { b: 'help', q: 'How do I approve a refund?', a: 'From Billing / Transactions, open the payment and approve the refund — cashiers can\'t, but you can.' },
