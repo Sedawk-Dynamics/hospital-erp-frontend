@@ -109,6 +109,8 @@ const wardSchema = z.object({
   name: z.string().min(1, 'Ward name is required'),
   floorId: z.string().min(1, 'Floor is required'),
   wardType: z.string().optional(),
+  // Per-day bed charge for this ward (blank = use the room tariff instead).
+  dailyCharge: z.string().optional(),
 });
 type WardForm = z.infer<typeof wardSchema>;
 
@@ -256,14 +258,19 @@ export default function FloorsWardsSettingsPage() {
   // ─── Ward form ──────────────────────────────────────────
   const wardForm = useForm<WardForm>({
     resolver: zodResolver(wardSchema),
-    defaultValues: { name: '', floorId: '', wardType: '' },
+    defaultValues: { name: '', floorId: '', wardType: '', dailyCharge: '' },
   });
+
+  // Blank clears the per-day charge (null); a number sets it.
+  const parseCharge = (v?: string): number | null =>
+    v != null && v.trim() !== '' ? Math.max(0, Number(v) || 0) : null;
 
   const createWard = useMutation({
     mutationFn: async (data: WardForm) => {
       const body: Record<string, unknown> = {
         name: data.name,
         floorId: data.floorId,
+        dailyCharge: parseCharge(data.dailyCharge),
       };
       if (data.wardType) body.wardType = data.wardType;
       const res = await apiPost<Ward>('/infrastructure/wards', body);
@@ -282,7 +289,7 @@ export default function FloorsWardsSettingsPage() {
 
   const updateWard = useMutation({
     mutationFn: async ({ id, ...data }: WardForm & { id: string }) => {
-      const body: Record<string, unknown> = { name: data.name, floorId: data.floorId };
+      const body: Record<string, unknown> = { name: data.name, floorId: data.floorId, dailyCharge: parseCharge(data.dailyCharge) };
       if (data.wardType) body.wardType = data.wardType;
       const res = await apiPut<Ward>(`/infrastructure/wards/${id}`, body);
       return res.data;
@@ -421,6 +428,7 @@ export default function FloorsWardsSettingsPage() {
         name: ward.name,
         floorId: ward.floorId || '',
         wardType: ward.wardType || '',
+        dailyCharge: ward.dailyCharge != null ? String(ward.dailyCharge) : '',
       });
       setDefaultWardFloorId(ward.floorId || '');
     } else {
@@ -429,6 +437,7 @@ export default function FloorsWardsSettingsPage() {
         name: '',
         floorId: floorId || '',
         wardType: '',
+        dailyCharge: '',
       });
       setDefaultWardFloorId(floorId || '');
     }
@@ -834,6 +843,13 @@ export default function FloorsWardsSettingsPage() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+            <div className="mt-4 space-y-1.5">
+              <Label>Bed charge per day (₹)</Label>
+              <Input type="number" min={0} step="0.01" placeholder="e.g. 2000" {...wardForm.register('dailyCharge')} />
+              <p className="text-[11px] text-muted-foreground">
+                Charged per day to every bed in this ward on the IP bill. Leave blank to fall back to the room tariff.
+              </p>
             </div>
             <DialogFooter>
               <Button
@@ -1380,6 +1396,11 @@ function WardList({
                     {ward.wardType && (
                       <Badge variant="secondary" className="text-[10px] capitalize">
                         {ward.wardType.replace('_', ' ')}
+                      </Badge>
+                    )}
+                    {ward.dailyCharge != null && Number(ward.dailyCharge) > 0 && (
+                      <Badge variant="outline" className="border-emerald-300 text-[10px] text-emerald-700">
+                        ₹{Number(ward.dailyCharge).toLocaleString('en-IN')}/day
                       </Badge>
                     )}
                   </div>

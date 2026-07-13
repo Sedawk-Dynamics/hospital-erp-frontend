@@ -99,6 +99,7 @@ export interface Ward {
   occupiedBeds?: number;
   availableBeds?: number;
   wardType?: string;
+  dailyCharge?: number | string | null;
   status?: string;
   isActive?: boolean;
   beds?: BedAvailability[];
