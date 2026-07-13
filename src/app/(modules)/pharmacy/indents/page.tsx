@@ -16,7 +16,6 @@ import {
   CheckCircle2,
   Ban,
   Truck,
-  PackageCheck,
   ClipboardList,
   ShieldAlert,
   Undo2,
@@ -179,8 +178,8 @@ export default function PharmacyIndentsPage() {
     dispenseMutation.mutate(
       { id },
       {
-        onSuccess: () => toast.success("Dispensed — charges posted to the patient's IP bill"),
-        onError: (err: any) => toast.error(err?.message ?? 'Failed to dispense'),
+        onSuccess: () => toast.success("Delivered to ward — charges posted to the patient's IP bill"),
+        onError: (err: any) => toast.error(err?.message ?? 'Failed to deliver'),
       },
     );
   };
@@ -199,7 +198,7 @@ export default function PharmacyIndentsPage() {
         <div>
           <h1 className="font-headline text-xl font-bold">Medication Indents</h1>
           <p className="text-xs text-muted-foreground">
-            Ward requests for IP medication — approve, dispense to the patient bill, then hand over.
+            Ward requests for IP medication — approve, then deliver. Charges post to the patient&apos;s IP bill (hospital billing), never the pharmacy counter.
           </p>
         </div>
         <Button onClick={() => setRaiseOpen(true)}>
@@ -364,19 +363,21 @@ export default function PharmacyIndentsPage() {
                             </Button>
                           )}
                           {ind.status === 'approved' && (
+                            // Deliver = dispense to the ward + post charges to the
+                            // patient's IP bill, in one step. No separate "dispense".
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="text-violet-600 hover:text-violet-700 hover:bg-violet-50"
+                              className="text-teal-600 hover:text-teal-700 hover:bg-teal-50"
                               onClick={() => handleDispense(ind.id)}
                               disabled={dispensing}
                             >
                               {dispensing ? (
                                 <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
                               ) : (
-                                <PackageCheck className="mr-1 h-3.5 w-3.5" />
+                                <Truck className="mr-1 h-3.5 w-3.5" />
                               )}
-                              Dispense to IP bill
+                              Deliver
                             </Button>
                           )}
                           {ind.status === 'dispensed' && (
