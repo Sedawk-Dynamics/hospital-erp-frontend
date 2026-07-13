@@ -14,7 +14,6 @@ import {
   BedDouble,
   Wallet,
   CheckCircle2,
-  Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
@@ -43,12 +42,12 @@ import { formatBaseQty, packLooseBreakdown } from '@/lib/pharmacy-units';
 import {
   usePrescriptionQueue,
   useSetPharmacyOrderStatus,
-  useDispenseIpPrescription,
   type PrescriptionListItem,
   type PrescriptionQueueParams,
   type PharmacyOrderStatus,
   type IpBillingCategory,
 } from '@/hooks/use-pharmacy';
+import { IpDispenseBillingDialog } from '@/components/pharmacy/ip-dispense-billing-dialog';
 
 const statusBadge: Record<PrescriptionListItem['status'], string> = {
   active: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
@@ -107,20 +106,10 @@ export default function PrescriptionQueuePage() {
   const records = data?.data ?? [];
   const meta = data?.meta;
   const setOrderStatus = useSetPharmacyOrderStatus();
-  const ipDispense = useDispenseIpPrescription();
-  const ipDispensing = ipDispense.isPending;
+  const [ipBillingRx, setIpBillingRx] = useState<PrescriptionListItem | null>(null);
 
   const handleDispense = (rx: PrescriptionListItem) => {
     router.push(`/pharmacy?prescriptionId=${rx.id}`);
-  };
-
-  const handleIpDispense = async (rx: PrescriptionListItem) => {
-    try {
-      await ipDispense.mutateAsync(rx.id);
-      toast.success("Dispensed to the patient's IP bill.");
-    } catch (e) {
-      toast.error((e as Error)?.message || 'Could not dispense to the IP bill.');
-    }
   };
 
   const advanceOrder = async (rx: PrescriptionListItem) => {
@@ -380,13 +369,10 @@ export default function PrescriptionQueuePage() {
                             <div className="flex flex-col items-end gap-0.5">
                               <Button
                                 size="sm"
-                                disabled={ipDispensing || rx.prescriptionItems.length === 0}
-                                onClick={() => handleIpDispense(rx)}
-                                title="Dispense these meds and post the charge to the patient's IP bill"
+                                disabled={rx.prescriptionItems.length === 0}
+                                onClick={() => setIpBillingRx(rx)}
+                                title="Open IP billing — dispense and post the charge to the patient's IP ledger (₹0 at the counter)"
                               >
-                                {ipDispensing && ipDispense.variables === rx.id
-                                  ? <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                                  : null}
                                 Dispense to IP bill
                               </Button>
                               <span className="text-[10px] text-muted-foreground">Billed to patient ledger</span>
@@ -429,6 +415,12 @@ export default function PrescriptionQueuePage() {
           </>
         )}
       </div>
+
+      <IpDispenseBillingDialog
+        rx={ipBillingRx}
+        open={!!ipBillingRx}
+        onOpenChange={(o) => { if (!o) setIpBillingRx(null); }}
+      />
     </div>
   );
 }

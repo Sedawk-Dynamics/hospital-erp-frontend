@@ -1559,6 +1559,7 @@ export interface PrescriptionListItem {
       packSize: number | null;
       looseUnitLabel: string | null;
       dosageForm: string | null;
+      price?: number | string | null;
     } | null;
   }>;
 }
