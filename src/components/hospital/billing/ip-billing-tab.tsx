@@ -4,45 +4,17 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, Loader2, ShieldCheck, RefreshCw, BedDouble, ArrowRightLeft } from 'lucide-react';
 import { toast } from 'sonner';
-import { apiGet, apiPost } from '@/lib/api';
+import { apiGet } from '@/lib/api';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { useTransferToTpa, type IpBill } from '@/hooks/use-ip-billing';
+import { IpBillingDetailDialog } from '@/components/hospital/billing/ip-billing-detail-dialog';
 
 // IP billing section: one consolidated bill per admission, shown separately from
-// OP, with the insurance category surfaced and a "Transfer to TPA" action for
-// insurance / corporate patients (raises the claim; TPA then settles).
-
-interface IpClaim {
-  id: string;
-  claimNumber: string | null;
-  status: string;
-  claimAmount: number | string;
-  approvedAmount: number | string | null;
-  coveredAmount: number | string | null;
-  patientShare: number | string | null;
-  paidAmount: number | string | null;
-  outstandingAmount: number | string | null;
-  policy?: { policyNumber?: string; insurer?: { name: string } | null; tpa?: { name: string } | null } | null;
-}
-interface IpBill {
-  id: string;
-  billNumber: string;
-  status: string;
-  admissionId: string | null;
-  totalAmount: number | string;
-  insuranceCoveredAmount: number | string;
-  patientPayableAmount: number | string;
-  amountPaid: number | string;
-  balanceDue: number | string;
-  patient?: { id: string; mrn: string | null; firstName: string; lastName: string } | null;
-  admission?: {
-    id: string; billingCategory: string | null; status: string;
-    ward?: { name: string } | null; bed?: { bedNumber: string } | null;
-  } | null;
-  insuranceClaims?: IpClaim[];
-}
+// OP. Click a row to open the full IP bill (edit charges, discount, collect,
+// Transfer to TPA + record TPA settlement) — the single place for IP billing.
 
 const n = (v: number | string | null | undefined) => Number(v ?? 0);
 const money = (v: number | string | null | undefined) => `₹${n(v).toFixed(2)}`;
@@ -70,6 +42,7 @@ export function IpBillingTab() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [detailBill, setDetailBill] = useState<IpBill | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['hospital', 'ip-bills', search],
@@ -83,25 +56,15 @@ export function IpBillingTab() {
     qc.invalidateQueries({ queryKey: ['ip-ledger'] });
   };
 
-  const consolidate = useMutation({
-    mutationFn: async (admissionId: string) => (await apiPost(`/billing/admissions/${admissionId}/consolidate`, {})).data,
-    onSuccess: () => { toast.success('IP bill consolidated.'); refresh(); },
-    onError: (e: Error) => toast.error(e.message || 'Could not consolidate the bill.'),
-  });
-  const transfer = useMutation({
-    mutationFn: async (admissionId: string) =>
-      (await apiPost<{ policy?: { tpa?: { name: string } | null; insurer?: { name: string } | null } }>(`/billing/admissions/${admissionId}/transfer-to-tpa`, {})).data,
-    onSuccess: (res) => {
-      const via = res?.policy?.tpa?.name || res?.policy?.insurer?.name || 'the TPA';
-      toast.success(`Transferred to ${via} — claim raised.`);
-      refresh();
-    },
-    onError: (e: Error) => toast.error(e.message || 'Transfer to TPA failed.'),
-  });
+  const transfer = useTransferToTpa();
 
-  const run = async (m: typeof consolidate | typeof transfer, admissionId: string) => {
+  const runTransfer = async (admissionId: string) => {
     setBusyId(admissionId);
-    try { await m.mutateAsync(admissionId); } finally { setBusyId(null); }
+    try {
+      const res: any = await transfer.mutateAsync(admissionId);
+      toast.success(`Transferred to ${res?.policy?.tpa?.name || res?.policy?.insurer?.name || 'the TPA'} — claim raised.`);
+    } catch (e) { toast.error((e as Error).message || 'Transfer to TPA failed.'); }
+    finally { setBusyId(null); }
   };
 
   return (
@@ -192,15 +155,9 @@ export function IpBillingTab() {
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex items-center justify-end gap-1.5">
-                        {b.admissionId && b.status === 'draft' && (
-                          <Button variant="outline" size="sm" className="h-7 gap-1 text-[11px]" disabled={busy}
-                            onClick={() => run(consolidate, b.admissionId!)} title="Pull all charges onto the single IP bill + finalize">
-                            {busy && consolidate.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Generate
-                          </Button>
-                        )}
                         {canTransfer && (
-                          <Button size="sm" className="h-7 gap-1 text-[11px]" disabled={busy}
-                            onClick={() => run(transfer, b.admissionId!)} title="Raise an insurance claim and hand the bill to the TPA">
+                          <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px]" disabled={busy}
+                            onClick={() => runTransfer(b.admissionId!)} title="Raise an insurance claim and hand the bill to the TPA">
                             {busy && transfer.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowRightLeft className="h-3 w-3" />} Transfer to TPA
                           </Button>
                         )}
@@ -209,6 +166,9 @@ export function IpBillingTab() {
                             <ShieldCheck className="h-3.5 w-3.5" /> With TPA
                           </span>
                         )}
+                        <Button size="sm" className="h-7 gap-1 text-[11px]" onClick={() => setDetailBill(b)} title="Open the full IP bill — edit charges, discount, collect, TPA">
+                          Manage
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -219,8 +179,10 @@ export function IpBillingTab() {
         </div>
       )}
       <p className="text-[11px] text-muted-foreground">
-        Each IP admission has <strong>one</strong> consolidated bill with all costs. For insurance / corporate patients, <strong>Transfer to TPA</strong> raises the claim; the TPA team then approves &amp; settles it (paid / outstanding shown here).
+        Each IP admission has <strong>one</strong> consolidated bill with all costs. Click <strong>Manage</strong> to edit charges, apply a discount, collect from the patient, or <strong>Transfer to TPA</strong> &amp; record TPA settlements (paid / remaining tracked) — all in one place.
       </p>
+
+      <IpBillingDetailDialog bill={detailBill} open={!!detailBill} onOpenChange={(o) => { if (!o) setDetailBill(null); }} />
     </div>
   );
 }
