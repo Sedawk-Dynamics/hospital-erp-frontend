@@ -135,6 +135,8 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Ward Stock', href: '/pharmacy/ward-stock', icon: BedDouble, restrictTo: ['pharmacy_admin'] },
       // IP medication indents (ward→pharmacy fulfilment) + OT surgical kits.
       { label: 'Med Indents', href: '/pharmacy/indents', icon: ClipboardCheck },
+      // All medicines dispensed to IP patients (billed to the hospital IP bill).
+      { label: 'IP Medicines', href: '/pharmacy/ip-medicines', icon: Pill },
       { label: 'OT Kits', href: '/pharmacy/ot-kits', icon: Package },
       // Emergency / Casualty "Golden Hour" — trauma pseudo-ID + bypass dispense + merge.
       { label: 'Emergency', href: '/pharmacy/emergency', icon: Siren },

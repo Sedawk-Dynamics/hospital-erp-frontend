@@ -66,8 +66,10 @@ const orderStatusBadge: Record<PharmacyOrderStatus, string> = {
 const nextOrderLabel: Record<Exclude<PharmacyOrderStatus, 'collected'>, string> = {
   ordered: 'Start prep',
   preparing: 'Mark ready',
-  ready: 'Mark collected',
+  ready: 'Mark delivered',
 };
+// IP orders are delivered to the ward (not "collected" at a counter).
+const ipStatusLabel = (s: PharmacyOrderStatus) => (s === 'collected' ? 'delivered' : s);
 
 // G12: how the patient settles — drives whether the pharmacist collects payment.
 // package / insurance are billed against the advance / TPA (no cash at counter).
@@ -332,7 +334,7 @@ export default function PrescriptionQueuePage() {
                             const cur = (rx.pharmacyStatus ?? 'ordered') as PharmacyOrderStatus;
                             return (
                               <div className="flex flex-col items-center gap-1">
-                                <Badge className={orderStatusBadge[cur]}>{cur}</Badge>
+                                <Badge className={orderStatusBadge[cur]}>{ipStatusLabel(cur)}</Badge>
                                 {cur !== 'collected' && (
                                   <Button
                                     size="sm"
@@ -353,15 +355,30 @@ export default function PrescriptionQueuePage() {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          variant={rx.status === 'cancelled' || rx.status === 'dispensed' ? 'outline' : 'default'}
-                          disabled={rx.status === 'cancelled' || rx.prescriptionItems.length === 0}
-                          onClick={() => handleDispense(rx)}
-                        >
-                          {rx.status === 'dispensed' ? 'View' : 'Dispense'}
-                          <ArrowRight className="ml-1 h-3 w-3" />
-                        </Button>
+                        {rx.prescriptionType === 'ip' ? (
+                          // IP meds are billed to the hospital IP bill — dispensed
+                          // from the Ward Indents queue, never sold at the counter.
+                          <div className="flex flex-col items-end gap-0.5">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => router.push('/pharmacy/indents')}
+                            >
+                              Ward Indent <ArrowRight className="ml-1 h-3 w-3" />
+                            </Button>
+                            <span className="text-[10px] text-muted-foreground">Billed to IP bill</span>
+                          </div>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant={rx.status === 'cancelled' || rx.status === 'dispensed' ? 'outline' : 'default'}
+                            disabled={rx.status === 'cancelled' || rx.prescriptionItems.length === 0}
+                            onClick={() => handleDispense(rx)}
+                          >
+                            {rx.status === 'dispensed' ? 'View' : 'Dispense'}
+                            <ArrowRight className="ml-1 h-3 w-3" />
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   );
