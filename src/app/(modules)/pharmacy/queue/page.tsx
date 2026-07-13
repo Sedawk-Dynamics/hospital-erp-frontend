@@ -12,7 +12,6 @@ import {
   Pill,
   ArrowRight,
   BedDouble,
-  Wallet,
   CheckCircle2,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -45,7 +44,6 @@ import {
   type PrescriptionListItem,
   type PrescriptionQueueParams,
   type PharmacyOrderStatus,
-  type IpBillingCategory,
 } from '@/hooks/use-pharmacy';
 import { IpDispenseBillingDialog } from '@/components/pharmacy/ip-dispense-billing-dialog';
 
@@ -71,15 +69,6 @@ const nextOrderLabel: Record<Exclude<PharmacyOrderStatus, 'collected'>, string> 
 };
 // IP orders are delivered to the ward (not "collected" at a counter).
 const ipStatusLabel = (s: PharmacyOrderStatus) => (s === 'collected' ? 'delivered' : s);
-
-// G12: how the patient settles — drives whether the pharmacist collects payment.
-// package / insurance are billed against the advance / TPA (no cash at counter).
-const billingBadge: Record<IpBillingCategory, { label: string; cls: string; collect: boolean }> = {
-  cash: { label: 'Cash — collect', cls: 'bg-rose-500/10 text-rose-600 border-rose-500/20', collect: true },
-  corporate: { label: 'Corporate — collect', cls: 'bg-rose-500/10 text-rose-600 border-rose-500/20', collect: true },
-  package: { label: 'Package — on advance', cls: 'bg-violet-500/10 text-violet-600 border-violet-500/20', collect: false },
-  insurance: { label: 'Insurance — TPA', cls: 'bg-teal-500/10 text-teal-600 border-teal-500/20', collect: false },
-};
 
 export default function PrescriptionQueuePage() {
   const router = useRouter();
@@ -232,26 +221,14 @@ export default function PrescriptionQueuePage() {
                           {rx.patient.firstName} {rx.patient.lastName}
                         </div>
                         <div className="text-xs text-muted-foreground font-mono">{rx.patient.mrn}</div>
-                        {/* G12: IP context — ward/bed + billing category */}
-                        {rx.prescriptionType === 'ip' && rx.visit?.admission && (
+                        {/* IP context — ward / bed (IP meds bill to the patient ledger, not the counter) */}
+                        {rx.prescriptionType === 'ip' && rx.visit?.admission && (rx.visit.admission.ward || rx.visit.admission.bed) && (
                           <div className="mt-1 flex flex-wrap items-center gap-1">
-                            {(rx.visit.admission.ward || rx.visit.admission.bed) && (
-                              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                                <BedDouble className="h-3 w-3" />
-                                {rx.visit.admission.ward?.name}
-                                {rx.visit.admission.bed?.bedNumber ? ` · ${rx.visit.admission.bed.bedNumber}` : ''}
-                              </span>
-                            )}
-                            {(() => {
-                              const cat = (rx.visit.admission.billingCategory ?? 'cash') as IpBillingCategory;
-                              const b = billingBadge[cat] ?? billingBadge.cash;
-                              return (
-                                <Badge className={`text-[10px] ${b.cls}`} title={b.collect ? 'Collect payment at counter' : 'No cash at counter'}>
-                                  <Wallet className="mr-0.5 h-3 w-3" />
-                                  {b.label}
-                                </Badge>
-                              );
-                            })()}
+                            <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                              <BedDouble className="h-3 w-3" />
+                              {rx.visit.admission.ward?.name}
+                              {rx.visit.admission.bed?.bedNumber ? ` · ${rx.visit.admission.bed.bedNumber}` : ''}
+                            </span>
                           </div>
                         )}
                       </TableCell>
