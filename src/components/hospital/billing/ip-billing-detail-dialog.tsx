@@ -15,9 +15,8 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { IpLedgerPanel } from '@/components/shared/ip-ledger-panel';
 import { CollectBillPaymentDialog } from '@/components/hospital/billing/collect-bill-payment-dialog';
-import { TransferToTpaDialog } from '@/components/hospital/billing/transfer-to-tpa-dialog';
 import {
-  useRecordTpaSettlement, useSetBillDiscount, useConsolidateIpBill,
+  useTransferToTpa, useRecordTpaSettlement, useSetBillDiscount, useConsolidateIpBill,
   useSetBillItemReimbursable, useBillPayments,
   type IpBill,
 } from '@/hooks/use-ip-billing';
@@ -41,6 +40,7 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
 }) {
+  const transfer = useTransferToTpa();
   const settle = useRecordTpaSettlement();
   const discount = useSetBillDiscount();
   const consolidate = useConsolidateIpBill();
@@ -54,7 +54,6 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
   const [discValue, setDiscValue] = useState<number>(0);
   const [payAmt, setPayAmt] = useState<number>(0);
   const [collectOpen, setCollectOpen] = useState(false);
-  const [transferOpen, setTransferOpen] = useState(false);
 
   if (!bill) return null;
   const cat = (bill.admission?.billingCategory ?? 'cash').toLowerCase();
@@ -62,6 +61,15 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
   const liveClaim = claim && !['cancelled', 'rejected'].includes(claim.status);
   const patientName = `${bill.patient?.firstName ?? ''} ${bill.patient?.lastName ?? ''}`.trim();
 
+  const doTransfer = async () => {
+    try {
+      const res: any = await transfer.mutateAsync({ admissionId });
+      const via = res?.policy?.tpa?.name || res?.policy?.insurer?.name;
+      toast.success(via && via !== 'Pending TPA Assignment'
+        ? `Sent to ${via} — claim raised.`
+        : 'Sent to TPA — the insurance team will fill in the policy & process the claim.');
+    } catch (e) { toast.error((e as Error).message || 'Transfer to TPA failed.'); }
+  };
   const doSettle = async () => {
     if (!(payAmt > 0)) { toast.error('Enter the amount the TPA paid.'); return; }
     try { await settle.mutateAsync({ admissionId, paidAmount: payAmt }); toast.success('TPA payment recorded.'); setPayAmt(0); }
@@ -193,12 +201,10 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
           {!liveClaim ? (
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm text-muted-foreground">
-                {isInsurance(cat)
-                  ? 'Insurance patient — hand this bill to the TPA to raise the claim.'
-                  : 'Transfer to the TPA if the patient has an active insurance policy (the covered lines are claimed).'}
+                Hand this bill to the TPA — the insurance team fills in the policy, coverage &amp; approvals. Insurer-tagged lines are claimed.
               </p>
-              <Button size="sm" className="gap-1.5" onClick={() => setTransferOpen(true)}>
-                <ArrowRightLeft className="h-4 w-4" /> Transfer to TPA
+              <Button size="sm" className="gap-1.5" onClick={doTransfer} disabled={transfer.isPending}>
+                {transfer.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRightLeft className="h-4 w-4" />} Transfer to TPA
               </Button>
             </div>
           ) : (
@@ -237,13 +243,6 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
           qc.invalidateQueries({ queryKey: ['bill-payments', bill.id] });
           qc.invalidateQueries({ queryKey: ['ip-ledger', admissionId] });
         }}
-      />
-
-      <TransferToTpaDialog
-        admissionId={admissionId}
-        patientId={bill.patient?.id ?? ''}
-        open={transferOpen}
-        onOpenChange={setTransferOpen}
       />
     </Dialog>
   );
