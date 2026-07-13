@@ -8,8 +8,10 @@ import {
   useUpdateDischargeSummary,
   useSignDischargeSummary,
   usePublishDischargeSummary,
+  useDischargeDocument,
   type DischargeSummary,
 } from '@/hooks/use-doctor';
+import { DischargeSummaryDocument } from '@/components/doctor/discharge-summary-document';
 import { useAuthStore } from '@/stores/auth-store';
 import { useAiStatus, useGenerateDischargeNarrative } from '@/hooks/use-ai';
 import { formatDate, toInputDateStr } from '@/lib/date-utils';
@@ -36,6 +38,7 @@ import {
   RefreshCw,
   Download,
   Sparkles,
+  FileText,
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { apiPost } from '@/lib/api';
@@ -77,6 +80,8 @@ export default function DischargeSummaryPage() {
     searchParams.get('admissionId'),
   );
   const [summaryData, setSummaryData] = useState<DischargeSummary | null>(null);
+  // Full fully-detailed document preview (print/PDF view).
+  const [showPreview, setShowPreview] = useState(false);
 
   // Local form fields
   const [diagnosesSummary, setDiagnosesSummary] = useState('');
@@ -109,6 +114,12 @@ export default function DischargeSummaryPage() {
   const signMutation = useSignDischargeSummary();
   const publishMutation = usePublishDischargeSummary();
 
+  // The assembled full document, fetched when the preview is opened.
+  const { data: dischargeDoc, isLoading: docLoading } = useDischargeDocument(
+    summaryData?.id ?? null,
+    showPreview,
+  );
+
   // UC4: AI narrative generation (80/20 — drafts the narrative sections only).
   const { data: aiStatus } = useAiStatus();
   const aiNarrativeMutation = useGenerateDischargeNarrative();
@@ -136,6 +147,7 @@ export default function DischargeSummaryPage() {
   const handleBack = useCallback(() => {
     setSelectedAdmissionId(null);
     setSummaryData(null);
+    setShowPreview(false);
   }, []);
 
   const handleSaveDraft = useCallback(async () => {
@@ -289,6 +301,38 @@ export default function DischargeSummaryPage() {
               Go Back
             </Button>
           </div>
+        </div>
+      );
+    }
+
+    // Full fully-detailed document preview (print / PDF).
+    if (showPreview) {
+      return (
+        <div className="space-y-4 animate-fade-in-up">
+          <div className="no-print flex items-center justify-between print:hidden">
+            <Button variant="ghost" size="sm" onClick={() => setShowPreview(false)} className="gap-1.5">
+              <ArrowLeft className="h-4 w-4" /> Back to Editor
+            </Button>
+            <div className="flex items-center gap-2">
+              <StatusBadge status={summaryData.status} />
+              {summaryData.status !== 'draft' && (
+                <Button variant="outline" size="sm" onClick={handleDownloadPdf} className="gap-1.5">
+                  <Download className="h-3.5 w-3.5" /> Download PDF
+                </Button>
+              )}
+              <Button size="sm" onClick={handlePrint} disabled={!dischargeDoc} className="gap-1.5">
+                <Printer className="h-3.5 w-3.5" /> Print
+              </Button>
+            </div>
+          </div>
+          {docLoading || !dischargeDoc ? (
+            <div className="flex flex-col items-center justify-center py-24">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <p className="mt-3 text-sm text-muted-foreground">Assembling full discharge document…</p>
+            </div>
+          ) : (
+            <DischargeSummaryDocument doc={dischargeDoc} />
+          )}
         </div>
       );
     }
@@ -538,6 +582,17 @@ export default function DischargeSummaryPage() {
               </Button>
             )}
 
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowPreview(true)}
+              className="gap-1.5"
+              title="Open the full, fully-detailed discharge document — print or download as PDF"
+            >
+              <FileText className="h-3.5 w-3.5" />
+              Full Summary &amp; Print
+            </Button>
+
             {summaryData.status !== 'draft' && (
               <Button variant="outline" size="sm" onClick={handleDownloadPdf} className="gap-1.5">
                 <Download className="h-3.5 w-3.5" />
@@ -570,11 +625,6 @@ export default function DischargeSummaryPage() {
                 {publishMutation.isPending ? 'Publishing...' : 'Publish'}
               </Button>
             )}
-
-            <Button variant="outline" size="sm" onClick={handlePrint} className="gap-1.5">
-              <Printer className="h-3.5 w-3.5" />
-              Print
-            </Button>
           </div>
         </div>
 

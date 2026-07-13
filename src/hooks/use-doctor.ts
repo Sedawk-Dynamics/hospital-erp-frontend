@@ -1357,6 +1357,47 @@ export function useDischargeSummaryDetail(id: string) {
   });
 }
 
+// ---- Fully-detailed discharge document (for the print / preview view) ----
+
+export interface DischargeVitalRow {
+  at: string | null;
+  bp: string | null;
+  pulse: number | null;
+  temp: number | null;
+  rr: number | null;
+  spo2: number | null;
+  weight: number | null;
+  height: number | null;
+  bmi: number | null;
+  sugar: number | null;
+}
+
+export interface DischargeDocument {
+  hospital: { name: string; address: string | null; phone: string | null; email: string | null; website: string | null; licenseNumber: string | null; accreditation: string | null };
+  meta: { id: string; status: string; signedAt: string | null; signerName: string | null; attestation: string | null; generatedAt: string };
+  patient: { name: string; mrn: string | null; age: number | null; gender: string | null; dob: string | null; bloodGroup: string | null; phone: string | null; address: string | null; maritalStatus: string | null; nationality: string | null };
+  emergencyContact: { name: string; relationship: string; phone: string } | null;
+  admission: { admissionDate: string | null; dischargeDate: string | null; lengthOfStayDays: number | null; ward: string | null; bed: string | null; reason: string | null; chiefComplaint: string | null; attendingDoctor: string; specialization: string | null };
+  allergies: Array<{ allergen: string; reaction: string | null }>;
+  diagnoses: Array<{ name: string; type: string; icdCode: string | null }>;
+  vitals: { admission: DischargeVitalRow | null; discharge: DischargeVitalRow | null };
+  procedures: Array<{ name: string; type: string | null; date: string | null; status: string; surgeon: string | null }>;
+  imaging: Array<{ study: string; indication: string | null; impression: string | null; date: string | null }>;
+  sections: { diagnosesText: string | null; hospitalCourse: string | null; keyLabs: string | null; labResults: string | null; medicationsText: string | null; dischargeInstructions: string | null; followUpDate: string | null; followUpInstructions: string | null };
+  medications: Array<{ drug: string; dosage: string; frequency: string; duration: string | null; route: string; instructions: string | null }>;
+}
+
+export function useDischargeDocument(id: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['doctor', 'discharge-summary', 'document', id],
+    queryFn: async () => {
+      const response = await apiGet<DischargeDocument>(`/mrd/discharge-summary/${id}/document`);
+      return response.data;
+    },
+    enabled: !!id && enabled,
+  });
+}
+
 export function useUpdateDischargeSummary() {
   const queryClient = useQueryClient();
   return useMutation({
