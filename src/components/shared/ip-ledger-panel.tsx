@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import {
   Plus, Loader2, Receipt, Wallet, Stethoscope, LogIn, LogOut, UserCog,
-  FlaskConical, ScanLine, Pill, History, Activity, NotebookPen,
+  FlaskConical, ScanLine, Pill, History, Activity, NotebookPen, Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -17,8 +17,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
 import {
-  useAdmissionLedger, useAddIpCharge, useRecordDoctorVisit, useAdmissionActivity,
-  type ActivityEvent,
+  useAdmissionLedger, useAddIpCharge, useRecordDoctorVisit, useRemoveIpCharge, useAdmissionActivity,
+  type ActivityEvent, type LedgerLine,
 } from '@/hooks/use-ip-ledger';
 
 type Role = 'doctor' | 'nurse' | 'admin';
@@ -306,7 +306,21 @@ export function IpActivityLog({ admissionId }: { admissionId: string }) {
 export function IpLedgerPanel({ admissionId, role }: { admissionId: string; patientId: string; role: Role }) {
   const { data: ledger, isLoading } = useAdmissionLedger(admissionId);
   const [addOpen, setAddOpen] = useState(false);
+  const removeCharge = useRemoveIpCharge(admissionId);
   const isTpa = ledger?.billingCategory === 'insurance' || ledger?.billingCategory === 'corporate';
+
+  // Only manually-posted lines can be removed here — auto-pulled (pending/order)
+  // charges come from lab/pharmacy/room/etc. and are managed at source.
+  const canRemove = (l: LedgerLine) => l.status === 'posted' && !l.isAutoPulled;
+  const onRemove = async (l: LedgerLine) => {
+    if (!window.confirm(`Remove "${l.description}" (${money(l.totalAmount)}) from the ledger?`)) return;
+    try {
+      await removeCharge.mutateAsync(l.id);
+      toast.success('Charge removed from the ledger.');
+    } catch (e) {
+      toast.error((e as Error)?.message || 'Failed to remove the charge.');
+    }
+  };
 
   return (
     <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4">
@@ -388,6 +402,7 @@ export function IpLedgerPanel({ admissionId, role }: { admissionId: string; pati
                       <th className="px-2 py-1.5 text-right">Qty</th>
                       <th className="px-2 py-1.5 text-right">Total</th>
                       <th className="px-2 py-1.5 text-center">Status</th>
+                      <th className="px-2 py-1.5 text-center w-8"><span className="sr-only">Remove</span></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -401,6 +416,19 @@ export function IpLedgerPanel({ admissionId, role }: { admissionId: string; pati
                           <span className={cn('rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase', l.status === 'posted' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700')}>
                             {l.status}
                           </span>
+                        </td>
+                        <td className="px-1 py-1.5 text-center">
+                          {canRemove(l) && (
+                            <button
+                              type="button"
+                              onClick={() => onRemove(l)}
+                              disabled={removeCharge.isPending}
+                              title="Remove this charge"
+                              className="rounded p-1 text-muted-foreground hover:bg-error/10 hover:text-error disabled:opacity-50"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}

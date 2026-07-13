@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPost } from '@/lib/api';
+import { apiGet, apiPost, apiDelete } from '@/lib/api';
 
 // IP running ledger — the admission's live itemized charges (posted + pending
 // auto-charges), with running totals, deposit, and the reimbursable/patient split.
@@ -66,6 +66,19 @@ export function useAddIpCharge(admissionId: string) {
   return useMutation({
     mutationFn: async (data: AddIpChargeInput) =>
       (await apiPost(`/billing/admissions/${admissionId}/charges`, data)).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ipLedgerKeys.detail(admissionId) });
+      qc.invalidateQueries({ queryKey: ipLedgerKeys.activity(admissionId) });
+    },
+  });
+}
+
+// Remove a manually-posted ledger charge (care team / billing — gated server-side).
+export function useRemoveIpCharge(admissionId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (itemId: string) =>
+      (await apiDelete(`/billing/admissions/${admissionId}/charges/${itemId}`)).data,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ipLedgerKeys.detail(admissionId) });
       qc.invalidateQueries({ queryKey: ipLedgerKeys.activity(admissionId) });
