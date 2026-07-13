@@ -12,7 +12,8 @@ import { IpBillingDetailDialog } from '@/components/hospital/billing/ip-billing-
 
 // IP billing section: one consolidated bill per admission, shown separately from
 // OP. Click a row to open the full IP bill (edit charges, discount, collect,
-// Transfer to TPA + record TPA settlement) — the single place for IP billing.
+// cut/return deposit, record TPA settlement). Insurance patients auto-connect to
+// the TPA — no manual transfer. This is the single place for IP billing.
 
 const n = (v: number | string | null | undefined) => Number(v ?? 0);
 const money = (v: number | string | null | undefined) => `₹${n(v).toFixed(2)}`;

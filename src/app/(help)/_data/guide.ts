@@ -160,11 +160,11 @@ export const ROLES: RoleGuide[] = [
     slug: 'billing_admin', name: 'Billing Admin', tier: 'head', portal: 'Billing Portal', perm: '13 permissions',
     mods: ['Hospital'],
     who: 'The billing / accounts manager. Full financial control — creates, finalizes, deletes & exports bills, processes and approves payments, refunds and discounts, and settles credit.',
-    can: ['Create, edit, finalize, delete & export bills', 'Process, update & approve payments; approve refunds; apply discounts', 'Work Billing & Transactions; handle IP patient billing end-to-end (edit, split, Transfer to TPA, record TPA settlements)', 'View billing & financial reports and revenue'],
+    can: ['Create, edit, finalize, delete & export bills', 'Process, update & approve payments; approve refunds; apply discounts', 'Work Billing & Transactions; handle IP patient billing end-to-end (edit, split, cut/return deposit, record TPA settlements — insurance patients auto-connect to the TPA)', 'View billing & financial reports and revenue'],
     cant: ['Clinical operations, pharmacy, inventory or HR'],
     wf: [
       { t: 'Create & finalize a bill', s: ['Open `Hospital → Hospital Billing` and select / create the patient\'s bill.', 'Add services from the tariff list; apply any discount.', '**Finalize** the bill, then take payment at the Cash Counter.'] },
-      { t: 'IP patient billing + TPA', s: ['Open `Hospital → Hospital Billing → IP Patients` and click **Manage** on the patient.', 'Edit charges, tag each line **Insurer** or **Patient**, apply a discount, and collect part-payments from the patient.', 'For insurance patients, **Transfer to TPA** to raise the claim, then **Record TPA payment** as the TPA settles (paid / remaining tracked).'] },
+      { t: 'IP patient billing + TPA', s: ['Open `Hospital → Hospital Billing → IP Patients` — every admitted patient shows here from day one, with the bill building up as charges are posted.', 'Click **Manage**: edit charges, tag each line **Insurer** or **Patient**, apply a discount, cut the **deposit** from the balance (or **return** the unused deposit), and collect part-payments.', 'Patients booked as **insurance** are **auto-connected to the TPA** — the claim is raised and kept in sync automatically, no manual transfer. Just **Record TPA payment** as the TPA settles (paid / remaining tracked).'] },
     ],
     ask: [
       { b: 'help', q: 'How do I approve a refund?', a: 'From Billing / Transactions, open the payment and approve the refund — cashiers can\'t, but you can.' },

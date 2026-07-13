@@ -121,7 +121,7 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
         <IpLedgerPanel admissionId={admissionId} patientId={bill.patient?.id ?? ''} role="admin" />
 
         {/* Line-level insurance split — which charges the insurer covers vs the
-            patient always pays. Tag lines before Transfer to TPA. */}
+            patient always pays. Tagging re-splits the auto-raised TPA claim. */}
         {postedLines.length > 0 && (
           <div className="rounded-xl border bg-card p-3">
             <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
