@@ -14,6 +14,7 @@ import type { Bill } from '@/types';
 import { cn } from '@/lib/utils';
 import { CollectBillPaymentDialog } from '@/components/hospital/billing/collect-bill-payment-dialog';
 import { BillGeneratorDialog } from '@/components/hospital/billing/bill-generator-dialog';
+import { IpBillingTab } from '@/components/hospital/billing/ip-billing-tab';
 
 type TopAction = 'op-list' | 'draft' | 'order-list' | null;
 
@@ -67,12 +68,16 @@ export default function HospitalBillingPage() {
         <Tabs defaultValue="billing">
           <TabsList variant="line">
             <TabsTrigger value="billing">Hospital Billing</TabsTrigger>
+            <TabsTrigger value="ip">IP Patients</TabsTrigger>
             <TabsTrigger value="cash-counter">Cash Counter</TabsTrigger>
             <TabsTrigger value="pending">Pending List</TabsTrigger>
           </TabsList>
 
           <TabsContent value="billing" className="pt-4">
             <BillingTab onOpenBill={(id, patient) => openGenerator(patient, id)} />
+          </TabsContent>
+          <TabsContent value="ip" className="pt-4">
+            <IpBillingTab />
           </TabsContent>
           <TabsContent value="cash-counter" className="pt-4">
             <CashCounterTab />
