@@ -117,8 +117,8 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
         <IpLedgerPanel admissionId={admissionId} patientId={bill.patient?.id ?? ''} role="admin" />
 
         {/* Line-level insurance split — which charges the insurer covers vs the
-            patient always pays. Only relevant for insurance / corporate patients. */}
-        {isInsurance(cat) && postedLines.length > 0 && (
+            patient always pays. Tag lines before Transfer to TPA. */}
+        {postedLines.length > 0 && (
           <div className="rounded-xl border bg-card p-3">
             <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
               <ShieldCheck className="h-4 w-4 text-primary" /> Insurance split
@@ -195,11 +195,13 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
             <ShieldCheck className="h-4 w-4 text-primary" /> TPA / Insurance
           </h3>
 
-          {!isInsurance(cat) ? (
-            <p className="text-sm text-muted-foreground">Self-pay / package patient — no TPA. Collect the balance from the patient.</p>
-          ) : !liveClaim ? (
+          {!liveClaim ? (
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm text-muted-foreground">Insurance patient — hand this bill to the TPA to raise the claim.</p>
+              <p className="text-sm text-muted-foreground">
+                {isInsurance(cat)
+                  ? 'Insurance patient — hand this bill to the TPA to raise the claim.'
+                  : 'Transfer to the TPA if the patient has an active insurance policy (the covered lines are claimed).'}
+              </p>
               <Button size="sm" className="gap-1.5" onClick={doTransfer} disabled={transfer.isPending}>
                 {transfer.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRightLeft className="h-4 w-4" />} Transfer to TPA
               </Button>

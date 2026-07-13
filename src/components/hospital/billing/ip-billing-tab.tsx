@@ -51,6 +51,30 @@ export function IpBillingTab() {
   });
   const bills = useMemo(() => data ?? [], [data]);
 
+  // One row per ADMISSION: an admission's charges live on a single consolidated
+  // bill, but legacy data may have >1 bill (old FIN- + IPW-). Group by admission
+  // and aggregate so the biller sees one line per stay.
+  const grouped = useMemo(() => {
+    const map = new Map<string, IpBill[]>();
+    for (const b of bills) {
+      const key = b.admissionId ?? b.id;
+      const arr = map.get(key);
+      if (arr) arr.push(b); else map.set(key, [b]);
+    }
+    return [...map.values()].map((group) => {
+      const primary = group.find((b) => ['draft', 'pending', 'partially_paid'].includes(b.status)) ?? group[0];
+      const claim = group.map((b) => b.insuranceClaims?.[0]).find(Boolean) ?? null;
+      return {
+        ...primary,
+        totalAmount: group.reduce((s, b) => s + n(b.totalAmount), 0),
+        amountPaid: group.reduce((s, b) => s + n(b.amountPaid), 0),
+        balanceDue: group.reduce((s, b) => s + n(b.balanceDue), 0),
+        insuranceClaims: claim ? [claim] : (primary.insuranceClaims ?? []),
+        _count: group.length,
+      } as IpBill & { _count: number };
+    });
+  }, [bills]);
+
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ['hospital', 'ip-bills'] });
     qc.invalidateQueries({ queryKey: ['ip-ledger'] });
@@ -81,7 +105,7 @@ export function IpBillingTab() {
 
       {isLoading ? (
         <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading IP bills…</div>
-      ) : bills.length === 0 ? (
+      ) : grouped.length === 0 ? (
         <p className="py-8 text-center text-sm text-muted-foreground">No IP bills yet.</p>
       ) : (
         <div className="overflow-x-auto rounded-lg border">
@@ -98,14 +122,14 @@ export function IpBillingTab() {
               </tr>
             </thead>
             <tbody>
-              {bills.map((b) => {
+              {grouped.map((b) => {
                 const claim = b.insuranceClaims?.[0];
                 const liveClaim = claim && !['cancelled', 'rejected'].includes(claim.status);
                 const cat = (b.admission?.billingCategory ?? 'cash').toLowerCase();
                 const canTransfer = !!b.admissionId && isInsurance(cat) && !liveClaim;
                 const busy = busyId === b.admissionId;
                 return (
-                  <tr key={b.id} className="border-t align-top">
+                  <tr key={b.admissionId ?? b.id} className="border-t align-top">
                     <td className="px-3 py-2">
                       <div className="font-medium">{b.patient?.firstName} {b.patient?.lastName}</div>
                       <div className="text-[11px] text-muted-foreground">{b.patient?.mrn}</div>
@@ -120,10 +144,13 @@ export function IpBillingTab() {
                       <Badge className={cn('text-[10px] capitalize', CATEGORY_BADGE[cat] ?? CATEGORY_BADGE.cash)}>{cat}</Badge>
                     </td>
                     <td className="px-3 py-2">
-                      <div className="font-mono text-[11px]">{b.billNumber}</div>
+                      <div className="font-mono text-[11px]">{b.billNumber}{b._count > 1 ? <span className="text-muted-foreground"> +{b._count - 1}</span> : null}</div>
                       <div className="text-[10px] uppercase text-muted-foreground">{b.status.replace('_', ' ')}</div>
                     </td>
-                    <td className="px-3 py-2 text-right font-medium">{money(b.totalAmount)}</td>
+                    <td className="px-3 py-2 text-right">
+                      <div className="font-medium">{money(b.totalAmount)}</div>
+                      <div className="text-[10px] text-muted-foreground">bal {money(b.balanceDue)}</div>
+                    </td>
                     <td className="px-3 py-2 text-right">
                       {liveClaim ? (
                         <div className="text-[12px]">
