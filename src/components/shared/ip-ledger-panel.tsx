@@ -10,7 +10,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
@@ -151,66 +150,29 @@ function AddChargeDialog({
 
 // ------------------------------------------------------------- Doctor visit
 
-function DoctorVisitDialog({
-  admissionId, open, onOpenChange,
-}: {
-  admissionId: string;
-  open: boolean;
-  onOpenChange: (o: boolean) => void;
-}) {
+// One press = 1 doctor visit. The fee is the doctor's admin-configured
+// consultationFee, resolved server-side (not entered here).
+function RecordVisitButton({ admissionId }: { admissionId: string }) {
   const record = useRecordDoctorVisit(admissionId);
-  const [review, setReview] = useState('');
-  const [fee, setFee] = useState<number>(0);
 
-  const reset = () => { setReview(''); setFee(0); };
-
-  const submit = async () => {
+  const onClick = async () => {
     try {
-      await record.mutateAsync({ review: review.trim() || undefined, fee });
-      toast.success('Doctor visit recorded.');
-      reset();
-      onOpenChange(false);
+      const res = await record.mutateAsync({});
+      const fee = Number(res?.fee ?? 0);
+      toast.success(fee > 0 ? `Doctor visit added — ₹${fee.toFixed(2)}` : 'Doctor visit added (no fee configured)');
     } catch (e) {
       toast.error((e as Error)?.message || 'Failed to record the visit.');
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) reset(); onOpenChange(o); }}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Stethoscope className="h-4 w-4 text-primary" /> Record doctor visit</DialogTitle>
-          <DialogDescription>
-            Log that you saw the patient and note the situation / review. Adds a visit entry to the timeline and the visit fee (if any) to the ledger.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-3">
-          <div>
-            <Label className="text-[10px] uppercase tracking-widest text-muted-foreground">Review / situation</Label>
-            <Textarea
-              value={review}
-              onChange={(e) => setReview(e.target.value)}
-              placeholder="e.g. Patient stable, afebrile, chest clear. Continue current plan, review tomorrow."
-              rows={4}
-              className="mt-1 text-sm"
-            />
-          </div>
-          <div className="w-1/2">
-            <Label className="text-[10px] uppercase tracking-widest text-muted-foreground">Visit fee (₹)</Label>
-            <Input type="number" min={0} step="0.01" value={fee} onChange={(e) => setFee(Math.max(0, parseFloat(e.target.value) || 0))} className="mt-1 h-8 text-sm" />
-            <p className="mt-1 text-[10px] text-muted-foreground">Leave 0 for a no-charge review round.</p>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={submit} disabled={record.isPending}>
-            {record.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Stethoscope className="h-4 w-4" />} Record visit
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <Button
+      size="sm" variant="outline" className="h-7 gap-1 text-xs"
+      onClick={onClick} disabled={record.isPending}
+      title="Adds one doctor visit at the fee set by the hospital admin"
+    >
+      {record.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Stethoscope className="h-3 w-3" />} Add visit
+    </Button>
   );
 }
 
@@ -344,7 +306,6 @@ export function IpActivityLog({ admissionId }: { admissionId: string }) {
 export function IpLedgerPanel({ admissionId, role }: { admissionId: string; patientId: string; role: Role }) {
   const { data: ledger, isLoading } = useAdmissionLedger(admissionId);
   const [addOpen, setAddOpen] = useState(false);
-  const [visitOpen, setVisitOpen] = useState(false);
   const isTpa = ledger?.billingCategory === 'insurance' || ledger?.billingCategory === 'corporate';
 
   return (
@@ -358,11 +319,7 @@ export function IpLedgerPanel({ admissionId, role }: { admissionId: string; pati
             )}
           </h2>
           <div className="flex items-center gap-2">
-            {role === 'doctor' && (
-              <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setVisitOpen(true)}>
-                <Stethoscope className="h-3 w-3" /> Record visit
-              </Button>
-            )}
+            {role === 'doctor' && <RecordVisitButton admissionId={admissionId} />}
             <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setAddOpen(true)}>
               <Plus className="h-3 w-3" /> Add charge
             </Button>
@@ -370,7 +327,6 @@ export function IpLedgerPanel({ admissionId, role }: { admissionId: string; pati
         </div>
 
         <AddChargeDialog admissionId={admissionId} role={role} open={addOpen} onOpenChange={setAddOpen} />
-        <DoctorVisitDialog admissionId={admissionId} open={visitOpen} onOpenChange={setVisitOpen} />
 
         {isLoading ? (
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />

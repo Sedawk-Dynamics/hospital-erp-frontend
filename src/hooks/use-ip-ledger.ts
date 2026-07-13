@@ -73,18 +73,23 @@ export function useAddIpCharge(admissionId: string) {
   });
 }
 
-// --- Doctor visit: a doctor logs a visit/review round (+ optional visit fee) ---
+// --- Doctor visit: one press = 1 visit. The fee is the doctor's admin-set
+// consultationFee (resolved server-side), not entered here. ---
 
 export interface RecordDoctorVisitInput {
   review?: string;
-  fee?: number;
+}
+
+export interface RecordDoctorVisitResult {
+  billId: string;
+  fee: number;
 }
 
 export function useRecordDoctorVisit(admissionId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (data: RecordDoctorVisitInput) =>
-      (await apiPost(`/billing/admissions/${admissionId}/doctor-visit`, data)).data,
+    mutationFn: async (data: RecordDoctorVisitInput = {}) =>
+      (await apiPost<RecordDoctorVisitResult>(`/billing/admissions/${admissionId}/doctor-visit`, data)).data,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ipLedgerKeys.detail(admissionId) });
       qc.invalidateQueries({ queryKey: ipLedgerKeys.activity(admissionId) });
