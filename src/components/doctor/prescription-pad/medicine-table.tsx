@@ -79,6 +79,17 @@ export function MedicineTable({
     [medicines, onChange],
   );
 
+  // Merge several fields in ONE update — needed when a single change touches
+  // more than one field (e.g. frequency also sets isPrn). Calling updateField
+  // twice would rebuild the array from the same stale `medicines` closure, so
+  // the second call would clobber the first.
+  const updateFields = useCallback(
+    (index: number, patch: Partial<MedicineFormData>) => {
+      onChange(medicines.map((m, i) => (i === index ? { ...m, ...patch } : m)));
+    },
+    [medicines, onChange],
+  );
+
   const removeAt = useCallback(
     (index: number) => onChange(medicines.filter((_, i) => i !== index)),
     [medicines, onChange],
@@ -102,6 +113,7 @@ export function MedicineTable({
                 med={med}
                 patientId={patientId}
                 onUpdate={updateField}
+                onUpdateMany={updateFields}
                 onRemove={() => removeAt(index)}
               />
             ))}
@@ -180,9 +192,11 @@ function Field({ label, children, className }: { label: string; children: ReactN
   );
 }
 
-function MedCard({ index, med, patientId, onUpdate, onRemove }: {
+function MedCard({ index, med, patientId, onUpdate, onUpdateMany, onRemove }: {
   index: number; med: MedicineFormData; patientId: string;
-  onUpdate: (i: number, f: keyof MedicineFormData, v: any) => void; onRemove: () => void;
+  onUpdate: (i: number, f: keyof MedicineFormData, v: any) => void;
+  onUpdateMany: (i: number, patch: Partial<MedicineFormData>) => void;
+  onRemove: () => void;
 }) {
   const { data: allergyResult } = useAllergyCheck(patientId, med?.drugName);
   const badge = getDosageFormBadge(med?.dosageForm);
@@ -238,7 +252,7 @@ function MedCard({ index, med, patientId, onUpdate, onRemove }: {
             <select
               className={selectCls}
               value={med.frequency || ''}
-              onChange={(e) => { onUpdate(index, 'frequency', e.target.value); onUpdate(index, 'isPrn', e.target.value === 'SOS'); }}
+              onChange={(e) => onUpdateMany(index, { frequency: e.target.value, isPrn: e.target.value === 'SOS' })}
             >
               <option value="">--</option>
               {FREQUENCY_OPTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
