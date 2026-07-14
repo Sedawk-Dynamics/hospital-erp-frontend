@@ -27,6 +27,8 @@ import {
   ArrowLeft,
   BedDouble,
   Calendar,
+  CalendarDays,
+  ChevronRight,
   Clipboard,
   ClipboardList,
   Clock,
@@ -40,10 +42,12 @@ import {
   Pill,
   PillBottle,
   Plus,
+  Search,
   Stethoscope,
   Thermometer,
   User,
   Wind,
+  X,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -76,7 +80,7 @@ import { formatDate, formatDateTime, formatTime } from '@/lib/date-utils';
 
 import { useAdmissionDetail, usePatientVitals, useLatestVitals, useActivePrescriptions, useNursingNotes } from '@/hooks/use-nurse';
 import { useEmarSchedules, type EmarSchedule } from '@/hooks/use-emar';
-import { useProgressNotes, useLabOrders, useImagingRequests, usePatientDetail } from '@/hooks/use-doctor';
+import { useProgressNotes, useLabOrders, useImagingRequests, usePatientDetail, type ProgressNote } from '@/hooks/use-doctor';
 import { LabOrderDetailDialog } from '@/components/shared/lab-order-detail-dialog';
 import { IpPrescriptionDialog } from '@/components/doctor/ip-prescription-dialog';
 import { LabOrderDialog } from '@/components/doctor/lab-order-dialog';
@@ -566,15 +570,64 @@ function PrescriptionsPanel({ admissionId, patientId, role, onNewRx }: { admissi
 
 // ── Progress notes panel ───────────────────────────────────────────────────
 
+const drLabel = (n: ProgressNote): string =>
+  n.doctor?.user ? `Dr. ${n.doctor.user.firstName} ${n.doctor.user.lastName}`.trim() : 'Doctor';
+
+// Local yyyy-mm-dd key for date comparisons (IST/local).
+const dayKey = (iso: string): string => {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 function ProgressNotesPanel({ admissionId, patientId, role }: { admissionId: string; patientId: string; role: WorkspaceRole }) {
-  const { data, isLoading, refetch } = useProgressNotes({ admissionId, limit: 30 });
+  const { data, isLoading, refetch } = useProgressNotes({ admissionId, limit: 100 });
   // IP running log — this admission's notes, newest first.
-  const ipNotes = useMemo(() => data?.data ?? [], [data]);
+  const ipNotes = useMemo<ProgressNote[]>(() => data?.data ?? [], [data]);
   const [composerOpen, setComposerOpen] = useState(false);
+  const [openNote, setOpenNote] = useState<ProgressNote | null>(null);
+
+  // ── Filters (scoped to this panel only) ─────────────────────
+  const [search, setSearch] = useState('');
+  const [doctorId, setDoctorId] = useState<string>('all');
+  const [dateMode, setDateMode] = useState<'all' | 'day' | 'range'>('all');
+  const [day, setDay] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+
+  // Distinct doctors present in this admission's notes, for the doctor filter.
+  const doctorOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const n of ipNotes) if (n.doctorId) map.set(n.doctorId, drLabel(n));
+    return Array.from(map, ([id, name]) => ({ id, name }));
+  }, [ipNotes]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return ipNotes.filter((n) => {
+      if (doctorId !== 'all' && n.doctorId !== doctorId) return false;
+      if (q) {
+        const hay = `${n.content ?? ''} ${drLabel(n)}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      if (dateMode === 'day' && day) {
+        if (dayKey(n.createdAt) !== day) return false;
+      } else if (dateMode === 'range') {
+        const k = dayKey(n.createdAt);
+        if (fromDate && k < fromDate) return false;
+        if (toDate && k > toDate) return false;
+      }
+      return true;
+    });
+  }, [ipNotes, search, doctorId, dateMode, day, fromDate, toDate]);
+
+  const hasActiveFilter = !!search || doctorId !== 'all' || dateMode !== 'all';
+  const clearFilters = () => {
+    setSearch(''); setDoctorId('all'); setDateMode('all'); setDay(''); setFromDate(''); setToDate('');
+  };
 
   return (
     <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex items-start justify-between gap-2">
         <div>
           <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
             <FileText className="h-4 w-4 text-primary" />
@@ -582,7 +635,7 @@ function ProgressNotesPanel({ admissionId, patientId, role }: { admissionId: str
           </h2>
           <p className="text-[11px] text-muted-foreground">Running clinical log for the whole admission — a note per visit / round.</p>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 shrink-0">
           <LinkButton size="sm" variant="ghost" className="h-7 gap-1 text-xs" href={`/doctor/progress-notes?patientId=${patientId}&admissionId=${admissionId}`}>
             Full timeline
           </LinkButton>
@@ -593,6 +646,80 @@ function ProgressNotesPanel({ admissionId, patientId, role }: { admissionId: str
           )}
         </div>
       </div>
+
+      {/* ── Search + filters (progress notes only) ── */}
+      {ipNotes.length > 0 && (
+        <div className="mb-3 space-y-2 rounded-lg border border-outline-variant/40 bg-surface-container-low/40 p-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search notes or doctor name…"
+              className="h-8 pl-8 pr-8 text-xs"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                aria-label="Clear search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Doctor filter */}
+            <Select value={doctorId} onValueChange={(v) => setDoctorId(v ?? 'all')}>
+              <SelectTrigger className="h-8 w-auto min-w-[130px] gap-1 text-xs">
+                <Stethoscope className="h-3.5 w-3.5 text-muted-foreground" />
+                <SelectValue placeholder="All doctors" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All doctors</SelectItem>
+                {doctorOptions.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Date mode */}
+            <Select value={dateMode} onValueChange={(v) => setDateMode((v as 'all' | 'day' | 'range') ?? 'all')}>
+              <SelectTrigger className="h-8 w-auto min-w-[120px] gap-1 text-xs">
+                <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All dates</SelectItem>
+                <SelectItem value="day">Specific day</SelectItem>
+                <SelectItem value="range">Date range</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {dateMode === 'day' && (
+              <Input type="date" value={day} onChange={(e) => setDay(e.target.value)} className="h-8 w-auto text-xs" />
+            )}
+            {dateMode === 'range' && (
+              <div className="flex items-center gap-1">
+                <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="h-8 w-auto text-xs" aria-label="From date" />
+                <span className="text-xs text-muted-foreground">–</span>
+                <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="h-8 w-auto text-xs" aria-label="To date" />
+              </div>
+            )}
+
+            {hasActiveFilter && (
+              <Button size="sm" variant="ghost" className="h-8 gap-1 px-2 text-xs" onClick={clearFilters}>
+                <X className="h-3 w-3" /> Clear
+              </Button>
+            )}
+            <span className="ml-auto text-[10px] text-muted-foreground">
+              {filtered.length} of {ipNotes.length} note{ipNotes.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+        </div>
+      )}
 
       {isLoading ? (
         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -605,26 +732,45 @@ function ProgressNotesPanel({ admissionId, patientId, role }: { admissionId: str
             </Button>
           )}
         </div>
+      ) : filtered.length === 0 ? (
+        <div className="rounded-md border border-dashed py-6 text-center">
+          <p className="text-xs text-muted-foreground">No notes match these filters.</p>
+          <Button size="sm" variant="ghost" className="mt-1 h-7 gap-1 text-xs" onClick={clearFilters}>
+            <X className="h-3 w-3" /> Clear filters
+          </Button>
+        </div>
       ) : (
         <ul className="space-y-2">
-          {ipNotes.map((n) => (
-            <li key={n.id} className="rounded-md border bg-card px-3 py-2 text-xs">
-              <div className="mb-0.5 flex items-center justify-between">
-                <span className="font-medium text-foreground">
-                  {n.doctor?.user ? `Dr. ${n.doctor.user.firstName} ${n.doctor.user.lastName}` : 'Doctor'}
-                </span>
-                <span className="text-[10px] text-muted-foreground">
-                  <Clock className="mr-1 inline h-3 w-3" />
-                  {formatDateTime(n.createdAt)}
-                </span>
-              </div>
-              <p className="whitespace-pre-wrap text-muted-foreground">
-                {n.content || '—'}
-              </p>
+          {filtered.map((n) => (
+            <li key={n.id}>
+              <button
+                type="button"
+                onClick={() => setOpenNote(n)}
+                className="group w-full rounded-md border bg-card px-3 py-2 text-left text-xs transition-colors hover:border-primary/40 hover:bg-surface-container-high"
+              >
+                <div className="mb-0.5 flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 font-medium text-foreground">
+                    {drLabel(n)}
+                    {n.status === 'finalized' && (
+                      <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">Signed</Badge>
+                    )}
+                  </span>
+                  <span className="flex items-center gap-1 text-[10px] text-muted-foreground shrink-0">
+                    <Clock className="h-3 w-3" />
+                    {formatDateTime(n.createdAt)}
+                    <ChevronRight className="h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-100" />
+                  </span>
+                </div>
+                <p className="line-clamp-2 whitespace-pre-wrap text-muted-foreground">
+                  {n.content || '—'}
+                </p>
+              </button>
             </li>
           ))}
         </ul>
       )}
+
+      <ProgressNoteDetailDialog note={openNote} onClose={() => setOpenNote(null)} />
 
       {role === 'doctor' && (
         <IpProgressNoteComposer
@@ -636,6 +782,67 @@ function ProgressNotesPanel({ admissionId, patientId, role }: { admissionId: str
         />
       )}
     </div>
+  );
+}
+
+// Read a single progress note in full (opened from the running-log list).
+function ProgressNoteDetailDialog({ note, onClose }: { note: ProgressNote | null; onClose: () => void }) {
+  return (
+    <Dialog open={!!note} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+        {note && (
+          <>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-sm">
+                <FileText className="h-4 w-4 text-primary" />
+                Progress Note
+                {note.status === 'finalized' && <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">Signed</Badge>}
+              </DialogTitle>
+              <DialogDescription className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]">
+                <span className="inline-flex items-center gap-1"><Stethoscope className="h-3 w-3" />{drLabel(note)}</span>
+                <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{formatDateTime(note.createdAt)}</span>
+                {note.noteType && <span className="capitalize">{note.noteType.replace(/_/g, ' ')}</span>}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="rounded-lg border bg-surface-container-low/40 p-3">
+              <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-foreground">
+                {note.content || 'No content recorded.'}
+              </p>
+            </div>
+
+            {(note.impressions || note.discussions || note.conclusions) && (
+              <div className="space-y-2 text-[12px]">
+                {note.impressions && (<div><p className="font-semibold text-foreground">Impressions</p><p className="whitespace-pre-wrap text-muted-foreground">{note.impressions}</p></div>)}
+                {note.discussions && (<div><p className="font-semibold text-foreground">Discussion</p><p className="whitespace-pre-wrap text-muted-foreground">{note.discussions}</p></div>)}
+                {note.conclusions && (<div><p className="font-semibold text-foreground">Conclusion</p><p className="whitespace-pre-wrap text-muted-foreground">{note.conclusions}</p></div>)}
+              </div>
+            )}
+
+            {note.amendments && note.amendments.length > 0 && (
+              <div className="text-[11px]">
+                <p className="mb-1 font-semibold text-foreground">Amendments ({note.amendments.length})</p>
+                <ul className="space-y-1">
+                  {note.amendments.map((a) => (
+                    <li key={a.id} className="rounded border bg-card px-2 py-1 text-muted-foreground">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium capitalize text-foreground">{a.fieldName.replace(/_/g, ' ')}</span>
+                        <span className="text-[10px]">{formatDateTime(a.createdAt)}</span>
+                      </div>
+                      {a.reason && <p className="whitespace-pre-wrap">Reason: {a.reason}</p>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <DialogFooter>
+              <Button size="sm" variant="outline" onClick={onClose}>Close</Button>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
