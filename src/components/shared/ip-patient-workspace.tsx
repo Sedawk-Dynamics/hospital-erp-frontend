@@ -579,6 +579,52 @@ const dayKey = (iso: string): string => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
+// IP round notes are composed as "[Progress: <status>]\nS (Subjective): …\n
+// O (Objective): …\nA (Assessment): …\nP (Plan): …" (see IpProgressNoteComposer).
+// Parse that back into a progress status + SOAP sections so it renders as clean
+// labelled blocks instead of raw markers. Free-text notes fall back verbatim.
+const PROGRESS_TONE: Record<string, string> = {
+  improving: 'bg-emerald-100 text-emerald-700',
+  stable: 'bg-sky-100 text-sky-700',
+  unchanged: 'bg-slate-100 text-slate-700',
+  deteriorating: 'bg-amber-100 text-amber-700',
+  critical: 'bg-red-100 text-red-700',
+};
+const SOAP_MARKERS = [
+  { key: 'S', label: 'Subjective', token: 'S (Subjective):' },
+  { key: 'O', label: 'Objective', token: 'O (Objective):' },
+  { key: 'A', label: 'Assessment', token: 'A (Assessment):' },
+  { key: 'P', label: 'Plan', token: 'P (Plan):' },
+];
+interface ParsedNote {
+  progress: string | null;
+  tone: string;
+  sections: Array<{ key: string; label: string; text: string }>;
+  fallback: string | null;
+}
+function parseProgressNote(content: string): ParsedNote {
+  const text = content ?? '';
+  const pm = text.match(/\[Progress:\s*([^\]]+)\]/i);
+  const progress = pm ? pm[1].trim() : null;
+  const tone = PROGRESS_TONE[(progress ?? '').toLowerCase()] ?? 'bg-primary/10 text-primary';
+
+  const found = SOAP_MARKERS
+    .map((mk) => ({ ...mk, idx: text.indexOf(mk.token) }))
+    .filter((mk) => mk.idx !== -1)
+    .sort((a, b) => a.idx - b.idx);
+  const sections = found.map((f, i) => {
+    const start = f.idx + f.token.length;
+    const end = i + 1 < found.length ? found[i + 1].idx : text.length;
+    return { key: f.key, label: f.label, text: text.slice(start, end).trim() };
+  });
+
+  // Nothing structured → show the raw content (legacy / free-text notes).
+  const fallback = !progress && sections.length === 0 ? text.trim() : null;
+  return { progress, tone, sections, fallback };
+}
+const noteSnippet = (p: ParsedNote): string =>
+  p.fallback ?? p.sections.map((s) => `${s.key}: ${s.text}`).join('   ·   ');
+
 function ProgressNotesPanel({ admissionId, patientId, role }: { admissionId: string; patientId: string; role: WorkspaceRole }) {
   const { data, isLoading, refetch } = useProgressNotes({ admissionId, limit: 100 });
   // IP running log — this admission's notes, newest first.
@@ -741,32 +787,38 @@ function ProgressNotesPanel({ admissionId, patientId, role }: { admissionId: str
         </div>
       ) : (
         <ul className="space-y-2">
-          {filtered.map((n) => (
-            <li key={n.id}>
-              <button
-                type="button"
-                onClick={() => setOpenNote(n)}
-                className="group w-full rounded-md border bg-card px-3 py-2 text-left text-xs transition-colors hover:border-primary/40 hover:bg-surface-container-high"
-              >
-                <div className="mb-0.5 flex items-center justify-between gap-2">
-                  <span className="flex items-center gap-1.5 font-medium text-foreground">
-                    {drLabel(n)}
-                    {n.status === 'finalized' && (
-                      <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">Signed</Badge>
-                    )}
-                  </span>
-                  <span className="flex items-center gap-1 text-[10px] text-muted-foreground shrink-0">
-                    <Clock className="h-3 w-3" />
-                    {formatDateTime(n.createdAt)}
-                    <ChevronRight className="h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-100" />
-                  </span>
-                </div>
-                <p className="line-clamp-2 whitespace-pre-wrap text-muted-foreground">
-                  {n.content || '—'}
-                </p>
-              </button>
-            </li>
-          ))}
+          {filtered.map((n) => {
+            const parsed = parseProgressNote(n.content ?? '');
+            return (
+              <li key={n.id}>
+                <button
+                  type="button"
+                  onClick={() => setOpenNote(n)}
+                  className="group w-full rounded-md border bg-card px-3 py-2 text-left text-xs transition-colors hover:border-primary/40 hover:bg-surface-container-high"
+                >
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-1.5 font-medium text-foreground">
+                      {drLabel(n)}
+                      {parsed.progress && (
+                        <span className={cn('rounded-full px-2 py-0.5 text-[9px] font-semibold', parsed.tone)}>{parsed.progress}</span>
+                      )}
+                      {n.status === 'finalized' && (
+                        <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">Signed</Badge>
+                      )}
+                    </span>
+                    <span className="flex items-center gap-1 text-[10px] text-muted-foreground shrink-0">
+                      <Clock className="h-3 w-3" />
+                      {formatDateTime(n.createdAt)}
+                      <ChevronRight className="h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-100" />
+                    </span>
+                  </div>
+                  <p className="line-clamp-2 text-muted-foreground">
+                    {noteSnippet(parsed) || '—'}
+                  </p>
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
 
@@ -805,11 +857,37 @@ function ProgressNoteDetailDialog({ note, onClose }: { note: ProgressNote | null
               </DialogDescription>
             </DialogHeader>
 
-            <div className="rounded-lg border bg-surface-container-low/40 p-3">
-              <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-foreground">
-                {note.content || 'No content recorded.'}
-              </p>
-            </div>
+            {(() => {
+              const parsed = parseProgressNote(note.content ?? '');
+              if (parsed.fallback !== null) {
+                return (
+                  <div className="rounded-lg border bg-surface-container-low/40 p-3">
+                    <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-foreground">
+                      {parsed.fallback || 'No content recorded.'}
+                    </p>
+                  </div>
+                );
+              }
+              return (
+                <div className="space-y-2.5">
+                  {parsed.progress && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Progress</span>
+                      <span className={cn('rounded-full px-2.5 py-0.5 text-[11px] font-semibold', parsed.tone)}>{parsed.progress}</span>
+                    </div>
+                  )}
+                  {parsed.sections.map((s) => (
+                    <div key={s.key} className="rounded-lg border bg-surface-container-low/40 p-3">
+                      <div className="mb-1 flex items-center gap-2">
+                        <span className="flex h-5 w-5 items-center justify-center rounded bg-primary/10 text-[10px] font-bold text-primary">{s.key}</span>
+                        <span className="text-[12px] font-semibold text-foreground">{s.label}</span>
+                      </div>
+                      <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-foreground">{s.text || '—'}</p>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
 
             {(note.impressions || note.discussions || note.conclusions) && (
               <div className="space-y-2 text-[12px]">
