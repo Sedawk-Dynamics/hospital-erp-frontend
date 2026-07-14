@@ -95,40 +95,36 @@ function SidebarContent({
 
   return (
     <div className="flex flex-col h-full w-full">
-      {/* Brand + Pin button */}
-      <div className="mb-12 flex items-center px-6 w-full overflow-hidden">
+      {/* Brand + Pin button — the toggle sits right next to the logo. */}
+      <div className="mb-12 flex items-center gap-2 px-6 w-full overflow-hidden">
         <PlatformLogo
           variant="light"
           alt={process.env.NEXT_PUBLIC_APP_NAME || 'Logo'}
-          className="h-10 w-auto max-w-[170px] object-contain shrink-0"
+          className="h-10 w-auto max-w-[150px] object-contain shrink-0"
           fallback={
             <>
               <div className="min-w-[40px] h-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
                 <HeartPulse className="h-5 w-5 text-primary" />
               </div>
               <div className={cn(
-                'ml-4 flex-1 whitespace-nowrap transition-opacity duration-300',
+                'ml-3 min-w-0 whitespace-nowrap transition-opacity duration-300',
                 labelVisibility
               )}>
-                <h2 className="text-primary font-bold text-xl tracking-tighter font-headline">
+                <h2 className="text-primary font-bold text-xl tracking-tighter font-headline truncate">
                   {process.env.NEXT_PUBLIC_APP_NAME || 'Sanctuary'}
                 </h2>
-                <p className="text-xs text-slate-400 font-medium font-label">{portalLabel}</p>
+                <p className="text-xs text-slate-400 font-medium font-label truncate">{portalLabel}</p>
               </div>
             </>
           }
         />
-        {/* Pin / Unpin button — visible on hover or when pinned */}
+        {/* Collapse / pin toggle — sits beside the logo and is always visible so
+            the sidebar can be toggled from any page. */}
         {onTogglePin && (
           <button
             onClick={onTogglePin}
             title={pinned ? 'Collapse sidebar' : 'Pin sidebar open'}
-            className={cn(
-              'shrink-0 p-1.5 rounded-lg transition-all duration-200',
-              pinned
-                ? 'text-primary bg-primary/10 hover:bg-primary/15'
-                : 'text-slate-400 hover:text-primary hover:bg-primary/5 opacity-0 group-hover:opacity-100'
-            )}
+            className="shrink-0 p-1.5 rounded-lg transition-all duration-200 text-primary bg-primary/10 hover:bg-primary/15"
           >
             {pinned ? (
               <PanelLeftClose className="h-4 w-4" />
