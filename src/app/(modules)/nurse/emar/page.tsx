@@ -162,6 +162,17 @@ export default function EmarPage() {
     return arr.filter((s: any) => s.isActive);
   }, [timeSlotsRaw]);
 
+  // Highlight the slot closest to "now" — but only when the board is showing
+  // today, so the nurse's eye lands on the doses due around now.
+  const currentSlotCode = useMemo<string | null>(() => {
+    const now = new Date();
+    const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    if (selectedDate !== localToday) return null;
+    const nowHM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const passed = [...timeSlots].filter((s: any) => (s.time as string) <= nowHM).sort((a: any, b: any) => String(a.time).localeCompare(String(b.time)));
+    return passed.length ? passed[passed.length - 1].code : (timeSlots[0]?.code ?? null);
+  }, [timeSlots, selectedDate]);
+
   const dayStart = `${selectedDate}T00:00:00.000Z`;
   const dayEnd = `${selectedDate}T23:59:59.999Z`;
 
@@ -497,16 +508,28 @@ export default function EmarPage() {
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[900px]">
                   <thead>
-                    <tr className="border-b border-outline-variant">
-                      <th className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant text-left px-4 py-2.5 w-[280px] sticky left-0 bg-surface-container-lowest z-10">
+                    <tr className="border-b border-outline-variant bg-surface-container-low/40">
+                      <th className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant text-left px-4 py-2.5 w-[280px] sticky left-0 bg-surface-container-low z-10">
                         Medication
                       </th>
-                      {timeSlots.map((slot: any) => (
-                        <th key={slot.code} className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant text-center px-1 py-2.5 w-[80px]">
-                          <div>{slot.label}</div>
-                          <div className="text-[9px] text-on-surface-variant/70">{slot.time}</div>
-                        </th>
-                      ))}
+                      {timeSlots.map((slot: any) => {
+                        const isNow = slot.code === currentSlotCode;
+                        return (
+                          <th
+                            key={slot.code}
+                            className={cn(
+                              'font-label text-[10px] uppercase tracking-widest text-center px-1 py-2.5 w-[80px]',
+                              isNow ? 'text-primary bg-primary/10' : 'text-on-surface-variant',
+                            )}
+                          >
+                            <div className="flex items-center justify-center gap-1">
+                              {slot.label}
+                              {isNow && <span className="h-1.5 w-1.5 rounded-full bg-primary" title="Now" />}
+                            </div>
+                            <div className={cn('text-[9px]', isNow ? 'text-primary/80' : 'text-on-surface-variant/70')}>{slot.time}</div>
+                          </th>
+                        );
+                      })}
                       <th className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant text-center px-1 py-2.5 w-[120px]">
                         Other doses
                       </th>
@@ -516,36 +539,45 @@ export default function EmarPage() {
                     {drugRows.map((drug) => (
                       <tr key={drug.prescriptionItemId} className="border-b border-outline-variant/50 hover:bg-surface-container-low/40 transition-colors">
                         <td className="px-4 py-2.5 sticky left-0 bg-surface-container-lowest z-10">
-                          <div className="flex flex-col min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="text-sm font-semibold text-on-surface truncate">{drug.drugName}</span>
-                              {drug.interactions.length > 0 && (
-                                <button
-                                  type="button"
-                                  onClick={() => setInteractionDialog({ drugName: drug.drugName, pairs: drug.interactions })}
-                                  className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 hover:bg-orange-200"
-                                >
-                                  <AlertTriangle className="h-2.5 w-2.5 inline -mt-0.5 mr-0.5" />
-                                  {drug.interactions.length} Interaction{drug.interactions.length !== 1 ? 's' : ''}
-                                </button>
+                          <div className="flex items-start gap-2.5 min-w-0">
+                            <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                              <Pill className="h-3.5 w-3.5 text-primary" />
+                            </div>
+                            <div className="flex flex-col min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-sm font-semibold text-on-surface truncate">{drug.drugName}</span>
+                                {drug.interactions.length > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setInteractionDialog({ drugName: drug.drugName, pairs: drug.interactions })}
+                                    className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 hover:bg-orange-200"
+                                  >
+                                    <AlertTriangle className="h-2.5 w-2.5 inline -mt-0.5 mr-0.5" />
+                                    {drug.interactions.length} Interaction{drug.interactions.length !== 1 ? 's' : ''}
+                                  </button>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-on-surface-variant mt-0.5">
+                                {[
+                                  drug.dosage && drug.dosage.trim() !== drug.drugName.trim() ? drug.dosage : null,
+                                  drug.frequency,
+                                  drug.route,
+                                ].filter(Boolean).join(' · ')}
+                              </p>
+                              {drug.instructions && (
+                                <p className="text-[10px] text-on-surface-variant italic mt-0.5 truncate max-w-[240px]">{drug.instructions}</p>
                               )}
                             </div>
-                            <p className="text-[10px] text-on-surface-variant mt-0.5">
-                              {drug.dosage} &middot; {drug.frequency}
-                              {drug.route ? ` &middot; ${drug.route}` : ''}
-                            </p>
-                            {drug.instructions && (
-                              <p className="text-[10px] text-on-surface-variant italic mt-0.5 truncate max-w-[260px]">{drug.instructions}</p>
-                            )}
                           </div>
                         </td>
                         {timeSlots.map((slot: any) => {
                           const cells = drug.cellsBySlot.get(slot.code) ?? [];
+                          const isNow = slot.code === currentSlotCode;
                           return (
-                            <td key={slot.code} className="text-center px-1 py-2 align-top">
+                            <td key={slot.code} className={cn('text-center px-1 py-2 align-top', isNow && 'bg-primary/5')}>
                               <div className="flex flex-col items-center gap-1">
                                 {cells.length === 0 ? (
-                                  <span className="text-gray-200">&mdash;</span>
+                                  <span className="text-on-surface-variant/25">–</span>
                                 ) : (
                                   cells.map((c) => <DoseButton key={c.id} schedule={c} onClick={(m) => openActionDialog(c, m)} onAudit={(id) => setAuditScheduleId(id)} />)
                                 )}
@@ -556,7 +588,7 @@ export default function EmarPage() {
                         <td className="text-center px-1 py-2 align-top">
                           <div className="flex flex-col items-center gap-1">
                             {drug.untimed.length === 0 ? (
-                              <span className="text-gray-200">&mdash;</span>
+                              <span className="text-on-surface-variant/25">–</span>
                             ) : (
                               drug.untimed.map((c) => <DoseButton key={c.id} schedule={c} showTime onClick={(m) => openActionDialog(c, m)} onAudit={(id) => setAuditScheduleId(id)} />)
                             )}
@@ -609,8 +641,12 @@ export default function EmarPage() {
                           <span className="text-sm font-semibold text-on-surface">{p.drugName}</span>
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">PRN</span>
                         </div>
-                        <p className="text-[10px] text-on-surface-variant mt-0.5">
-                          {p.dosage} &middot; {p.frequency}{p.route ? ` &middot; ${p.route}` : ''}
+                        <p className="text-[11px] text-on-surface-variant mt-0.5">
+                          {[
+                            p.dosage && p.dosage.trim() !== p.drugName.trim() ? p.dosage : null,
+                            p.frequency,
+                            p.route,
+                          ].filter(Boolean).join(' · ')}
                         </p>
                         {p.instructions && <p className="text-[10px] text-on-surface-variant italic mt-0.5">{p.instructions}</p>}
                       </div>
