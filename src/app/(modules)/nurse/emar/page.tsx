@@ -49,6 +49,7 @@ import {
   useAmendDose,
   useTriggerPrn,
   useRegenerateSchedules,
+  useCatchUpDose,
   useEmarAudit,
   type EmarSchedule,
   type EmarDoseStatus,
@@ -122,11 +123,24 @@ export default function EmarPage() {
 
   // Action dialog state
   type ActionMode = 'give' | 'hold' | 'refuse' | 'missed' | 'amend';
+  // A "catch-up" target has no schedule row yet — it's a slot whose dose was
+  // never generated (its time had passed at ordering). The row is created on
+  // submit via the catch-up endpoint.
+  type CatchUpTarget = {
+    prescriptionItemId: string;
+    slotCode: string;
+    date: string;
+    drugName: string;
+    dosage: string;
+    route: string;
+    scheduledAt: string;
+  };
   const [actionDialog, setActionDialog] = useState<{
     open: boolean;
     mode: ActionMode;
     schedule: EmarSchedule | null;
-  }>({ open: false, mode: 'give', schedule: null });
+    catchUp: CatchUpTarget | null;
+  }>({ open: false, mode: 'give', schedule: null, catchUp: null });
 
   const [actualGivenTime, setActualGivenTime] = useState(nowTimeStr());
   const [actionReason, setActionReason] = useState('');
@@ -191,11 +205,12 @@ export default function EmarPage() {
 
   // Highlight the slot closest to "now" — but only when the board is showing
   // today, so the nurse's eye lands on the doses due around now.
-  const { isToday, nowHM } = useMemo(() => {
+  const { isToday, isPastDate, nowHM } = useMemo(() => {
     const now = new Date();
     const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     return {
       isToday: selectedDate === localToday,
+      isPastDate: selectedDate < localToday,
       nowHM: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
     };
   }, [selectedDate]);
@@ -346,25 +361,51 @@ export default function EmarPage() {
   const amendDose = useAmendDose();
   const triggerPrn = useTriggerPrn();
   const regenerate = useRegenerateSchedules();
+  const catchUpDose = useCatchUpDose();
 
   // ── Handlers ────────────────────────────────────────────
   const openActionDialog = useCallback((schedule: EmarSchedule, mode: ActionMode) => {
-    setActionDialog({ open: true, mode, schedule });
+    setActionDialog({ open: true, mode, schedule, catchUp: null });
     setActualGivenTime(nowTimeStr());
     setActionReason(schedule.reason ?? '');
     setActionNotes('');
     setAmendTargetStatus('given_late');
   }, []);
 
+  // Open the action dialog for a slot that has no dose row yet (its time had
+  // passed at ordering). Only give/hold/refuse/missed apply — no amend.
+  const openCatchUpDialog = useCallback((target: CatchUpTarget, mode: Exclude<ActionMode, 'amend'>) => {
+    setActionDialog({ open: true, mode, schedule: null, catchUp: target });
+    setActualGivenTime(nowTimeStr());
+    setActionReason('');
+    setActionNotes('');
+  }, []);
+
+  const makeCatchUpTarget = useCallback(
+    (
+      drug: { prescriptionItemId: string; drugName: string; dosage: string; route: string },
+      slot: { code: string; time: string },
+    ): CatchUpTarget => ({
+      prescriptionItemId: drug.prescriptionItemId,
+      slotCode: slot.code,
+      date: selectedDate,
+      drugName: drug.drugName,
+      dosage: drug.dosage,
+      route: drug.route,
+      scheduledAt: buildIso(selectedDate, slot.time),
+    }),
+    [selectedDate],
+  );
+
   const closeActionDialog = useCallback(() => {
-    setActionDialog({ open: false, mode: 'give', schedule: null });
+    setActionDialog({ open: false, mode: 'give', schedule: null, catchUp: null });
     setActionReason('');
     setActionNotes('');
   }, []);
 
   const submitAction = useCallback(async () => {
-    const { mode, schedule } = actionDialog;
-    if (!schedule) return;
+    const { mode, schedule, catchUp } = actionDialog;
+    if (!schedule && !catchUp) return;
 
     const requiresReason = mode === 'hold' || mode === 'refuse';
     if (requiresReason && !actionReason.trim()) {
@@ -373,6 +414,26 @@ export default function EmarPage() {
     }
 
     try {
+      // Catch-up target: materialize the skipped slot + record its outcome in one call.
+      if (catchUp) {
+        if (mode === 'amend') return;
+        const iso = mode === 'give' ? buildIso(catchUp.date, actualGivenTime) : undefined;
+        await catchUpDose.mutateAsync({
+          prescriptionItemId: catchUp.prescriptionItemId,
+          slotCode: catchUp.slotCode,
+          date: catchUp.date,
+          action: mode,
+          actualGivenTime: iso,
+          reason: actionReason.trim() || undefined,
+          notes: actionNotes.trim() || undefined,
+        });
+        const verb = mode === 'give' ? 'given' : mode === 'hold' ? 'held' : mode === 'refuse' ? 'refused' : 'marked missed';
+        toast.success(`${catchUp.drugName} — dose ${verb}`);
+        closeActionDialog();
+        return;
+      }
+      if (!schedule) return;
+
       if (mode === 'give') {
         const iso = buildIso(selectedDate, actualGivenTime);
         await giveDose.mutateAsync({ id: schedule.id, actualGivenTime: iso, notes: actionNotes.trim() || undefined });
@@ -400,7 +461,7 @@ export default function EmarPage() {
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? 'Action failed');
     }
-  }, [actionDialog, actionReason, actionNotes, actualGivenTime, amendTargetStatus, selectedDate, giveDose, holdDose, refuseDose, amendDose, closeActionDialog]);
+  }, [actionDialog, actionReason, actionNotes, actualGivenTime, amendTargetStatus, selectedDate, giveDose, holdDose, refuseDose, amendDose, catchUpDose, closeActionDialog]);
 
   const submitPrn = useCallback(async () => {
     if (!prnDialog.itemId) return;
@@ -418,6 +479,11 @@ export default function EmarPage() {
       toast.error(err?.response?.data?.message ?? 'PRN failed');
     }
   }, [prnDialog, prnTime, prnNotes, selectedDate, triggerPrn]);
+
+  // Action-dialog display target: a real schedule row, or a catch-up slot with
+  // no row yet (both carry drugName/dosage/route/scheduledAt for the header).
+  const dlgTarget = actionDialog.schedule ?? actionDialog.catchUp;
+  const anyActionPending = giveDose.isPending || holdDose.isPending || refuseDose.isPending || amendDose.isPending || catchUpDose.isPending;
 
   // ── Render ──────────────────────────────────────────────
   return (
@@ -618,26 +684,59 @@ export default function EmarPage() {
                         {timeSlots.map((slot: any) => {
                           const cells = drug.cellsBySlot.get(slot.code) ?? [];
                           const isNow = slot.code === currentSlotCode;
-                          // Empty but the drug IS a "this slot" drug, and (viewing
-                          // today) the slot time has already elapsed → the dose
-                          // wasn't dropped, its window passed before the order.
+                          // Empty but the drug IS a "this slot" drug, and the slot
+                          // time has already passed (a past date, or earlier today)
+                          // → the dose wasn't dropped, its window elapsed before the
+                          // order. Offer to record its status rather than a bare dash.
                           const elapsedBeforeOrder =
                             cells.length === 0 &&
                             drug.intendedSlots.has(slot.code) &&
-                            isToday &&
-                            (slot.time as string) < nowHM;
+                            (isPastDate || (isToday && (slot.time as string) < nowHM));
                           return (
                             <td key={slot.code} className={cn('text-center px-1 py-2 align-top', isNow && 'bg-primary/5')}>
                               <div className="flex flex-col items-center gap-1">
                                 {cells.length > 0 ? (
                                   cells.map((c) => <DoseButton key={c.id} schedule={c} onClick={(m) => openActionDialog(c, m)} onAudit={(id) => setAuditScheduleId(id)} />)
                                 ) : elapsedBeforeOrder ? (
-                                  <span
-                                    className="inline-flex items-center justify-center w-9 h-9 rounded-full border border-dashed border-outline-variant text-on-surface-variant/40"
-                                    title="Ordered after this dose time — no dose today. Resumes tomorrow."
-                                  >
-                                    <Clock className="h-3.5 w-3.5" />
-                                  </span>
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger
+                                      render={
+                                        <button
+                                          type="button"
+                                          className="inline-flex items-center justify-center w-9 h-9 rounded-full border border-dashed border-outline-variant text-on-surface-variant/50 hover:text-primary hover:border-primary/60 transition-colors"
+                                          title="Dose time passed before this order — click to record its status"
+                                        >
+                                          <Clock className="h-3.5 w-3.5" />
+                                        </button>
+                                      }
+                                    />
+                                    <DropdownMenuContent align="center" side="bottom" sideOffset={6} className="min-w-[136px] w-auto p-1">
+                                      <DropdownMenuItem
+                                        onClick={() => openCatchUpDialog(makeCatchUpTarget(drug, slot), 'give')}
+                                        className="text-green-700 focus:bg-green-50 focus:text-green-800"
+                                      >
+                                        <Check className="h-3.5 w-3.5" /> Give (late)
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        onClick={() => openCatchUpDialog(makeCatchUpTarget(drug, slot), 'hold')}
+                                        className="text-amber-700 focus:bg-amber-50 focus:text-amber-800"
+                                      >
+                                        <Pause className="h-3.5 w-3.5" /> Hold
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        onClick={() => openCatchUpDialog(makeCatchUpTarget(drug, slot), 'refuse')}
+                                        className="text-orange-700 focus:bg-orange-50 focus:text-orange-800"
+                                      >
+                                        <Ban className="h-3.5 w-3.5" /> Refuse
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        onClick={() => openCatchUpDialog(makeCatchUpTarget(drug, slot), 'missed')}
+                                        className="text-red-700 focus:bg-red-50 focus:text-red-800"
+                                      >
+                                        <X className="h-3.5 w-3.5" /> Mark missed
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
                                 ) : (
                                   <span className="text-on-surface-variant/25">–</span>
                                 )}
@@ -754,25 +853,31 @@ export default function EmarPage() {
             </DialogTitle>
           </DialogHeader>
 
-          {actionDialog.schedule && (
+          {dlgTarget && (
             <div className="space-y-4">
               <div className="rounded-lg bg-surface-container-low p-3 space-y-1">
-                <p className="text-sm font-semibold">{actionDialog.schedule.drugName}</p>
+                <p className="text-sm font-semibold">{dlgTarget.drugName}</p>
                 <p className="text-xs text-on-surface-variant">
-                  Dose: <span className="font-medium text-on-surface">{actionDialog.schedule.dosage}</span>
-                  {actionDialog.schedule.route && (
-                    <> &middot; Route: <span className="font-medium text-on-surface">{actionDialog.schedule.route}</span></>
+                  Dose: <span className="font-medium text-on-surface">{dlgTarget.dosage}</span>
+                  {dlgTarget.route && (
+                    <> &middot; Route: <span className="font-medium text-on-surface">{dlgTarget.route}</span></>
                   )}
                 </p>
                 <p className="text-xs text-on-surface-variant">
-                  Scheduled: <span className="font-medium text-on-surface">{formatDateTime(actionDialog.schedule.scheduledAt)}</span>
+                  Scheduled: <span className="font-medium text-on-surface">{formatDateTime(dlgTarget.scheduledAt)}</span>
                 </p>
-                <p className="text-xs">
-                  Current status:{' '}
-                  <span className={cn('inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full', STATUS_META[actionDialog.schedule.status].badgeClass)}>
-                    {STATUS_META[actionDialog.schedule.status].label}
-                  </span>
-                </p>
+                {actionDialog.schedule ? (
+                  <p className="text-xs">
+                    Current status:{' '}
+                    <span className={cn('inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full', STATUS_META[actionDialog.schedule.status].badgeClass)}>
+                      {STATUS_META[actionDialog.schedule.status].label}
+                    </span>
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                    This dose time already passed and was not auto-scheduled. Recording it now adds it to the chart.
+                  </p>
+                )}
               </div>
 
               {allergies.length > 0 && (
@@ -831,8 +936,8 @@ export default function EmarPage() {
 
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" size="sm" onClick={closeActionDialog}>Cancel</Button>
-            <Button size="sm" onClick={submitAction} disabled={giveDose.isPending || holdDose.isPending || refuseDose.isPending || amendDose.isPending} className="gap-1.5">
-              {(giveDose.isPending || holdDose.isPending || refuseDose.isPending || amendDose.isPending) && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            <Button size="sm" onClick={submitAction} disabled={anyActionPending} className="gap-1.5">
+              {anyActionPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               Confirm
             </Button>
           </DialogFooter>

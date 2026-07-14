@@ -279,6 +279,27 @@ export function useRegenerateSchedules() {
   });
 }
 
+// Record an outcome for a slot whose dose row was never generated (its time
+// had already passed when the order was written). Materializes + actions in one.
+export function useCatchUpDose() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: {
+      prescriptionItemId: string;
+      slotCode: string;
+      date: string; // YYYY-MM-DD
+      action: 'give' | 'hold' | 'refuse' | 'missed';
+      actualGivenTime?: string;
+      reason?: string;
+      notes?: string;
+    }) => {
+      const res = await apiPost<EmarSchedule>('/emar/catch-up', vars);
+      return res;
+    },
+    onSuccess: () => invalidateSchedules(qc),
+  });
+}
+
 // ============================================================
 // Time Slot Master
 // ============================================================
