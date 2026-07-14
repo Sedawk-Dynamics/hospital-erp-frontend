@@ -310,8 +310,11 @@ export function IpLedgerPanel({ admissionId, patientId, role }: { admissionId: s
   const isTpa = ledger?.billingCategory === 'insurance' || ledger?.billingCategory === 'corporate';
 
   // Only manually-posted lines can be removed here — auto-pulled (pending/order)
-  // charges come from lab/pharmacy/room/etc. and are managed at source.
-  const canRemove = (l: LedgerLine) => l.status === 'posted' && !l.isAutoPulled;
+  // charges come from lab/pharmacy/room/etc. and are managed at source. A nurse
+  // may remove only the charges they added themselves (addedByMe); doctors /
+  // billing keep the broader ability.
+  const canRemove = (l: LedgerLine) =>
+    l.status === 'posted' && !l.isAutoPulled && (role !== 'nurse' || !!l.addedByMe);
   const onRemove = async (l: LedgerLine) => {
     if (!window.confirm(`Remove "${l.description}" (${money(l.totalAmount)}) from the ledger?`)) return;
     try {

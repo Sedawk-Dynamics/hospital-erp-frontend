@@ -15,6 +15,8 @@ export interface LedgerLine {
   totalAmount: number;
   isReimbursable: boolean | null;
   isAutoPulled: boolean;
+  /** True when the current user added this manual charge (can remove their own). */
+  addedByMe?: boolean;
   status: 'posted' | 'pending';
   at: string;
 }
