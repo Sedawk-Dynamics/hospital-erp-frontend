@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Loader2, Upload, Trash2, Save, FileText, Image as ImageIcon, RefreshCw } from 'lucide-react';
+import { Loader2, Upload, Trash2, Save, FileText, Image as ImageIcon, ExternalLink, RotateCcw, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import { resolveLogoUrl } from '@/hooks/use-branding';
 import {
   useHospitalBranding, useUpdateHospitalBranding, useUploadBrandingLogo, useRemoveBrandingLogo,
-  fetchBrandingPreviewUrl, DEFAULT_ACCENT, type HospitalBranding, type BrandingVisibility,
+  fetchBrandingPreviewUrl, DEFAULT_ACCENT, type HospitalBranding, type BrandingVisibility, type PreviewDocType,
 } from '@/hooks/use-hospital-branding';
 
 const ALL_VISIBLE: BrandingVisibility = {
@@ -40,6 +40,19 @@ const VISIBILITY_FIELDS: Array<{ key: keyof BrandingVisibility; label: string }>
   { key: 'footer', label: 'Footer note' },
 ];
 
+// Document types the live preview can mimic.
+const PREVIEW_TYPES: Array<{ key: PreviewDocType; label: string }> = [
+  { key: 'prescription', label: 'Prescription' },
+  { key: 'discharge', label: 'Discharge' },
+  { key: 'receipt', label: 'Receipt' },
+];
+
+// Every document that inherits this branding — shown so the admin knows the reach.
+const COVERED_DOCS = [
+  'Prescriptions', 'Discharge summaries', 'Bills & receipts', 'Salary slips',
+  'Lab & radiology reports', 'Day-end reports',
+];
+
 export default function PdfBuilderPage() {
   const { data, isLoading } = useHospitalBranding();
   const update = useUpdateHospitalBranding();
@@ -49,6 +62,7 @@ export default function PdfBuilderPage() {
   const [form, setForm] = useState<HospitalBranding>(EMPTY);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
+  const [previewType, setPreviewType] = useState<PreviewDocType>('prescription');
   const fileRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -63,6 +77,9 @@ export default function PdfBuilderPage() {
   const setStr = (k: keyof HospitalBranding) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     set(k, (e.target.value || null) as HospitalBranding[typeof k]);
 
+  const allShown = useMemo(() => Object.values(form.show).every(Boolean) && form.showLogo, [form.show, form.showLogo]);
+  const resetVisibility = () => setForm((f) => ({ ...f, showLogo: true, show: { ...ALL_VISIBLE } }));
+
   // Debounced live PDF preview — reflects unsaved edits exactly as they'll print.
   const formKey = useMemo(() => JSON.stringify(form), [form]);
   useEffect(() => {
@@ -71,17 +88,17 @@ export default function PdfBuilderPage() {
     setPreviewing(true);
     debounceRef.current = setTimeout(async () => {
       try {
-        const url = await fetchBrandingPreviewUrl(form);
+        const url = await fetchBrandingPreviewUrl(form, previewType);
         setPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return url; });
       } catch {
         /* keep last preview */
       } finally {
         setPreviewing(false);
       }
-    }, 700);
+    }, 600);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formKey, isLoading]);
+  }, [formKey, previewType, isLoading]);
 
   const onSave = async () => {
     try {
@@ -121,6 +138,14 @@ export default function PdfBuilderPage() {
         <Button onClick={onSave} disabled={update.isPending} className="gap-1.5">
           {update.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save branding
         </Button>
+      </div>
+
+      {/* Coverage — every document that inherits this branding. */}
+      <div className="flex flex-wrap items-center gap-1.5 rounded-lg border bg-muted/30 px-3 py-2">
+        <span className="text-[11px] font-medium text-muted-foreground">Applies to:</span>
+        {COVERED_DOCS.map((d) => (
+          <span key={d} className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">{d}</span>
+        ))}
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -222,8 +247,15 @@ export default function PdfBuilderPage() {
 
           {/* What shows on the PDF */}
           <Card>
-            <CardHeader className="pb-2">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
               <CardTitle className="text-sm">Show on the document</CardTitle>
+              <Button
+                size="sm" variant="ghost" className="h-7 gap-1 px-2 text-[11px]"
+                onClick={resetVisibility} disabled={allShown}
+                title="Show every field again"
+              >
+                <RotateCcw className="h-3 w-3" /> Show all
+              </Button>
             </CardHeader>
             <CardContent className="grid grid-cols-2 gap-2">
               <Toggle label="Logo" checked={form.showLogo} onChange={(v) => set('showLogo', v)} />
@@ -237,14 +269,33 @@ export default function PdfBuilderPage() {
         {/* ---- Right: live PDF preview ---- */}
         <div className="lg:sticky lg:top-4 lg:self-start">
           <Card className="overflow-hidden">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                Live preview {previewing && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
-              </CardTitle>
-              <a href={previewUrl ?? undefined} target="_blank" rel="noreferrer"
-                className={cn('inline-flex items-center gap-1 text-[11px] text-primary hover:underline', !previewUrl && 'pointer-events-none opacity-40')}>
-                <RefreshCw className="h-3 w-3" /> Open full PDF
-              </a>
+            <CardHeader className="gap-2 pb-2">
+              <div className="flex flex-row items-center justify-between gap-2">
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <Eye className="h-4 w-4 text-primary" /> Live preview
+                  {previewing && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+                </CardTitle>
+                <a href={previewUrl ?? undefined} target="_blank" rel="noreferrer"
+                  className={cn('inline-flex items-center gap-1 text-[11px] text-primary hover:underline', !previewUrl && 'pointer-events-none opacity-40')}>
+                  <ExternalLink className="h-3 w-3" /> Open full PDF
+                </a>
+              </div>
+              {/* Document-type switch — preview the letterhead in context. */}
+              <div className="flex items-center gap-1 rounded-lg border bg-muted/40 p-0.5">
+                {PREVIEW_TYPES.map((t) => (
+                  <button
+                    key={t.key}
+                    type="button"
+                    onClick={() => setPreviewType(t.key)}
+                    className={cn(
+                      'flex-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors',
+                      previewType === t.key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               {previewUrl ? (
@@ -254,7 +305,7 @@ export default function PdfBuilderPage() {
               )}
             </CardContent>
           </Card>
-          <p className="mt-2 text-[11px] text-muted-foreground">This is a sample document. The same letterhead &amp; footer apply to discharge summaries, bills, receipts, lab &amp; radiology reports, prescriptions and every other PDF/print.</p>
+          <p className="mt-2 text-[11px] text-muted-foreground">A live sample — switch the document type above to see the same letterhead &amp; footer in context. Every PDF and print in the system inherits it.</p>
         </div>
       </div>
     </div>

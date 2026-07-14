@@ -83,8 +83,13 @@ export function useRemoveBrandingLogo() {
   });
 }
 
+export type PreviewDocType = 'prescription' | 'discharge' | 'receipt';
+
 /** Fetch a live sample PDF (reflects unsaved edits) as an object URL for preview. */
-export async function fetchBrandingPreviewUrl(branding: Partial<HospitalBranding>): Promise<string> {
-  const res = await apiClient.post('/hospital-branding/preview.pdf', branding, { responseType: 'blob' });
+export async function fetchBrandingPreviewUrl(
+  branding: Partial<HospitalBranding>,
+  previewType: PreviewDocType = 'prescription',
+): Promise<string> {
+  const res = await apiClient.post('/hospital-branding/preview.pdf', { ...branding, previewType }, { responseType: 'blob' });
   return URL.createObjectURL(res.data as Blob);
 }
