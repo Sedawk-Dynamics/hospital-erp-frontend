@@ -681,16 +681,11 @@ function ProgressNotesPanel({ admissionId, patientId, role }: { admissionId: str
           </h2>
           <p className="text-[11px] text-muted-foreground">Running clinical log for the whole admission — a note per visit / round.</p>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          <LinkButton size="sm" variant="ghost" className="h-7 gap-1 text-xs" href={`/doctor/progress-notes?patientId=${patientId}&admissionId=${admissionId}`}>
-            Full timeline
-          </LinkButton>
-          {role === 'doctor' && (
-            <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setComposerOpen(true)}>
-              <Plus className="h-3 w-3" /> Add visit note
-            </Button>
-          )}
-        </div>
+        {role === 'doctor' && (
+          <Button size="sm" variant="outline" className="h-7 shrink-0 gap-1 text-xs" onClick={() => setComposerOpen(true)}>
+            <Plus className="h-3 w-3" /> Add visit note
+          </Button>
+        )}
       </div>
 
       {/* ── Search + filters (progress notes only) ── */}
