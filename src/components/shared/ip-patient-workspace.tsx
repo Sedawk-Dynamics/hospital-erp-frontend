@@ -18,7 +18,7 @@
 // discharge. Anyone can deep-link out to the dedicated pages with the
 // admissionId / patientId pre-filled.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import {
@@ -28,6 +28,7 @@ import {
   BedDouble,
   Calendar,
   CalendarDays,
+  ChevronDown,
   ChevronRight,
   Clipboard,
   ClipboardList,
@@ -625,7 +626,7 @@ function parseProgressNote(content: string): ParsedNote {
 const noteSnippet = (p: ParsedNote): string =>
   p.fallback ?? p.sections.map((s) => `${s.key}: ${s.text}`).join('   ·   ');
 
-function ProgressNotesPanel({ admissionId, patientId, role }: { admissionId: string; patientId: string; role: WorkspaceRole }) {
+function ProgressNotesPanel({ admissionId, patientId, role, admissionDate }: { admissionId: string; patientId: string; role: WorkspaceRole; admissionDate?: string }) {
   const { data, isLoading, refetch } = useProgressNotes({ admissionId, limit: 100 });
   // IP running log — this admission's notes, newest first.
   const ipNotes = useMemo<ProgressNote[]>(() => data?.data ?? [], [data]);
@@ -670,6 +671,45 @@ function ProgressNotesPanel({ admissionId, patientId, role }: { admissionId: str
   const clearFilters = () => {
     setSearch(''); setDoctorId('all'); setDateMode('all'); setDay(''); setFromDate(''); setToDate('');
   };
+
+  // ── Group notes by admission day (Day 1 = admission date) ──
+  const admissionDayKey = admissionDate ? dayKey(admissionDate) : null;
+  const groupedDays = useMemo(() => {
+    const byDay = new Map<string, ProgressNote[]>();
+    for (const n of filtered) {
+      const k = dayKey(n.createdAt);
+      const arr = byDay.get(k);
+      if (arr) arr.push(n); else byDay.set(k, [n]);
+    }
+    return Array.from(byDay.entries())
+      .sort((a, b) => (a[0] < b[0] ? 1 : -1)) // most recent day first
+      .map(([key, notes]) => {
+        let dayNumber: number | null = null;
+        if (admissionDayKey) {
+          const diff = Math.round((new Date(key + 'T00:00:00').getTime() - new Date(admissionDayKey + 'T00:00:00').getTime()) / 86_400_000);
+          dayNumber = diff + 1;
+        }
+        return { key, notes, dayNumber: dayNumber && dayNumber >= 1 ? dayNumber : null, date: notes[0].createdAt };
+      });
+  }, [filtered, admissionDayKey]);
+
+  // Collapsible day sections — default: only the most recent day open. While a
+  // filter is active, force every day open so matches are never hidden.
+  const [openDays, setOpenDays] = useState<Set<string>>(new Set());
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (!seeded.current && groupedDays.length) {
+      setOpenDays(new Set([groupedDays[0].key]));
+      seeded.current = true;
+    }
+  }, [groupedDays]);
+  const isDayOpen = (key: string) => hasActiveFilter || openDays.has(key);
+  const toggleDay = (key: string) =>
+    setOpenDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
 
   return (
     <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4">
@@ -781,40 +821,74 @@ function ProgressNotesPanel({ admissionId, patientId, role }: { admissionId: str
           </Button>
         </div>
       ) : (
-        <ul className="space-y-2">
-          {filtered.map((n) => {
-            const parsed = parseProgressNote(n.content ?? '');
+        <div className="space-y-2">
+          {groupedDays.map((g) => {
+            const open = isDayOpen(g.key);
             return (
-              <li key={n.id}>
+              <div key={g.key} className="overflow-hidden rounded-lg border border-outline-variant/40">
+                {/* Day header — click to expand/collapse the notes under it */}
                 <button
                   type="button"
-                  onClick={() => setOpenNote(n)}
-                  className="group w-full rounded-md border bg-card px-3 py-2 text-left text-xs transition-colors hover:border-primary/40 hover:bg-surface-container-high"
+                  onClick={() => toggleDay(g.key)}
+                  className="flex w-full items-center justify-between gap-2 bg-surface-container-low/60 px-3 py-2 text-left transition-colors hover:bg-surface-container-high"
                 >
-                  <div className="mb-1 flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-1.5 font-medium text-foreground">
-                      {drLabel(n)}
-                      {parsed.progress && (
-                        <span className={cn('rounded-full px-2 py-0.5 text-[9px] font-semibold', parsed.tone)}>{parsed.progress}</span>
-                      )}
-                      {n.status === 'finalized' && (
-                        <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">Signed</Badge>
-                      )}
+                  <span className="flex items-center gap-2">
+                    <CalendarDays className="h-3.5 w-3.5 text-primary" />
+                    <span className="text-xs font-bold text-foreground">
+                      {g.dayNumber != null ? `Day ${g.dayNumber}` : formatDate(g.date)}
                     </span>
-                    <span className="flex items-center gap-1 text-[10px] text-muted-foreground shrink-0">
-                      <Clock className="h-3 w-3" />
-                      {formatDateTime(n.createdAt)}
-                      <ChevronRight className="h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-100" />
+                    {g.dayNumber != null && (
+                      <span className="text-[10px] text-muted-foreground">{formatDate(g.date)}</span>
+                    )}
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                      {g.notes.length} note{g.notes.length !== 1 ? 's' : ''}
                     </span>
-                  </div>
-                  <p className="line-clamp-2 text-muted-foreground">
-                    {noteSnippet(parsed) || '—'}
-                  </p>
+                    <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', open && 'rotate-180')} />
+                  </span>
                 </button>
-              </li>
+
+                {open && (
+                  <ul className="space-y-2 p-2">
+                    {g.notes.map((n) => {
+                      const parsed = parseProgressNote(n.content ?? '');
+                      return (
+                        <li key={n.id}>
+                          <button
+                            type="button"
+                            onClick={() => setOpenNote(n)}
+                            className="group w-full rounded-md border bg-card px-3 py-2 text-left text-xs transition-colors hover:border-primary/40 hover:bg-surface-container-high"
+                          >
+                            <div className="mb-1 flex items-center justify-between gap-2">
+                              <span className="flex items-center gap-1.5 font-medium text-foreground">
+                                {drLabel(n)}
+                                {parsed.progress && (
+                                  <span className={cn('rounded-full px-2 py-0.5 text-[9px] font-semibold', parsed.tone)}>{parsed.progress}</span>
+                                )}
+                                {n.status === 'finalized' && (
+                                  <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">Signed</Badge>
+                                )}
+                              </span>
+                              <span className="flex items-center gap-1 text-[10px] text-muted-foreground shrink-0">
+                                <Clock className="h-3 w-3" />
+                                {formatTime(n.createdAt)}
+                                <ChevronRight className="h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-100" />
+                              </span>
+                            </div>
+                            <p className="line-clamp-2 text-muted-foreground">
+                              {noteSnippet(parsed) || '—'}
+                            </p>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
             );
           })}
-        </ul>
+        </div>
       )}
 
       <ProgressNoteDetailDialog note={openNote} onClose={() => setOpenNote(null)} />
@@ -1289,7 +1363,7 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
           <EmarTodayPanel admissionId={admissionId} role={role} />
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <PrescriptionsPanel admissionId={admissionId} patientId={patientId} role={role} onNewRx={onNewRx} />
-            <ProgressNotesPanel admissionId={admissionId} patientId={patientId} role={role} />
+            <ProgressNotesPanel admissionId={admissionId} patientId={patientId} role={role} admissionDate={admission.admissionDate} />
           </div>
         </TabsContent>
 
