@@ -42,6 +42,7 @@ import {
 import {
   useEmarSchedules,
   useEmarTimeSlots,
+  useEmarFrequencies,
   useGiveDose,
   useHoldDose,
   useRefuseDose,
@@ -168,16 +169,41 @@ export default function EmarPage() {
     return arr.filter((s: any) => s.isActive);
   }, [timeSlotsRaw]);
 
+  // Frequency master → resolve a frequencyCode to the slots that frequency
+  // normally targets, so we can tell "this drug isn't a morning drug" apart
+  // from "the morning dose already elapsed before this order was placed today".
+  const { data: frequenciesRaw } = useEmarFrequencies();
+  const slotsByFreqCode = useMemo(() => {
+    const map = new Map<string, string[]>();
+    const arr = frequenciesRaw
+      ? (Array.isArray(frequenciesRaw) ? frequenciesRaw : (frequenciesRaw as any).data ?? [])
+      : [];
+    for (const f of arr) map.set(f.code, f.slotCodes ?? []);
+    return map;
+  }, [frequenciesRaw]);
+  // Inline patterns (e.g. "1-1-1") are stored as INLINE_MORNING_AFTERNOON_NIGHT —
+  // decode them without a master lookup.
+  const intendedSlotsFor = useCallback((frequencyCode: string | null | undefined): string[] => {
+    if (!frequencyCode) return [];
+    if (frequencyCode.startsWith('INLINE_')) return frequencyCode.slice('INLINE_'.length).split('_').filter(Boolean);
+    return slotsByFreqCode.get(frequencyCode) ?? [];
+  }, [slotsByFreqCode]);
+
   // Highlight the slot closest to "now" — but only when the board is showing
   // today, so the nurse's eye lands on the doses due around now.
-  const currentSlotCode = useMemo<string | null>(() => {
+  const { isToday, nowHM } = useMemo(() => {
     const now = new Date();
     const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    if (selectedDate !== localToday) return null;
-    const nowHM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    return {
+      isToday: selectedDate === localToday,
+      nowHM: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+    };
+  }, [selectedDate]);
+  const currentSlotCode = useMemo<string | null>(() => {
+    if (!isToday) return null;
     const passed = [...timeSlots].filter((s: any) => (s.time as string) <= nowHM).sort((a: any, b: any) => String(a.time).localeCompare(String(b.time)));
     return passed.length ? passed[passed.length - 1].code : (timeSlots[0]?.code ?? null);
-  }, [timeSlots, selectedDate]);
+  }, [timeSlots, isToday, nowHM]);
 
   const dayStart = `${selectedDate}T00:00:00.000Z`;
   const dayEnd = `${selectedDate}T23:59:59.999Z`;
@@ -258,6 +284,7 @@ export default function EmarPage() {
     isPrn: boolean;
     cellsBySlot: Map<string, EmarSchedule[]>;          // slotCode → schedules at that slot
     untimed: EmarSchedule[];                            // schedules with no slotCode (interval/once)
+    intendedSlots: Set<string>;                        // slots this drug's frequency normally targets
     interactions: InteractionPair[];
   };
   const drugRows: DrugRow[] = useMemo(() => {
@@ -277,11 +304,15 @@ export default function EmarPage() {
           isPrn: s.prescriptionItem?.isPrn ?? false,
           cellsBySlot: new Map(),
           untimed: [],
+          intendedSlots: new Set(intendedSlotsFor(s.frequencyCode)),
           interactions: interactionsByDrug.get(s.drugName.toLowerCase().trim()) ?? [],
         };
         byItem.set(key, row);
       }
+      // A drug's intended slots come from its frequency, but always union in any
+      // slot that actually has a dose today (covers custom/edge frequencies).
       if (s.slotCode) {
+        row.intendedSlots.add(s.slotCode);
         const arr = row.cellsBySlot.get(s.slotCode) ?? [];
         arr.push(s);
         row.cellsBySlot.set(s.slotCode, arr);
@@ -290,7 +321,7 @@ export default function EmarPage() {
       }
     }
     return Array.from(byItem.values()).sort((a, b) => a.drugName.localeCompare(b.drugName));
-  }, [schedules, interactionsByDrug]);
+  }, [schedules, interactionsByDrug, intendedSlotsFor]);
 
   // Stats
   const stats = useMemo(() => {
@@ -552,6 +583,14 @@ export default function EmarPage() {
                             <div className="flex flex-col min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="text-sm font-semibold text-on-surface truncate">{drug.drugName}</span>
+                                {drug.intendedSlots.size > 0 && (
+                                  <span
+                                    className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary shrink-0"
+                                    title={`Scheduled ${drug.intendedSlots.size}× per day`}
+                                  >
+                                    {drug.intendedSlots.size}×/day
+                                  </span>
+                                )}
                                 {drug.interactions.length > 0 && (
                                   <button
                                     type="button"
@@ -579,13 +618,28 @@ export default function EmarPage() {
                         {timeSlots.map((slot: any) => {
                           const cells = drug.cellsBySlot.get(slot.code) ?? [];
                           const isNow = slot.code === currentSlotCode;
+                          // Empty but the drug IS a "this slot" drug, and (viewing
+                          // today) the slot time has already elapsed → the dose
+                          // wasn't dropped, its window passed before the order.
+                          const elapsedBeforeOrder =
+                            cells.length === 0 &&
+                            drug.intendedSlots.has(slot.code) &&
+                            isToday &&
+                            (slot.time as string) < nowHM;
                           return (
                             <td key={slot.code} className={cn('text-center px-1 py-2 align-top', isNow && 'bg-primary/5')}>
                               <div className="flex flex-col items-center gap-1">
-                                {cells.length === 0 ? (
-                                  <span className="text-on-surface-variant/25">–</span>
-                                ) : (
+                                {cells.length > 0 ? (
                                   cells.map((c) => <DoseButton key={c.id} schedule={c} onClick={(m) => openActionDialog(c, m)} onAudit={(id) => setAuditScheduleId(id)} />)
+                                ) : elapsedBeforeOrder ? (
+                                  <span
+                                    className="inline-flex items-center justify-center w-9 h-9 rounded-full border border-dashed border-outline-variant text-on-surface-variant/40"
+                                    title="Ordered after this dose time — no dose today. Resumes tomorrow."
+                                  >
+                                    <Clock className="h-3.5 w-3.5" />
+                                  </span>
+                                ) : (
+                                  <span className="text-on-surface-variant/25">–</span>
                                 )}
                               </div>
                             </td>
