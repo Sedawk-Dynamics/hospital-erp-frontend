@@ -15,7 +15,6 @@ import {
   Eye,
   HeartPulse,
   PillBottle,
-  Pill,
   Search,
 } from 'lucide-react';
 
@@ -24,15 +23,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useNurseAdmissions, type NurseAdmission } from '@/hooks/use-nurse';
-import { WardPrescriptionDialog } from '@/components/nurse/ward-prescription-dialog';
 import { formatDate } from '@/lib/date-utils';
 
 export default function NurseIPListPage() {
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'admitted' | 'discharged'>('admitted');
-  // §4.2 ward→pharmacy: admission for which the nurse is entering a prescription.
-  const [rxAdmission, setRxAdmission] = useState<NurseAdmission | null>(null);
 
   const { data, isLoading } = useNurseAdmissions({
     status: statusFilter === 'all' ? undefined : statusFilter,
@@ -221,18 +217,6 @@ export default function NurseIPListPage() {
                         >
                           <ClipboardList className="h-3.5 w-3.5" />
                         </Button>
-                        {/* §4.2: enter the doctor's key-sheet prescription → pharmacy queue */}
-                        {a.status === 'admitted' && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-primary"
-                            title="Enter ward prescription (send to pharmacy)"
-                            onClick={() => setRxAdmission(a)}
-                          >
-                            <Pill className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
                         <Button
                           variant="ghost"
                           size="icon"
@@ -253,11 +237,6 @@ export default function NurseIPListPage() {
         </table>
       </div>
 
-      {/* §4.2 ward→pharmacy: nurse enters the key-sheet prescription */}
-      <WardPrescriptionDialog
-        admission={rxAdmission}
-        onOpenChange={(open) => !open && setRxAdmission(null)}
-      />
     </div>
   );
 }
