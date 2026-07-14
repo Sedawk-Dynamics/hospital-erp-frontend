@@ -14,6 +14,7 @@ import {
   TrendingUp,
   Stethoscope,
   ArrowRight,
+  BedDouble,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { usePatientProfileStore } from '@/stores/patient-profile-store';
@@ -81,6 +82,18 @@ export default function PatientPortalHome() {
       return res.data ?? [];
     },
   });
+
+  const { data: admissions } = useQuery({
+    queryKey: ['patient', 'dashboard-admissions', selectedProfileId],
+    queryFn: async () => {
+      const res = await apiGet<Array<{
+        id: string; status: string; admissionDate?: string | null; ward?: string | null;
+        bed?: string | null; doctor?: string | null; hospital?: string | null; primaryDiagnosis?: string | null;
+      }>>('/patient-portal/admissions', { params: profileParam });
+      return res.data ?? [];
+    },
+  });
+  const activeAdmission = (admissions ?? []).find((a) => a.status === 'admitted') ?? null;
 
   const followUpReminder = useMemo(() => {
     if (!followUps || followUps.length === 0) return null;
@@ -154,6 +167,7 @@ export default function PatientPortalHome() {
     { label: 'Lab Reports', href: '/patient-portal/lab-reports', icon: TestTube },
     { label: 'Imaging Reports', href: '/patient-portal/imaging-reports', icon: ScanLine },
     { label: 'Prescriptions', href: '/patient-portal/prescriptions', icon: Pill },
+    { label: 'Hospitalizations', href: '/patient-portal/admissions', icon: BedDouble },
     { label: 'Follow-Ups', href: '/patient-portal/follow-ups', icon: CalendarDays },
     { label: 'Bills', href: '/patient-portal/billing', icon: CreditCard },
   ];
@@ -209,6 +223,33 @@ export default function PatientPortalHome() {
           </div>
         ))}
       </section>
+
+      {/* Currently-admitted banner — the patient's active hospitalization */}
+      {activeAdmission && (
+        <Link
+          href={`/patient-portal/admissions/${activeAdmission.id}`}
+          className="flex items-center gap-4 rounded-xl border-l-4 border-emerald-500 bg-emerald-50 px-5 py-4 shadow-sanctuary transition-all hover:shadow-lg"
+        >
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-700 shrink-0">
+            <BedDouble className="h-5 w-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-headline text-sm font-bold text-emerald-900">Currently admitted</p>
+            <p className="font-label text-xs text-emerald-800/80 mt-0.5 truncate">
+              {[
+                activeAdmission.primaryDiagnosis,
+                [activeAdmission.ward, activeAdmission.bed].filter(Boolean).join(' · '),
+                activeAdmission.doctor,
+                activeAdmission.hospital,
+              ].filter(Boolean).join(' · ')}
+            </p>
+          </div>
+          <div className="inline-flex items-center gap-1.5 rounded-lg bg-white px-4 py-2 text-xs font-bold text-emerald-700 shrink-0">
+            View details
+            <ArrowRight className="h-3.5 w-3.5" />
+          </div>
+        </Link>
+      )}
 
       {/* Follow-up reminder */}
       {followUpReminder && (

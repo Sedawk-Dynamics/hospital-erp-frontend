@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useSidebarStore } from '@/stores/sidebar-store';
 import { PlatformLogo } from '@/components/branding/platform-logo';
 import {
+  BedDouble,
   Bell,
   Building2,
   Calendar,
@@ -45,6 +46,7 @@ const NAV_ITEMS = [
   { label: 'Imaging Reports', href: '/patient-portal/imaging-reports', icon: ScanLine },
   { label: 'Prescriptions', href: '/patient-portal/prescriptions', icon: Pill },
   { label: 'Consultation Summaries', href: '/patient-portal/consultation-summaries', icon: FileSignature },
+  { label: 'Hospitalizations', href: '/patient-portal/admissions', icon: BedDouble },
   { label: 'Discharge Summaries', href: '/patient-portal/discharge-summaries', icon: FileCheck },
   { label: 'Medical History', href: '/patient-portal/medical-history', icon: Heart },
   { label: 'Current Medications', href: '/patient-portal/current-medications', icon: Stethoscope },
