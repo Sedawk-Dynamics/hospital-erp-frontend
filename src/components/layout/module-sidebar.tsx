@@ -124,7 +124,7 @@ function SidebarContent({
           <button
             onClick={onTogglePin}
             title={pinned ? 'Collapse sidebar' : 'Pin sidebar open'}
-            className="shrink-0 p-1.5 rounded-lg transition-all duration-200 text-primary bg-primary/10 hover:bg-primary/15"
+            className="shrink-0 ml-auto p-1.5 rounded-lg transition-all duration-200 text-primary bg-primary/10 hover:bg-primary/15"
           >
             {pinned ? (
               <PanelLeftClose className="h-4 w-4" />

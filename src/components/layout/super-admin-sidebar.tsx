@@ -65,39 +65,34 @@ export function SuperAdminSidebar() {
         isPinned ? 'w-64' : 'w-20 hover:w-64 group'
       )}
     >
-      {/* Logo / Brand */}
-      <div className="mb-8 flex items-center justify-between px-6 w-full overflow-hidden">
-        <div className="flex items-center min-w-0">
-          <PlatformLogo
-            variant="light"
-            alt="Platform"
-            className="h-10 w-auto max-w-[150px] object-contain shrink-0"
-            fallback={
-              <>
-                <div className="min-w-[40px] h-10 w-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
-                  <ShieldCheck className="h-5 w-5 text-primary" />
-                </div>
-                <div
-                  className={cn(
-                    'ml-4 whitespace-nowrap transition-opacity duration-300',
-                    isPinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                  )}
-                >
-                  <h2 className="text-primary font-bold text-xl tracking-tighter">Platform</h2>
-                  <p className="text-xs text-slate-400 font-medium">Super Admin</p>
-                </div>
-              </>
-            }
-          />
-        </div>
-        {/* Pin / Unpin button — visible when expanded */}
+      {/* Logo / Brand + collapse toggle (sits next to the logo, always visible) */}
+      <div className="mb-8 flex items-center gap-2 px-6 w-full overflow-hidden">
+        <PlatformLogo
+          variant="light"
+          alt="Platform"
+          className="h-10 w-auto max-w-[150px] object-contain shrink-0"
+          fallback={
+            <>
+              <div className="min-w-[40px] h-10 w-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
+                <ShieldCheck className="h-5 w-5 text-primary" />
+              </div>
+              <div
+                className={cn(
+                  'ml-3 min-w-0 whitespace-nowrap transition-opacity duration-300',
+                  isPinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                )}
+              >
+                <h2 className="text-primary font-bold text-xl tracking-tighter truncate">Platform</h2>
+                <p className="text-xs text-slate-400 font-medium truncate">Super Admin</p>
+              </div>
+            </>
+          }
+        />
+        {/* Collapse / pin toggle — beside the logo, always visible on every screen */}
         <button
           onClick={togglePin}
           title={isPinned ? 'Collapse sidebar' : 'Keep sidebar open'}
-          className={cn(
-            'shrink-0 p-1.5 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-primary transition-all duration-200',
-            isPinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-          )}
+          className="shrink-0 ml-auto p-1.5 rounded-lg text-primary bg-primary/10 hover:bg-primary/15 transition-all duration-200"
         >
           {isPinned ? (
             <PanelLeftClose className="h-4 w-4" />

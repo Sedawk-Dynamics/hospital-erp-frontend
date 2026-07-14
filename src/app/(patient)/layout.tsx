@@ -88,25 +88,25 @@ function SidebarNav({
 
   return (
     <div className="flex flex-col h-full w-full">
-      {/* Brand + Pin */}
-      <div className="mb-8 flex items-center px-6 w-full overflow-hidden">
+      {/* Brand + collapse toggle (sits next to the logo, always visible) */}
+      <div className="mb-8 flex items-center gap-2 px-6 w-full overflow-hidden">
         <PlatformLogo
           variant="light"
           alt="Sanctuary"
-          className="h-10 w-auto max-w-[170px] object-contain shrink-0"
+          className="h-10 w-auto max-w-[150px] object-contain shrink-0"
           fallback={
             <>
               <div className="min-w-[40px] h-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
                 <HeartPulse className="h-5 w-5 text-primary" />
               </div>
               <div className={cn(
-                'ml-4 flex-1 min-w-0 whitespace-nowrap transition-opacity duration-300',
+                'ml-3 min-w-0 whitespace-nowrap transition-opacity duration-300',
                 labelVisibility,
               )}>
-                <h2 className="text-primary font-bold text-xl tracking-tighter font-headline">
+                <h2 className="text-primary font-bold text-xl tracking-tighter font-headline truncate">
                   Sanctuary
                 </h2>
-                <p className="text-xs text-slate-400 font-medium font-label">Patient Portal</p>
+                <p className="text-xs text-slate-400 font-medium font-label truncate">Patient Portal</p>
               </div>
             </>
           }
@@ -115,12 +115,7 @@ function SidebarNav({
           <button
             onClick={onTogglePin}
             title={pinned ? 'Collapse sidebar' : 'Pin sidebar open'}
-            className={cn(
-              'shrink-0 p-1.5 rounded-lg transition-all duration-200',
-              pinned
-                ? 'text-primary bg-primary/10 hover:bg-primary/15'
-                : 'text-slate-400 hover:text-primary hover:bg-primary/5 opacity-0 group-hover:opacity-100',
-            )}
+            className="shrink-0 ml-auto p-1.5 rounded-lg transition-all duration-200 text-primary bg-primary/10 hover:bg-primary/15"
           >
             {pinned ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
           </button>
