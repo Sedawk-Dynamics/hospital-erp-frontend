@@ -92,7 +92,11 @@ export function SuperAdminSidebar() {
         <button
           onClick={togglePin}
           title={isPinned ? 'Collapse sidebar' : 'Keep sidebar open'}
-          className="shrink-0 ml-auto p-1.5 rounded-lg text-primary bg-primary/10 hover:bg-primary/15 transition-all duration-200"
+          className={cn(
+            'shrink-0 ml-auto p-1.5 rounded-lg text-primary bg-primary/10 hover:bg-primary/15 transition-all duration-200',
+            // Hidden while the sidebar is collapsed; shown when pinned or hovered open.
+            isPinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          )}
         >
           {isPinned ? (
             <PanelLeftClose className="h-4 w-4" />

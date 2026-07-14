@@ -115,7 +115,11 @@ function SidebarNav({
           <button
             onClick={onTogglePin}
             title={pinned ? 'Collapse sidebar' : 'Pin sidebar open'}
-            className="shrink-0 ml-auto p-1.5 rounded-lg transition-all duration-200 text-primary bg-primary/10 hover:bg-primary/15"
+            className={cn(
+              'shrink-0 ml-auto p-1.5 rounded-lg transition-all duration-200 text-primary bg-primary/10 hover:bg-primary/15',
+              // Hidden while the sidebar is collapsed; shown when pinned or hovered open.
+              pinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+            )}
           >
             {pinned ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
           </button>
