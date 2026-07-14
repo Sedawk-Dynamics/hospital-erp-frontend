@@ -56,6 +56,13 @@ import {
   ListChecks,
 } from 'lucide-react';
 
+// ── Vital display helpers ──────────────────────────────────
+// The Vital model stores the timestamp as `recordedAt` (there is no createdAt),
+// and exposes the recording user via a `recorder` relation. Read those.
+const vitalTime = (v: Vital): string | undefined => v.recordedAt ?? v.createdAt;
+const recorderName = (v: Vital): string =>
+  v.recorder ? `${v.recorder.firstName} ${v.recorder.lastName ?? ''}`.trim() : '—';
+
 // ── Abnormal-value helpers ─────────────────────────────────
 
 function isBpSystolicAbnormal(v?: number) {
@@ -396,34 +403,35 @@ export default function ClinicalChartingPage() {
 
   const trendSeries = useMemo(() => {
     const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const within = vitals.filter(
-      (v) => v.createdAt != null && new Date(v.createdAt).getTime() >= cutoff,
-    );
+    const within = vitals.filter((v) => {
+      const t = vitalTime(v);
+      return t != null && new Date(t).getTime() >= cutoff;
+    });
     return {
       bp: within
         .filter(
           (v) => v.bloodPressureSystolic != null || v.bloodPressureDiastolic != null,
         )
         .map((v) => ({
-          time: v.createdAt!,
+          time: vitalTime(v)!,
           value: v.bloodPressureSystolic ?? 0,
           value2: v.bloodPressureDiastolic ?? undefined,
         })),
       temp: within
         .filter((v) => v.temperature != null)
-        .map((v) => ({ time: v.createdAt!, value: v.temperature! })),
+        .map((v) => ({ time: vitalTime(v)!, value: v.temperature! })),
       pulse: within
         .filter((v) => v.pulseRate != null || v.heartRate != null)
         .map((v) => ({
-          time: v.createdAt!,
+          time: vitalTime(v)!,
           value: (v.pulseRate ?? v.heartRate)!,
         })),
       rr: within
         .filter((v) => v.respiratoryRate != null)
-        .map((v) => ({ time: v.createdAt!, value: v.respiratoryRate! })),
+        .map((v) => ({ time: vitalTime(v)!, value: v.respiratoryRate! })),
       spo2: within
         .filter((v) => v.oxygenSaturation != null)
-        .map((v) => ({ time: v.createdAt!, value: v.oxygenSaturation! })),
+        .map((v) => ({ time: vitalTime(v)!, value: v.oxygenSaturation! })),
     };
   }, [vitals]);
 
@@ -695,7 +703,7 @@ export default function ClinicalChartingPage() {
                 ))}
               </div>
               <p className="mt-2 text-[10px] text-on-surface-variant">
-                Recorded {formatDateTime(latestVitals.createdAt)}
+                Recorded {formatDateTime(vitalTime(latestVitals))}
               </p>
             </div>
           )}
@@ -883,7 +891,7 @@ export default function ClinicalChartingPage() {
                     {vitals.slice(0, 20).map((v) => (
                       <tr key={v.id} className="hover:bg-surface-container-low/40">
                         <td className="py-2 px-2 text-xs whitespace-nowrap text-on-surface">
-                          {formatDateTime(v.createdAt)}
+                          {formatDateTime(vitalTime(v))}
                         </td>
                         <td className="py-2 px-2 text-xs">
                           {v.bloodPressureSystolic != null ? (
@@ -994,7 +1002,7 @@ export default function ClinicalChartingPage() {
                           {v.notes || '--'}
                         </td>
                         <td className="py-2 px-2 text-xs text-on-surface-variant whitespace-nowrap">
-                          {v.recordedBy ?? '--'}
+                          {recorderName(v)}
                         </td>
                       </tr>
                     ))}
