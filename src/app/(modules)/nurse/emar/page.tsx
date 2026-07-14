@@ -6,6 +6,12 @@ import { toInputDateStr, formatTime, formatDateTime } from '@/lib/date-utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -861,51 +867,65 @@ function DoseButton({
   const meta = STATUS_META[schedule.status];
   const Icon = meta.icon;
 
-  // Default click target depends on whether the dose is actionable
   const isActionable = ACTIONABLE.includes(schedule.status);
   const isCompleted = !isActionable && schedule.status !== 'cancelled';
+  const hasMenu = isActionable || isCompleted;
+
+  const doseButton = (
+    <button
+      type="button"
+      className={cn(
+        'inline-flex items-center justify-center w-9 h-9 rounded-full transition-all',
+        'focus:outline-none focus:ring-2 focus:ring-primary/40',
+        meta.cellClass,
+        'hover:scale-110',
+      )}
+      title={`${meta.label}${schedule.actualGivenTime ? ` at ${formatTime(schedule.actualGivenTime)}` : ''}${schedule.delayMinutes != null ? ` (delay ${schedule.delayMinutes}m)` : ''}`}
+    >
+      <Icon className="h-4 w-4" />
+    </button>
+  );
 
   return (
-    <div className="relative group">
-      <button
-        type="button"
-        onClick={() => onClick(isActionable ? 'give' : 'amend')}
-        className={cn(
-          'inline-flex items-center justify-center w-9 h-9 rounded-full transition-all',
-          'focus:outline-none focus:ring-2 focus:ring-primary/40',
-          meta.cellClass,
-          'hover:scale-110',
-        )}
-        title={`${meta.label}${schedule.actualGivenTime ? ` at ${formatTime(schedule.actualGivenTime)}` : ''}${schedule.delayMinutes != null ? ` (delay ${schedule.delayMinutes}m)` : ''}`}
-      >
-        <Icon className="h-4 w-4" />
-      </button>
+    <div className="flex flex-col items-center">
+      {/* The action menu is portaled (DropdownMenu) so it never grows the
+          horizontally-scrolling grid — clicking the dose opens it below. */}
+      {hasMenu ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger render={doseButton} />
+          <DropdownMenuContent align="center" side="bottom" sideOffset={6} className="min-w-[112px] w-auto p-1">
+            {isActionable ? (
+              <>
+                <DropdownMenuItem onClick={() => onClick('give')} className="text-green-700 focus:bg-green-50 focus:text-green-800">
+                  <Check className="h-3.5 w-3.5" /> Give
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onClick('hold')} className="text-amber-700 focus:bg-amber-50 focus:text-amber-800">
+                  <Pause className="h-3.5 w-3.5" /> Hold
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onClick('refuse')} className="text-orange-700 focus:bg-orange-50 focus:text-orange-800">
+                  <Ban className="h-3.5 w-3.5" /> Refuse
+                </DropdownMenuItem>
+              </>
+            ) : (
+              <>
+                <DropdownMenuItem onClick={() => onClick('amend')} className="text-primary focus:bg-primary/5">
+                  <Edit3 className="h-3.5 w-3.5" /> Amend
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onAudit(schedule.id)}>
+                  <History className="h-3.5 w-3.5" /> Audit
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        doseButton
+      )}
       {showTime && (
         <div className="text-[9px] text-on-surface-variant mt-0.5">{formatTime(schedule.scheduledAt)}</div>
       )}
       {schedule.status === 'given_late' && schedule.delayMinutes != null && (
         <div className="text-[9px] text-emerald-700 font-bold mt-0.5">+{schedule.delayMinutes}m</div>
-      )}
-
-      {/* Hover actions for actionable doses */}
-      {isActionable && (
-        <div className="hidden group-hover:flex absolute z-20 -bottom-1 left-1/2 -translate-x-1/2 translate-y-full bg-surface-container-low shadow-lg rounded-lg border border-outline-variant overflow-hidden">
-          <button onClick={() => onClick('give')} className="px-2 py-1 text-[10px] text-green-700 hover:bg-green-50">Give</button>
-          <button onClick={() => onClick('hold')} className="px-2 py-1 text-[10px] text-amber-700 hover:bg-amber-50">Hold</button>
-          <button onClick={() => onClick('refuse')} className="px-2 py-1 text-[10px] text-orange-700 hover:bg-orange-50">Refuse</button>
-        </div>
-      )}
-      {isCompleted && (
-        <div className="hidden group-hover:flex absolute z-20 -bottom-1 left-1/2 -translate-x-1/2 translate-y-full bg-surface-container-low shadow-lg rounded-lg border border-outline-variant overflow-hidden">
-          <button onClick={() => onClick('amend')} className="px-2 py-1 text-[10px] text-primary hover:bg-primary/5 inline-flex items-center gap-1">
-            <Edit3 className="h-2.5 w-2.5" />
-            Amend
-          </button>
-          <button onClick={() => onAudit(schedule.id)} className="px-2 py-1 text-[10px] text-on-surface-variant hover:bg-surface-container-high inline-flex items-center gap-1">
-            <History className="h-2.5 w-2.5" />
-            Audit
-          </button>
-        </div>
       )}
     </div>
   );
