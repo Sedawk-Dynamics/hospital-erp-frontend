@@ -38,6 +38,7 @@ import {
   UserCog,
   Percent,
   Sparkles,
+  History,
   type LucideIcon,
 } from 'lucide-react';
 import type { ModuleKey } from '@/stores/module-store';
@@ -130,6 +131,7 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       // pharmacy_admin only (management + financials). admin/super_admin bypass.
       { label: 'Billing Transaction', href: '/pharmacy/transactions', icon: ArrowLeftRight, restrictTo: ['pharmacy_admin'] },
       { label: 'Reports', href: '/pharmacy/reports', icon: BarChart3, restrictTo: ['pharmacy_admin'] },
+      { label: 'Audit Trail', href: '/pharmacy/audit-trail', icon: History, restrictTo: ['pharmacy_admin'] },
       { label: 'Statutory Reports', href: '/pharmacy/statutory-reports', icon: FileText, restrictTo: ['pharmacy_admin'] },
       { label: 'Ward Stock', href: '/pharmacy/ward-stock', icon: BedDouble, restrictTo: ['pharmacy_admin'] },
       // All medicines dispensed to IP patients (billed to the hospital IP bill).
