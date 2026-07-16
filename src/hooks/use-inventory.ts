@@ -504,6 +504,26 @@ export function useReceivePurchaseOrder() {
   });
 }
 
+// Reconcile a PO against stock already posted via the bulk-inward flow — only
+// advances quantityReceived + status (no stock is posted).
+export interface ReconcilePurchaseOrderLine {
+  purchaseOrderItemId: string;
+  quantityReceived: number;
+  unitPrice?: number;
+}
+export function useReconcilePurchaseOrder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, items }: { id: string; items: ReconcilePurchaseOrderLine[] }) => {
+      const response = await apiPatch<PurchaseOrder>(`/inventory/purchase-orders/${id}/reconcile`, { items });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.purchaseOrders.all });
+    },
+  });
+}
+
 export function useCancelPurchaseOrder() {
   const queryClient = useQueryClient();
   return useMutation({

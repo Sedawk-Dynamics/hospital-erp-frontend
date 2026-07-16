@@ -54,7 +54,7 @@ import {
   type FormularyMatch,
   type OcrInvoiceLine,
 } from '@/hooks/use-pharmacy';
-import { useSuppliers, usePurchaseOrders, usePurchaseOrder, type PurchaseOrder } from '@/hooks/use-inventory';
+import { useSuppliers, usePurchaseOrders, usePurchaseOrder, useReconcilePurchaseOrder, type PurchaseOrder } from '@/hooks/use-inventory';
 import { useAiStatus } from '@/hooks/use-ai';
 import { useDrugMasterSearch } from '@/hooks/use-drug-master';
 import { VendorFormDialog } from '@/components/inventory/vendor-form-dialog';
@@ -494,6 +494,9 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
   );
   const { data: poDetail } = usePurchaseOrder(poId || null);
   const loadedPoRef = useRef('');
+  const reconcilePO = useReconcilePurchaseOrder();
+  // The PO after it's been updated from this inward (shown on the Done step).
+  const [reconciled, setReconciled] = useState<PurchaseOrder | null>(null);
 
   const loadFromPO = (po: PurchaseOrder) => {
     const newLines: DraftLine[] = (po.items ?? []).map((it) => {
@@ -568,6 +571,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
     setPoId('');
     setPoNumber('');
     loadedPoRef.current = '';
+    setReconciled(null);
     setPasteText('');
     setShowPaste(false);
     setMatched([]);
@@ -976,6 +980,32 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
       } else {
         toast.success(`Stock inward complete — ${res.batchesIn} line(s) posted`);
       }
+
+      // Close the loop: if this delivery was received against a PO, update the
+      // PO's received quantities + status from the lines that actually posted.
+      if (poId) {
+        const items = lines
+          .map((l, i) => {
+            if (!l.po) return null;
+            const r = res.results?.find((rr) => rr.index === i);
+            if (r && r.status !== 'ok') return null; // only reconcile posted lines
+            const paid = parseInt(l.quantityReceived, 10) || 0;
+            if (paid <= 0) return null;
+            const rate = parseFloat(l.purchasePrice);
+            return { purchaseOrderItemId: l.po.itemId, quantityReceived: paid, unitPrice: isNaN(rate) ? undefined : rate };
+          })
+          .filter(Boolean) as { purchaseOrderItemId: string; quantityReceived: number; unitPrice?: number }[];
+        if (items.length) {
+          try {
+            const po = await reconcilePO.mutateAsync({ id: poId, items });
+            setReconciled(po);
+            toast.success(`PO ${po.orderNumber} updated → ${po.status.replace(/_/g, ' ')}`);
+          } catch {
+            // Stock is already posted; PO update is best-effort.
+            toast.warning('Stock posted, but the PO could not be updated automatically.');
+          }
+        }
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to commit inward');
     }
@@ -1045,6 +1075,25 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
             />
           )}
 
+          {step === 'done' && reconciled && (() => {
+            const items = reconciled.items ?? [];
+            const ordered = items.reduce((s, it) => s + it.quantityOrdered, 0);
+            const received = items.reduce((s, it) => s + it.quantityReceived, 0);
+            const remaining = Math.max(0, ordered - received);
+            const done = reconciled.status === 'delivered';
+            return (
+              <div className={cn('mb-3 rounded-lg border p-3', done ? 'border-emerald-300 bg-emerald-50' : 'border-amber-300 bg-amber-50')}>
+                <p className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+                  <FileCheck className="h-4 w-4 text-primary" />
+                  PO <span className="font-mono">{reconciled.orderNumber}</span> updated → <span className="capitalize">{reconciled.status.replace(/_/g, ' ')}</span>
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Received <b className="text-foreground">{received}</b> of <b className="text-foreground">{ordered}</b> ordered
+                  {remaining > 0 ? <> · <b className="text-amber-700">{remaining} still remaining</b> on this PO</> : <> · <b className="text-emerald-700">fully received</b></>}
+                </p>
+              </div>
+            );
+          })()}
           {step === 'done' && result && <DoneStep lines={lines} result={result} />}
         </div>
 
