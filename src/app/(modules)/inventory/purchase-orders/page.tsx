@@ -452,7 +452,7 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
 
   return (
     <Dialog open={true} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="flex max-h-[92vh] w-[95vw] max-w-5xl flex-col overflow-hidden p-0">
+      <DialogContent className="flex w-[96vw] max-w-none flex-col overflow-hidden p-0 sm:max-w-6xl">
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle className="flex flex-wrap items-center gap-2 text-lg">
             <PackageCheck className="h-5 w-5 text-primary" />
@@ -465,7 +465,7 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
         {isLoading || !data ? (
           <div className="p-6"><Skeleton className="h-40 w-full" /></div>
         ) : (
-          <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
+          <div className="space-y-4 px-6 py-4">
             {/* Info cards */}
             {(() => {
               const totalOrdered = data.items?.reduce((s, it) => s + it.quantityOrdered, 0) ?? 0;
