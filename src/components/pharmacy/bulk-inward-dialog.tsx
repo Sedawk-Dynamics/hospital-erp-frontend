@@ -1067,6 +1067,17 @@ function LineField({
   );
 }
 
+// Small section heading used to break the line-entry card into readable
+// clusters (a short accent bar + label) — divided by hairlines, not boxes.
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mb-2 flex items-center gap-1.5">
+      <span className="h-1 w-3 rounded-full bg-primary/50" />
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{children}</span>
+    </div>
+  );
+}
+
 // ── Step 1: enter / paste / upload lines ────────────────────
 function EntryStep(props: {
   suppliers: { id: string; name: string }[];
@@ -1308,19 +1319,19 @@ function EntryStep(props: {
             <div
               key={l.id}
               className={cn(
-                'rounded-lg border bg-surface-container-lowest p-3',
-                err.length > 0 ? 'border-red-500/40' : warn.length > 0 ? 'border-amber-500/40' : '',
+                'overflow-hidden rounded-xl border bg-surface-container-lowest shadow-xs transition-colors',
+                err.length > 0 ? 'border-red-400/60' : warn.length > 0 ? 'border-amber-400/60' : 'border-outline-variant/50',
               )}
             >
-              {/* ── Identity: number · name/composition/strength/gtin · type · actions ── */}
-              <div className="flex items-start gap-2.5">
-                <span className="mt-1.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-container-high text-[11px] font-semibold text-muted-foreground">
+              {/* ── Header: number · name/attributes · type · actions ── */}
+              <div className="flex items-start gap-3 p-3">
+                <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
                   {i + 1}
                 </span>
-                <div className="grid flex-1 gap-2 md:grid-cols-[minmax(0,2.4fr)_minmax(0,1fr)]">
+                <div className="grid flex-1 gap-2.5 md:grid-cols-[minmax(0,2.4fr)_minmax(0,1fr)]">
                   <div className="space-y-1.5">
                     <Input
-                      className="h-9 text-sm font-medium"
+                      className="h-9 text-sm font-semibold"
                       value={l.drugName}
                       onChange={(e) => updateLine(l.id, 'drugName', e.target.value)}
                       placeholder="Product name *  ·  e.g. Telmac 40 Tab"
@@ -1372,12 +1383,11 @@ function EntryStep(props: {
                 </div>
               </div>
 
-              {/* ── Two labelled clusters instead of one flat 11-field wall ── */}
-              <div className="mt-2.5 grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.55fr)]">
-                {/* Batch & stock */}
-                <div className="rounded-lg border border-outline-variant/40 bg-surface-container-low/30 p-2">
-                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Batch &amp; stock</p>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {/* ── Batch & stock · Pricing — divided by hairlines, not nested boxes ── */}
+              <div className="grid gap-x-5 gap-y-3 border-t border-outline-variant/40 bg-surface-container-low/30 px-3 py-2.5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.55fr)]">
+                <div>
+                  <SectionLabel>Batch &amp; stock</SectionLabel>
+                  <div className="grid grid-cols-2 gap-x-2.5 gap-y-2 sm:grid-cols-4">
                     <LineField label={isItem ? 'Batch (opt)' : 'Batch'}>
                       <Input className={cell} value={l.batchNumber} onChange={(e) => updateLine(l.id, 'batchNumber', e.target.value)} placeholder={isItem ? 'optional' : 'B23A01'} />
                     </LineField>
@@ -1393,10 +1403,9 @@ function EntryStep(props: {
                   </div>
                 </div>
 
-                {/* Pricing (per unit) */}
-                <div className="rounded-lg border border-outline-variant/40 bg-surface-container-low/30 p-2">
-                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Pricing (per unit)</p>
-                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                <div className="border-t border-outline-variant/40 pt-3 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-5">
+                  <SectionLabel>Pricing (per unit)</SectionLabel>
+                  <div className="grid grid-cols-3 gap-x-2.5 gap-y-2 sm:grid-cols-6">
                     <LineField label="MRP">
                       <Input className={cell} type="number" step="0.01" value={l.mrp} onChange={(e) => updateLine(l.id, 'mrp', e.target.value)} />
                     </LineField>
@@ -1407,7 +1416,7 @@ function EntryStep(props: {
                       <Input className={cell} type="number" step="0.01" value={l.purchaseDiscountPercent} onChange={(e) => updateLine(l.id, 'purchaseDiscountPercent', e.target.value)} />
                     </LineField>
                     <LineField label="Net">
-                      <div className="flex h-8 items-center rounded-xl bg-surface-container-high px-2 text-xs font-semibold tabular-nums text-foreground">
+                      <div className={cn('flex h-8 items-center rounded-xl px-2 text-xs font-semibold tabular-nums', net ? 'bg-primary/10 text-primary' : 'bg-surface-container-high text-muted-foreground')}>
                         {net ? `₹${net}` : '—'}
                       </div>
                     </LineField>
@@ -1423,44 +1432,44 @@ function EntryStep(props: {
 
               {/* Inline validation messages */}
               {(err.length > 0 || warn.length > 0) && (
-                <p className={cn('mt-1.5 text-[11px]', err.length > 0 ? 'text-red-600' : 'text-amber-600')}>
+                <p className={cn('px-3 py-1.5 text-[11px]', err.length > 0 ? 'bg-red-500/5 text-red-600' : 'bg-amber-500/5 text-amber-600')}>
                   {(err.length > 0 ? err : warn).join(' · ')}
                 </p>
               )}
 
               {/* Expandable full product detail */}
               {open && (
-                <div className="mt-2 rounded-lg border border-outline-variant/40 bg-surface-container-low/30 p-2">
-                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">More product details</p>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-                  <LineField label="Manufacturer / brand">
-                    <Input className={cell} value={l.manufacturer} onChange={(e) => updateLine(l.id, 'manufacturer', e.target.value)} />
-                  </LineField>
-                  <LineField label="Dosage form">
-                    <Select value={l.dosageForm} onValueChange={(v) => updateLine(l.id, 'dosageForm', v ?? '')}>
-                      <SelectTrigger className={cn(cell, 'w-full')}><SelectValue placeholder="—" /></SelectTrigger>
-                      <SelectContent>
-                        {DOSAGE_FORMS.map((d) => (
-                          <SelectItem key={d} value={d} className="capitalize">{d}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </LineField>
-                  <LineField label="Pack size (units/pack)">
-                    <Input className={cell} type="number" min={1} value={l.packSize} onChange={(e) => updateLine(l.id, 'packSize', e.target.value)} />
-                  </LineField>
-                  <LineField label="Unit (tablet, box, ml…)">
-                    <Input className={cell} value={l.unit} onChange={(e) => updateLine(l.id, 'unit', e.target.value)} />
-                  </LineField>
-                  <LineField label="Reorder level">
-                    <Input className={cell} type="number" min={0} value={l.minStock} onChange={(e) => updateLine(l.id, 'minStock', e.target.value)} />
-                  </LineField>
-                  <LineField label="HSN code">
-                    <Input className={cell} value={l.hsnCode} onChange={(e) => updateLine(l.id, 'hsnCode', e.target.value)} />
-                  </LineField>
-                  <LineField label="Description / notes" className="col-span-2">
-                    <Input className={cell} value={l.description} onChange={(e) => updateLine(l.id, 'description', e.target.value)} />
-                  </LineField>
+                <div className="border-t border-outline-variant/40 px-3 py-2.5">
+                  <SectionLabel>More product details</SectionLabel>
+                  <div className="grid grid-cols-2 gap-x-2.5 gap-y-2 sm:grid-cols-3 md:grid-cols-4">
+                    <LineField label="Manufacturer / brand">
+                      <Input className={cell} value={l.manufacturer} onChange={(e) => updateLine(l.id, 'manufacturer', e.target.value)} />
+                    </LineField>
+                    <LineField label="Dosage form">
+                      <Select value={l.dosageForm} onValueChange={(v) => updateLine(l.id, 'dosageForm', v ?? '')}>
+                        <SelectTrigger className={cn(cell, 'w-full')}><SelectValue placeholder="—" /></SelectTrigger>
+                        <SelectContent>
+                          {DOSAGE_FORMS.map((d) => (
+                            <SelectItem key={d} value={d} className="capitalize">{d}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </LineField>
+                    <LineField label="Pack size (units/pack)">
+                      <Input className={cell} type="number" min={1} value={l.packSize} onChange={(e) => updateLine(l.id, 'packSize', e.target.value)} />
+                    </LineField>
+                    <LineField label="Unit (tablet, box, ml…)">
+                      <Input className={cell} value={l.unit} onChange={(e) => updateLine(l.id, 'unit', e.target.value)} />
+                    </LineField>
+                    <LineField label="Reorder level">
+                      <Input className={cell} type="number" min={0} value={l.minStock} onChange={(e) => updateLine(l.id, 'minStock', e.target.value)} />
+                    </LineField>
+                    <LineField label="HSN code">
+                      <Input className={cell} value={l.hsnCode} onChange={(e) => updateLine(l.id, 'hsnCode', e.target.value)} />
+                    </LineField>
+                    <LineField label="Description / notes" className="col-span-2">
+                      <Input className={cell} value={l.description} onChange={(e) => updateLine(l.id, 'description', e.target.value)} />
+                    </LineField>
                   </div>
                 </div>
               )}
