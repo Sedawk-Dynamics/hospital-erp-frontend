@@ -514,8 +514,8 @@ export interface ReconcilePurchaseOrderLine {
 export function useReconcilePurchaseOrder() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, items }: { id: string; items: ReconcilePurchaseOrderLine[] }) => {
-      const response = await apiPatch<PurchaseOrder>(`/inventory/purchase-orders/${id}/reconcile`, { items });
+    mutationFn: async ({ id, items, markDelivered }: { id: string; items: ReconcilePurchaseOrderLine[]; markDelivered?: boolean }) => {
+      const response = await apiPatch<PurchaseOrder>(`/inventory/purchase-orders/${id}/reconcile`, { items, markDelivered });
       return response.data;
     },
     onSuccess: () => {

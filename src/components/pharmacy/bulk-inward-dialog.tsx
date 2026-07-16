@@ -19,6 +19,7 @@ import {
   Undo2,
   FileCheck,
   X,
+  Printer,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
@@ -55,6 +56,7 @@ import {
   type OcrInvoiceLine,
 } from '@/hooks/use-pharmacy';
 import { useSuppliers, usePurchaseOrders, usePurchaseOrder, useReconcilePurchaseOrder, type PurchaseOrder } from '@/hooks/use-inventory';
+import { useHospitalBranding } from '@/hooks/use-hospital-branding';
 import { useAiStatus } from '@/hooks/use-ai';
 import { useDrugMasterSearch } from '@/hooks/use-drug-master';
 import { VendorFormDialog } from '@/components/inventory/vendor-form-dialog';
@@ -501,6 +503,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
   const [mapRows, setMapRows] = useState<string[][] | null>(null);
   const { data: suppliersData } = useSuppliers({ limit: 100 });
   const suppliers = suppliersData?.data ?? [];
+  const { data: branding } = useHospitalBranding();
 
   // ── Purchase-Order CHECK (not prefill) ──────────────────────
   // The user enters the received invoice themselves (OCR / datasheet / manual);
@@ -961,40 +964,116 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         toast.success(`Stock inward complete — ${res.batchesIn} line(s) posted`);
       }
 
-      // Close the loop: if a PO was selected to check against, update its
-      // received quantities + status from the posted lines that MATCH a PO line
-      // (by name). Aggregate per PO line so two invoice rows onto one PO line sum
-      // (the backend also caps at the ordered qty).
-      if (poId && poItems.length) {
-        const agg = new Map<string, { qty: number; rate?: number }>();
-        lines.forEach((l, i) => {
-          const r = res.results?.find((rr) => rr.index === i);
-          if (r && r.status !== 'ok') return; // only reconcile posted lines
-          const paid = parseInt(l.quantityReceived, 10) || 0;
-          if (paid <= 0) return;
-          const m = matchPoLine(l.drugName, poItems);
-          if (!m) return;
-          const rate = parseFloat(l.purchasePrice);
-          const cur = agg.get(m.id) ?? { qty: 0, rate: undefined };
-          cur.qty += paid;
-          if (!isNaN(rate)) cur.rate = rate;
-          agg.set(m.id, cur);
-        });
-        const items = Array.from(agg, ([purchaseOrderItemId, v]) => ({ purchaseOrderItemId, quantityReceived: v.qty, unitPrice: v.rate }));
-        if (items.length) {
-          try {
-            const po = await reconcilePO.mutateAsync({ id: poId, items });
-            setReconciled(po);
-            toast.success(`PO ${po.orderNumber} updated → ${po.status.replace(/_/g, ' ')}`);
-          } catch {
-            // Stock is already posted; PO update is best-effort.
-            toast.warning('Stock posted, but the PO could not be updated automatically.');
-          }
-        }
-      }
+      // PO update is now a deliberate action on the done step ("Update PO &
+      // mark delivered") — not automatic — so the user can verify first.
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to commit inward');
     }
+  };
+
+  // Aggregate the posted lines that match a PO line (by name) into reconcile
+  // items — used by the "Update PO" button on the done step.
+  const buildReconcileItems = () => {
+    if (!poId || !poItems.length || !result) return [] as { purchaseOrderItemId: string; quantityReceived: number; unitPrice?: number }[];
+    const agg = new Map<string, { qty: number; rate?: number }>();
+    lines.forEach((l, i) => {
+      const r = result.results?.find((rr) => rr.index === i);
+      if (r && r.status !== 'ok') return;
+      const paid = parseInt(l.quantityReceived, 10) || 0;
+      if (paid <= 0) return;
+      const m = matchPoLine(l.drugName, poItems);
+      if (!m) return;
+      const rate = parseFloat(l.purchasePrice);
+      const cur = agg.get(m.id) ?? { qty: 0, rate: undefined };
+      cur.qty += paid;
+      if (!isNaN(rate)) cur.rate = rate;
+      agg.set(m.id, cur);
+    });
+    return Array.from(agg, ([purchaseOrderItemId, v]) => ({ purchaseOrderItemId, quantityReceived: v.qty, unitPrice: v.rate }));
+  };
+
+  const updatePO = async (markDelivered: boolean) => {
+    const items = buildReconcileItems();
+    if (!items.length) { toast.error('No received lines match this purchase order.'); return; }
+    try {
+      const po = await reconcilePO.mutateAsync({ id: poId, items, markDelivered });
+      setReconciled(po);
+      toast.success(`PO ${po.orderNumber} updated → ${po.status.replace(/_/g, ' ')}`);
+    } catch {
+      toast.warning('Could not update the purchase order.');
+    }
+  };
+
+  // Print a Goods-Receipt / Purchase Invoice for what was just received.
+  const printReceivedInvoice = () => {
+    if (!result) return;
+    const supplier = suppliers.find((s) => s.id === supplierId);
+    const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
+    const money = (n: number) => `₹${(n || 0).toFixed(2)}`;
+    const rows = lines
+      .map((l, i) => ({ l, ok: (result.results?.find((rr) => rr.index === i)?.status ?? 'ok') === 'ok' }))
+      .filter(({ l, ok }) => ok && (parseInt(l.quantityReceived, 10) || 0) > 0);
+    const bodyRows = rows.map(({ l }, idx) => {
+      const qty = parseInt(l.quantityReceived, 10) || 0;
+      const free = parseInt(l.freeQuantity, 10) || 0;
+      const rate = parseFloat(l.purchasePrice) || 0;
+      const disc = parseFloat(l.purchaseDiscountPercent) || 0;
+      const gst = parseFloat(l.gstPercent) || 0;
+      const net = rate * (1 - disc / 100) * qty;
+      const amount = net * (1 + gst / 100);
+      return `<tr>
+        <td>${idx + 1}</td>
+        <td>${esc(l.drugName)}${l.strength ? ' ' + esc(l.strength) : ''}</td>
+        <td>${esc(l.batchNumber) || '-'}</td>
+        <td>${esc(l.expiryDate) || '-'}</td>
+        <td class="r">${qty}${free ? ` + ${free}` : ''}</td>
+        <td class="r">${money(rate)}</td>
+        <td class="r">${disc ? disc + '%' : '-'}</td>
+        <td class="r">${gst ? gst + '%' : '-'}</td>
+        <td class="r">${money(amount)}</td>
+      </tr>`;
+    }).join('');
+    const t = purchaseTotals;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Goods Receipt${invoiceNumber ? ' - ' + esc(invoiceNumber) : ''}</title>
+      <style>
+        *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;color:#1a2332;margin:28px;font-size:12px}
+        h1{font-size:18px;margin:0} .muted{color:#5b6472} .r{text-align:right}
+        .head{display:flex;justify-content:space-between;border-bottom:2px solid #0f766e;padding-bottom:8px;margin-bottom:12px}
+        .meta{display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;margin-bottom:12px}
+        table{width:100%;border-collapse:collapse;margin-top:6px} th,td{border:1px solid #c9ced6;padding:5px 6px;text-align:left}
+        th{background:#0f766e;color:#fff;font-size:10px;text-transform:uppercase}
+        tfoot td{font-weight:bold} .totals{margin-top:10px;margin-left:auto;width:280px}
+        .totals div{display:flex;justify-content:space-between;padding:2px 0} .totals .grand{border-top:1px solid #1a2332;font-weight:bold;margin-top:4px;padding-top:4px}
+        @media print{body{margin:12mm}}
+      </style></head><body>
+      <div class="head">
+        <div><h1>${esc(branding?.name || 'Goods Receipt')}</h1><div class="muted">Goods Receipt / Purchase Invoice</div></div>
+        <div class="r muted">Printed: ${esc(new Date().toLocaleString('en-IN'))}</div>
+      </div>
+      <div class="meta">
+        <div><b>Supplier:</b> ${esc(supplier?.name || '-')}</div>
+        <div><b>Invoice No:</b> ${esc(invoiceNumber || '-')}</div>
+        <div><b>Invoice Date:</b> ${esc(invoiceDate || '-')}</div>
+        <div><b>Against PO:</b> ${esc(reconciled?.orderNumber || poNumber || '-')}</div>
+      </div>
+      <table>
+        <thead><tr><th>#</th><th>Item</th><th>Batch</th><th>Expiry</th><th class="r">Qty (+free)</th><th class="r">Rate</th><th class="r">Disc</th><th class="r">GST</th><th class="r">Amount</th></tr></thead>
+        <tbody>${bodyRows || '<tr><td colspan="9" class="muted">No received lines.</td></tr>'}</tbody>
+      </table>
+      <div class="totals">
+        <div><span>Gross</span><span>${money(t.gross)}</span></div>
+        <div><span>Discount</span><span>- ${money(t.lineDisc + t.invoiceDisc)}</span></div>
+        <div><span>GST</span><span>${money(t.gst)}</span></div>
+        <div class="grand"><span>Landing / Net</span><span>${money(t.landing)}</span></div>
+      </div>
+      <p class="muted" style="margin-top:20px">This is a computer-generated goods-receipt document.</p>
+      </body></html>`;
+    const w = window.open('', '_blank');
+    if (!w) { toast.error('Allow pop-ups to print.'); return; }
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    w.print();
   };
 
   const selectedSupplier = suppliers.find((s) => s.id === supplierId);
@@ -1062,6 +1141,19 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
             />
           )}
 
+          {step === 'done' && result && (
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              {poId && (
+                <Button onClick={() => updatePO(true)} disabled={reconcilePO.isPending} className="gap-1.5">
+                  {reconcilePO.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck className="h-4 w-4" />}
+                  Update PO &amp; mark delivered
+                </Button>
+              )}
+              <Button variant="outline" onClick={printReceivedInvoice} className="gap-1.5">
+                <Printer className="h-4 w-4" /> Print received invoice
+              </Button>
+            </div>
+          )}
           {step === 'done' && reconciled && (() => {
             const items = reconciled.items ?? [];
             const ordered = items.reduce((s, it) => s + it.quantityOrdered, 0);
