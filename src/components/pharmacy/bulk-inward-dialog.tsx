@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Upload,
   Plus,
@@ -17,6 +17,8 @@ import {
   ChevronRight,
   Search,
   Undo2,
+  FileCheck,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
@@ -52,7 +54,7 @@ import {
   type FormularyMatch,
   type OcrInvoiceLine,
 } from '@/hooks/use-pharmacy';
-import { useSuppliers } from '@/hooks/use-inventory';
+import { useSuppliers, usePurchaseOrders, usePurchaseOrder, type PurchaseOrder } from '@/hooks/use-inventory';
 import { useAiStatus } from '@/hooks/use-ai';
 import { useDrugMasterSearch } from '@/hooks/use-drug-master';
 import { VendorFormDialog } from '@/components/inventory/vendor-form-dialog';
@@ -106,6 +108,9 @@ interface DraftLine {
   purchaseDiscountPercent: string;
   gstPercent: string;
   sellingPrice: string;
+  // When this line was seeded from a Purchase Order — the ordered reference used
+  // to compare "what arrived" against "what was ordered" (qty + price variance).
+  po?: { itemId: string; orderedQty: number; alreadyReceived: number; unitPrice?: number };
 }
 
 interface Decision {
@@ -114,8 +119,8 @@ interface Decision {
 }
 
 // Column-mappable text fields of a draft line — excludes the structured
-// `catalogBackup` (a nested object), which is never set via CSV/column mapping.
-type DraftCol = Exclude<keyof DraftLine, 'catalogBackup'>;
+// `catalogBackup` / `po` (nested objects), which are never set via CSV mapping.
+type DraftCol = Exclude<keyof DraftLine, 'catalogBackup' | 'po'>;
 
 // Normalised shape a catalog drug (auto-match chip OR free search result) is
 // adopted onto a line as.
@@ -475,6 +480,74 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
   const [mapRows, setMapRows] = useState<string[][] | null>(null);
   const { data: suppliersData } = useSuppliers({ limit: 100 });
   const suppliers = suppliersData?.data ?? [];
+
+  // ── Purchase-Order integration ──────────────────────────────
+  // Receive an arriving delivery against an open PO: pull its lines in here,
+  // then compare what actually arrived (qty + rate) with what was ordered.
+  const [poId, setPoId] = useState('');
+  const [poNumber, setPoNumber] = useState('');
+  const { data: poListData } = usePurchaseOrders({ limit: 50 });
+  // Only POs still awaiting delivery are worth receiving against.
+  const openPOs = useMemo(
+    () => (poListData?.data ?? []).filter((p) => p.status === 'approved' || p.status === 'submitted' || p.status === 'partially_delivered'),
+    [poListData],
+  );
+  const { data: poDetail } = usePurchaseOrder(poId || null);
+  const loadedPoRef = useRef('');
+
+  const loadFromPO = (po: PurchaseOrder) => {
+    const newLines: DraftLine[] = (po.items ?? []).map((it) => {
+      const base = emptyLine();
+      const remaining = Math.max(0, it.quantityOrdered - it.quantityReceived);
+      if (it.drug) {
+        base.kind = 'drug';
+        base.category = '';
+        base.drugName = it.drug.drugName;
+        base.genericName = it.drug.genericName ?? '';
+        base.manufacturer = it.drug.manufacturer ?? '';
+        base.strength = it.drug.strength ?? '';
+        base.dosageForm = it.drug.dosageForm ?? '';
+      } else if (it.inventoryItem) {
+        base.kind = 'item';
+        base.category = 'consumable';
+        base.drugName = it.inventoryItem.itemName;
+        base.unit = it.inventoryItem.unitOfMeasurement ?? '';
+      }
+      // Pre-fill the still-outstanding quantity (usual "receive the rest"); staff
+      // adjusts to what physically arrived and the variance shows on the line.
+      base.quantityReceived = remaining > 0 ? String(remaining) : '';
+      if (it.unitPrice != null) base.purchasePrice = String(Number(it.unitPrice));
+      base.po = {
+        itemId: it.id,
+        orderedQty: it.quantityOrdered,
+        alreadyReceived: it.quantityReceived,
+        unitPrice: it.unitPrice != null ? Number(it.unitPrice) : undefined,
+      };
+      return base;
+    });
+    const hasContent = lines.some((l) => l.drugName.trim() || l.batchNumber.trim() || l.quantityReceived.trim());
+    if (hasContent && !window.confirm('Replace the current lines with this purchase order?')) return;
+    setLines(newLines.length ? newLines : [emptyLine()]);
+    if (po.supplierId) setSupplierId(po.supplierId);
+    setPoNumber(po.orderNumber);
+  };
+
+  // When a PO is picked, load its detail once.
+  useEffect(() => {
+    if (poDetail && poDetail.id === poId && loadedPoRef.current !== poId) {
+      loadFromPO(poDetail);
+      loadedPoRef.current = poId;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [poDetail, poId]);
+
+  const clearPO = () => {
+    setPoId('');
+    setPoNumber('');
+    loadedPoRef.current = '';
+    setLines((prev) => prev.map((l) => ({ ...l, po: undefined })));
+  };
+
   const matchInward = useMatchInward();
   const commitInward = useCommitInward();
   const ocrInward = useOcrInward();
@@ -492,6 +565,9 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
     setInvoiceDiscAmt('');
     setAddToExisting(false);
     setLines([emptyLine()]);
+    setPoId('');
+    setPoNumber('');
+    loadedPoRef.current = '';
     setPasteText('');
     setShowPaste(false);
     setMatched([]);
@@ -926,6 +1002,11 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
               supplierId={supplierId}
               setSupplierId={setSupplierId}
               selectedSupplier={selectedSupplier}
+              openPOs={openPOs}
+              poId={poId}
+              poNumber={poNumber}
+              onSelectPO={setPoId}
+              onClearPO={clearPO}
               invoiceNumber={invoiceNumber}
               setInvoiceNumber={setInvoiceNumber}
               invoiceDate={invoiceDate}
@@ -1084,6 +1165,11 @@ function EntryStep(props: {
   supplierId: string;
   setSupplierId: (v: string) => void;
   selectedSupplier: { gstNumber: string | null; licenseNumber: string | null; phone: string | null } | undefined;
+  openPOs: PurchaseOrder[];
+  poId: string;
+  poNumber: string;
+  onSelectPO: (id: string) => void;
+  onClearPO: () => void;
   invoiceNumber: string;
   setInvoiceNumber: (v: string) => void;
   invoiceDate: string;
@@ -1123,6 +1209,7 @@ function EntryStep(props: {
 }) {
   const {
     suppliers, supplierId, setSupplierId, selectedSupplier, invoiceNumber, setInvoiceNumber,
+    openPOs, poId, poNumber, onSelectPO, onClearPO,
     invoiceDate, setInvoiceDate, invoiceDiscPct, setInvoiceDiscPct, invoiceDiscAmt, setInvoiceDiscAmt,
     purchaseTotals, lines, updateLine, addLine, removeLine, showPaste, setShowPaste,
     pasteText, setPasteText, ingest, fileRef, onFile, xlsxRef, onXlsxFile,
@@ -1132,6 +1219,19 @@ function EntryStep(props: {
   const money = (n: number) => `₹${n.toFixed(2)}`;
 
   const cell = 'h-8 text-xs';
+  // PO reconciliation summary (received-now vs still-outstanding, per PO line).
+  const poSummary = useMemo(() => {
+    const s = { match: 0, short: 0, excess: 0 };
+    for (const l of lines) {
+      if (!l.po) continue;
+      const rec = parseInt(l.quantityReceived, 10) || 0;
+      const remaining = Math.max(0, l.po.orderedQty - l.po.alreadyReceived);
+      if (rec === remaining) s.match++;
+      else if (rec < remaining) s.short++;
+      else s.excess++;
+    }
+    return s;
+  }, [lines]);
   const [addVendorOpen, setAddVendorOpen] = useState(false);
   // Rows whose "more details" panel (full product fields) is open.
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
@@ -1192,6 +1292,51 @@ function EntryStep(props: {
           <Label className="text-xs">Invoice Date</Label>
           <Input className="h-9" type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
         </div>
+      </div>
+
+      {/* Receive against a Purchase Order — load its lines, then compare arrivals */}
+      <div className="rounded-lg border bg-primary/[0.03] p-3">
+        {poNumber ? (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+              <span className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
+                <FileCheck className="h-4 w-4 text-primary" /> Comparing against PO <span className="font-mono">{poNumber}</span>
+              </span>
+              <span className="flex items-center gap-1.5 text-[11px]">
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-800">{poSummary.match} match</span>
+                {poSummary.short > 0 && <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800">{poSummary.short} short</span>}
+                {poSummary.excess > 0 && <span className="rounded-full bg-sky-100 px-2 py-0.5 font-medium text-sky-800">{poSummary.excess} excess</span>}
+              </span>
+            </div>
+            <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={onClearPO}>
+              <X className="h-3.5 w-3.5" /> Clear PO
+            </Button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <FileCheck className="h-3.5 w-3.5" /> Receiving a delivery against a purchase order?
+            </span>
+            <Select value={poId} onValueChange={(v) => onSelectPO(v ?? '')}>
+              <SelectTrigger className="h-8 w-auto min-w-[240px] text-xs">
+                <SelectValue placeholder="Load a purchase order…" />
+              </SelectTrigger>
+              <SelectContent>
+                {openPOs.length === 0 ? (
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground">No open purchase orders</div>
+                ) : (
+                  openPOs.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.orderNumber}
+                      {p.supplier?.name ? ` · ${p.supplier.name}` : ''}
+                      {p._count?.items != null ? ` · ${p._count.items} item(s)` : ''}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
 
       {/* G2: total-bill purchase discount (whole invoice, on top of per-line) */}
@@ -1382,6 +1527,37 @@ function EntryStep(props: {
                   </Button>
                 </div>
               </div>
+
+              {/* ── PO comparison strip: ordered vs what's being received ── */}
+              {l.po && (() => {
+                const rec = parseInt(l.quantityReceived, 10) || 0;
+                const remaining = Math.max(0, l.po.orderedQty - l.po.alreadyReceived);
+                const qd = rec - remaining;
+                const rate = parseFloat(l.purchasePrice);
+                const rd = l.po.unitPrice != null && !isNaN(rate) ? rate - l.po.unitPrice : null;
+                const chip = 'rounded px-1.5 py-0.5 font-medium';
+                return (
+                  <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-t border-primary/15 bg-primary/[0.04] px-3 py-1.5 text-[11px]">
+                    <span className="inline-flex items-center gap-1 font-semibold uppercase tracking-wide text-primary/80"><FileCheck className="h-3 w-3" /> PO</span>
+                    <span className="text-muted-foreground">
+                      Ordered <b className="text-foreground">{l.po.orderedQty}</b>
+                      {l.po.alreadyReceived > 0 && ` · ${l.po.alreadyReceived} already received · ${remaining} outstanding`}
+                    </span>
+                    {qd === 0
+                      ? <span className={cn(chip, 'bg-emerald-100 text-emerald-800')}>qty ✓</span>
+                      : qd < 0
+                        ? <span className={cn(chip, 'bg-amber-100 text-amber-800')}>short {Math.abs(qd)}</span>
+                        : <span className={cn(chip, 'bg-sky-100 text-sky-800')}>excess {qd}</span>}
+                    {l.po.unitPrice != null && (
+                      rd == null
+                        ? <span className="text-muted-foreground">PO rate ₹{l.po.unitPrice.toFixed(2)}</span>
+                        : Math.abs(rd) < 0.005
+                          ? <span className={cn(chip, 'bg-emerald-100 text-emerald-800')}>rate ✓</span>
+                          : <span className={cn(chip, 'bg-amber-100 text-amber-800')}>rate {rd > 0 ? '↑' : '↓'} ₹{Math.abs(rd).toFixed(2)} (PO ₹{l.po.unitPrice.toFixed(2)})</span>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* ── Batch & stock · Pricing — divided by hairlines, not nested boxes ── */}
               <div className="grid gap-x-5 gap-y-3 border-t border-outline-variant/40 bg-surface-container-low/30 px-3 py-2.5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.55fr)]">
