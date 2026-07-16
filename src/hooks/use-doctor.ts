@@ -1055,6 +1055,9 @@ export interface FormularyDrug {
   price?: number | string | null;
   source?: 'formulary' | 'master';
   drugMasterId?: string;
+  // Live available stock in this hospital's pharmacy (Σ active batch qty). 0 for
+  // master-catalog drugs the hospital hasn't stocked yet.
+  availableStock?: number;
 }
 
 export function useFormularySearch(search: string) {

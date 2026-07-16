@@ -208,6 +208,22 @@ export function StepPrescription({ form, patientId }: StepPrescriptionProps) {
                       {[drug.genericName, drug.strength && `(${drug.strength})`].filter(Boolean).join(' ')}
                     </p>
                   </div>
+                  {/* Availability in this hospital's pharmacy */}
+                  <div className="ml-auto shrink-0">
+                    {drug.source === 'master' ? (
+                      <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-muted-foreground border-muted-foreground/30">
+                        catalog · not stocked
+                      </Badge>
+                    ) : (drug.availableStock ?? 0) > 0 ? (
+                      <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                        {drug.availableStock} in stock
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">
+                        out of stock
+                      </span>
+                    )}
+                  </div>
                 </button>
               );
             })}
