@@ -452,127 +452,170 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
 
   return (
     <Dialog open={true} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>PO Details</DialogTitle>
+      <DialogContent className="flex max-h-[92vh] w-[95vw] max-w-5xl flex-col overflow-hidden p-0">
+        <DialogHeader className="border-b px-6 py-4">
+          <DialogTitle className="flex flex-wrap items-center gap-2 text-lg">
+            <PackageCheck className="h-5 w-5 text-primary" />
+            Purchase Order
+            {data && <span className="font-mono text-sm font-normal text-muted-foreground">{data.orderNumber}</span>}
+            {data && <Badge className={cn('ml-1', STATUS_CLS[data.status])}>{STATUS_LABEL[data.status] ?? data.status}</Badge>}
+          </DialogTitle>
         </DialogHeader>
-        {isLoading || !data ? (
-          <Skeleton className="h-32 w-full" />
-        ) : (
-          <div className="space-y-3">
-            <div className="grid grid-cols-3 gap-3 text-sm">
-              <div><b>Order:</b> <span className="font-mono">{data.orderNumber}</span></div>
-              <div><b>Supplier:</b> {data.supplier?.name}</div>
-              <div><b>Status:</b> {STATUS_LABEL[data.status] ?? data.status}</div>
-              <div><b>Order Date:</b> {formatDate(data.orderDate)}</div>
-              <div><b>Expected:</b> {data.expectedDeliveryDate ? formatDate(data.expectedDeliveryDate) : '-'}</div>
-              <div><b>Total:</b> {data.totalAmount ? `₹${Number(data.totalAmount).toFixed(2)}` : '-'}</div>
-            </div>
 
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Item</TableHead>
-                  <TableHead className="text-right">Ordered</TableHead>
-                  <TableHead className="text-right">Received</TableHead>
-                  {data.status === 'approved' || data.status === 'partially_delivered' ? (
-                    <TableHead className="text-right">Receive Now</TableHead>
-                  ) : null}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.items?.map((it) => {
-                  const pending = it.quantityOrdered - it.quantityReceived;
-                  const isDrug = !!it.drugId;
-                  const name = isDrug
-                    ? `${it.drug?.drugName ?? 'Drug'}${it.drug?.strength ? ` ${it.drug.strength}` : ''}`
-                    : it.inventoryItem?.itemName ?? '-';
-                  // Composition (drug) / item code, shown under the name.
-                  const subText = isDrug
-                    ? [it.drug?.genericName, it.drug?.manufacturer].filter(Boolean).join(' · ')
-                    : it.inventoryItem?.itemCode ?? '';
-                  const receiving = data.status === 'approved' || data.status === 'partially_delivered';
-                  return (
-                    <TableRow key={it.id}>
-                      <TableCell className="font-medium align-top">
-                        <div className="flex items-center gap-1.5">
-                          <span>{name}</span>
-                          <Badge
-                            variant="outline"
-                            className={cn('text-[10px]', isDrug && 'bg-teal-500/10 text-teal-700 border-teal-500/20')}
-                          >
-                            {isDrug ? 'Drug' : 'Item'}
-                          </Badge>
-                        </div>
-                        {subText && <p className="text-xs font-normal text-muted-foreground">{subText}</p>}
-                      </TableCell>
-                      <TableCell className="text-right align-top">{it.quantityOrdered}</TableCell>
-                      <TableCell className="text-right align-top">{it.quantityReceived}</TableCell>
-                      {receiving && (
-                        <TableCell className="text-right">
-                          <Input
-                            type="number"
-                            min={0}
-                            max={pending}
-                            value={recvMap[it.id] ?? ''}
-                            placeholder={String(pending)}
-                            onChange={(e) => {
-                              const v = Math.max(0, Math.min(pending, Number(e.target.value) || 0));
-                              setRecvMap({ ...recvMap, [it.id]: v });
-                            }}
-                            className="h-8 w-32 ml-auto"
-                          />
-                          {/* Price is captured at arrival; drug lines also need batch + expiry. */}
-                          {(recvMap[it.id] ?? 0) > 0 && (
-                            <div className="mt-1.5 flex flex-col items-end gap-1">
+        {isLoading || !data ? (
+          <div className="p-6"><Skeleton className="h-40 w-full" /></div>
+        ) : (
+          <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
+            {/* Info cards */}
+            {(() => {
+              const totalOrdered = data.items?.reduce((s, it) => s + it.quantityOrdered, 0) ?? 0;
+              const totalReceived = data.items?.reduce((s, it) => s + it.quantityReceived, 0) ?? 0;
+              const pct = totalOrdered ? Math.round((totalReceived / totalOrdered) * 100) : 0;
+              const info: Array<[string, string]> = [
+                ['Supplier', data.supplier?.name ?? '-'],
+                ['Order Date', formatDate(data.orderDate)],
+                ['Expected', data.expectedDeliveryDate ? formatDate(data.expectedDeliveryDate) : '-'],
+                ['Total', data.totalAmount ? `₹${Number(data.totalAmount).toFixed(2)}` : '-'],
+              ];
+              return (
+                <div className="rounded-xl border bg-muted/20 p-4">
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                    {info.map(([k, v]) => (
+                      <div key={k} className="min-w-0">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{k}</p>
+                        <p className="truncate text-sm font-medium text-foreground">{v}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Received progress across all lines */}
+                  <div className="mt-4">
+                    <div className="mb-1 flex items-center justify-between text-xs">
+                      <span className="font-medium text-muted-foreground">Received progress</span>
+                      <span className="font-semibold text-foreground">{totalReceived} / {totalOrdered} ({pct}%)</span>
+                    </div>
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-surface-container-high">
+                      <div className={cn('h-full rounded-full transition-all', pct >= 100 ? 'bg-emerald-500' : 'bg-primary')} style={{ width: `${Math.min(100, pct)}%` }} />
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Line items */}
+            <div className="overflow-hidden rounded-xl border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Item</TableHead>
+                    <TableHead className="text-right">Ordered</TableHead>
+                    <TableHead className="text-right">Received</TableHead>
+                    <TableHead className="text-right">Pending</TableHead>
+                    {data.status === 'approved' || data.status === 'partially_delivered' ? (
+                      <TableHead className="w-[280px] text-right">Receive Now</TableHead>
+                    ) : null}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.items?.map((it) => {
+                    const pending = it.quantityOrdered - it.quantityReceived;
+                    const isDrug = !!it.drugId;
+                    const name = isDrug
+                      ? `${it.drug?.drugName ?? 'Drug'}${it.drug?.strength ? ` ${it.drug.strength}` : ''}`
+                      : it.inventoryItem?.itemName ?? '-';
+                    const subText = isDrug
+                      ? [it.drug?.genericName, it.drug?.manufacturer].filter(Boolean).join(' · ')
+                      : it.inventoryItem?.itemCode ?? '';
+                    const receiving = data.status === 'approved' || data.status === 'partially_delivered';
+                    return (
+                      <TableRow key={it.id}>
+                        <TableCell className="align-top font-medium">
+                          <div className="flex items-center gap-1.5">
+                            <span>{name}</span>
+                            <Badge
+                              variant="outline"
+                              className={cn('text-[10px]', isDrug && 'bg-teal-500/10 text-teal-700 border-teal-500/20')}
+                            >
+                              {isDrug ? 'Drug' : 'Item'}
+                            </Badge>
+                          </div>
+                          {subText && <p className="text-xs font-normal text-muted-foreground">{subText}</p>}
+                        </TableCell>
+                        <TableCell className="text-right align-top tabular-nums">{it.quantityOrdered}</TableCell>
+                        <TableCell className="text-right align-top tabular-nums">{it.quantityReceived}</TableCell>
+                        <TableCell className="text-right align-top tabular-nums">
+                          {pending > 0
+                            ? <span className="font-medium text-amber-600">{pending}</span>
+                            : <span className="text-emerald-600">0</span>}
+                        </TableCell>
+                        {receiving && (
+                          <TableCell className="align-top text-right">
+                            <div className="ml-auto flex w-full max-w-[260px] flex-col gap-1.5">
                               <Input
                                 type="number"
                                 min={0}
-                                step="0.01"
-                                value={recvPrice[it.id] ?? ''}
+                                max={pending}
+                                value={recvMap[it.id] ?? ''}
+                                placeholder={`Receive (max ${pending})`}
                                 onChange={(e) => {
-                                  const v = e.target.value ? Math.max(0, Number(e.target.value)) : 0;
-                                  setRecvPrice({ ...recvPrice, [it.id]: v });
+                                  const v = Math.max(0, Math.min(pending, Number(e.target.value) || 0));
+                                  setRecvMap({ ...recvMap, [it.id]: v });
                                 }}
-                                placeholder="Unit ₹ (purchase)"
-                                title="Purchase price per unit"
-                                className="h-7 w-32 text-xs"
+                                className="h-9 w-full"
+                                disabled={pending <= 0}
                               />
-                              {isDrug && (
+                              {/* Price is captured at arrival; drug lines also need batch + expiry. */}
+                              {(recvMap[it.id] ?? 0) > 0 && (
                                 <>
                                   <Input
-                                    value={recvBatch[it.id]?.batchNumber ?? ''}
-                                    onChange={(e) => setBatch(it.id, { batchNumber: e.target.value })}
-                                    placeholder="Batch no. *"
-                                    className="h-7 w-32 text-xs"
+                                    type="number"
+                                    min={0}
+                                    step="0.01"
+                                    value={recvPrice[it.id] ?? ''}
+                                    onChange={(e) => {
+                                      const v = e.target.value ? Math.max(0, Number(e.target.value)) : 0;
+                                      setRecvPrice({ ...recvPrice, [it.id]: v });
+                                    }}
+                                    placeholder="Unit ₹ (purchase)"
+                                    title="Purchase price per unit"
+                                    className="h-8 w-full text-xs"
                                   />
-                                  <Input
-                                    type="date"
-                                    value={recvBatch[it.id]?.expiryDate ?? ''}
-                                    onChange={(e) => setBatch(it.id, { expiryDate: e.target.value })}
-                                    title="Expiry *"
-                                    className="h-7 w-32 text-xs"
-                                  />
+                                  {isDrug && (
+                                    <div className="grid grid-cols-2 gap-1.5">
+                                      <Input
+                                        value={recvBatch[it.id]?.batchNumber ?? ''}
+                                        onChange={(e) => setBatch(it.id, { batchNumber: e.target.value })}
+                                        placeholder="Batch no. *"
+                                        className="h-8 text-xs"
+                                      />
+                                      <Input
+                                        type="date"
+                                        value={recvBatch[it.id]?.expiryDate ?? ''}
+                                        onChange={(e) => setBatch(it.id, { expiryDate: e.target.value })}
+                                        title="Expiry *"
+                                        className="h-8 text-xs"
+                                      />
+                                    </div>
+                                  )}
                                 </>
                               )}
                             </div>
-                          )}
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
 
             {data.notes && (
-              <div className="bg-muted/40 rounded-md p-2 text-sm">
+              <div className="rounded-lg bg-muted/40 p-3 text-sm">
                 <b>Notes:</b> {data.notes}
               </div>
             )}
           </div>
         )}
-        <DialogFooter>
+        <DialogFooter className="border-t bg-muted/30 px-6 py-4">
           {canCancel && (
             <Button
               variant="outline"
