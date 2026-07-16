@@ -1312,91 +1312,113 @@ function EntryStep(props: {
                 err.length > 0 ? 'border-red-500/40' : warn.length > 0 ? 'border-amber-500/40' : '',
               )}
             >
-              {/* Identity: number · name/generic/gtin · type · row actions */}
-              <div className="flex items-start gap-2">
-                <span className="mt-2 w-5 shrink-0 text-center text-xs text-muted-foreground">{i + 1}</span>
-                <div className="grid flex-1 gap-2 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-                  <div className="space-y-1">
-                    <Input className={cell} value={l.drugName} onChange={(e) => updateLine(l.id, 'drugName', e.target.value)} placeholder="Name *  ·  e.g. Telmac 40 Tab" />
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <Input className={cn(cell, 'text-muted-foreground')} value={l.genericName} onChange={(e) => updateLine(l.id, 'genericName', e.target.value)} placeholder="composition (optional)" />
+              {/* ── Identity: number · name/composition/strength/gtin · type · actions ── */}
+              <div className="flex items-start gap-2.5">
+                <span className="mt-1.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-container-high text-[11px] font-semibold text-muted-foreground">
+                  {i + 1}
+                </span>
+                <div className="grid flex-1 gap-2 md:grid-cols-[minmax(0,2.4fr)_minmax(0,1fr)]">
+                  <div className="space-y-1.5">
+                    <Input
+                      className="h-9 text-sm font-medium"
+                      value={l.drugName}
+                      onChange={(e) => updateLine(l.id, 'drugName', e.target.value)}
+                      placeholder="Product name *  ·  e.g. Telmac 40 Tab"
+                    />
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <Input className={cn(cell, 'text-muted-foreground')} value={l.genericName} onChange={(e) => updateLine(l.id, 'genericName', e.target.value)} placeholder="composition" />
+                      <Input className={cell} value={l.strength} onChange={(e) => updateLine(l.id, 'strength', e.target.value)} placeholder="strength · 40mg" />
                       <Input className={cn(cell, 'font-mono text-muted-foreground')} value={l.gtin} onChange={(e) => updateLine(l.id, 'gtin', e.target.value)} placeholder="GTIN / barcode" />
                     </div>
                   </div>
-                  <Select
-                    value={isItem ? (l.category || 'consumable') : 'drug'}
-                    onValueChange={(v) => {
-                      const val = v ?? 'drug';
-                      if (val === 'drug') {
-                        updateLine(l.id, 'kind', 'drug');
-                        updateLine(l.id, 'category', '');
-                      } else {
-                        updateLine(l.id, 'kind', 'item');
-                        updateLine(l.id, 'category', val);
-                      }
-                    }}
-                  >
-                    <SelectTrigger className={cn(cell, 'w-full')}><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {TYPE_OPTIONS.map((t) => (
-                        <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="space-y-1">
+                    <span className="block text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Type</span>
+                    <Select
+                      value={isItem ? (l.category || 'consumable') : 'drug'}
+                      onValueChange={(v) => {
+                        const val = v ?? 'drug';
+                        if (val === 'drug') {
+                          updateLine(l.id, 'kind', 'drug');
+                          updateLine(l.id, 'category', '');
+                        } else {
+                          updateLine(l.id, 'kind', 'item');
+                          updateLine(l.id, 'category', val);
+                        }
+                      }}
+                    >
+                      <SelectTrigger className={cn(cell, 'w-full')}><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {TYPE_OPTIONS.map((t) => (
+                          <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-0.5">
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 w-7 p-0 text-muted-foreground"
+                    className="h-8 gap-1 px-2 text-[11px] text-muted-foreground"
                     onClick={() => toggleRow(l.id)}
                     title="More product details"
                   >
                     {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                    More
                   </Button>
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-red-600" onClick={() => removeLine(l.id)} title="Remove line">
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-red-600" onClick={() => removeLine(l.id)} title="Remove line">
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
               </div>
 
-              {/* Stock + pricing — wraps; no horizontal scroll at any width */}
-              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-                <LineField label="Strength">
-                  <Input className={cell} value={l.strength} onChange={(e) => updateLine(l.id, 'strength', e.target.value)} placeholder="40mg" />
-                </LineField>
-                <LineField label={isItem ? 'Batch (optional)' : 'Batch'}>
-                  <Input className={cell} value={l.batchNumber} onChange={(e) => updateLine(l.id, 'batchNumber', e.target.value)} placeholder={isItem ? 'optional' : 'B23A01'} />
-                </LineField>
-                <LineField label={isItem ? 'Expiry (optional)' : 'Expiry'}>
-                  <Input className={cell} type="date" value={l.expiryDate} onChange={(e) => updateLine(l.id, 'expiryDate', e.target.value)} />
-                </LineField>
-                <LineField label="Qty">
-                  <Input className={cell} type="number" min={1} value={l.quantityReceived} onChange={(e) => updateLine(l.id, 'quantityReceived', e.target.value)} placeholder="blank = no stock" />
-                </LineField>
-                <LineField label="Free">
-                  <Input className={cell} type="number" min={0} value={l.freeQuantity} onChange={(e) => updateLine(l.id, 'freeQuantity', e.target.value)} />
-                </LineField>
-                <LineField label="MRP">
-                  <Input className={cell} type="number" step="0.01" value={l.mrp} onChange={(e) => updateLine(l.id, 'mrp', e.target.value)} />
-                </LineField>
-                <LineField label="Rate">
-                  <Input className={cell} type="number" step="0.01" value={l.purchasePrice} onChange={(e) => updateLine(l.id, 'purchasePrice', e.target.value)} />
-                </LineField>
-                <LineField label="Disc %">
-                  <Input className={cell} type="number" step="0.01" value={l.purchaseDiscountPercent} onChange={(e) => updateLine(l.id, 'purchaseDiscountPercent', e.target.value)} />
-                </LineField>
-                <LineField label="Net">
-                  <div className="flex h-8 items-center px-1 text-xs tabular-nums text-muted-foreground">
-                    {net ? `₹${net}` : '—'}
+              {/* ── Two labelled clusters instead of one flat 11-field wall ── */}
+              <div className="mt-2.5 grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.55fr)]">
+                {/* Batch & stock */}
+                <div className="rounded-lg border border-outline-variant/40 bg-surface-container-low/30 p-2">
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Batch &amp; stock</p>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <LineField label={isItem ? 'Batch (opt)' : 'Batch'}>
+                      <Input className={cell} value={l.batchNumber} onChange={(e) => updateLine(l.id, 'batchNumber', e.target.value)} placeholder={isItem ? 'optional' : 'B23A01'} />
+                    </LineField>
+                    <LineField label={isItem ? 'Expiry (opt)' : 'Expiry'}>
+                      <Input className={cell} type="date" value={l.expiryDate} onChange={(e) => updateLine(l.id, 'expiryDate', e.target.value)} />
+                    </LineField>
+                    <LineField label="Qty">
+                      <Input className={cell} type="number" min={1} value={l.quantityReceived} onChange={(e) => updateLine(l.id, 'quantityReceived', e.target.value)} placeholder="blank" />
+                    </LineField>
+                    <LineField label="Free">
+                      <Input className={cell} type="number" min={0} value={l.freeQuantity} onChange={(e) => updateLine(l.id, 'freeQuantity', e.target.value)} />
+                    </LineField>
                   </div>
-                </LineField>
-                <LineField label="GST %">
-                  <Input className={cell} type="number" step="0.01" value={l.gstPercent} onChange={(e) => updateLine(l.id, 'gstPercent', e.target.value)} />
-                </LineField>
-                <LineField label="Sell">
-                  <Input className={cell} type="number" step="0.01" value={l.sellingPrice} onChange={(e) => updateLine(l.id, 'sellingPrice', e.target.value)} />
-                </LineField>
+                </div>
+
+                {/* Pricing (per unit) */}
+                <div className="rounded-lg border border-outline-variant/40 bg-surface-container-low/30 p-2">
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Pricing (per unit)</p>
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                    <LineField label="MRP">
+                      <Input className={cell} type="number" step="0.01" value={l.mrp} onChange={(e) => updateLine(l.id, 'mrp', e.target.value)} />
+                    </LineField>
+                    <LineField label="Rate">
+                      <Input className={cell} type="number" step="0.01" value={l.purchasePrice} onChange={(e) => updateLine(l.id, 'purchasePrice', e.target.value)} />
+                    </LineField>
+                    <LineField label="Disc %">
+                      <Input className={cell} type="number" step="0.01" value={l.purchaseDiscountPercent} onChange={(e) => updateLine(l.id, 'purchaseDiscountPercent', e.target.value)} />
+                    </LineField>
+                    <LineField label="Net">
+                      <div className="flex h-8 items-center rounded-xl bg-surface-container-high px-2 text-xs font-semibold tabular-nums text-foreground">
+                        {net ? `₹${net}` : '—'}
+                      </div>
+                    </LineField>
+                    <LineField label="GST %">
+                      <Input className={cell} type="number" step="0.01" value={l.gstPercent} onChange={(e) => updateLine(l.id, 'gstPercent', e.target.value)} />
+                    </LineField>
+                    <LineField label="Sell">
+                      <Input className={cell} type="number" step="0.01" value={l.sellingPrice} onChange={(e) => updateLine(l.id, 'sellingPrice', e.target.value)} />
+                    </LineField>
+                  </div>
+                </div>
               </div>
 
               {/* Inline validation messages */}
@@ -1408,7 +1430,9 @@ function EntryStep(props: {
 
               {/* Expandable full product detail */}
               {open && (
-                <div className="mt-2 grid grid-cols-2 gap-2 border-t pt-2 sm:grid-cols-3 md:grid-cols-4">
+                <div className="mt-2 rounded-lg border border-outline-variant/40 bg-surface-container-low/30 p-2">
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">More product details</p>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
                   <LineField label="Manufacturer / brand">
                     <Input className={cell} value={l.manufacturer} onChange={(e) => updateLine(l.id, 'manufacturer', e.target.value)} />
                   </LineField>
@@ -1437,6 +1461,7 @@ function EntryStep(props: {
                   <LineField label="Description / notes" className="col-span-2">
                     <Input className={cell} value={l.description} onChange={(e) => updateLine(l.id, 'description', e.target.value)} />
                   </LineField>
+                  </div>
                 </div>
               )}
 
