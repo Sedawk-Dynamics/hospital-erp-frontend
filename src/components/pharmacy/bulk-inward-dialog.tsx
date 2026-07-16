@@ -1439,7 +1439,7 @@ function EntryStep(props: {
 
               {/* Expandable full product detail */}
               {open && (
-                <div className="border-t border-outline-variant/40 px-3 py-2.5">
+                <div className="border-t border-outline-variant/40 bg-surface-container-low/30 px-3 py-2.5">
                   <SectionLabel>More product details</SectionLabel>
                   <div className="grid grid-cols-2 gap-x-2.5 gap-y-2 sm:grid-cols-3 md:grid-cols-4">
                     <LineField label="Manufacturer / brand">
@@ -1466,9 +1466,6 @@ function EntryStep(props: {
                     </LineField>
                     <LineField label="HSN code">
                       <Input className={cell} value={l.hsnCode} onChange={(e) => updateLine(l.id, 'hsnCode', e.target.value)} />
-                    </LineField>
-                    <LineField label="Description / notes" className="col-span-2">
-                      <Input className={cell} value={l.description} onChange={(e) => updateLine(l.id, 'description', e.target.value)} />
                     </LineField>
                   </div>
                 </div>
