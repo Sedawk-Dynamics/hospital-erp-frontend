@@ -20,6 +20,7 @@ import {
   Users,
   Stethoscope,
   CircleCheckBig,
+  Siren,
 } from 'lucide-react';
 
 import {
@@ -50,6 +51,8 @@ import {
 
 import { FrontDeskRegisterDialog } from '@/components/hospital/frontdesk-register-dialog';
 import { CreateAppointmentDialog } from '@/components/hospital/create-appointment-dialog';
+import { EmergencyPatientDialog } from '@/components/hospital/emergency-patient-dialog';
+import { EmergencyBadge } from '@/components/shared/emergency-badge';
 import {
   useOPAppointments,
   useAppointmentStats,
@@ -459,6 +462,7 @@ export default function WalkInPage() {
   const [createPatientOpen, setCreatePatientOpen] = useState(false);
   const [walkInDialogOpen, setWalkInDialogOpen] = useState(false);
   const [bookAppointmentOpen, setBookAppointmentOpen] = useState(false);
+  const [emergencyOpen, setEmergencyOpen] = useState(false);
 
   // Data
   const { data: appointmentsData, isLoading: appointmentsLoading } = useOPAppointments({
@@ -585,6 +589,15 @@ export default function WalkInPage() {
             Book Appointment
           </Button>
           <Button
+            variant="outline"
+            onClick={() => setEmergencyOpen(true)}
+            size="sm"
+            className="rounded-xl font-label text-sm border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/50 dark:hover:bg-red-950/30"
+          >
+            <Siren className="h-4 w-4 mr-1.5" />
+            Emergency
+          </Button>
+          <Button
             onClick={() => setWalkInDialogOpen(true)}
             className="bg-primary text-white font-label font-bold text-sm px-6 py-2.5 rounded-xl hover:shadow-lg transition-shadow"
           >
@@ -614,6 +627,13 @@ export default function WalkInPage() {
       <CreateAppointmentDialog
         open={bookAppointmentOpen}
         onOpenChange={setBookAppointmentOpen}
+      />
+      <EmergencyPatientDialog
+        open={emergencyOpen}
+        onOpenChange={setEmergencyOpen}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['hospital'] });
+        }}
       />
 
       {/* ── Queue Stats Row ────────────────────────────────── */}
@@ -791,8 +811,9 @@ export default function WalkInPage() {
                             </AvatarFallback>
                           </Avatar>
                           <div className="min-w-0">
-                            <p className="font-label text-sm font-bold truncate">
+                            <p className="flex items-center gap-1.5 font-label text-sm font-bold truncate">
                               {patientName || 'Unknown'}
+                              <EmergencyBadge patient={apt.patient} size="sm" />
                             </p>
                             <p className="font-label text-[10px] text-on-surface-variant">
                               {apt.patient?.mrn ?? '-'}

@@ -8,12 +8,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   CalendarCheck, UserPlus, Search, Users, CheckCircle2,
-  Clock, CircleCheck, LogIn, Footprints, Banknote, Loader2,
+  Clock, CircleCheck, LogIn, Footprints, Banknote, Loader2, Siren,
 } from 'lucide-react';
 import { toInputDateStr, formatTime24, formatDate } from '@/lib/date-utils';
 import { toast } from 'sonner';
 import { CreateAppointmentDialog } from '@/components/hospital/create-appointment-dialog';
 import { FrontDeskRegisterDialog } from '@/components/hospital/frontdesk-register-dialog';
+import { EmergencyPatientDialog } from '@/components/hospital/emergency-patient-dialog';
+import { EmergencyBadge } from '@/components/shared/emergency-badge';
 import { CollectFrontdeskPaymentDialog } from '@/components/hospital/collect-frontdesk-payment-dialog';
 import { useInitiateFrontdeskPayment } from '@/hooks/use-hospital';
 import type { Appointment } from '@/types';
@@ -62,6 +64,7 @@ export function FrontDeskDashboard() {
   const [registerOpen, setRegisterOpen] = useState(false);
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [bookAppointmentOpen, setBookAppointmentOpen] = useState(false);
+  const [emergencyOpen, setEmergencyOpen] = useState(false);
   const [collectPayTarget, setCollectPayTarget] = useState<QueueAppointment | null>(null);
   const today = toInputDateStr();
   const queryClient = useQueryClient();
@@ -246,6 +249,14 @@ export function FrontDeskDashboard() {
           <Footprints className="h-4 w-4" />
           Walk-In
         </Button>
+        <Button
+          variant="outline"
+          className="gap-2 border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/50 dark:hover:bg-red-950/30"
+          onClick={() => setEmergencyOpen(true)}
+        >
+          <Siren className="h-4 w-4" />
+          Emergency
+        </Button>
       </div>
 
       {/* Register Patient + Book Appointment (multi-step) */}
@@ -271,6 +282,15 @@ export function FrontDeskDashboard() {
       <CreateAppointmentDialog
         open={bookAppointmentOpen}
         onOpenChange={setBookAppointmentOpen}
+      />
+
+      {/* Emergency / Casualty intake */}
+      <EmergencyPatientDialog
+        open={emergencyOpen}
+        onOpenChange={setEmergencyOpen}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['front-desk'] });
+        }}
       />
 
       {/* Filters + Search */}
@@ -350,7 +370,10 @@ export function FrontDeskDashboard() {
                     </td>
                     <td className="px-4 py-3">
                       <div>
-                        <p className="font-label text-sm font-bold">{appt.patient.firstName} {appt.patient.lastName}</p>
+                        <p className="flex items-center gap-1.5 font-label text-sm font-bold">
+                          {appt.patient.firstName} {appt.patient.lastName}
+                          <EmergencyBadge patient={appt.patient} size="sm" />
+                        </p>
                         <p className="font-label text-[10px] text-on-surface-variant">{appt.patient.mrn}</p>
                       </div>
                     </td>

@@ -73,6 +73,7 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Home', href: '/hospital', icon: Home },
       { label: 'IP Home', href: '/hospital/ip', icon: BedDouble },
       { label: 'Walk In', href: '/hospital/walkin', icon: Users },
+      { label: 'Emergency', href: '/hospital/emergency', icon: Siren },
       { label: 'Hospital Billing', href: '/hospital/billing', icon: Receipt },
       { label: 'Billing Transaction', href: '/hospital/transactions', icon: ArrowLeftRight },
       { label: 'Reports', href: '/hospital/reports', icon: BarChart3 },
@@ -137,8 +138,7 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       // All medicines dispensed to IP patients (billed to the hospital IP bill).
       { label: 'IP Medicines', href: '/pharmacy/ip-medicines', icon: Pill },
       { label: 'OT Kits', href: '/pharmacy/ot-kits', icon: Package },
-      // Emergency / Casualty "Golden Hour" — trauma pseudo-ID + bypass dispense + merge.
-      { label: 'Emergency', href: '/pharmacy/emergency', icon: Siren },
+      // Emergency / Casualty moved to the front-desk Hospital module (/hospital/emergency).
       { label: 'Stock Ledger', href: '/pharmacy/stock-ledger', icon: ClipboardList, restrictTo: ['pharmacy_admin'] },
       { label: 'Discount Policy', href: '/pharmacy/discount-policy', icon: Percent, restrictTo: ['pharmacy_admin'] },
     ],

@@ -26,6 +26,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { EmergencyBadge } from '@/components/shared/emergency-badge';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -1864,12 +1865,15 @@ export function InPatientList() {
                             </AvatarFallback>
                           </Avatar>
                           <div>
-                            <Link
-                              href={`/hospital/ip/${adm.id}`}
-                              className="font-label text-sm font-bold hover:text-primary"
-                            >
-                              {adm.patient?.firstName} {adm.patient?.lastName}
-                            </Link>
+                            <span className="flex items-center gap-1.5">
+                              <Link
+                                href={`/hospital/ip/${adm.id}`}
+                                className="font-label text-sm font-bold hover:text-primary"
+                              >
+                                {adm.patient?.firstName} {adm.patient?.lastName}
+                              </Link>
+                              <EmergencyBadge patient={adm.patient} size="sm" />
+                            </span>
                             <p className="font-label text-[10px] text-on-surface-variant">
                               {adm.patient?.mrn} | {adm.patient?.phone}
                             </p>

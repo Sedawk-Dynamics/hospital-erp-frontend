@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { EmergencyBadge } from '@/components/shared/emergency-badge';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 
@@ -106,8 +107,9 @@ function EmptyState({ message }: { message: string }) {
 function PatientDemographics({ patient }: { patient: Patient }) {
   return (
     <div className="space-y-1">
-      <h2 className="font-headline text-lg font-semibold text-foreground">
+      <h2 className="flex items-center gap-2 font-headline text-lg font-semibold text-foreground">
         {patient.firstName} {patient.lastName}
+        <EmergencyBadge patient={patient} />
       </h2>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-on-surface-variant">
         <span className="font-label font-medium">MRN: {patient.mrn}</span>
