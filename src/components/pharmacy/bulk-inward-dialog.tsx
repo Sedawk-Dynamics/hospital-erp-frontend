@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   Upload,
   Plus,
@@ -108,9 +108,6 @@ interface DraftLine {
   purchaseDiscountPercent: string;
   gstPercent: string;
   sellingPrice: string;
-  // When this line was seeded from a Purchase Order — the ordered reference used
-  // to compare "what arrived" against "what was ordered" (qty + price variance).
-  po?: { itemId: string; orderedQty: number; alreadyReceived: number; unitPrice?: number };
 }
 
 interface Decision {
@@ -119,8 +116,8 @@ interface Decision {
 }
 
 // Column-mappable text fields of a draft line — excludes the structured
-// `catalogBackup` / `po` (nested objects), which are never set via CSV mapping.
-type DraftCol = Exclude<keyof DraftLine, 'catalogBackup' | 'po'>;
+// `catalogBackup` (a nested object), which is never set via CSV/column mapping.
+type DraftCol = Exclude<keyof DraftLine, 'catalogBackup'>;
 
 // Normalised shape a catalog drug (auto-match chip OR free search result) is
 // adopted onto a line as.
@@ -153,6 +150,30 @@ const TYPE_OPTIONS = [
 ];
 
 const DOSAGE_FORMS = ['tablet', 'capsule', 'syrup', 'injection', 'cream', 'drops', 'inhaler', 'other'];
+
+// A flattened PO line used to CHECK an entered invoice line against the order
+// (the user types what actually arrived; we only compare — never prefill).
+interface PoLineRef {
+  id: string;
+  name: string;
+  orderedQty: number;
+  alreadyReceived: number;
+  unitPrice?: number;
+}
+// Match an entered line to a PO line by name: exact (normalised) first, else a
+// containment match so "Telma 40" ↔ "Telma 40 Tab" still line up.
+function matchPoLine(lineName: string, poItems: PoLineRef[]): PoLineRef | null {
+  const n = lineName.trim().toLowerCase();
+  if (!n || poItems.length === 0) return null;
+  return (
+    poItems.find((p) => p.name.trim().toLowerCase() === n) ??
+    poItems.find((p) => {
+      const pn = p.name.trim().toLowerCase();
+      return pn.length > 2 && (pn.includes(n) || n.includes(pn));
+    }) ??
+    null
+  );
+}
 
 function emptyLine(): DraftLine {
   return {
@@ -481,75 +502,36 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
   const { data: suppliersData } = useSuppliers({ limit: 100 });
   const suppliers = suppliersData?.data ?? [];
 
-  // ── Purchase-Order integration ──────────────────────────────
-  // Receive an arriving delivery against an open PO: pull its lines in here,
-  // then compare what actually arrived (qty + rate) with what was ordered.
+  // ── Purchase-Order CHECK (not prefill) ──────────────────────
+  // The user enters the received invoice themselves (OCR / datasheet / manual);
+  // picking a PO only lets us CHECK those lines against what was ordered — we
+  // match entered lines to PO lines by name and show the variance. We never
+  // overwrite what the user typed.
   const [poId, setPoId] = useState('');
-  const [poNumber, setPoNumber] = useState('');
   const { data: poListData } = usePurchaseOrders({ limit: 50 });
-  // Only POs still awaiting delivery are worth receiving against.
+  // Only POs still awaiting delivery are worth checking against.
   const openPOs = useMemo(
     () => (poListData?.data ?? []).filter((p) => p.status === 'approved' || p.status === 'submitted' || p.status === 'partially_delivered'),
     [poListData],
   );
   const { data: poDetail } = usePurchaseOrder(poId || null);
-  const loadedPoRef = useRef('');
+  const poNumber = poDetail?.id === poId ? poDetail?.orderNumber ?? '' : '';
+  // Flatten the loaded PO into comparable lines (name + ordered/received/price).
+  const poItems: PoLineRef[] = useMemo(() => {
+    if (!poDetail || poDetail.id !== poId) return [];
+    return (poDetail.items ?? []).map((it) => ({
+      id: it.id,
+      name: it.drug?.drugName ?? it.inventoryItem?.itemName ?? '(item)',
+      orderedQty: it.quantityOrdered,
+      alreadyReceived: it.quantityReceived,
+      unitPrice: it.unitPrice != null ? Number(it.unitPrice) : undefined,
+    }));
+  }, [poDetail, poId]);
   const reconcilePO = useReconcilePurchaseOrder();
   // The PO after it's been updated from this inward (shown on the Done step).
   const [reconciled, setReconciled] = useState<PurchaseOrder | null>(null);
 
-  const loadFromPO = (po: PurchaseOrder) => {
-    const newLines: DraftLine[] = (po.items ?? []).map((it) => {
-      const base = emptyLine();
-      const remaining = Math.max(0, it.quantityOrdered - it.quantityReceived);
-      if (it.drug) {
-        base.kind = 'drug';
-        base.category = '';
-        base.drugName = it.drug.drugName;
-        base.genericName = it.drug.genericName ?? '';
-        base.manufacturer = it.drug.manufacturer ?? '';
-        base.strength = it.drug.strength ?? '';
-        base.dosageForm = it.drug.dosageForm ?? '';
-      } else if (it.inventoryItem) {
-        base.kind = 'item';
-        base.category = 'consumable';
-        base.drugName = it.inventoryItem.itemName;
-        base.unit = it.inventoryItem.unitOfMeasurement ?? '';
-      }
-      // Pre-fill the still-outstanding quantity (usual "receive the rest"); staff
-      // adjusts to what physically arrived and the variance shows on the line.
-      base.quantityReceived = remaining > 0 ? String(remaining) : '';
-      if (it.unitPrice != null) base.purchasePrice = String(Number(it.unitPrice));
-      base.po = {
-        itemId: it.id,
-        orderedQty: it.quantityOrdered,
-        alreadyReceived: it.quantityReceived,
-        unitPrice: it.unitPrice != null ? Number(it.unitPrice) : undefined,
-      };
-      return base;
-    });
-    const hasContent = lines.some((l) => l.drugName.trim() || l.batchNumber.trim() || l.quantityReceived.trim());
-    if (hasContent && !window.confirm('Replace the current lines with this purchase order?')) return;
-    setLines(newLines.length ? newLines : [emptyLine()]);
-    if (po.supplierId) setSupplierId(po.supplierId);
-    setPoNumber(po.orderNumber);
-  };
-
-  // When a PO is picked, load its detail once.
-  useEffect(() => {
-    if (poDetail && poDetail.id === poId && loadedPoRef.current !== poId) {
-      loadFromPO(poDetail);
-      loadedPoRef.current = poId;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [poDetail, poId]);
-
-  const clearPO = () => {
-    setPoId('');
-    setPoNumber('');
-    loadedPoRef.current = '';
-    setLines((prev) => prev.map((l) => ({ ...l, po: undefined })));
-  };
+  const clearPO = () => setPoId('');
 
   const matchInward = useMatchInward();
   const commitInward = useCommitInward();
@@ -569,8 +551,6 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
     setAddToExisting(false);
     setLines([emptyLine()]);
     setPoId('');
-    setPoNumber('');
-    loadedPoRef.current = '';
     setReconciled(null);
     setPasteText('');
     setShowPaste(false);
@@ -981,20 +961,26 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         toast.success(`Stock inward complete — ${res.batchesIn} line(s) posted`);
       }
 
-      // Close the loop: if this delivery was received against a PO, update the
-      // PO's received quantities + status from the lines that actually posted.
-      if (poId) {
-        const items = lines
-          .map((l, i) => {
-            if (!l.po) return null;
-            const r = res.results?.find((rr) => rr.index === i);
-            if (r && r.status !== 'ok') return null; // only reconcile posted lines
-            const paid = parseInt(l.quantityReceived, 10) || 0;
-            if (paid <= 0) return null;
-            const rate = parseFloat(l.purchasePrice);
-            return { purchaseOrderItemId: l.po.itemId, quantityReceived: paid, unitPrice: isNaN(rate) ? undefined : rate };
-          })
-          .filter(Boolean) as { purchaseOrderItemId: string; quantityReceived: number; unitPrice?: number }[];
+      // Close the loop: if a PO was selected to check against, update its
+      // received quantities + status from the posted lines that MATCH a PO line
+      // (by name). Aggregate per PO line so two invoice rows onto one PO line sum
+      // (the backend also caps at the ordered qty).
+      if (poId && poItems.length) {
+        const agg = new Map<string, { qty: number; rate?: number }>();
+        lines.forEach((l, i) => {
+          const r = res.results?.find((rr) => rr.index === i);
+          if (r && r.status !== 'ok') return; // only reconcile posted lines
+          const paid = parseInt(l.quantityReceived, 10) || 0;
+          if (paid <= 0) return;
+          const m = matchPoLine(l.drugName, poItems);
+          if (!m) return;
+          const rate = parseFloat(l.purchasePrice);
+          const cur = agg.get(m.id) ?? { qty: 0, rate: undefined };
+          cur.qty += paid;
+          if (!isNaN(rate)) cur.rate = rate;
+          agg.set(m.id, cur);
+        });
+        const items = Array.from(agg, ([purchaseOrderItemId, v]) => ({ purchaseOrderItemId, quantityReceived: v.qty, unitPrice: v.rate }));
         if (items.length) {
           try {
             const po = await reconcilePO.mutateAsync({ id: poId, items });
@@ -1035,6 +1021,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
               openPOs={openPOs}
               poId={poId}
               poNumber={poNumber}
+              poItems={poItems}
               onSelectPO={setPoId}
               onClearPO={clearPO}
               invoiceNumber={invoiceNumber}
@@ -1217,6 +1204,7 @@ function EntryStep(props: {
   openPOs: PurchaseOrder[];
   poId: string;
   poNumber: string;
+  poItems: PoLineRef[];
   onSelectPO: (id: string) => void;
   onClearPO: () => void;
   invoiceNumber: string;
@@ -1258,7 +1246,7 @@ function EntryStep(props: {
 }) {
   const {
     suppliers, supplierId, setSupplierId, selectedSupplier, invoiceNumber, setInvoiceNumber,
-    openPOs, poId, poNumber, onSelectPO, onClearPO,
+    openPOs, poId, poNumber, poItems, onSelectPO, onClearPO,
     invoiceDate, setInvoiceDate, invoiceDiscPct, setInvoiceDiscPct, invoiceDiscAmt, setInvoiceDiscAmt,
     purchaseTotals, lines, updateLine, addLine, removeLine, showPaste, setShowPaste,
     pasteText, setPasteText, ingest, fileRef, onFile, xlsxRef, onXlsxFile,
@@ -1268,19 +1256,24 @@ function EntryStep(props: {
   const money = (n: number) => `₹${n.toFixed(2)}`;
 
   const cell = 'h-8 text-xs';
-  // PO reconciliation summary (received-now vs still-outstanding, per PO line).
-  const poSummary = useMemo(() => {
-    const s = { match: 0, short: 0, excess: 0 };
-    for (const l of lines) {
-      if (!l.po) continue;
-      const rec = parseInt(l.quantityReceived, 10) || 0;
-      const remaining = Math.max(0, l.po.orderedQty - l.po.alreadyReceived);
-      if (rec === remaining) s.match++;
-      else if (rec < remaining) s.short++;
-      else s.excess++;
-    }
-    return s;
-  }, [lines]);
+  // CHECK each entered line against the PO (match by name) — never prefill.
+  const poMatchByLine = useMemo(() => lines.map((l) => matchPoLine(l.drugName, poItems)), [lines, poItems]);
+  const poCompare = useMemo(() => {
+    const matchedIds = new Set<string>();
+    let match = 0, short = 0, excess = 0;
+    poMatchByLine.forEach((m, i) => {
+      if (!m) return;
+      matchedIds.add(m.id);
+      const rec = parseInt(lines[i]?.quantityReceived ?? '', 10) || 0;
+      const remaining = Math.max(0, m.orderedQty - m.alreadyReceived);
+      if (rec === remaining) match++;
+      else if (rec < remaining) short++;
+      else excess++;
+    });
+    // PO lines that no entered invoice line matched — still outstanding / missing.
+    const missing = poItems.filter((p) => !matchedIds.has(p.id));
+    return { matchedCount: matchedIds.size, match, short, excess, missing };
+  }, [poMatchByLine, lines, poItems]);
   const [addVendorOpen, setAddVendorOpen] = useState(false);
   // Rows whose "more details" panel (full product fields) is open.
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
@@ -1343,32 +1336,40 @@ function EntryStep(props: {
         </div>
       </div>
 
-      {/* Receive against a Purchase Order — load its lines, then compare arrivals */}
+      {/* Check the entered invoice against a Purchase Order (compare, never fill) */}
       <div className="rounded-lg border bg-primary/[0.03] p-3">
-        {poNumber ? (
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-              <span className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
-                <FileCheck className="h-4 w-4 text-primary" /> Comparing against PO <span className="font-mono">{poNumber}</span>
-              </span>
-              <span className="flex items-center gap-1.5 text-[11px]">
-                <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-800">{poSummary.match} match</span>
-                {poSummary.short > 0 && <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800">{poSummary.short} short</span>}
-                {poSummary.excess > 0 && <span className="rounded-full bg-sky-100 px-2 py-0.5 font-medium text-sky-800">{poSummary.excess} excess</span>}
-              </span>
+        {poId ? (
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                <span className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
+                  <FileCheck className="h-4 w-4 text-primary" /> Checking against PO <span className="font-mono">{poNumber || '…'}</span>
+                </span>
+                <span className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-800">{poCompare.match} match</span>
+                  {poCompare.short > 0 && <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800">{poCompare.short} short</span>}
+                  {poCompare.excess > 0 && <span className="rounded-full bg-sky-100 px-2 py-0.5 font-medium text-sky-800">{poCompare.excess} excess</span>}
+                  {poCompare.missing.length > 0 && <span className="rounded-full bg-slate-200 px-2 py-0.5 font-medium text-slate-700">{poCompare.missing.length} not on this invoice</span>}
+                </span>
+              </div>
+              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={onClearPO}>
+                <X className="h-3.5 w-3.5" /> Clear PO
+              </Button>
             </div>
-            <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={onClearPO}>
-              <X className="h-3.5 w-3.5" /> Clear PO
-            </Button>
+            {poCompare.missing.length > 0 && (
+              <p className="text-[11px] text-muted-foreground">
+                On the PO but not entered here: {poCompare.missing.map((m) => `${m.name} (${Math.max(0, m.orderedQty - m.alreadyReceived)} left)`).join(', ')}
+              </p>
+            )}
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-              <FileCheck className="h-3.5 w-3.5" /> Receiving a delivery against a purchase order?
+              <FileCheck className="h-3.5 w-3.5" /> Enter the received invoice above, then check it against a purchase order:
             </span>
             <Select value={poId} onValueChange={(v) => onSelectPO(v ?? '')}>
               <SelectTrigger className="h-8 w-auto min-w-[240px] text-xs">
-                <SelectValue placeholder="Load a purchase order…" />
+                <SelectValue placeholder="Check against a purchase order…" />
               </SelectTrigger>
               <SelectContent>
                 {openPOs.length === 0 ? (
@@ -1577,32 +1578,41 @@ function EntryStep(props: {
                 </div>
               </div>
 
-              {/* ── PO comparison strip: ordered vs what's being received ── */}
-              {l.po && (() => {
+              {/* ── PO check strip: this entered line vs the matched PO line ── */}
+              {poId && (() => {
+                const m = poMatchByLine[i];
+                if (!m) {
+                  if (!l.drugName.trim()) return null;
+                  return (
+                    <div className="border-t border-outline-variant/30 bg-muted/20 px-3 py-1 text-[11px] text-muted-foreground">
+                      Not found on PO {poNumber} — off-order / extra item
+                    </div>
+                  );
+                }
                 const rec = parseInt(l.quantityReceived, 10) || 0;
-                const remaining = Math.max(0, l.po.orderedQty - l.po.alreadyReceived);
+                const remaining = Math.max(0, m.orderedQty - m.alreadyReceived);
                 const qd = rec - remaining;
                 const rate = parseFloat(l.purchasePrice);
-                const rd = l.po.unitPrice != null && !isNaN(rate) ? rate - l.po.unitPrice : null;
+                const rd = m.unitPrice != null && !isNaN(rate) ? rate - m.unitPrice : null;
                 const chip = 'rounded px-1.5 py-0.5 font-medium';
                 return (
                   <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-t border-primary/15 bg-primary/[0.04] px-3 py-1.5 text-[11px]">
-                    <span className="inline-flex items-center gap-1 font-semibold uppercase tracking-wide text-primary/80"><FileCheck className="h-3 w-3" /> PO</span>
+                    <span className="inline-flex items-center gap-1 font-semibold uppercase tracking-wide text-primary/80"><FileCheck className="h-3 w-3" /> PO · {m.name}</span>
                     <span className="text-muted-foreground">
-                      Ordered <b className="text-foreground">{l.po.orderedQty}</b>
-                      {l.po.alreadyReceived > 0 && ` · ${l.po.alreadyReceived} already received · ${remaining} outstanding`}
+                      Ordered <b className="text-foreground">{m.orderedQty}</b>
+                      {m.alreadyReceived > 0 && ` · ${m.alreadyReceived} already received · ${remaining} outstanding`}
                     </span>
                     {qd === 0
                       ? <span className={cn(chip, 'bg-emerald-100 text-emerald-800')}>qty ✓</span>
                       : qd < 0
                         ? <span className={cn(chip, 'bg-amber-100 text-amber-800')}>short {Math.abs(qd)}</span>
                         : <span className={cn(chip, 'bg-sky-100 text-sky-800')}>excess {qd}</span>}
-                    {l.po.unitPrice != null && (
+                    {m.unitPrice != null && (
                       rd == null
-                        ? <span className="text-muted-foreground">PO rate ₹{l.po.unitPrice.toFixed(2)}</span>
+                        ? <span className="text-muted-foreground">PO rate ₹{m.unitPrice.toFixed(2)}</span>
                         : Math.abs(rd) < 0.005
                           ? <span className={cn(chip, 'bg-emerald-100 text-emerald-800')}>rate ✓</span>
-                          : <span className={cn(chip, 'bg-amber-100 text-amber-800')}>rate {rd > 0 ? '↑' : '↓'} ₹{Math.abs(rd).toFixed(2)} (PO ₹{l.po.unitPrice.toFixed(2)})</span>
+                          : <span className={cn(chip, 'bg-amber-100 text-amber-800')}>rate {rd > 0 ? '↑' : '↓'} ₹{Math.abs(rd).toFixed(2)} (PO ₹{m.unitPrice.toFixed(2)})</span>
                     )}
                   </div>
                 );
