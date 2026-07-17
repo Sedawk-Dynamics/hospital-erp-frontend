@@ -721,6 +721,30 @@ export function FrontDeskRegisterDialog({
               </div>
             ) : (
               <form onSubmit={handlePatientSubmit(handlePatientFormNext)} className="space-y-4">
+                {/* Emergency / casualty — one tick bypasses everything below */}
+                <label
+                  className={cn(
+                    'flex cursor-pointer items-center gap-2.5 rounded-xl border-2 px-3 py-2.5 transition-colors',
+                    emergency
+                      ? 'border-red-500 bg-red-50 dark:bg-red-950/30'
+                      : 'border-border hover:border-red-300',
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={emergency}
+                    onChange={(e) => setEmergency(e.target.checked)}
+                    className="h-4 w-4 accent-red-600"
+                  />
+                  <Siren className="h-4 w-4 text-red-600" />
+                  <span className="text-sm font-semibold text-red-700 dark:text-red-400">
+                    Emergency / casualty patient
+                  </span>
+                  <span className="text-xs text-on-surface-variant">
+                    — treat now, register later. Nothing below is required.
+                  </span>
+                </label>
+
                 {/* Account-holder linkage toggle */}
                 <div className="flex gap-2 p-1 rounded-xl bg-surface-container">
                   <button
@@ -991,35 +1015,6 @@ export function FrontDeskRegisterDialog({
                     <Input placeholder="Zip Code" {...register('zipCode')} />
                   </div>
                 </div>
-
-                {/* Emergency / casualty — one tick bypasses everything below */}
-                <label
-                  className={cn(
-                    'flex cursor-pointer items-start gap-2.5 rounded-xl border-2 p-3 transition-colors',
-                    emergency
-                      ? 'border-red-500 bg-red-50 dark:bg-red-950/30'
-                      : 'border-border hover:border-red-300',
-                  )}
-                >
-                  <input
-                    type="checkbox"
-                    checked={emergency}
-                    onChange={(e) => setEmergency(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 accent-red-600"
-                  />
-                  <span className="text-sm">
-                    <span className="flex items-center gap-1.5 font-semibold text-red-700 dark:text-red-400">
-                      <Siren className="h-4 w-4" />
-                      Emergency / casualty patient
-                    </span>
-                    <span className="mt-0.5 block text-xs text-on-surface-variant">
-                      Treat now, register later. Nothing above is required — fill in only what you
-                      know. Goes straight into the OP queue on a temporary MRN, highlighted as
-                      EMERGENCY, with no appointment slot and no payment. Register it (or connect it
-                      to an existing patient) from the queue once the patient is identified.
-                    </span>
-                  </span>
-                </label>
 
                 <div className="flex justify-end">
                   {emergency ? (

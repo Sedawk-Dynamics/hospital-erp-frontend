@@ -523,6 +523,30 @@ function AdmissionDialog({
 
             {patientMode === 'new' ? (
               <div className="rounded-lg border border-dashed border-muted-foreground/30 p-3 space-y-3">
+                {/* Emergency / casualty — one tick bypasses everything below */}
+                <label
+                  className={cn(
+                    'flex cursor-pointer items-center gap-2.5 rounded-lg border-2 px-3 py-2 transition-colors',
+                    emergency
+                      ? 'border-red-500 bg-red-50 dark:bg-red-950/30'
+                      : 'border-border hover:border-red-300',
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={emergency}
+                    onChange={(e) => setEmergency(e.target.checked)}
+                    className="h-4 w-4 accent-red-600"
+                  />
+                  <Siren className="h-4 w-4 text-red-600" />
+                  <span className="text-sm font-semibold text-red-700 dark:text-red-400">
+                    Emergency / casualty patient
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    — admit now, register later. Nothing below is required.
+                  </span>
+                </label>
+
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                   <UserPlus className="h-3.5 w-3.5" />
                   New Patient Details
@@ -615,35 +639,6 @@ function AdmissionDialog({
                 <p className="text-[11px] text-muted-foreground">
                   An MRN will be auto-generated when the patient is registered.
                 </p>
-
-                {/* Emergency / casualty — one tick bypasses everything else */}
-                <label
-                  className={cn(
-                    'flex cursor-pointer items-start gap-2.5 rounded-lg border-2 p-2.5 transition-colors',
-                    emergency
-                      ? 'border-red-500 bg-red-50 dark:bg-red-950/30'
-                      : 'border-border hover:border-red-300',
-                  )}
-                >
-                  <input
-                    type="checkbox"
-                    checked={emergency}
-                    onChange={(e) => setEmergency(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 accent-red-600"
-                  />
-                  <span className="text-sm">
-                    <span className="flex items-center gap-1.5 font-semibold text-red-700 dark:text-red-400">
-                      <Siren className="h-4 w-4" />
-                      Emergency / casualty patient
-                    </span>
-                    <span className="mt-0.5 block text-xs text-muted-foreground">
-                      Admit now, register later. Nothing above is required — fill in only what you
-                      know. Doctor, ward and bed become optional (pending placement), and the
-                      deposit gate and admission checklist are skipped. Register it (or connect it
-                      to an existing patient) from the IP list once identified.
-                    </span>
-                  </span>
-                </label>
               </div>
             ) : (
               <div className="grid gap-1.5">
