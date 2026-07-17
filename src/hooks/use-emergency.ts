@@ -32,7 +32,11 @@ export interface CreateEmergencyPatientInput {
   lastName?: string;
   phone?: string;
   gender?: string;
+  /** Approximate age — only used when no dateOfBirth is given. */
   age?: number;
+  dateOfBirth?: string;
+  email?: string;
+  address?: string;
   doctorId?: string;
   wardId?: string;
   bedId?: string;
