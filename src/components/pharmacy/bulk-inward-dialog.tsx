@@ -147,8 +147,10 @@ interface CatalogPick {
   gtin?: string | null;
 }
 
-// Entry + inline match happen on ONE screen now; only the result is a separate step.
-type Step = 'entry' | 'done';
+// Entry + inline match happen on ONE screen; an imported file gets its own
+// full-width review step (fix the sheet before it becomes lines), and the result
+// is the last step.
+type Step = 'entry' | 'map' | 'done';
 
 let rowSeq = 0;
 const nextId = () => `row-${++rowSeq}`;
@@ -684,6 +686,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
 
   const reset = () => {
     setStep('entry');
+    setMapRows(null);
     setSupplierId('');
     setInvoiceNumber('');
     setInvoiceDate('');
@@ -738,6 +741,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         return;
       }
       setMapRows(rows);
+      setStep('map');
     };
     reader.readAsText(file);
   };
@@ -754,6 +758,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         return;
       }
       setMapRows(rows);
+      setStep('map');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not read the spreadsheet');
     }
@@ -768,6 +773,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
     const combined = [...lines.filter((l) => l.drugName.trim()), ...drafts];
     setLines(combined);
     setMapRows(null);
+    setStep('entry');
     toast.success(`Loaded ${drafts.length} line${drafts.length === 1 ? '' : 's'} — matching against your formulary…`);
     // Same as OCR: an imported file goes straight into the review, so every row
     // shows its formulary match (or "not in your master data" + catalog picker).
@@ -1219,12 +1225,24 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
 
   const selectedSupplier = suppliers.find((s) => s.id === supplierId);
 
+  // The imported sheet takes over the page — it is reviewed and fixed there
+  // before it becomes lines, so the rest of the panel steps aside.
+  if (step === 'map' && mapRows) {
+    return (
+      <ImportStep
+        rows={mapRows}
+        onRowsChange={setMapRows}
+        onCancel={() => {
+          setMapRows(null);
+          setStep('entry');
+        }}
+        onConfirm={applyMappedLines}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col gap-3">
-      {mapRows && (
-        <ColumnMappingDialog rows={mapRows} onClose={() => setMapRows(null)} onConfirm={applyMappedLines} />
-      )}
-
       <p className="text-sm text-muted-foreground">
         {step === 'entry' &&
           'Key in, paste, scan or OCR a distributor invoice. Hit "Find matches" (auto-run after OCR) and each line shows its related formulary drugs inline — map to an existing one to keep stock together, or add it as new. Then receive the stock.'}
@@ -2575,15 +2593,20 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: 'pr
   );
 }
 
-// ── Column mapping — map an uploaded CSV/Excel sheet's columns to inward fields,
-// preview the result, then add the lines. Handles any distributor layout. ──────
-function ColumnMappingDialog({
+// ── Import step — the uploaded CSV/Excel sheet, full width and editable ───────
+// A vendor's sheet is rarely perfect: a missing name, an expiry the parser can't
+// read, a column we guessed wrong. So this is a working screen, not a preview —
+// map the columns, fix the cells in place, drop the junk rows, and only then
+// turn it into lines. Handles any distributor layout, not just our template.
+function ImportStep({
   rows,
-  onClose,
+  onRowsChange,
+  onCancel,
   onConfirm,
 }: {
   rows: string[][];
-  onClose: () => void;
+  onRowsChange: (rows: string[][]) => void;
+  onCancel: () => void;
   onConfirm: (lines: DraftLine[]) => void;
 }) {
   const colCount = Math.max(0, ...rows.map((r) => r.length));
@@ -2599,21 +2622,69 @@ function ColumnMappingDialog({
     setMapping((prev) => prev.map((m, idx) => (idx === i ? v : m)));
 
   const headerRow = rows[0] ?? [];
-  const previewData = (hasHeader ? rows.slice(1) : rows).slice(0, 5);
+  const dataStart = hasHeader ? 1 : 0;
   const built = useMemo(() => buildLinesFromRows(rows, mapping, hasHeader), [rows, mapping, hasHeader]);
   const hasName = mapping.includes('drugName');
+  const nameCol = mapping.indexOf('drugName');
+  const expiryCol = mapping.indexOf('expiryDate');
+  const autoMapped = mapping.filter((m) => m !== 'ignore').length;
+
+  /** Edit one cell of the sheet in place. */
+  const setCell = (r: number, c: number, v: string) =>
+    onRowsChange(
+      rows.map((row, ri) => {
+        if (ri !== r) return row;
+        // Rows can be ragged — pad so a trailing column is editable.
+        const padded = [...row, ...Array(Math.max(0, colCount - row.length)).fill('')];
+        return padded.map((cell, ci) => (ci === c ? v : cell));
+      }),
+    );
+
+  const removeRow = (r: number) => onRowsChange(rows.filter((_, ri) => ri !== r));
+
+  // The two things that quietly lose data: a row with no name is dropped by the
+  // parser, and an unreadable date is blanked. Surface both instead.
+  const rowIssue = (r: string[]): string | null => {
+    if (!hasName) return null;
+    if (!(r[nameCol] ?? '').trim()) return 'No name — this row will be skipped';
+    if (expiryCol >= 0) {
+      const raw = (r[expiryCol] ?? '').trim();
+      if (raw && !parseExpiry(raw)) return `Expiry "${raw}" is not a date we can read — use MM/YYYY`;
+    }
+    return null;
+  };
+  const dataRows = rows.slice(dataStart);
+  const issueCount = dataRows.filter((r) => rowIssue(r)).length;
+  const skipped = hasName ? dataRows.filter((r) => !(r[nameCol] ?? '').trim()).length : 0;
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-4xl max-h-[88vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle>Map columns</DialogTitle>
-          <DialogDescription>
-            Match each column to a field — we auto-detected what we could. Adjust anything that looks off, then add the rows. Use “Type / Category” to mark a column that says whether a row is a medicine or another supply.
-          </DialogDescription>
-        </DialogHeader>
+    <div className="flex flex-col gap-3">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="flex items-center gap-2 font-headline text-lg font-bold">
+            <FileSpreadsheet className="h-5 w-5 text-primary" />
+            Review imported sheet
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            {dataRows.length} row{dataRows.length === 1 ? '' : 's'} read · {autoMapped} of {colCount}{' '}
+            columns matched automatically. Every cell below is editable — fix anything the vendor got
+            wrong, then add them.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button onClick={() => onConfirm(built)} disabled={!hasName || built.length === 0}>
+            <Plus className="mr-1.5 h-4 w-4" /> Add {built.length} line{built.length === 1 ? '' : 's'}
+          </Button>
+        </div>
+      </div>
 
-        <label className="flex w-fit cursor-pointer items-center gap-2 text-xs">
+      {/* Status strip */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border bg-surface-container-lowest px-3 py-2">
+        <label className="flex cursor-pointer items-center gap-2 text-xs">
           <input
             type="checkbox"
             className="h-3.5 w-3.5 accent-primary"
@@ -2622,61 +2693,127 @@ function ColumnMappingDialog({
           />
           First row is a header
         </label>
+        <span className="text-xs text-muted-foreground">
+          {built.length} line{built.length === 1 ? '' : 's'} ready
+        </span>
+        {!hasName && (
+          <span className="flex items-center gap-1.5 text-xs font-medium text-red-600">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            Set one column to &ldquo;Name&rdquo; to continue — it is the only required field.
+          </span>
+        )}
+        {skipped > 0 && (
+          <span className="text-xs font-medium text-amber-600">
+            {skipped} row{skipped === 1 ? '' : 's'} have no name and will be skipped
+          </span>
+        )}
+        {issueCount > skipped && (
+          <span className="text-xs font-medium text-amber-600">
+            {issueCount - skipped} row{issueCount - skipped === 1 ? '' : 's'} with an unreadable date
+          </span>
+        )}
+      </div>
 
-        <div className="flex-1 overflow-auto rounded-lg border">
-          <table className="w-full text-xs">
-            <thead className="sticky top-0 bg-muted/70">
-              <tr className="[&>th]:px-2 [&>th]:py-2 [&>th]:text-left [&>th]:align-top">
-                {Array.from({ length: colCount }).map((_, i) => (
-                  <th key={i} className="min-w-[150px]">
-                    <Select
-                      value={mapping[i] ?? 'ignore'}
-                      onValueChange={(v) => setCol(i, (v ?? 'ignore') as DraftCol | 'ignore')}
+      {/* The sheet — every cell editable */}
+      <div className="max-h-[62vh] overflow-auto rounded-lg border sanctuary-scrollbar">
+        <table className="w-full text-xs">
+          <thead className="sticky top-0 z-10 bg-muted">
+            <tr className="[&>th]:px-2 [&>th]:py-2 [&>th]:text-left [&>th]:align-top">
+              <th className="w-10" />
+              {Array.from({ length: colCount }).map((_, i) => (
+                <th key={i} className="min-w-[168px]">
+                  <Select
+                    value={mapping[i] ?? 'ignore'}
+                    onValueChange={(v) => setCol(i, (v ?? 'ignore') as DraftCol | 'ignore')}
+                  >
+                    <SelectTrigger
+                      className={cn('h-8 w-full', mapping[i] === 'ignore' && 'text-muted-foreground')}
                     >
-                      <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {MAP_FIELDS.map((f) => (
-                          <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {hasHeader && headerRow[i] && (
-                      <div className="mt-1 truncate text-[10px] font-normal text-muted-foreground" title={headerRow[i]}>
-                        {headerRow[i]}
-                      </div>
-                    )}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {previewData.map((r, ri) => (
-                <tr key={ri} className="border-t [&>td]:px-2 [&>td]:py-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MAP_FIELDS.map((f) => (
+                        <SelectItem key={f.value} value={f.value}>
+                          {f.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {hasHeader && headerRow[i] && (
+                    <div
+                      className="mt-1 truncate text-[10px] font-normal text-muted-foreground"
+                      title={headerRow[i]}
+                    >
+                      from &ldquo;{headerRow[i]}&rdquo;
+                    </div>
+                  )}
+                </th>
+              ))}
+              <th className="w-10" />
+            </tr>
+          </thead>
+          <tbody>
+            {dataRows.map((r, ri) => {
+              const rowIdx = dataStart + ri;
+              const issue = rowIssue(r);
+              const noName = hasName && !(r[nameCol] ?? '').trim();
+              return (
+                <tr key={rowIdx} className={cn('border-t', issue && 'bg-amber-500/5')}>
+                  <td className="px-2 py-1 text-center text-[10px] text-muted-foreground">{ri + 1}</td>
                   {Array.from({ length: colCount }).map((_, ci) => (
-                    <td
-                      key={ci}
-                      className={cn('max-w-[170px] truncate', mapping[ci] === 'ignore' && 'text-muted-foreground/40')}
-                    >
-                      {r[ci] ?? ''}
+                    <td key={ci} className="px-1 py-1">
+                      <Input
+                        value={r[ci] ?? ''}
+                        onChange={(e) => setCell(rowIdx, ci, e.target.value)}
+                        className={cn(
+                          'h-7 border-transparent bg-transparent px-1.5 text-xs hover:border-input focus:border-input',
+                          mapping[ci] === 'ignore' && 'text-muted-foreground/40',
+                          noName && ci === nameCol && 'border-red-400/60 bg-red-500/5',
+                          issue && !noName && ci === expiryCol && 'border-amber-400/60 bg-amber-500/5',
+                        )}
+                      />
                     </td>
                   ))}
+                  <td className="px-1 py-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 text-muted-foreground hover:text-red-600"
+                      title="Remove this row"
+                      onClick={() => removeRow(rowIdx)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              );
+            })}
+            {dataRows.length === 0 && (
+              <tr>
+                <td colSpan={colCount + 2} className="px-3 py-8 text-center text-xs text-muted-foreground">
+                  Every row was removed. Cancel to start over.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
 
-        <DialogFooter className="items-center gap-2">
-          <span className="mr-auto text-xs text-muted-foreground">
-            {built.length} line{built.length === 1 ? '' : 's'} ready
-            {!hasName && ' · map a “Name” column to continue'}
-          </span>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={() => onConfirm(built)} disabled={!hasName || built.length === 0}>
-            <Plus className="mr-1.5 h-4 w-4" /> Add {built.length} line{built.length === 1 ? '' : 's'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      {issueCount > 0 && (
+        <p className="flex items-start gap-1.5 rounded-lg bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700">
+          <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+          Highlighted rows need a look — a row with no name is skipped, and an expiry we cannot read
+          is imported blank. Fix them here, or remove the row.
+        </p>
+      )}
+
+      <p className="text-[11px] text-muted-foreground">
+        Columns set to &ldquo;— Ignore —&rdquo; are not imported. Use &ldquo;Type / Category&rdquo;
+        for a column that says whether a row is a medicine or another supply. Once added, every line
+        is matched against your master data, where you can map it to an existing product or add it
+        as new.
+      </p>
+    </div>
   );
 }
+
