@@ -20,7 +20,7 @@ import {
   Users,
   Stethoscope,
   CircleCheckBig,
-  Siren,
+  UserCheck,
 } from 'lucide-react';
 
 import {
@@ -51,8 +51,12 @@ import {
 
 import { FrontDeskRegisterDialog } from '@/components/hospital/frontdesk-register-dialog';
 import { CreateAppointmentDialog } from '@/components/hospital/create-appointment-dialog';
-import { EmergencyPatientDialog } from '@/components/hospital/emergency-patient-dialog';
+import {
+  EmergencyResolveDialog,
+  type EmergencyResolveTarget,
+} from '@/components/hospital/emergency-resolve-dialog';
 import { EmergencyBadge } from '@/components/shared/emergency-badge';
+import { isEmergencyPatient } from '@/lib/emergency';
 import {
   useOPAppointments,
   useAppointmentStats,
@@ -462,7 +466,7 @@ export default function WalkInPage() {
   const [createPatientOpen, setCreatePatientOpen] = useState(false);
   const [walkInDialogOpen, setWalkInDialogOpen] = useState(false);
   const [bookAppointmentOpen, setBookAppointmentOpen] = useState(false);
-  const [emergencyOpen, setEmergencyOpen] = useState(false);
+  const [resolveTarget, setResolveTarget] = useState<EmergencyResolveTarget | null>(null);
 
   // Data
   const { data: appointmentsData, isLoading: appointmentsLoading } = useOPAppointments({
@@ -588,15 +592,8 @@ export default function WalkInPage() {
             <CalendarCheck className="h-4 w-4 mr-1.5" />
             Book Appointment
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => setEmergencyOpen(true)}
-            size="sm"
-            className="rounded-xl font-label text-sm border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/50 dark:hover:bg-red-950/30"
-          >
-            <Siren className="h-4 w-4 mr-1.5" />
-            Emergency
-          </Button>
+          {/* Emergency intake now lives inside Register Patient / New Walk In —
+              pick the "Emergency" option on the patient step. */}
           <Button
             onClick={() => setWalkInDialogOpen(true)}
             className="bg-primary text-white font-label font-bold text-sm px-6 py-2.5 rounded-xl hover:shadow-lg transition-shadow"
@@ -628,10 +625,13 @@ export default function WalkInPage() {
         open={bookAppointmentOpen}
         onOpenChange={setBookAppointmentOpen}
       />
-      <EmergencyPatientDialog
-        open={emergencyOpen}
-        onOpenChange={setEmergencyOpen}
-        onSuccess={() => {
+      {/* Resolve a temporary casualty straight from the OP queue */}
+      <EmergencyResolveDialog
+        open={!!resolveTarget}
+        onOpenChange={(o) => !o && setResolveTarget(null)}
+        patient={resolveTarget}
+        onResolved={() => {
+          setResolveTarget(null);
           queryClient.invalidateQueries({ queryKey: ['hospital'] });
         }}
       />
@@ -843,30 +843,55 @@ export default function WalkInPage() {
 
                       {/* Actions */}
                       <td className="px-4 py-3 text-right">
-                        {apt.status === 'booked' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="gap-1.5 text-xs"
-                            disabled={updateStatus.isPending}
-                            onClick={() => handleStatusChange(apt.id, 'confirmed')}
-                          >
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            Confirm
-                          </Button>
-                        )}
-                        {apt.status === 'confirmed' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="gap-1.5 text-xs"
-                            disabled={updateStatus.isPending}
-                            onClick={() => handleStatusChange(apt.id, 'checked_in')}
-                          >
-                            <Play className="h-3.5 w-3.5" />
-                            Check In
-                          </Button>
-                        )}
+                        <div className="flex items-center justify-end gap-1.5">
+                          {apt.status === 'booked' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-1.5 text-xs"
+                              disabled={updateStatus.isPending}
+                              onClick={() => handleStatusChange(apt.id, 'confirmed')}
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              Confirm
+                            </Button>
+                          )}
+                          {apt.status === 'confirmed' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-1.5 text-xs"
+                              disabled={updateStatus.isPending}
+                              onClick={() => handleStatusChange(apt.id, 'checked_in')}
+                            >
+                              <Play className="h-3.5 w-3.5" />
+                              Check In
+                            </Button>
+                          )}
+                          {/* A temporary casualty is resolved right from the queue:
+                              register it as a new patient, or connect it to an
+                              existing one. */}
+                          {isEmergencyPatient(apt.patient) && apt.patient && (
+                            <Button
+                              size="sm"
+                              className="gap-1.5 bg-red-600 text-xs text-white hover:bg-red-700"
+                              onClick={() =>
+                                setResolveTarget({
+                                  id: apt.patient!.id,
+                                  mrn: apt.patient!.mrn,
+                                  firstName: apt.patient!.firstName,
+                                  lastName: apt.patient!.lastName,
+                                  gender: apt.patient!.gender,
+                                  phone: apt.patient!.phone,
+                                  type: 'op',
+                                })
+                              }
+                            >
+                              <UserCheck className="h-3.5 w-3.5" />
+                              Register / Connect
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

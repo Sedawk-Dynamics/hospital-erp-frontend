@@ -1,5 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPost } from '@/lib/api';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiPost } from '@/lib/api';
 
 // ============================================================
 // Front-desk Emergency / Casualty (Golden Hour) patient flow
@@ -57,16 +57,10 @@ export interface RegisterEmergencyPatientInput {
 
 const emergencyKey = ['emergency', 'patients'] as const;
 
-export function useEmergencyPatients(enabled = true) {
-  return useQuery({
-    queryKey: emergencyKey,
-    queryFn: async () => {
-      const response = await apiGet<{ items: EmergencyPatient[]; total: number }>('/emergency/patients');
-      return response.data.items;
-    },
-    enabled,
-  });
-}
+// Emergency patients are not listed on their own: they are created from the OP
+// registration / IP admission flows and then followed through the normal OP
+// queue and IP list, badged EMERGENCY, where they are also resolved.
+// (`GET /emergency/patients` still exists server-side if a roll-up is ever wanted.)
 
 export function useCreateEmergencyPatient() {
   const queryClient = useQueryClient();

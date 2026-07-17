@@ -26,10 +26,25 @@ import { usePatientSearch } from '@/hooks/use-hospital';
 import {
   useRegisterEmergencyPatient,
   useMergeEmergencyPatient,
-  type EmergencyPatient,
 } from '@/hooks/use-emergency';
 
 type Mode = 'register' | 'connect';
+
+/**
+ * The minimum a caller needs to hand over to resolve a temp patient. Kept loose
+ * so any OP queue row or IP list row can open this straight from the patient it
+ * already has — `EmergencyPatient` satisfies it structurally.
+ */
+export interface EmergencyResolveTarget {
+  id: string;
+  mrn: string;
+  firstName: string;
+  lastName?: string | null;
+  gender?: string | null;
+  phone?: string | null;
+  /** OP / IP context, when the caller knows it. */
+  type?: 'op' | 'ip';
+}
 
 /**
  * Resolve a temporary emergency patient once identified:
@@ -46,7 +61,7 @@ export function EmergencyResolveDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  patient: EmergencyPatient | null;
+  patient: EmergencyResolveTarget | null;
   onResolved?: () => void;
 }) {
   const [mode, setMode] = useState<Mode>('register');
@@ -140,7 +155,8 @@ export function EmergencyResolveDialog({
             {patient ? (
               <>
                 <span className="font-mono">{patient.mrn}</span> ·{' '}
-                {patient.firstName} {patient.lastName} · {patient.type.toUpperCase()}
+                {patient.firstName} {patient.lastName}
+                {patient.type ? ` · ${patient.type.toUpperCase()}` : ''}
               </>
             ) : (
               'Register the casualty as a new patient, or connect it to an existing one.'

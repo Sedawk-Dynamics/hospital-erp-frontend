@@ -14,8 +14,12 @@ import { toInputDateStr, formatTime24, formatDate } from '@/lib/date-utils';
 import { toast } from 'sonner';
 import { CreateAppointmentDialog } from '@/components/hospital/create-appointment-dialog';
 import { FrontDeskRegisterDialog } from '@/components/hospital/frontdesk-register-dialog';
-import { EmergencyPatientDialog } from '@/components/hospital/emergency-patient-dialog';
+import {
+  EmergencyResolveDialog,
+  type EmergencyResolveTarget,
+} from '@/components/hospital/emergency-resolve-dialog';
 import { EmergencyBadge } from '@/components/shared/emergency-badge';
+import { isEmergencyPatient } from '@/lib/emergency';
 import { CollectFrontdeskPaymentDialog } from '@/components/hospital/collect-frontdesk-payment-dialog';
 import { useInitiateFrontdeskPayment } from '@/hooks/use-hospital';
 import type { Appointment } from '@/types';
@@ -31,7 +35,7 @@ function normalizeTimeValue(value: string | undefined | null): string | null {
 interface QueueAppointment {
   id: string;
   tokenNumber?: number;
-  patient: { firstName: string; lastName: string; mrn: string; phone?: string };
+  patient: { id: string; firstName: string; lastName: string; mrn: string; phone?: string };
   doctor?: { user?: { firstName: string; lastName: string } };
   appointmentDate: string;
   startTime: string;
@@ -64,7 +68,7 @@ export function FrontDeskDashboard() {
   const [registerOpen, setRegisterOpen] = useState(false);
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [bookAppointmentOpen, setBookAppointmentOpen] = useState(false);
-  const [emergencyOpen, setEmergencyOpen] = useState(false);
+  const [resolveTarget, setResolveTarget] = useState<EmergencyResolveTarget | null>(null);
   const [collectPayTarget, setCollectPayTarget] = useState<QueueAppointment | null>(null);
   const today = toInputDateStr();
   const queryClient = useQueryClient();
@@ -249,14 +253,8 @@ export function FrontDeskDashboard() {
           <Footprints className="h-4 w-4" />
           Walk-In
         </Button>
-        <Button
-          variant="outline"
-          className="gap-2 border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/50 dark:hover:bg-red-950/30"
-          onClick={() => setEmergencyOpen(true)}
-        >
-          <Siren className="h-4 w-4" />
-          Emergency
-        </Button>
+        {/* Emergency intake lives inside Register Patient / Walk-In — pick the
+            "Emergency" option on the patient step. */}
       </div>
 
       {/* Register Patient + Book Appointment (multi-step) */}
@@ -284,11 +282,13 @@ export function FrontDeskDashboard() {
         onOpenChange={setBookAppointmentOpen}
       />
 
-      {/* Emergency / Casualty intake */}
-      <EmergencyPatientDialog
-        open={emergencyOpen}
-        onOpenChange={setEmergencyOpen}
-        onSuccess={() => {
+      {/* Resolve a temporary casualty straight from the queue */}
+      <EmergencyResolveDialog
+        open={!!resolveTarget}
+        onOpenChange={(o) => !o && setResolveTarget(null)}
+        patient={resolveTarget}
+        onResolved={() => {
+          setResolveTarget(null);
           queryClient.invalidateQueries({ queryKey: ['front-desk'] });
         }}
       />
@@ -459,6 +459,26 @@ export function FrontDeskDashboard() {
                         >
                           <LogIn className="h-3.5 w-3.5" />
                           Check In
+                        </Button>
+                      )}
+                      {/* A temporary casualty is resolved right from the queue. */}
+                      {isEmergencyPatient(appt.patient) && (
+                        <Button
+                          size="sm"
+                          className="gap-1.5 bg-red-600 text-xs text-white hover:bg-red-700"
+                          onClick={() =>
+                            setResolveTarget({
+                              id: appt.patient.id,
+                              mrn: appt.patient.mrn,
+                              firstName: appt.patient.firstName,
+                              lastName: appt.patient.lastName,
+                              phone: appt.patient.phone,
+                              type: 'op',
+                            })
+                          }
+                        >
+                          <Siren className="h-3.5 w-3.5" />
+                          Register / Connect
                         </Button>
                       )}
                     </td>

@@ -10,7 +10,7 @@ import { toInputDateStr, formatDate, getCurrentISTTime, isToday } from '@/lib/da
 import {
   UserPlus, Search, Loader2, UserRound, Clock, CalendarCheck,
   CreditCard, Banknote, Smartphone, Building2, ChevronRight,
-  ChevronLeft, CheckCircle2, ArrowRight,
+  ChevronLeft, CheckCircle2, ArrowRight, Siren, Info,
 } from 'lucide-react';
 
 import {
@@ -38,6 +38,7 @@ import {
   useDoctorsList,
   useAvailableSlots,
 } from '@/hooks/use-hospital';
+import { useCreateEmergencyPatient } from '@/hooks/use-emergency';
 import { apiPost, apiPatch, apiGet } from '@/lib/api';
 import type { Patient, Appointment, DoctorProfile } from '@/types';
 
@@ -171,12 +172,14 @@ function StepIndicator({ currentStep }: { currentStep: number }) {
 // Props
 // ============================================================
 
+type PatientMode = 'new' | 'existing' | 'emergency';
+
 interface FrontDeskRegisterDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
   /** Pre-select patient mode: 'new' for registration, 'existing' for walk-in search */
-  initialMode?: 'new' | 'existing';
+  initialMode?: PatientMode;
 }
 
 // ============================================================
@@ -194,11 +197,20 @@ export function FrontDeskRegisterDialog({
   // Steps: 0 = Patient, 1 = Appointment, 2 = Payment
   const [step, setStep] = useState(0);
 
-  // Patient state
-  const [mode, setMode] = useState<'new' | 'existing'>(initialMode);
+  // Patient state. 'emergency' mints a temporary casualty patient (TEMP-ER-…)
+  // straight into the OP queue — no registration, no slot, no payment.
+  const [mode, setMode] = useState<PatientMode>(initialMode);
   const [patientQuery, setPatientQuery] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [showPatientDropdown, setShowPatientDropdown] = useState(false);
+
+  // Emergency intake — every field optional (a casualty may be unidentified).
+  const [erFirstName, setErFirstName] = useState('');
+  const [erLastName, setErLastName] = useState('');
+  const [erGender, setErGender] = useState('');
+  const [erAge, setErAge] = useState('');
+  const [erPhone, setErPhone] = useState('');
+  const [erComplaint, setErComplaint] = useState('');
 
   // New-patient sub-mode: register standalone OR attach as family profile to an existing user
   const [newPatientMode, setNewPatientMode] = useState<'standalone' | 'linkUser'>('standalone');
@@ -222,6 +234,9 @@ export function FrontDeskRegisterDialog({
 
   // Submission
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const isEmergency = mode === 'emergency';
+  const createEmergency = useCreateEmergencyPatient();
 
   // Queries
   const { data: patients, isLoading: patientsLoading } = usePatientSearch(patientQuery);
@@ -299,6 +314,12 @@ export function FrontDeskRegisterDialog({
       setUserResults([]);
       setSelectedUser(null);
       setExistingProfiles([]);
+      setErFirstName('');
+      setErLastName('');
+      setErGender('');
+      setErAge('');
+      setErPhone('');
+      setErComplaint('');
       resetPatientForm();
     }
   }, [open, resetPatientForm, initialMode]);
@@ -395,6 +416,40 @@ export function FrontDeskRegisterDialog({
   };
 
   // ── Final submit ──
+
+  // Emergency intake goes to the dedicated endpoint, which mints the TEMP-ER
+  // patient, the checked-in emergency appointment and its queue token in one
+  // server-side call. It deliberately does NOT reuse the patient→appointment
+  // chain below: that would lose the temporary MRN and the credit-gate bypass.
+  const handleEmergencySubmit = async () => {
+    setIsSubmitting(true);
+    try {
+      const result = await createEmergency.mutateAsync({
+        type: 'op',
+        firstName: erFirstName.trim() || undefined,
+        lastName: erLastName.trim() || undefined,
+        gender: erGender || undefined,
+        age: erAge ? Number(erAge) : undefined,
+        phone: erPhone.trim() || undefined,
+        doctorId: selectedDoctorId || undefined,
+        chiefComplaint: erComplaint.trim() || undefined,
+      });
+      toast.success(
+        `Emergency OP patient created — ${result.mrn}` +
+          (result.tokenNumber ? ` · Token #${result.tokenNumber}` : ''),
+      );
+      queryClient.invalidateQueries({ queryKey: ['hospital'] });
+      queryClient.invalidateQueries({ queryKey: ['front-desk'] });
+      onOpenChange(false);
+      onSuccess?.();
+    } catch (err: any) {
+      toast.error(
+        err?.response?.data?.message || err?.message || 'Failed to create emergency patient',
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleFinalSubmit = async () => {
     setIsSubmitting(true);
@@ -513,56 +568,190 @@ export function FrontDeskRegisterDialog({
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto backdrop-blur-sm bg-background/95">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <UserPlus className="h-5 w-5 text-primary" />
-            {step === 0 ? 'Patient Details' : step === 1 ? 'Book Appointment' : 'Payment'}
+            {isEmergency ? (
+              <Siren className="h-5 w-5 text-red-600" />
+            ) : (
+              <UserPlus className="h-5 w-5 text-primary" />
+            )}
+            {isEmergency
+              ? 'Emergency / Casualty Patient'
+              : step === 0
+                ? 'Patient Details'
+                : step === 1
+                  ? 'Book Appointment'
+                  : 'Payment'}
           </DialogTitle>
           <DialogDescription>
-            {step === 0
-              ? initialMode === 'new'
-                ? 'Fill in the new patient details below'
-                : 'Register a new patient or select an existing one'
-              : step === 1
-                ? 'Choose doctor, date, and time for the appointment'
-                : 'Select payment mode for the consultation'}
+            {isEmergency
+              ? 'A temporary casualty patient — no registration needed. Goes straight into the OP queue, highlighted as EMERGENCY, until you register or connect it.'
+              : step === 0
+                ? initialMode === 'new'
+                  ? 'Fill in the new patient details below'
+                  : 'Register a new patient or select an existing one'
+                : step === 1
+                  ? 'Choose doctor, date, and time for the appointment'
+                  : 'Select payment mode for the consultation'}
           </DialogDescription>
         </DialogHeader>
 
-        <StepIndicator currentStep={step} />
+        {/* Emergency intake is a single step — no slot to pick, no payment gate. */}
+        {!isEmergency && <StepIndicator currentStep={step} />}
 
         {/* ════════════════════════════════════════════════ */}
         {/* STEP 0: Patient */}
         {/* ════════════════════════════════════════════════ */}
         {step === 0 && (
           <div className="space-y-4">
-            {/* Toggle: New / Existing — only shown for walk-in mode */}
-            {initialMode === 'existing' && (
-              <div className="flex gap-2 p-1 rounded-xl bg-surface-container">
-                <button
-                  type="button"
-                  onClick={() => { setMode('new'); setSelectedPatient(null); setPatientQuery(''); }}
-                  className={`flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all ${
-                    mode === 'new'
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'text-on-surface-variant hover:text-on-surface'
-                  }`}
-                >
-                  New Patient
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMode('existing')}
-                  className={`flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all ${
-                    mode === 'existing'
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'text-on-surface-variant hover:text-on-surface'
-                  }`}
-                >
-                  Existing Patient
-                </button>
-              </div>
-            )}
+            {/* Toggle: New / Existing / Emergency. Emergency is offered from
+                every OP entry point so a casualty can be taken in right here. */}
+            <div className="flex gap-2 p-1 rounded-xl bg-surface-container">
+              <button
+                type="button"
+                onClick={() => { setMode('new'); setSelectedPatient(null); setPatientQuery(''); }}
+                className={`flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-all ${
+                  mode === 'new'
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-on-surface-variant hover:text-on-surface'
+                }`}
+              >
+                New Patient
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode('existing')}
+                className={`flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-all ${
+                  mode === 'existing'
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-on-surface-variant hover:text-on-surface'
+                }`}
+              >
+                Existing Patient
+              </button>
+              <button
+                type="button"
+                onClick={() => { setMode('emergency'); setSelectedPatient(null); setPatientQuery(''); }}
+                className={`flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-1.5 ${
+                  mode === 'emergency'
+                    ? 'bg-red-600 text-white shadow-sm'
+                    : 'text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30'
+                }`}
+              >
+                <Siren className="h-3.5 w-3.5" />
+                Emergency
+              </button>
+            </div>
 
-            {mode === 'existing' ? (
+            {mode === 'emergency' ? (
+              <div className="space-y-4">
+                {/* Identity — every field optional (a casualty may be unidentified) */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="font-label text-xs font-semibold text-on-surface-variant">
+                      Name / label
+                    </Label>
+                    <Input
+                      placeholder="Unknown"
+                      value={erFirstName}
+                      onChange={(e) => setErFirstName(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="font-label text-xs font-semibold text-on-surface-variant">
+                      Last name
+                    </Label>
+                    <Input value={erLastName} onChange={(e) => setErLastName(e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="font-label text-xs font-semibold text-on-surface-variant">
+                      Gender
+                    </Label>
+                    <Select value={erGender} onValueChange={(v) => setErGender(v ?? '')}>
+                      <SelectTrigger><SelectValue placeholder="Unknown" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="male">Male</SelectItem>
+                        <SelectItem value="female">Female</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1.5">
+                      <Label className="font-label text-xs font-semibold text-on-surface-variant">
+                        Age
+                      </Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        placeholder="—"
+                        value={erAge}
+                        onChange={(e) => setErAge(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="font-label text-xs font-semibold text-on-surface-variant">
+                        Phone
+                      </Label>
+                      <Input value={erPhone} onChange={(e) => setErPhone(e.target.value)} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Casualty doctor — optional; assign later if unknown */}
+                <div className="space-y-1.5">
+                  <Label className="font-label text-xs font-semibold text-on-surface-variant">
+                    Casualty doctor <span className="text-on-surface-variant/70">(optional)</span>
+                  </Label>
+                  <Select value={selectedDoctorId} onValueChange={(v) => setSelectedDoctorId(v ?? '')}>
+                    <SelectTrigger>
+                      <SelectValue placeholder={doctorsLoading ? 'Loading…' : 'Assign later'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {doctors.map((d) => (
+                        <SelectItem key={d.id} value={d.id}>
+                          {d.name}
+                          {d.specialization ? ` · ${d.specialization}` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="font-label text-xs font-semibold text-on-surface-variant">
+                    Chief complaint / reason <span className="text-on-surface-variant/70">(optional)</span>
+                  </Label>
+                  <Textarea
+                    rows={2}
+                    placeholder="e.g. RTA, chest pain, trauma…"
+                    value={erComplaint}
+                    onChange={(e) => setErComplaint(e.target.value)}
+                  />
+                </div>
+
+                <p className="flex items-start gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+                  <Info className="mt-px h-3.5 w-3.5 shrink-0" />
+                  Checked into the OP queue immediately with a temporary MRN. The credit / deposit
+                  gate is bypassed — no payment is collected here.
+                </p>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleEmergencySubmit}
+                    disabled={isSubmitting}
+                    className="bg-red-600 text-white hover:bg-red-700"
+                  >
+                    {isSubmitting ? (
+                      <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Creating…</>
+                    ) : (
+                      <><Siren className="mr-1.5 h-4 w-4" /> Create Emergency OP</>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            ) : mode === 'existing' ? (
               <div className="space-y-3">
                 {/* Patient Search */}
                 <div className="space-y-1.5">

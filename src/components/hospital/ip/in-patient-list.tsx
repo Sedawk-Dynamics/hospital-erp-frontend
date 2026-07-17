@@ -22,11 +22,18 @@ import {
   Loader2,
   FileText,
   FileWarning,
+  Siren,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { EmergencyBadge } from '@/components/shared/emergency-badge';
+import {
+  EmergencyResolveDialog,
+  type EmergencyResolveTarget,
+} from '@/components/hospital/emergency-resolve-dialog';
+import { isEmergencyPatient } from '@/lib/emergency';
+import { useCreateEmergencyPatient } from '@/hooks/use-emergency';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -119,10 +126,14 @@ const ADMISSION_CHECKLIST = [
 
 // ---------------------------------------------------------------------------
 // AdmissionDialog — Create a new admission (multi-step: details → checklist)
-// Supports two patient modes:
-//   - 'existing': search the registry and pick a patient (default)
-//   - 'new':      register a new patient inline before admitting
+// Supports three patient modes:
+//   - 'existing':  search the registry and pick a patient (default)
+//   - 'new':       register a new patient inline before admitting
+//   - 'emergency': admit a temporary casualty (TEMP-ER-…) on the spot — no
+//                  registration, no checklist, ward/bed/doctor all optional
 // ---------------------------------------------------------------------------
+type AdmitPatientMode = 'existing' | 'new' | 'emergency';
+
 function AdmissionDialog({
   open,
   onOpenChange,
@@ -132,13 +143,22 @@ function AdmissionDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAdmitted: (admission: Admission) => void;
-  initialMode?: 'existing' | 'new';
+  initialMode?: AdmitPatientMode;
 }) {
   const queryClient = useQueryClient();
   const [step, setStep] = useState<'details' | 'checklist'>('details');
 
-  // Patient mode toggle — switches between search and inline registration
-  const [patientMode, setPatientMode] = useState<'existing' | 'new'>(initialMode);
+  // Patient mode toggle — search, inline registration, or an emergency
+  // (temporary TEMP-ER-… casualty admitted on the spot with no registration).
+  const [patientMode, setPatientMode] = useState<AdmitPatientMode>(initialMode);
+  const isEmergency = patientMode === 'emergency';
+
+  // Emergency intake — every field optional (a casualty may be unidentified).
+  const [erFirstName, setErFirstName] = useState('');
+  const [erLastName, setErLastName] = useState('');
+  const [erGender, setErGender] = useState('');
+  const [erAge, setErAge] = useState('');
+  const [erPhone, setErPhone] = useState('');
 
   // Form state
   const [patientSearch, setPatientSearch] = useState('');
@@ -261,9 +281,33 @@ function AdmissionDialog({
   const doctorName = (d?: typeof doctors[number]) =>
     d ? `Dr. ${d.user?.firstName ?? ''} ${d.user?.lastName ?? ''}`.trim() : '';
 
+  const createEmergency = useCreateEmergencyPatient();
+
   // Mutation: optionally register patient → create visit → create admission
   const admitMutation = useMutation({
     mutationFn: async () => {
+      // Emergency: one server-side call mints the TEMP-ER patient, the IP visit
+      // and the admission together. Deliberately NOT the patient→visit→admission
+      // chain below — that would lose the temporary MRN, the EMERGENCY marking
+      // and the credit-gate bypass.
+      if (patientMode === 'emergency') {
+        const er = await createEmergency.mutateAsync({
+          type: 'ip',
+          firstName: erFirstName.trim() || undefined,
+          lastName: erLastName.trim() || undefined,
+          gender: erGender || undefined,
+          age: erAge ? Number(erAge) : undefined,
+          phone: erPhone.trim() || undefined,
+          doctorId: selectedDoctorId || undefined,
+          wardId: selectedWardId || undefined,
+          bedId: selectedBedId || undefined,
+          billingCategory,
+          chiefComplaint: admissionReason.trim() || undefined,
+        });
+        // The list refetches off these keys; return a shell the caller can use.
+        return { id: er.admissionId, patient: { mrn: er.mrn } } as unknown as Admission;
+      }
+
       let patientId = selectedPatientId;
 
       // Step 0 (new mode only): register the patient first
@@ -309,10 +353,13 @@ function AdmissionDialog({
     },
     onSuccess: (admission) => {
       toast.success(
-        patientMode === 'new'
-          ? 'Patient registered and admitted successfully'
-          : 'Patient admitted successfully',
+        patientMode === 'emergency'
+          ? `Emergency patient admitted — ${admission?.patient?.mrn ?? 'temporary MRN minted'}`
+          : patientMode === 'new'
+            ? 'Patient registered and admitted successfully'
+            : 'Patient admitted successfully',
       );
+      queryClient.invalidateQueries({ queryKey: ['emergency', 'patients'] });
       queryClient.invalidateQueries({ queryKey: ['hospital', 'admissions'] });
       queryClient.invalidateQueries({ queryKey: ['hospital', 'beds'] });
       queryClient.invalidateQueries({ queryKey: ['hospital', 'occupancy'] });
@@ -320,7 +367,9 @@ function AdmissionDialog({
       queryClient.invalidateQueries({ queryKey: ['infrastructure', 'beds'] });
       queryClient.invalidateQueries({ queryKey: ['beds-available'] });
       queryClient.invalidateQueries({ queryKey: ['patients'] });
-      onAdmitted(admission);
+      // No admission slip for an emergency — there are no registration details
+      // to print yet. It prints once the patient is registered / connected.
+      if (patientMode !== 'emergency') onAdmitted(admission);
       resetForm();
       onOpenChange(false);
     },
@@ -343,6 +392,11 @@ function AdmissionDialog({
       address: '',
     });
     setPatientMode(initialMode);
+    setErFirstName('');
+    setErLastName('');
+    setErGender('');
+    setErAge('');
+    setErPhone('');
     setSelectedDoctorId('');
     setSelectedFloorId('');
     setSelectedWardId('');
@@ -361,11 +415,19 @@ function AdmissionDialog({
     newPatient.lastName.trim().length > 0 &&
     /^[+]?[\d\s()-]{7,15}$/.test(newPatient.phone.trim());
 
+  // An emergency casualty may be entirely unidentified, so nothing is required.
   const patientValid =
-    patientMode === 'existing' ? !!selectedPatientId : newPatientValid;
+    patientMode === 'existing'
+      ? !!selectedPatientId
+      : patientMode === 'emergency'
+        ? true
+        : newPatientValid;
 
-  const detailsValid =
-    patientValid && !!selectedDoctorId && !!selectedWardId && !!selectedBedId;
+  // Emergency admissions are "pending placement": doctor, ward and bed are all
+  // optional and get filled in once the patient is placed.
+  const detailsValid = isEmergency
+    ? true
+    : patientValid && !!selectedDoctorId && !!selectedWardId && !!selectedBedId;
 
   const requiredChecklistDone = ADMISSION_CHECKLIST.filter((c) => c.required).every(
     (c) => checklist[c.key],
@@ -382,7 +444,12 @@ function AdmissionDialog({
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            {patientMode === 'new' ? (
+            {isEmergency ? (
+              <>
+                <Siren className="h-5 w-5 text-red-600" />
+                Emergency / Casualty Admission
+              </>
+            ) : patientMode === 'new' ? (
               <>
                 <UserPlus className="h-5 w-5 text-primary" />
                 Register New Patient &amp; Admit
@@ -392,16 +459,18 @@ function AdmissionDialog({
             )}
           </DialogTitle>
           <DialogDescription>
-            {step === 'details'
-              ? patientMode === 'new'
-                ? 'Register a new patient and admit them to a bed.'
-                : 'Fill in admission details (ward, bed, doctor, deposit).'
-              : 'Verify the admission checklist before confirming.'}
+            {isEmergency
+              ? 'A temporary casualty patient admitted on the spot — no registration, no checklist. Highlighted as EMERGENCY until you register or connect it.'
+              : step === 'details'
+                ? patientMode === 'new'
+                  ? 'Register a new patient and admit them to a bed.'
+                  : 'Fill in admission details (ward, bed, doctor, deposit).'
+                : 'Verify the admission checklist before confirming.'}
           </DialogDescription>
         </DialogHeader>
 
-        {/* Stepper */}
-        <div className="flex items-center gap-2 text-xs">
+        {/* Stepper — an emergency admission is a single step (no checklist). */}
+        <div className={cn('flex items-center gap-2 text-xs', isEmergency && 'hidden')}>
           <span
             className={cn(
               'rounded-full px-3 py-1 font-bold',
@@ -450,19 +519,90 @@ function AdmissionDialog({
                   setPatientSearch('');
                 }}
                 className={cn(
-                  'flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-1.5',
+                  'flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-1.5',
                   patientMode === 'new'
                     ? 'bg-primary text-primary-foreground shadow-sm'
                     : 'text-on-surface-variant hover:text-on-surface',
                 )}
               >
                 <UserPlus className="h-3.5 w-3.5" />
-                Register New Patient
+                Register New
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPatientMode('emergency');
+                  setSelectedPatientId('');
+                  setSelectedPatientSnapshot(null);
+                  setPatientSearch('');
+                }}
+                className={cn(
+                  'flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-1.5',
+                  patientMode === 'emergency'
+                    ? 'bg-red-600 text-white shadow-sm'
+                    : 'text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30',
+                )}
+              >
+                <Siren className="h-3.5 w-3.5" />
+                Emergency
               </button>
             </div>
 
-            {/* New-patient registration form */}
-            {patientMode === 'new' ? (
+            {/* Emergency casualty — identity optional, admitted immediately */}
+            {isEmergency ? (
+              <div className="rounded-lg border border-dashed border-red-500/40 p-3 space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-red-600 flex items-center gap-1.5">
+                  <Siren className="h-3.5 w-3.5" />
+                  Emergency patient details
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-1.5">
+                    <Label>Name / label</Label>
+                    <Input
+                      placeholder="Unknown"
+                      value={erFirstName}
+                      onChange={(e) => setErFirstName(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label>Last name</Label>
+                    <Input value={erLastName} onChange={(e) => setErLastName(e.target.value)} />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label>Gender</Label>
+                    <Select value={erGender} onValueChange={(v) => setErGender(v ?? '')}>
+                      <SelectTrigger><SelectValue placeholder="Unknown" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="male">Male</SelectItem>
+                        <SelectItem value="female">Female</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="grid gap-1.5">
+                      <Label>Age</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        placeholder="—"
+                        value={erAge}
+                        onChange={(e) => setErAge(e.target.value)}
+                      />
+                    </div>
+                    <div className="grid gap-1.5">
+                      <Label>Phone</Label>
+                      <Input value={erPhone} onChange={(e) => setErPhone(e.target.value)} />
+                    </div>
+                  </div>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  A temporary MRN is minted and the patient is admitted straight away. Doctor, ward
+                  and bed below are optional — leave them blank for a pending placement. The
+                  credit / deposit gate and the admission checklist are bypassed.
+                </p>
+              </div>
+            ) : patientMode === 'new' ? (
               <div className="rounded-lg border border-dashed border-muted-foreground/30 p-3 space-y-3">
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                   <UserPlus className="h-3.5 w-3.5" />
@@ -617,7 +757,7 @@ function AdmissionDialog({
             <div className="grid grid-cols-2 gap-3">
               {/* Doctor */}
               <div className="grid gap-1.5">
-                <Label>Consultant Doctor *</Label>
+                <Label>Consultant Doctor {isEmergency ? <span className="text-muted-foreground font-normal">(optional)</span> : '*'}</Label>
                 <Select value={selectedDoctorId} onValueChange={(v) => setSelectedDoctorId(v ?? '')}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select doctor">
@@ -663,7 +803,7 @@ function AdmissionDialog({
 
               {/* Ward (filtered by floor when set) */}
               <div className="grid gap-1.5">
-                <Label>Ward *</Label>
+                <Label>Ward {isEmergency ? <span className="text-muted-foreground font-normal">(optional)</span> : '*'}</Label>
                 <Select value={selectedWardId} onValueChange={(v) => setSelectedWardId(v ?? '')}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select ward">
@@ -694,7 +834,7 @@ function AdmissionDialog({
 
               {/* Bed (filtered by ward) */}
               <div className="grid gap-1.5 col-span-2">
-                <Label>Bed *</Label>
+                <Label>Bed {isEmergency ? <span className="text-muted-foreground font-normal">(optional)</span> : '*'}</Label>
                 <Select
                   value={selectedBedId}
                   onValueChange={(v) => setSelectedBedId(v ?? '')}
@@ -741,35 +881,41 @@ function AdmissionDialog({
                 </Select>
               </div>
 
-              {/* Dates row */}
-              <div className="grid gap-1.5">
-                <Label>Admission Date *</Label>
-                <Input
-                  type="date"
-                  value={admissionDate}
-                  onChange={(e) => setAdmissionDate(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label>Expected Discharge</Label>
-                <Input
-                  type="date"
-                  value={expectedDischarge}
-                  onChange={(e) => setExpectedDischarge(e.target.value)}
-                />
-              </div>
+              {/* Dates + deposit — not applicable to an emergency: it is admitted
+                  as of now and the deposit gate is bypassed, so hide them rather
+                  than accept input that would be ignored. */}
+              {!isEmergency && (
+                <>
+                  <div className="grid gap-1.5">
+                    <Label>Admission Date *</Label>
+                    <Input
+                      type="date"
+                      value={admissionDate}
+                      onChange={(e) => setAdmissionDate(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label>Expected Discharge</Label>
+                    <Input
+                      type="date"
+                      value={expectedDischarge}
+                      onChange={(e) => setExpectedDischarge(e.target.value)}
+                    />
+                  </div>
 
-              {/* Deposit */}
-              <div className="grid gap-1.5">
-                <Label>Deposit / Advance Amount (₹)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  placeholder="0.00"
-                  value={depositAmount}
-                  onChange={(e) => setDepositAmount(e.target.value)}
-                />
-              </div>
+                  {/* Deposit */}
+                  <div className="grid gap-1.5">
+                    <Label>Deposit / Advance Amount (₹)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      placeholder="0.00"
+                      value={depositAmount}
+                      onChange={(e) => setDepositAmount(e.target.value)}
+                    />
+                  </div>
+                </>
+              )}
 
               {/* Billing category — cash vs insurance / corporate (TPA) */}
               <div className="grid gap-1.5">
@@ -870,9 +1016,24 @@ function AdmissionDialog({
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button disabled={!detailsValid} onClick={() => setStep('checklist')}>
-                Next: Checklist
-              </Button>
+              {isEmergency ? (
+                // No checklist for a casualty — admit straight from here.
+                <Button
+                  onClick={() => admitMutation.mutate()}
+                  disabled={admitMutation.isPending}
+                  className="bg-red-600 text-white hover:bg-red-700"
+                >
+                  {admitMutation.isPending ? (
+                    'Admitting…'
+                  ) : (
+                    <><Siren className="mr-1.5 h-4 w-4" /> Admit Emergency Patient</>
+                  )}
+                </Button>
+              ) : (
+                <Button disabled={!detailsValid} onClick={() => setStep('checklist')}>
+                  Next: Checklist
+                </Button>
+              )}
             </>
           ) : (
             <>
@@ -1577,9 +1738,11 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 function RowActionsMenu({
   admission,
   onView,
+  onResolveEmergency,
 }: {
   admission: Admission;
   onView: (adm: Admission) => void;
+  onResolveEmergency: (target: EmergencyResolveTarget) => void;
 }) {
   const router = useRouter();
   const [transferOpen, setTransferOpen] = useState(false);
@@ -1615,6 +1778,26 @@ function RowActionsMenu({
           <MoreHorizontal className="h-4 w-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          {/* A temporary casualty is resolved right from the IP list: register it
+              as a new patient, or connect it to an existing one. */}
+          {isEmergencyPatient(admission.patient) && admission.patient && (
+            <DropdownMenuItem
+              className="text-red-600"
+              onClick={() =>
+                onResolveEmergency({
+                  id: admission.patient!.id,
+                  mrn: admission.patient!.mrn,
+                  firstName: admission.patient!.firstName,
+                  lastName: admission.patient!.lastName,
+                  phone: admission.patient!.phone,
+                  type: 'ip',
+                })
+              }
+            >
+              <Siren className="mr-2 h-4 w-4" />
+              Register / Connect
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onClick={() => router.push(`/hospital/ip/${admission.id}`)}>
             <ExternalLink className="mr-2 h-4 w-4" />
             Open IP Workspace
@@ -1740,7 +1923,9 @@ export function InPatientList() {
   const [registerNewOpen, setRegisterNewOpen] = useState(false);
   const [viewAdmission, setViewAdmission] = useState<Admission | null>(null);
   const [postAdmitSlip, setPostAdmitSlip] = useState<Admission | null>(null);
+  const [resolveTarget, setResolveTarget] = useState<EmergencyResolveTarget | null>(null);
 
+  const queryClient = useQueryClient();
   const { data: stats } = useAdmissionStats();
 
   const { data, isLoading } = useQuery({
@@ -1919,7 +2104,11 @@ export function InPatientList() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <RowActionsMenu admission={adm} onView={setViewAdmission} />
+                        <RowActionsMenu
+                          admission={adm}
+                          onView={setViewAdmission}
+                          onResolveEmergency={setResolveTarget}
+                        />
                       </td>
                     </tr>
                   );
@@ -1983,6 +2172,17 @@ export function InPatientList() {
         admission={viewAdmission}
         open={!!viewAdmission}
         onOpenChange={(o) => !o && setViewAdmission(null)}
+      />
+
+      {/* Resolve a temporary casualty straight from the IP list */}
+      <EmergencyResolveDialog
+        open={!!resolveTarget}
+        onOpenChange={(o) => !o && setResolveTarget(null)}
+        patient={resolveTarget}
+        onResolved={() => {
+          setResolveTarget(null);
+          queryClient.invalidateQueries({ queryKey: ['hospital', 'admissions'] });
+        }}
       />
     </div>
   );
