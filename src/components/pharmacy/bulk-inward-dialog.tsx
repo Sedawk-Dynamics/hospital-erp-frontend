@@ -20,6 +20,7 @@ import {
   FileCheck,
   X,
   Printer,
+  Eye,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
@@ -44,6 +45,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { formatDate } from '@/lib/date-utils';
 import {
   useMatchInward,
   useCommitInward,
@@ -533,6 +535,22 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
   const reconcilePO = useReconcilePurchaseOrder();
   // The PO after it's been updated from this inward (shown on the Done step).
   const [reconciled, setReconciled] = useState<PurchaseOrder | null>(null);
+
+  // "View PO" on the Done step — prefer the freshly reconciled order so the
+  // user sees the updated received/outstanding figures.
+  const [poViewDoneOpen, setPoViewDoneOpen] = useState(false);
+  const donePo = reconciled ?? (poDetail?.id === poId ? poDetail : null);
+  const donePoItems: PoLineRef[] = useMemo(
+    () =>
+      (donePo?.items ?? []).map((it) => ({
+        id: it.id,
+        name: it.drug?.drugName ?? it.inventoryItem?.itemName ?? '(item)',
+        orderedQty: it.quantityOrdered,
+        alreadyReceived: it.quantityReceived,
+        unitPrice: it.unitPrice != null ? Number(it.unitPrice) : undefined,
+      })),
+    [donePo],
+  );
 
   const clearPO = () => setPoId('');
 
@@ -1101,6 +1119,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
               poId={poId}
               poNumber={poNumber}
               poItems={poItems}
+              poDetail={poDetail?.id === poId ? poDetail : null}
               onSelectPO={setPoId}
               onClearPO={clearPO}
               invoiceNumber={invoiceNumber}
@@ -1147,6 +1166,16 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
                 <Button onClick={() => updatePO(true)} disabled={reconcilePO.isPending} className="gap-1.5">
                   {reconcilePO.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck className="h-4 w-4" />}
                   Update PO &amp; mark delivered
+                </Button>
+              )}
+              {poId && (
+                <Button
+                  variant="outline"
+                  onClick={() => setPoViewDoneOpen(true)}
+                  className="gap-1.5"
+                  disabled={!donePo}
+                >
+                  <Eye className="h-4 w-4" /> View PO
                 </Button>
               )}
               <Button variant="outline" onClick={printReceivedInvoice} className="gap-1.5">
@@ -1228,6 +1257,15 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
             </>
           )}
         </div>
+
+        {/* Read-only PO view from the Done step (shows the updated order) */}
+        <PoViewDialog
+          open={poViewDoneOpen}
+          onOpenChange={setPoViewDoneOpen}
+          po={donePo}
+          poItems={donePoItems}
+          lines={lines}
+        />
     </div>
   );
 }
@@ -1287,6 +1325,156 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ── Read-only view of the purchase order being checked against ──────────────
+// Shows the order as raised, side by side with what has actually been entered on
+// this invoice, so the user can see the PO itself (not just the summary chips).
+function PoViewDialog({
+  open,
+  onOpenChange,
+  po,
+  poItems,
+  lines,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  po: PurchaseOrder | null | undefined;
+  poItems: PoLineRef[];
+  lines: DraftLine[];
+}) {
+  // Qty entered on this invoice against each PO line (by the same name match).
+  const enteredByPoLine = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const l of lines) {
+      const m = matchPoLine(l.drugName, poItems);
+      if (!m) continue;
+      const qty = parseInt(l.quantityReceived || '', 10) || 0;
+      map.set(m.id, (map.get(m.id) ?? 0) + qty);
+    }
+    return map;
+  }, [lines, poItems]);
+
+  if (!po) return null;
+  const money = (n: number) => `₹${n.toFixed(2)}`;
+  const orderedTotal = poItems.reduce((s, p) => s + p.orderedQty, 0);
+  const receivedTotal = poItems.reduce((s, p) => s + p.alreadyReceived, 0);
+  const enteredTotal = poItems.reduce((s, p) => s + (enteredByPoLine.get(p.id) ?? 0), 0);
+
+  const info: { label: string; value: string }[] = [
+    { label: 'Vendor', value: po.supplier?.name ?? '—' },
+    { label: 'Order date', value: po.orderDate ? formatDate(po.orderDate) : '—' },
+    { label: 'Expected', value: po.expectedDeliveryDate ? formatDate(po.expectedDeliveryDate) : '—' },
+    { label: 'PO value', value: po.totalAmount != null ? money(Number(po.totalAmount)) : '—' },
+  ];
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex w-[96vw] max-w-none flex-col overflow-hidden p-0 sm:max-w-5xl">
+        <DialogHeader className="border-b px-6 py-4">
+          <DialogTitle className="flex flex-wrap items-center gap-2">
+            <FileCheck className="h-4 w-4 text-primary" />
+            Purchase Order <span className="font-mono">{po.orderNumber}</span>
+            <Badge variant="outline" className="capitalize">{po.status.replace(/_/g, ' ')}</Badge>
+          </DialogTitle>
+          <DialogDescription>
+            The order as raised, next to what you have entered on this invoice.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 px-6 py-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {info.map((i) => (
+              <div key={i.label} className="rounded-lg border bg-muted/20 px-3 py-2">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{i.label}</p>
+                <p className="text-sm font-medium">{i.value}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="overflow-hidden rounded-lg border">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40">
+                <tr className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <th className="px-3 py-2 text-left font-semibold">Item</th>
+                  <th className="px-3 py-2 text-right font-semibold">Ordered</th>
+                  <th className="px-3 py-2 text-right font-semibold">Already received</th>
+                  <th className="px-3 py-2 text-right font-semibold">Outstanding</th>
+                  <th className="px-3 py-2 text-right font-semibold">Rate</th>
+                  <th className="px-3 py-2 text-right font-semibold">Entered here</th>
+                  <th className="px-3 py-2 text-left font-semibold">Check</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {poItems.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-3 py-6 text-center text-xs text-muted-foreground">
+                      This purchase order has no lines.
+                    </td>
+                  </tr>
+                ) : (
+                  poItems.map((p) => {
+                    const outstanding = Math.max(0, p.orderedQty - p.alreadyReceived);
+                    const entered = enteredByPoLine.get(p.id);
+                    const chip =
+                      entered == null
+                        ? { label: 'not on this invoice', cls: 'bg-slate-200 text-slate-700' }
+                        : entered === outstanding
+                          ? { label: 'matches', cls: 'bg-emerald-100 text-emerald-800' }
+                          : entered < outstanding
+                            ? { label: `short by ${outstanding - entered}`, cls: 'bg-amber-100 text-amber-800' }
+                            : { label: `excess by ${entered - outstanding}`, cls: 'bg-sky-100 text-sky-800' };
+                    return (
+                      <tr key={p.id} className="hover:bg-muted/20">
+                        <td className="px-3 py-2 font-medium">{p.name}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{p.orderedQty}</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{p.alreadyReceived}</td>
+                        <td className="px-3 py-2 text-right font-semibold tabular-nums">{outstanding}</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                          {p.unitPrice != null ? money(p.unitPrice) : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {entered == null ? <span className="text-muted-foreground">—</span> : entered}
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium', chip.cls)}>
+                            {chip.label}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+              {poItems.length > 0 && (
+                <tfoot className="border-t bg-muted/30 font-semibold">
+                  <tr>
+                    <td className="px-3 py-2 text-xs uppercase tracking-wider text-muted-foreground">Total</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{orderedTotal}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{receivedTotal}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{Math.max(0, orderedTotal - receivedTotal)}</td>
+                    <td className="px-3 py-2" />
+                    <td className="px-3 py-2 text-right tabular-nums">{enteredTotal}</td>
+                    <td className="px-3 py-2" />
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+
+          {po.notes && (
+            <p className="rounded-lg bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">Notes:</span> {po.notes}
+            </p>
+          )}
+        </div>
+
+        <DialogFooter className="border-t px-6 py-3">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Step 1: enter / paste / upload lines ────────────────────
 function EntryStep(props: {
   suppliers: { id: string; name: string }[];
@@ -1297,6 +1485,8 @@ function EntryStep(props: {
   poId: string;
   poNumber: string;
   poItems: PoLineRef[];
+  /** The loaded order behind `poId` — powers the read-only "View PO" sheet. */
+  poDetail?: PurchaseOrder | null;
   onSelectPO: (id: string) => void;
   onClearPO: () => void;
   invoiceNumber: string;
@@ -1338,7 +1528,7 @@ function EntryStep(props: {
 }) {
   const {
     suppliers, supplierId, setSupplierId, selectedSupplier, invoiceNumber, setInvoiceNumber,
-    openPOs, poId, poNumber, poItems, onSelectPO, onClearPO,
+    openPOs, poId, poNumber, poItems, poDetail, onSelectPO, onClearPO,
     invoiceDate, setInvoiceDate, invoiceDiscPct, setInvoiceDiscPct, invoiceDiscAmt, setInvoiceDiscAmt,
     purchaseTotals, lines, updateLine, addLine, removeLine, showPaste, setShowPaste,
     pasteText, setPasteText, ingest, fileRef, onFile, xlsxRef, onXlsxFile,
@@ -1367,6 +1557,8 @@ function EntryStep(props: {
     return { matchedCount: matchedIds.size, match, short, excess, missing };
   }, [poMatchByLine, lines, poItems]);
   const [addVendorOpen, setAddVendorOpen] = useState(false);
+  // Read-only look at the purchase order being checked against.
+  const [poViewOpen, setPoViewOpen] = useState(false);
   // Rows whose "more details" panel (full product fields) is open.
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const toggleRow = (id: string) =>
@@ -1383,6 +1575,14 @@ function EntryStep(props: {
         open={addVendorOpen}
         onOpenChange={setAddVendorOpen}
         onSaved={(v) => setSupplierId(v.id)}
+      />
+      {/* Read-only look at the PO being checked against */}
+      <PoViewDialog
+        open={poViewOpen}
+        onOpenChange={setPoViewOpen}
+        po={poDetail}
+        poItems={poItems}
+        lines={lines}
       />
       {/* Header: vendor (G10 auto-fill) + invoice */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -1444,9 +1644,20 @@ function EntryStep(props: {
                   {poCompare.missing.length > 0 && <span className="rounded-full bg-slate-200 px-2 py-0.5 font-medium text-slate-700">{poCompare.missing.length} not on this invoice</span>}
                 </span>
               </div>
-              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={onClearPO}>
-                <X className="h-3.5 w-3.5" /> Clear PO
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1 text-xs"
+                  onClick={() => setPoViewOpen(true)}
+                  disabled={!poDetail}
+                >
+                  <Eye className="h-3.5 w-3.5" /> View PO
+                </Button>
+                <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={onClearPO}>
+                  <X className="h-3.5 w-3.5" /> Clear PO
+                </Button>
+              </div>
             </div>
             {poCompare.missing.length > 0 && (
               <p className="text-[11px] text-muted-foreground">
