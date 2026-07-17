@@ -21,6 +21,9 @@ import {
   X,
   Printer,
   Eye,
+  Download,
+  FileSpreadsheet,
+  AlertTriangle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
@@ -44,8 +47,15 @@ import {
   SelectItem,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/lib/date-utils';
+import { downloadCsv } from '@/lib/csv';
 import {
   useMatchInward,
   useCommitInward,
@@ -213,6 +223,9 @@ function emptyLine(): DraftLine {
 const HEADER_MAP: Record<string, DraftCol> = {
   name: 'drugName', drug: 'drugName', product: 'drugName', item: 'drugName',
   description: 'drugName', medicine: 'drugName', particulars: 'drugName',
+  // Medicine vs consumable/surgical/equipment. Routed through `parseTypeCell`,
+  // which turns the text into { kind, category } — see buildLinesFromRows.
+  type: 'category', category: 'category', kind: 'category', item_type: 'category',
   generic: 'genericName', composition: 'genericName', salt: 'genericName',
   manufacturer: 'manufacturer', mfr: 'manufacturer', company: 'manufacturer', mfg_company: 'manufacturer',
   strength: 'strength', dose: 'strength', dosage: 'strength',
@@ -306,6 +319,9 @@ function parseTabular(text: string): DraftLine[] {
   return out;
 }
 
+// Which rows the import-review filter is showing.
+type RowFilter = 'all' | 'issues' | 'new' | 'review';
+
 // Mapping target fields the user can assign each spreadsheet column to.
 const MAP_FIELDS: { value: DraftCol | 'ignore'; label: string }[] = [
   { value: 'drugName', label: 'Name' },
@@ -333,19 +349,123 @@ const MAP_FIELDS: { value: DraftCol | 'ignore'; label: string }[] = [
   { value: 'ignore', label: '— Ignore —' },
 ];
 
+// ── Vendor import template ──────────────────────────────────
+// The sheet we hand a vendor to fill in and send back. Every header here is
+// chosen so `normHeader` + HEADER_MAP resolve it automatically — a returned file
+// maps itself with no manual column work. Two deliberate constraints:
+//   • no "Description" column: distributors use that word for the product NAME,
+//     and HEADER_MAP aliases it to drugName, so it would fight the Name column;
+//   • no "%" or unit suffixes in headers ("Discount", not "Discount %") —
+//     normHeader keeps '%', which would miss the alias.
+// Keep this list and HEADER_MAP in step: every header must resolve.
+interface TemplateCol {
+  header: string;
+  required?: boolean;
+  hint: string;
+  samples: [string, string];
+}
+
+const TEMPLATE_COLUMNS: TemplateCol[] = [
+  { header: 'Type', hint: 'Medicine (default if blank), Consumable, Surgical or Equipment.', samples: ['Medicine', 'Consumable'] },
+  { header: 'Name', required: true, hint: 'REQUIRED. Product name as printed on your invoice. A row with no Name is skipped.', samples: ['Telmac 40 Tab', 'Nitrile Gloves M'] },
+  { header: 'Generic', hint: 'Composition / salt.', samples: ['Telmisartan', ''] },
+  { header: 'Manufacturer', hint: 'Brand / manufacturing company.', samples: ['Cipla', 'Safeguard'] },
+  { header: 'Strength', hint: 'e.g. 40mg, 5ml.', samples: ['40mg', ''] },
+  { header: 'Dosage Form', hint: 'tablet, capsule, syrup, injection, cream, drops, inhaler, other.', samples: ['tablet', ''] },
+  { header: 'Pack Size', hint: 'Units per pack, e.g. 10 for a strip of 10.', samples: ['10', '100'] },
+  { header: 'Unit', hint: 'Loose unit label, e.g. tablet, ml, piece.', samples: ['tablet', 'piece'] },
+  { header: 'HSN', hint: 'HSN code (tax classification).', samples: ['30049099', '40151900'] },
+  { header: 'GTIN', hint: 'Barcode / GS1 number on the pack, if printed.', samples: ['8901234567890', ''] },
+  { header: 'Batch', hint: 'Batch / lot number. Required for a medicine when Qty is filled.', samples: ['B23A01', ''] },
+  { header: 'Expiry', hint: 'MM/YYYY or DD/MM/YYYY, e.g. 12/2026. Required for a medicine when Qty is filled.', samples: ['12/2026', ''] },
+  { header: 'Mfg Date', hint: 'MM/YYYY or DD/MM/YYYY. Optional.', samples: ['01/2024', ''] },
+  { header: 'Qty', hint: 'Units supplied (paid). Leave blank to only register the product without receiving stock.', samples: ['100', '50'] },
+  { header: 'Free Qty', hint: 'Free units supplied on top of Qty.', samples: ['10', ''] },
+  { header: 'MRP', hint: 'Maximum retail price per unit.', samples: ['85', ''] },
+  { header: 'Rate', hint: 'Your purchase rate / PTR per unit.', samples: ['75', '4.5'] },
+  { header: 'Discount', hint: 'Per-line discount PERCENT (number only, no % sign).', samples: ['5', ''] },
+  { header: 'GST', hint: 'GST PERCENT (number only, no % sign).', samples: ['12', '18'] },
+  { header: 'Selling', hint: 'Selling price per unit.', samples: ['82', ''] },
+  { header: 'Reorder Level', hint: 'Alert us when stock falls below this.', samples: ['20', '200'] },
+];
+
+const TEMPLATE_FILE_BASE = 'stock-import-template';
+
+/** Header row + two example rows (the vendor replaces the examples). */
+function templateAoa(): string[][] {
+  return [
+    TEMPLATE_COLUMNS.map((c) => c.header),
+    TEMPLATE_COLUMNS.map((c) => c.samples[0]),
+    TEMPLATE_COLUMNS.map((c) => c.samples[1]),
+  ];
+}
+
+function templateInstructionsAoa(): string[][] {
+  return [
+    ['How to fill this sheet'],
+    [],
+    ['1.', 'Enter one product per row on the "Stock" sheet.'],
+    ['2.', 'Replace the two example rows — they are only there to show the format.'],
+    ['3.', 'Only "Name" is mandatory. Leave anything you do not know blank.'],
+    ['4.', 'Do not rename, reorder or delete the header row — it is what we read.'],
+    ['5.', 'Leave "Qty" blank to just list a product without supplying stock.'],
+    ['6.', 'Send the file back as .xlsx or .csv.'],
+    [],
+    ['Column', 'What to put in it'],
+    ...TEMPLATE_COLUMNS.map((c) => [c.header + (c.required ? ' *' : ''), c.hint]),
+  ];
+}
+
+/** Excel template. The data sheet MUST be first — the reader takes sheet 1. */
+function downloadTemplateXlsx(): void {
+  const wb = XLSX.utils.book_new();
+  const data = XLSX.utils.aoa_to_sheet(templateAoa());
+  data['!cols'] = TEMPLATE_COLUMNS.map((c) => ({ wch: Math.max(12, c.header.length + 3) }));
+  XLSX.utils.book_append_sheet(wb, data, 'Stock');
+  const notes = XLSX.utils.aoa_to_sheet(templateInstructionsAoa());
+  notes['!cols'] = [{ wch: 16 }, { wch: 96 }];
+  XLSX.utils.book_append_sheet(wb, notes, 'Instructions');
+  XLSX.writeFile(wb, `${TEMPLATE_FILE_BASE}.xlsx`);
+}
+
+/** CSV template — same columns, so it round-trips through the same parser. */
+function downloadTemplateCsv(): void {
+  const [headers, ...sampleRows] = templateAoa();
+  const rows = sampleRows.map((cells) =>
+    Object.fromEntries(headers.map((h, i) => [h, cells[i] ?? ''])),
+  );
+  downloadCsv(`${TEMPLATE_FILE_BASE}.csv`, rows);
+}
+
 // Split a CSV/paste blob into a raw grid (no header interpretation yet).
 function rowsFromText(text: string): string[][] {
   return text.split(/\r?\n/).map((r) => r.trim()).filter(Boolean).map(splitRow);
 }
 
 // Read the first sheet of an .xlsx/.xls workbook into a raw grid.
+// `cellDates` matters: without it a real date cell (a vendor typing 12/2026 into
+// the template, which Excel silently converts to a date) arrives as a numeric
+// serial like "45658", which parseExpiry can't read and would blank. With it we
+// get a Date and hand parseExpiry the yyyy-MM-dd it understands.
 async function rowsFromXlsx(file: File): Promise<string[][]> {
   const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, { type: 'array' });
+  const wb = XLSX.read(buf, { type: 'array', cellDates: true });
   const sheet = wb.Sheets[wb.SheetNames[0]];
   if (!sheet) return [];
   const grid = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, blankrows: false, defval: '' });
-  return grid.map((row) => (row ?? []).map((c) => (c == null ? '' : String(c).trim())));
+  return grid.map((row) =>
+    (row ?? []).map((c) => {
+      if (c == null) return '';
+      if (c instanceof Date) return isoDate(c);
+      return String(c).trim();
+    }),
+  );
+}
+
+/** A Date → yyyy-MM-dd in local time (Excel dates carry no timezone). */
+function isoDate(d: Date): string {
+  if (isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 // Guess a field for each column from its header text (when a header row exists).
@@ -594,13 +714,15 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
       toast.error('No rows found. Check the format — one medicine per line.');
       return;
     }
-    setLines((prev) => {
-      const existing = prev.filter((l) => l.drugName.trim());
-      return [...existing, ...parsed];
-    });
+    const combined = [...lines.filter((l) => l.drugName.trim()), ...parsed];
+    setLines(combined);
     setPasteText('');
     setShowPaste(false);
-    toast.success(`Loaded ${parsed.length} line${parsed.length === 1 ? '' : 's'}`);
+    toast.success(`Loaded ${parsed.length} line${parsed.length === 1 ? '' : 's'} — matching against your formulary…`);
+    // Same as OCR: score the rows immediately so each shows its formulary
+    // matches (or "not in your master data" + the catalog picker) inline.
+    // `combined` is passed explicitly — React state hasn't settled yet.
+    void handleMatch(combined);
   };
 
   // CSV upload → raw grid → column-mapping step (so any distributor layout maps).
@@ -643,12 +765,13 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
       toast.error('No usable rows — check the column mapping (Name is required).');
       return;
     }
-    setLines((prev) => {
-      const existing = prev.filter((l) => l.drugName.trim());
-      return [...existing, ...drafts];
-    });
+    const combined = [...lines.filter((l) => l.drugName.trim()), ...drafts];
+    setLines(combined);
     setMapRows(null);
-    toast.success(`Loaded ${drafts.length} line${drafts.length === 1 ? '' : 's'}`);
+    toast.success(`Loaded ${drafts.length} line${drafts.length === 1 ? '' : 's'} — matching against your formulary…`);
+    // Same as OCR: an imported file goes straight into the review, so every row
+    // shows its formulary match (or "not in your master data" + catalog picker).
+    void handleMatch(combined);
   };
 
   const s = (v: number | null | undefined) => (v === null || v === undefined ? '' : String(v));
@@ -1559,6 +1682,59 @@ function EntryStep(props: {
   const [addVendorOpen, setAddVendorOpen] = useState(false);
   // Read-only look at the purchase order being checked against.
   const [poViewOpen, setPoViewOpen] = useState(false);
+
+  // ── Import review ──────────────────────────────────────────
+  // Bulk files land as dozens of rows, so classify each one and let the user
+  // jump straight to the ones that need a decision instead of hunting for red
+  // borders. All four sources are index-aligned: lines / lineIssues / matched /
+  // decisions.
+  const [rowFilter, setRowFilter] = useState<RowFilter>('all');
+  const rowFlags = useMemo(
+    () =>
+      lines.map((l, i) => {
+        const iss = lineIssues[i] ?? { errors: [], warnings: [] };
+        const m = reviewing ? matched[i] : undefined;
+        const inFormulary = (m?.matches ?? []).some((c) => c.source !== 'catalog');
+        return {
+          blank: !l.drugName.trim(),
+          hasError: iss.errors.length > 0,
+          hasWarning: iss.warnings.length > 0,
+          // Nothing like it in this hospital's formulary → it has to be added.
+          notInFormulary: !!m && !inFormulary,
+          // Nothing found anywhere (formulary or platform catalog).
+          unknown: !!m && m.matches.length === 0,
+          // Scored as a *possible* match and silently pre-set to "map" — the
+          // bucket most worth a human look.
+          needsReview: m?.recommendation === 'review',
+        };
+      }),
+    [lines, lineIssues, matched, decisions, reviewing],
+  );
+  const reviewCounts = useMemo(() => {
+    const rows = rowFlags.filter((f) => !f.blank);
+    return {
+      total: rows.length,
+      issues: rows.filter((f) => f.hasError).length,
+      notInFormulary: rows.filter((f) => f.notInFormulary).length,
+      needsReview: rows.filter((f) => f.needsReview).length,
+      ready: rows.filter((f) => !f.hasError && !f.notInFormulary && !f.needsReview).length,
+    };
+  }, [rowFlags]);
+  // Which rows the current filter shows (indices, so numbering stays stable).
+  const visibleRows = useMemo(
+    () =>
+      lines
+        .map((_, i) => i)
+        .filter((i) => {
+          const f = rowFlags[i];
+          if (!f) return true;
+          if (rowFilter === 'issues') return f.hasError;
+          if (rowFilter === 'new') return f.notInFormulary;
+          if (rowFilter === 'review') return f.needsReview;
+          return true;
+        }),
+    [lines, rowFlags, rowFilter],
+  );
   // Rows whose "more details" panel (full product fields) is open.
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const toggleRow = (id: string) =>
@@ -1739,6 +1915,24 @@ function EntryStep(props: {
 
       {/* Import controls */}
       <div className="flex flex-wrap items-center gap-2">
+        {/* The format we hand vendors. A file filled in from this maps itself —
+            every header is a HEADER_MAP alias — so it needs no column mapping. */}
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={<Button size="sm" variant="outline" className="border-primary/40 text-primary" />}
+          >
+            <Download className="mr-1.5 h-4 w-4" /> Download template
+            <ChevronDown className="ml-1 h-3.5 w-3.5" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem onClick={downloadTemplateXlsx}>
+              <FileSpreadsheet className="mr-2 h-4 w-4" /> Excel (.xlsx) — with instructions
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={downloadTemplateCsv}>
+              <Upload className="mr-2 h-4 w-4" /> CSV (.csv)
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         {/* OCR — read a photo/PDF of the supplier invoice into lines (Gemini).
             Hidden when a super-admin has disabled invoice OCR for this hospital. */}
         {ocrEnabled && (
@@ -1801,9 +1995,74 @@ function EntryStep(props: {
         </div>
       )}
 
+      {/* ── Import review — what came in, and what still needs a decision ──
+          Shown once there's more than a row or two (i.e. an imported file), so
+          a 60-row spreadsheet is navigable instead of a wall of cards. */}
+      {reviewCounts.total > 1 && (
+        <div className="rounded-xl border bg-surface-container-lowest p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="flex items-center gap-1.5 text-sm font-semibold">
+              <FileSpreadsheet className="h-4 w-4 text-primary" />
+              {reviewCounts.total} row{reviewCounts.total === 1 ? '' : 's'} imported
+              {!reviewing && (
+                <span className="font-normal text-muted-foreground">
+                  — run “Find matches” to check them against your master data
+                </span>
+              )}
+            </p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {([
+                { key: 'all', label: `All ${reviewCounts.total}`, n: reviewCounts.total, cls: 'bg-primary text-primary-foreground' },
+                { key: 'issues', label: `${reviewCounts.issues} to fix`, n: reviewCounts.issues, cls: 'bg-red-600 text-white' },
+                { key: 'new', label: `${reviewCounts.notInFormulary} not in master data`, n: reviewCounts.notInFormulary, cls: 'bg-emerald-600 text-white' },
+                { key: 'review', label: `${reviewCounts.needsReview} to check`, n: reviewCounts.needsReview, cls: 'bg-blue-600 text-white' },
+              ] as const).map((c) =>
+                c.key !== 'all' && c.n === 0 ? null : (
+                  <button
+                    key={c.key}
+                    type="button"
+                    onClick={() => setRowFilter(c.key)}
+                    className={cn(
+                      'rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                      rowFilter === c.key ? c.cls : 'text-muted-foreground hover:bg-muted',
+                    )}
+                  >
+                    {c.label}
+                  </button>
+                ),
+              )}
+            </div>
+          </div>
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            {reviewCounts.issues > 0 && (
+              <span className="text-red-600">
+                {reviewCounts.issues} row{reviewCounts.issues === 1 ? '' : 's'} missing something needed to receive stock (batch / expiry / quantity).{' '}
+              </span>
+            )}
+            {reviewCounts.notInFormulary > 0 && (
+              <span className="text-emerald-700">
+                {reviewCounts.notInFormulary} not in your master data — each will be added as new; use “From drug catalog” on the row to pick the right one.{' '}
+              </span>
+            )}
+            {reviewCounts.issues === 0 && reviewCounts.notInFormulary === 0 && reviewing && 'Every row matched an existing product and has what it needs.'}
+          </p>
+          {rowFilter !== 'all' && (
+            <button
+              type="button"
+              onClick={() => setRowFilter('all')}
+              className="mt-1.5 text-[11px] font-medium text-primary hover:underline"
+            >
+              Showing {visibleRows.length} of {lines.length} — show all rows
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Editable lines — responsive cards (wrap to width, no horizontal scroll) */}
       <div className="space-y-2">
-        {lines.map((l, i) => {
+        {visibleRows.map((i) => {
+          const l = lines[i];
+          const flags = rowFlags[i];
           const issue = lineIssues[i];
           const err = issue?.errors ?? [];
           const warn = issue?.warnings ?? [];
@@ -1828,12 +2087,28 @@ function EntryStep(props: {
                 </span>
                 <div className="grid flex-1 gap-2.5 md:grid-cols-[minmax(0,2.4fr)_minmax(0,1fr)]">
                   <div className="space-y-1.5">
-                    <Input
-                      className="h-9 text-sm font-semibold"
-                      value={l.drugName}
-                      onChange={(e) => updateLine(l.id, 'drugName', e.target.value)}
-                      placeholder="Product name *  ·  e.g. Telmac 40 Tab"
-                    />
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        className="h-9 flex-1 text-sm font-semibold"
+                        value={l.drugName}
+                        onChange={(e) => updateLine(l.id, 'drugName', e.target.value)}
+                        placeholder="Product name *  ·  e.g. Telmac 40 Tab"
+                      />
+                      {/* Not in this hospital's master data — the row needs an
+                          add decision (catalog pick, or add as new). */}
+                      {flags?.notInFormulary && (
+                        <Badge
+                          className="shrink-0 border-emerald-500/20 bg-emerald-500/10 text-[10px] text-emerald-700"
+                          title={
+                            flags.unknown
+                              ? 'No similar product in your master data or the drug catalog — it will be added as new.'
+                              : 'Not in your master data — pick it from the drug catalog below, or add it as new.'
+                          }
+                        >
+                          {flags.unknown ? 'not in master data' : 'new — pick from catalog'}
+                        </Badge>
+                      )}
+                    </div>
                     <div className="grid grid-cols-3 gap-1.5">
                       <Input className={cn(cell, 'text-muted-foreground')} value={l.genericName} onChange={(e) => updateLine(l.id, 'genericName', e.target.value)} placeholder="composition" />
                       <Input className={cell} value={l.strength} onChange={(e) => updateLine(l.id, 'strength', e.target.value)} placeholder="strength · 40mg" />
@@ -1968,11 +2243,18 @@ function EntryStep(props: {
                 </div>
               </div>
 
-              {/* Inline validation messages */}
-              {(err.length > 0 || warn.length > 0) && (
-                <p className={cn('px-3 py-1.5 text-[11px]', err.length > 0 ? 'bg-red-500/5 text-red-600' : 'bg-amber-500/5 text-amber-600')}>
-                  {(err.length > 0 ? err : warn).join(' · ')}
+              {/* Inline validation messages. Errors and warnings are shown
+                  together — a row missing a batch usually also has something
+                  advisory worth seeing, and hiding it until the error is fixed
+                  just costs the user another round trip. */}
+              {err.length > 0 && (
+                <p className="flex items-start gap-1.5 bg-red-500/5 px-3 py-1.5 text-[11px] text-red-600">
+                  <AlertTriangle className="mt-px h-3 w-3 shrink-0" />
+                  <span>{err.join(' · ')}</span>
                 </p>
+              )}
+              {warn.length > 0 && (
+                <p className="bg-amber-500/5 px-3 py-1.5 text-[11px] text-amber-600">{warn.join(' · ')}</p>
               )}
 
               {/* Expandable full product detail */}
@@ -2091,7 +2373,9 @@ function LineMatchControl({
           </button>
           <button
             type="button"
-            onClick={() => onDecision({ action: 'create' })}
+            // Clear the map target too — otherwise a stale targetId lingers on a
+            // line that is now being created.
+            onClick={() => onDecision({ action: 'create', targetId: null })}
             className={cn(
               'rounded px-2.5 py-1 text-xs font-medium transition-colors',
               decision.action === 'create' ? 'bg-emerald-600 text-white' : 'text-muted-foreground hover:bg-muted',
