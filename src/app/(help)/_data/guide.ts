@@ -119,7 +119,7 @@ export const ROLES: RoleGuide[] = [
     cant: ['Clinical documentation or non-pharmacy admin functions'],
     wf: [
       { t: 'Add / receive drug stock (batches)', s: ['Open `Inventory → Storage → Add Stock`.', '**New Item** defines the drug; **Bulk Stock Inward** receives quantities with batch number, expiry & pack size.', '(Optional) Scan the supplier invoice with **OCR** to auto-fill.', 'Save — the medicine expands inline to its batch workspace.'] },
-      { t: 'Recall a drug batch', s: ['Go to the **Batches** page (Pharmacy / Inventory).', 'Click **Recall Drug** or a row\'s **Recall** action; filter with the **Recalled** chip.', 'Use **Affected Patients** to see who received the batch; **Lift** the recall when cleared.'] },
+      { t: 'Recall a drug batch', s: ['Go to **Storage** (Inventory) and expand the medicine to see its batches.', 'Use the row\'s **Recall** action and give a reason; filter with the **Recalled** chip.', 'Recalls are per batch — to pull a medicine entirely, recall each affected batch.', 'Use **Affected Patients** to see who received the batch; **Lift** the recall when cleared.'] },
     ],
     ask: [
       { b: 'help', q: 'How do I add / receive drug stock?', a: '**Inventory → Storage → Add Stock** — New Item to define, Bulk Stock Inward to receive with batch & expiry.' },

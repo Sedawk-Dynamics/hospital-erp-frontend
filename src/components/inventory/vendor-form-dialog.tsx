@@ -64,6 +64,8 @@ interface FormState {
   email: string;
   address: string;
   supplyType: SupplyType;
+  /** Kept as a string for the input; parsed to a number on save. */
+  paymentTermDays: string;
 }
 
 function VendorForm({
@@ -85,6 +87,7 @@ function VendorForm({
     email: vendor?.email ?? '',
     address: vendor?.address ?? '',
     supplyType: vendor?.supplyType ?? 'drugs',
+    paymentTermDays: vendor?.paymentTermDays != null ? String(vendor.paymentTermDays) : '',
   }));
 
   const set = (k: keyof FormState, v: string) => setForm((p) => ({ ...p, [k]: v }));
@@ -100,6 +103,7 @@ function VendorForm({
       email: form.email.trim() || undefined,
       address: form.address.trim() || undefined,
       supplyType: form.supplyType,
+      paymentTermDays: form.paymentTermDays.trim() ? Number(form.paymentTermDays) : undefined,
     };
     try {
       const saved = vendor
@@ -159,6 +163,18 @@ function VendorForm({
                 <SelectItem value="all">All</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="v-terms">Payment terms (days)</Label>
+            <Input
+              id="v-terms"
+              type="number"
+              min={0}
+              max={365}
+              value={form.paymentTermDays}
+              onChange={(e) => set('paymentTermDays', e.target.value)}
+              placeholder="e.g. 30"
+            />
           </div>
         </div>
         <div className="space-y-1.5">

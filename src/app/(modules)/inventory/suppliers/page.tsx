@@ -101,6 +101,7 @@ export default function VendorMasterPage() {
                 <TableHead>Vendor</TableHead>
                 <TableHead>GSTIN</TableHead>
                 <TableHead>Drug Licence</TableHead>
+                <TableHead>Payment Terms</TableHead>
                 <TableHead>Contact</TableHead>
                 <TableHead className="text-center">Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -115,6 +116,9 @@ export default function VendorMasterPage() {
                   </TableCell>
                   <TableCell className="font-mono text-xs">{v.gstNumber ?? '-'}</TableCell>
                   <TableCell className="font-mono text-xs">{v.licenseNumber ?? '-'}</TableCell>
+                  <TableCell className="text-xs">
+                    {v.paymentTermDays != null ? `${v.paymentTermDays} days` : '-'}
+                  </TableCell>
                   <TableCell className="text-sm">
                     <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
                       {v.phone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{v.phone}</span>}

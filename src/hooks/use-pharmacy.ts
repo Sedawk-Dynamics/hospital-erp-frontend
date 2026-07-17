@@ -49,7 +49,6 @@ export interface FormularyItem {
   // Linked national-catalogue entry (null = manually added, not from catalogue).
   drugMasterId?: string | null;
   isActive: boolean;
-  isRecalled: boolean;
   createdAt: string;
   updatedAt: string;
   drugBatches?: Array<Pick<DrugBatch, 'id' | 'batchNumber' | 'expiryDate' | 'quantityInStock' | 'sellingPrice'>>;
@@ -774,7 +773,7 @@ export function useImportFormularyBulk() {
 export function useUpdateFormularyItem() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...data }: { id: string } & Partial<CreateFormularyInput> & { isRecalled?: boolean }) => {
+    mutationFn: async ({ id, ...data }: { id: string } & Partial<CreateFormularyInput>) => {
       const response = await apiPut<FormularyItem>(`/pharmacy/formulary/${id}`, data);
       return response.data;
     },
@@ -2087,15 +2086,6 @@ export interface RecalledBatch {
   _count?: { dispensingRecords: number };
 }
 
-export interface RecalledDrug {
-  id: string;
-  drugName: string;
-  genericName: string | null;
-  isRecalled: boolean;
-  category?: { id: string; name: string } | null;
-  _count?: { drugBatches: number };
-}
-
 export interface RecallAffectedPatients {
   batch: {
     id: string;
@@ -2123,14 +2113,12 @@ export interface RecallAffectedPatients {
   }>;
 }
 
-export function useRecalledItems(type: 'batch' | 'drug' | 'all' = 'all') {
+/** Recalled batches. Recall is batch-level — there is no drug-wide recall. */
+export function useRecalledItems() {
   return useQuery({
-    queryKey: ['pharmacy', 'recalls', type],
+    queryKey: ['pharmacy', 'recalls'],
     queryFn: async () => {
-      const response = await apiGet<{
-        recalledBatches: RecalledBatch[];
-        recalledDrugs: RecalledDrug[];
-      }>('/pharmacy/recalls', { params: { type } });
+      const response = await apiGet<{ recalledBatches: RecalledBatch[] }>('/pharmacy/recalls');
       return response.data;
     },
   });
@@ -2183,22 +2171,7 @@ export function useUnrecallBatch() {
   });
 }
 
-export function useRecallDrug() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, recallReason }: { id: string; recallReason: string }) => {
-      const response = await apiPatch(`/pharmacy/recalls/drugs/${id}`, { recallReason });
-      return response.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pharmacy', 'recalls'] });
-      queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
-      queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
-      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
-      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
-    },
-  });
-}
+// Whole-medicine recall removed — recalls are issued per batch (useRecallBatch).
 
 // ============================================================
 // GST Report

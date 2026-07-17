@@ -770,24 +770,23 @@ function PharmacyInventoryPageInner() {
                       )}
                     </TableCell>
                     <TableCell className="text-center">
+                      {/* Recall is batch-level, so it never gates a medicine's
+                          availability here — see the Batches view for recalls. */}
                       <button
                         type="button"
                         onClick={() => toggleActive(item)}
-                        disabled={item.isRecalled}
-                        title={item.isRecalled ? 'Recalled' : 'Click to toggle availability'}
+                        title="Click to toggle availability"
                         className="inline-flex"
                       >
                         <Badge
                           className={cn(
                             'cursor-pointer transition-colors',
-                            item.isRecalled
-                              ? 'bg-red-500/10 text-red-600 border-red-500/20 cursor-not-allowed'
-                              : item.isActive
+                            item.isActive
                               ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20 hover:bg-emerald-500/20'
                               : 'bg-muted text-muted-foreground hover:bg-muted/80',
                           )}
                         >
-                          {item.isRecalled ? 'Recalled' : item.isActive ? 'Available' : 'Unavailable'}
+                          {item.isActive ? 'Available' : 'Unavailable'}
                         </Badge>
                       </button>
                     </TableCell>

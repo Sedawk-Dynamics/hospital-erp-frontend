@@ -240,7 +240,7 @@ export function PrescriptionPad({
   // ── CDSS prescription safety (allergy / drug-interaction / dosage) ──
   // Live-validates the medicines list against the patient's allergy profile,
   // drug-drug interactions and dosage limits. `blockers` (severe allergy,
-  // contraindicated interaction, recalled drug) hard-stop signing.
+  // contraindicated interaction) hard-stop signing.
   const watchedMeds = (useWatch({ control: form.control, name: 'medicines' }) ?? []) as MedicineFormData[];
   const cdssItems = useMemo(
     () =>
@@ -327,10 +327,9 @@ export function PrescriptionPad({
     if (!valid) return;
 
     // CDSS safety gate — re-validate fresh (never trust a stale "all clear")
-    // and hard-block on contraindications: severe/life-threatening allergy,
-    // contraindicated drug interaction, or a recalled drug. Interaction
-    // contraindications may be overridden with a documented clinical reason;
-    // severe allergies and recalled drugs may not.
+    // and hard-block on contraindications: a severe/life-threatening allergy or
+    // a contraindicated drug interaction. Interaction contraindications may be
+    // overridden with a documented clinical reason; severe allergies may not.
     if (cdssItems.length > 0) {
       try {
         const result = await validateRx.mutateAsync({ patientId, items: cdssItems });
@@ -449,7 +448,7 @@ export function PrescriptionPad({
               />
               <p className="text-[10px] text-muted-foreground mt-1">
                 The override is recorded on the CDSS dashboard with your name, reason and time.
-                Severe allergies and recalled drugs can never be overridden.
+                Severe allergies can never be overridden.
               </p>
             </div>
           </div>
@@ -1067,7 +1066,7 @@ function CdssSafetyPanel({ warnings, blockers }: { warnings: CdssWarning[]; bloc
           </ul>
           <p className="px-4 pb-2 text-[11px] text-error/80">
             {blockers.some((b) => b.overridable)
-              ? 'Remove or change the flagged drug(s). Interaction contraindications may be overridden at sign time with a documented clinical reason; severe allergies and recalls cannot.'
+              ? 'Remove or change the flagged drug(s). Interaction contraindications may be overridden at sign time with a documented clinical reason; severe allergies cannot.'
               : 'Remove or change the flagged drug(s) — the consultation can’t be signed while a contraindication stands.'}
           </p>
         </div>

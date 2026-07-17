@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   Search, Plus, Pill, Edit2, PackagePlus, ChevronDown, ChevronRight,
   ChevronLeft, AlertTriangle, MoreHorizontal, ClipboardCheck, ClipboardList,
-  ShieldAlert, Warehouse,
+  Warehouse,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
@@ -30,7 +30,7 @@ import {
 } from '@/hooks/use-inventory';
 import { useRunPharmacyExpiryAlerts } from '@/hooks/use-pharmacy';
 import { InventoryStockOverview } from './inventory-stock-overview';
-import { DrugBatchesPanel, RecallDrugDialog } from './drug-batches-panel';
+import { DrugBatchesPanel } from './drug-batches-panel';
 import { ItemDialog, StockInDialog } from './stock-register-panel';
 import { StockTakeDialog } from '@/components/pharmacy/stock-take-dialog';
 import { StockAdjustmentsLogDialog } from '@/components/pharmacy/stock-adjust-dialogs';
@@ -60,7 +60,6 @@ export function UnifiedStockPanel() {
   const [editItemId, setEditItemId] = useState<string | null>(null);
   const [stockTakeOpen, setStockTakeOpen] = useState(false);
   const [adjustLogOpen, setAdjustLogOpen] = useState(false);
-  const [drugRecallOpen, setDrugRecallOpen] = useState(false);
 
   const router = useRouter();
   const runExpiry = useRunPharmacyExpiryAlerts();
@@ -131,9 +130,7 @@ export function UnifiedStockPanel() {
               <DropdownMenuItem onClick={handleRunExpiry} disabled={runExpiry.isPending}>
                 <AlertTriangle className="mr-2 h-4 w-4" /> Run expiry check
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setDrugRecallOpen(true)} className="text-red-600">
-                <ShieldAlert className="mr-2 h-4 w-4" /> Recall a drug
-              </DropdownMenuItem>
+              {/* Recall is issued per batch — open a drug and recall the affected batch. */}
             </DropdownMenuContent>
           </DropdownMenu>
           <Button size="sm" onClick={() => router.push('/inventory/add')}>
@@ -260,7 +257,6 @@ export function UnifiedStockPanel() {
       {/* Dialogs (New Item + Bulk Stock Inward moved to /inventory/add) */}
       <StockTakeDialog open={stockTakeOpen} onOpenChange={setStockTakeOpen} />
       <StockAdjustmentsLogDialog open={adjustLogOpen} onOpenChange={setAdjustLogOpen} />
-      {drugRecallOpen && <RecallDrugDialog onClose={() => setDrugRecallOpen(false)} />}
       {stockInItem && (
         <StockInDialog initialItem={stockInItem} onClose={() => setStockInItem(null)} />
       )}

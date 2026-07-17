@@ -93,11 +93,9 @@ import {
   useFormulary,
   usePharmacyCatalog,
   useImportFormularyItem,
-  useRecalledItems,
   useRecallAffectedPatients,
   useRecallBatch,
   useUnrecallBatch,
-  useRecallDrug,
   useAdjustBatchStock,
   useStockAdjustments,
   type CreateBatchInput,
@@ -223,7 +221,6 @@ export function DrugBatchesPanel({
   // Recall management (moved here from the old Recalls page — recalls act on batches).
   const [recallTarget, setRecallTarget] = useState<DrugBatch | null>(null);
   const [affectedBatchId, setAffectedBatchId] = useState<string | null>(null);
-  const [drugRecallOpen, setDrugRecallOpen] = useState(false);
 
   // Drug picker (combobox) state
   const [drugSearchInput, setDrugSearchInput] = useState('');
@@ -289,10 +286,6 @@ export function DrugBatchesPanel({
   const expiringBatches = useExpiringBatches(
     expiringDays ? { days: expiringDays, page, limit: 20 } : undefined,
   );
-
-  // Formulary-level recalled drugs — shown as a panel in the Recalled view.
-  const { data: recalledItems } = useRecalledItems('all');
-  const recalledDrugs = recalledItems?.recalledDrugs ?? [];
 
   // Expiry overview (drug stock expiring within 90 days) — drives the summary
   // cards. Capped at 1000 batches, which comfortably covers a tenant's near-
@@ -569,7 +562,7 @@ export function DrugBatchesPanel({
     <div className={embedded ? 'space-y-3' : 'space-y-4 animate-fade-in-up'}>
       {embedded ? (
         // Scoped to one medicine — only "Add Batch" here; the global batch actions
-        // (Bulk Stock In, Stock Take, Recall Drug, …) live in the Storage header.
+        // (Bulk Stock In, Stock Take, …) live in the Storage header.
         <div className="flex items-center justify-end">
           <Button size="sm" onClick={startCreate}>
             <Plus className="mr-1.5 h-4 w-4" />
@@ -585,15 +578,6 @@ export function DrugBatchesPanel({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setDrugRecallOpen(true)}
-              title="Recall a drug and block all of its batches from dispensing"
-            >
-              <ShieldAlert className="mr-1.5 h-4 w-4 text-red-600" />
-              Recall Drug
-            </Button>
             <Button
               size="sm"
               variant="outline"
@@ -1398,42 +1382,9 @@ export function DrugBatchesPanel({
         )}
       </div>
 
-      {/* Recalled drugs (formulary-level) — shown only in the Recalled view.
-          A drug recall blocks every batch of that drug, including future ones. */}
-      {recalledOnly && recalledDrugs.length > 0 && (
-        <section className="bg-surface-container-lowest rounded-xl shadow-sanctuary">
-          <div className="px-4 pt-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
-              Recalled drugs (all batches blocked) ({recalledDrugs.length})
-            </h3>
-          </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Drug</TableHead>
-                <TableHead>Generic</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead className="text-right">Batches</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {recalledDrugs.map((d) => (
-                <TableRow key={d.id}>
-                  <TableCell className="font-medium">{d.drugName}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{d.genericName ?? '-'}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{d.category?.name ?? '-'}</TableCell>
-                  <TableCell className="text-right">{d._count?.drugBatches ?? 0}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </section>
-      )}
-
       {recallTarget && (
         <RecallBatchDialog batch={recallTarget} onClose={() => setRecallTarget(null)} />
       )}
-      {drugRecallOpen && <RecallDrugDialog onClose={() => setDrugRecallOpen(false)} />}
       {affectedBatchId && (
         <AffectedPatientsDialog
           batchId={affectedBatchId}
@@ -1490,94 +1441,6 @@ function RecallBatchDialog({ batch, onClose }: { batch: DrugBatch; onClose: () =
           <Button variant="destructive" onClick={handleRecall} disabled={recallBatch.isPending}>
             <AlertOctagon className="mr-1.5 h-4 w-4" />
             {recallBatch.isPending ? 'Recalling…' : 'Recall Batch'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// --- Recall a whole drug (and every one of its batches) ---
-export function RecallDrugDialog({ onClose }: { onClose: () => void }) {
-  const [search, setSearch] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [reason, setReason] = useState('');
-
-  const { data: formularyResp } = useFormulary({ search: search || undefined, limit: 25, isActive: true });
-  const drugs = formularyResp?.data.filter((d) => !d.isRecalled) ?? [];
-  const recallDrug = useRecallDrug();
-
-  const handleRecall = async () => {
-    if (!selectedId) return toast.error('Pick a drug');
-    if (!reason.trim()) return toast.error('Recall reason is required');
-    try {
-      await recallDrug.mutateAsync({ id: selectedId, recallReason: reason.trim() });
-      toast.success('Drug recalled — all batches blocked');
-      onClose();
-    } catch (err) {
-      toast.error((err as Error).message ?? 'Failed to recall drug');
-    }
-  };
-
-  return (
-    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Recall Drug (all batches)</DialogTitle>
-          <DialogDescription>
-            Blocks dispensing of every batch of the selected drug — including batches received later.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <Label className="text-xs font-medium">Find drug</Label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Drug name or generic name"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-          </div>
-
-          {drugs.length > 0 && (
-            <div className="max-h-52 overflow-y-auto rounded-md border">
-              {drugs.map((d) => (
-                <button
-                  key={d.id}
-                  onClick={() => setSelectedId(d.id)}
-                  className={cn(
-                    'w-full px-3 py-2 text-left text-sm hover:bg-muted',
-                    selectedId === d.id ? 'bg-primary/10' : '',
-                  )}
-                >
-                  <div className="font-medium">{d.drugName}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {d.genericName ?? ''}
-                    {d.strength ? ` · ${d.strength}` : ''}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="space-y-1.5">
-            <Label className="text-xs font-medium">Recall reason *</Label>
-            <Textarea
-              placeholder="e.g. nationwide product recall by manufacturer..."
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              rows={3}
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button variant="destructive" onClick={handleRecall} disabled={recallDrug.isPending}>
-            <AlertOctagon className="mr-1.5 h-4 w-4" />
-            {recallDrug.isPending ? 'Recalling…' : 'Recall Drug'}
           </Button>
         </DialogFooter>
       </DialogContent>

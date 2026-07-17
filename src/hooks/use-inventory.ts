@@ -50,6 +50,8 @@ export interface Supplier {
   gstNumber: string | null;
   licenseNumber: string | null;
   supplyType: SupplyType | null;
+  /** Credit period: days within which this vendor must be paid. */
+  paymentTermDays: number | null;
   isActive: boolean;
   createdAt: string;
 }
@@ -566,6 +568,8 @@ export interface CreateSupplierInput {
   gstNumber?: string;
   licenseNumber?: string;
   supplyType?: SupplyType;
+  /** Credit period: days within which this vendor must be paid. */
+  paymentTermDays?: number;
 }
 
 export function useCreateSupplier() {
