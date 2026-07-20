@@ -66,6 +66,7 @@ import {
   type CommitInwardResult,
   type FormularyMatch,
   type OcrInvoiceLine,
+  type InwardScanResult,
 } from '@/hooks/use-pharmacy';
 import { useSuppliers, usePurchaseOrders, usePurchaseOrder, useReconcilePurchaseOrder, type PurchaseOrder } from '@/hooks/use-inventory';
 import { useHospitalBranding } from '@/hooks/use-hospital-branding';
@@ -742,13 +743,13 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
   const removeLine = (id: string) =>
     setLines((prev) => (prev.length === 1 ? [emptyLine()] : prev.filter((l) => l.id !== id)));
 
-  const ingest = (text: string) => {
+  const ingest = async (text: string) => {
     const parsed = parseTabular(text);
     if (!parsed.length) {
       toast.error('No rows found. Check the format — one medicine per line.');
       return;
     }
-    const combined = [...lines.filter((l) => l.drugName.trim()), ...withDerivedGst(parsed)];
+    const combined = [...lines.filter((l) => l.drugName.trim()), ...withDerivedGst(await resolveGtinsForDrafts(parsed))];
     setLines(combined);
     setPasteText('');
     setShowPaste(false);
@@ -796,12 +797,12 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
   };
 
   // Confirmed column mapping → append the built draft lines to the grid.
-  const applyMappedLines = (drafts: DraftLine[]) => {
+  const applyMappedLines = async (drafts: DraftLine[]) => {
     if (!drafts.length) {
       toast.error('No usable rows — check the column mapping (Name is required).');
       return;
     }
-    const combined = [...lines.filter((l) => l.drugName.trim()), ...withDerivedGst(drafts)];
+    const combined = [...lines.filter((l) => l.drugName.trim()), ...withDerivedGst(await resolveGtinsForDrafts(drafts))];
     setLines(combined);
     setMapRows(null);
     setStep('entry');
@@ -934,55 +935,81 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
     }
   };
 
+  // A GTIN is worth resolving once it's a full 8–14-digit code or a GS1 2D string.
+  const gtinLooksComplete = (c: string) =>
+    /^\d{8,14}$/.test(c) || c.includes(String.fromCharCode(29));
+
+  // Merge a resolved scan onto a line, filling ONLY empty fields (never clobbers
+  // what the user/sheet already provided). Shared by manual entry and import.
+  const mergeScanIntoLine = (l: DraftLine, res: InwardScanResult, code: string): DraftLine => {
+    const L = res.line;
+    const next = { ...l, gtin: res.gtin ?? code };
+    if (!next.drugName.trim() && L.drugName) next.drugName = L.drugName;
+    if (!next.genericName.trim() && L.genericName) next.genericName = L.genericName;
+    if (!next.manufacturer.trim() && L.manufacturer) next.manufacturer = L.manufacturer;
+    if (!next.strength.trim() && L.strength) next.strength = L.strength;
+    if (!next.dosageForm.trim() && L.dosageForm) next.dosageForm = L.dosageForm;
+    if (!next.packSize.trim() && L.packSize != null) next.packSize = String(L.packSize);
+    if (!next.hsnCode.trim() && L.hsnCode) {
+      next.hsnCode = L.hsnCode;
+      if (!next.gstPercent.trim()) {
+        const g = gstForHsn(L.hsnCode);
+        if (g) next.gstPercent = g;
+      }
+    }
+    // A GS1 2D pack also carries batch / expiry / mfg — fill if empty.
+    if (!next.batchNumber.trim() && L.batchNumber) next.batchNumber = L.batchNumber;
+    if (!next.expiryDate && L.expiryDate) next.expiryDate = L.expiryDate;
+    if (!next.manufacturingDate && L.manufacturingDate) next.manufacturingDate = L.manufacturingDate;
+    return next;
+  };
+
   // Typing / pasting a GTIN into a line resolves it exactly like a camera scan:
   // one lookup fills the product identity (name, composition, manufacturer,
   // strength, form, pack), the HSN → GST, and — from a GS1 2D code — the batch /
-  // expiry / mfg printed on the pack. Fills only EMPTY fields so it never
-  // clobbers what the user typed. Runs on blur, once the code looks complete.
+  // expiry / mfg printed on the pack. Runs on blur, once the code looks complete.
   const resolveGtinForLine = async (id: string, code: string) => {
     const c = code.trim();
-    const looksComplete = /^\d{8,14}$/.test(c) || c.includes(String.fromCharCode(29));
-    if (!looksComplete) return;
+    if (!gtinLooksComplete(c)) return;
     try {
       const res = await inwardScan.mutateAsync(c);
-      const L = res.line;
-      if (res.resolvedVia === 'none' && !L.drugName) {
+      if (res.resolvedVia === 'none' && !res.line.drugName) {
         toast.info('GTIN not recognised — fill the details; it will be remembered on save.');
         return;
       }
-      setLines((prev) =>
-        prev.map((l) => {
-          if (l.id !== id) return l;
-          const next = { ...l, gtin: res.gtin ?? c };
-          if (!next.drugName.trim() && L.drugName) next.drugName = L.drugName;
-          if (!next.genericName.trim() && L.genericName) next.genericName = L.genericName;
-          if (!next.manufacturer.trim() && L.manufacturer) next.manufacturer = L.manufacturer;
-          if (!next.strength.trim() && L.strength) next.strength = L.strength;
-          if (!next.dosageForm.trim() && L.dosageForm) next.dosageForm = L.dosageForm;
-          if (!next.packSize.trim() && L.packSize != null) next.packSize = String(L.packSize);
-          if (!next.hsnCode.trim() && L.hsnCode) {
-            next.hsnCode = L.hsnCode;
-            if (!next.gstPercent.trim()) {
-              const g = gstForHsn(L.hsnCode);
-              if (g) next.gstPercent = g;
-            }
-          }
-          // A GS1 2D pack also carries batch / expiry / mfg — fill if empty.
-          if (!next.batchNumber.trim() && L.batchNumber) next.batchNumber = L.batchNumber;
-          if (!next.expiryDate && L.expiryDate) next.expiryDate = L.expiryDate;
-          if (!next.manufacturingDate && L.manufacturingDate) next.manufacturingDate = L.manufacturingDate;
-          return next;
-        }),
-      );
+      setLines((prev) => prev.map((l) => (l.id === id ? mergeScanIntoLine(l, res, c) : l)));
       const src =
         res.resolvedVia === 'formulary_gtin' ? 'from your stock'
           : res.resolvedVia === 'drugmaster_gtin' ? 'from the catalog'
             : 'from the barcode';
       const caseNote = res.caseMultiplier > 1 ? ` · outer case = ${res.caseMultiplier} units` : '';
-      if (L.drugName) toast.success(`Resolved ${L.drugName} ${src}${caseNote}`);
+      if (res.line.drugName) toast.success(`Resolved ${res.line.drugName} ${src}${caseNote}`);
     } catch {
       // Best-effort — leave the typed GTIN as-is for manual completion.
     }
+  };
+
+  // Import parity: resolve each imported line's GTIN (parallel, capped) so a
+  // vendor sheet that carries only Name + GTIN comes in with identity + HSN/GST
+  // filled. Capped so a huge sheet doesn't flood the lookup API.
+  const resolveGtinsForDrafts = async (drafts: DraftLine[]): Promise<DraftLine[]> => {
+    const CAP = 40;
+    const targets = drafts.filter((l) => gtinLooksComplete(l.gtin.trim())).slice(0, CAP);
+    if (!targets.length) return drafts;
+    const resolved = await Promise.all(
+      targets.map(async (l) => {
+        try {
+          const res = await inwardScan.mutateAsync(l.gtin.trim());
+          if (res.resolvedVia === 'none' && !res.line.drugName) return null;
+          return { id: l.id, line: mergeScanIntoLine(l, res, l.gtin.trim()) };
+        } catch {
+          return null;
+        }
+      }),
+    );
+    const byId = new Map(resolved.filter(Boolean).map((r) => [r!.id, r!.line]));
+    if (byId.size) toast.success(`Auto-filled ${byId.size} item(s) from their GTIN`);
+    return drafts.map((l) => byId.get(l.id) ?? l);
   };
 
   // Score the entered lines against the formulary and show inline matches on the
