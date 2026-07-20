@@ -919,16 +919,26 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         if (idx >= 0) return prev.map((l, i) => (i === idx ? { ...seed, id: l.id } : l));
         return [...prev, { ...seed, id: nextId() }];
       });
+      // What the GS1 code carried — GTIN identifies the product; batch / expiry /
+      // serial are the per-batch/per-pack data read from the DataMatrix.
+      const decoded = [
+        res.gtin && `GTIN ${res.gtin}`,
+        res.parsed.batchNumber && `batch ${res.parsed.batchNumber}`,
+        res.parsed.expiryDate && `exp ${res.parsed.expiryDate}`,
+        res.parsed.serial && `serial ${res.parsed.serial}`,
+      ].filter(Boolean).join(' · ');
       if (res.resolvedVia === 'none' && !L.drugName) {
-        toast.warning('Barcode not recognised — batch/expiry filled where possible; complete the line manually.');
+        toast.warning(
+          decoded
+            ? `Barcode decoded (${decoded}) but not in your catalog — complete the line manually.`
+            : 'Barcode not recognised — complete the line manually.',
+        );
       } else {
         const via =
           res.resolvedVia === 'formulary_gtin' ? 'in formulary'
             : res.resolvedVia === 'drugmaster_gtin' ? 'from catalog'
               : 'GS1 parsed';
-        toast.success(
-          `Scanned ${L.drugName || 'pack'} · ${via}${L.batchNumber ? ` · batch ${L.batchNumber}` : ''}`,
-        );
+        toast.success(`Scanned ${L.drugName || 'pack'} · ${via}${decoded ? ` · ${decoded}` : ''}`);
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Scan failed');
