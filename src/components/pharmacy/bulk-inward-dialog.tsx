@@ -74,6 +74,7 @@ import { useAiStatus } from '@/hooks/use-ai';
 import { useDrugMasterSearch, useHsnGstRates, matchHsnGstRate, type HsnGstRate } from '@/hooks/use-drug-master';
 import { VendorFormDialog } from '@/components/inventory/vendor-form-dialog';
 import { BarcodeScanner } from '@/components/shared/barcode-scanner';
+import { AddNicknameButton } from '@/components/pharmacy/add-nickname-button';
 
 // ============================================================
 // G1 — Bulk Stock Inward (CSV / OCR / manual multi-row)
@@ -2730,9 +2731,19 @@ function DoneStep({ lines, result }: { lines: DraftLine[]; result: CommitInwardR
               <span className="truncate font-medium">{r.drugName || lines[r.index]?.drugName}</span>
               <Badge variant="outline" className="text-[10px] capitalize">{r.action}</Badge>
             </div>
-            <span className={cn('text-xs', r.status === 'error' ? 'text-red-600' : 'text-muted-foreground')}>
-              {r.status === 'ok' ? 'Stock posted' : r.message}
-            </span>
+            <div className="flex shrink-0 items-center gap-2">
+              <span className={cn('text-xs', r.status === 'error' ? 'text-red-600' : 'text-muted-foreground')}>
+                {r.status === 'ok' ? 'Stock posted' : r.message}
+              </span>
+              {/* Give the just-stocked medicine a personal nickname on the spot. */}
+              {r.status === 'ok' && r.formularyId && (
+                <AddNicknameButton
+                  drugId={r.formularyId}
+                  drugName={r.drugName || lines[r.index]?.drugName || 'medicine'}
+                  variant="labelled"
+                />
+              )}
+            </div>
           </div>
         ))}
       </div>
