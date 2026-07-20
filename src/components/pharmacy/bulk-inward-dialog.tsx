@@ -70,7 +70,7 @@ import {
 import { useSuppliers, usePurchaseOrders, usePurchaseOrder, useReconcilePurchaseOrder, type PurchaseOrder } from '@/hooks/use-inventory';
 import { useHospitalBranding } from '@/hooks/use-hospital-branding';
 import { useAiStatus } from '@/hooks/use-ai';
-import { useDrugMasterSearch } from '@/hooks/use-drug-master';
+import { useDrugMasterSearch, useHsnGstRates, matchHsnGstRate, type HsnGstRate } from '@/hooks/use-drug-master';
 import { VendorFormDialog } from '@/components/inventory/vendor-form-dialog';
 import { BarcodeScanner } from '@/components/shared/barcode-scanner';
 
@@ -707,6 +707,28 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
 
   const updateLine = (id: string, field: DraftCol, value: string) =>
     setLines((prev) => prev.map((l) => (l.id === id ? { ...l, [field]: value } : l)));
+
+  // HSN → GST tax master. Setting a line's HSN auto-fills its GST from here
+  // (India taxes medicines by HSN) — but only when GST is still blank, so a
+  // hand-typed rate is never overwritten. Derives a rate for a line's HSN too.
+  const { data: hsnRates = [] } = useHsnGstRates();
+  const gstForHsn = (code: string): string => {
+    const hit = matchHsnGstRate(code, hsnRates);
+    return hit ? String(hit.gstRate) : '';
+  };
+  const applyHsn = (id: string, value: string) =>
+    setLines((prev) =>
+      prev.map((l) => {
+        if (l.id !== id) return l;
+        const next = { ...l, hsnCode: value };
+        if (!l.gstPercent.trim()) {
+          const gst = gstForHsn(value);
+          if (gst) next.gstPercent = gst;
+        }
+        return next;
+      }),
+    );
+
   const addLine = () => setLines((prev) => [...prev, emptyLine()]);
   const removeLine = (id: string) =>
     setLines((prev) => (prev.length === 1 ? [emptyLine()] : prev.filter((l) => l.id !== id)));
@@ -805,7 +827,8 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
     mrp: s(o.mrp),
     purchasePrice: s(o.purchasePrice),
     purchaseDiscountPercent: s(o.purchaseDiscountPercent),
-    gstPercent: s(o.gstPercent),
+    // Prefer the GST printed on the invoice; else derive it from the read HSN.
+    gstPercent: s(o.gstPercent) || gstForHsn(o.hsnCode ?? ''),
     sellingPrice: s(o.sellingPrice),
   });
 
@@ -877,7 +900,8 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         mrp: '',
         purchasePrice: '',
         purchaseDiscountPercent: '',
-        gstPercent: '',
+        // Auto-fill GST from the scanned pack's HSN when one was resolved.
+        gstPercent: gstForHsn(L.hsnCode || ''),
         sellingPrice: '',
       };
       setLines((prev) => {
@@ -966,6 +990,9 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
           dosageForm: (c.dosageForm as string) ?? l.dosageForm,
           packSize: c.packSize != null ? String(c.packSize) : l.packSize,
           hsnCode: c.hsnCode ?? l.hsnCode,
+          // Adopting the catalog HSN also fills GST from the tax master (unless
+          // the user already typed a rate) — so a catalog pick carries both.
+          gstPercent: l.gstPercent.trim() || gstForHsn(c.hsnCode ?? l.hsnCode),
           gtin: c.gtin ?? l.gtin,
           drugMasterId: c.drugMasterId,
         };
@@ -1274,6 +1301,8 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
               purchaseTotals={purchaseTotals}
               lines={lines}
               updateLine={updateLine}
+              applyHsn={applyHsn}
+              hsnRates={hsnRates}
               addLine={addLine}
               removeLine={removeLine}
               showPaste={showPaste}
@@ -1641,6 +1670,9 @@ function EntryStep(props: {
   purchaseTotals: { gross: number; lineDisc: number; billPct: number; invoiceDisc: number; net: number; gst: number; landing: number };
   lines: DraftLine[];
   updateLine: (id: string, field: DraftCol, value: string) => void;
+  // Setting a line's HSN also auto-fills its GST from the tax master.
+  applyHsn: (id: string, value: string) => void;
+  hsnRates: HsnGstRate[];
   addLine: () => void;
   removeLine: (id: string) => void;
   showPaste: boolean;
@@ -1671,7 +1703,7 @@ function EntryStep(props: {
     suppliers, supplierId, setSupplierId, selectedSupplier, invoiceNumber, setInvoiceNumber,
     openPOs, poId, poNumber, poItems, poDetail, onSelectPO, onClearPO,
     invoiceDate, setInvoiceDate, invoiceDiscPct, setInvoiceDiscPct, invoiceDiscAmt, setInvoiceDiscAmt,
-    purchaseTotals, lines, updateLine, addLine, removeLine, showPaste, setShowPaste,
+    purchaseTotals, lines, updateLine, applyHsn, hsnRates, addLine, removeLine, showPaste, setShowPaste,
     pasteText, setPasteText, ingest, fileRef, onFile, xlsxRef, onXlsxFile,
     ocrRef, onOcrFile, ocrEnabled, ocrPending, onScan, lineIssues,
     matched, decisions, setDecision, onPickCatalog, onUndoCatalog, reviewing,
@@ -2303,7 +2335,20 @@ function EntryStep(props: {
                       <Input className={cell} type="number" min={0} value={l.minStock} onChange={(e) => updateLine(l.id, 'minStock', e.target.value)} />
                     </LineField>
                     <LineField label="HSN code">
-                      <Input className={cell} value={l.hsnCode} onChange={(e) => updateLine(l.id, 'hsnCode', e.target.value)} />
+                      <Input
+                        className={cell}
+                        value={l.hsnCode}
+                        onChange={(e) => applyHsn(l.id, e.target.value)}
+                        placeholder="e.g. 3004"
+                      />
+                      {(() => {
+                        const hit = matchHsnGstRate(l.hsnCode, hsnRates);
+                        return hit ? (
+                          <p className="mt-1 text-[10px] leading-tight text-primary">
+                            {hit.gstRate}% GST{hit.description ? ` · ${hit.description}` : ''}
+                          </p>
+                        ) : null;
+                      })()}
                     </LineField>
                   </div>
                 </div>

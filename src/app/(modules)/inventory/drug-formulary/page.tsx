@@ -56,6 +56,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ImportFromCatalogDialog } from '@/components/pharmacy/import-from-catalog-dialog';
+import { useHsnGstRates, matchHsnGstRate } from '@/hooks/use-drug-master';
 
 const DOSAGE_FORMS: DosageForm[] = [
   'tablet',
@@ -240,6 +241,19 @@ function PharmacyInventoryPageInner() {
 
   const updateField = (field: keyof FormState, value: string | boolean) =>
     setFormData((prev) => ({ ...prev, [field]: value }));
+
+  // HSN → GST tax master: setting the HSN auto-fills GST (India taxes medicines
+  // by HSN) unless a rate was already typed. Also drives the matched-rate hint.
+  const { data: hsnRates = [] } = useHsnGstRates();
+  const updateHsn = (value: string) =>
+    setFormData((prev) => {
+      const next = { ...prev, hsnCode: value };
+      if (!prev.taxPercent.trim()) {
+        const hit = matchHsnGstRate(value, hsnRates);
+        if (hit) next.taxPercent = String(hit.gstRate);
+      }
+      return next;
+    });
 
   // Create a new formulary drug. On the first attempt (force=false) the server
   // may detect a likely duplicate and return suggestions instead of creating —
@@ -568,9 +582,17 @@ function PharmacyInventoryPageInner() {
                     id="hsnCode"
                     className="font-mono"
                     value={formData.hsnCode}
-                    onChange={(e) => updateField('hsnCode', e.target.value)}
+                    onChange={(e) => updateHsn(e.target.value)}
                     placeholder="e.g. 3004"
                   />
+                  {(() => {
+                    const hit = matchHsnGstRate(formData.hsnCode, hsnRates);
+                    return hit ? (
+                      <p className="text-[11px] leading-tight text-primary">
+                        {hit.gstRate}% GST{hit.description ? ` · ${hit.description}` : ''}
+                      </p>
+                    ) : null;
+                  })()}
                 </div>
               </div>
               <div className="space-y-1.5">

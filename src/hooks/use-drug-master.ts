@@ -59,6 +59,51 @@ export interface DrugMasterSearchResult {
   schedule: string | null;
 }
 
+// ============================================================
+// HSN → GST tax reference. In India the GST rate is decided by an item's HSN
+// code; the stock-inward UI caches this reference once and auto-fills GST from
+// the entered HSN locally (no round trip per keystroke).
+// ============================================================
+
+export interface HsnGstRate {
+  id: string;
+  hsnCode: string;
+  description: string | null;
+  gstRate: number;
+  category: string | null;
+}
+
+export function useHsnGstRates(enabled = true) {
+  return useQuery({
+    queryKey: ['drug-master', 'hsn-gst'],
+    queryFn: async () => {
+      const response = await apiGet<HsnGstRate[]>('/drug-master/hsn');
+      return response.data ?? [];
+    },
+    enabled,
+    // Platform reference data — rarely changes; cache generously.
+    staleTime: 60 * 60 * 1000,
+  });
+}
+
+/**
+ * Longest-prefix match against the HSN → GST reference: an 8-digit tariff item
+ * (e.g. ORS 30049010 → nil) wins over its 4-digit chapter heading (3004 → 5%).
+ * Mirrors the backend matcher so client and server agree. Returns null when no
+ * seeded row is a prefix of the input.
+ */
+export function matchHsnGstRate(code: string | null | undefined, rows: HsnGstRate[]): HsnGstRate | null {
+  const input = (code ?? '').replace(/\D/g, '');
+  if (!input || !rows.length) return null;
+  let best: HsnGstRate | null = null;
+  for (const r of rows) {
+    if (input === r.hsnCode || input.startsWith(r.hsnCode)) {
+      if (!best || r.hsnCode.length > best.hsnCode.length) best = r;
+    }
+  }
+  return best;
+}
+
 export function useDrugMasterSearch(query: string, enabled = true) {
   const q = query.trim();
   return useQuery({
