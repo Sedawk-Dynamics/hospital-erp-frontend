@@ -728,6 +728,15 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         return next;
       }),
     );
+  // Imported/pasted rows should behave like typed ones: fill a blank GST from
+  // each line's HSN so the rate shows in the grid immediately (the backend also
+  // derives it at commit, but this makes the auto-fill visible up front).
+  const withDerivedGst = (drafts: DraftLine[]): DraftLine[] =>
+    drafts.map((l) => {
+      if (l.gstPercent.trim() || !l.hsnCode.trim()) return l;
+      const gst = gstForHsn(l.hsnCode);
+      return gst ? { ...l, gstPercent: gst } : l;
+    });
 
   const addLine = () => setLines((prev) => [...prev, emptyLine()]);
   const removeLine = (id: string) =>
@@ -739,7 +748,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
       toast.error('No rows found. Check the format — one medicine per line.');
       return;
     }
-    const combined = [...lines.filter((l) => l.drugName.trim()), ...parsed];
+    const combined = [...lines.filter((l) => l.drugName.trim()), ...withDerivedGst(parsed)];
     setLines(combined);
     setPasteText('');
     setShowPaste(false);
@@ -792,7 +801,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
       toast.error('No usable rows — check the column mapping (Name is required).');
       return;
     }
-    const combined = [...lines.filter((l) => l.drugName.trim()), ...drafts];
+    const combined = [...lines.filter((l) => l.drugName.trim()), ...withDerivedGst(drafts)];
     setLines(combined);
     setMapRows(null);
     setStep('entry');
