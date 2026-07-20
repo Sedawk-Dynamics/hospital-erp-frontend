@@ -8,6 +8,7 @@ import {
   ScanLine,
   Plus,
   Minus,
+  Tag,
   Trash2,
   User,
   Package,
@@ -1028,7 +1029,14 @@ function PharmacyPOS() {
                       }
                       className="min-w-0 flex-1 text-left"
                     >
-                      <p className="text-sm font-medium text-foreground truncate">{item.drugName}</p>
+                      <p className="text-sm font-medium text-foreground truncate">
+                        {item.drugName}
+                        {item.matchedNickname && (
+                          <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-px align-middle text-[10px] font-semibold text-primary">
+                            <Tag className="h-2.5 w-2.5" /> {item.matchedNickname}
+                          </span>
+                        )}
+                      </p>
                       <p className="text-xs text-muted-foreground truncate">
                         {item.genericName && `${item.genericName} · `}
                         {item.dosageForm && `${item.dosageForm} `}

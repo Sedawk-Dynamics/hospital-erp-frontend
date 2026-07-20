@@ -38,6 +38,7 @@ import {
   Percent,
   Sparkles,
   History,
+  Tag,
   type LucideIcon,
 } from 'lucide-react';
 import type { ModuleKey } from '@/stores/module-store';
@@ -130,6 +131,8 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Prescription Queue', href: '/pharmacy/queue', icon: ClipboardList },
       { label: 'Pre-Pack Holds', href: '/pharmacy/pre-pack', icon: PackagePlus },
       { label: 'Returns', href: '/pharmacy/returns', icon: ArrowLeftRight },
+      // Personal medicine shorthand — private to each pharmacist.
+      { label: 'My Nicknames', href: '/pharmacy/nicknames', icon: Tag },
       // pharmacy_admin only (management + financials). admin/super_admin bypass.
       { label: 'Billing Transaction', href: '/pharmacy/transactions', icon: ArrowLeftRight, restrictTo: ['pharmacy_admin'] },
       { label: 'Reports', href: '/pharmacy/reports', icon: BarChart3, restrictTo: ['pharmacy_admin'] },
