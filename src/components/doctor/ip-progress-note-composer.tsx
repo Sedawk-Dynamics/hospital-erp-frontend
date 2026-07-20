@@ -11,9 +11,13 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { apiGet } from '@/lib/api';
-import { useCreateProgressNote, type SoapSectionPayload } from '@/hooks/use-doctor';
+import { formatDate } from '@/lib/date-utils';
+import { useCreateProgressNote, usePrescriptions, type SoapSectionPayload } from '@/hooks/use-doctor';
 import { useRecordDoctorVisit } from '@/hooks/use-ip-ledger';
 
 // IP progress note = a doctor's daily round / visit note that accumulates into
@@ -56,6 +60,12 @@ export function IpProgressNoteComposer({
   const [assessment, setAssessment] = useState('');
   const [plan, setPlan] = useState('');
   const [billVisit, setBillVisit] = useState(defaultBillVisit);
+  // Optional prescription to connect this note to (so prescription viewers see it).
+  const [prescriptionId, setPrescriptionId] = useState<string>('');
+
+  // The patient's prescriptions, for the optional "connect to prescription" picker.
+  const { data: rxList } = usePrescriptions({ patientId, limit: 20 });
+  const prescriptions = rxList?.data ?? [];
 
   // Bind the note to the patient's active IP visit (the ProgressNote row needs a
   // visitId; admissionId flags it as an IP running-log note).
@@ -74,7 +84,7 @@ export function IpProgressNoteComposer({
 
   const reset = () => {
     setCondition('stable'); setSubjective(''); setObjective('');
-    setAssessment(''); setPlan(''); setBillVisit(defaultBillVisit);
+    setAssessment(''); setPlan(''); setBillVisit(defaultBillVisit); setPrescriptionId('');
   };
 
   const anyFilled = [subjective, objective, assessment, plan].some((s) => s.trim());
@@ -97,6 +107,7 @@ export function IpProgressNoteComposer({
         patientId,
         visitId,
         admissionId,
+        prescriptionId: prescriptionId || undefined,
         noteType: 'general',
         content: buildContent(),
         subjective: free(subjective),
@@ -159,6 +170,32 @@ export function IpProgressNoteComposer({
               ))}
             </div>
           </div>
+
+          {/* Optional: connect this note to one of the patient's prescriptions. */}
+          {prescriptions.length > 0 && (
+            <div>
+              <Label className="mb-1 block text-xs text-muted-foreground">Connect to prescription (optional)</Label>
+              <Select value={prescriptionId || 'none'} onValueChange={(v) => setPrescriptionId(v === 'none' ? '' : (v ?? ''))}>
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue placeholder="Not linked" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— Not linked —</SelectItem>
+                  {prescriptions.map((p) => {
+                    const items = (p as { items?: Array<{ drugName?: string }> }).items ?? [];
+                    const first = items[0]?.drugName;
+                    const extra = items.length > 1 ? ` +${items.length - 1}` : '';
+                    const date = (p as { createdAt?: string }).createdAt ? formatDate((p as { createdAt?: string }).createdAt!) : '';
+                    const label = [date, first ? `${first}${extra}` : `${items.length} item(s)`].filter(Boolean).join(' · ');
+                    return <SelectItem key={p.id} value={p.id}>{label || 'Prescription'}</SelectItem>;
+                  })}
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                A linked note is visible to anyone who can view that prescription.
+              </p>
+            </div>
+          )}
 
           <SoapField label="Subjective" hint="Overnight events, complaints, how the patient feels" value={subjective} onChange={setSubjective} />
           <SoapField label="Objective" hint="Examination findings, today's vitals, device/line checks" value={objective} onChange={setObjective} />

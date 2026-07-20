@@ -9,6 +9,7 @@ import {
   Plus,
   Minus,
   Tag,
+  NotebookPen,
   Trash2,
   User,
   Package,
@@ -1358,6 +1359,23 @@ function PharmacyPOS() {
                   ? `Dr. ${activePrescription.doctor.user.firstName} ${activePrescription.doctor.user.lastName}`
                   : 'Doctor'}
               </p>
+              {/* Progress notes the doctor connected to this prescription. */}
+              {(activePrescription.progressNotes?.length ?? 0) > 0 && (
+                <div className="mt-2 space-y-1.5 border-t border-emerald-200 pt-2">
+                  <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                    <NotebookPen className="h-3 w-3" /> Doctor&apos;s progress notes
+                  </p>
+                  {activePrescription.progressNotes!.map((n) => (
+                    <div key={n.id} className="rounded bg-white/70 px-2 py-1 text-[11px] text-emerald-900">
+                      <p className="whitespace-pre-wrap">{n.content}</p>
+                      <p className="mt-0.5 text-[10px] text-emerald-600">
+                        {n.doctor?.user ? `Dr. ${n.doctor.user.firstName} ${n.doctor.user.lastName}` : 'Doctor'}
+                        {' · '}{formatDate(n.createdAt)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

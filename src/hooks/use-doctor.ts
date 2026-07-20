@@ -540,6 +540,8 @@ export interface CreateProgressNoteInput {
   patientId: string;
   visitId: string;
   admissionId?: string | null;
+  // Optional link to a prescription — the note then rides along with it.
+  prescriptionId?: string | null;
   noteType?: string;
   content: string;
   impressions?: string | null;

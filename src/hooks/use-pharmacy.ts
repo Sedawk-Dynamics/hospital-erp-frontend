@@ -1564,6 +1564,15 @@ export interface PrescriptionListItem {
       price?: number | string | null;
     } | null;
   }>;
+  // Progress notes a doctor linked to this prescription (visible to anyone who
+  // can view the prescription).
+  progressNotes?: Array<{
+    id: string;
+    createdAt: string;
+    noteType: string | null;
+    content: string;
+    doctor?: { user?: { firstName: string; lastName: string } | null } | null;
+  }>;
 }
 
 export interface PrescriptionQueueParams extends PaginatedParams {
