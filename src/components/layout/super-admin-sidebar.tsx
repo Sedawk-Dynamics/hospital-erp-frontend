@@ -25,6 +25,7 @@ import {
   Pill,
   Stethoscope,
   Sparkles,
+  Receipt,
   Image as ImageIcon,
 } from 'lucide-react';
 import { PlatformLogo } from '@/components/branding/platform-logo';
@@ -41,6 +42,7 @@ const NAV_ITEMS = [
   { href: '/super-admin/lab-templates', label: 'Lab Templates', icon: Beaker },
   { href: '/super-admin/lab-units', label: 'Lab Unit Groups', icon: Ruler },
   { href: '/super-admin/drug-master', label: 'Drug Master', icon: Pill },
+  { href: '/super-admin/hsn-gst', label: 'HSN → GST', icon: Receipt },
   { href: '/super-admin/icd-codes', label: 'ICD Codes', icon: Stethoscope },
   { href: '/super-admin/ai-settings', label: 'AI Settings', icon: Sparkles },
   { href: '/super-admin/branding', label: 'Branding', icon: ImageIcon },

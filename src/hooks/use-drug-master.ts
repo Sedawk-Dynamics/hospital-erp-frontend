@@ -71,6 +71,10 @@ export interface HsnGstRate {
   description: string | null;
   gstRate: number;
   category: string | null;
+  // Present on the super-admin list (`/hsn/all`); absent on the cached public list.
+  isActive?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export function useHsnGstRates(enabled = true) {
@@ -83,6 +87,70 @@ export function useHsnGstRates(enabled = true) {
     enabled,
     // Platform reference data — rarely changes; cache generously.
     staleTime: 60 * 60 * 1000,
+  });
+}
+
+// ── Super-admin management of the HSN → GST reference ──
+
+export interface HsnGstRateInput {
+  hsnCode: string;
+  description?: string | null;
+  gstRate: number;
+  category?: string | null;
+  isActive?: boolean;
+}
+
+const hsnGstKeys = {
+  all: ['drug-master', 'hsn-gst'] as const,
+  admin: ['drug-master', 'hsn-gst', 'all'] as const,
+};
+
+export function useHsnGstRatesAdmin(enabled = true) {
+  return useQuery({
+    queryKey: hsnGstKeys.admin,
+    queryFn: async () => {
+      const response = await apiGet<HsnGstRate[]>('/drug-master/hsn/all');
+      return response.data ?? [];
+    },
+    enabled,
+  });
+}
+
+function invalidateHsn(qc: ReturnType<typeof useQueryClient>) {
+  // Refresh both the admin table and the cached public reference used at inward.
+  qc.invalidateQueries({ queryKey: hsnGstKeys.all });
+}
+
+export function useCreateHsnGstRate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: HsnGstRateInput) => {
+      const response = await apiPost<HsnGstRate>('/drug-master/hsn', data);
+      return response.data;
+    },
+    onSuccess: () => invalidateHsn(qc),
+  });
+}
+
+export function useUpdateHsnGstRate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...data }: { id: string } & Partial<HsnGstRateInput>) => {
+      const response = await apiPut<HsnGstRate>(`/drug-master/hsn/${id}`, data);
+      return response.data;
+    },
+    onSuccess: () => invalidateHsn(qc),
+  });
+}
+
+export function useDeleteHsnGstRate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiDelete<{ id: string }>(`/drug-master/hsn/${id}`);
+      return response.data;
+    },
+    onSuccess: () => invalidateHsn(qc),
   });
 }
 
