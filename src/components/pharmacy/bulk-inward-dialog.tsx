@@ -934,6 +934,57 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
     }
   };
 
+  // Typing / pasting a GTIN into a line resolves it exactly like a camera scan:
+  // one lookup fills the product identity (name, composition, manufacturer,
+  // strength, form, pack), the HSN → GST, and — from a GS1 2D code — the batch /
+  // expiry / mfg printed on the pack. Fills only EMPTY fields so it never
+  // clobbers what the user typed. Runs on blur, once the code looks complete.
+  const resolveGtinForLine = async (id: string, code: string) => {
+    const c = code.trim();
+    const looksComplete = /^\d{8,14}$/.test(c) || c.includes(String.fromCharCode(29));
+    if (!looksComplete) return;
+    try {
+      const res = await inwardScan.mutateAsync(c);
+      const L = res.line;
+      if (res.resolvedVia === 'none' && !L.drugName) {
+        toast.info('GTIN not recognised — fill the details; it will be remembered on save.');
+        return;
+      }
+      setLines((prev) =>
+        prev.map((l) => {
+          if (l.id !== id) return l;
+          const next = { ...l, gtin: res.gtin ?? c };
+          if (!next.drugName.trim() && L.drugName) next.drugName = L.drugName;
+          if (!next.genericName.trim() && L.genericName) next.genericName = L.genericName;
+          if (!next.manufacturer.trim() && L.manufacturer) next.manufacturer = L.manufacturer;
+          if (!next.strength.trim() && L.strength) next.strength = L.strength;
+          if (!next.dosageForm.trim() && L.dosageForm) next.dosageForm = L.dosageForm;
+          if (!next.packSize.trim() && L.packSize != null) next.packSize = String(L.packSize);
+          if (!next.hsnCode.trim() && L.hsnCode) {
+            next.hsnCode = L.hsnCode;
+            if (!next.gstPercent.trim()) {
+              const g = gstForHsn(L.hsnCode);
+              if (g) next.gstPercent = g;
+            }
+          }
+          // A GS1 2D pack also carries batch / expiry / mfg — fill if empty.
+          if (!next.batchNumber.trim() && L.batchNumber) next.batchNumber = L.batchNumber;
+          if (!next.expiryDate && L.expiryDate) next.expiryDate = L.expiryDate;
+          if (!next.manufacturingDate && L.manufacturingDate) next.manufacturingDate = L.manufacturingDate;
+          return next;
+        }),
+      );
+      const src =
+        res.resolvedVia === 'formulary_gtin' ? 'from your stock'
+          : res.resolvedVia === 'drugmaster_gtin' ? 'from the catalog'
+            : 'from the barcode';
+      const caseNote = res.caseMultiplier > 1 ? ` · outer case = ${res.caseMultiplier} units` : '';
+      if (L.drugName) toast.success(`Resolved ${L.drugName} ${src}${caseNote}`);
+    } catch {
+      // Best-effort — leave the typed GTIN as-is for manual completion.
+    }
+  };
+
   // Score the entered lines against the formulary and show inline matches on the
   // SAME screen — each line gets its related drugs + map/add-new (no separate
   // step). Matching only needs the product name; batch/expiry are validated later
@@ -1312,6 +1363,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
               updateLine={updateLine}
               applyHsn={applyHsn}
               hsnRates={hsnRates}
+              onResolveGtin={resolveGtinForLine}
               addLine={addLine}
               removeLine={removeLine}
               showPaste={showPaste}
@@ -1682,6 +1734,8 @@ function EntryStep(props: {
   // Setting a line's HSN also auto-fills its GST from the tax master.
   applyHsn: (id: string, value: string) => void;
   hsnRates: HsnGstRate[];
+  // Resolve a typed/pasted GTIN → fill the line's identity + HSN/GST + batch.
+  onResolveGtin: (id: string, code: string) => void;
   addLine: () => void;
   removeLine: (id: string) => void;
   showPaste: boolean;
@@ -1712,7 +1766,7 @@ function EntryStep(props: {
     suppliers, supplierId, setSupplierId, selectedSupplier, invoiceNumber, setInvoiceNumber,
     openPOs, poId, poNumber, poItems, poDetail, onSelectPO, onClearPO,
     invoiceDate, setInvoiceDate, invoiceDiscPct, setInvoiceDiscPct, invoiceDiscAmt, setInvoiceDiscAmt,
-    purchaseTotals, lines, updateLine, applyHsn, hsnRates, addLine, removeLine, showPaste, setShowPaste,
+    purchaseTotals, lines, updateLine, applyHsn, hsnRates, onResolveGtin, addLine, removeLine, showPaste, setShowPaste,
     pasteText, setPasteText, ingest, fileRef, onFile, xlsxRef, onXlsxFile,
     ocrRef, onOcrFile, ocrEnabled, ocrPending, onScan, lineIssues,
     matched, decisions, setDecision, onPickCatalog, onUndoCatalog, reviewing,
@@ -2171,7 +2225,13 @@ function EntryStep(props: {
                     <div className="grid grid-cols-3 gap-1.5">
                       <Input className={cn(cell, 'text-muted-foreground')} value={l.genericName} onChange={(e) => updateLine(l.id, 'genericName', e.target.value)} placeholder="composition" />
                       <Input className={cell} value={l.strength} onChange={(e) => updateLine(l.id, 'strength', e.target.value)} placeholder="strength · 40mg" />
-                      <Input className={cn(cell, 'font-mono text-muted-foreground')} value={l.gtin} onChange={(e) => updateLine(l.id, 'gtin', e.target.value)} placeholder="GTIN / barcode" />
+                      <Input
+                        className={cn(cell, 'font-mono text-muted-foreground')}
+                        value={l.gtin}
+                        onChange={(e) => updateLine(l.id, 'gtin', e.target.value)}
+                        onBlur={(e) => onResolveGtin(l.id, e.target.value)}
+                        placeholder="GTIN / barcode → auto-fills"
+                      />
                     </div>
                   </div>
                   <div className="space-y-1">

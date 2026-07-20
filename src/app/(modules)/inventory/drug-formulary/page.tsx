@@ -38,6 +38,7 @@ import {
   useSuggestDrugMaster,
   useCreateBatch,
   useFormularyMatches,
+  useInwardScan,
   isDuplicateSuspected,
   type FormularyItem,
   type FormularyMatch,
@@ -254,6 +255,46 @@ function PharmacyInventoryPageInner() {
       }
       return next;
     });
+
+  // GTIN → product identity. Typing / pasting a GTIN resolves it against your
+  // stock, then the platform catalog, and fills the empty fields (name,
+  // composition, manufacturer, strength, form, pack, HSN → GST). Runs on blur.
+  const inwardScan = useInwardScan();
+  const resolveGtin = async (code: string) => {
+    const c = code.trim();
+    if (!/^\d{8,14}$/.test(c) && !c.includes(String.fromCharCode(29))) return;
+    try {
+      const res = await inwardScan.mutateAsync(c);
+      const L = res.line;
+      if (res.resolvedVia === 'none' && !L.drugName) return;
+      setFormData((prev) => {
+        const next = { ...prev, gtin: res.gtin ?? c };
+        if (!next.drugName.trim() && L.drugName) next.drugName = L.drugName;
+        if (!next.genericName.trim() && L.genericName) next.genericName = L.genericName;
+        if (!next.manufacturer.trim() && L.manufacturer) next.manufacturer = L.manufacturer;
+        if (!next.strength.trim() && L.strength) next.strength = L.strength;
+        if (!next.dosageForm.trim() && L.dosageForm) next.dosageForm = L.dosageForm;
+        if (!next.packSize.trim() && L.packSize != null) next.packSize = String(L.packSize);
+        if (!next.hsnCode.trim() && L.hsnCode) {
+          next.hsnCode = L.hsnCode;
+          if (!next.taxPercent.trim()) {
+            const hit = matchHsnGstRate(L.hsnCode, hsnRates);
+            if (hit) next.taxPercent = String(hit.gstRate);
+          }
+        }
+        return next;
+      });
+      if (L.drugName) {
+        const src =
+          res.resolvedVia === 'formulary_gtin' ? 'your stock'
+            : res.resolvedVia === 'drugmaster_gtin' ? 'the catalog'
+              : 'the barcode';
+        toast.success(`Filled from ${src}: ${L.drugName}`);
+      }
+    } catch {
+      // Best-effort — leave the typed GTIN for manual completion.
+    }
+  };
 
   // Create a new formulary drug. On the first attempt (force=false) the server
   // may detect a likely duplicate and return suggestions instead of creating —
@@ -563,8 +604,9 @@ function PharmacyInventoryPageInner() {
                   />
                 </div>
               </div>
-              {/* Product Resolution Engine / compliance identity — GTIN resolves
-                  this drug instantly on the next stock inward (no fuzzy review). */}
+              {/* Product Resolution Engine / compliance identity — a GTIN fills
+                  the empty fields from your stock / the catalog on blur, and
+                  resolves this drug instantly on the next stock inward. */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="gtin">GTIN / Barcode</Label>
@@ -573,7 +615,8 @@ function PharmacyInventoryPageInner() {
                     className="font-mono"
                     value={formData.gtin}
                     onChange={(e) => updateField('gtin', e.target.value)}
-                    placeholder="e.g. 8901234567890"
+                    onBlur={(e) => resolveGtin(e.target.value)}
+                    placeholder="e.g. 8901234567890 → auto-fills"
                   />
                 </div>
                 <div className="space-y-1.5">
