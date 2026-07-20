@@ -946,8 +946,18 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
   };
 
   // A GTIN is worth resolving once it's a full 8–14-digit code or a GS1 2D string.
-  const gtinLooksComplete = (c: string) =>
-    /^\d{8,14}$/.test(c) || c.includes(String.fromCharCode(29));
+  // Worth resolving: a plain GTIN/EAN, a GS1 element string (starts with the
+  // (01) GTIN AI, optionally behind a ]d2/]C1/]Q3 symbology prefix, or carries an
+  // FNC1/GS separator), or a GS1 Digital Link URL. The backend decodes all three.
+  const gtinLooksComplete = (raw: string) => {
+    const c = raw.replace(/^\](d2|C1|Q3|e0)/i, '');
+    return (
+      /^\d{8,14}$/.test(c) ||
+      /^https?:\/\//i.test(c) ||
+      c.includes(String.fromCharCode(29)) ||
+      /^01\d{14}/.test(c)
+    );
+  };
 
   // Merge a resolved scan onto a line, filling ONLY empty fields (never clobbers
   // what the user/sheet already provided). Shared by manual entry and import.
