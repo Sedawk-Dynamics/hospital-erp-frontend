@@ -74,7 +74,7 @@ import { useAiStatus } from '@/hooks/use-ai';
 import { useDrugMasterSearch, useHsnGstRates, matchHsnGstRate, type HsnGstRate } from '@/hooks/use-drug-master';
 import { VendorFormDialog } from '@/components/inventory/vendor-form-dialog';
 import { BarcodeScanner } from '@/components/shared/barcode-scanner';
-import { AddNicknameButton } from '@/components/pharmacy/add-nickname-button';
+import { NicknameBox } from '@/components/pharmacy/nickname-box';
 
 // ============================================================
 // G1 — Bulk Stock Inward (CSV / OCR / manual multi-row)
@@ -2736,13 +2736,7 @@ function DoneStep({ lines, result }: { lines: DraftLine[]; result: CommitInwardR
                 {r.status === 'ok' ? 'Stock posted' : r.message}
               </span>
               {/* Give the just-stocked medicine a personal nickname on the spot. */}
-              {r.status === 'ok' && r.formularyId && (
-                <AddNicknameButton
-                  drugId={r.formularyId}
-                  drugName={r.drugName || lines[r.index]?.drugName || 'medicine'}
-                  variant="labelled"
-                />
-              )}
+              {r.status === 'ok' && r.formularyId && <NicknameBox drugId={r.formularyId} />}
             </div>
           </div>
         ))}

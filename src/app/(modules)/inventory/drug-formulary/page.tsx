@@ -58,7 +58,7 @@ import {
 } from '@/components/ui/select';
 import { ImportFromCatalogDialog } from '@/components/pharmacy/import-from-catalog-dialog';
 import { useHsnGstRates, matchHsnGstRate } from '@/hooks/use-drug-master';
-import { AddNicknameButton } from '@/components/pharmacy/add-nickname-button';
+import { NicknameBox } from '@/components/pharmacy/nickname-box';
 
 const DOSAGE_FORMS: DosageForm[] = [
   'tablet',
@@ -796,10 +796,14 @@ function PharmacyInventoryPageInner() {
                 {items.map((item) => (
                   <TableRow key={item.id}>
                     <TableCell className="font-medium">
-                      {item.drugName}
-                      {item.isLifeSaving && (
-                        <Badge className="ml-2 bg-rose-500/10 text-rose-600 border-rose-500/20 text-[10px]">Life-saving</Badge>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <span>{item.drugName}</span>
+                        {item.isLifeSaving && (
+                          <Badge className="bg-rose-500/10 text-rose-600 border-rose-500/20 text-[10px]">Life-saving</Badge>
+                        )}
+                        {/* Personal shorthand, right beside the real name. */}
+                        <NicknameBox drugId={item.id} />
+                      </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground">{item.genericName || '-'}</TableCell>
                     <TableCell className="capitalize">{item.dosageForm || '-'}</TableCell>
@@ -896,7 +900,6 @@ function PharmacyInventoryPageInner() {
                           <Lightbulb className="h-4 w-4" />
                         </Button>
                       )}
-                      <AddNicknameButton drugId={item.id} drugName={item.drugName} />
                       <Button variant="ghost" size="sm" onClick={() => startEdit(item)} className="h-8 w-8 p-0" title="Edit">
                         <Pencil className="h-4 w-4" />
                       </Button>
