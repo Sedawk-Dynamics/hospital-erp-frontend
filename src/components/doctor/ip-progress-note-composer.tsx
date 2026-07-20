@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { NotebookPen, Loader2, Stethoscope } from 'lucide-react';
+import { NotebookPen, Loader2, Stethoscope, Pill, Link2, Activity } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
@@ -139,21 +139,27 @@ export function IpProgressNoteComposer({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!busy) { onOpenChange(o); if (!o) reset(); } }}>
-      <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-2xl max-h-[92vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <NotebookPen className="h-5 w-5 text-primary" /> New IP Progress Note (Visit / Round)
+      <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-3xl max-h-[92vh] overflow-y-auto p-0">
+        <DialogHeader className="border-b bg-muted/30 px-5 py-4">
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+              <NotebookPen className="h-5 w-5 text-primary" />
+            </span>
+            New IP Progress Note
+            <Badge variant="outline" className="ml-1 text-[10px] font-normal">Visit / Round</Badge>
           </DialogTitle>
           <DialogDescription>
-            Documents this round in the patient&apos;s running admission log. This IP note is
-            round-focused and stays on the record for the whole stay.
+            Documents this round in the patient&apos;s running admission log — round-focused and kept
+            on the record for the whole stay.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
+        <div className="space-y-5 px-5 py-4">
           {/* Condition / progress */}
           <div>
-            <Label className="mb-1 block text-xs text-muted-foreground">Condition since last review</Label>
+            <Label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <Activity className="h-3.5 w-3.5" /> Condition since last review
+            </Label>
             <div className="flex flex-wrap gap-1.5">
               {CONDITIONS.map((c) => (
                 <button
@@ -161,8 +167,8 @@ export function IpProgressNoteComposer({
                   type="button"
                   onClick={() => setCondition(c.value)}
                   className={cn(
-                    'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                    condition === c.value ? c.tone + ' border-transparent' : 'border-border text-muted-foreground hover:bg-muted/50',
+                    'rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors',
+                    condition === c.value ? c.tone + ' border-transparent shadow-sm' : 'border-border text-muted-foreground hover:bg-muted/50',
                   )}
                 >
                   {c.label}
@@ -173,11 +179,21 @@ export function IpProgressNoteComposer({
 
           {/* Optional: connect this note to one of the patient's prescriptions. */}
           {prescriptions.length > 0 && (
-            <div>
-              <Label className="mb-1 block text-xs text-muted-foreground">Connect to prescription (optional)</Label>
+            <div className="rounded-xl border border-primary/25 bg-primary/[0.04] p-3.5">
+              <div className="mb-2 flex items-center gap-2">
+                <span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10">
+                  <Pill className="h-4 w-4 text-primary" />
+                </span>
+                <div className="leading-tight">
+                  <p className="text-sm font-semibold text-foreground">
+                    Connect to prescription <span className="font-normal text-muted-foreground">· optional</span>
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">Ride this note along with a prescription.</p>
+                </div>
+              </div>
               <Select value={prescriptionId || 'none'} onValueChange={(v) => setPrescriptionId(v === 'none' ? '' : (v ?? ''))}>
-                <SelectTrigger className="h-9 text-sm">
-                  <SelectValue placeholder="Not linked" />
+                <SelectTrigger className="h-10 w-full bg-background text-sm">
+                  <SelectValue placeholder="Not linked to a prescription" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">— Not linked —</SelectItem>
@@ -191,27 +207,34 @@ export function IpProgressNoteComposer({
                   })}
                 </SelectContent>
               </Select>
-              <p className="mt-1 text-[11px] text-muted-foreground">
+              <p className="mt-2 flex items-start gap-1.5 text-[11px] text-muted-foreground">
+                <Link2 className="mt-px h-3 w-3 shrink-0 text-primary" />
                 A linked note is visible to anyone who can view that prescription.
               </p>
             </div>
           )}
 
-          <SoapField label="Subjective" hint="Overnight events, complaints, how the patient feels" value={subjective} onChange={setSubjective} />
-          <SoapField label="Objective" hint="Examination findings, today's vitals, device/line checks" value={objective} onChange={setObjective} />
-          <SoapField label="Assessment" hint="Clinical impression / progress" value={assessment} onChange={setAssessment} />
-          <SoapField label="Plan" hint="Today's plan, order changes, next steps" value={plan} onChange={setPlan} />
-
-          <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3">
-            <label className="flex items-center gap-2 text-xs">
-              <input type="checkbox" checked={billVisit} onChange={(e) => setBillVisit(e.target.checked)} className="h-3.5 w-3.5 accent-primary" />
-              <Stethoscope className="h-3.5 w-3.5 text-primary" /> Bill this visit (post consultation fee)
-            </label>
-            <p className="text-[11px] text-muted-foreground">This note flows into the discharge summary&apos;s hospital course automatically — no need to pin.</p>
+          {/* SOAP — two columns on wider screens to use the space. */}
+          <div>
+            <Label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Round note (SOAP)</Label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <SoapField label="Subjective" hint="Overnight events, complaints, how the patient feels" value={subjective} onChange={setSubjective} />
+              <SoapField label="Objective" hint="Examination findings, today's vitals, device/line checks" value={objective} onChange={setObjective} />
+              <SoapField label="Assessment" hint="Clinical impression / progress" value={assessment} onChange={setAssessment} />
+              <SoapField label="Plan" hint="Today's plan, order changes, next steps" value={plan} onChange={setPlan} />
+            </div>
           </div>
+
+          <label className="flex cursor-pointer flex-col gap-1.5 rounded-xl border bg-muted/30 p-3.5 transition-colors hover:bg-muted/50">
+            <span className="flex items-center gap-2 text-sm font-medium">
+              <input type="checkbox" checked={billVisit} onChange={(e) => setBillVisit(e.target.checked)} className="h-4 w-4 accent-primary" />
+              <Stethoscope className="h-4 w-4 text-primary" /> Bill this visit (post consultation fee)
+            </span>
+            <span className="pl-6 text-[11px] text-muted-foreground">This note flows into the discharge summary&apos;s hospital course automatically — no need to pin.</span>
+          </label>
         </div>
 
-        <DialogFooter className="gap-2">
+        <DialogFooter className="mx-0 mb-0 gap-2 px-5 py-3">
           <Badge variant="outline" className="mr-auto self-center text-[10px]">Running IP log</Badge>
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={busy}>Cancel</Button>
           <Button size="sm" onClick={submit} disabled={busy || !anyFilled} className="gap-1.5">
@@ -226,12 +249,12 @@ export function IpProgressNoteComposer({
 
 function SoapField({ label, hint, value, onChange }: { label: string; hint: string; value: string; onChange: (v: string) => void }) {
   return (
-    <div>
+    <div className="rounded-lg border bg-surface-container-lowest p-2.5">
       <Label className="mb-1 block text-xs">
         <span className="font-semibold text-foreground">{label}</span>
         <span className="ml-1.5 font-normal text-muted-foreground">— {hint}</span>
       </Label>
-      <Textarea value={value} onChange={(e) => onChange(e.target.value)} rows={2} className="resize-none text-sm" placeholder={`${label}…`} />
+      <Textarea value={value} onChange={(e) => onChange(e.target.value)} rows={3} className="resize-none border-0 bg-transparent p-0 text-sm shadow-none focus-visible:ring-0" placeholder={`${label}…`} />
     </div>
   );
 }
