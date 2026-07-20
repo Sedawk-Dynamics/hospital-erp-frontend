@@ -177,43 +177,6 @@ export function IpProgressNoteComposer({
             </div>
           </div>
 
-          {/* Optional: connect this note to one of the patient's prescriptions. */}
-          {prescriptions.length > 0 && (
-            <div className="rounded-xl border border-primary/25 bg-primary/[0.04] p-3.5">
-              <div className="mb-2 flex items-center gap-2">
-                <span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10">
-                  <Pill className="h-4 w-4 text-primary" />
-                </span>
-                <div className="leading-tight">
-                  <p className="text-sm font-semibold text-foreground">
-                    Connect to prescription <span className="font-normal text-muted-foreground">· optional</span>
-                  </p>
-                  <p className="text-[11px] text-muted-foreground">Ride this note along with a prescription.</p>
-                </div>
-              </div>
-              <Select value={prescriptionId || 'none'} onValueChange={(v) => setPrescriptionId(v === 'none' ? '' : (v ?? ''))}>
-                <SelectTrigger className="h-10 w-full bg-background text-sm">
-                  <SelectValue placeholder="Not linked to a prescription" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">— Not linked —</SelectItem>
-                  {prescriptions.map((p) => {
-                    const items = (p as { items?: Array<{ drugName?: string }> }).items ?? [];
-                    const first = items[0]?.drugName;
-                    const extra = items.length > 1 ? ` +${items.length - 1}` : '';
-                    const date = (p as { createdAt?: string }).createdAt ? formatDate((p as { createdAt?: string }).createdAt!) : '';
-                    const label = [date, first ? `${first}${extra}` : `${items.length} item(s)`].filter(Boolean).join(' · ');
-                    return <SelectItem key={p.id} value={p.id}>{label || 'Prescription'}</SelectItem>;
-                  })}
-                </SelectContent>
-              </Select>
-              <p className="mt-2 flex items-start gap-1.5 text-[11px] text-muted-foreground">
-                <Link2 className="mt-px h-3 w-3 shrink-0 text-primary" />
-                A linked note is visible to anyone who can view that prescription.
-              </p>
-            </div>
-          )}
-
           {/* SOAP — two columns on wider screens to use the space. */}
           <div>
             <Label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Round note (SOAP)</Label>
@@ -225,13 +188,59 @@ export function IpProgressNoteComposer({
             </div>
           </div>
 
-          <label className="flex cursor-pointer flex-col gap-1.5 rounded-xl border bg-muted/30 p-3.5 transition-colors hover:bg-muted/50">
-            <span className="flex items-center gap-2 text-sm font-medium">
-              <input type="checkbox" checked={billVisit} onChange={(e) => setBillVisit(e.target.checked)} className="h-4 w-4 accent-primary" />
-              <Stethoscope className="h-4 w-4 text-primary" /> Bill this visit (post consultation fee)
-            </span>
-            <span className="pl-6 text-[11px] text-muted-foreground">This note flows into the discharge summary&apos;s hospital course automatically — no need to pin.</span>
-          </label>
+          {/* Options side by side — connect to a prescription + billing. */}
+          <div className="grid items-stretch gap-3 sm:grid-cols-2">
+            {/* Connect to prescription */}
+            {prescriptions.length > 0 && (
+              <div className="rounded-xl border border-primary/25 bg-primary/[0.04] p-3.5">
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10">
+                    <Pill className="h-4 w-4 text-primary" />
+                  </span>
+                  <div className="leading-tight">
+                    <p className="text-sm font-semibold text-foreground">
+                      Connect to prescription <span className="font-normal text-muted-foreground">· optional</span>
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">Ride this note along with a prescription.</p>
+                  </div>
+                </div>
+                <Select value={prescriptionId || 'none'} onValueChange={(v) => setPrescriptionId(v === 'none' ? '' : (v ?? ''))}>
+                  <SelectTrigger className="h-10 w-full bg-background text-sm">
+                    <SelectValue placeholder="Not linked to a prescription" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">— Not linked —</SelectItem>
+                    {prescriptions.map((p) => {
+                      const items = (p as { items?: Array<{ drugName?: string }> }).items ?? [];
+                      const first = items[0]?.drugName;
+                      const extra = items.length > 1 ? ` +${items.length - 1}` : '';
+                      const date = (p as { createdAt?: string }).createdAt ? formatDate((p as { createdAt?: string }).createdAt!) : '';
+                      const label = [date, first ? `${first}${extra}` : `${items.length} item(s)`].filter(Boolean).join(' · ');
+                      return <SelectItem key={p.id} value={p.id}>{label || 'Prescription'}</SelectItem>;
+                    })}
+                  </SelectContent>
+                </Select>
+                <p className="mt-2 flex items-start gap-1.5 text-[11px] text-muted-foreground">
+                  <Link2 className="mt-px h-3 w-3 shrink-0 text-primary" />
+                  Visible to anyone who can view that prescription.
+                </p>
+              </div>
+            )}
+
+            {/* Bill this visit */}
+            <label
+              className={cn(
+                'flex cursor-pointer flex-col justify-center gap-1.5 rounded-xl border bg-muted/30 p-3.5 transition-colors hover:bg-muted/50',
+                prescriptions.length === 0 && 'sm:col-span-2',
+              )}
+            >
+              <span className="flex items-center gap-2 text-sm font-medium">
+                <input type="checkbox" checked={billVisit} onChange={(e) => setBillVisit(e.target.checked)} className="h-4 w-4 accent-primary" />
+                <Stethoscope className="h-4 w-4 text-primary" /> Bill this visit (post consultation fee)
+              </span>
+              <span className="pl-6 text-[11px] text-muted-foreground">Flows into the discharge summary&apos;s hospital course automatically — no need to pin.</span>
+            </label>
+          </div>
         </div>
 
         <DialogFooter className="mx-0 mb-0 gap-2 px-5 py-3">
