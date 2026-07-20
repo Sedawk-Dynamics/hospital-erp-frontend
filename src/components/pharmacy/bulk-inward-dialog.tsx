@@ -2255,6 +2255,11 @@ function EntryStep(props: {
                         onChange={(e) => updateLine(l.id, 'drugName', e.target.value)}
                         placeholder="Product name *  ·  e.g. Telmac 40 Tab"
                       />
+                      {/* Nickname the medicine once the line maps to an existing
+                          formulary drug (new drugs get the box on the Done step). */}
+                      {reviewing && l.kind !== 'item' && decisions[i]?.action === 'map' && decisions[i]?.targetId && (
+                        <NicknameBox drugId={decisions[i]!.targetId as string} className="shrink-0" />
+                      )}
                       {/* Not in this hospital's master data — the row needs an
                           add decision (catalog pick, or add as new). */}
                       {flags?.notInFormulary && (
