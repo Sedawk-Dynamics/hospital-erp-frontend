@@ -1029,10 +1029,16 @@ function PharmacyPOS() {
                       }
                       className="min-w-0 flex-1 text-left"
                     >
-                      <p className="text-sm font-medium text-foreground truncate">
-                        {item.drugName}
+                      <p className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                        {/* Always show the REAL medicine name first — the nickname
+                            is only an added chip, never a substitute, so nothing is
+                            ever dispensed on shorthand alone. */}
+                        <span className="truncate">{item.drugName}</span>
                         {item.matchedNickname && (
-                          <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-px align-middle text-[10px] font-semibold text-primary">
+                          <span
+                            title={`Your nickname for ${item.drugName}`}
+                            className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-px text-[10px] font-semibold text-primary"
+                          >
                             <Tag className="h-2.5 w-2.5" /> {item.matchedNickname}
                           </span>
                         )}
