@@ -22,7 +22,6 @@ export interface SurgicalTemplate {
   name: string;
   procedureName?: string | null;
   doctorId?: string | null;
-  kitBarcode?: string | null;
   notes?: string | null;
   isActive: boolean;
   items: SurgicalTemplateItem[];
@@ -94,7 +93,6 @@ export interface TemplateInput {
   name: string;
   procedureName?: string;
   doctorId?: string;
-  kitBarcode?: string;
   notes?: string;
   items: Array<{ drugFormularyId: string; defaultQuantity: number; notes?: string }>;
 }
@@ -161,7 +159,6 @@ export function useIssueKit() {
       patientId?: string;
       visitId?: string;
       templateId?: string;
-      kitBarcode?: string;
       items?: Array<{ drugFormularyId: string; quantity: number }>;
       notes?: string;
     }) => (await apiPost<OtKitIssue>('/ot-kit/issues/issue', data)).data,

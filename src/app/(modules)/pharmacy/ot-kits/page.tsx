@@ -9,7 +9,6 @@ import {
   PackageOpen,
   ClipboardList,
   Boxes,
-  ScanLine,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -335,17 +334,10 @@ function IssueKitDialog({
   onClose: () => void;
 }) {
   const issueMutation = useIssueKit();
-  const [scan, setScan] = useState('');
 
   const items = template?.items ?? [];
-  const expectedBarcode = template?.kitBarcode?.trim() || null;
-  const scanMismatch = !!scan.trim() && !!expectedBarcode && scan.trim() !== expectedBarcode;
 
   const submit = () => {
-    if (scanMismatch) {
-      toast.error('Scanned barcode does not match this kit');
-      return;
-    }
     // The request already carries the template — issue expands it to FEFO batches.
     issueMutation.mutate(
       { issueId: issue.id },
@@ -372,23 +364,6 @@ function IssueKitDialog({
           <b> Virtual OT Ledger</b> bound to this OT session. It is <b>not billed yet</b>; after surgery you reconcile
           to bill only what was consumed.
         </p>
-
-        {/* Optional kit master barcode scan (design-doc step 2) */}
-        {expectedBarcode && (
-          <div className="space-y-1.5">
-            <Label>Scan kit master barcode</Label>
-            <div className="relative">
-              <ScanLine className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={scan}
-                onChange={(e) => setScan(e.target.value)}
-                placeholder={`Expected: ${expectedBarcode}`}
-                className="pl-9 font-mono"
-              />
-            </div>
-            {scanMismatch && <p className="text-xs text-red-500">Scanned barcode does not match this kit.</p>}
-          </div>
-        )}
 
         {/* Kit contents */}
         {items.length > 0 ? (
@@ -425,7 +400,7 @@ function IssueKitDialog({
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={issueMutation.isPending || scanMismatch || items.length === 0}>
+          <Button onClick={submit} disabled={issueMutation.isPending || items.length === 0}>
             {issueMutation.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
             Issue to Theatre
           </Button>

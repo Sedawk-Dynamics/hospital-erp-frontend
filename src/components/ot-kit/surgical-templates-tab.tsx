@@ -9,7 +9,7 @@
 
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Plus, Loader2, ClipboardList, Boxes, ScanLine, Pencil, Trash2, X, Search } from 'lucide-react';
+import { Plus, Loader2, ClipboardList, Boxes, Pencil, Trash2, X, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -96,12 +96,6 @@ export function SurgicalTemplatesTab() {
                   <Boxes className="h-3.5 w-3.5" />
                   {t.items?.length ?? 0} item{(t.items?.length ?? 0) === 1 ? '' : 's'}
                 </div>
-                {t.kitBarcode && (
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <ScanLine className="h-3.5 w-3.5" />
-                    <span className="font-mono">{t.kitBarcode}</span>
-                  </div>
-                )}
                 {(t.items?.length ?? 0) > 0 && (
                   <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
                     {t.items!.slice(0, 5).map((i) => (
@@ -162,7 +156,6 @@ function TemplateDialog({ template, onClose }: { template: SurgicalTemplate | nu
   const [name, setName] = useState(template?.name ?? '');
   const [procedureName, setProcedureName] = useState(template?.procedureName ?? '');
   const [doctorId, setDoctorId] = useState(template?.doctorId ?? '');
-  const [kitBarcode, setKitBarcode] = useState(template?.kitBarcode ?? '');
   const [notes, setNotes] = useState(template?.notes ?? '');
   const [items, setItems] = useState<TplItemState[]>(() =>
     (template?.items ?? []).map((i) => ({
@@ -208,7 +201,6 @@ function TemplateDialog({ template, onClose }: { template: SurgicalTemplate | nu
       name: name.trim(),
       procedureName: procedureName.trim() || undefined,
       doctorId: doctorId || undefined,
-      kitBarcode: kitBarcode.trim() || undefined,
       notes: notes.trim() || undefined,
       items: filled.map((i) => ({ drugFormularyId: i.drugFormularyId, defaultQuantity: i.defaultQuantity })),
     };
@@ -261,10 +253,6 @@ function TemplateDialog({ template, onClose }: { template: SurgicalTemplate | nu
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Kit barcode</Label>
-              <Input value={kitBarcode} onChange={(e) => setKitBarcode(e.target.value)} placeholder="Optional — scannable kit code" />
             </div>
           </div>
 
