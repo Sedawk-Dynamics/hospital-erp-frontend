@@ -71,8 +71,20 @@ const DOSAGE_FORMS: DosageForm[] = [
   'other',
 ];
 
+// Type of stock. The formulary holds consumables, surgical supplies and
+// equipment too, and everything created before it did defaults to 'drug' — so
+// this has to be editable, not just set once at creation.
+const CATEGORY_OPTIONS = [
+  { value: 'drug', label: 'Medicine' },
+  { value: 'consumable', label: 'Consumable' },
+  { value: 'surgical_supply', label: 'Surgical Supply' },
+  { value: 'equipment', label: 'Equipment' },
+  { value: 'other', label: 'Other' },
+];
+
 interface FormState {
   drugName: string;
+  category: string;
   genericName: string;
   manufacturer: string;
   dosageForm: string;
@@ -94,6 +106,7 @@ interface FormState {
 
 const EMPTY_FORM: FormState = {
   drugName: '',
+  category: 'drug',
   genericName: '',
   manufacturer: '',
   dosageForm: '',
@@ -116,6 +129,7 @@ const EMPTY_FORM: FormState = {
 function formStateFromItem(item: FormularyItem): FormState {
   return {
     drugName: item.drugName,
+    category: item.category ?? 'drug',
     genericName: item.genericName ?? '',
     manufacturer: item.manufacturer ?? '',
     dosageForm: item.dosageForm ?? '',
@@ -138,6 +152,7 @@ function formStateFromItem(item: FormularyItem): FormState {
 
 function formStateToInput(form: FormState): CreateFormularyInput {
   const out: CreateFormularyInput = { drugName: form.drugName.trim() };
+  if (form.category) out.category = form.category as CreateFormularyInput['category'];
   if (form.genericName.trim()) out.genericName = form.genericName.trim();
   if (form.manufacturer.trim()) out.manufacturer = form.manufacturer.trim();
   if (form.dosageForm) out.dosageForm = form.dosageForm as DosageForm;
@@ -501,6 +516,22 @@ function PharmacyInventoryPageInner() {
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Type</Label>
+                  <Select
+                    value={formData.category}
+                    onValueChange={(value) => updateField('category', value ?? 'drug')}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CATEGORY_OPTIONS.map((c) => (
+                        <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="space-y-1.5">
                   <Label>Dosage Form</Label>
                   <Select

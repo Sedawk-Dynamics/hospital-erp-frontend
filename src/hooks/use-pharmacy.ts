@@ -262,6 +262,8 @@ export function useFormularyItem(id: string | null) {
 
 export interface CreateFormularyInput {
   drugName: string;
+  // Type of stock — the formulary holds consumables/surgical/equipment too.
+  category?: 'drug' | 'consumable' | 'surgical_supply' | 'equipment' | 'other';
   genericName?: string;
   manufacturer?: string;
   dosageForm?: DosageForm;
