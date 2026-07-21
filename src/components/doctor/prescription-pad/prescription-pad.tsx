@@ -1244,6 +1244,12 @@ function MedicationsSection({ form, patientId }: { form: any; patientId: string 
                         <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-muted-foreground border-muted-foreground/30">
                           catalog · not stocked
                         </Badge>
+                      ) : drug.source === 'inventory' ? (
+                        // The hospital's own non-medicine stock (consumable /
+                        // surgical / equipment) — stocked here, not a catalog drug.
+                        <Badge variant="outline" className="border-sky-500/30 px-1.5 py-0 text-[9px] text-sky-700">
+                          {(drug.category ?? 'supply').replace('_', ' ')} · {drug.availableStock ?? 0} in stock
+                        </Badge>
                       ) : (drug.availableStock ?? 0) > 0 ? (
                         <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
                           {drug.availableStock} in stock

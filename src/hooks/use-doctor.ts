@@ -1055,8 +1055,15 @@ export interface FormularyDrug {
   strength?: string | null;
   manufacturer?: string | null;
   price?: number | string | null;
-  source?: 'formulary' | 'master';
+  // 'formulary' = stocked medicine (has id) · 'inventory' = the hospital's own
+  // non-medicine stock (consumable/surgical/equipment — id null, free-text line)
+  // · 'master' = platform catalog drug not stocked yet (id null).
+  source?: 'formulary' | 'master' | 'inventory';
   drugMasterId?: string;
+  inventoryItemId?: string;
+  // Inventory-item extras (source==='inventory').
+  category?: string | null;
+  unitOfMeasurement?: string | null;
   // Live available stock in this hospital's pharmacy (Σ active batch qty). 0 for
   // master-catalog drugs the hospital hasn't stocked yet.
   availableStock?: number;
