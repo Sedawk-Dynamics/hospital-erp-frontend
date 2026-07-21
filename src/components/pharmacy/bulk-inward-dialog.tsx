@@ -542,8 +542,9 @@ function validateLine(l: DraftLine, all: DraftLine[]): LineIssues {
     errors.push('Quantity must be greater than 0 (or leave blank to just add the product)');
   }
 
-  // Batch / expiry are required only when receiving stock for a medicine.
-  if (!isItem && receiving) {
+  // Every type is stocked as a batch now (so it can be sold/tracked like a
+  // medicine), so batch + expiry are required whenever stock is received.
+  if (receiving) {
     if (!l.batchNumber.trim()) errors.push('Batch number is required to receive stock');
     if (!l.expiryDate) errors.push('Expiry date is required to receive stock');
   }
@@ -1186,10 +1187,9 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         action: d.action,
         kind: isItem ? 'item' : 'drug',
         category: isItem ? l.category || 'other' : undefined,
-        // Map target routes by kind: a medicine maps to a formulary drug, an item
-        // maps to an existing inventory item.
-        targetFormularyId: !isItem && d.action === 'map' ? d.targetId ?? undefined : undefined,
-        targetInventoryItemId: isItem && d.action === 'map' ? d.targetId ?? undefined : undefined,
+        // Every type is stocked in the formulary now (the type rides along as
+        // `category`), so a mapped line always targets a formulary product.
+        targetFormularyId: d.action === 'map' ? d.targetId ?? undefined : undefined,
         // A 'create' seeded from the catalog links the new formulary row to the master.
         drugMasterId: d.action === 'create' ? l.drugMasterId || undefined : undefined,
         // Raw line text is the learned-mapping key; GTIN/HSN carry onto a new drug.

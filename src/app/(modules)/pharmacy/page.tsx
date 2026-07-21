@@ -1035,6 +1035,14 @@ function PharmacyPOS() {
                             is only an added chip, never a substitute, so nothing is
                             ever dispensed on shorthand alone. */}
                         <span className="truncate">{item.drugName}</span>
+                        {/* Non-medicine stock (consumable / surgical / …) — same
+                            flow as a medicine, just flagged so the counter
+                            knows what it is selling. */}
+                        {item.category && item.category !== 'drug' && (
+                          <span className="inline-flex shrink-0 items-center rounded-full bg-sky-100 px-1.5 py-px text-[10px] font-semibold text-sky-700 capitalize">
+                            {item.category.replace('_', ' ')}
+                          </span>
+                        )}
                         {item.matchedNickname && (
                           <span
                             title={`Your nickname for ${item.drugName}`}

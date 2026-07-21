@@ -1233,7 +1233,15 @@ function MedicationsSection({ form, patientId }: { form: any; patientId: string 
                       </Badge>
                     )}
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{drug.drugName}</p>
+                      <p className="flex items-center gap-1.5 font-medium">
+                        <span className="truncate">{drug.drugName}</span>
+                        {/* Non-medicine stock the hospital carries. */}
+                        {drug.category && drug.category !== 'drug' && (
+                          <span className="shrink-0 rounded-full bg-sky-100 px-1.5 py-px text-[10px] font-semibold text-sky-700 capitalize">
+                            {drug.category.replace('_', ' ')}
+                          </span>
+                        )}
+                      </p>
                       <p className="text-[10px] text-muted-foreground uppercase">
                         {[drug.genericName, drug.strength && `(${drug.strength})`].filter(Boolean).join(' ')}
                       </p>
