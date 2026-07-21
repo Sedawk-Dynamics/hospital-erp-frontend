@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { toInputDateStr } from '@/lib/date-utils';
 import { Search, Plus, BedDouble, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -411,11 +412,10 @@ function AdmitReservationDialog({
 
             <div>
               <Label className="text-xs font-medium">Deposit Amount (₹)</Label>
-              <Input
-                type="number"
+              <NumberInput
                 min={0}
                 value={depositAmount}
-                onChange={(e) => setDepositAmount(Number(e.target.value) || 0)}
+                onValueChange={setDepositAmount}
                 className="mt-1"
               />
             </div>
@@ -719,7 +719,7 @@ function CreateReservationDialog({ open, onOpenChange }: { open: boolean; onOpen
             {/* Advance Amount */}
             <div>
               <label className="text-xs font-medium text-foreground">Advance Amount (₹)</label>
-              <Input type="number" min={0} value={form.advanceAmount} onChange={(e) => handleChange('advanceAmount', Number(e.target.value))} className="mt-1" />
+              <NumberInput min={0} value={form.advanceAmount} onValueChange={(v) => handleChange('advanceAmount', v)} className="mt-1" />
             </div>
           </div>
 

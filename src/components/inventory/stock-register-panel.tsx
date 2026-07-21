@@ -5,6 +5,7 @@ import {
   ClipboardList, Search, Plus, Edit2, AlertTriangle, Truck, PackagePlus,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -362,21 +363,19 @@ export function ItemDialog({ item, onClose }: { item: InventoryItem | null; onCl
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium">Reorder threshold</label>
-              <Input
-                type="number"
+              <NumberInput
                 min={0}
                 value={form.minimumStockThreshold ?? 10}
-                onChange={(e) => setForm({ ...form, minimumStockThreshold: Number(e.target.value) || 0 })}
+                onValueChange={(v) => setForm({ ...form, minimumStockThreshold: v })}
               />
             </div>
             {!isEdit && (
               <div>
                 <label className="text-xs font-medium">Initial stock</label>
-                <Input
-                  type="number"
+                <NumberInput
                   min={0}
                   value={form.currentStock ?? 0}
-                  onChange={(e) => setForm({ ...form, currentStock: Number(e.target.value) || 0 })}
+                  onValueChange={(v) => setForm({ ...form, currentStock: v })}
                 />
               </div>
             )}
@@ -430,7 +429,7 @@ export function StockInDialog({ initialItem, onClose }: { initialItem: Inventory
   const [itemId, setItemId] = useState<string | null>(initialItem?.id ?? null);
   const [batchNumber, setBatchNumber] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
-  const [quantity, setQuantity] = useState(1);
+  const [quantity, setQuantity] = useState(0);
   const [unitCost, setUnitCost] = useState<number | undefined>(undefined);
   const [notes, setNotes] = useState('');
 
@@ -528,11 +527,10 @@ export function StockInDialog({ initialItem, onClose }: { initialItem: Inventory
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium">Quantity *</label>
-              <Input
-                type="number"
-                min={1}
+              <NumberInput
+                min={0}
                 value={quantity}
-                onChange={(e) => setQuantity(Math.max(1, Number(e.target.value) || 1))}
+                onValueChange={setQuantity}
               />
             </div>
             <div>

@@ -10,6 +10,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import {
   Dialog,
@@ -540,12 +541,11 @@ export default function DemoRequestsPage() {
                   <Label className="font-label text-xs font-bold flex items-center gap-1.5">
                     <Calendar className="h-3.5 w-3.5" /> Trial Duration (days) <span className="text-error">*</span>
                   </Label>
-                  <Input
-                    type="number"
+                  <NumberInput
                     min={1}
                     max={365}
                     value={trialDays}
-                    onChange={(e) => setTrialDays(Number(e.target.value))}
+                    onValueChange={setTrialDays}
                     className="rounded-xl bg-surface-container-low border-outline-variant/30"
                   />
                   <p className="font-label text-[10px] text-on-surface-variant">

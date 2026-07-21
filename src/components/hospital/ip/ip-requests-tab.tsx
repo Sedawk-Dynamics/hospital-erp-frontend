@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Search, BedDouble, Check, X, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -605,11 +606,10 @@ function AcceptRequestDialog({
 
                   <div>
                     <Label className="text-xs font-medium">Advance Amount (₹)</Label>
-                    <Input
-                      type="number"
+                    <NumberInput
                       min={0}
                       value={advanceAmount}
-                      onChange={(e) => setAdvanceAmount(Number(e.target.value) || 0)}
+                      onValueChange={setAdvanceAmount}
                       className="mt-1"
                     />
                   </div>
@@ -638,11 +638,10 @@ function AcceptRequestDialog({
 
                   <div>
                     <Label className="text-xs font-medium">Deposit Amount (₹)</Label>
-                    <Input
-                      type="number"
+                    <NumberInput
                       min={0}
                       value={depositAmount}
-                      onChange={(e) => setDepositAmount(Number(e.target.value) || 0)}
+                      onValueChange={setDepositAmount}
                       className="mt-1"
                     />
                   </div>

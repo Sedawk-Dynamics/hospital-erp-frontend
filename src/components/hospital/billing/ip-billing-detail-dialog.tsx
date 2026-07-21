@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { IpLedgerPanel } from '@/components/shared/ip-ledger-panel';
@@ -163,7 +164,7 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
                 <option value="fixed">₹ Fixed</option>
                 <option value="percentage">% Percent</option>
               </select>
-              <Input type="number" min={0} value={discValue} onChange={(e) => setDiscValue(Math.max(0, parseFloat(e.target.value) || 0))} className="h-8 text-sm" />
+              <NumberInput min={0} value={discValue} onValueChange={setDiscValue} className="h-8 text-sm" />
               <Button size="sm" className="h-8" onClick={doDiscount} disabled={discount.isPending}>
                 {discount.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Apply'}
               </Button>
@@ -258,7 +259,7 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
                 <Stat label="Remaining" value={money(claim!.outstandingAmount)} className="text-amber-700" />
               </div>
               <div className="flex items-center gap-1.5">
-                <Input type="number" min={0} placeholder="TPA payment received (₹)" value={payAmt || ''} onChange={(e) => setPayAmt(Math.max(0, parseFloat(e.target.value) || 0))} className="h-8 text-sm" />
+                <NumberInput min={0} placeholder="TPA payment received (₹)" value={payAmt} onValueChange={setPayAmt} className="h-8 text-sm" />
                 <Button size="sm" className="h-8" onClick={doSettle} disabled={settle.isPending}>
                   {settle.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Record payment'}
                 </Button>

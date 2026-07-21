@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
@@ -212,13 +213,12 @@ function SplitPaymentBody({
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <Label htmlFor={`amt-${idx}`}>Amount</Label>
-                <Input
+                <NumberInput
                   id={`amt-${idx}`}
-                  type="number"
                   step="0.01"
-                  min="0"
+                  min={0}
                   value={s.amount}
-                  onChange={(e) => update(idx, { amount: Number(e.target.value) })}
+                  onValueChange={(v) => update(idx, { amount: v })}
                 />
               </div>
               <div>

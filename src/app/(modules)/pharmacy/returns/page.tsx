@@ -5,6 +5,7 @@ import {
   RotateCcw, Search, Building2, User, ShoppingCart, Receipt,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { StockTypeBadge } from '@/components/shared/stock-type-badge';
@@ -211,7 +212,7 @@ function CreateReturnDialog({ mode, onClose }: { mode: CreateMode; onClose: () =
 function CounterReturnDialog({ onClose }: { onClose: () => void }) {
   const [drugSearch, setDrugSearch] = useState('');
   const [drug, setDrug] = useState<FormularyItem | null>(null);
-  const [quantity, setQuantity] = useState<number>(1);
+  const [quantity, setQuantity] = useState<number>(0);
   const [saleUnit, setSaleUnit] = useState<'pack' | 'loose'>('pack');
   const [batchNumber, setBatchNumber] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
@@ -328,11 +329,10 @@ function CounterReturnDialog({ onClose }: { onClose: () => void }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium">Quantity</label>
-              <Input
-                type="number"
-                min={1}
+              <NumberInput
+                min={0}
                 value={quantity}
-                onChange={(e) => setQuantity(Math.max(1, Number(e.target.value) || 1))}
+                onValueChange={setQuantity}
               />
             </div>
             <div>
@@ -424,7 +424,7 @@ function PatientReturnDialog({ onClose }: { onClose: () => void }) {
   const [billInput, setBillInput] = useState('');
   const [submittedBill, setSubmittedBill] = useState<string | null>(null);
   const [selectedLine, setSelectedLine] = useState<ReturnableDispense | null>(null);
-  const [quantity, setQuantity] = useState<number>(1);
+  const [quantity, setQuantity] = useState<number>(0);
   const [reason, setReason] = useState('');
   // Money actually handed back to the customer (prefilled from the billed price,
   // but the pharmacist can edit it). This is what gets refunded on the bill.
@@ -641,14 +641,12 @@ function PatientReturnDialog({ onClose }: { onClose: () => void }) {
                 <label className="text-xs font-medium">
                   Return quantity (max {maxQty})
                 </label>
-                <Input
-                  type="number"
-                  min={1}
+                <NumberInput
+                  min={0}
                   max={maxQty}
+                  integer
                   value={quantity}
-                  onChange={(e) =>
-                    setQuantity(Math.max(1, Math.min(maxQty, Number(e.target.value) || 1)))
-                  }
+                  onValueChange={setQuantity}
                 />
               </div>
               <div>
@@ -693,7 +691,7 @@ function PatientReturnDialog({ onClose }: { onClose: () => void }) {
 function VendorReturnDialog({ onClose }: { onClose: () => void }) {
   const [batchSearch, setBatchSearch] = useState('');
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
-  const [quantity, setQuantity] = useState<number>(1);
+  const [quantity, setQuantity] = useState<number>(0);
   const [reason, setReason] = useState('');
   const [supplierId, setSupplierId] = useState('');
   const [creditNoteNumber, setCreditNoteNumber] = useState('');
@@ -783,11 +781,11 @@ function VendorReturnDialog({ onClose }: { onClose: () => void }) {
 
           <div>
             <label className="text-xs font-medium">Quantity</label>
-            <Input
-              type="number"
-              min={1}
+            <NumberInput
+              min={0}
+              integer
               value={quantity}
-              onChange={(e) => setQuantity(Math.max(1, Number(e.target.value) || 1))}
+              onValueChange={setQuantity}
             />
           </div>
 

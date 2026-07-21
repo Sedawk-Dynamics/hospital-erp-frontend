@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { cn } from '@/lib/utils';
 
 import {
@@ -695,7 +696,7 @@ function ManualLineForm({
   loading: boolean;
 }) {
   const [description, setDescription] = useState('');
-  const [quantity, setQuantity] = useState(1);
+  const [quantity, setQuantity] = useState(0);
   const [unitPrice, setUnitPrice] = useState<number | ''>('');
   const [discount, setDiscount] = useState<number | ''>(0);
   const [taxRate, setTaxRate] = useState<number | ''>(0);
@@ -711,13 +712,13 @@ function ManualLineForm({
     }
     await onAdd({
       description: description.trim(),
-      quantity: Number(quantity) || 1,
+      quantity: Number(quantity),
       unitPrice: Number(unitPrice),
       discount: Number(discount) || 0,
       taxRate: Number(taxRate) || 0,
     });
     setDescription('');
-    setQuantity(1);
+    setQuantity(0);
     setUnitPrice('');
     setDiscount(0);
     setTaxRate(0);
@@ -735,12 +736,12 @@ function ManualLineForm({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
-        <Input
+        <NumberInput
           className="col-span-1"
-          type="number"
-          min="1"
+          min={0}
+          integer
           value={quantity}
-          onChange={(e) => setQuantity(Number(e.target.value))}
+          onValueChange={setQuantity}
           placeholder="Qty"
         />
         <Input

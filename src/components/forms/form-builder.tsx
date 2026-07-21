@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import {
@@ -567,13 +568,12 @@ function PropertyEditor({
       {field.type === 'textarea' && (
         <div>
           <Label className="text-xs font-medium">Rows</Label>
-          <Input
-            type="number"
+          <NumberInput
             className="mt-1"
             min={2}
             max={20}
             value={field.rows ?? 3}
-            onChange={(e) => onChange({ rows: Math.max(2, Number(e.target.value) || 3) })}
+            onValueChange={(v) => onChange({ rows: v })}
           />
         </div>
       )}

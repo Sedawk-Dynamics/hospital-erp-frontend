@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { LabUnitsManager } from '@/components/laboratory/lab-units-manager';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -492,22 +493,20 @@ function TestFormDialog({
             </div>
             <div className="col-span-2">
               <Label htmlFor="test-tat">TAT (hrs)</Label>
-              <Input
+              <NumberInput
                 id="test-tat"
-                type="number"
                 min={0}
                 value={formData.turnaroundHours}
-                onChange={(e) => setFormData((p) => ({ ...p, turnaroundHours: parseInt(e.target.value, 10) || 0 }))}
+                onValueChange={(v) => setFormData((p) => ({ ...p, turnaroundHours: v }))}
               />
             </div>
             <div className="col-span-2">
               <Label htmlFor="test-price">Price *</Label>
-              <Input
+              <NumberInput
                 id="test-price"
-                type="number"
                 step="0.01"
                 value={formData.price}
-                onChange={(e) => setFormData((p) => ({ ...p, price: parseFloat(e.target.value) || 0 }))}
+                onValueChange={(v) => setFormData((p) => ({ ...p, price: v }))}
               />
             </div>
             <div className="col-span-12">
@@ -587,22 +586,20 @@ function TestFormDialog({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label htmlFor="test-price">Price (₹) *</Label>
-                <Input
+                <NumberInput
                   id="test-price"
-                  type="number"
                   step="0.01"
                   value={formData.price}
-                  onChange={(e) => setFormData((p) => ({ ...p, price: parseFloat(e.target.value) || 0 }))}
+                  onValueChange={(v) => setFormData((p) => ({ ...p, price: v }))}
                 />
               </div>
               <div>
                 <Label htmlFor="test-tat">Turnaround (hrs)</Label>
-                <Input
+                <NumberInput
                   id="test-tat"
-                  type="number"
                   min={0}
                   value={formData.turnaroundHours}
-                  onChange={(e) => setFormData((p) => ({ ...p, turnaroundHours: parseInt(e.target.value, 10) || 0 }))}
+                  onValueChange={(v) => setFormData((p) => ({ ...p, turnaroundHours: v }))}
                 />
               </div>
             </div>

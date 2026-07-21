@@ -11,6 +11,7 @@ import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Plus, Loader2, ClipboardList, Boxes, Pencil, Trash2, X, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
@@ -359,11 +360,10 @@ function TemplateItemRow({
         </div>
 
         <div className="w-24">
-          <Input
-            type="number"
+          <NumberInput
             min={1}
             value={item.defaultQuantity}
-            onChange={(e) => onChange({ defaultQuantity: Math.max(1, Math.floor(Number(e.target.value) || 0)) })}
+            onValueChange={(v) => onChange({ defaultQuantity: v })}
             className="text-right"
             aria-label="Quantity"
           />

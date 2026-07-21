@@ -27,6 +27,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
@@ -1290,12 +1291,11 @@ function PharmacyPOS() {
                           const cap = capForItem(item);
                           return (
                             <div className="flex flex-col items-center gap-0.5">
-                              <Input
-                                type="number"
+                              <NumberInput
                                 min={0}
                                 max={discountPolicy?.enabled && discountPolicy.mode === 'cap' && cap != null ? cap : 100}
                                 value={item.discount}
-                                onChange={(e) => updateDiscount(item.rowKey, Number(e.target.value))}
+                                onValueChange={(v) => updateDiscount(item.rowKey, v)}
                                 className="h-7 w-16 text-center text-xs mx-auto"
                               />
                               {discountPolicy?.enabled && cap != null && (

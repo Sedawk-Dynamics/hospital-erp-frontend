@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -108,12 +109,12 @@ function SettingsCard() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
           <Label className="text-xs">Grace period (minutes)</Label>
-          <Input type="number" min={0} max={1440} value={grace} onChange={(e) => setGrace(parseInt(e.target.value || '0', 10))} className="mt-1" />
+          <NumberInput min={0} max={1440} value={grace} onValueChange={setGrace} className="mt-1" />
           <p className="text-[10px] text-on-surface-variant mt-1">Time after scheduled at which an unactioned dose is auto-marked missed.</p>
         </div>
         <div>
           <Label className="text-xs">Default PRN minimum interval (minutes)</Label>
-          <Input type="number" min={0} max={1440} value={prnMin} onChange={(e) => setPrnMin(parseInt(e.target.value || '0', 10))} className="mt-1" />
+          <NumberInput min={0} max={1440} value={prnMin} onValueChange={setPrnMin} className="mt-1" />
           <p className="text-[10px] text-on-surface-variant mt-1">Minimum gap between two consecutive PRN administrations of the same drug.</p>
         </div>
         <div className="flex items-end">
@@ -241,7 +242,7 @@ function TimeSlotsCard() {
             </div>
             <div>
               <Label className="text-xs">Sort order</Label>
-              <Input type="number" min={0} value={form.sortOrder ?? 0} onChange={(e) => setForm({ ...form, sortOrder: parseInt(e.target.value || '0', 10) })} className="mt-1 w-32" />
+              <NumberInput min={0} value={form.sortOrder ?? 0} onValueChange={(v) => setForm({ ...form, sortOrder: v })} className="mt-1 w-32" />
             </div>
             <label className="inline-flex items-center gap-2 text-xs">
               <input type="checkbox" checked={form.isActive ?? true} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} />
@@ -434,14 +435,14 @@ function FrequenciesCard() {
             {form.type === 'interval' && (
               <div>
                 <Label className="text-xs">Interval hours</Label>
-                <Input type="number" min={1} max={48} value={form.intervalHours ?? ''} onChange={(e) => setForm({ ...form, intervalHours: parseInt(e.target.value || '0', 10) })} className="mt-1 w-32" />
+                <NumberInput min={1} max={48} value={form.intervalHours ?? null} onValueChange={(v) => setForm({ ...form, intervalHours: v })} className="mt-1 w-32" />
               </div>
             )}
 
             {form.type === 'prn' && (
               <div>
                 <Label className="text-xs">Minimum interval (minutes)</Label>
-                <Input type="number" min={0} max={1440} value={form.minPrnIntervalMinutes ?? ''} onChange={(e) => setForm({ ...form, minPrnIntervalMinutes: parseInt(e.target.value || '0', 10) })} className="mt-1 w-32" />
+                <NumberInput min={0} max={1440} value={form.minPrnIntervalMinutes ?? null} onValueChange={(v) => setForm({ ...form, minPrnIntervalMinutes: v })} className="mt-1 w-32" />
               </div>
             )}
 

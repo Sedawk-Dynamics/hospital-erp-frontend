@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Search, Plus, FileText } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -278,7 +279,7 @@ function CreateEstimationDialog({ open, onOpenChange }: { open: boolean; onOpenC
             </div>
             <div>
               <label className="text-xs font-medium">Period (days) *</label>
-              <Input type="number" min={1} value={form.estimationPeriodDays} onChange={(e) => setForm((p) => ({ ...p, estimationPeriodDays: Number(e.target.value) || 1 }))} className="mt-1" />
+              <NumberInput min={1} value={form.estimationPeriodDays} onValueChange={(v) => setForm((p) => ({ ...p, estimationPeriodDays: v }))} className="mt-1" />
             </div>
           </div>
 

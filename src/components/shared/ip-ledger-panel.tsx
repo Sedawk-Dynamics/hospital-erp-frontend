@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -66,19 +67,20 @@ function AddChargeDialog({
   const defaultCat = role === 'nurse' ? 'procedure' : 'other';
   const [category, setCategory] = useState(defaultCat);
   const [description, setDescription] = useState('');
-  const [quantity, setQuantity] = useState(1);
+  const [quantity, setQuantity] = useState(0);
   const [unitPrice, setUnitPrice] = useState<number>(0);
   const [taxRate, setTaxRate] = useState<number>(0);
 
   const reset = () => {
-    setCategory(defaultCat); setDescription(''); setQuantity(1); setUnitPrice(0); setTaxRate(0);
+    setCategory(defaultCat); setDescription(''); setQuantity(0); setUnitPrice(0); setTaxRate(0);
   };
 
-  const total = Math.max(0, unitPrice) * Math.max(1, quantity) * (1 + Math.max(0, taxRate) / 100);
+  const total = Math.max(0, unitPrice) * Math.max(0, quantity) * (1 + Math.max(0, taxRate) / 100);
 
   const submit = async () => {
     if (!description.trim()) { toast.error('Enter a description.'); return; }
     if (!(unitPrice > 0)) { toast.error('Enter a unit price.'); return; }
+    if (!(quantity > 0)) { toast.error('Enter a quantity.'); return; }
     try {
       await add.mutateAsync({ category, description: description.trim(), quantity, unitPrice, taxRate });
       toast.success('Charge added to the ledger.');
@@ -112,7 +114,7 @@ function AddChargeDialog({
             </div>
             <div>
               <Label className="text-[10px] uppercase tracking-widest text-muted-foreground">Quantity</Label>
-              <Input type="number" min={1} value={quantity} onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))} className="mt-1 h-8 text-sm" />
+              <NumberInput min={0} integer value={quantity} onValueChange={setQuantity} className="mt-1 h-8 text-sm" />
             </div>
           </div>
 
@@ -124,11 +126,11 @@ function AddChargeDialog({
           <div className="grid grid-cols-2 gap-2">
             <div>
               <Label className="text-[10px] uppercase tracking-widest text-muted-foreground">Unit price (₹)</Label>
-              <Input type="number" min={0} step="0.01" value={unitPrice} onChange={(e) => setUnitPrice(Math.max(0, parseFloat(e.target.value) || 0))} className="mt-1 h-8 text-sm" />
+              <NumberInput min={0} step="0.01" value={unitPrice} onValueChange={setUnitPrice} className="mt-1 h-8 text-sm" />
             </div>
             <div>
               <Label className="text-[10px] uppercase tracking-widest text-muted-foreground">Tax %</Label>
-              <Input type="number" min={0} max={100} step="0.01" value={taxRate} onChange={(e) => setTaxRate(Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)))} className="mt-1 h-8 text-sm" />
+              <NumberInput min={0} max={100} step="0.01" value={taxRate} onValueChange={setTaxRate} className="mt-1 h-8 text-sm" />
             </div>
           </div>
 

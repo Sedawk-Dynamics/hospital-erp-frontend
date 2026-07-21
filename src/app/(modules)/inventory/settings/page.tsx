@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -135,12 +136,11 @@ export default function InventorySettingsPage() {
             <CardContent className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="threshold">Default reorder threshold</Label>
-                <Input
+                <NumberInput
                   id="threshold"
-                  type="number"
                   min={0}
                   value={form.defaultLowStockThreshold}
-                  onChange={(e) => set('defaultLowStockThreshold', Number(e.target.value) || 0)}
+                  onValueChange={(v) => set('defaultLowStockThreshold', v)}
                 />
                 <p className="text-xs text-muted-foreground">
                   Applied to new items when no per-item threshold is given.
@@ -148,13 +148,12 @@ export default function InventorySettingsPage() {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="expiry-months">Expiry look-ahead (months)</Label>
-                <Input
+                <NumberInput
                   id="expiry-months"
-                  type="number"
                   min={1}
                   max={36}
                   value={form.expiryAlertMonths}
-                  onChange={(e) => set('expiryAlertMonths', Number(e.target.value) || 1)}
+                  onValueChange={(v) => set('expiryAlertMonths', v)}
                 />
                 <p className="text-xs text-muted-foreground">
                   Batches expiring within this window are flagged and alerted.

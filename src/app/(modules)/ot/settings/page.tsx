@@ -10,6 +10,7 @@ import {
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -297,28 +298,25 @@ function SchedulingPreferencesCard() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
               <Label>Default Surgery Duration (min)</Label>
-              <Input
-                type="number"
+              <NumberInput
                 value={form.defaultDurationMinutes}
-                onChange={(e) => setForm({ ...form, defaultDurationMinutes: Number(e.target.value) })}
+                onValueChange={(v) => setForm({ ...form, defaultDurationMinutes: v })}
                 className="mt-1.5"
               />
             </div>
             <div>
               <Label>Buffer Time Between Surgeries (min)</Label>
-              <Input
-                type="number"
+              <NumberInput
                 value={form.bufferMinutes}
-                onChange={(e) => setForm({ ...form, bufferMinutes: Number(e.target.value) })}
+                onValueChange={(v) => setForm({ ...form, bufferMinutes: v })}
                 className="mt-1.5"
               />
             </div>
             <div>
               <Label>Max Surgeries Per Day</Label>
-              <Input
-                type="number"
+              <NumberInput
                 value={form.maxSurgeriesPerDay}
-                onChange={(e) => setForm({ ...form, maxSurgeriesPerDay: Number(e.target.value) })}
+                onValueChange={(v) => setForm({ ...form, maxSurgeriesPerDay: v })}
                 className="mt-1.5"
               />
             </div>

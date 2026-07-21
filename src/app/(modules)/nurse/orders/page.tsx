@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { formatDateTime } from '@/lib/date-utils';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -1332,10 +1333,9 @@ function SupplyRequestTab() {
                   )}
                 </SelectContent>
               </Select>
-              <Input
-                type="number"
+              <NumberInput
                 value={item.quantity}
-                onChange={(e) => updateItem(idx, { quantity: parseInt(e.target.value) || 1 })}
+                onValueChange={(v) => updateItem(idx, { quantity: v })}
                 min={1}
                 className="h-8 text-xs w-20"
               />
