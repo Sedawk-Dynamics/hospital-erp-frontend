@@ -798,6 +798,13 @@ function PharmacyInventoryPageInner() {
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
                         <span>{item.drugName}</span>
+                        {/* The formulary now holds every kind of stock, not only
+                            medicines — flag the ones that aren't. */}
+                        {item.category && item.category !== 'drug' && (
+                          <Badge variant="outline" className="text-[10px] capitalize">
+                            {item.category.replace('_', ' ')}
+                          </Badge>
+                        )}
                         {item.isLifeSaving && (
                           <Badge className="bg-rose-500/10 text-rose-600 border-rose-500/20 text-[10px]">Life-saving</Badge>
                         )}

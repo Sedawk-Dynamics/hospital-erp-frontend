@@ -26,7 +26,7 @@ import { cn } from '@/lib/utils';
 import { formatDate } from '@/lib/date-utils';
 import {
   useUnifiedStock, useInventoryItem,
-  type UnifiedStockRow, type InventoryItem,
+  type UnifiedStockRow, type InventoryItem, type InventoryCategory,
 } from '@/hooks/use-inventory';
 import { useRunPharmacyExpiryAlerts } from '@/hooks/use-pharmacy';
 import { InventoryStockOverview } from './inventory-stock-overview';
@@ -35,8 +35,25 @@ import { ItemDialog, StockInDialog } from './stock-register-panel';
 import { StockTakeDialog } from '@/components/pharmacy/stock-take-dialog';
 import { StockAdjustmentsLogDialog } from '@/components/pharmacy/stock-adjust-dialogs';
 
-type TypeFilter = 'all' | 'drug' | 'item';
+// A row's Type is its CATEGORY, not which table it lives in. Every kind of stock
+// (medicine, consumable, surgical, equipment) is now stocked the same way — as a
+// formulary row with batches — so `kind` is 'drug' for almost everything and says
+// nothing about what the thing actually is. Only `category` does.
+type TypeFilter = 'all' | InventoryCategory;
 type StatusFilter = 'all' | 'in' | 'low' | 'out' | 'expiring' | 'recalled';
+
+const TYPE_FILTERS: { value: TypeFilter; label: string }[] = [
+  { value: 'all', label: 'All types' },
+  { value: 'drug', label: 'Medicines' },
+  { value: 'consumable', label: 'Consumables' },
+  { value: 'surgical_supply', label: 'Surgical' },
+  { value: 'equipment', label: 'Equipment' },
+  { value: 'other', label: 'Other' },
+];
+
+const typeLabel = (category: string) =>
+  TYPE_FILTERS.find((t) => t.value === category)?.label.replace(/s$/, '') ??
+  category.replace('_', ' ');
 
 const daysUntil = (d: string) => Math.floor((new Date(d).getTime() - Date.now()) / 86_400_000);
 const money = (n: number) =>
@@ -73,7 +90,7 @@ export function UnifiedStockPanel() {
     page,
     limit: 20,
     search: debounced || undefined,
-    type: type === 'all' ? undefined : type,
+    category: type === 'all' ? undefined : type,
     stockStatus: status === 'all' ? undefined : status,
   });
   const rows = data?.data ?? [];
@@ -156,9 +173,9 @@ export function UnifiedStockPanel() {
         <Select value={type} onValueChange={(v) => { setType(v as TypeFilter); setPage(1); }}>
           <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All types</SelectItem>
-            <SelectItem value="drug">Medicines</SelectItem>
-            <SelectItem value="item">Other items</SelectItem>
+            {TYPE_FILTERS.map((t) => (
+              <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <div className="ml-auto flex items-center gap-1.5">
@@ -278,6 +295,10 @@ function StockRow({
   onStockIn: () => void;
   onEdit: () => void;
 }) {
+  // `kind` only says which table the row came from — since every type is stocked
+  // as a formulary row now, it is 'drug' for consumables and equipment too. What
+  // the row IS comes from `category`; whether it expands to batches from `kind`.
+  const isMedicine = row.category === 'drug';
   const isDrug = row.kind === 'drug';
   const low = row.reorderLevel != null && row.currentStock > 0 && row.currentStock <= row.reorderLevel;
   const out = row.currentStock <= 0;
@@ -298,16 +319,16 @@ function StockRow({
         <TableCell>
           <div className="font-medium">{row.name}</div>
           <div className="text-xs text-muted-foreground">
-            {[row.code, row.unit].filter(Boolean).join(' · ') || (isDrug ? 'medicine' : row.category)}
+            {[row.code, row.unit].filter(Boolean).join(' · ') || typeLabel(row.category).toLowerCase()}
           </div>
         </TableCell>
         <TableCell>
-          {isDrug ? (
+          {isMedicine ? (
             <Badge className="bg-primary/10 text-primary border-primary/20">
               <Pill className="mr-1 h-3 w-3" /> Medicine
             </Badge>
           ) : (
-            <Badge variant="outline" className="capitalize">{row.category.replace('_', ' ')}</Badge>
+            <Badge variant="outline">{typeLabel(row.category)}</Badge>
           )}
         </TableCell>
         <TableCell className="text-right">
