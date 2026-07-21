@@ -1043,12 +1043,14 @@ function PharmacyPOS() {
                             {item.category.replace('_', ' ')}
                           </span>
                         )}
-                        {item.matchedNickname && (
+                        {/* Show the pharmacist's nickname whenever one exists —
+                            not only when the search matched on it. */}
+                        {(item.nickname || item.matchedNickname) && (
                           <span
                             title={`Your nickname for ${item.drugName}`}
                             className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-px text-[10px] font-semibold text-primary"
                           >
-                            <Tag className="h-2.5 w-2.5" /> {item.matchedNickname}
+                            <Tag className="h-2.5 w-2.5" /> {item.nickname || item.matchedNickname}
                           </span>
                         )}
                       </p>

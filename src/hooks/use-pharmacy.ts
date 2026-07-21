@@ -63,6 +63,9 @@ export interface FormularyItem {
   // Set (to the matching nickname) when this row surfaced because the searcher
   // typed one of their personal nicknames for it.
   matchedNickname?: string | null;
+  // The searcher's nickname for this product, if they have one — present even
+  // when the search matched on the real name.
+  nickname?: string | null;
 }
 
 export interface DrugBatch {
