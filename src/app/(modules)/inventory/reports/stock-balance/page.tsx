@@ -11,6 +11,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/shared/page-header';
 import { EmptyState } from '@/components/shared/empty-state';
+import { StockTypeBadge } from '@/components/shared/stock-type-badge';
 import { useStockBalanceReport } from '@/hooks/use-inventory';
 
 const CATEGORIES = ['drug', 'consumable', 'surgical_supply', 'equipment', 'other'] as const;
@@ -139,7 +140,9 @@ export default function StockBalanceReportPage() {
                       <div className="font-medium">{item.itemName}</div>
                       {item.itemCode && <div className="text-xs text-muted-foreground">{item.itemCode}</div>}
                     </td>
-                    <td className="px-4 py-2 capitalize text-muted-foreground">{item.category.replace('_', ' ')}</td>
+                    <td className="px-4 py-2">
+                      <StockTypeBadge category={item.category} showMedicine />
+                    </td>
                     <td className="px-4 py-2 text-right">{fmt(item.currentStock)} {item.unit || ''}</td>
                     <td className="px-4 py-2 text-right text-emerald-700">{fmt(item.totalIn)}</td>
                     <td className="px-4 py-2 text-right text-blue-700">{fmt(item.totalOut)}</td>
