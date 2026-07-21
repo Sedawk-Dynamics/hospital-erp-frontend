@@ -95,6 +95,9 @@ export interface DrugBatch {
   barcode?: string | null;
   // GS1 DataMatrix serial (AI 21) captured at receipt.
   serialNumber?: string | null;
+  // Where the batch physically sits. Printed on the label as text, never encoded
+  // into the barcode — it is the one field that changes when stock moves.
+  storageLocation?: string | null;
   createdAt: string;
   updatedAt: string;
   drug?: Pick<
@@ -824,6 +827,43 @@ export function useBatches(params?: BatchQueryParams) {
   });
 }
 
+/**
+ * Printable label data for a set of batches — the Code-128 and DataMatrix
+ * payloads plus the human-readable text. One request for the whole sheet, so a
+ * full inward run prints without a round-trip per label.
+ */
+export function useBatchLabels(batchIds: string[]) {
+  const ids = [...batchIds].sort();
+  return useQuery({
+    queryKey: ['pharmacy', 'batches', 'labels', ids],
+    enabled: ids.length > 0,
+    queryFn: async () => {
+      const response = await apiGet<BatchLabelData[]>('/pharmacy/batches/labels', {
+        params: { batchIds: ids.join(',') },
+      });
+      return response.data;
+    },
+  });
+}
+
+export interface BatchLabelData {
+  batchId: string;
+  drugName: string;
+  genericName: string | null;
+  strength: string | null;
+  dosageForm: string | null;
+  manufacturer: string | null;
+  category: string | null;
+  batchNumber: string;
+  expiryDate: string;
+  mrp: number | null;
+  sellingPrice: number | null;
+  storageLocation: string | null;
+  code128: string;
+  dataMatrix: string;
+  dataMatrixFormat: 'gs1datamatrix' | 'datamatrix';
+}
+
 export function useBatchesByDrug(drugId: string | null) {
   return useQuery({
     queryKey: ['pharmacy', 'batches', 'byDrug', drugId],
@@ -864,6 +904,8 @@ export interface CreateBatchInput {
   // Barcode traceability: scanned pack barcode + DataMatrix serial.
   barcode?: string;
   serialNumber?: string;
+  // Put-away position, printed on the shelf label as text.
+  storageLocation?: string | null;
   // GRN invoice traceability + duplicate-batch "Increase Quantity".
   invoiceNumber?: string;
   invoiceDate?: string;
@@ -912,6 +954,8 @@ export interface UpdateBatchInput {
   isExpired?: boolean;
   isRecalled?: boolean;
   recallReason?: string | null;
+  // Re-racking is routine, so location is editable after receipt.
+  storageLocation?: string | null;
 }
 
 export function useUpdateBatch() {

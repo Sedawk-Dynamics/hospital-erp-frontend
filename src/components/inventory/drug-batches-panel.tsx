@@ -25,6 +25,8 @@ import {
   Boxes,
   PackageX,
   ScanLine,
+  Tag,
+  MapPin,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
@@ -75,6 +77,7 @@ import { cn } from '@/lib/utils';
 import { formatDate, formatDateTimeAmPm, toInputDateStr } from '@/lib/date-utils';
 import { packSummary } from '@/lib/pharmacy-units';
 import { StockTypeBadge } from '@/components/shared/stock-type-badge';
+import { PrintLabelsDialog } from '@/components/pharmacy/print-labels-dialog';
 import {
   AdjustStockDialog,
   StockAdjustmentsLogDialog,
@@ -126,6 +129,8 @@ interface FormState {
   invoiceDate: string;
   // GS1 DataMatrix serial (AI 21), read from the 2D scan.
   serialNumber: string;
+  // Where the batch is put away. Printed on the label as text, never encoded.
+  storageLocation: string;
   // Edit-only: correct the on-hand stock for an existing batch.
   quantityInStock: string;
 }
@@ -147,6 +152,7 @@ const EMPTY_FORM: FormState = {
   invoiceNumber: '',
   invoiceDate: '',
   serialNumber: '',
+  storageLocation: '',
   quantityInStock: '',
 };
 
@@ -172,6 +178,7 @@ function formStateFromBatch(batch: DrugBatch): FormState {
     invoiceNumber: batch.invoiceNumber ?? '',
     invoiceDate: isoToDateInput(batch.invoiceDate),
     serialNumber: batch.serialNumber ?? '',
+    storageLocation: batch.storageLocation ?? '',
     quantityInStock: String(batch.quantityInStock),
   };
 }
@@ -221,6 +228,8 @@ export function DrugBatchesPanel({
 
   // Recall management (moved here from the old Recalls page — recalls act on batches).
   const [recallTarget, setRecallTarget] = useState<DrugBatch | null>(null);
+  // Shelf-label printing — one batch from a row, or every batch on the page.
+  const [labelBatchIds, setLabelBatchIds] = useState<string[]>([]);
   const [affectedBatchId, setAffectedBatchId] = useState<string | null>(null);
 
   // Drug picker (combobox) state
@@ -475,6 +484,7 @@ export function DrugBatchesPanel({
           : null,
       invoiceNumber: formData.invoiceNumber.trim() || null,
       invoiceDate: formData.invoiceDate || null,
+      storageLocation: formData.storageLocation.trim() || null,
     };
     try {
       await updateBatch.mutateAsync({ id: editingBatch.id, ...payload });
@@ -524,6 +534,7 @@ export function DrugBatchesPanel({
     if (formData.invoiceNumber.trim()) payload.invoiceNumber = formData.invoiceNumber.trim();
     if (formData.invoiceDate) payload.invoiceDate = formData.invoiceDate;
     if (formData.serialNumber.trim()) payload.serialNumber = formData.serialNumber.trim();
+    if (formData.storageLocation.trim()) payload.storageLocation = formData.storageLocation.trim();
 
     try {
       await createBatch.mutateAsync(payload);
@@ -606,6 +617,16 @@ export function DrugBatchesPanel({
             >
               <ClipboardList className="mr-1.5 h-4 w-4" />
               Adjustments
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={batches.length === 0}
+              onClick={() => setLabelBatchIds(batches.map((b) => b.id))}
+              title="Print shelf labels for every batch listed below"
+            >
+              <Tag className="mr-1.5 h-4 w-4" />
+              Print labels
             </Button>
             <Button
               size="sm"
@@ -833,6 +854,16 @@ export function DrugBatchesPanel({
                     onChange={(e) => updateField('serialNumber', e.target.value)}
                     placeholder="Serial (DataMatrix) — optional"
                     className="mt-1 font-mono text-xs"
+                  />
+                  {/* Put-away position. Printed on the shelf label as text and
+                      re-read live on every scan, so moving stock never makes a
+                      printed label wrong. */}
+                  <Input
+                    id="storageLocation"
+                    value={formData.storageLocation}
+                    onChange={(e) => updateField('storageLocation', e.target.value)}
+                    placeholder="Location — e.g. Rack A3 / Shelf 2"
+                    className="mt-1 text-xs"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -1247,6 +1278,12 @@ export function DrugBatchesPanel({
                             ▮ {batch.barcode}
                           </div>
                         )}
+                        {batch.storageLocation && (
+                          <div className="font-sans text-[10px] text-muted-foreground" title="Where this batch is stored">
+                            <MapPin className="mr-0.5 inline h-2.5 w-2.5" />
+                            {batch.storageLocation}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1.5 font-medium">
@@ -1353,6 +1390,15 @@ export function DrugBatchesPanel({
                           <Button
                             variant="ghost"
                             size="sm"
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-primary"
+                            title="Print shelf label"
+                            onClick={() => setLabelBatchIds([batch.id])}
+                          >
+                            <Tag className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             className="h-8 w-8 p-0"
                             title="Edit batch"
                             onClick={() => startEdit(batch)}
@@ -1400,6 +1446,12 @@ export function DrugBatchesPanel({
       {/* G4: stock-count adjustment + discrepancy log */}
       <AdjustStockDialog batch={adjustTarget} onOpenChange={(open) => !open && setAdjustTarget(null)} />
       <StockAdjustmentsLogDialog open={adjustLogOpen} onOpenChange={setAdjustLogOpen} />
+
+      <PrintLabelsDialog
+        batchIds={labelBatchIds}
+        open={labelBatchIds.length > 0}
+        onOpenChange={(open) => !open && setLabelBatchIds([])}
+      />
     </div>
   );
 }
