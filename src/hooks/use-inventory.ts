@@ -1290,6 +1290,12 @@ export interface CreateUnifiedItemPayload {
 
 export interface CreateUnifiedDrugPayload {
   drugName: string;
+  // Type of stock — every type is created through this one payload.
+  category?: InventoryCategory;
+  description?: string;
+  // Opening stock → a no-expiry OPENING batch created server-side.
+  openingStock?: number;
+  costPerUnit?: number;
   genericName?: string;
   manufacturer?: string;
   dosageForm?: string;

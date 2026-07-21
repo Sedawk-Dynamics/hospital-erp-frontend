@@ -21,6 +21,7 @@ import {
   type MedicineFormData,
 } from './consultation-completion-schema';
 import { QtyCell } from '../prescription-qty-cell';
+import { StockTypeBadge } from '@/components/shared/stock-type-badge';
 
 interface StepPrescriptionProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -203,7 +204,11 @@ export function StepPrescription({ form, patientId }: StepPrescriptionProps) {
                     </Badge>
                   )}
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{drug.drugName}</p>
+                    <p className="flex items-center gap-1.5 font-medium truncate">
+                      {drug.drugName}
+                      {/* Consumables and supplies are prescribable too — say so. */}
+                      <StockTypeBadge category={drug.category} />
+                    </p>
                     <p className="text-[10px] text-muted-foreground uppercase">
                       {[drug.genericName, drug.strength && `(${drug.strength})`].filter(Boolean).join(' ')}
                     </p>

@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { StockTypeBadge } from '@/components/shared/stock-type-badge';
 import { EmptyState } from '@/components/shared/empty-state';
 import { cn } from '@/lib/utils';
 import { useFormularyAlternatives, type FormularyAlternative } from '@/hooks/use-pharmacy';
@@ -76,6 +77,7 @@ export function DrugSubstitutesDialog({
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="truncate font-medium">{alt.drugName}</span>
+                    <StockTypeBadge category={alt.category} />
                     {alt.dosageForm && (
                       <Badge variant="outline" className="text-[10px] capitalize">
                         {alt.dosageForm}

@@ -74,6 +74,7 @@ import {
 import { cn } from '@/lib/utils';
 import { formatDate, formatDateTimeAmPm, toInputDateStr } from '@/lib/date-utils';
 import { packSummary } from '@/lib/pharmacy-units';
+import { StockTypeBadge } from '@/components/shared/stock-type-badge';
 import {
   AdjustStockDialog,
   StockAdjustmentsLogDialog,
@@ -771,9 +772,10 @@ export function DrugBatchesPanel({
                                 )}
                               />
                               <div className="flex flex-col">
-                                <span>
+                                <span className="flex items-center gap-1.5">
                                   {drug.drugName}
                                   {drug.strength ? ` ${drug.strength}` : ''}
+                                  <StockTypeBadge category={drug.category} />
                                 </span>
                                 <span className="text-xs text-muted-foreground">
                                   {drug.genericName || ''}
@@ -1247,7 +1249,10 @@ export function DrugBatchesPanel({
                         )}
                       </TableCell>
                       <TableCell>
-                        <div className="font-medium">{batch.drug?.drugName ?? '-'}</div>
+                        <div className="flex items-center gap-1.5 font-medium">
+                          {batch.drug?.drugName ?? '-'}
+                          <StockTypeBadge category={batch.drug?.category} />
+                        </div>
                         <div className="text-xs text-muted-foreground">
                           {batch.drug?.strength ?? ''}
                           {batch.drug?.dosageForm ? ` · ${batch.drug.dosageForm}` : ''}

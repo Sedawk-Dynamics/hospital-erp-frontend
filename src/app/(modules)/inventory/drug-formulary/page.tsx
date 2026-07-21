@@ -59,6 +59,7 @@ import {
 import { ImportFromCatalogDialog } from '@/components/pharmacy/import-from-catalog-dialog';
 import { useHsnGstRates, matchHsnGstRate } from '@/hooks/use-drug-master';
 import { NicknameBox } from '@/components/pharmacy/nickname-box';
+import { StockTypeBadge } from '@/components/shared/stock-type-badge';
 
 const DOSAGE_FORMS: DosageForm[] = [
   'tablet',
@@ -831,11 +832,7 @@ function PharmacyInventoryPageInner() {
                         <span>{item.drugName}</span>
                         {/* The formulary now holds every kind of stock, not only
                             medicines — flag the ones that aren't. */}
-                        {item.category && item.category !== 'drug' && (
-                          <Badge variant="outline" className="text-[10px] capitalize">
-                            {item.category.replace('_', ' ')}
-                          </Badge>
-                        )}
+                        <StockTypeBadge category={item.category} />
                         {item.isLifeSaving && (
                           <Badge className="bg-rose-500/10 text-rose-600 border-rose-500/20 text-[10px]">Life-saving</Badge>
                         )}

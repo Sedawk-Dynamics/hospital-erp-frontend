@@ -19,6 +19,7 @@ import {
   type MedicineFormData,
 } from '@/components/doctor/consultation-completion/consultation-completion-schema';
 import { QtyCell } from '@/components/doctor/prescription-qty-cell';
+import { StockTypeBadge } from '@/components/shared/stock-type-badge';
 
 /**
  * Shared, controlled medicine capture — the same M-A-N dose / frequency / timing
@@ -152,7 +153,11 @@ export function MedicineTable({
                       <Badge variant="outline" className="text-[10px] font-bold px-1.5 py-0">{badge}</Badge>
                     )}
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{drug.drugName}</p>
+                      <p className="flex items-center gap-1.5 font-medium truncate">
+                        {drug.drugName}
+                        {/* Consumables and supplies are prescribable too — say so. */}
+                        <StockTypeBadge category={drug.category} />
+                      </p>
                       <p className="text-[10px] text-muted-foreground uppercase">
                         {[drug.genericName, drug.strength && `(${drug.strength})`].filter(Boolean).join(' ')}
                       </p>

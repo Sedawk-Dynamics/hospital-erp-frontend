@@ -56,6 +56,7 @@ import {
 } from '@/hooks/use-pharmacy';
 import { useEffectiveDiscountPolicy, capForMargin } from '@/hooks/use-discount-policy';
 import { DrugSubstitutesDialog } from '@/components/pharmacy/drug-substitutes-dialog';
+import { StockTypeBadge } from '@/components/shared/stock-type-badge';
 import { BillingSummaryDialog } from '@/components/pharmacy/billing-summary-dialog';
 import { PharmacyReceiptDialog } from '@/components/pharmacy/pharmacy-receipt-dialog';
 
@@ -98,6 +99,10 @@ interface CartItem {
   formularyItemId: string;
   drugName: string;
   genericName: string | null;
+  // Stock type. The search dropdown badges it, and the cart has to keep it —
+  // otherwise the Type signal vanishes the moment a consumable joins the bill,
+  // which is exactly when the cashier most needs to see it.
+  category: string | null;
   // Selected batch (null until the cashier picks one)
   batchId: string | null;
   batchNumber: string;
@@ -326,6 +331,7 @@ function PharmacyPOS() {
           formularyItemId: it.drugId as string,
           drugName: it.drugName,
           genericName: null,
+          category: it.drug?.category ?? null,
           batchId: null,
           batchNumber: '-',
           expiryDate: null,
@@ -489,6 +495,7 @@ function PharmacyPOS() {
           formularyItemId: item.id,
           drugName: item.drugName,
           genericName: item.genericName,
+          category: item.category ?? null,
           batchId: null,
           batchNumber: '-',
           expiryDate: null,
@@ -1038,11 +1045,7 @@ function PharmacyPOS() {
                         {/* Non-medicine stock (consumable / surgical / …) — same
                             flow as a medicine, just flagged so the counter
                             knows what it is selling. */}
-                        {item.category && item.category !== 'drug' && (
-                          <span className="inline-flex shrink-0 items-center rounded-full bg-sky-100 px-1.5 py-px text-[10px] font-semibold text-sky-700 capitalize">
-                            {item.category.replace('_', ' ')}
-                          </span>
-                        )}
+                        <StockTypeBadge category={item.category} />
                         {/* Show the pharmacist's nickname whenever one exists —
                             not only when the search matched on it. */}
                         {(item.nickname || item.matchedNickname) && (
@@ -1135,7 +1138,10 @@ function PharmacyPOS() {
                   cart.map((item) => (
                     <tr key={item.rowKey} className="group hover:bg-surface-container-low transition-colors">
                       <td className="px-3 py-2.5">
-                        <p className="font-medium text-foreground">{item.drugName}</p>
+                        <p className="flex items-center gap-1.5 font-medium text-foreground">
+                          {item.drugName}
+                          <StockTypeBadge category={item.category} />
+                        </p>
                         {item.genericName && (
                           <p className="text-xs text-muted-foreground">{item.genericName}</p>
                         )}

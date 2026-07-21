@@ -7,6 +7,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { StockTypeBadge } from '@/components/shared/stock-type-badge';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
@@ -298,9 +299,10 @@ function CounterReturnDialog({ onClose }: { onClose: () => void }) {
                         }}
                         className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
                       >
-                        <div className="font-medium">
+                        <div className="flex items-center gap-1.5 font-medium">
                           {d.drugName}
                           {d.strength && <span className="ml-1 text-xs text-muted-foreground">{d.strength}</span>}
+                          <StockTypeBadge category={d.category} />
                         </div>
                         {d.genericName && (
                           <div className="text-xs text-muted-foreground">{d.genericName}</div>

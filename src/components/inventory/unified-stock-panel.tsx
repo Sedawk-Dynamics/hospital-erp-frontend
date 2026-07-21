@@ -33,6 +33,7 @@ import { InventoryStockOverview } from './inventory-stock-overview';
 import { DrugBatchesPanel } from './drug-batches-panel';
 import { ItemDialog, StockInDialog } from './stock-register-panel';
 import { StockTakeDialog } from '@/components/pharmacy/stock-take-dialog';
+import { StockTypeBadge, stockTypeLabel } from '@/components/shared/stock-type-badge';
 import { StockAdjustmentsLogDialog } from '@/components/pharmacy/stock-adjust-dialogs';
 
 // A row's Type is its CATEGORY, not which table it lives in. Every kind of stock
@@ -50,10 +51,6 @@ const TYPE_FILTERS: { value: TypeFilter; label: string }[] = [
   { value: 'equipment', label: 'Equipment' },
   { value: 'other', label: 'Other' },
 ];
-
-const typeLabel = (category: string) =>
-  TYPE_FILTERS.find((t) => t.value === category)?.label.replace(/s$/, '') ??
-  category.replace('_', ' ');
 
 const daysUntil = (d: string) => Math.floor((new Date(d).getTime() - Date.now()) / 86_400_000);
 const money = (n: number) =>
@@ -298,7 +295,6 @@ function StockRow({
   // `kind` only says which table the row came from — since every type is stocked
   // as a formulary row now, it is 'drug' for consumables and equipment too. What
   // the row IS comes from `category`; whether it expands to batches from `kind`.
-  const isMedicine = row.category === 'drug';
   const isDrug = row.kind === 'drug';
   const low = row.reorderLevel != null && row.currentStock > 0 && row.currentStock <= row.reorderLevel;
   const out = row.currentStock <= 0;
@@ -319,17 +315,13 @@ function StockRow({
         <TableCell>
           <div className="font-medium">{row.name}</div>
           <div className="text-xs text-muted-foreground">
-            {[row.code, row.unit].filter(Boolean).join(' · ') || typeLabel(row.category).toLowerCase()}
+            {[row.code, row.unit].filter(Boolean).join(' · ') || stockTypeLabel(row.category).toLowerCase()}
           </div>
         </TableCell>
         <TableCell>
-          {isMedicine ? (
-            <Badge className="bg-primary/10 text-primary border-primary/20">
-              <Pill className="mr-1 h-3 w-3" /> Medicine
-            </Badge>
-          ) : (
-            <Badge variant="outline">{typeLabel(row.category)}</Badge>
-          )}
+          {/* A dedicated Type column — show it for medicines too, since silence
+              in a column reads as missing data rather than "it's a medicine". */}
+          <StockTypeBadge category={row.category} showMedicine />
         </TableCell>
         <TableCell className="text-right">
           <span className={cn('font-medium', out ? 'text-red-700' : low ? 'text-amber-700' : '')}>

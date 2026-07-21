@@ -32,6 +32,7 @@ import {
   type PurchaseOrderStatus, type CreatePurchaseOrderInput, type ReceivePurchaseOrderLine,
 } from '@/hooks/use-inventory';
 import { useFormulary } from '@/hooks/use-pharmacy';
+import { StockTypeBadge } from '@/components/shared/stock-type-badge';
 
 type Tab = 'all' | 'created' | 'delivered';
 
@@ -280,7 +281,7 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
                 )}
                 {drugs.length > 0 && (
                   <div>
-                    <p className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Our drugs (formulary)</p>
+                    <p className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Our stock (formulary)</p>
                     {drugs.map((d) => (
                       <button
                         key={`drug-${d.id}`}
@@ -294,7 +295,9 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
                         }
                         className="flex w-full min-w-0 items-start gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
                       >
-                        <Badge className="mt-0.5 shrink-0 bg-teal-500/10 text-teal-700 border-teal-500/20 text-[10px]">Drug</Badge>
+                        {/* The formulary carries consumables and equipment too,
+                            so read the row's real type instead of assuming a drug. */}
+                        <StockTypeBadge category={d.category} showMedicine className="mt-0.5" />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
                             <span className="truncate font-medium">{d.drugName}</span>

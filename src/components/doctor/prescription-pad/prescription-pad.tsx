@@ -50,6 +50,7 @@ import { IcdCodeCombobox } from '@/components/clinical/icd-code-combobox';
 import { PhysicalObservationsPicker } from '../physical-observations-picker';
 import { SmartSuggestionsCard } from '../smart-suggestions-card';
 import { QtyCell } from '../prescription-qty-cell';
+import { StockTypeBadge } from '@/components/shared/stock-type-badge';
 
 /** Build the localStorage key where the consultation draft is stored. */
 export function getConsultationDraftKey(appointmentId: string, visitId?: string): string {
@@ -1236,11 +1237,7 @@ function MedicationsSection({ form, patientId }: { form: any; patientId: string 
                       <p className="flex items-center gap-1.5 font-medium">
                         <span className="truncate">{drug.drugName}</span>
                         {/* Non-medicine stock the hospital carries. */}
-                        {drug.category && drug.category !== 'drug' && (
-                          <span className="shrink-0 rounded-full bg-sky-100 px-1.5 py-px text-[10px] font-semibold text-sky-700 capitalize">
-                            {drug.category.replace('_', ' ')}
-                          </span>
-                        )}
+                        <StockTypeBadge category={drug.category} />
                       </p>
                       <p className="text-[10px] text-muted-foreground uppercase">
                         {[drug.genericName, drug.strength && `(${drug.strength})`].filter(Boolean).join(' ')}

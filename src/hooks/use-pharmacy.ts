@@ -99,7 +99,8 @@ export interface DrugBatch {
   updatedAt: string;
   drug?: Pick<
     FormularyItem,
-    'id' | 'drugName' | 'genericName' | 'strength' | 'dosageForm' | 'packSize' | 'looseUnitLabel' | 'taxPercent'
+    | 'id' | 'drugName' | 'category' | 'genericName' | 'strength' | 'dosageForm'
+    | 'packSize' | 'looseUnitLabel' | 'taxPercent'
   >;
   supplier?: { id: string; name: string } | null;
   // Derived purchase economics (G2) returned by the batch getters.
@@ -367,6 +368,7 @@ export function useFormularyMatches(params: FormularyMatchParams, enabled = true
 export interface FormularyAlternative {
   id: string;
   drugName: string;
+  category?: string | null;
   genericName: string | null;
   manufacturer: string | null;
   dosageForm: DosageForm | null;
@@ -1570,6 +1572,8 @@ export interface PrescriptionListItem {
       looseUnitLabel: string | null;
       dosageForm: string | null;
       price?: number | string | null;
+      // Stock type, so the queue and the cart can badge non-medicines.
+      category?: string | null;
     } | null;
   }>;
   // Progress notes a doctor linked to this prescription (visible to anyone who

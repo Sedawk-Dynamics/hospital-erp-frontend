@@ -129,38 +129,32 @@ export function UnifiedItemForm({
       toast.error(`${isMedicine ? 'Medicine' : 'Item'} name is required`);
       return null;
     }
-    if (isMedicine) {
-      return {
-        kind: 'drug',
-        force,
-        drug: {
-          drugName: name.trim(),
-          genericName: genericName.trim() || undefined,
-          manufacturer: manufacturer.trim() || undefined,
-          strength: strength.trim() || undefined,
-          dosageForm: dosageForm || undefined,
-          packSize: intNum(packSize),
-          looseUnitLabel: unit.trim() || undefined,
-          taxPercent: num(gst),
-          price: num(sellingPrice),
-          minStock: intNum(reorder),
-          hsnCode: hsnCode.trim() || undefined,
-          gtin: barcode.trim() || undefined,
-        },
-      };
-    }
+    // EVERY type takes the same path — a formulary row plus batches. A
+    // consumable routed to the legacy inventory table would have no batches, and
+    // the sale engine always dispenses from a batch, so it could never be billed
+    // or prescribed. The type rides along as `category`; the medicine-only
+    // fields simply stay empty for the others.
     return {
-      kind: 'item',
-      item: {
-        itemName: name.trim(),
-        itemCode: barcode.trim() || undefined,
+      kind: 'drug',
+      force,
+      drug: {
+        drugName: name.trim(),
         category,
-        unitOfMeasurement: unit.trim() || undefined,
-        minimumStockThreshold: intNum(reorder),
-        currentStock: intNum(initialStock) ?? 0,
-        costPerUnit: num(purchasePrice),
-        sellingPricePerUnit: num(sellingPrice),
+        genericName: genericName.trim() || undefined,
+        manufacturer: manufacturer.trim() || undefined,
+        strength: strength.trim() || undefined,
+        dosageForm: dosageForm || undefined,
+        packSize: intNum(packSize),
+        looseUnitLabel: unit.trim() || undefined,
+        taxPercent: num(gst),
+        price: num(sellingPrice),
+        minStock: intNum(reorder),
+        hsnCode: hsnCode.trim() || undefined,
+        gtin: barcode.trim() || undefined,
         description: description.trim() || undefined,
+        // Opening stock becomes a no-expiry OPENING batch server-side.
+        openingStock: intNum(initialStock) ?? undefined,
+        costPerUnit: num(purchasePrice),
       },
     };
   };

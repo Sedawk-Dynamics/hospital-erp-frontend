@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { StockTypeBadge } from '@/components/shared/stock-type-badge';
 import {
   Table,
   TableHeader,
@@ -263,6 +264,7 @@ export default function PrescriptionQueuePage() {
                                   <span className="min-w-0 text-sm leading-tight">
                                     <span className="font-medium">{it.drugName}</span>
                                     {it.dosage ? <span className="text-muted-foreground"> {it.dosage}</span> : null}
+                                    <StockTypeBadge category={it.drug?.category} className="ml-1.5 align-middle" />
                                     {(sig || totalLabel || it.isPrn) && (
                                       <span className="mt-0.5 block text-[11px] text-muted-foreground">
                                         {sig}
