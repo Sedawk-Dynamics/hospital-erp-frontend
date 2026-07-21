@@ -2264,9 +2264,11 @@ function EntryStep(props: {
                         onChange={(e) => updateLine(l.id, 'drugName', e.target.value)}
                         placeholder="Product name *  ·  e.g. Telmac 40 Tab"
                       />
-                      {/* Nickname the medicine once the line maps to an existing
-                          formulary drug (new drugs get the box on the Done step). */}
-                      {reviewing && l.kind !== 'item' && decisions[i]?.action === 'map' && decisions[i]?.targetId && (
+                      {/* Nickname, right beside the product name. Available once
+                          the line resolves to an existing product (any type) —
+                          a brand-new product has no id to attach a nickname to
+                          until it's created. */}
+                      {reviewing && decisions[i]?.action === 'map' && decisions[i]?.targetId && (
                         <NicknameBox drugId={decisions[i]!.targetId as string} className="shrink-0" />
                       )}
                       {/* Not in this hospital's master data — the row needs an
@@ -2745,13 +2747,9 @@ function DoneStep({ lines, result }: { lines: DraftLine[]; result: CommitInwardR
               <span className="truncate font-medium">{r.drugName || lines[r.index]?.drugName}</span>
               <Badge variant="outline" className="text-[10px] capitalize">{r.action}</Badge>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <span className={cn('text-xs', r.status === 'error' ? 'text-red-600' : 'text-muted-foreground')}>
-                {r.status === 'ok' ? 'Stock posted' : r.message}
-              </span>
-              {/* Give the just-stocked medicine a personal nickname on the spot. */}
-              {r.status === 'ok' && r.formularyId && <NicknameBox drugId={r.formularyId} />}
-            </div>
+            <span className={cn('shrink-0 text-xs', r.status === 'error' ? 'text-red-600' : 'text-muted-foreground')}>
+              {r.status === 'ok' ? 'Stock posted' : r.message}
+            </span>
           </div>
         ))}
       </div>
