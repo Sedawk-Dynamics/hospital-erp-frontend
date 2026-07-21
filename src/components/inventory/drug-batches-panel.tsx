@@ -25,7 +25,7 @@ import {
   Boxes,
   PackageX,
   ScanLine,
-  Tag,
+  Barcode,
   MapPin,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -77,7 +77,7 @@ import { cn } from '@/lib/utils';
 import { formatDate, formatDateTimeAmPm, toInputDateStr } from '@/lib/date-utils';
 import { packSummary } from '@/lib/pharmacy-units';
 import { StockTypeBadge } from '@/components/shared/stock-type-badge';
-import { PrintLabelsDialog } from '@/components/pharmacy/print-labels-dialog';
+import { BarcodeViewDialog } from '@/components/pharmacy/barcode-view-dialog';
 import {
   AdjustStockDialog,
   StockAdjustmentsLogDialog,
@@ -228,7 +228,7 @@ export function DrugBatchesPanel({
 
   // Recall management (moved here from the old Recalls page — recalls act on batches).
   const [recallTarget, setRecallTarget] = useState<DrugBatch | null>(null);
-  // Shelf-label printing — one batch from a row, or every batch on the page.
+  // Barcode viewer — one batch from a row, or every batch on the page.
   const [labelBatchIds, setLabelBatchIds] = useState<string[]>([]);
   const [affectedBatchId, setAffectedBatchId] = useState<string | null>(null);
 
@@ -537,12 +537,15 @@ export function DrugBatchesPanel({
     if (formData.storageLocation.trim()) payload.storageLocation = formData.storageLocation.trim();
 
     try {
-      await createBatch.mutateAsync(payload);
+      const created = await createBatch.mutateAsync(payload);
       toast.success('Batch added');
       rememberPendingBarcode(formData.drugId);
       setCreateOpen(false);
       setFormData(EMPTY_FORM);
       setDrugSearchInput('');
+      // Show the barcode that was just minted for this batch — the stock is in
+      // the receiver's hands right now, so this is when the code is wanted.
+      if (created?.id) setLabelBatchIds([created.id]);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to create batch';
       // Manual GRN Step 6: the batch number already exists — offer to fold the
@@ -623,10 +626,10 @@ export function DrugBatchesPanel({
               variant="outline"
               disabled={batches.length === 0}
               onClick={() => setLabelBatchIds(batches.map((b) => b.id))}
-              title="Print shelf labels for every batch listed below"
+              title="View barcodes for every batch listed below"
             >
-              <Tag className="mr-1.5 h-4 w-4" />
-              Print labels
+              <Barcode className="mr-1.5 h-4 w-4" />
+              Barcodes
             </Button>
             <Button
               size="sm"
@@ -1391,10 +1394,10 @@ export function DrugBatchesPanel({
                             variant="ghost"
                             size="sm"
                             className="h-8 w-8 p-0 text-muted-foreground hover:text-primary"
-                            title="Print shelf label"
+                            title="View barcode & unique number"
                             onClick={() => setLabelBatchIds([batch.id])}
                           >
-                            <Tag className="h-4 w-4" />
+                            <Barcode className="h-4 w-4" />
                           </Button>
                           <Button
                             variant="ghost"
@@ -1447,7 +1450,7 @@ export function DrugBatchesPanel({
       <AdjustStockDialog batch={adjustTarget} onOpenChange={(open) => !open && setAdjustTarget(null)} />
       <StockAdjustmentsLogDialog open={adjustLogOpen} onOpenChange={setAdjustLogOpen} />
 
-      <PrintLabelsDialog
+      <BarcodeViewDialog
         batchIds={labelBatchIds}
         open={labelBatchIds.length > 0}
         onOpenChange={(open) => !open && setLabelBatchIds([])}

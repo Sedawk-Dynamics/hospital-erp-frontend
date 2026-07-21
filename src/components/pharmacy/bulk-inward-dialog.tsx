@@ -24,6 +24,7 @@ import {
   Download,
   FileSpreadsheet,
   AlertTriangle,
+  Barcode,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
@@ -56,9 +57,11 @@ import {
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/lib/date-utils';
 import { downloadCsv } from '@/lib/csv';
+import { BarcodeViewDialog } from '@/components/pharmacy/barcode-view-dialog';
 import {
   useMatchInward,
   useCommitInward,
+  useBatchLabels,
   useOcrInward,
   useInwardScan,
   type InwardMatchedLine,
@@ -2708,7 +2711,18 @@ function LineMatchControl({
 }
 
 // ── Step 3: result summary ──────────────────────────────────
+// Shows the internal barcode minted for every batch just posted. This is the
+// moment it matters — the stock is physically on the bench in front of whoever
+// received it, so the code has to be here rather than somewhere they must go
+// and look for it afterwards.
 function DoneStep({ lines, result }: { lines: DraftLine[]; result: CommitInwardResult }) {
+  const [viewIds, setViewIds] = useState<string[]>([]);
+  const postedIds = result.results
+    .filter((r) => r.status === 'ok' && r.batchId)
+    .map((r) => r.batchId as string);
+  const { data: labels = [] } = useBatchLabels(postedIds);
+  const codeFor = new Map(labels.map((l) => [l.batchId, l.code128]));
+
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -2729,30 +2743,63 @@ function DoneStep({ lines, result }: { lines: DraftLine[]; result: CommitInwardR
           <span>Net purchase: <span className="font-semibold text-foreground">₹{result.purchaseSummary.netValue.toFixed(2)}</span></span>
         </div>
       )}
+      {postedIds.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2">
+          <p className="text-xs text-muted-foreground">
+            An internal barcode was generated for each batch received — scan it or use the
+            number below.
+          </p>
+          <Button size="sm" variant="outline" onClick={() => setViewIds(postedIds)}>
+            <Barcode className="mr-1.5 h-4 w-4" /> View barcodes
+          </Button>
+        </div>
+      )}
+
       <div className="space-y-1.5">
-        {result.results.map((r) => (
-          <div
-            key={r.index}
-            className={cn(
-              'flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm',
-              r.status === 'error' ? 'border-red-500/30 bg-red-500/5' : 'border-emerald-500/20 bg-emerald-500/5',
-            )}
-          >
-            <div className="flex items-center gap-2 min-w-0">
-              {r.status === 'ok' ? (
-                <CircleCheck className="h-4 w-4 shrink-0 text-emerald-600" />
-              ) : (
-                <CircleX className="h-4 w-4 shrink-0 text-red-600" />
+        {result.results.map((r) => {
+          const code = r.batchId ? codeFor.get(r.batchId) : undefined;
+          return (
+            <div
+              key={r.index}
+              className={cn(
+                'flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm',
+                r.status === 'error' ? 'border-red-500/30 bg-red-500/5' : 'border-emerald-500/20 bg-emerald-500/5',
               )}
-              <span className="truncate font-medium">{r.drugName || lines[r.index]?.drugName}</span>
-              <Badge variant="outline" className="text-[10px] capitalize">{r.action}</Badge>
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                {r.status === 'ok' ? (
+                  <CircleCheck className="h-4 w-4 shrink-0 text-emerald-600" />
+                ) : (
+                  <CircleX className="h-4 w-4 shrink-0 text-red-600" />
+                )}
+                <span className="truncate font-medium">{r.drugName || lines[r.index]?.drugName}</span>
+                <Badge variant="outline" className="text-[10px] capitalize">{r.action}</Badge>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {code && (
+                  <button
+                    type="button"
+                    onClick={() => setViewIds([r.batchId as string])}
+                    title="View this barcode"
+                    className="font-mono text-[11px] font-semibold tracking-wide text-primary hover:underline"
+                  >
+                    ▮ {code}
+                  </button>
+                )}
+                <span className={cn('text-xs', r.status === 'error' ? 'text-red-600' : 'text-muted-foreground')}>
+                  {r.status === 'ok' ? 'Stock posted' : r.message}
+                </span>
+              </div>
             </div>
-            <span className={cn('shrink-0 text-xs', r.status === 'error' ? 'text-red-600' : 'text-muted-foreground')}>
-              {r.status === 'ok' ? 'Stock posted' : r.message}
-            </span>
-          </div>
-        ))}
+          );
+        })}
       </div>
+
+      <BarcodeViewDialog
+        batchIds={viewIds}
+        open={viewIds.length > 0}
+        onOpenChange={(open) => !open && setViewIds([])}
+      />
     </div>
   );
 }
