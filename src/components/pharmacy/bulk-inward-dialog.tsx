@@ -526,6 +526,12 @@ export interface LineIssues {
   warnings: string[];
 }
 
+// Equipment has no shelf life. A batch row still needs an expiry, so we stamp a
+// far-future one instead of forcing the user to make a date up.
+const NO_EXPIRY = '2099-12-31';
+const isEquipment = (l: Pick<DraftLine, 'kind' | 'category'>) =>
+  l.kind === 'item' && l.category === 'equipment';
+
 // Per-line pre-commit validation. Errors block the Match step; warnings are
 // advisory (shown inline) so the user can proceed knowingly.
 function validateLine(l: DraftLine, all: DraftLine[]): LineIssues {
@@ -544,9 +550,11 @@ function validateLine(l: DraftLine, all: DraftLine[]): LineIssues {
 
   // Every type is stocked as a batch now (so it can be sold/tracked like a
   // medicine), so batch + expiry are required whenever stock is received.
+  // Equipment is the exception — it doesn't expire, so rather than make the user
+  // invent a date we default a far-future one at commit.
   if (receiving) {
     if (!l.batchNumber.trim()) errors.push('Batch number is required to receive stock');
-    if (!l.expiryDate) errors.push('Expiry date is required to receive stock');
+    if (!l.expiryDate && !isEquipment(l)) errors.push('Expiry date is required to receive stock');
   }
 
   if (l.expiryDate) {
@@ -1207,7 +1215,8 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         gtin: l.gtin.trim() || undefined,
         hsnCode: l.hsnCode.trim() || undefined,
         batchNumber: l.batchNumber.trim() || undefined,
-        expiryDate: l.expiryDate || undefined,
+        // Equipment doesn't expire — a batch still needs a date, so stamp one.
+        expiryDate: l.expiryDate || (isEquipment(l) ? NO_EXPIRY : undefined),
         manufacturingDate: l.manufacturingDate || undefined,
         // Total received = paid + free (0 = just register the product, no stock).
         quantityReceived: paid + free,
