@@ -46,6 +46,7 @@ import { PrescriptionPad, clearConsultationDraft } from '@/components/doctor/pre
 import { DrugHistoryPanel } from '@/components/doctor/drug-history-panel';
 import { CurrentMedicationsPanel } from '@/components/doctor/current-medications-panel';
 import { MedicalHistoryPanel } from '@/components/doctor/medical-history-panel';
+import { PatientSafetyBanner } from '@/components/doctor/patient-safety-banner';
 import { InvestigationHistoryPanel } from '@/components/doctor/investigation-history-panel';
 import { LabOrderDialog } from '@/components/doctor/lab-order-dialog';
 import { ImagingRequestDialog } from '@/components/doctor/imaging-request-dialog';
@@ -774,6 +775,10 @@ export default function PatientConsultationPage({
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
           {/* ── Main column (80%) ─────────────────────────────────── */}
           <div className="space-y-4 min-w-0 lg:col-span-4">
+            {/* Allergies + family disorders — on screen from the moment the
+                consultation opens, not buried in a history sub-tab. */}
+            <PatientSafetyBanner patientId={patient.id} />
+
             {/* Banners */}
             {canEdit && completedAt !== null && (
               <EditBanner

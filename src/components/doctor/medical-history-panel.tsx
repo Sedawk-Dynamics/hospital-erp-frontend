@@ -2,22 +2,27 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Heart, Users, AlertTriangle, Plus, Trash2, Save } from 'lucide-react';
+import { Heart, Users, AlertTriangle, Plus, Trash2, Save, Stethoscope, Loader2 } from 'lucide-react';
 import { apiGet, apiPut, apiPost, apiDelete } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { formatDate } from '@/lib/date-utils';
 
-type Tab = 'personal' | 'family' | 'allergies';
+type Tab = 'medical' | 'personal' | 'family' | 'allergies';
 
 export function MedicalHistoryPanel({ patientId }: { patientId: string }) {
-  const [tab, setTab] = useState<Tab>('personal');
+  // Medical & Surgical leads: it is the clinical narrative (past illnesses,
+  // past surgeries, diagnoses and the doctors' own consultation notes).
+  // Personal keeps the lifestyle fields it always held.
+  const [tab, setTab] = useState<Tab>('medical');
 
   return (
     <div>
-      <div className="flex gap-1 pb-3">
+      <div className="flex flex-wrap gap-1 pb-3">
         {(
           [
+            { key: 'medical', label: 'Medical & Surgical', icon: Stethoscope },
             { key: 'personal', label: 'Personal', icon: Heart },
             { key: 'family', label: 'Family', icon: Users },
             { key: 'allergies', label: 'Allergies', icon: AlertTriangle },
@@ -38,9 +43,204 @@ export function MedicalHistoryPanel({ patientId }: { patientId: string }) {
       </div>
 
       <div>
+        {tab === 'medical' && <DoctorMedicalSurgical patientId={patientId} />}
         {tab === 'personal' && <DoctorPersonal patientId={patientId} />}
         {tab === 'family' && <DoctorFamily patientId={patientId} />}
         {tab === 'allergies' && <DoctorAllergies patientId={patientId} />}
+      </div>
+    </div>
+  );
+}
+
+// ── Medical & Surgical History ───────────────────────────────────────────
+//
+// Past medical treatments, past surgeries, every diagnosis on file, and the
+// consultation notes/summaries the doctors have written. None of this had a
+// home in the history view before — Personal only ever held lifestyle fields.
+
+interface MedicalSurgical {
+  pastMedicalHistory: string | null;
+  pastSurgicalHistory: string | null;
+  disorders: string | null;
+  diagnoses: Array<{
+    id: string;
+    diagnosisName: string;
+    icdCode: string | null;
+    diagnosisType: string;
+    notes: string | null;
+    recordedAt: string;
+    visitType: string | null;
+    doctorName: string | null;
+  }>;
+  consultationNotes: Array<{
+    id: string;
+    noteType: string | null;
+    content: string;
+    impressions: string | null;
+    conclusions: string | null;
+    recordedAt: string;
+    visitType: string | null;
+    isInpatient: boolean;
+    doctorName: string | null;
+  }>;
+}
+
+function DoctorMedicalSurgical({ patientId }: { patientId: string }) {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ['doctor', 'medical-surgical-history', patientId],
+    queryFn: async () => {
+      const res = await apiGet<MedicalSurgical>(`/medical-history/${patientId}/medical-surgical`);
+      return res.data ?? null;
+    },
+  });
+
+  // Editing the narrative writes back through the personal-history record,
+  // which is where those two columns live.
+  const { data: personal } = useQuery({
+    queryKey: ['doctor', 'personal-history', patientId],
+    queryFn: async () => {
+      const res = await apiGet<any>(`/medical-history/${patientId}/personal`);
+      return res.data ?? {};
+    },
+  });
+
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const save = useMutation({
+    mutationFn: async () => {
+      await apiPut(`/medical-history/${patientId}/personal`, { ...(personal || {}), ...draft });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['doctor', 'medical-surgical-history', patientId] });
+      qc.invalidateQueries({ queryKey: ['doctor', 'personal-history', patientId] });
+      setDraft({});
+    },
+  });
+
+  const narrativeField = (label: string, key: keyof MedicalSurgical & string, placeholder: string) => (
+    <div>
+      <label className="mb-0.5 block text-[10px] font-medium text-foreground/60">{label}</label>
+      <textarea
+        value={draft[key] ?? (data?.[key] as string | null) ?? ''}
+        onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
+        rows={3}
+        placeholder={placeholder}
+        className="w-full rounded-md border bg-background px-2 py-1 text-xs"
+      />
+    </div>
+  );
+
+  if (isLoading) {
+    return (
+      <p className="flex items-center gap-1.5 py-4 text-xs text-muted-foreground">
+        <Loader2 className="h-3 w-3 animate-spin" /> Loading history…
+      </p>
+    );
+  }
+
+  const diagnoses = data?.diagnoses ?? [];
+  const notes = data?.consultationNotes ?? [];
+
+  return (
+    <div className="space-y-4 text-xs">
+      <div className="space-y-2">
+        {narrativeField(
+          'Past Medical History',
+          'pastMedicalHistory',
+          'Past illnesses and treatments — diabetes since 2019, hypertension on amlodipine, TB treated 2015…',
+        )}
+        {narrativeField(
+          'Past Surgical History',
+          'pastSurgicalHistory',
+          'Past procedures with dates — appendicectomy 2018, LSCS 2021…',
+        )}
+        {narrativeField('Known Disorders', 'disorders', 'Chronic / ongoing disorders')}
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            className="h-7 gap-1 text-xs"
+            disabled={Object.keys(draft).length === 0 || save.isPending}
+            onClick={() => save.mutate()}
+          >
+            <Save className="h-3 w-3" /> Save
+          </Button>
+        </div>
+      </div>
+
+      <div>
+        <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-foreground/60">
+          Diagnoses ({diagnoses.length})
+        </h4>
+        {diagnoses.length === 0 ? (
+          <p className="italic text-muted-foreground">No diagnoses recorded</p>
+        ) : (
+          <div className="space-y-1">
+            {diagnoses.map((d) => (
+              <div key={d.id} className="rounded-md border px-2 py-1.5">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-semibold">{d.diagnosisName}</span>
+                  {d.icdCode && (
+                    <Badge variant="outline" className="px-1 py-0 text-[9px]">
+                      {d.icdCode}
+                    </Badge>
+                  )}
+                  <Badge className="px-1 py-0 text-[9px] capitalize">{d.diagnosisType}</Badge>
+                  {d.visitType && (
+                    <span className="text-[10px] uppercase text-muted-foreground">{d.visitType}</span>
+                  )}
+                </div>
+                <p className="mt-0.5 text-[10px] text-muted-foreground">
+                  {formatDate(d.recordedAt)}
+                  {d.doctorName ? ` · ${d.doctorName}` : ''}
+                </p>
+                {d.notes && <p className="mt-0.5 text-[11px]">{d.notes}</p>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-foreground/60">
+          Consultation Notes &amp; Summaries ({notes.length})
+        </h4>
+        {notes.length === 0 ? (
+          <p className="italic text-muted-foreground">No consultation notes recorded</p>
+        ) : (
+          <div className="space-y-1">
+            {notes.map((n) => (
+              <div key={n.id} className="rounded-md border px-2 py-1.5">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Badge className="px-1 py-0 text-[9px] capitalize">
+                    {n.isInpatient ? 'IP' : (n.visitType ?? 'OP')}
+                  </Badge>
+                  {n.noteType && (
+                    <span className="text-[10px] capitalize text-muted-foreground">
+                      {n.noteType.replace(/_/g, ' ')}
+                    </span>
+                  )}
+                  <span className="text-[10px] text-muted-foreground">
+                    {formatDate(n.recordedAt)}
+                    {n.doctorName ? ` · ${n.doctorName}` : ''}
+                  </span>
+                </div>
+                <p className="mt-0.5 whitespace-pre-wrap text-[11px]">{n.content}</p>
+                {n.impressions && (
+                  <p className="mt-0.5 text-[11px]">
+                    <span className="text-muted-foreground">Impression: </span>
+                    {n.impressions}
+                  </p>
+                )}
+                {n.conclusions && (
+                  <p className="mt-0.5 text-[11px]">
+                    <span className="text-muted-foreground">Conclusion: </span>
+                    {n.conclusions}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

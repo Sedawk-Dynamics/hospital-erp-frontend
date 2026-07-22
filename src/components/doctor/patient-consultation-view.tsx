@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Loader2,
-  AlertTriangle,
   Heart,
   Thermometer,
   Activity,
@@ -41,6 +40,7 @@ import { formatDate } from '@/lib/date-utils';
 import { ClipboardList, History, Stethoscope, HeartPulse } from 'lucide-react';
 import { DrugHistoryPanel } from './drug-history-panel';
 import { MedicalHistoryPanel } from './medical-history-panel';
+import { PatientSafetyBanner } from './patient-safety-banner';
 import { InvestigationHistoryPanel } from './investigation-history-panel';
 import { CurrentMedicationsPanel } from './current-medications-panel';
 import { OrdersPanel } from './orders-panel';
@@ -131,32 +131,6 @@ function PatientDemographics({ patient }: { patient: Patient }) {
             </Badge>
           </>
         )}
-      </div>
-    </div>
-  );
-}
-
-// --- Allergy Banner ---
-
-function AllergyBanner({ allergies }: { allergies: Patient['allergies'] }) {
-  if (!allergies || allergies.length === 0) return null;
-
-  return (
-    <div className="flex items-start gap-2 rounded-md border border-error/30 bg-error/10 px-3 py-2">
-      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-error" />
-      <div className="flex flex-wrap gap-2">
-        {allergies.map((allergy) => (
-          <Badge
-            key={allergy.id}
-            variant="destructive"
-            className="text-xs font-medium"
-          >
-            {allergy.allergen}
-            {allergy.severity && (
-              <span className="ml-1 opacity-75">({allergy.severity})</span>
-            )}
-          </Badge>
-        ))}
       </div>
     </div>
   );
@@ -558,7 +532,9 @@ export function PatientConsultationView({
             {/* ----- Profile Header ----- */}
             <div className="space-y-3 pt-2">
               <PatientDemographics patient={patient} />
-              <AllergyBanner allergies={patient.allergies} />
+              {/* Allergies + family disorders, always on screen. Replaces the
+                  allergy-only strip so family history is visible too. */}
+              <PatientSafetyBanner patientId={patient.id} />
             </div>
 
             <Separator />
