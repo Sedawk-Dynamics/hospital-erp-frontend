@@ -215,19 +215,9 @@ export function AppointmentRowActions({
           </Button>
         )}
 
-        {/* Checked in — the doctor starts the consultation from their queue,
-            so the counter just sees where the patient is. */}
-        {status === 'checked_in' && (
-          <span className="rounded-full bg-primary/10 px-2.5 py-0.5 font-label text-[11px] font-semibold text-primary">
-            With doctor next
-          </span>
-        )}
-
-        {status === 'in_consultation' && (
-          <span className="rounded-full bg-blue-100 px-2.5 py-0.5 font-label text-[11px] font-semibold text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
-            In consultation
-          </span>
-        )}
+        {/* No counter action for checked_in / in_consultation — the doctor
+            drives those steps, and the Status column's progression already
+            shows where the patient is. */}
 
         {/* A temporary casualty record is resolved straight from the queue. */}
         {patient && isEmergencyPatient(patient) && (
