@@ -134,7 +134,13 @@ export function ConsultationCompletionInline({
 
       {/* ── Step Content ── */}
       <div className="p-5">
-        {step === 1 && <StepExamination form={form} patientId={patientId} />}
+        {step === 1 && (
+          <StepExamination
+            form={form}
+            patientId={patientId}
+            appointmentId={appointment?.id}
+          />
+        )}
         {step === 2 && <StepPrescription form={form} patientId={patientId} />}
         {step === 3 && <StepAdvice form={form} />}
       </div>

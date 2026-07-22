@@ -9,7 +9,7 @@
 //
 // Brings together the moving parts of an IP stay so doctors, nurses and admin
 // staff can land on one URL and see everything tied to that admission:
-// overview, vitals (read-only here — recording lives on /nurse/charting),
+// overview, vitals (nurses record from /nurse/charting; doctors capture inline),
 // today's eMAR doses, active prescriptions, progress notes, lab + imaging
 // orders, and patient demographics.
 //
@@ -52,6 +52,7 @@ import {
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { RecordVitalsDialog } from '@/components/shared/record-vitals-dialog';
 import { Badge } from '@/components/ui/badge';
 import { EmergencyBadge } from '@/components/shared/emergency-badge';
 import { Input } from '@/components/ui/input';
@@ -297,6 +298,7 @@ function AllergyBanner({ patientId }: { patientId: string }) {
 function LatestVitalsStrip({ patientId, role, admissionId }: { patientId: string; role: WorkspaceRole; admissionId: string }) {
   const { data, isLoading } = useLatestVitals(patientId);
   const latest = useMemo(() => unwrapOne<Vital>(data), [data]);
+  const [recordOpen, setRecordOpen] = useState(false);
 
   const cards = [
     { label: 'BP', value: latest?.bloodPressureSystolic ? `${latest.bloodPressureSystolic}/${latest.bloodPressureDiastolic ?? '-'}` : null, unit: 'mmHg', icon: Activity, abnormal: bpAbnormal(latest?.bloodPressureSystolic, latest?.bloodPressureDiastolic) },
@@ -309,6 +311,12 @@ function LatestVitalsStrip({ patientId, role, admissionId }: { patientId: string
 
   return (
     <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4">
+      <RecordVitalsDialog
+        open={recordOpen}
+        onOpenChange={setRecordOpen}
+        patientId={patientId}
+        admissionId={admissionId}
+      />
       <div className="mb-2 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-foreground">Latest Vitals</h2>
         <div className="flex items-center gap-2">
@@ -317,12 +325,24 @@ function LatestVitalsStrip({ patientId, role, admissionId }: { patientId: string
               recorded {formatDateTime(latest.createdAt)}
             </span>
           )}
-          {role === 'nurse' && (
+          {role === 'nurse' ? (
             <LinkButton size="sm" variant="ghost" className="h-7 gap-1 text-xs" href={`/nurse/vitals?patientId=${patientId}&kind=ipd`}>
               <Plus className="h-3 w-3" />
               Record
             </LinkButton>
-          )}
+          ) : role === 'doctor' ? (
+            // The treating doctor examines at the bedside too — capture the
+            // reading against this admission without leaving the workspace.
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 gap-1 text-xs"
+              onClick={() => setRecordOpen(true)}
+            >
+              <Plus className="h-3 w-3" />
+              Record
+            </Button>
+          ) : null}
           <LinkButton size="sm" variant="ghost" className="h-7 gap-1 text-xs" href={`/nurse/charting?admissionId=${admissionId}&patientId=${patientId}`}>
             View trends
           </LinkButton>

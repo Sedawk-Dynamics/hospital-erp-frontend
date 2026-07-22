@@ -301,7 +301,13 @@ export function ConsultationCompletionDialog({
 
         {/* Step Content (scrollable) */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
-          {step === 1 && <StepExamination form={form} />}
+          {step === 1 && (
+            <StepExamination
+              form={form}
+              patientId={patientId}
+              appointmentId={appointment?.id}
+            />
+          )}
           {step === 2 && <StepPrescription form={form} patientId={patientId} />}
           {step === 3 && <StepAdvice form={form} />}
         </div>

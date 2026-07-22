@@ -11,10 +11,11 @@ import {
   GripVertical, FlaskConical, ClipboardList, StickyNote,
   UserCheck, CalendarDays, Eye,
   Printer, CheckCircle2, RotateCcw, ChevronDown,
-  Clock, Eye as ObservationIcon, Sparkles, Pin,
+  Clock, Eye as ObservationIcon, Sparkles, Pin, Activity,
 } from 'lucide-react';
 import { useFormularySearch, useAllergyCheck, usePatientVitals, usePatientDiagnoses, usePrescriptions, useProgressNotes, type FormularyDrug } from '@/hooks/use-doctor';
 import { useLatestVitals } from '@/hooks/use-nurse';
+import { RecordVitalsDialog } from '@/components/shared/record-vitals-dialog';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useValidatePrescriptionQuery, useValidatePrescription, type CdssWarning } from '@/hooks/use-cdss';
 import {
@@ -230,6 +231,7 @@ export function PrescriptionPad({
   // ask the assigned nurse to capture it from the Nursing module.
   const { data: latestVitalsResp } = useLatestVitals(patientId);
   const latestVital = (latestVitalsResp as any)?.data ?? null;
+  const [recordVitalsOpen, setRecordVitalsOpen] = useState(false);
 
   // Watched SOAP extras — reading the field array this way keeps the
   // render in sync without subscribing the whole form to every keystroke.
@@ -521,7 +523,63 @@ export function PrescriptionPad({
               Objective · what you measure & observe
             </span>
           </div>
-            {/* Vitals are shown in the right-hand sidebar (read-only, nurse-recorded). */}
+            {/* VITALS — latest reading (nurse or doctor) + inline capture */}
+            <PadSection
+              icon={<Activity className="h-4 w-4" />}
+              title="Vital Signs"
+              badge={latestVital ? 'Latest' : 'None yet'}
+              collapsed={false}
+              onToggle={() => {}}
+              color="text-secondary"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                {latestVital ? (
+                  [
+                    latestVital.bloodPressureSystolic && latestVital.bloodPressureDiastolic
+                      ? `BP ${latestVital.bloodPressureSystolic}/${latestVital.bloodPressureDiastolic}`
+                      : null,
+                    (latestVital.pulseRate ?? latestVital.heartRate)
+                      ? `Pulse ${latestVital.pulseRate ?? latestVital.heartRate}`
+                      : null,
+                    latestVital.temperature ? `Temp ${latestVital.temperature}°C` : null,
+                    latestVital.respiratoryRate ? `RR ${latestVital.respiratoryRate}` : null,
+                    latestVital.oxygenSaturation ? `SpO₂ ${latestVital.oxygenSaturation}%` : null,
+                    latestVital.bloodSugar ? `BGL ${latestVital.bloodSugar}` : null,
+                  ]
+                    .filter(Boolean)
+                    .map((t) => (
+                      <span
+                        key={t as string}
+                        className="rounded-md bg-muted px-2 py-1 font-label text-xs font-semibold"
+                      >
+                        {t}
+                      </span>
+                    ))
+                ) : (
+                  <span className="font-label text-xs text-muted-foreground">
+                    No vitals recorded for this patient yet.
+                  </span>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="ml-auto h-7 gap-1 text-[11px]"
+                  onClick={() => setRecordVitalsOpen(true)}
+                >
+                  <Plus className="h-3 w-3" />
+                  Record Vitals
+                </Button>
+              </div>
+            </PadSection>
+
+            <RecordVitalsDialog
+              open={recordVitalsOpen}
+              onOpenChange={setRecordVitalsOpen}
+              patientId={patientId}
+              appointmentId={appointmentId}
+              visitId={editMode?.visitId}
+            />
 
             {/* PHYSICAL OBSERVATIONS */}
             <PadSection
@@ -705,8 +763,7 @@ export function PrescriptionPad({
                       .filter(Boolean)
                       .join('\n') || undefined,
                   vitalsSummary: (() => {
-                    // Pull from the latest nurse-recorded reading. The doctor
-                    // no longer captures vitals inline.
+                    // Latest reading on file, whoever recorded it.
                     const v = latestVital;
                     if (!v) return undefined;
                     const parts: string[] = [];

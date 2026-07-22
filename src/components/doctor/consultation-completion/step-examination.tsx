@@ -5,9 +5,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { Badge } from '@/components/ui/badge';
-import { Plus, Trash2, Activity, Lock, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Activity, Loader2 } from 'lucide-react';
+import { useState } from 'react';
 import { useLatestVitals } from '@/hooks/use-nurse';
+import { RecordVitalsDialog } from '@/components/shared/record-vitals-dialog';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
 import type { ConsultationFormData } from './consultation-completion-schema';
 
@@ -15,9 +16,12 @@ interface StepExaminationProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   form: UseFormReturn<ConsultationFormData, any, any>;
   patientId?: string;
+  /** Encounter key for a vitals reading taken during this consultation. */
+  appointmentId?: string;
+  visitId?: string;
 }
 
-export function StepExamination({ form, patientId }: StepExaminationProps) {
+export function StepExamination({ form, patientId, appointmentId, visitId }: StepExaminationProps) {
   const { register, formState: { errors }, control } = form;
 
   const { fields, append, remove } = useFieldArray({
@@ -74,8 +78,8 @@ export function StepExamination({ form, patientId }: StepExaminationProps) {
 
       <Separator />
 
-      {/* ── Vital Signs (read-only — recorded by nursing team) ── */}
-      <VitalsReadOnlyPanel patientId={patientId} />
+      {/* ── Vital Signs ── */}
+      <VitalsPanel patientId={patientId} appointmentId={appointmentId} visitId={visitId} />
 
       <Separator />
 
@@ -154,14 +158,22 @@ export function StepExamination({ form, patientId }: StepExaminationProps) {
   );
 }
 
-// ── Vital signs read-only panel ────────────────────────────
+// ── Vital signs panel ──────────────────────────────────────
 //
-// Vitals are owned by the nursing team. Doctors can only view the latest
-// reading on this step — recording or correcting requires a nurse to do it
-// from the nursing module. This panel pulls `/clinical/vitals/:patientId/latest`
-// and renders a tile strip plus a "recorded by …" attribution line.
+// Shows the latest reading (whoever took it — nurse or doctor) and lets the
+// examining doctor record a fresh one inline. Readings are append-only and each
+// stores its author, so the nursing round history stays intact.
 
-function VitalsReadOnlyPanel({ patientId }: { patientId?: string }) {
+function VitalsPanel({
+  patientId,
+  appointmentId,
+  visitId,
+}: {
+  patientId?: string;
+  appointmentId?: string;
+  visitId?: string;
+}) {
+  const [recordOpen, setRecordOpen] = useState(false);
   const { data: latestResp, isLoading } = useLatestVitals(patientId ?? '');
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const v = (latestResp as any)?.data ?? null;
@@ -169,8 +181,12 @@ function VitalsReadOnlyPanel({ patientId }: { patientId?: string }) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recorder = v?.recorder as { firstName?: string; lastName?: string } | undefined;
   const recorderName = recorder
-    ? [recorder.firstName, recorder.lastName].filter(Boolean).join(' ').trim() || 'Nurse'
+    ? [recorder.firstName, recorder.lastName].filter(Boolean).join(' ').trim() || 'Clinical staff'
     : null;
+
+  // A reading needs an encounter to hang off; without one the backend can't
+  // resolve a Visit, so hide the action rather than fail on submit.
+  const canRecord = Boolean(patientId && (appointmentId || visitId));
 
   const tiles = v
     ? [
@@ -203,14 +219,29 @@ function VitalsReadOnlyPanel({ patientId }: { patientId?: string }) {
           <Activity className="h-4 w-4 text-primary" />
           Vital Signs
         </h3>
-        <Badge
-          variant="outline"
-          className="gap-1 border-secondary/40 bg-secondary/10 text-secondary text-[10px]"
-        >
-          <Lock className="h-3 w-3" />
-          Nurse-recorded · read only
-        </Badge>
+        {canRecord && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-7 gap-1 text-[11px]"
+            onClick={() => setRecordOpen(true)}
+          >
+            <Plus className="h-3 w-3" />
+            Record Vitals
+          </Button>
+        )}
       </div>
+
+      {canRecord && (
+        <RecordVitalsDialog
+          open={recordOpen}
+          onOpenChange={setRecordOpen}
+          patientId={patientId!}
+          appointmentId={appointmentId}
+          visitId={visitId}
+        />
+      )}
 
       {!patientId ? (
         <p className="text-xs text-muted-foreground">
@@ -223,7 +254,7 @@ function VitalsReadOnlyPanel({ patientId }: { patientId?: string }) {
         </div>
       ) : !v ? (
         <p className="text-xs text-muted-foreground">
-          No vitals recorded yet. Ask the assigned nurse to record vitals from the Nursing module.
+          No vitals recorded yet for this patient.
         </p>
       ) : tiles.length === 0 ? (
         <p className="text-xs text-muted-foreground">
@@ -246,7 +277,7 @@ function VitalsReadOnlyPanel({ patientId }: { patientId?: string }) {
             ))}
           </div>
           <p className="text-[11px] text-muted-foreground">
-            {recorderName ? `Recorded by ${recorderName}` : 'Recorded by nursing team'}
+            {recorderName ? `Recorded by ${recorderName}` : 'Recorded by clinical staff'}
             {v.recordedAt ? ` · ${formatDateTimeAmPm(v.recordedAt)}` : ''}
           </p>
         </>
