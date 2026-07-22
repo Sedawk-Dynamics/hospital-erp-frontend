@@ -140,7 +140,11 @@ function BillingTab({
   const [page, setPage] = useState(1);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['hospital', 'billing', { search, page }],
+    // Shares the ['hospital','bills'] namespace so every billing mutation
+    // (create / finalize / reopen / payment) refreshes this list. It used to
+    // sit under ['hospital','billing'], which nothing ever invalidated — that
+    // is why a freshly created bill never showed up here.
+    queryKey: ['hospital', 'bills', 'list', { search, page }],
     queryFn: async () => {
       const params: Record<string, unknown> = { page, limit: 20 };
       if (search) params.search = search;
@@ -469,7 +473,7 @@ function PendingListTab() {
 
   const handleCollected = () => {
     queryClient.invalidateQueries({ queryKey: ['hospital', 'billing-pending'] });
-    queryClient.invalidateQueries({ queryKey: ['hospital', 'billing'] });
+    queryClient.invalidateQueries({ queryKey: ['hospital', 'bills'] });
     queryClient.invalidateQueries({ queryKey: ['hospital', 'cash-counter'] });
     queryClient.invalidateQueries({ queryKey: ['hospital', 'collection-summary'] });
     setCollectTarget(null);

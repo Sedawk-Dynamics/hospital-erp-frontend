@@ -17,7 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Loader2, Search, Plus, Trash2, Stethoscope, FlaskConical, Pill, Scan, BedDouble,
-  Percent, IndianRupee, FileCheck2, CheckCircle2, X,
+  Percent, IndianRupee, FileCheck2, CheckCircle2, X, Undo2,
 } from 'lucide-react';
 
 import {
@@ -39,6 +39,7 @@ import {
   useRemoveBillItem,
   useSetBillDiscount,
   useFinalizeBill,
+  useReopenBill,
   type ChargeRow,
   type ChargeSource,
 } from '@/hooks/use-hospital';
@@ -344,6 +345,7 @@ function ComposeStep({
   const removeBillItem = useRemoveBillItem();
   const setBillDiscount = useSetBillDiscount();
   const finalizeBill = useFinalizeBill();
+  const reopenBill = useReopenBill();
 
   const handleToggle = useCallback((row: ChargeRow) => {
     const key = `${row.referenceType}:${row.referenceId}`;
@@ -428,6 +430,19 @@ function ComposeStep({
     [effectiveBillId, setBillDiscount],
   );
 
+  // Finalized by mistake? While nothing has been collected the bill can go back
+  // to draft so the missing items land on the SAME bill instead of forcing the
+  // counter to abandon it and start a fresh one.
+  const handleReopen = useCallback(async () => {
+    if (!effectiveBillId) return;
+    try {
+      await reopenBill.mutateAsync(effectiveBillId);
+      toast.success('Bill reopened — you can add items again');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to reopen bill');
+    }
+  }, [effectiveBillId, reopenBill]);
+
   const handleFinalize = useCallback(async () => {
     if (!effectiveBillId) return;
     try {
@@ -437,6 +452,10 @@ function ComposeStep({
       toast.error(e instanceof Error ? e.message : 'Failed to finalize');
     }
   }, [effectiveBillId, finalizeBill, onFinalized]);
+
+  // A finalized bill with nothing collected can still be pulled back to draft.
+  const isFinalizedEditable =
+    billTyped?.status === 'pending' && Number(billTyped?.amountPaid ?? 0) === 0;
 
   const selectedCount = Object.keys(selectedRefs).length;
   const selectedTotal = Object.values(selectedRefs).reduce((s, c) => s + c.totalAmount, 0);
@@ -502,19 +521,40 @@ function ComposeStep({
           />
           <BillSummaryPanel bill={billTyped ?? null} />
           <div className="flex flex-col gap-2">
-            <Button
-              className="w-full"
-              disabled={!billTyped || billTyped.status !== 'draft' || (billTyped.billItems?.length ?? 0) === 0 || finalizeBill.isPending}
-              onClick={handleFinalize}
-            >
-              {finalizeBill.isPending ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Finalizing...</>
-              ) : (
-                <><CheckCircle2 className="mr-2 h-4 w-4" /> Finalize Bill</>
-              )}
-            </Button>
+            {isFinalizedEditable ? (
+              <>
+                <p className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 font-label text-[11px] text-amber-800">
+                  This bill is finalized. Reopen it to add or remove items — allowed
+                  because nothing has been collected against it yet.
+                </p>
+                <Button
+                  className="w-full"
+                  variant="outline"
+                  disabled={reopenBill.isPending}
+                  onClick={handleReopen}
+                >
+                  {reopenBill.isPending ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Reopening...</>
+                  ) : (
+                    <><Undo2 className="mr-2 h-4 w-4" /> Reopen Bill for Editing</>
+                  )}
+                </Button>
+              </>
+            ) : (
+              <Button
+                className="w-full"
+                disabled={!billTyped || billTyped.status !== 'draft' || (billTyped.billItems?.length ?? 0) === 0 || finalizeBill.isPending}
+                onClick={handleFinalize}
+              >
+                {finalizeBill.isPending ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Finalizing...</>
+                ) : (
+                  <><CheckCircle2 className="mr-2 h-4 w-4" /> Finalize Bill</>
+                )}
+              </Button>
+            )}
             <Button variant="outline" onClick={onClose}>
-              Close (keep as draft)
+              {billTyped?.status === 'draft' ? 'Close (keep as draft)' : 'Close'}
             </Button>
           </div>
         </div>

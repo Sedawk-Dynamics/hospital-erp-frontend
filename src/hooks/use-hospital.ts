@@ -499,6 +499,24 @@ export function useFinalizeBill() {
   });
 }
 
+/**
+ * Undo an accidental finalize (pending → draft) so the counter can keep adding
+ * items to the same bill. Server refuses once any payment/claim exists.
+ */
+export function useReopenBill() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiPatch<Bill>(`/billing/${id}/reopen`);
+      return response.data ?? null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bills'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bill'] });
+    },
+  });
+}
+
 export type FrontdeskPaymentMethod =
   | 'cash'
   | 'credit_card'
