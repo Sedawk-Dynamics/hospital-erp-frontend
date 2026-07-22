@@ -1541,7 +1541,11 @@ export function useClinicalOTRequests(params?: { page?: number; limit?: number; 
   return useQuery({
     queryKey: ['doctor', 'clinical-ot-requests', params],
     queryFn: async () => {
-      const response = await apiGet<ClinicalOTRequest[]>('/clinical/ot-requests', { params });
+      // The OT module, the doctor's OT list and OT-kit issue all read from
+      // /compliance/ot-requests. Requests raised from the consultation dialog
+      // used to go to /clinical/ot-requests, a parallel path nothing reads —
+      // which is why an OT request never showed up anywhere.
+      const response = await apiGet<ClinicalOTRequest[]>('/compliance/ot-requests', { params });
       return { data: response.data, meta: response.meta as PaginationMeta };
     },
   });
@@ -1552,7 +1556,7 @@ export function useCreateClinicalOTRequest() {
   return useMutation({
     mutationFn: async (data: {
       patientId: string;
-      visitId: string;
+      visitId?: string;
       doctorId: string;
       procedureName: string;
       procedureDetails?: string;
@@ -1562,11 +1566,13 @@ export function useCreateClinicalOTRequest() {
       durationMinutes?: number;
       requiredEquipment?: string[];
     }) => {
-      const response = await apiPost<ClinicalOTRequest>('/clinical/ot-requests', data);
+      const response = await apiPost<ClinicalOTRequest>('/compliance/ot-requests', data);
       return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['doctor', 'clinical-ot-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['doctor', 'ot-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['ot'] });
     },
   });
 }

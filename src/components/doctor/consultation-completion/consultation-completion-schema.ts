@@ -84,17 +84,22 @@ export const DOSAGE_FORM_LABELS: Record<string, string> = {
 
 // ── Zod schema ─────────────────────────────────────────────
 //
-// Note: a `vitals` schema once lived here so doctors could record vital signs
-// inline during a consultation. Vitals are now nursing-owned — only nurses
-// (and the supervisory nurse roles) can write — so the field is removed from
-// the form. The Examination step renders the latest nurse-recorded reading
-// read-only via `useLatestVitals`.
+// Note: vitals are not part of this form's payload. The Examination step shows
+// the latest reading and offers inline capture via <RecordVitalsDialog/>, which
+// posts to /clinical/vitals directly.
 
-const diagnosisRowSchema = z.object({
-  icdCode: z.string().optional(),
-  diagnosisName: z.string().min(1, 'Diagnosis name is required'),
-  diagnosisType: z.enum(['primary', 'secondary', 'differential']),
-});
+// A row may be left entirely blank (the form seeds one empty row); rows are
+// filtered out on submit. Only a row that carries an ICD code must be named.
+const diagnosisRowSchema = z
+  .object({
+    icdCode: z.string().optional(),
+    diagnosisName: z.string().optional(),
+    diagnosisType: z.enum(['primary', 'secondary', 'differential']),
+  })
+  .refine((d) => !d.icdCode?.trim() || !!d.diagnosisName?.trim(), {
+    message: 'Name the diagnosis you picked an ICD code for',
+    path: ['diagnosisName'],
+  });
 
 const medicineSchema = z.object({
   drugId: z.string().optional(),
@@ -184,12 +189,14 @@ const dischargePinSchema = z.object({
 
 export const consultationCompletionSchema = z.object({
   // Step 1 — Examination
-  chiefComplaint: z.string().min(1, 'Chief complaint is required'),
+  // Chief complaint and diagnosis are NOT mandatory: a follow-up visit often
+  // has neither a new complaint nor a new diagnosis, and requiring them left
+  // the doctor unable to close the session at all. Blank diagnosis rows are
+  // dropped before submit (see use-consultation-completion).
+  chiefComplaint: z.string().optional(),
   generalExamination: z.string().optional(),
   systemicExamination: z.string().optional(),
-  // Vitals are recorded by the nursing team and only displayed read-only on
-  // this step — they are not part of the consultation form payload.
-  diagnoses: z.array(diagnosisRowSchema).min(1, 'At least one diagnosis is required'),
+  diagnoses: z.array(diagnosisRowSchema),
 
   // Step 2 — Prescription (optional — doctor may not prescribe)
   medicines: z.array(medicineSchema),

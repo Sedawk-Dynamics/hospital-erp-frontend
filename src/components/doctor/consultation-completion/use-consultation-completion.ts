@@ -115,7 +115,7 @@ export function useConsultationCompletion() {
         if (formData.diagnoses.length > 0) {
           setCurrentStep('Saving diagnoses...');
           for (const diag of formData.diagnoses) {
-            if (!diag.diagnosisName) continue;
+            if (!diag.diagnosisName?.trim()) continue;
             await apiPost('/clinical/diagnoses', {
               patientId,
               visitId,
@@ -440,7 +440,7 @@ export function getConsultationSectionText(
       const lines = (data.diagnoses ?? [])
         .filter((d) => d.diagnosisName?.trim())
         .map((d) => {
-          const name = d.diagnosisName.trim();
+          const name = d.diagnosisName!.trim();
           const icd = d.icdCode?.trim();
           return icd ? `${name} (${icd}) [${d.diagnosisType}]` : `${name} [${d.diagnosisType}]`;
         });

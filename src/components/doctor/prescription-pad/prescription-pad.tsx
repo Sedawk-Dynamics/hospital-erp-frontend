@@ -327,7 +327,15 @@ export function PrescriptionPad({
 
   const handleFinish = useCallback(async () => {
     const valid = await form.trigger();
-    if (!valid) return;
+    if (!valid) {
+      // Never fail silently — the button used to look dead when a field deep in
+      // another step was invalid, with nothing on screen to explain why.
+      const firstError = Object.values(form.formState.errors)
+        .map((e) => (e as { message?: string })?.message)
+        .find(Boolean);
+      toast.error(firstError || 'Please fix the highlighted fields before signing');
+      return;
+    }
 
     // CDSS safety gate — re-validate fresh (never trust a stale "all clear")
     // and hard-block on contraindications: a severe/life-threatening allergy or

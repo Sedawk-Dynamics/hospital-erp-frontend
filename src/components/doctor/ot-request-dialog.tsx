@@ -90,14 +90,17 @@ export function OTRequestDialog({
     setEquipment((prev) => prev.filter((v) => v !== value));
   }, []);
 
+  // A visit is helpful context but not required — an elective surgery is often
+  // booked without an open encounter, and demanding one left the submit button
+  // permanently disabled whenever no active visit could be resolved.
   const canSubmit = useMemo(
-    () => !!selectedPatient && !!visitId && procedureName.trim().length > 0,
-    [selectedPatient, visitId, procedureName],
+    () => !!selectedPatient && procedureName.trim().length > 0,
+    [selectedPatient, procedureName],
   );
 
   const handleSubmit = async () => {
-    if (!selectedPatient || !visitId) {
-      toast.error('Select a patient and active visit');
+    if (!selectedPatient) {
+      toast.error('Select a patient');
       return;
     }
     const doctorId = myDoctor?.id;
@@ -112,7 +115,7 @@ export function OTRequestDialog({
     try {
       await createOtRequest.mutateAsync({
         patientId: selectedPatient.id,
-        visitId,
+        visitId: visitId || undefined,
         doctorId,
         procedureName: procedureName.trim(),
         procedureDetails: procedureDetails.trim() || undefined,
