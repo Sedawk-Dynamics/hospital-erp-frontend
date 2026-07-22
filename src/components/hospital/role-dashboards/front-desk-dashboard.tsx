@@ -1,37 +1,23 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPatch } from '@/lib/api';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiGet } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
-  CalendarCheck, UserPlus, Search, Users, CheckCircle2,
-  Clock, CircleCheck, LogIn, Footprints, Banknote, Loader2, Siren,
-  MoreHorizontal, CalendarClock, XCircle,
+  CalendarCheck, UserPlus, Search, Users,
+  Clock, CircleCheck, LogIn, Footprints, Banknote,
 } from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { CancelAppointmentDialog } from '@/components/hospital/cancel-appointment-dialog';
-import { RescheduleAppointmentDialog } from '@/components/hospital/reschedule-appointment-dialog';
 import { toInputDateStr, formatTime24, formatDate } from '@/lib/date-utils';
-import { toast } from 'sonner';
 import { CreateAppointmentDialog } from '@/components/hospital/create-appointment-dialog';
 import { FrontDeskRegisterDialog } from '@/components/hospital/frontdesk-register-dialog';
-import {
-  EmergencyResolveDialog,
-  type EmergencyResolveTarget,
-} from '@/components/hospital/emergency-resolve-dialog';
 import { EmergencyBadge } from '@/components/shared/emergency-badge';
-import { isEmergencyPatient } from '@/lib/emergency';
-import { CollectFrontdeskPaymentDialog } from '@/components/hospital/collect-frontdesk-payment-dialog';
-import { useInitiateFrontdeskPayment } from '@/hooks/use-hospital';
-import type { Appointment } from '@/types';
+import {
+  AppointmentRowActions,
+  type AppointmentRowLike,
+} from '@/components/hospital/appointment-row-actions';
 
 /** Normalize @db.Time() or plain "HH:mm" values into a parseable ISO string */
 function normalizeTimeValue(value: string | undefined | null): string | null {
@@ -67,13 +53,6 @@ interface QueueAppointment {
   } | null;
 }
 
-interface AppointmentStats {
-  total: number;
-  checkedIn: number;
-  waiting: number;
-  completed: number;
-}
-
 /** Add (or subtract) days from a yyyy-MM-dd string. Pure date math, no TZ drift. */
 function shiftDate(dateStr: string, days: number): string {
   const [y, m, d] = dateStr.split('-').map(Number);
@@ -101,10 +80,6 @@ export function FrontDeskDashboard() {
   const [registerOpen, setRegisterOpen] = useState(false);
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [bookAppointmentOpen, setBookAppointmentOpen] = useState(false);
-  const [resolveTarget, setResolveTarget] = useState<EmergencyResolveTarget | null>(null);
-  const [collectPayTarget, setCollectPayTarget] = useState<QueueAppointment | null>(null);
-  const [cancelTarget, setCancelTarget] = useState<QueueAppointment | null>(null);
-  const [rescheduleTarget, setRescheduleTarget] = useState<QueueAppointment | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('today');
   const today = toInputDateStr();
   // In "Today" mode the desk can still page to any single day with the picker.
@@ -120,50 +95,6 @@ export function FrontDeskDashboard() {
         : { date: selectedDate };
   // Stat tiles are always a single-day figure; they follow the day picker.
   const statsDate = viewMode === 'today' ? selectedDate : today;
-
-  const initiateFrontdeskPayment = useInitiateFrontdeskPayment();
-
-  const needsFrontdeskPayment = (apt: QueueAppointment) =>
-    apt.paymentInfo?.paymentStatus === 'pay_at_frontdesk' && apt.paymentInfo.balanceDue > 0;
-
-  const handleConfirmClick = (apt: QueueAppointment) => {
-    if (needsFrontdeskPayment(apt)) {
-      setCollectPayTarget(apt);
-      return;
-    }
-    confirmMutation.mutate(apt.id);
-  };
-
-  // Pending-payment row → create the front-desk bill on the server, then
-  // open the existing collect dialog seeded with the freshly minted bill.
-  // After the dialog records the payment it will also flip the appointment
-  // booked → confirmed via useUpdateAppointmentStatus, matching the normal
-  // pay_at_frontdesk → confirmed path.
-  const handleStartFrontdeskPayment = async (apt: QueueAppointment) => {
-    try {
-      const bill = await initiateFrontdeskPayment.mutateAsync(apt.id);
-      if (!bill) {
-        toast.error('Failed to create front-desk bill');
-        return;
-      }
-      setCollectPayTarget({
-        ...apt,
-        status: 'booked',
-        paymentInfo: {
-          billId: bill.billId,
-          billNumber: bill.billNumber,
-          billStatus: bill.status,
-          totalAmount: bill.totalAmount,
-          amountPaid: bill.amountPaid,
-          balanceDue: bill.balanceDue,
-          paymentStatus: 'pay_at_frontdesk',
-        },
-      });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to start front-desk payment';
-      toast.error(message);
-    }
-  };
 
   const { data: queueData, isLoading: queueLoading } = useQuery({
     queryKey: ['front-desk', 'queue', dateParams, search, statusFilter, page],
@@ -191,32 +122,6 @@ export function FrontDeskDashboard() {
         waiting: s.booked ?? 0,
         completed: s.completed ?? 0,
       } : { total: 0, pendingPayment: 0, checkedIn: 0, waiting: 0, completed: 0 };
-    },
-  });
-
-  const confirmMutation = useMutation({
-    mutationFn: async (appointmentId: string) => {
-      await apiPatch(`/appointments/${appointmentId}/status`, { status: 'confirmed' });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['front-desk'] });
-      toast.success('Appointment confirmed');
-    },
-    onError: () => {
-      toast.error('Failed to confirm appointment');
-    },
-  });
-
-  const checkInMutation = useMutation({
-    mutationFn: async (appointmentId: string) => {
-      await apiPatch(`/appointments/${appointmentId}/status`, { status: 'checked_in' });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['front-desk'] });
-      toast.success('Patient checked in successfully');
-    },
-    onError: () => {
-      toast.error('Failed to check in patient');
     },
   });
 
@@ -339,15 +244,6 @@ export function FrontDeskDashboard() {
       />
 
       {/* Resolve a temporary casualty straight from the queue */}
-      <EmergencyResolveDialog
-        open={!!resolveTarget}
-        onOpenChange={(o) => !o && setResolveTarget(null)}
-        patient={resolveTarget}
-        onResolved={() => {
-          setResolveTarget(null);
-          queryClient.invalidateQueries({ queryKey: ['front-desk'] });
-        }}
-      />
 
       {/* View window: Today (any single day) / Upcoming / Past Bookings */}
       <div className="flex flex-wrap items-center gap-2">
@@ -503,120 +399,15 @@ export function FrontDeskDashboard() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center justify-center gap-1">
-                      {appt.status === 'pending_payment' && (
-                        <Button
-                          size="sm"
-                          className="gap-1.5 text-xs bg-amber-600 hover:bg-amber-700 text-white"
-                          disabled={
-                            initiateFrontdeskPayment.isPending &&
-                            initiateFrontdeskPayment.variables === appt.id
-                          }
-                          onClick={() => handleStartFrontdeskPayment(appt)}
-                          title="Patient chose Pay at Front Desk — collect cash/UPI now"
-                        >
-                          {initiateFrontdeskPayment.isPending &&
-                          initiateFrontdeskPayment.variables === appt.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Banknote className="h-3.5 w-3.5" />
-                          )}
-                          Collect Payment
-                        </Button>
-                      )}
-                      {appt.status === 'booked' && (() => {
-                        const payFirst = needsFrontdeskPayment(appt);
-                        return (
-                          <Button
-                            size="sm"
-                            variant={payFirst ? 'default' : 'outline'}
-                            className={cn(
-                              'gap-1.5 text-xs',
-                              payFirst && 'bg-amber-600 hover:bg-amber-700 text-white',
-                            )}
-                            disabled={confirmMutation.isPending}
-                            onClick={() => handleConfirmClick(appt)}
-                            title={payFirst ? 'Collect front-desk payment, then confirm' : undefined}
-                          >
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            {payFirst
-                              ? `Collect ₹${appt.paymentInfo!.balanceDue.toLocaleString('en-IN')} & Confirm`
-                              : 'Confirm'}
-                          </Button>
-                        );
-                      })()}
-                      {appt.status === 'confirmed' && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="gap-1.5 text-xs"
-                          disabled={checkInMutation.isPending}
-                          onClick={() => checkInMutation.mutate(appt.id)}
-                        >
-                          <LogIn className="h-3.5 w-3.5" />
-                          Check In
-                        </Button>
-                      )}
-                      {/* A temporary casualty is resolved right from the queue. */}
-                      {isEmergencyPatient(appt.patient) && (
-                        <Button
-                          size="sm"
-                          className="gap-1.5 bg-red-600 text-xs text-white hover:bg-red-700"
-                          onClick={() =>
-                            setResolveTarget({
-                              id: appt.patient.id,
-                              mrn: appt.patient.mrn,
-                              firstName: appt.patient.firstName,
-                              lastName: appt.patient.lastName,
-                              phone: appt.patient.phone,
-                              type: 'op',
-                            })
-                          }
-                        >
-                          <Siren className="h-3.5 w-3.5" />
-                          Register / Connect
-                        </Button>
-                      )}
-
-                      {/* Reschedule / Cancel — same actions the admin OP Home has */}
-                      {(() => {
-                        const canReschedule = ['pending_payment', 'booked', 'confirmed', 'no_show'].includes(appt.status);
-                        const canCancel = ['pending_payment', 'booked', 'confirmed', 'checked_in'].includes(appt.status);
-                        if (!canReschedule && !canCancel) return null;
-                        return (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger
-                              render={
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 text-outline hover:text-primary transition-colors"
-                                />
-                              }
-                            >
-                              <MoreHorizontal className="h-3.5 w-3.5" />
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              {canReschedule && (
-                                <DropdownMenuItem onClick={() => setRescheduleTarget(appt)}>
-                                  <CalendarClock className="mr-2 h-4 w-4" />
-                                  Reschedule
-                                </DropdownMenuItem>
-                              )}
-                              {canCancel && (
-                                <DropdownMenuItem
-                                  className="text-destructive focus:text-destructive"
-                                  onClick={() => setCancelTarget(appt)}
-                                >
-                                  <XCircle className="mr-2 h-4 w-4" />
-                                  Cancel
-                                </DropdownMenuItem>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        );
-                      })()}
-                      </div>
+                      {/* Shared with the hospital-admin Walk In queue so both
+                          screens always offer the same operations. */}
+                      <AppointmentRowActions
+                        appointment={appt as unknown as AppointmentRowLike}
+                        onChanged={() => {
+                          queryClient.invalidateQueries({ queryKey: ['front-desk'] });
+                          queryClient.invalidateQueries({ queryKey: ['hospital'] });
+                        }}
+                      />
                     </td>
                   </tr>
                 ))
@@ -647,40 +438,8 @@ export function FrontDeskDashboard() {
         )}
       </div>
 
-      <RescheduleAppointmentDialog
-        open={!!rescheduleTarget}
-        onOpenChange={(open) => { if (!open) setRescheduleTarget(null); }}
-        appointment={
-          rescheduleTarget
-            ? {
-                id: rescheduleTarget.id,
-                doctorId: rescheduleTarget.doctorId ?? '',
-                patientId: rescheduleTarget.patientId ?? rescheduleTarget.patient.id,
-                type: rescheduleTarget.type,
-                consultationType: rescheduleTarget.consultationType,
-                priority: rescheduleTarget.priority,
-                patient: rescheduleTarget.patient,
-              }
-            : null
-        }
-      />
 
-      <CancelAppointmentDialog
-        open={!!cancelTarget}
-        onOpenChange={(open) => { if (!open) setCancelTarget(null); }}
-        appointment={cancelTarget}
-      />
 
-      <CollectFrontdeskPaymentDialog
-        open={!!collectPayTarget}
-        onOpenChange={(open) => { if (!open) setCollectPayTarget(null); }}
-        appointment={collectPayTarget as unknown as Appointment | null}
-        onConfirmed={() => {
-          queryClient.invalidateQueries({ queryKey: ['front-desk'] });
-          queryClient.invalidateQueries({ queryKey: ['hospital'] });
-          setCollectPayTarget(null);
-        }}
-      />
     </div>
   );
 }

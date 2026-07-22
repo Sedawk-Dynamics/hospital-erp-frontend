@@ -10,17 +10,12 @@ import {
   UserPlus,
   Loader2,
   UserRound,
-  MoreHorizontal,
-  Play,
-  CheckCircle2,
-  SkipForward,
   Plus,
   CalendarCheck,
   Clock,
   Users,
   Stethoscope,
   CircleCheckBig,
-  UserCheck,
 } from 'lucide-react';
 
 import {
@@ -42,27 +37,19 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 
 import { FrontDeskRegisterDialog } from '@/components/hospital/frontdesk-register-dialog';
 import { CreateAppointmentDialog } from '@/components/hospital/create-appointment-dialog';
-import {
-  EmergencyResolveDialog,
-  type EmergencyResolveTarget,
-} from '@/components/hospital/emergency-resolve-dialog';
 import { EmergencyBadge } from '@/components/shared/emergency-badge';
-import { isEmergencyPatient } from '@/lib/emergency';
+import {
+  AppointmentRowActions,
+  type AppointmentRowLike,
+} from '@/components/hospital/appointment-row-actions';
 import {
   useOPAppointments,
   useAppointmentStats,
   useDoctorsList,
   usePatientSearch,
-  useUpdateAppointmentStatus,
   hospitalKeys,
 } from '@/hooks/use-hospital';
 import { apiPost, apiPatch } from '@/lib/api';
@@ -89,18 +76,24 @@ function addMinutes(timeStr: string, mins: number): string {
 // Status badge config
 // ============================================================
 
+// booked / confirmed / checked_in used to all render as "Waiting", which hid
+// which step the patient is actually at — and therefore which action is due.
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
+  pending_payment: {
+    label: 'Pending Payment',
+    className: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
+  },
   booked: {
-    label: 'Waiting',
+    label: 'Booked',
     className: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
   },
   confirmed: {
-    label: 'Waiting',
-    className: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
+    label: 'Confirmed',
+    className: 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-400',
   },
   checked_in: {
-    label: 'Waiting',
-    className: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
+    label: 'Checked In',
+    className: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400',
   },
   in_consultation: {
     label: 'In Consultation',
@@ -466,7 +459,6 @@ export default function WalkInPage() {
   const [createPatientOpen, setCreatePatientOpen] = useState(false);
   const [walkInDialogOpen, setWalkInDialogOpen] = useState(false);
   const [bookAppointmentOpen, setBookAppointmentOpen] = useState(false);
-  const [resolveTarget, setResolveTarget] = useState<EmergencyResolveTarget | null>(null);
 
   // Data
   const { data: appointmentsData, isLoading: appointmentsLoading } = useOPAppointments({
@@ -494,33 +486,6 @@ export default function WalkInPage() {
 
   const appointments = appointmentsData?.data ?? [];
   const meta = appointmentsData?.meta;
-
-  // Status mutation
-  const updateStatus = useUpdateAppointmentStatus();
-
-  const handleStatusChange = useCallback(
-    (appointmentId: string, newStatus: string) => {
-      updateStatus.mutate(
-        { id: appointmentId, status: newStatus },
-        {
-          onSuccess: () => {
-            toast.success(
-              newStatus === 'in_consultation'
-                ? 'Consultation started'
-                : newStatus === 'completed'
-                  ? 'Consultation completed'
-                  : 'Patient skipped'
-            );
-            queryClient.invalidateQueries({ queryKey: ['hospital', 'walkin-appointments'] });
-          },
-          onError: (err: any) => {
-            toast.error(err?.response?.data?.message || 'Failed to update status');
-          },
-        }
-      );
-    },
-    [updateStatus, queryClient]
-  );
 
   // Computed queue stats from appointments
   const queueStats = useMemo(() => {
@@ -625,17 +590,6 @@ export default function WalkInPage() {
         open={bookAppointmentOpen}
         onOpenChange={setBookAppointmentOpen}
       />
-      {/* Resolve a temporary casualty straight from the OP queue */}
-      <EmergencyResolveDialog
-        open={!!resolveTarget}
-        onOpenChange={(o) => !o && setResolveTarget(null)}
-        patient={resolveTarget}
-        onResolved={() => {
-          setResolveTarget(null);
-          queryClient.invalidateQueries({ queryKey: ['hospital'] });
-        }}
-      />
-
       {/* ── Queue Stats Row ────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard
@@ -841,57 +795,16 @@ export default function WalkInPage() {
                         {checkInTime}
                       </td>
 
-                      {/* Actions */}
+                      {/* Actions — shared with the Front Desk queue so the two
+                          screens always offer the same operations. */}
                       <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {apt.status === 'booked' && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="gap-1.5 text-xs"
-                              disabled={updateStatus.isPending}
-                              onClick={() => handleStatusChange(apt.id, 'confirmed')}
-                            >
-                              <CheckCircle2 className="h-3.5 w-3.5" />
-                              Confirm
-                            </Button>
-                          )}
-                          {apt.status === 'confirmed' && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="gap-1.5 text-xs"
-                              disabled={updateStatus.isPending}
-                              onClick={() => handleStatusChange(apt.id, 'checked_in')}
-                            >
-                              <Play className="h-3.5 w-3.5" />
-                              Check In
-                            </Button>
-                          )}
-                          {/* A temporary casualty is resolved right from the queue:
-                              register it as a new patient, or connect it to an
-                              existing one. */}
-                          {isEmergencyPatient(apt.patient) && apt.patient && (
-                            <Button
-                              size="sm"
-                              className="gap-1.5 bg-red-600 text-xs text-white hover:bg-red-700"
-                              onClick={() =>
-                                setResolveTarget({
-                                  id: apt.patient!.id,
-                                  mrn: apt.patient!.mrn,
-                                  firstName: apt.patient!.firstName,
-                                  lastName: apt.patient!.lastName,
-                                  gender: apt.patient!.gender,
-                                  phone: apt.patient!.phone,
-                                  type: 'op',
-                                })
-                              }
-                            >
-                              <UserCheck className="h-3.5 w-3.5" />
-                              Register / Connect
-                            </Button>
-                          )}
-                        </div>
+                        <AppointmentRowActions
+                          appointment={apt as unknown as AppointmentRowLike}
+                          onChanged={() => {
+                            queryClient.invalidateQueries({ queryKey: ['hospital'] });
+                            queryClient.invalidateQueries({ queryKey: ['front-desk'] });
+                          }}
+                        />
                       </td>
                     </tr>
                   );
