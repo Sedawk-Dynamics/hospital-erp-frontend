@@ -111,6 +111,19 @@ export function AppointmentRowActions({
   const needsPayment =
     apt.paymentInfo?.paymentStatus === 'pay_at_frontdesk' && apt.paymentInfo.balanceDue > 0;
 
+  /**
+   * Anything the counter can still take money for: a live appointment that has
+   * an outstanding balance, or none at all because no bill was ever raised.
+   *
+   * Appointments booked through the New Appointment dialog never raise a bill
+   * (they show "No Billing"), and the Collect action used to appear only on
+   * `pending_payment` rows — so a walk-in that was already checked in had no
+   * way to be charged from the queue at all.
+   */
+  const isLive = !['completed', 'cancelled', 'no_show'].includes(status);
+  const outstanding = apt.paymentInfo ? apt.paymentInfo.balanceDue > 0 : true;
+  const canCollect = isLive && outstanding;
+
   const canReschedule = ['pending_payment', 'booked', 'confirmed', 'no_show'].includes(status);
   const canCancel = ['pending_payment', 'booked', 'confirmed', 'checked_in'].includes(status);
   const canNoShow = ['pending_payment', 'booked', 'confirmed'].includes(status);
@@ -145,6 +158,17 @@ export function AppointmentRowActions({
         toast.error('Failed to create front-desk bill');
         return;
       }
+      if (bill.balanceDue <= 0) {
+        // Usually means the doctor has no consultation fee configured, so the
+        // bill came out at ₹0 — there is nothing to collect.
+        toast.info(
+          bill.totalAmount > 0
+            ? `Bill ${bill.billNumber} is already fully paid`
+            : `Bill ${bill.billNumber} raised at ₹0 — no consultation fee is set on this doctor's profile`,
+        );
+        onChanged?.();
+        return;
+      }
       setCollectTarget({
         ...(apt as unknown as Appointment),
         status: 'booked',
@@ -169,13 +193,15 @@ export function AppointmentRowActions({
     <>
       <div className={cn('flex items-center justify-end gap-1.5', className)}>
         {/* ── Primary step for the current status ── */}
-        {status === 'pending_payment' && (
+        {/* Collect is offered on any live row with money outstanding, whatever
+            step the patient is at — including one with no bill yet. */}
+        {canCollect && status !== 'booked' && (
           <Button
             size="sm"
             className="gap-1.5 bg-amber-600 text-xs text-white hover:bg-amber-700"
             disabled={paymentPending}
             onClick={handleStartPayment}
-            title="Patient chose Pay at Front Desk — collect cash/UPI now"
+            title="Raise the consultation bill and collect cash/UPI now"
           >
             {paymentPending ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -189,16 +215,24 @@ export function AppointmentRowActions({
         {status === 'booked' && (
           <Button
             size="sm"
-            variant={needsPayment ? 'default' : 'outline'}
-            className={cn('gap-1.5 text-xs', needsPayment && 'bg-amber-600 text-white hover:bg-amber-700')}
-            disabled={updateStatus.isPending}
-            onClick={handleConfirm}
-            title={needsPayment ? 'Collect front-desk payment, then confirm' : undefined}
+            variant={canCollect ? 'default' : 'outline'}
+            className={cn('gap-1.5 text-xs', canCollect && 'bg-amber-600 text-white hover:bg-amber-700')}
+            disabled={updateStatus.isPending || paymentPending}
+            onClick={canCollect ? handleStartPayment : handleConfirm}
+            title={canCollect ? 'Collect the consultation fee, then confirm' : undefined}
           >
-            {needsPayment ? <Banknote className="h-3.5 w-3.5" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+            {paymentPending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : canCollect ? (
+              <Banknote className="h-3.5 w-3.5" />
+            ) : (
+              <ShieldCheck className="h-3.5 w-3.5" />
+            )}
             {needsPayment
               ? `Collect ₹${apt.paymentInfo!.balanceDue.toLocaleString('en-IN')} & Confirm`
-              : 'Confirm'}
+              : canCollect
+                ? 'Collect & Confirm'
+                : 'Confirm'}
           </Button>
         )}
 
@@ -259,6 +293,13 @@ export function AppointmentRowActions({
               <Eye className="mr-2 h-4 w-4" />
               View Details
             </DropdownMenuItem>
+
+            {canCollect && (
+              <DropdownMenuItem onClick={handleStartPayment}>
+                <Banknote className="mr-2 h-4 w-4" />
+                Collect Payment
+              </DropdownMenuItem>
+            )}
 
             {status === 'booked' && (
               <DropdownMenuItem onClick={handleConfirm}>

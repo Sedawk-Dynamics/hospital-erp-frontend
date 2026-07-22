@@ -123,10 +123,24 @@ export function CollectFrontdeskPaymentDialog({
         notes: data.notes?.trim() || undefined,
       });
 
-      await updateStatus.mutateAsync({ id: appointment.id, status: 'confirmed' });
+      // Only advance a pre-confirmation appointment. A patient who has already
+      // checked in (or is with the doctor) must not be dragged back to
+      // 'confirmed' — that transition is invalid and used to throw AFTER the
+      // money was taken, leaving the desk with an error on a successful payment.
+      const advanceable = ['pending_payment', 'booked'].includes(appointment.status);
+      let advanced = false;
+      if (advanceable) {
+        try {
+          await updateStatus.mutateAsync({ id: appointment.id, status: 'confirmed' });
+          advanced = true;
+        } catch {
+          // Payment is already recorded — never fail the collection over this.
+        }
+      }
 
       toast.success(
-        `Payment of ₹${balanceDue.toLocaleString('en-IN')} collected. Appointment confirmed.`,
+        `Payment of ₹${balanceDue.toLocaleString('en-IN')} collected.` +
+          (advanced ? ' Appointment confirmed.' : ''),
       );
       onOpenChange(false);
       onConfirmed?.(appointment);
@@ -142,10 +156,11 @@ export function CollectFrontdeskPaymentDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Collect Payment Before Confirmation</DialogTitle>
+          <DialogTitle>Collect Payment</DialogTitle>
           <DialogDescription>
-            <span className="font-label text-on-surface-variant">{patientName}</span> chose to pay
-            at the front desk. Collect the amount below to confirm the appointment.
+            Consultation charges for{' '}
+            <span className="font-label text-on-surface-variant">{patientName}</span>. Recording
+            the payment updates the bill and the day-end collection sheet.
           </DialogDescription>
         </DialogHeader>
 
