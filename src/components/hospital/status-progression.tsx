@@ -36,6 +36,16 @@ export function StatusProgression({ status }: StatusProgressionProps) {
     );
   }
 
+  // Pre-booking: the patient-app booking exists but the fee is unpaid, so the
+  // patient hasn't entered the five-step queue yet.
+  if (status === 'pending_payment') {
+    return (
+      <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-bold text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+        Pending Payment
+      </span>
+    );
+  }
+
   if (status === 'no_show') {
     return (
       <span className="inline-flex items-center rounded-full bg-surface-container-high px-2.5 py-0.5 text-[10px] font-bold text-on-surface-variant">

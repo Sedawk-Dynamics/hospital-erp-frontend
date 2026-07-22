@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { toInputDateStr, formatTime } from '@/lib/date-utils';
+import { toInputDateStr } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
@@ -40,11 +40,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 import { FrontDeskRegisterDialog } from '@/components/hospital/frontdesk-register-dialog';
 import { CreateAppointmentDialog } from '@/components/hospital/create-appointment-dialog';
-import { EmergencyBadge } from '@/components/shared/emergency-badge';
-import {
-  AppointmentRowActions,
-  type AppointmentRowLike,
-} from '@/components/hospital/appointment-row-actions';
+import { AppointmentTable } from '@/components/hospital/appointment-table';
 import {
   useOPAppointments,
   useAppointmentStats,
@@ -70,61 +66,6 @@ function addMinutes(timeStr: string, mins: number): string {
   const d = new Date();
   d.setHours(h, m + mins, 0, 0);
   return formatHHMM(d);
-}
-
-// ============================================================
-// Status badge config
-// ============================================================
-
-// booked / confirmed / checked_in used to all render as "Waiting", which hid
-// which step the patient is actually at — and therefore which action is due.
-const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
-  pending_payment: {
-    label: 'Pending Payment',
-    className: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
-  },
-  booked: {
-    label: 'Booked',
-    className: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
-  },
-  confirmed: {
-    label: 'Confirmed',
-    className: 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-400',
-  },
-  checked_in: {
-    label: 'Checked In',
-    className: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400',
-  },
-  in_consultation: {
-    label: 'In Consultation',
-    className: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-  },
-  completed: {
-    label: 'Completed',
-    className: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-  },
-  cancelled: {
-    label: 'Skipped',
-    className: 'bg-gray-100 text-gray-600 dark:bg-gray-800/50 dark:text-gray-400',
-  },
-  no_show: {
-    label: 'Skipped',
-    className: 'bg-gray-100 text-gray-600 dark:bg-gray-800/50 dark:text-gray-400',
-  },
-};
-
-function getStatusBadge(status: string) {
-  const config = STATUS_CONFIG[status] ?? {
-    label: status.replace(/_/g, ' '),
-    className: 'bg-gray-100 text-gray-600',
-  };
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 font-label text-[11px] font-semibold capitalize ${config.className}`}
-    >
-      {config.label}
-    </span>
-  );
 }
 
 // ============================================================
@@ -527,12 +468,6 @@ export default function WalkInPage() {
     setPage(1);
   }, []);
 
-  // Get token number from appointment
-  const getToken = (apt: Appointment): string => {
-    const token = apt.queueTokens?.[0];
-    return token?.tokenNumber != null ? String(token.tokenNumber) : '-';
-  };
-
   return (
     <div className="space-y-4 animate-fade-in-up">
       {/* ── Header ─────────────────────────────────────────── */}
@@ -674,176 +609,22 @@ export default function WalkInPage() {
       </div>
 
       {/* ── Queue Table ────────────────────────────────────── */}
-      <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-surface-container">
-                <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">
-                  Token #
-                </th>
-                <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">
-                  Patient Details
-                </th>
-                <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">
-                  Doctor
-                </th>
-                <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">
-                  Status
-                </th>
-                <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">
-                  Time
-                </th>
-                <th className="px-4 pb-4 pt-5 text-right font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-surface-container/50">
-              {appointmentsLoading ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                      <p className="font-label text-sm text-on-surface-variant">
-                        Loading queue...
-                      </p>
-                    </div>
-                  </td>
-                </tr>
-              ) : appointments.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <Users className="h-8 w-8 text-on-surface-variant/30" />
-                      <p className="font-label text-sm text-on-surface-variant">
-                        No walk-in entries found
-                      </p>
-                      <p className="font-label text-xs text-on-surface-variant/60">
-                        Click &ldquo;New Walk In&rdquo; to register a patient
-                      </p>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                appointments.map((apt) => {
-                  const token = getToken(apt);
-                  const patientName = `${apt.patient?.firstName ?? ''} ${apt.patient?.lastName ?? ''}`.trim();
-                  const initials = `${apt.patient?.firstName?.[0] ?? ''}${apt.patient?.lastName?.[0] ?? ''}`.toUpperCase();
-                  const doctorName = apt.doctor
-                    ? `Dr. ${apt.doctor.user?.firstName ?? ''} ${apt.doctor.user?.lastName ?? ''}`.trim()
-                    : '-';
-                  const checkInTime = apt.createdAt ? formatTime(apt.createdAt) : '-';
-                  const isWaiting =
-                    apt.status === 'booked' ||
-                    apt.status === 'confirmed' ||
-                    apt.status === 'checked_in';
-                  const isInConsultation = apt.status === 'in_consultation';
-                  const isTerminal =
-                    apt.status === 'completed' ||
-                    apt.status === 'cancelled' ||
-                    apt.status === 'no_show';
-
-                  return (
-                    <tr
-                      key={apt.id}
-                      className="group hover:bg-surface-container-low transition-colors"
-                    >
-                      {/* Token */}
-                      <td className="px-4 py-3">
-                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 font-label text-sm font-bold text-primary">
-                          {token}
-                        </span>
-                      </td>
-
-                      {/* Patient Details */}
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-9 w-9">
-                            <AvatarFallback className="bg-primary/10 text-primary font-label text-xs font-bold">
-                              {initials || <UserRound className="h-4 w-4" />}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0">
-                            <p className="flex items-center gap-1.5 font-label text-sm font-bold truncate">
-                              {patientName || 'Unknown'}
-                              <EmergencyBadge patient={apt.patient} size="sm" />
-                            </p>
-                            <p className="font-label text-[10px] text-on-surface-variant">
-                              {apt.patient?.mrn ?? '-'}
-                              {apt.patient?.phone ? ` \u00B7 ${apt.patient.phone}` : ''}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Doctor */}
-                      <td className="px-4 py-3">
-                        <p className="font-label text-sm">{doctorName}</p>
-                        {apt.doctor?.specialization && (
-                          <p className="font-label text-[10px] text-on-surface-variant">
-                            {apt.doctor.specialization}
-                          </p>
-                        )}
-                      </td>
-
-                      {/* Status */}
-                      <td className="px-4 py-3">{getStatusBadge(apt.status)}</td>
-
-                      {/* Time */}
-                      <td className="px-4 py-3 font-label text-sm text-on-surface-variant">
-                        {checkInTime}
-                      </td>
-
-                      {/* Actions — shared with the Front Desk queue so the two
-                          screens always offer the same operations. */}
-                      <td className="px-4 py-3 text-right">
-                        <AppointmentRowActions
-                          appointment={apt as unknown as AppointmentRowLike}
-                          onChanged={() => {
-                            queryClient.invalidateQueries({ queryKey: ['hospital'] });
-                            queryClient.invalidateQueries({ queryKey: ['front-desk'] });
-                          }}
-                        />
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* ── Pagination ────────────────────────────────────── */}
-        {meta && meta.totalPages > 1 && (
-          <div className="flex items-center justify-between border-t border-surface-container px-4 py-3">
-            <p className="font-label text-xs text-on-surface-variant">
-              Showing {(meta.page - 1) * meta.limit + 1}–
-              {Math.min(meta.page * meta.limit, meta.total)} of {meta.total}
-            </p>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-                className="font-label text-xs rounded-lg"
-              >
-                Previous
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}
-                disabled={page >= meta.totalPages}
-                className="font-label text-xs rounded-lg"
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Same table the admin OP Home and the Front Desk queue render, so the
+          patient / payment / status-progression flow is identical everywhere. */}
+      <AppointmentTable
+        appointments={appointments as unknown as Appointment[]}
+        isLoading={appointmentsLoading}
+        page={page}
+        totalPages={meta?.totalPages ?? 1}
+        total={meta?.total ?? 0}
+        onPageChange={setPage}
+        showToken
+        emptyMessage='No walk-in entries found. Click "New Walk In" to register a patient.'
+        onChanged={() => {
+          queryClient.invalidateQueries({ queryKey: ['hospital'] });
+          queryClient.invalidateQueries({ queryKey: ['front-desk'] });
+        }}
+      />
     </div>
   );
 }

@@ -10,22 +10,11 @@ import {
   CalendarCheck, UserPlus, Search, Users,
   Clock, CircleCheck, LogIn, Footprints, Banknote,
 } from 'lucide-react';
-import { toInputDateStr, formatTime24, formatDate } from '@/lib/date-utils';
+import { toInputDateStr, formatDate } from '@/lib/date-utils';
 import { CreateAppointmentDialog } from '@/components/hospital/create-appointment-dialog';
 import { FrontDeskRegisterDialog } from '@/components/hospital/frontdesk-register-dialog';
-import { EmergencyBadge } from '@/components/shared/emergency-badge';
-import {
-  AppointmentRowActions,
-  type AppointmentRowLike,
-} from '@/components/hospital/appointment-row-actions';
-
-/** Normalize @db.Time() or plain "HH:mm" values into a parseable ISO string */
-function normalizeTimeValue(value: string | undefined | null): string | null {
-  if (!value) return null;
-  if (value.includes('T')) return value; // already ISO like "1970-01-01T03:30:00.000Z"
-  if (/^\d{2}:\d{2}/.test(value)) return `1970-01-01T${value}Z`;
-  return value;
-}
+import { AppointmentTable } from '@/components/hospital/appointment-table';
+import type { Appointment } from '@/types';
 
 interface QueueAppointment {
   id: string;
@@ -308,138 +297,37 @@ export function FrontDeskDashboard() {
       </div>
 
       {/* Appointment Queue Table */}
-      <div className="bg-surface-container-lowest rounded-xl shadow-[24px_0_40px_-4px_rgba(0,0,0,0.05)] overflow-hidden">
-        <div className="px-4 py-3 border-b border-surface-container">
-          <h2 className="font-headline text-lg font-bold flex items-center gap-2">
-            <div className="p-2 rounded-lg bg-primary/10 text-primary">
-              <Users className="h-4 w-4" />
-            </div>
-            {viewMode === 'upcoming'
-              ? 'Upcoming Appointments'
-              : viewMode === 'past'
-                ? 'Past Bookings'
-                : selectedDate === today
-                  ? "Today's Appointment Queue"
-                  : `Appointments — ${formatDate(selectedDate)}`}
-          </h2>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="text-on-surface-variant font-label text-[10px] uppercase tracking-widest border-b border-surface-container">
-                <th className="px-4 pb-4 pt-5 text-left font-semibold">Token</th>
-                <th className="px-4 pb-4 pt-5 text-left font-semibold">Patient</th>
-                <th className="px-4 pb-4 pt-5 text-left font-semibold">Phone</th>
-                <th className="px-4 pb-4 pt-5 text-left font-semibold">Doctor</th>
-                <th className="px-4 pb-4 pt-5 text-left font-semibold">Date & Time</th>
-                <th className="px-4 pb-4 pt-5 text-left font-semibold">Status</th>
-                <th className="px-4 pb-4 pt-5 text-center font-semibold">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-surface-container/50">
-              {queueLoading ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center">
-                    <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                  </td>
-                </tr>
-              ) : appointments.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center font-label text-on-surface-variant">
-                    No appointments found for this view.
-                  </td>
-                </tr>
-              ) : (
-                appointments.map((appt) => (
-                  <tr key={appt.id} className="group hover:bg-surface-container-low transition-colors">
-                    <td className="px-4 py-3 font-label text-sm font-bold">
-                      {appt.tokenNumber
-                        ? `#${appt.tokenNumber}`
-                        : appt.queueTokens?.[0]?.tokenNumber
-                          ? `#${appt.queueTokens[0].tokenNumber}`
-                          : '-'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div>
-                        <p className="flex items-center gap-1.5 font-label text-sm font-bold">
-                          {appt.patient.firstName} {appt.patient.lastName}
-                          <EmergencyBadge patient={appt.patient} size="sm" />
-                        </p>
-                        <p className="font-label text-[10px] text-on-surface-variant">{appt.patient.mrn}</p>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 font-label text-[10px] text-on-surface-variant">{appt.patient.phone || '-'}</td>
-                    <td className="px-4 py-3 font-label text-sm">
-                      {appt.doctor?.user
-                        ? `Dr. ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
-                        : '-'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="font-label text-sm font-medium">
-                        {formatDate(appt.appointmentDate)}
-                      </p>
-                      <p className="font-label text-[10px] text-on-surface-variant">
-                        {formatTime24(normalizeTimeValue(appt.startTime)) || '-'}
-                        {appt.endTime ? ` - ${formatTime24(normalizeTimeValue(appt.endTime))}` : ''}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={cn(
-                          'text-[10px] font-bold px-2 py-0.5 rounded-full capitalize',
-                          appt.status === 'pending_payment' && 'bg-amber-100 text-amber-800',
-                          (appt.status === 'booked' || appt.status === 'confirmed') && 'bg-secondary/10 text-secondary',
-                          appt.status === 'checked_in' && 'bg-primary/10 text-primary',
-                          appt.status === 'in_consultation' && 'bg-primary/10 text-primary',
-                          appt.status === 'completed' && 'bg-primary/10 text-primary',
-                          appt.status === 'cancelled' && 'bg-error-container text-on-error-container',
-                        )}
-                      >
-                        {appt.status?.replace(/_/g, ' ')}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {/* Shared with the hospital-admin Walk In queue so both
-                          screens always offer the same operations. */}
-                      <AppointmentRowActions
-                        appointment={appt as unknown as AppointmentRowLike}
-                        onChanged={() => {
-                          queryClient.invalidateQueries({ queryKey: ['front-desk'] });
-                          queryClient.invalidateQueries({ queryKey: ['hospital'] });
-                        }}
-                      />
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {(queueData?.meta?.totalPages ?? 1) > 1 && (
-          <div className="flex items-center justify-between border-t border-surface-container px-4 py-3">
-            <p className="font-label text-[10px] text-on-surface-variant">
-              Page {page} of {queueData?.meta?.totalPages}
-            </p>
-            <div className="flex gap-1">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page >= (queueData?.meta?.totalPages ?? 1)}
-                onClick={() => setPage(page + 1)}
-              >
-                Next
-              </Button>
-            </div>
+      <div className="space-y-2">
+        <h2 className="font-headline text-lg font-bold flex items-center gap-2">
+          <div className="p-2 rounded-lg bg-primary/10 text-primary">
+            <Users className="h-4 w-4" />
           </div>
-        )}
+          {viewMode === 'upcoming'
+            ? 'Upcoming Appointments'
+            : viewMode === 'past'
+              ? 'Past Bookings'
+              : selectedDate === today
+                ? "Today's Appointment Queue"
+                : `Appointments — ${formatDate(selectedDate)}`}
+        </h2>
+
+        {/* Same table the admin OP Home and the Walk In queue render, so the
+            patient / payment / status-progression flow is identical everywhere. */}
+        <AppointmentTable
+          appointments={appointments as unknown as Appointment[]}
+          isLoading={queueLoading}
+          page={page}
+          totalPages={queueData?.meta?.totalPages ?? 1}
+          total={queueData?.meta?.total ?? 0}
+          onPageChange={setPage}
+          showToken
+          emptyMessage="No appointments found for this view."
+          onChanged={() => {
+            queryClient.invalidateQueries({ queryKey: ['front-desk'] });
+            queryClient.invalidateQueries({ queryKey: ['hospital'] });
+          }}
+        />
       </div>
-
-
-
     </div>
   );
 }
