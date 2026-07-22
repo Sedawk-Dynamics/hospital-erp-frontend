@@ -21,14 +21,72 @@ import { toast } from 'sonner';
 // Types
 // ---------------------------------------------------------------------------
 
+type Row = Record<string, unknown>;
+
+interface ReportColumn {
+  /** Unique column id; also used as the dot-path when `get` is not supplied. */
+  key: string;
+  label: string;
+  align?: 'right';
+  /** Derive the cell from the whole row — for nested/composite values. */
+  get?: (row: Row) => unknown;
+}
+
 interface ReportConfig {
   label: string;
   endpoint: string;
   /** Extra fixed query params merged into every request */
   extraParams?: Record<string, string>;
-  /** Columns to display & export — key is the dot-path in each row */
-  columns: { key: string; label: string; align?: 'right' }[];
+  /**
+   * Names the endpoint uses for the date window. Most list endpoints take
+   * fromDate/toDate; override where an endpoint differs.
+   */
+  dateParams?: { from: string; to: string };
+  /** Columns to display & export */
+  columns: ReportColumn[];
 }
+
+// ---------------------------------------------------------------------------
+// Shared cell getters
+//
+// The list endpoints return nested relations (patient {...}, doctor { user
+// {...} }), not flat `patientName` / `doctorName` strings. Reading them as flat
+// keys is why every report used to show "-" in the patient and doctor columns.
+// ---------------------------------------------------------------------------
+
+function nested(row: Row, path: string): Record<string, unknown> | undefined {
+  const v = path.split('.').reduce<unknown>(
+    (acc, k) => (acc && typeof acc === 'object' ? (acc as Row)[k] : undefined),
+    row,
+  );
+  return v && typeof v === 'object' ? (v as Record<string, unknown>) : undefined;
+}
+
+function fullName(o: Record<string, unknown> | undefined): string {
+  if (!o) return '-';
+  const name = `${o.firstName ?? ''} ${o.lastName ?? ''}`.trim();
+  return name || '-';
+}
+
+/** "Patient Name" from row.patient */
+const patientName = (row: Row) => fullName(nested(row, 'patient'));
+/** MRN/UHID from row.patient */
+const patientMrn = (row: Row) => (nested(row, 'patient')?.mrn as string) ?? '-';
+const patientPhone = (row: Row) => (nested(row, 'patient')?.phone as string) ?? '-';
+/** "Dr. First Last" from row.doctor.user */
+const doctorName = (row: Row) => {
+  const name = fullName(nested(row, 'doctor.user'));
+  return name === '-' ? '-' : `Dr. ${name}`;
+};
+const departmentName = (row: Row) =>
+  (nested(row, 'doctor.department')?.name as string) ?? '-';
+
+/** HH:mm out of a @db.Time() value like "1970-01-01T09:30:00.000Z" or "09:30" */
+const timeOnly = (value: unknown): string => {
+  if (typeof value !== 'string') return '-';
+  const m = value.match(/(\d{2}:\d{2})/);
+  return m ? m[1] : '-';
+};
 
 interface ReportCategory {
   title: string;
@@ -48,35 +106,53 @@ const reportCategories: ReportCategory[] = [
       {
         label: 'OP Service Detailed',
         endpoint: '/appointments',
-        extraParams: { type: 'op' },
         columns: [
-          { key: 'appointmentNumber', label: 'Appt #' },
-          { key: 'patientName', label: 'Patient' },
-          { key: 'doctorName', label: 'Doctor' },
+          { key: 'mrn', label: 'UHID', get: patientMrn },
+          { key: 'patient', label: 'Patient', get: patientName },
+          { key: 'phone', label: 'Phone', get: patientPhone },
+          { key: 'doctor', label: 'Doctor', get: doctorName },
+          { key: 'department', label: 'Department', get: departmentName },
           { key: 'appointmentDate', label: 'Date' },
+          { key: 'startTime', label: 'Time', get: (r) => timeOnly(r.startTime) },
+          { key: 'consultationType', label: 'Type' },
           { key: 'status', label: 'Status' },
-          { key: 'amount', label: 'Amount', align: 'right' },
+          { key: 'billNumber', label: 'Bill #', get: (r) => nested(r, 'paymentInfo')?.billNumber ?? '-' },
+          {
+            key: 'amount',
+            label: 'Amount',
+            align: 'right',
+            get: (r) => nested(r, 'paymentInfo')?.totalAmount ?? 0,
+          },
+          {
+            key: 'balance',
+            label: 'Balance',
+            align: 'right',
+            get: (r) => nested(r, 'paymentInfo')?.balanceDue ?? 0,
+          },
         ],
       },
       {
         label: 'OP Service Overview',
         endpoint: '/appointments',
-        extraParams: { type: 'op' },
         columns: [
-          { key: 'appointmentNumber', label: 'Appt #' },
-          { key: 'patientName', label: 'Patient' },
+          { key: 'mrn', label: 'UHID', get: patientMrn },
+          { key: 'patient', label: 'Patient', get: patientName },
+          { key: 'doctor', label: 'Doctor', get: doctorName },
           { key: 'appointmentDate', label: 'Date' },
+          { key: 'visitType', label: 'Visit' },
           { key: 'status', label: 'Status' },
         ],
       },
       {
         label: 'Consultation Wise',
         endpoint: '/appointments',
-        extraParams: { type: 'op', groupBy: 'doctor' },
         columns: [
-          { key: 'doctorName', label: 'Doctor' },
-          { key: 'patientName', label: 'Patient' },
+          { key: 'doctor', label: 'Doctor', get: doctorName },
+          { key: 'department', label: 'Department', get: departmentName },
+          { key: 'mrn', label: 'UHID', get: patientMrn },
+          { key: 'patient', label: 'Patient', get: patientName },
           { key: 'appointmentDate', label: 'Date' },
+          { key: 'consultationType', label: 'Type' },
           { key: 'status', label: 'Status' },
         ],
       },
@@ -90,11 +166,13 @@ const reportCategories: ReportCategory[] = [
         label: 'IP Service Detailed',
         endpoint: '/clinical/admissions',
         columns: [
-          { key: 'admissionNumber', label: 'Admission #' },
-          { key: 'patientName', label: 'Patient' },
+          { key: 'mrn', label: 'UHID', get: patientMrn },
+          { key: 'patient', label: 'Patient', get: patientName },
+          { key: 'doctor', label: 'Consultant', get: doctorName },
           { key: 'admissionDate', label: 'Admitted' },
           { key: 'dischargeDate', label: 'Discharged' },
-          { key: 'wardName', label: 'Ward' },
+          { key: 'ward', label: 'Ward', get: (r) => nested(r, 'ward')?.name ?? '-' },
+          { key: 'bed', label: 'Bed', get: (r) => nested(r, 'bed')?.bedNumber ?? '-' },
           { key: 'status', label: 'Status' },
         ],
       },
@@ -103,11 +181,13 @@ const reportCategories: ReportCategory[] = [
         endpoint: '/clinical/admissions',
         extraParams: { status: 'admitted' },
         columns: [
-          { key: 'admissionNumber', label: 'Admission #' },
-          { key: 'patientName', label: 'Patient' },
+          { key: 'mrn', label: 'UHID', get: patientMrn },
+          { key: 'patient', label: 'Patient', get: patientName },
+          { key: 'phone', label: 'Phone', get: patientPhone },
+          { key: 'doctor', label: 'Consultant', get: doctorName },
           { key: 'admissionDate', label: 'Admitted' },
-          { key: 'wardName', label: 'Ward' },
-          { key: 'bedNumber', label: 'Bed' },
+          { key: 'ward', label: 'Ward', get: (r) => nested(r, 'ward')?.name ?? '-' },
+          { key: 'bed', label: 'Bed', get: (r) => nested(r, 'bed')?.bedNumber ?? '-' },
         ],
       },
       {
@@ -115,22 +195,27 @@ const reportCategories: ReportCategory[] = [
         endpoint: '/clinical/admissions',
         extraParams: { status: 'discharged' },
         columns: [
-          { key: 'admissionNumber', label: 'Admission #' },
-          { key: 'patientName', label: 'Patient' },
+          { key: 'mrn', label: 'UHID', get: patientMrn },
+          { key: 'patient', label: 'Patient', get: patientName },
+          { key: 'doctor', label: 'Consultant', get: doctorName },
           { key: 'admissionDate', label: 'Admitted' },
           { key: 'dischargeDate', label: 'Discharged' },
+          { key: 'ward', label: 'Ward', get: (r) => nested(r, 'ward')?.name ?? '-' },
         ],
       },
       {
         label: 'IP Payment Due',
-        endpoint: '/clinical/admissions',
-        extraParams: { paymentStatus: 'pending' },
+        endpoint: '/billing',
+        extraParams: { billType: 'ip', status: 'pending' },
         columns: [
-          { key: 'admissionNumber', label: 'Admission #' },
-          { key: 'patientName', label: 'Patient' },
+          { key: 'billNumber', label: 'Bill #' },
+          { key: 'mrn', label: 'UHID', get: patientMrn },
+          { key: 'patient', label: 'Patient', get: patientName },
+          { key: 'phone', label: 'Phone', get: patientPhone },
+          { key: 'ward', label: 'Ward', get: (r) => nested(r, 'admission.ward')?.name ?? '-' },
           { key: 'totalAmount', label: 'Total', align: 'right' },
-          { key: 'paidAmount', label: 'Paid', align: 'right' },
-          { key: 'balanceAmount', label: 'Balance', align: 'right' },
+          { key: 'amountPaid', label: 'Paid', align: 'right' },
+          { key: 'balanceDue', label: 'Balance', align: 'right' },
         ],
       },
     ],
@@ -144,10 +229,12 @@ const reportCategories: ReportCategory[] = [
         endpoint: '/insurance/claims',
         columns: [
           { key: 'claimNumber', label: 'Claim #' },
-          { key: 'patientName', label: 'Patient' },
-          { key: 'insurerName', label: 'Insurer' },
-          { key: 'claimDate', label: 'Date' },
-          { key: 'claimAmount', label: 'Amount', align: 'right' },
+          { key: 'patient', label: 'Patient', get: patientName },
+          { key: 'policyNumber', label: 'Policy #', get: (r) => nested(r, 'policy')?.policyNumber ?? '-' },
+          { key: 'billNumber', label: 'Bill #', get: (r) => nested(r, 'bill')?.billNumber ?? '-' },
+          { key: 'submissionDate', label: 'Date' },
+          { key: 'claimAmount', label: 'Claimed', align: 'right' },
+          { key: 'approvedAmount', label: 'Approved', align: 'right' },
           { key: 'status', label: 'Status' },
         ],
       },
@@ -160,23 +247,26 @@ const reportCategories: ReportCategory[] = [
       {
         label: 'Patients Appointment',
         endpoint: '/appointments',
-        extraParams: { groupBy: 'patient' },
         columns: [
-          { key: 'patientName', label: 'Patient' },
-          { key: 'appointmentNumber', label: 'Appt #' },
-          { key: 'doctorName', label: 'Doctor' },
+          { key: 'mrn', label: 'UHID', get: patientMrn },
+          { key: 'patient', label: 'Patient', get: patientName },
+          { key: 'phone', label: 'Phone', get: patientPhone },
+          { key: 'doctor', label: 'Doctor', get: doctorName },
           { key: 'appointmentDate', label: 'Date' },
+          { key: 'startTime', label: 'Time', get: (r) => timeOnly(r.startTime) },
           { key: 'status', label: 'Status' },
         ],
       },
       {
         label: 'Doctors Appointment',
         endpoint: '/appointments',
-        extraParams: { groupBy: 'doctor' },
         columns: [
-          { key: 'doctorName', label: 'Doctor' },
-          { key: 'patientName', label: 'Patient' },
+          { key: 'doctor', label: 'Doctor', get: doctorName },
+          { key: 'department', label: 'Department', get: departmentName },
+          { key: 'mrn', label: 'UHID', get: patientMrn },
+          { key: 'patient', label: 'Patient', get: patientName },
           { key: 'appointmentDate', label: 'Date' },
+          { key: 'startTime', label: 'Time', get: (r) => timeOnly(r.startTime) },
           { key: 'status', label: 'Status' },
         ],
       },
@@ -185,10 +275,12 @@ const reportCategories: ReportCategory[] = [
         endpoint: '/appointments',
         extraParams: { status: 'no_show' },
         columns: [
-          { key: 'appointmentNumber', label: 'Appt #' },
-          { key: 'patientName', label: 'Patient' },
-          { key: 'doctorName', label: 'Doctor' },
+          { key: 'mrn', label: 'UHID', get: patientMrn },
+          { key: 'patient', label: 'Patient', get: patientName },
+          { key: 'phone', label: 'Phone', get: patientPhone },
+          { key: 'doctor', label: 'Doctor', get: doctorName },
           { key: 'appointmentDate', label: 'Date' },
+          { key: 'startTime', label: 'Time', get: (r) => timeOnly(r.startTime) },
         ],
       },
     ],
@@ -201,23 +293,30 @@ const reportCategories: ReportCategory[] = [
         label: 'Patient Demographics',
         endpoint: '/patients',
         columns: [
-          { key: 'uhid', label: 'UHID' },
-          { key: 'firstName', label: 'First Name' },
-          { key: 'lastName', label: 'Last Name' },
+          { key: 'mrn', label: 'UHID' },
+          { key: 'name', label: 'Patient', get: (r) => fullName(r) },
           { key: 'gender', label: 'Gender' },
           { key: 'dateOfBirth', label: 'DOB' },
+          { key: 'bloodGroup', label: 'Blood Group' },
           { key: 'phone', label: 'Phone' },
+          { key: 'email', label: 'Email' },
+          { key: 'city', label: 'City' },
+          { key: 'createdAt', label: 'Registered' },
         ],
       },
       {
         label: 'Credit Settlement',
-        endpoint: '/patients',
-        extraParams: { hasCreditBalance: 'true' },
+        endpoint: '/billing',
+        extraParams: { status: 'partially_paid' },
         columns: [
-          { key: 'uhid', label: 'UHID' },
-          { key: 'firstName', label: 'First Name' },
-          { key: 'lastName', label: 'Last Name' },
-          { key: 'creditBalance', label: 'Credit Balance', align: 'right' },
+          { key: 'billNumber', label: 'Bill #' },
+          { key: 'mrn', label: 'UHID', get: patientMrn },
+          { key: 'patient', label: 'Patient', get: patientName },
+          { key: 'phone', label: 'Phone', get: patientPhone },
+          { key: 'billDate', label: 'Bill Date' },
+          { key: 'totalAmount', label: 'Total', align: 'right' },
+          { key: 'amountPaid', label: 'Paid', align: 'right' },
+          { key: 'balanceDue', label: 'Outstanding', align: 'right' },
         ],
       },
     ],
@@ -229,13 +328,15 @@ const reportCategories: ReportCategory[] = [
       {
         label: 'Referral Report',
         endpoint: '/appointments',
-        extraParams: { hasReferral: 'true' },
+        extraParams: { type: 'follow_up' },
         columns: [
-          { key: 'appointmentNumber', label: 'Appt #' },
-          { key: 'patientName', label: 'Patient' },
-          { key: 'referralSource', label: 'Referral Source' },
-          { key: 'doctorName', label: 'Doctor' },
+          { key: 'mrn', label: 'UHID', get: patientMrn },
+          { key: 'patient', label: 'Patient', get: patientName },
+          { key: 'doctor', label: 'Doctor', get: doctorName },
+          { key: 'department', label: 'Department', get: departmentName },
+          { key: 'reason', label: 'Reason' },
           { key: 'appointmentDate', label: 'Date' },
+          { key: 'status', label: 'Status' },
         ],
       },
     ],
@@ -248,9 +349,11 @@ const reportCategories: ReportCategory[] = [
         label: 'Collection Report',
         endpoint: '/billing/payments',
         columns: [
-          { key: 'referenceNumber', label: 'Ref #' },
-          { key: 'patientName', label: 'Patient' },
+          { key: 'billNumber', label: 'Bill #', get: (r) => nested(r, 'bill')?.billNumber ?? '-' },
+          { key: 'mrn', label: 'UHID', get: patientMrn },
+          { key: 'patient', label: 'Patient', get: patientName },
           { key: 'paymentMethod', label: 'Method' },
+          { key: 'transactionId', label: 'Txn / Ref' },
           { key: 'paymentDate', label: 'Date' },
           { key: 'amount', label: 'Amount', align: 'right' },
           { key: 'status', label: 'Status' },
@@ -282,6 +385,11 @@ function resolvePath(obj: Record<string, unknown>, path: string): unknown {
   }, obj);
 }
 
+/** Value for one cell — custom getter if the column defines one, else dot-path. */
+function cellValue(row: Row, col: ReportColumn): unknown {
+  return col.get ? col.get(row) : resolvePath(row, col.key);
+}
+
 /** Format cell value for display */
 function formatCell(value: unknown): string {
   if (value == null) return '-';
@@ -299,11 +407,11 @@ function formatCell(value: unknown): string {
 }
 
 /** Build CSV string from rows + columns */
-function buildCsv(rows: Record<string, unknown>[], columns: ReportConfig['columns']): string {
+function buildCsv(rows: Row[], columns: ReportColumn[]): string {
   const header = columns.map((c) => `"${c.label}"`).join(',');
   const body = rows.map((row) =>
     columns.map((c) => {
-      const val = resolvePath(row, c.key);
+      const val = cellValue(row, c);
       return `"${String(val ?? '').replace(/"/g, '""')}"`;
     }).join(','),
   );
@@ -342,13 +450,17 @@ function ReportViewerDialog({
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['report', report.label, report.endpoint, startDate, endDate, report.extraParams],
     queryFn: async () => {
+      // Every list endpoint here takes fromDate/toDate — the screen used to
+      // send startDate/endDate, which zod silently stripped, so the range
+      // filter never applied.
+      const { from, to } = report.dateParams ?? { from: 'fromDate', to: 'toDate' };
       const params: Record<string, unknown> = {
-        startDate,
-        endDate,
+        [from]: startDate,
+        [to]: endDate,
         limit: 200,
         ...report.extraParams,
       };
-      const response = await apiGet<Record<string, unknown>[]>(report.endpoint, { params });
+      const response = await apiGet<Row[]>(report.endpoint, { params });
       return response.data ?? [];
     },
     enabled: open && shouldFetch,
@@ -472,7 +584,7 @@ function ReportViewerDialog({
                         key={col.key}
                         className={`px-4 py-3 whitespace-nowrap font-label text-sm ${col.align === 'right' ? 'text-right font-bold' : ''}`}
                       >
-                        {formatCell(resolvePath(row, col.key))}
+                        {formatCell(cellValue(row, col))}
                       </td>
                     ))}
                   </tr>
