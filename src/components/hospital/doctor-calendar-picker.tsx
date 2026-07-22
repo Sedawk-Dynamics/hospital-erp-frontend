@@ -266,8 +266,8 @@ export function DoctorCalendarPicker({
             </p>
           </div>
         ) : (
-          <div className="max-h-40 overflow-y-auto rounded-md border p-2">
-            <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-5">
+          <div className="max-h-60 overflow-y-auto rounded-lg border bg-card p-2">
+            <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
               {slots.map((slot) => {
                 const isSelected = selectedStartTime === slot.startTime;
                 const isOnLeave = !slot.available && (slot as { onLeave?: boolean }).onLeave;

@@ -6,7 +6,8 @@ import { z } from 'zod/v4';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toInputDateStr, formatDate } from '@/lib/date-utils';
 import { toast } from 'sonner';
-import { Search, Loader2, UserRound, CalendarDays } from 'lucide-react';
+import { Search, Loader2, UserRound, CalendarDays, ClipboardList } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -205,19 +206,27 @@ export function CreateAppointmentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-5xl max-h-[92vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>New Appointment</DialogTitle>
+      {/*
+        Full-height two-pane layout. The dialog itself no longer scrolls —
+        the details pane and the calendar pane each scroll independently, so
+        the header, the footer and the month grid all stay put. The old
+        single-scroll box made the calendar feel cramped and pushed the
+        Create button below the fold.
+      */}
+      <DialogContent className="flex h-[94vh] w-[96vw] max-w-[88rem] flex-col gap-0 overflow-hidden p-0 sm:max-w-[88rem]">
+        <DialogHeader className="shrink-0 border-b px-6 py-4 pr-14">
+          <DialogTitle className="font-headline text-lg font-bold">New Appointment</DialogTitle>
           <DialogDescription>
             Schedule a new outpatient appointment — pick a slot from the
             doctor&apos;s calendar.
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,360px)_1fr]">
-            {/* LEFT: appointment details */}
-            <div className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
+          <div className="grid min-h-0 flex-1 overflow-hidden lg:grid-cols-[minmax(0,26rem)_1fr]">
+            {/* LEFT: appointment details — own scroll area */}
+            <div className="min-h-0 space-y-5 overflow-y-auto border-b px-6 py-5 lg:border-r lg:border-b-0">
+              <SectionHeading icon={UserRound} title="Patient & Doctor" />
           {/* Patient Search */}
           <div className="space-y-1.5">
             <Label htmlFor="patient-search">Patient *</Label>
@@ -330,6 +339,8 @@ export function CreateAppointmentDialog({
             )}
           </div>
 
+          <SectionHeading icon={ClipboardList} title="Visit Details" className="pt-1" />
+
           {/* Type and Priority */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
@@ -404,19 +415,27 @@ export function CreateAppointmentDialog({
           </div>
             </div>
 
-            {/* RIGHT: doctor calendar + slot picker */}
-            <div className="space-y-2">
-              <Label className="flex items-center gap-1.5">
-                <CalendarDays className="h-3.5 w-3.5" />
-                Doctor&apos;s Calendar &amp; Time Slot *
-              </Label>
+            {/* RIGHT: doctor calendar + slot picker — own scroll area */}
+            <div className="flex min-h-0 flex-col gap-3 overflow-y-auto bg-muted/20 px-6 py-5">
+              <SectionHeading
+                icon={CalendarDays}
+                title="Doctor's Calendar & Time Slot *"
+                hint={
+                  watchedDoctorId
+                    ? 'Pick a day, then choose an available slot.'
+                    : undefined
+                }
+              />
 
               {!watchedDoctorId ? (
-                <div className="flex min-h-[280px] flex-col items-center justify-center rounded-md border border-dashed p-6 text-center">
-                  <CalendarDays className="mb-2 h-8 w-8 text-muted-foreground/60" />
-                  <p className="text-sm text-muted-foreground">
-                    Select a doctor to view their calendar and available time
-                    slots.
+                <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed bg-background/60 p-10 text-center">
+                  <CalendarDays className="mb-3 h-10 w-10 text-muted-foreground/50" />
+                  <p className="font-label text-sm font-medium text-foreground">
+                    No doctor selected
+                  </p>
+                  <p className="mt-1 max-w-xs text-sm text-muted-foreground">
+                    Choose a doctor on the left to load their calendar and
+                    available time slots.
                   </p>
                 </div>
               ) : (
@@ -436,41 +455,80 @@ export function CreateAppointmentDialog({
                     errors.endTime?.message}
                 </p>
               )}
-
-              {watchedStartTime && watchedDate && (
-                <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
-                  <span className="text-muted-foreground">Selected slot: </span>
-                  <span className="font-semibold text-foreground">
-                    {formatDate(watchedDate)} at {watchedStartTime}
-                  </span>
-                </div>
-              )}
             </div>
           </div>
 
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={isSubmitting}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                'Create Appointment'
-              )}
-            </Button>
+          {/* Sticky footer — the chosen slot stays visible next to the action */}
+          <DialogFooter className="mx-0 mb-0 shrink-0 items-center gap-3 px-6 py-4 sm:justify-between">
+            {watchedStartTime && watchedDate ? (
+              <div className="flex items-center gap-2 rounded-lg border border-primary/25 bg-primary/5 px-3 py-1.5">
+                <CalendarDays className="h-4 w-4 shrink-0 text-primary" />
+                <span className="font-label text-xs text-muted-foreground">
+                  Selected slot
+                </span>
+                <span className="font-label text-sm font-bold text-foreground">
+                  {formatDate(watchedDate)} at {watchedStartTime}
+                </span>
+              </div>
+            ) : (
+              <p className="font-label text-xs text-muted-foreground">
+                Select a doctor and a time slot to continue.
+              </p>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  'Create Appointment'
+                )}
+              </Button>
+            </div>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ── Section heading ────────────────────────────────────────
+//
+// Small labelled divider that groups the form into readable blocks instead of
+// one undifferentiated stack of fields.
+
+function SectionHeading({
+  icon: Icon,
+  title,
+  hint,
+  className,
+}: {
+  icon: LucideIcon;
+  title: string;
+  hint?: string;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <div className="flex items-center gap-1.5">
+        <Icon className="h-3.5 w-3.5 text-primary" />
+        <h3 className="font-label text-[11px] font-bold uppercase tracking-widest text-on-surface-variant">
+          {title}
+        </h3>
+      </div>
+      {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
+    </div>
   );
 }
 
