@@ -9,7 +9,16 @@ import { Input } from '@/components/ui/input';
 import {
   CalendarCheck, UserPlus, Search, Users, CheckCircle2,
   Clock, CircleCheck, LogIn, Footprints, Banknote, Loader2, Siren,
+  MoreHorizontal, CalendarClock, XCircle,
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { CancelAppointmentDialog } from '@/components/hospital/cancel-appointment-dialog';
+import { RescheduleAppointmentDialog } from '@/components/hospital/reschedule-appointment-dialog';
 import { toInputDateStr, formatTime24, formatDate } from '@/lib/date-utils';
 import { toast } from 'sonner';
 import { CreateAppointmentDialog } from '@/components/hospital/create-appointment-dialog';
@@ -35,6 +44,10 @@ function normalizeTimeValue(value: string | undefined | null): string | null {
 interface QueueAppointment {
   id: string;
   tokenNumber?: number;
+  patientId?: string;
+  doctorId?: string;
+  consultationType?: string;
+  priority?: string;
   patient: { id: string; firstName: string; lastName: string; mrn: string; phone?: string };
   doctor?: { user?: { firstName: string; lastName: string } };
   appointmentDate: string;
@@ -61,17 +74,52 @@ interface AppointmentStats {
   completed: number;
 }
 
+/** Add (or subtract) days from a yyyy-MM-dd string. Pure date math, no TZ drift. */
+function shiftDate(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return [
+    dt.getUTCFullYear(),
+    String(dt.getUTCMonth() + 1).padStart(2, '0'),
+    String(dt.getUTCDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+type ViewMode = 'today' | 'upcoming' | 'past';
+
+const VIEW_MODES: { value: ViewMode; label: string }[] = [
+  { value: 'today', label: 'Today' },
+  { value: 'upcoming', label: 'Upcoming' },
+  { value: 'past', label: 'Past Bookings' },
+];
+
 export function FrontDeskDashboard() {
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('booked');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [page, setPage] = useState(1);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [bookAppointmentOpen, setBookAppointmentOpen] = useState(false);
   const [resolveTarget, setResolveTarget] = useState<EmergencyResolveTarget | null>(null);
   const [collectPayTarget, setCollectPayTarget] = useState<QueueAppointment | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<QueueAppointment | null>(null);
+  const [rescheduleTarget, setRescheduleTarget] = useState<QueueAppointment | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('today');
   const today = toInputDateStr();
+  // In "Today" mode the desk can still page to any single day with the picker.
+  const [selectedDate, setSelectedDate] = useState(today);
   const queryClient = useQueryClient();
+
+  // Date window sent to the API for the active view.
+  const dateParams: Record<string, string> =
+    viewMode === 'upcoming'
+      ? { fromDate: shiftDate(today, 1) }
+      : viewMode === 'past'
+        ? { toDate: shiftDate(today, -1) }
+        : { date: selectedDate };
+  // Stat tiles are always a single-day figure; they follow the day picker.
+  const statsDate = viewMode === 'today' ? selectedDate : today;
 
   const initiateFrontdeskPayment = useInitiateFrontdeskPayment();
 
@@ -118,9 +166,9 @@ export function FrontDeskDashboard() {
   };
 
   const { data: queueData, isLoading: queueLoading } = useQuery({
-    queryKey: ['front-desk', 'queue', today, search, statusFilter, page],
+    queryKey: ['front-desk', 'queue', dateParams, search, statusFilter, page],
     queryFn: async () => {
-      const params: Record<string, unknown> = { date: today, page, limit: 20 };
+      const params: Record<string, unknown> = { ...dateParams, page, limit: 20 };
       if (search) params.search = search;
       if (statusFilter !== 'all') params.status = statusFilter;
       const response = await apiGet<QueueAppointment[]>('/appointments', { params });
@@ -129,19 +177,20 @@ export function FrontDeskDashboard() {
   });
 
   const { data: statsData, isLoading: statsLoading } = useQuery({
-    queryKey: ['front-desk', 'stats', today],
+    queryKey: ['front-desk', 'stats', statsDate],
     queryFn: async () => {
       const response = await apiGet<{
-        all: number; booked: number; arrived: number;
+        all: number; pendingPayment: number; booked: number; arrived: number;
         withDoctor: number; completed: number; cancelled: number;
-      }>('/appointments/stats', { params: { date: today } });
+      }>('/appointments/stats', { params: { date: statsDate } });
       const s = response.data;
       return s ? {
         total: s.all ?? 0,
+        pendingPayment: s.pendingPayment ?? 0,
         checkedIn: s.arrived ?? 0,
         waiting: s.booked ?? 0,
         completed: s.completed ?? 0,
-      } : { total: 0, checkedIn: 0, waiting: 0, completed: 0 };
+      } : { total: 0, pendingPayment: 0, checkedIn: 0, waiting: 0, completed: 0 };
     },
   });
 
@@ -172,7 +221,7 @@ export function FrontDeskDashboard() {
   });
 
   const appointments = queueData?.data ?? [];
-  const computedStats = statsData ?? { total: 0, checkedIn: 0, waiting: 0, completed: 0 };
+  const computedStats = statsData ?? { total: 0, pendingPayment: 0, checkedIn: 0, waiting: 0, completed: 0 };
 
   const handleSearchChange = useCallback((value: string) => {
     setSearch(value);
@@ -196,7 +245,14 @@ export function FrontDeskDashboard() {
   ];
 
   const stats = [
-    { label: "Today's Appointments", value: computedStats.total, icon: CalendarCheck },
+    {
+      label: statsDate === today ? "Today's Appointments" : `Appointments ${formatDate(statsDate)}`,
+      value: computedStats.total,
+      icon: CalendarCheck,
+    },
+    // Patient-app bookings land as `pending_payment`; surfacing the count keeps
+    // them from being missed at the counter.
+    { label: 'Pending Payment', value: computedStats.pendingPayment, icon: Banknote },
     { label: 'Checked In', value: computedStats.checkedIn, icon: LogIn },
     { label: 'Waiting', value: computedStats.waiting, icon: Clock },
     { label: 'Completed', value: computedStats.completed, icon: CircleCheck },
@@ -214,7 +270,7 @@ export function FrontDeskDashboard() {
       </div>
 
       {/* Stats Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {stats.map((stat) => (
           <div
             key={stat.label}
@@ -293,6 +349,39 @@ export function FrontDeskDashboard() {
         }}
       />
 
+      {/* View window: Today (any single day) / Upcoming / Past Bookings */}
+      <div className="flex flex-wrap items-center gap-2">
+        {VIEW_MODES.map((m) => (
+          <button
+            key={m.value}
+            onClick={() => {
+              setViewMode(m.value);
+              setStatusFilter('all');
+              setPage(1);
+            }}
+            className={cn(
+              'rounded-lg px-3 py-1.5 font-label text-xs font-semibold whitespace-nowrap transition-colors',
+              m.value === viewMode
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'bg-surface-container text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high',
+            )}
+          >
+            {m.label}
+          </button>
+        ))}
+        {viewMode === 'today' && (
+          <Input
+            type="date"
+            value={selectedDate}
+            onChange={(e) => {
+              setSelectedDate(e.target.value || today);
+              setPage(1);
+            }}
+            className="h-8 w-auto text-xs"
+          />
+        )}
+      </div>
+
       {/* Filters + Search */}
       <div className="space-y-3">
         <div className="flex gap-2 overflow-x-auto pb-1">
@@ -329,7 +418,13 @@ export function FrontDeskDashboard() {
             <div className="p-2 rounded-lg bg-primary/10 text-primary">
               <Users className="h-4 w-4" />
             </div>
-            Today&apos;s Appointment Queue
+            {viewMode === 'upcoming'
+              ? 'Upcoming Appointments'
+              : viewMode === 'past'
+                ? 'Past Bookings'
+                : selectedDate === today
+                  ? "Today's Appointment Queue"
+                  : `Appointments — ${formatDate(selectedDate)}`}
           </h2>
         </div>
         <div className="overflow-x-auto">
@@ -355,7 +450,7 @@ export function FrontDeskDashboard() {
               ) : appointments.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-8 text-center font-label text-on-surface-variant">
-                    No appointments found for today.
+                    No appointments found for this view.
                   </td>
                 </tr>
               ) : (
@@ -407,7 +502,8 @@ export function FrontDeskDashboard() {
                         {appt.status?.replace(/_/g, ' ')}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-center">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-center gap-1">
                       {appt.status === 'pending_payment' && (
                         <Button
                           size="sm"
@@ -481,6 +577,46 @@ export function FrontDeskDashboard() {
                           Register / Connect
                         </Button>
                       )}
+
+                      {/* Reschedule / Cancel — same actions the admin OP Home has */}
+                      {(() => {
+                        const canReschedule = ['pending_payment', 'booked', 'confirmed', 'no_show'].includes(appt.status);
+                        const canCancel = ['pending_payment', 'booked', 'confirmed', 'checked_in'].includes(appt.status);
+                        if (!canReschedule && !canCancel) return null;
+                        return (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger
+                              render={
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-outline hover:text-primary transition-colors"
+                                />
+                              }
+                            >
+                              <MoreHorizontal className="h-3.5 w-3.5" />
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {canReschedule && (
+                                <DropdownMenuItem onClick={() => setRescheduleTarget(appt)}>
+                                  <CalendarClock className="mr-2 h-4 w-4" />
+                                  Reschedule
+                                </DropdownMenuItem>
+                              )}
+                              {canCancel && (
+                                <DropdownMenuItem
+                                  className="text-destructive focus:text-destructive"
+                                  onClick={() => setCancelTarget(appt)}
+                                >
+                                  <XCircle className="mr-2 h-4 w-4" />
+                                  Cancel
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        );
+                      })()}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -510,6 +646,30 @@ export function FrontDeskDashboard() {
           </div>
         )}
       </div>
+
+      <RescheduleAppointmentDialog
+        open={!!rescheduleTarget}
+        onOpenChange={(open) => { if (!open) setRescheduleTarget(null); }}
+        appointment={
+          rescheduleTarget
+            ? {
+                id: rescheduleTarget.id,
+                doctorId: rescheduleTarget.doctorId ?? '',
+                patientId: rescheduleTarget.patientId ?? rescheduleTarget.patient.id,
+                type: rescheduleTarget.type,
+                consultationType: rescheduleTarget.consultationType,
+                priority: rescheduleTarget.priority,
+                patient: rescheduleTarget.patient,
+              }
+            : null
+        }
+      />
+
+      <CancelAppointmentDialog
+        open={!!cancelTarget}
+        onOpenChange={(open) => { if (!open) setCancelTarget(null); }}
+        appointment={cancelTarget}
+      />
 
       <CollectFrontdeskPaymentDialog
         open={!!collectPayTarget}

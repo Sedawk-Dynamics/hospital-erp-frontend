@@ -363,6 +363,7 @@ export function useCancelAppointment() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['hospital', 'op-appointments'] });
       queryClient.invalidateQueries({ queryKey: ['hospital', 'appointment-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['front-desk'] });
     },
   });
 }
@@ -384,16 +385,27 @@ export function useGenerateQueueToken() {
 export function useRescheduleAppointment() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: { appointmentDate: string; startTime: string; endTime: string } }) => {
-      const response = await apiPatch<Appointment>(`/appointments/${id}/status`, {
-        status: 'booked',
-        ...data,
-      });
+    mutationFn: async ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: {
+        appointmentDate: string;
+        startTime: string;
+        endTime: string;
+        doctorId?: string;
+        reason?: string;
+      };
+    }) => {
+      // In-place move — keeps the appointment id so the bill/token survive.
+      const response = await apiPatch<Appointment>(`/appointments/${id}/reschedule`, data);
       return response.data ?? null;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['hospital', 'op-appointments'] });
       queryClient.invalidateQueries({ queryKey: ['hospital', 'appointment-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['front-desk'] });
     },
   });
 }

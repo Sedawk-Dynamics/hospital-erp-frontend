@@ -16,10 +16,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 
-import { useCancelAppointment } from '@/hooks/use-hospital';
+import { useRescheduleAppointment } from '@/hooks/use-hospital';
 import { DoctorCalendarPicker } from '@/components/hospital/doctor-calendar-picker';
-import { apiPost } from '@/lib/api';
-import type { Appointment } from '@/types';
 
 // ============================================================
 // Props
@@ -49,7 +47,7 @@ export function RescheduleAppointmentDialog({
   appointment,
 }: RescheduleAppointmentDialogProps) {
   const queryClient = useQueryClient();
-  const cancelMutation = useCancelAppointment();
+  const rescheduleMutation = useRescheduleAppointment();
 
   const [selectedDate, setSelectedDate] = useState(toInputDateStr());
   const [selectedSlot, setSelectedSlot] = useState<{
@@ -81,27 +79,19 @@ export function RescheduleAppointmentDialog({
 
     setIsRescheduling(true);
     try {
-      // Step 1: Cancel the old appointment
-      await cancelMutation.mutateAsync({
+      // In-place move: the appointment keeps its id, so the linked bill,
+      // payment and queue token follow it to the new slot.
+      await rescheduleMutation.mutateAsync({
         id: appointment.id,
-        reason: 'Rescheduled',
+        data: {
+          appointmentDate: selectedDate,
+          startTime: selectedSlot.startTime,
+          endTime: selectedSlot.endTime,
+        },
       });
 
-      // Step 2: Create a new appointment with the new date/time
-      await apiPost<Appointment>('/appointments', {
-        patientId: appointment.patientId,
-        doctorId: appointment.doctorId,
-        appointmentDate: selectedDate,
-        startTime: selectedSlot.startTime,
-        endTime: selectedSlot.endTime,
-        type: appointment.type ?? appointment.consultationType ?? 'consultation',
-        priority: appointment.priority ?? 'normal',
-        notes: `Rescheduled from appointment ${appointment.id}`,
-      });
-
-      // Invalidate relevant queries
-      queryClient.invalidateQueries({ queryKey: ['hospital', 'op-appointments'] });
-      queryClient.invalidateQueries({ queryKey: ['hospital', 'appointment-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital'] });
+      queryClient.invalidateQueries({ queryKey: ['front-desk'] });
 
       toast.success('Appointment rescheduled successfully');
       onOpenChange(false);
