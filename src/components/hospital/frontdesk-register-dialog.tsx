@@ -107,13 +107,31 @@ const GENDERS = [
   { value: 'other', label: 'Other' },
 ] as const;
 
+// Values must match the backend PaymentMethod enum exactly — the old list used
+// 'card' / 'bank_transfer' / 'insurance', which no validator accepted.
 const PAYMENT_MODES = [
   { value: 'cash', label: 'Cash', icon: Banknote, color: 'text-green-600 bg-green-100 dark:bg-green-900/30' },
-  { value: 'card', label: 'Card', icon: CreditCard, color: 'text-blue-600 bg-blue-100 dark:bg-blue-900/30' },
   { value: 'upi', label: 'UPI', icon: Smartphone, color: 'text-purple-600 bg-purple-100 dark:bg-purple-900/30' },
-  { value: 'bank_transfer', label: 'Bank Transfer', icon: Building2, color: 'text-indigo-600 bg-indigo-100 dark:bg-indigo-900/30' },
-  { value: 'insurance', label: 'Insurance', icon: CheckCircle2, color: 'text-teal-600 bg-teal-100 dark:bg-teal-900/30' },
+  { value: 'credit_card', label: 'Credit Card', icon: CreditCard, color: 'text-blue-600 bg-blue-100 dark:bg-blue-900/30' },
+  { value: 'debit_card', label: 'Debit Card', icon: CreditCard, color: 'text-sky-600 bg-sky-100 dark:bg-sky-900/30' },
+  { value: 'net_banking', label: 'Net Banking', icon: Building2, color: 'text-indigo-600 bg-indigo-100 dark:bg-indigo-900/30' },
+  { value: 'other', label: 'Other', icon: CheckCircle2, color: 'text-teal-600 bg-teal-100 dark:bg-teal-900/30' },
 ] as const;
+
+/** Non-cash takings should carry a txn/reference so the day-end sheet reconciles. */
+const NEEDS_REFERENCE = new Set(['upi', 'credit_card', 'debit_card', 'net_banking']);
+
+/** Shape returned by POST /appointments/:id/frontdesk-checkout */
+interface FrontdeskCheckoutResult {
+  billId: string;
+  billNumber: string;
+  totalAmount: number;
+  amountPaid: number;
+  balanceDue: number;
+  status: string;
+  paymentId: string | null;
+  receiptNumber: string | null;
+}
 
 const QUICK_DATES = [
   { label: 'Today', getValue: () => toInputDateStr() },
@@ -227,6 +245,10 @@ export function FrontDeskRegisterDialog({
 
   // Payment state
   const [paymentMode, setPaymentMode] = useState('cash');
+  // Whether the counter takes the money now, or raises the bill to be settled
+  // later (the row then stays in the queue's "Collect Payment" state).
+  const [collectNow, setCollectNow] = useState(true);
+  const [paymentReference, setPaymentReference] = useState('');
 
   // Submission
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -304,6 +326,8 @@ export function FrontDeskRegisterDialog({
       setAppointmentType('consultation');
       setReason('');
       setPaymentMode('cash');
+      setCollectNow(true);
+      setPaymentReference('');
       setIsSubmitting(false);
       setNewPatientMode('standalone');
       setUserSearchValue('');
@@ -516,23 +540,34 @@ export function FrontDeskRegisterDialog({
         }
       }
 
-      // Step 5: Create bill with consultation fee if available
-      if (selectedDoctor?.consultationFee && selectedDoctor.consultationFee > 0) {
-        try {
-          await apiPost('/billing', {
-            patientId,
-            appointmentId: appointment.id,
-            items: [{
-              description: `Consultation Fee - ${selectedDoctor.name}`,
-              category: 'consultation',
-              quantity: 1,
-              unitPrice: selectedDoctor.consultationFee,
-            }],
-            paymentMode,
-          });
-        } catch {
-          // Bill creation is non-critical for the flow
-        }
+      // Step 5: Billing — raise the consultation bill and, when the counter is
+      // taking the money now, record the payment against it.
+      //
+      // This used to POST /billing directly, which creates a DRAFT bill and no
+      // Payment row at all: counter takings never reached billing, transactions
+      // or the day-end sheet, and the failure was swallowed so the desk still
+      // saw "booked successfully". The checkout endpoint mirrors the patient
+      // portal (bill → payment → advance status) so both routes settle alike.
+      let checkout: FrontdeskCheckoutResult | null = null;
+      try {
+        const res = await apiPost<FrontdeskCheckoutResult>(
+          `/appointments/${appointment.id}/frontdesk-checkout`,
+          {
+            collectNow,
+            paymentMethod: collectNow ? paymentMode : undefined,
+            referenceNumber:
+              collectNow && paymentReference.trim() ? paymentReference.trim() : undefined,
+          },
+        );
+        checkout = res.data ?? null;
+      } catch (billErr: unknown) {
+        // Surfaced, not swallowed — the appointment exists, but the desk must
+        // know the money was not taken so they can collect it from the queue.
+        toast.error(
+          billErr instanceof Error && billErr.message
+            ? billErr.message
+            : 'Appointment booked, but the bill could not be raised — collect payment from the queue.',
+        );
       }
 
       // Invalidate queries
@@ -540,11 +575,18 @@ export function FrontDeskRegisterDialog({
       queryClient.invalidateQueries({ queryKey: ['front-desk'] });
       queryClient.invalidateQueries({ queryKey: ['patients'] });
 
-      toast.success(
-        tokenNumber
-          ? `Appointment booked — Token #${tokenNumber}`
-          : 'Appointment booked successfully'
-      );
+      const tokenPart = tokenNumber ? ` — Token #${tokenNumber}` : '';
+      if (checkout?.paymentId) {
+        toast.success(
+          `Booked${tokenPart} · ₹${checkout.amountPaid.toLocaleString('en-IN')} collected · Receipt ${checkout.receiptNumber ?? '—'}`,
+        );
+      } else if (checkout) {
+        toast.success(
+          `Booked${tokenPart} · Bill ${checkout.billNumber} raised · ₹${checkout.balanceDue.toLocaleString('en-IN')} payable at the counter`,
+        );
+      } else {
+        toast.success(`Appointment booked${tokenPart}`);
+      }
 
       onOpenChange(false);
       onSuccess?.();
@@ -558,6 +600,8 @@ export function FrontDeskRegisterDialog({
   };
 
   const hasDoctorAndDate = !!selectedDoctorId && !!appointmentDate;
+  const consultationFee = Number(selectedDoctor?.consultationFee ?? 0);
+  const hasConsultationFee = consultationFee > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1288,8 +1332,52 @@ export function FrontDeskRegisterDialog({
               )}
             </div>
 
-            {/* Payment Mode Selection */}
+            {/* Collect now, or bill it and take the money later. Mirrors the
+                patient portal's "pay online" vs "pay at front desk" choice. */}
             <div className="space-y-2">
+              <Label className="font-label text-xs font-semibold text-on-surface-variant">
+                Collection
+              </Label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCollectNow(true)}
+                  className={cn(
+                    'rounded-xl border-2 px-4 py-3 text-left transition-all',
+                    collectNow
+                      ? 'border-primary bg-primary/5 shadow-sm'
+                      : 'border-surface-container hover:border-primary/30',
+                  )}
+                >
+                  <p className={cn('font-label text-sm font-bold', collectNow && 'text-primary')}>
+                    Collect now
+                  </p>
+                  <p className="font-label text-[11px] text-on-surface-variant">
+                    Record the payment and mark the bill paid
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCollectNow(false)}
+                  className={cn(
+                    'rounded-xl border-2 px-4 py-3 text-left transition-all',
+                    !collectNow
+                      ? 'border-primary bg-primary/5 shadow-sm'
+                      : 'border-surface-container hover:border-primary/30',
+                  )}
+                >
+                  <p className={cn('font-label text-sm font-bold', !collectNow && 'text-primary')}>
+                    Pay at counter
+                  </p>
+                  <p className="font-label text-[11px] text-on-surface-variant">
+                    Raise the bill — collect from the queue later
+                  </p>
+                </button>
+              </div>
+            </div>
+
+            {/* Payment Mode Selection */}
+            <div className={cn('space-y-2', !collectNow && 'pointer-events-none opacity-40')}>
               <Label className="font-label text-xs font-semibold text-on-surface-variant">
                 Payment Mode
               </Label>
@@ -1322,7 +1410,33 @@ export function FrontDeskRegisterDialog({
                   );
                 })}
               </div>
+
+              {/* Txn reference for non-cash, so the day-end sheet reconciles. */}
+              {NEEDS_REFERENCE.has(paymentMode) && (
+                <div className="space-y-1.5 pt-1">
+                  <Label
+                    htmlFor="payment-reference"
+                    className="font-label text-xs font-semibold text-on-surface-variant"
+                  >
+                    Transaction / Reference No.
+                  </Label>
+                  <Input
+                    id="payment-reference"
+                    value={paymentReference}
+                    onChange={(e) => setPaymentReference(e.target.value)}
+                    placeholder="UPI ref, card approval code, UTR..."
+                  />
+                </div>
+              )}
             </div>
+
+            {!hasConsultationFee && (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 font-label text-[11px] text-amber-800">
+                No consultation fee is set on this doctor&apos;s profile, so the bill
+                will be raised at ₹0. Set the fee under Doctor Profile to charge for
+                this visit.
+              </p>
+            )}
 
             {/* Navigation */}
             <div className="flex justify-between pt-2">
@@ -1343,7 +1457,9 @@ export function FrontDeskRegisterDialog({
                 ) : (
                   <>
                     <CheckCircle2 className="h-4 w-4" />
-                    Confirm & Book
+                    {collectNow && consultationFee > 0
+                      ? `Collect ₹${consultationFee.toLocaleString('en-IN')} & Book`
+                      : 'Confirm & Book'}
                   </>
                 )}
               </Button>
