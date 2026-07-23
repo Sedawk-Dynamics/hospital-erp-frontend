@@ -6,7 +6,7 @@ import { UserPlus, CalendarPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth-store';
 import { OPHomeToolbar } from '@/components/hospital/op-home-toolbar';
-import { CreatePatientDialog } from '@/components/hospital/create-patient-dialog';
+import { FrontDeskRegisterDialog } from '@/components/hospital/frontdesk-register-dialog';
 import { CreateAppointmentDialog } from '@/components/hospital/create-appointment-dialog';
 import { Button } from '@/components/ui/button';
 import { AppointmentStatsRow } from '@/components/hospital/appointment-stats-row';
@@ -163,9 +163,10 @@ function OPHomeDashboard() {
         onOpenChange={setCreateAppointmentOpen}
       />
 
-      <CreatePatientDialog
+      <FrontDeskRegisterDialog
         open={createPatientOpen}
         onOpenChange={setCreatePatientOpen}
+        initialMode="new"
       />
 
       {/* View mode tabs: Today / Upcoming / Past Bookings */}

@@ -56,6 +56,7 @@ import { apiGet, apiPost, apiPatch } from '@/lib/api';
 import { formatDate, formatDateTime, toInputDateStr } from '@/lib/date-utils';
 import { toast } from 'sonner';
 import type { Admission, Patient, DoctorProfile, BedWithStatus } from '@/types';
+import { FrontDeskRegisterDialog } from '@/components/hospital/frontdesk-register-dialog';
 import { BillGeneratorDialog } from '@/components/hospital/billing/bill-generator-dialog';
 import { AdvancePaymentDialog } from '@/components/hospital/billing/week12-dialogs';
 import { BillingSummaryDialog } from '@/components/pharmacy/billing-summary-dialog';
@@ -484,42 +485,8 @@ function AdmissionDialog({
 
         {step === 'patient' && (
           <div className="grid gap-4 py-2">
-            {/* Patient mode toggle */}
-            <div className="flex gap-2 p-1 rounded-xl bg-surface-container">
-              <button
-                type="button"
-                onClick={() => {
-                  setPatientMode('existing');
-                }}
-                className={cn(
-                  'flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all',
-                  patientMode === 'existing'
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'text-on-surface-variant hover:text-on-surface',
-                )}
-              >
-                Existing Patient
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setPatientMode('new');
-                  setSelectedPatientId('');
-                  setSelectedPatientSnapshot(null);
-                  setPatientSearch('');
-                }}
-                className={cn(
-                  'flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-1.5',
-                  patientMode === 'new'
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'text-on-surface-variant hover:text-on-surface',
-                )}
-              >
-                <UserPlus className="h-3.5 w-3.5" />
-                Register New Patient
-              </button>
-            </div>
-
+            {/* Admission works on an existing patient. To bring in someone new,
+                register them first via the Register New Patient box, then admit. */}
             {patientMode === 'new' ? (
               <div className="rounded-lg border border-dashed border-muted-foreground/30 p-3 space-y-3">
 
@@ -1861,6 +1828,7 @@ function useAdmissionStats() {
 // InPatientList — Main component
 // ---------------------------------------------------------------------------
 export function InPatientList() {
+  const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -2093,12 +2061,16 @@ export function InPatientList() {
         onAdmitted={(adm) => setPostAdmitSlip(adm)}
       />
 
-      {/* Admission dialog (new-patient registration + admission) */}
-      <AdmissionDialog
+      {/* Register a new patient — the shared register box (same everywhere).
+          Admitting is a separate action (open Admit, search the patient). */}
+      <FrontDeskRegisterDialog
         open={registerNewOpen}
         onOpenChange={setRegisterNewOpen}
-        onAdmitted={(adm) => setPostAdmitSlip(adm)}
         initialMode="new"
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['patients'] });
+          queryClient.invalidateQueries({ queryKey: ['hospital'] });
+        }}
       />
 
       {/* Auto-open admission slip after admit */}
