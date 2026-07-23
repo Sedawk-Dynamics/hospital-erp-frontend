@@ -138,7 +138,7 @@ export function AppointmentTable({
                         </div>
                         <div>
                           <p className="flex items-center gap-1.5 font-label text-sm font-bold">
-                            {patient ? `${patient.firstName} ${patient.lastName}` : 'Unknown'}
+                            {patient ? [patient.firstName, patient.lastName].filter(Boolean).join(' ') : 'Unknown'}
                             {isTemporaryPatient(patient) && (
                               <Badge variant="secondary" className="uppercase">Temp</Badge>
                             )}

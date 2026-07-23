@@ -146,7 +146,7 @@ export function CreateAppointmentDialog({
     (patient: Patient) => {
       setSelectedPatient(patient);
       setValue('patientId', patient.id, { shouldValidate: true });
-      setPatientQuery(`${patient.firstName} ${patient.lastName} (${patient.mrn})`);
+      setPatientQuery(`${[patient.firstName, patient.lastName].filter(Boolean).join(' ')} (${patient.mrn})`);
       setShowPatientDropdown(false);
     },
     [setValue]

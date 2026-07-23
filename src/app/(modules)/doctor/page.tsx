@@ -547,7 +547,7 @@ function DoctorAppointmentTable({
                       </div>
                       <div>
                         <p className="font-semibold text-foreground truncate max-w-[200px]">
-                          {patient ? `${patient.firstName} ${patient.lastName}`.toUpperCase() : 'Unknown'}
+                          {patient ? [patient.firstName, patient.lastName].filter(Boolean).join(' ').toUpperCase() : 'Unknown'}
                           {' '}
                           <span className="font-normal text-muted-foreground">
                             {patient?.gender === 'female' ? 'F' : patient?.gender === 'male' ? 'M' : ''}

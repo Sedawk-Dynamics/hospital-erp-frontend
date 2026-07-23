@@ -73,7 +73,7 @@ export function CancelAppointmentDialog({
   }, [open, reset]);
 
   const patientName = appointment?.patient
-    ? `${appointment.patient.firstName} ${appointment.patient.lastName}`
+    ? [appointment.patient.firstName, appointment.patient.lastName].filter(Boolean).join(' ')
     : 'Unknown Patient';
 
   const onSubmit = async (data: CancelFormData) => {

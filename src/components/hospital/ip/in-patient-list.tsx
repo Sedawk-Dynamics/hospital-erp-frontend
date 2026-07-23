@@ -633,7 +633,7 @@ function AdmissionDialog({
                 <div className="flex items-center justify-between rounded-lg border px-3 py-2">
                   <span className="text-sm">
                     {selectedPatient
-                      ? `${selectedPatient.firstName} ${selectedPatient.lastName}${selectedPatient.mrn ? ` (${selectedPatient.mrn})` : ''}`
+                      ? `${[selectedPatient.firstName, selectedPatient.lastName].filter(Boolean).join(' ')}${selectedPatient.mrn ? ` (${selectedPatient.mrn})` : ''}`
                       : 'Loading patient…'}
                   </span>
                   <Button
@@ -665,7 +665,7 @@ function AdmissionDialog({
                           onClick={() => {
                             setSelectedPatientId(p.id);
                             setSelectedPatientSnapshot(p);
-                            setPatientSearch(`${p.firstName} ${p.lastName}`);
+                            setPatientSearch([p.firstName, p.lastName].filter(Boolean).join(' '));
                           }}
                         >
                           <span className="font-medium">

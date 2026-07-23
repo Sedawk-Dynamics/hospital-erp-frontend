@@ -196,7 +196,7 @@ export function BillingDashboard() {
                   <tr key={bill.id} className="group hover:bg-surface-container-low transition-colors">
                     <td className="px-4 py-3 font-label text-sm font-bold">{bill.billNumber}</td>
                     <td className="px-4 py-3 font-label text-sm">
-                      {bill.patient ? `${bill.patient.firstName} ${bill.patient.lastName}` : '-'}
+                      {bill.patient ? [bill.patient.firstName, bill.patient.lastName].filter(Boolean).join(' ') : '-'}
                     </td>
                     <td className="px-4 py-3 font-label text-[10px] text-on-surface-variant">
                       {formatDate(bill.createdAt)}

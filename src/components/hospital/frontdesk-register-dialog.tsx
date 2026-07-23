@@ -342,7 +342,7 @@ export function FrontDeskRegisterDialog({
 
   const handleSelectPatient = useCallback((patient: Patient) => {
     setSelectedPatient(patient);
-    setPatientQuery(`${patient.firstName} ${patient.lastName} (${patient.mrn})`);
+    setPatientQuery(`${[patient.firstName, patient.lastName].filter(Boolean).join(' ')} (${patient.mrn})`);
     setShowPatientDropdown(false);
   }, []);
 
@@ -1262,8 +1262,8 @@ export function FrontDeskRegisterDialog({
                   <p className="font-label text-[10px] text-on-surface-variant">Patient</p>
                   <p className="font-semibold">
                     {selectedPatient
-                      ? `${selectedPatient.firstName} ${selectedPatient.lastName}`
-                      : `${watchPatient('firstName')} ${watchPatient('lastName')}`}
+                      ? [selectedPatient.firstName, selectedPatient.lastName].filter(Boolean).join(' ')
+                      : `${watchPatient('firstName')} ${watchPatient('lastName')}`.trim()}
                   </p>
                 </div>
                 <div>

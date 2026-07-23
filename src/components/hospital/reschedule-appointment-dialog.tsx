@@ -71,7 +71,7 @@ export function RescheduleAppointmentDialog({
   }, [selectedDate]);
 
   const patientName = appointment?.patient
-    ? `${appointment.patient.firstName} ${appointment.patient.lastName}`
+    ? [appointment.patient.firstName, appointment.patient.lastName].filter(Boolean).join(' ')
     : 'Unknown Patient';
 
   const handleReschedule = async () => {

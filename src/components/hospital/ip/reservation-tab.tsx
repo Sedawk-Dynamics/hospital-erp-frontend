@@ -597,7 +597,7 @@ function CreateReservationDialog({ open, onOpenChange }: { open: boolean; onOpen
                     className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
                     onClick={() => {
                       setForm((prev) => ({ ...prev, patientId: p.id }));
-                      setPatientSearch(`${p.firstName} ${p.lastName} (${p.mrn || ''})`);
+                      setPatientSearch(`${[p.firstName, p.lastName].filter(Boolean).join(" ")} (${p.mrn || ""})`);
                     }}
                   >
                     {p.firstName} {p.lastName} — {p.mrn || 'No MRN'} | {p.phone || '-'}
