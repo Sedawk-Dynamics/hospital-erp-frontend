@@ -169,12 +169,48 @@ export function CreatePatientDialog({
   const emergencyRelationshipValue = watch('emergencyContactRelationship');
   const emergencyIsPrimaryValue = watch('emergencyContactIsPrimary');
 
+  // When ticked, the patient is saved as a provisional (TEMP-) record — every
+  // field is optional and the record can be registered or connected later.
+  const [isTemporary, setIsTemporary] = useState(false);
+  const [savingTemp, setSavingTemp] = useState(false);
+
   // Reset form when dialog opens
   useEffect(() => {
     if (open) {
       reset();
+      setIsTemporary(false);
     }
   }, [open, reset]);
+
+  const handleSaveAsTemporary = async () => {
+    const v = watch();
+    try {
+      setSavingTemp(true);
+      const resp = await apiPost<Patient>('/patients/temporary', {
+        firstName: v.firstName?.trim() || undefined,
+        lastName: v.lastName?.trim() || undefined,
+        gender: v.gender || undefined,
+        dateOfBirth: v.dateOfBirth || undefined,
+        phone: v.phone?.trim() || undefined,
+        email: v.email?.trim() || undefined,
+        bloodGroup: v.bloodGroup || undefined,
+        address: v.address?.trim() || undefined,
+        city: v.city?.trim() || undefined,
+        state: v.state?.trim() || undefined,
+        zipCode: v.zipCode?.trim() || undefined,
+        notes: v.notes?.trim() || undefined,
+      });
+      queryClient.invalidateQueries({ queryKey: ['patients'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital'] });
+      toast.success(`Temporary patient created (${resp.data?.mrn ?? 'TEMP'})`);
+      onOpenChange(false);
+      if (resp.data) onSuccess?.(resp.data);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? 'Failed to create temporary patient');
+    } finally {
+      setSavingTemp(false);
+    }
+  };
 
   const mutation = useMutation({
     mutationFn: async (data: CreatePatientFormData) => {
@@ -255,6 +291,23 @@ export function CreatePatientDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          {/* ── Temporary-patient tickmark — relaxes all fields to optional ── */}
+          <label className="flex items-start gap-3 rounded-lg border border-outline-variant/40 bg-surface-container/40 p-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isTemporary}
+              onChange={(e) => setIsTemporary(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-input accent-primary cursor-pointer"
+            />
+            <div>
+              <p className="text-sm font-semibold text-on-surface">Temporary patient</p>
+              <p className="text-xs text-on-surface-variant">
+                Save now with whatever details you have — all fields become optional. Register the
+                full record or connect it to an existing patient later from the Patients page.
+              </p>
+            </div>
+          </label>
+
           {/* ── Basic Info ── */}
           <div className="rounded-lg border border-dashed border-muted-foreground/30 p-3 space-y-3">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -598,20 +651,33 @@ export function CreatePatientDialog({
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
-              disabled={mutation.isPending}
+              disabled={mutation.isPending || savingTemp}
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? (
-                <span className="flex items-center gap-2">
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Registering...
-                </span>
-              ) : (
-                'Register Patient'
-              )}
-            </Button>
+            {isTemporary ? (
+              <Button type="button" onClick={handleSaveAsTemporary} disabled={savingTemp}>
+                {savingTemp ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    Creating...
+                  </span>
+                ) : (
+                  'Create Temporary Patient'
+                )}
+              </Button>
+            ) : (
+              <Button type="submit" disabled={mutation.isPending}>
+                {mutation.isPending ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    Registering...
+                  </span>
+                ) : (
+                  'Register Patient'
+                )}
+              </Button>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>
