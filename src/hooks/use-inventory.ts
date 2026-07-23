@@ -52,6 +52,10 @@ export interface Supplier {
   supplyType: SupplyType | null;
   /** Credit period: days within which this vendor must be paid. */
   paymentTermDays: number | null;
+  /** Max ₹ outstanding credit carried with this vendor (reference figure). */
+  creditLimit: number | string | null;
+  /** How the vendor is usually settled: cash | cheque | bank_transfer | upi | credit. */
+  paymentMode: string | null;
   isActive: boolean;
   createdAt: string;
 }
@@ -574,6 +578,10 @@ export interface CreateSupplierInput {
   supplyType?: SupplyType;
   /** Credit period: days within which this vendor must be paid. */
   paymentTermDays?: number;
+  /** Max ₹ outstanding credit carried with this vendor. */
+  creditLimit?: number;
+  /** How the vendor is usually settled. */
+  paymentMode?: 'cash' | 'cheque' | 'bank_transfer' | 'upi' | 'credit';
 }
 
 export function useCreateSupplier() {

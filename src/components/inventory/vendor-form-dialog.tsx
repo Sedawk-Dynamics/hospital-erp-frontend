@@ -56,6 +56,16 @@ export function VendorFormDialog({
   );
 }
 
+type PaymentMode = 'cash' | 'cheque' | 'bank_transfer' | 'upi' | 'credit';
+
+const PAYMENT_MODES: { value: PaymentMode; label: string }[] = [
+  { value: 'credit', label: 'Credit' },
+  { value: 'cash', label: 'Cash' },
+  { value: 'cheque', label: 'Cheque' },
+  { value: 'bank_transfer', label: 'NEFT / RTGS' },
+  { value: 'upi', label: 'UPI' },
+];
+
 interface FormState {
   name: string;
   gstNumber: string;
@@ -64,8 +74,10 @@ interface FormState {
   email: string;
   address: string;
   supplyType: SupplyType;
-  /** Kept as a string for the input; parsed to a number on save. */
+  /** Kept as strings for the inputs; parsed to numbers on save. */
   paymentTermDays: string;
+  creditLimit: string;
+  paymentMode: '' | PaymentMode;
 }
 
 function VendorForm({
@@ -88,6 +100,8 @@ function VendorForm({
     address: vendor?.address ?? '',
     supplyType: vendor?.supplyType ?? 'drugs',
     paymentTermDays: vendor?.paymentTermDays != null ? String(vendor.paymentTermDays) : '',
+    creditLimit: vendor?.creditLimit != null ? String(vendor.creditLimit) : '',
+    paymentMode: (vendor?.paymentMode as PaymentMode | undefined) ?? '',
   }));
 
   const set = (k: keyof FormState, v: string) => setForm((p) => ({ ...p, [k]: v }));
@@ -104,6 +118,8 @@ function VendorForm({
       address: form.address.trim() || undefined,
       supplyType: form.supplyType,
       paymentTermDays: form.paymentTermDays.trim() ? Number(form.paymentTermDays) : undefined,
+      creditLimit: form.creditLimit.trim() ? Number(form.creditLimit) : undefined,
+      paymentMode: form.paymentMode || undefined,
     };
     try {
       const saved = vendor
@@ -151,32 +167,69 @@ function VendorForm({
             <Input id="v-email" type="email" value={form.email} onChange={(e) => set('email', e.target.value)} />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <Label>Supplies</Label>
-            <Select value={form.supplyType} onValueChange={(v) => set('supplyType', (v ?? 'drugs') as SupplyType)}>
-              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="drugs">Drugs</SelectItem>
-                <SelectItem value="consumables">Consumables</SelectItem>
-                <SelectItem value="equipment">Equipment</SelectItem>
-                <SelectItem value="all">All</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="v-terms">Payment terms (days)</Label>
-            <Input
-              id="v-terms"
-              type="number"
-              min={0}
-              max={365}
-              value={form.paymentTermDays}
-              onChange={(e) => set('paymentTermDays', e.target.value)}
-              placeholder="e.g. 30"
-            />
+        <div className="space-y-1.5">
+          <Label>Supplies</Label>
+          <Select value={form.supplyType} onValueChange={(v) => set('supplyType', (v ?? 'drugs') as SupplyType)}>
+            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="drugs">Drugs</SelectItem>
+              <SelectItem value="consumables">Consumables</SelectItem>
+              <SelectItem value="equipment">Equipment</SelectItem>
+              <SelectItem value="all">All</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Payment section — reference figures the accounts team uses when
+            clearing dues. Nothing here is enforced; there is no vendor login. */}
+        <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Payment</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="v-mode">Payment mode</Label>
+              <Select
+                value={form.paymentMode || null}
+                onValueChange={(v) => set('paymentMode', (v ?? '') as PaymentMode)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select">
+                    {(value) => PAYMENT_MODES.find((m) => m.value === value)?.label ?? 'Select'}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_MODES.map((m) => (
+                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="v-terms">Terms (days)</Label>
+              <Input
+                id="v-terms"
+                type="number"
+                min={0}
+                max={365}
+                value={form.paymentTermDays}
+                onChange={(e) => set('paymentTermDays', e.target.value)}
+                placeholder="e.g. 30"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="v-credit">Credit limit (₹)</Label>
+              <Input
+                id="v-credit"
+                type="number"
+                min={0}
+                step="0.01"
+                value={form.creditLimit}
+                onChange={(e) => set('creditLimit', e.target.value)}
+                placeholder="e.g. 50000"
+              />
+            </div>
           </div>
         </div>
+
         <div className="space-y-1.5">
           <Label htmlFor="v-addr">Address</Label>
           <Textarea id="v-addr" rows={2} value={form.address} onChange={(e) => set('address', e.target.value)} />
