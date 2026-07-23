@@ -362,13 +362,43 @@ export function FrontDeskRegisterDialog({
     setStep(1);
   };
 
-  const handlePatientFormNext = (_data: PatientFormData) => {
+  // Register-patient box only registers the patient — booking an appointment is a
+  // separate action (from the walk-in / OP page: search the patient, pick a
+  // doctor, book). No appointment/payment steps here.
+  const handleRegisterNewPatient = async (data: PatientFormData) => {
     if (newPatientMode === 'linkUser' && !selectedUser) {
       toast.error('Please search and select an account holder');
       return;
     }
-    // Store form data — we'll create patient on final submit
-    setStep(1);
+    try {
+      setIsSubmitting(true);
+      const payload: Record<string, unknown> = {
+        firstName: data.firstName,
+        lastName: data.lastName,
+        gender: data.gender,
+        phone: data.phone,
+      };
+      if (data.dateOfBirth) payload.dateOfBirth = data.dateOfBirth;
+      if (data.email) payload.email = data.email;
+      if (data.address) payload.address = data.address;
+      if (data.city) payload.city = data.city;
+      if (data.state) payload.state = data.state;
+      if (data.zipCode) payload.zipCode = data.zipCode;
+      if (newPatientMode === 'linkUser' && selectedUser) {
+        payload.userId = selectedUser.id;
+        payload.relationship = data.relationship ?? 'other';
+      }
+      await apiPost<Patient>('/patients', payload);
+      queryClient.invalidateQueries({ queryKey: ['hospital'] });
+      queryClient.invalidateQueries({ queryKey: ['patients'] });
+      toast.success('Patient registered successfully');
+      onOpenChange(false);
+      onSuccess?.();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? 'Failed to register patient');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Quick "Save as Temporary" — create a provisional (TEMP-) patient from whatever
@@ -699,7 +729,7 @@ export function FrontDeskRegisterDialog({
                 </div>
               </div>
             ) : (
-              <form onSubmit={handlePatientSubmit(handlePatientFormNext)} className="space-y-4">
+              <form onSubmit={handlePatientSubmit(handleRegisterNewPatient)} className="space-y-4">
                 {/* Temporary-patient tickmark — relaxes all fields to optional */}
                 <label className="flex items-start gap-3 rounded-xl border border-outline-variant/40 bg-surface-container/40 p-3 cursor-pointer">
                   <input
@@ -1005,9 +1035,9 @@ export function FrontDeskRegisterDialog({
                       Create Temporary Patient
                     </Button>
                   ) : (
-                    <Button type="submit" className="gap-2">
-                      Next: Book Appointment
-                      <ArrowRight className="h-4 w-4" />
+                    <Button type="submit" className="gap-2" disabled={isSubmitting}>
+                      {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                      Register Patient
                     </Button>
                   )}
                 </div>

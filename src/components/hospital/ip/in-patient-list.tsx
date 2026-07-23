@@ -342,6 +342,38 @@ function AdmissionDialog({
     },
   });
 
+  // Register-only: the register-new-patient box just creates the patient record.
+  // Admission is a separate action (pick the now-existing patient and admit).
+  const registerOnlyMutation = useMutation({
+    mutationFn: async () => {
+      const payload: Record<string, unknown> = {
+        firstName: newPatient.firstName.trim(),
+        lastName: newPatient.lastName.trim(),
+        gender: newPatient.gender,
+        phone: newPatient.phone.trim(),
+      };
+      if (newPatient.dateOfBirth) payload.dateOfBirth = newPatient.dateOfBirth;
+      if (newPatient.email.trim()) payload.email = newPatient.email.trim();
+      if (newPatient.address.trim()) payload.address = newPatient.address.trim();
+      if (newPatient.city.trim()) payload.city = newPatient.city.trim();
+      if (newPatient.state.trim()) payload.state = newPatient.state.trim();
+      if (newPatient.zipCode.trim()) payload.zipCode = newPatient.zipCode.trim();
+      const res = await apiPost<Patient>('/patients', payload);
+      if (!res.data?.id) throw new Error('Failed to register patient');
+      return res.data;
+    },
+    onSuccess: () => {
+      toast.success('Patient registered successfully');
+      queryClient.invalidateQueries({ queryKey: ['patients'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital'] });
+      resetForm();
+      onOpenChange(false);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Failed to register patient');
+    },
+  });
+
   const resetForm = useCallback(() => {
     setPatientSearch('');
     setSelectedPatientId('');
@@ -938,11 +970,23 @@ function AdmissionDialog({
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              {patientMode === 'new' && isTemporary ? (
-                <Button disabled={savingTemp} onClick={handleSaveAsTemporary}>
-                  {savingTemp && <Loader2 className="h-4 w-4 animate-spin" />}
-                  Create Temporary Patient
-                </Button>
+              {patientMode === 'new' ? (
+                isTemporary ? (
+                  <Button disabled={savingTemp} onClick={handleSaveAsTemporary}>
+                    {savingTemp && <Loader2 className="h-4 w-4 animate-spin" />}
+                    Create Temporary Patient
+                  </Button>
+                ) : (
+                  // Register-patient box only registers — admitting is a separate
+                  // action from the IP page (search the patient, then admit).
+                  <Button
+                    disabled={!newPatientValid || registerOnlyMutation.isPending}
+                    onClick={() => registerOnlyMutation.mutate()}
+                  >
+                    {registerOnlyMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                    Register Patient
+                  </Button>
+                )
               ) : (
                 <Button disabled={!patientValid} onClick={() => setStep('admit')}>
                   Next: Admit Patient
