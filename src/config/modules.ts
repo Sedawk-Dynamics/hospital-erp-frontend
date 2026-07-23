@@ -70,6 +70,7 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
     baseRoute: '/hospital',
     sidebarItems: [
       { label: 'Home', href: '/hospital', icon: Home },
+      { label: 'Patients', href: '/hospital/patients', icon: Users },
       { label: 'IP Home', href: '/hospital/ip', icon: BedDouble },
       { label: 'Walk In', href: '/hospital/walkin', icon: Users },
       { label: 'Hospital Billing', href: '/hospital/billing', icon: Receipt },

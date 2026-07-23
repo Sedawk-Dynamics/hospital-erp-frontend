@@ -367,6 +367,38 @@ export function FrontDeskRegisterDialog({
     setStep(1);
   };
 
+  // Quick "Save as Temporary" — create a provisional (TEMP-) patient from whatever
+  // has been entered so far, without booking an appointment. It can be registered
+  // in place or connected to an existing record later from the Patients page.
+  const [savingTemp, setSavingTemp] = useState(false);
+  const handleSaveAsTemporary = async () => {
+    const v = watchPatient();
+    try {
+      setSavingTemp(true);
+      const resp = await apiPost<Patient>('/patients/temporary', {
+        firstName: v.firstName?.trim() || undefined,
+        lastName: v.lastName?.trim() || undefined,
+        gender: v.gender || undefined,
+        dateOfBirth: v.dateOfBirth || undefined,
+        phone: v.phone?.trim() || undefined,
+        email: v.email?.trim() || undefined,
+        address: v.address?.trim() || undefined,
+        city: v.city?.trim() || undefined,
+        state: v.state?.trim() || undefined,
+        zipCode: v.zipCode?.trim() || undefined,
+      });
+      queryClient.invalidateQueries({ queryKey: ['hospital'] });
+      queryClient.invalidateQueries({ queryKey: ['patients'] });
+      toast.success(`Temporary patient created (${resp.data?.mrn ?? 'TEMP'})`);
+      onOpenChange(false);
+      onSuccess?.();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? 'Failed to create temporary patient');
+    } finally {
+      setSavingTemp(false);
+    }
+  };
+
   const goToStep2 = () => {
     if (!selectedDoctorId) {
       toast.error('Please select a doctor');
@@ -935,7 +967,17 @@ export function FrontDeskRegisterDialog({
                   </div>
                 </div>
 
-                <div className="flex justify-end">
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="gap-2"
+                    onClick={handleSaveAsTemporary}
+                    disabled={savingTemp}
+                  >
+                    {savingTemp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
+                    Save as Temporary
+                  </Button>
                   <Button type="submit" className="gap-2">
                     Next: Book Appointment
                     <ArrowRight className="h-4 w-4" />

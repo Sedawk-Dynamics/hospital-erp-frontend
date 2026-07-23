@@ -20,6 +20,8 @@ export const hospitalKeys = {
     ['hospital', 'patient-search', query] as const,
   patient: (id: string) =>
     ['hospital', 'patient', id] as const,
+  patientDirectory: (params?: Record<string, unknown>) =>
+    ['hospital', 'patient-directory', params] as const,
   bills: (params?: Record<string, unknown>) =>
     ['hospital', 'bills', params] as const,
   bill: (id: string) =>
@@ -206,6 +208,134 @@ export function usePatient(id: string) {
       return response.data ?? null;
     },
     enabled: !!id,
+  });
+}
+
+// ============================================================
+// Front Desk Patient Directory + Temporary (provisional) patients
+// ============================================================
+
+export type PatientCategory = 'all' | 'registered' | 'temporary';
+
+export interface PatientDirectoryParams {
+  category?: PatientCategory;
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface PatientDirectoryResult {
+  patients: Patient[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+/** Paginated patient directory for the Front Desk, filterable by category tab. */
+export function usePatientDirectory(params: PatientDirectoryParams) {
+  return useQuery({
+    queryKey: hospitalKeys.patientDirectory(params as Record<string, unknown>),
+    queryFn: async (): Promise<PatientDirectoryResult> => {
+      const response = await apiGet<Patient[]>('/patients', {
+        params: {
+          category: params.category && params.category !== 'all' ? params.category : undefined,
+          search: params.search || undefined,
+          page: params.page ?? 1,
+          limit: params.limit ?? 20,
+        },
+      });
+      return {
+        patients: response.data ?? [],
+        total: response.meta?.total ?? 0,
+        page: response.meta?.page ?? 1,
+        limit: response.meta?.limit ?? 20,
+        totalPages: response.meta?.totalPages ?? 1,
+      };
+    },
+  });
+}
+
+/** Whatever the front desk knows when a patient arrives — every field optional. */
+export interface CreateTemporaryPatientPayload {
+  firstName?: string;
+  lastName?: string;
+  gender?: 'male' | 'female' | 'other' | 'prefer_not_to_say';
+  dateOfBirth?: string;
+  age?: number;
+  phone?: string;
+  email?: string;
+  bloodGroup?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+  notes?: string;
+}
+
+/** Real details when a temp patient is registered in place (first name required). */
+export interface RegisterTemporaryPatientPayload {
+  firstName: string;
+  lastName?: string;
+  gender?: 'male' | 'female' | 'other' | 'prefer_not_to_say';
+  dateOfBirth?: string;
+  phone?: string;
+  email?: string;
+  bloodGroup?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+}
+
+function invalidatePatientLists(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: ['hospital', 'patient-directory'] });
+  queryClient.invalidateQueries({ queryKey: ['hospital', 'patient-search'] });
+}
+
+/** Create a temporary (provisional) patient — a normal row with a TEMP- MRN. */
+export function useCreateTemporaryPatient() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: CreateTemporaryPatientPayload) => {
+      const response = await apiPost<Patient>('/patients/temporary', payload);
+      return response.data;
+    },
+    onSuccess: () => invalidatePatientLists(queryClient),
+  });
+}
+
+/** Register a temp patient in place: permanent MRN + real details, SAME row. */
+export function useRegisterTemporaryPatient() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: RegisterTemporaryPatientPayload }) => {
+      const response = await apiPost<Patient>(`/patients/${id}/register-in-place`, data);
+      return response.data;
+    },
+    onSuccess: (_d, vars) => {
+      invalidatePatientLists(queryClient);
+      queryClient.invalidateQueries({ queryKey: hospitalKeys.patient(vars.id) });
+    },
+  });
+}
+
+/** Merge a temp patient into an existing registered patient (no duplicate row). */
+export function useMergeTemporaryPatient() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, targetPatientId }: { id: string; targetPatientId: string }) => {
+      const response = await apiPost<{ target: Patient; moved: Record<string, number> }>(
+        `/patients/${id}/merge`,
+        { targetPatientId },
+      );
+      return response.data;
+    },
+    onSuccess: (_d, vars) => {
+      invalidatePatientLists(queryClient);
+      queryClient.invalidateQueries({ queryKey: hospitalKeys.patient(vars.id) });
+      queryClient.invalidateQueries({ queryKey: hospitalKeys.patient(vars.targetPatientId) });
+    },
   });
 }
 

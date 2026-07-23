@@ -377,6 +377,36 @@ function AdmissionDialog({
   const patientValid =
     patientMode === 'existing' ? !!selectedPatientId : newPatientValid;
 
+  // Quick "Save as Temporary" — create a provisional (TEMP-) patient from the
+  // inline fields without admitting. It becomes a normal patient that can be
+  // admitted, registered in place, or connected later from the Patients page.
+  const [savingTemp, setSavingTemp] = useState(false);
+  const handleSaveAsTemporary = async () => {
+    try {
+      setSavingTemp(true);
+      const resp = await apiPost<Patient>('/patients/temporary', {
+        firstName: newPatient.firstName.trim() || undefined,
+        lastName: newPatient.lastName.trim() || undefined,
+        gender: newPatient.gender || undefined,
+        dateOfBirth: newPatient.dateOfBirth || undefined,
+        phone: newPatient.phone.trim() || undefined,
+        email: newPatient.email.trim() || undefined,
+        address: newPatient.address.trim() || undefined,
+        city: newPatient.city.trim() || undefined,
+        state: newPatient.state.trim() || undefined,
+        zipCode: newPatient.zipCode.trim() || undefined,
+      });
+      queryClient.invalidateQueries({ queryKey: ['hospital'] });
+      queryClient.invalidateQueries({ queryKey: ['patients'] });
+      toast.success(`Temporary patient created (${resp.data?.mrn ?? 'TEMP'})`);
+      onOpenChange(false);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? 'Failed to create temporary patient');
+    } finally {
+      setSavingTemp(false);
+    }
+  };
+
   const detailsValid =
     patientValid && !!selectedDoctorId && !!selectedWardId && !!selectedBedId;
 
@@ -887,6 +917,16 @@ function AdmissionDialog({
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
+              {patientMode === 'new' && (
+                <Button
+                  variant="outline"
+                  disabled={savingTemp || newPatient.firstName.trim().length === 0}
+                  onClick={handleSaveAsTemporary}
+                >
+                  {savingTemp && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Save as Temporary
+                </Button>
+              )}
               <Button disabled={!patientValid} onClick={() => setStep('admit')}>
                 Next: Admit Patient
               </Button>
