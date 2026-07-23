@@ -7,7 +7,8 @@
 // chapter heading) and its GST auto-fills the batch — so operators never have to
 // remember the rate per medicine. Editable here; every hospital shares it.
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
 import {
   Receipt,
@@ -19,6 +20,7 @@ import {
   Trash2,
   Info,
   Layers,
+  FileUp,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -98,6 +100,7 @@ export default function SuperAdminHsnGstPage() {
   const [bulkText, setBulkText] = useState('');
   const [bulkGst, setBulkGst] = useState(5);
   const [bulkCategory, setBulkCategory] = useState<string>('medicine');
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -199,6 +202,46 @@ export default function SuperAdminHsnGstPage() {
       });
     }
     return out;
+  }
+
+  // Read an Excel/CSV file and append its rows to the bulk textarea as
+  //   HSN, GST%, description, category
+  // lines, so they flow through the same parse/preview/import path. Columns are
+  // taken positionally (HSN, GST, description, category); a header row whose
+  // first cell isn't a number is skipped.
+  async function handleFile(file: File) {
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array', cellDates: false });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      if (!sheet) {
+        toast.error('The file has no sheets');
+        return;
+      }
+      const grid = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+        header: 1,
+        blankrows: false,
+        defval: '',
+      });
+      const lines: string[] = [];
+      for (const row of grid) {
+        const cells = (row as unknown[]).map((c) => String(c ?? '').trim());
+        const hsn = (cells[0] ?? '').replace(/\D/g, '');
+        if (!hsn) continue; // skip blank / header rows (non-numeric first cell)
+        const parts = [hsn, cells[1] ?? '', cells[2] ?? '', cells[3] ?? ''];
+        // Trim trailing empties so a bare HSN stays a single token.
+        while (parts.length > 1 && parts[parts.length - 1] === '') parts.pop();
+        lines.push(parts.join(', '));
+      }
+      if (!lines.length) {
+        toast.error('No HSN codes found in the file');
+        return;
+      }
+      setBulkText((prev) => (prev.trim() ? `${prev.trim()}\n${lines.join('\n')}` : lines.join('\n')));
+      toast.success(`Loaded ${lines.length} row(s) from ${file.name}`);
+    } catch {
+      toast.error('Could not read the file — is it a valid .xlsx / .csv?');
+    }
   }
 
   const bulkPreview = parseBulk();
@@ -452,9 +495,9 @@ export default function SuperAdminHsnGstPage() {
           <DialogHeader>
             <DialogTitle>Bulk add HSN → GST rates</DialogTitle>
             <DialogDescription>
-              One HSN code per line. Optionally add its rate and details:
-              <span className="font-mono"> HSN, GST%, description, category</span>. Lines that omit
-              the rate/category use the defaults below. Re-importing an existing HSN updates its rate.
+              Paste one HSN per line — <span className="font-mono">HSN, GST%, description, category</span> —
+              or upload an Excel / CSV with those columns in that order. Lines that omit the
+              rate/category use the defaults below. Re-importing an existing HSN updates its rate.
             </DialogDescription>
           </DialogHeader>
 
@@ -491,7 +534,30 @@ export default function SuperAdminHsnGstPage() {
           </div>
 
           <div>
-            <label className="text-xs font-medium">HSN codes</label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium">HSN codes</label>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleFile(f);
+                  e.target.value = '';
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => fileRef.current?.click()}
+              >
+                <FileUp className="h-3.5 w-3.5" />
+                Upload Excel / CSV
+              </Button>
+            </div>
             <textarea
               className="w-full min-h-40 rounded-md border bg-background px-2.5 py-2 text-sm font-mono"
               value={bulkText}
