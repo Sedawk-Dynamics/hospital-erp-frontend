@@ -250,8 +250,9 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Vendors', href: '/inventory/suppliers', icon: Building2 },
       // Pharmacy drug-stock management (backed by /pharmacy/* endpoints).
       { label: 'Drug Catalog', href: '/inventory/drug-catalog', icon: Database },
-      { label: 'Drug Formulary', href: '/inventory/drug-formulary', icon: Pill },
-      // Batches are now part of "Storage" (each medicine expands to its batches).
+      // Drug Formulary is merged into "Storage" (/inventory) — drugs live in the
+      // one list there with all their operations, so it's no longer a nav item.
+      // Batches are also part of "Storage" (each medicine expands to its batches).
       { label: 'Narcotics (NDPS)', href: '/inventory/ndps', icon: ShieldCheck },
       { label: 'Drug Orders', href: '/inventory/drug-purchase-orders', icon: ShoppingCart },
       { label: 'Drug GST', href: '/inventory/drug-gst', icon: FileText },

@@ -339,6 +339,8 @@ export function useCreateFormularyItem() {
       // Only a real create touches the list — a duplicate prompt changed nothing.
       if (!isDuplicateSuspected(data)) {
         queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
+        // The unified Storage list at /inventory reads ['inventory','stock',…].
+        queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
       }
     },
   });
@@ -797,6 +799,8 @@ export function useUpdateFormularyItem() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.detail(variables.id) });
+      // Refresh the unified Storage list at /inventory.
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
     },
   });
 }
@@ -810,6 +814,7 @@ export function useDeleteFormularyItem() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
     },
   });
 }

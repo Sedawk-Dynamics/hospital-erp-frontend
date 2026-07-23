@@ -3,7 +3,7 @@
 // "Import from Catalog" — lets a hospital pharmacist search the platform-wide
 // DrugMaster (~254K Indian drugs) and copy drugs into their own formulary.
 // Supports single-click add AND multi-select bulk copy. The MRP becomes the
-// default selling price (editable later under Drug Formulary).
+// default selling price (editable later under Storage).
 
 import { useEffect, useMemo, useState } from 'react';
 import { Search, Loader2, Download, PackagePlus, CheckSquare, Square } from 'lucide-react';

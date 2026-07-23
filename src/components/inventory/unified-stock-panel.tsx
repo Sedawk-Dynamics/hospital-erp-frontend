@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Search, Plus, Pill, Edit2, PackagePlus, ChevronDown, ChevronRight,
-  ChevronLeft, AlertTriangle, MoreHorizontal, ClipboardCheck, ClipboardList,
-  Warehouse,
+  ChevronLeft, AlertTriangle, MoreHorizontal, MoreVertical, ClipboardCheck, ClipboardList,
+  Warehouse, Pencil, Trash2, Replace, Merge, Lightbulb,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
@@ -28,13 +28,22 @@ import {
   useUnifiedStock, useInventoryItem,
   type UnifiedStockRow, type InventoryItem, type InventoryCategory,
 } from '@/hooks/use-inventory';
-import { useRunPharmacyExpiryAlerts } from '@/hooks/use-pharmacy';
+import {
+  useRunPharmacyExpiryAlerts, useFormularyItem, useDeleteFormularyItem,
+  useSuggestDrugMaster, type FormularyItem, type FormularyMatch,
+} from '@/hooks/use-pharmacy';
+import { getApiErrorMessage } from '@/lib/utils';
 import { InventoryStockOverview } from './inventory-stock-overview';
 import { DrugBatchesPanel } from './drug-batches-panel';
 import { ItemDialog, StockInDialog } from './stock-register-panel';
 import { StockTakeDialog } from '@/components/pharmacy/stock-take-dialog';
 import { StockTypeBadge, stockTypeLabel } from '@/components/shared/stock-type-badge';
 import { StockAdjustmentsLogDialog } from '@/components/pharmacy/stock-adjust-dialogs';
+import { DrugFormDialog } from '@/components/pharmacy/drug-form-dialog';
+import { MergeDrugDialog } from '@/components/pharmacy/merge-drug-dialog';
+import { AlternativesDialog } from '@/components/pharmacy/alternatives-dialog';
+import { ImportFromCatalogDialog } from '@/components/pharmacy/import-from-catalog-dialog';
+import { NicknameBox } from '@/components/pharmacy/nickname-box';
 
 // A row's Type is its CATEGORY, not which table it lives in. Every kind of stock
 // (medicine, consumable, surgical, equipment) is now stocked the same way — as a
@@ -75,8 +84,37 @@ export function UnifiedStockPanel() {
   const [stockTakeOpen, setStockTakeOpen] = useState(false);
   const [adjustLogOpen, setAdjustLogOpen] = useState(false);
 
+  // Drug (formulary) operations — the old /inventory/drug-formulary page is gone,
+  // so all of its drug actions live here on the unified Storage rows.
+  const [newDrugOpen, setNewDrugOpen] = useState(false);
+  const [editDrugId, setEditDrugId] = useState<string | null>(null);
+  const [mergeDrug, setMergeDrug] = useState<{ id: string; name: string } | null>(null);
+  const [altDrug, setAltDrug] = useState<{ id: string; name: string } | null>(null);
+
   const router = useRouter();
   const runExpiry = useRunPharmacyExpiryAlerts();
+  const deleteDrug = useDeleteFormularyItem();
+  const suggestMaster = useSuggestDrugMaster();
+
+  const handleDeleteDrug = async (id: string, name: string) => {
+    if (!window.confirm(`Remove "${name}" from the formulary? This can't be undone.`)) return;
+    try {
+      await deleteDrug.mutateAsync(id);
+      toast.success('Drug removed');
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Failed to remove drug'));
+    }
+  };
+
+  const handleSuggestToMaster = async (row: UnifiedStockRow) => {
+    if (!window.confirm(`Suggest "${row.name}" for the national drug master? A platform admin will review it.`)) return;
+    try {
+      await suggestMaster.mutateAsync({ name: row.name });
+      toast.success('Suggestion sent to the national master for review');
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Failed to send suggestion'));
+    }
+  };
 
   useEffect(() => {
     const t = setTimeout(() => { setDebounced(search); setPage(1); }, 300);
@@ -147,6 +185,12 @@ export function UnifiedStockPanel() {
               {/* Recall is issued per batch — open a drug and recall the affected batch. */}
             </DropdownMenuContent>
           </DropdownMenu>
+          {/* Catalog import + a blank New Drug form (moved here from the retired
+              Drug Formulary page). Bulk stock inward still lives on /inventory/add. */}
+          <ImportFromCatalogDialog />
+          <Button size="sm" variant="outline" onClick={() => setNewDrugOpen(true)}>
+            <Pill className="mr-1.5 h-4 w-4" /> New Drug
+          </Button>
           <Button size="sm" onClick={() => router.push('/inventory/add')}>
             <Plus className="mr-1.5 h-4 w-4" /> Add Stock
           </Button>
@@ -243,6 +287,11 @@ export function UnifiedStockPanel() {
                       } as InventoryItem)
                     }
                     onEdit={() => setEditItemId(row.refId)}
+                    onEditDrug={() => setEditDrugId(row.refId)}
+                    onMerge={() => setMergeDrug({ id: row.refId, name: row.name })}
+                    onAlternatives={() => setAltDrug({ id: row.refId, name: row.name })}
+                    onSuggest={() => handleSuggestToMaster(row)}
+                    onDeleteDrug={() => handleDeleteDrug(row.refId, row.name)}
                   />
                 ))}
               </TableBody>
@@ -277,7 +326,54 @@ export function UnifiedStockPanel() {
       {editItemId && (
         <ItemEditLoader id={editItemId} onClose={() => setEditItemId(null)} />
       )}
+
+      {/* ── Drug (formulary) dialogs ── */}
+      {/* New blank drug */}
+      <DrugFormDialog
+        open={newDrugOpen}
+        onOpenChange={setNewDrugOpen}
+        onUseExisting={(m) => setExpandedId(`drug-${m.id}`)}
+      />
+      {/* Edit an existing drug — loads the full record first. */}
+      {editDrugId && (
+        <DrugEditLoader
+          id={editDrugId}
+          onClose={() => setEditDrugId(null)}
+          onUseExisting={(m) => setExpandedId(`drug-${m.id}`)}
+        />
+      )}
+      {/* Merge / Alternatives only need the drug's id + name. */}
+      <MergeDrugDialog
+        source={mergeDrug ? ({ id: mergeDrug.id, drugName: mergeDrug.name } as FormularyItem) : null}
+        onOpenChange={(o) => !o && setMergeDrug(null)}
+      />
+      <AlternativesDialog
+        drug={altDrug ? ({ id: altDrug.id, drugName: altDrug.name } as FormularyItem) : null}
+        onOpenChange={(o) => !o && setAltDrug(null)}
+      />
     </div>
+  );
+}
+
+// Edit a drug — the unified row carries only a subset, so load the full
+// formulary record before opening the shared drug form.
+function DrugEditLoader({
+  id, onClose, onUseExisting,
+}: {
+  id: string;
+  onClose: () => void;
+  onUseExisting?: (m: FormularyMatch) => void;
+}) {
+  const { data: drug, isLoading } = useFormularyItem(id);
+  if (isLoading || !drug) return null;
+  return (
+    <DrugFormDialog
+      open
+      drug={drug}
+      onOpenChange={(o) => !o && onClose()}
+      onSaved={onClose}
+      onUseExisting={onUseExisting}
+    />
   );
 }
 
@@ -285,12 +381,18 @@ export function UnifiedStockPanel() {
 // generic items expose Stock In + Edit.
 function StockRow({
   row, expanded, onToggle, onStockIn, onEdit,
+  onEditDrug, onMerge, onAlternatives, onSuggest, onDeleteDrug,
 }: {
   row: UnifiedStockRow;
   expanded: boolean;
   onToggle: () => void;
   onStockIn: () => void;
   onEdit: () => void;
+  onEditDrug: () => void;
+  onMerge: () => void;
+  onAlternatives: () => void;
+  onSuggest: () => void;
+  onDeleteDrug: () => void;
 }) {
   // `kind` only says which table the row came from — since every type is stocked
   // as a formulary row now, it is 'drug' for consumables and equipment too. What
@@ -313,7 +415,11 @@ function StockRow({
           )}
         </TableCell>
         <TableCell>
-          <div className="font-medium">{row.name}</div>
+          <div className="flex items-center gap-1.5">
+            <span className="font-medium">{row.name}</span>
+            {/* Personal shorthand — only meaningful for a formulary drug. */}
+            {isDrug && <NicknameBox drugId={row.refId} />}
+          </div>
           <div className="text-xs text-muted-foreground">
             {[row.code, row.unit].filter(Boolean).join(' · ') || stockTypeLabel(row.category).toLowerCase()}
           </div>
@@ -359,9 +465,36 @@ function StockRow({
         <TableCell className="text-right">
           <div className="flex items-center justify-end gap-1">
             {isDrug ? (
-              <Button size="sm" variant="outline" className="h-8 px-2" onClick={onToggle} title="Receive & manage batches">
-                <PackagePlus className="mr-1 h-3.5 w-3.5" /> Batches
-              </Button>
+              <>
+                <Button size="sm" variant="outline" className="h-8 px-2" onClick={onToggle} title="Receive & manage batches">
+                  <PackagePlus className="mr-1 h-3.5 w-3.5" /> Batches
+                </Button>
+                {/* Every drug-master operation the old Formulary page had. */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={<Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="More" />}
+                  >
+                    <MoreVertical className="h-3.5 w-3.5" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={onEditDrug}>
+                      <Pencil className="mr-2 h-4 w-4" /> Edit drug
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={onAlternatives}>
+                      <Replace className="mr-2 h-4 w-4" /> Alternatives
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={onMerge}>
+                      <Merge className="mr-2 h-4 w-4" /> Merge duplicate
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={onSuggest}>
+                      <Lightbulb className="mr-2 h-4 w-4" /> Suggest to catalog
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="text-red-600 focus:text-red-600" onClick={onDeleteDrug}>
+                      <Trash2 className="mr-2 h-4 w-4" /> Remove drug
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
             ) : (
               <>
                 <Button size="sm" variant="outline" className="h-8 px-2" onClick={onStockIn} title="Record stock in">

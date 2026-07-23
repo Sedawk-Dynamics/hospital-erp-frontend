@@ -156,7 +156,7 @@ function PharmacyCatalogPageInner() {
           <h1 className="font-headline text-xl font-bold">Drug Catalog</h1>
           <p className="text-sm text-muted-foreground">
             Browse the platform-wide drug catalog and copy drugs into your hospital formulary. Then
-            set prices and add stock under Drug Formulary.
+            set prices and add stock under Storage.
           </p>
         </div>
         {selectedCount > 0 && (

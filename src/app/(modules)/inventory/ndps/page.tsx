@@ -34,7 +34,7 @@ type UserOpt = { id: string; label: string };
 // Searchable narcotic-drug picker (autocomplete). The dropdown stays hidden until
 // the field is focused / typed into (it does NOT show by default), then floats
 // over the form and filters server-side by isNarcotic + the typed text. Only
-// drugs flagged "NDPS narcotic" in Inventory → Drug Formulary appear here.
+// drugs flagged "NDPS narcotic" in Inventory → Storage appear here.
 function NarcoticDrugPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [search, setSearch] = useState('');
   const [label, setLabel] = useState('');
@@ -93,7 +93,7 @@ function NarcoticDrugPicker({ value, onChange }: { value: string; onChange: (v: 
             <div className="px-2 py-2 text-xs text-muted-foreground">
               {search.trim()
                 ? 'No matching narcotic drugs.'
-                : 'No narcotic drugs found. Flag a drug as “NDPS narcotic” in Inventory → Drug Formulary first.'}
+                : 'No narcotic drugs found. Flag a drug as “NDPS narcotic” in Inventory → Storage first (edit the drug).'}
             </div>
           )}
         </div>
