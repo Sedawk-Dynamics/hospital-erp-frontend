@@ -432,7 +432,7 @@ export interface InwardMatchLine {
 
 export type InwardRecommendation = 'map' | 'review' | 'create';
 // How a line resolved to a drug, highest-confidence first (Product Resolution Engine).
-export type InwardResolvedVia = 'gtin' | 'similarity' | 'none';
+export type InwardResolvedVia = 'gtin' | 'mapping' | 'similarity' | 'none';
 
 // A scored line + its candidate existing drugs (for the side-by-side review).
 export interface InwardMatchedLine {

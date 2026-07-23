@@ -607,6 +607,8 @@ const int = (s: string): number | undefined => {
 function recBadge(line: Pick<InwardMatchedLine, 'recommendation' | 'resolvedVia' | 'confidence'>) {
   if (line.resolvedVia === 'gtin')
     return <Badge className="bg-teal-500/10 text-teal-700 border-teal-500/20">GTIN match</Badge>;
+  if (line.resolvedVia === 'mapping')
+    return <Badge className="bg-violet-500/10 text-violet-700 border-violet-500/20">Remembered</Badge>;
   if (line.recommendation === 'map')
     return <Badge className="bg-amber-500/10 text-amber-700 border-amber-500/20">Likely duplicate{line.confidence ? ` · ${line.confidence}%` : ''}</Badge>;
   if (line.recommendation === 'review')
