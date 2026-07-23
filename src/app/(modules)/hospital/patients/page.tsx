@@ -281,6 +281,11 @@ function RegisterInPlaceDialog({
   const [gender, setGender] = useState<string | null>(null);
   const [dob, setDob] = useState('');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [address, setAddress] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
+  const [zipCode, setZipCode] = useState('');
 
   // Seed the form from the temp record whenever a new one is opened.
   useEffect(() => {
@@ -290,6 +295,11 @@ function RegisterInPlaceDialog({
       setGender(patient.gender ?? null);
       setDob(patient.dateOfBirth ? patient.dateOfBirth.slice(0, 10) : '');
       setPhone(patient.phone ?? '');
+      setEmail(patient.email ?? '');
+      setAddress(patient.address ?? patient.addressLine1 ?? '');
+      setCity(patient.city ?? '');
+      setState(patient.state ?? '');
+      setZipCode(patient.zipCode ?? patient.postalCode ?? '');
     }
   }, [patient]);
 
@@ -308,6 +318,11 @@ function RegisterInPlaceDialog({
           gender: (gender as any) || undefined,
           dateOfBirth: dob || undefined,
           phone: phone.trim() || undefined,
+          email: email.trim() || undefined,
+          address: address.trim() || undefined,
+          city: city.trim() || undefined,
+          state: state.trim() || undefined,
+          zipCode: zipCode.trim() || undefined,
         },
       });
       toast.success(`Registered as ${updated?.mrn ?? 'permanent patient'}`);
@@ -323,42 +338,72 @@ function RegisterInPlaceDialog({
         <DialogHeader>
           <DialogTitle>Register Patient</DialogTitle>
           <DialogDescription>
-            Fill in the real details. A permanent MRN is issued and all existing visits, admissions
-            and bills stay on the same record — nothing is duplicated.
+            Fill in the patient&apos;s details — same form as a new registration. A permanent MRN is
+            issued and all existing visits, admissions and bills stay on the same record — nothing is
+            duplicated.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-2 gap-4 py-2">
-          <div className="space-y-1.5">
-            <Label>First name *</Label>
-            <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+        <div className="max-h-[60vh] space-y-4 overflow-y-auto py-2">
+          {/* Basic info */}
+          <div className="rounded-lg border border-dashed border-outline-variant/40 p-3 space-y-3">
+            <p className="text-xs font-medium uppercase tracking-wider text-on-surface-variant">
+              Basic Info
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>First name *</Label>
+                <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Enter first name" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Last name</Label>
+                <Input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Enter last name" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Gender</Label>
+                <Select value={gender} onValueChange={(v) => setGender(v)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select gender" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GENDERS.map((g) => (
+                      <SelectItem key={g} value={g} className="capitalize">
+                        {g.replace(/_/g, ' ')}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Date of birth</Label>
+                <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Phone</Label>
+                <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Enter phone number" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Email</Label>
+                <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Optional" />
+              </div>
+            </div>
           </div>
-          <div className="space-y-1.5">
-            <Label>Last name</Label>
-            <Input value={lastName} onChange={(e) => setLastName(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Gender</Label>
-            <Select value={gender} onValueChange={(v) => setGender(v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select" />
-              </SelectTrigger>
-              <SelectContent>
-                {GENDERS.map((g) => (
-                  <SelectItem key={g} value={g} className="capitalize">
-                    {g.replace(/_/g, ' ')}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Date of birth</Label>
-            <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
-          </div>
-          <div className="col-span-2 space-y-1.5">
-            <Label>Phone</Label>
-            <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+
+          {/* Address */}
+          <div className="rounded-lg border border-dashed border-outline-variant/40 p-3 space-y-3">
+            <p className="text-xs font-medium uppercase tracking-wider text-on-surface-variant">
+              Address (Optional)
+            </p>
+            <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Address" />
+            <div className="grid grid-cols-3 gap-3">
+              <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" />
+              <Input value={state} onChange={(e) => setState(e.target.value)} placeholder="State" />
+              <Input value={zipCode} onChange={(e) => setZipCode(e.target.value)} placeholder="Zip Code" />
+            </div>
           </div>
         </div>
 
@@ -428,6 +473,30 @@ function MergeDialog({
         </DialogHeader>
 
         <div className="space-y-3 py-2">
+          {/* The temporary record being connected */}
+          {patient && (
+            <div className="flex items-center gap-3 rounded-lg border border-outline-variant/40 bg-surface-container/40 p-3">
+              <Avatar className="size-9">
+                <AvatarFallback className="text-xs">{initials(patient)}</AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="truncate font-medium text-on-surface">{fullName(patient)}</span>
+                  <Badge variant="secondary" className="uppercase">Temp</Badge>
+                </div>
+                <div className="truncate text-xs text-on-surface-variant">
+                  {patient.mrn} · {patient.phone || 'no phone'}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-on-surface-variant">
+            <span className="h-px flex-1 bg-outline-variant/40" />
+            Connect into
+            <span className="h-px flex-1 bg-outline-variant/40" />
+          </div>
+
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant" />
             <Input

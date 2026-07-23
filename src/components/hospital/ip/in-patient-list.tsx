@@ -939,10 +939,7 @@ function AdmissionDialog({
                 Cancel
               </Button>
               {patientMode === 'new' && isTemporary ? (
-                <Button
-                  disabled={savingTemp || newPatient.firstName.trim().length === 0}
-                  onClick={handleSaveAsTemporary}
-                >
+                <Button disabled={savingTemp} onClick={handleSaveAsTemporary}>
                   {savingTemp && <Loader2 className="h-4 w-4 animate-spin" />}
                   Create Temporary Patient
                 </Button>
