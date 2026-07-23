@@ -13,6 +13,7 @@ import {
   LogOut,
   Printer,
   ClipboardCheck,
+  Link2,
   CheckCircle2,
   ExternalLink,
   UserPlus,
@@ -58,7 +59,11 @@ import { formatDate, formatDateTime, toInputDateStr } from '@/lib/date-utils';
 import { toast } from 'sonner';
 import type { Admission, Patient, DoctorProfile, BedWithStatus } from '@/types';
 import { FrontDeskRegisterDialog } from '@/components/hospital/frontdesk-register-dialog';
-import { TempPatientActions, isTemporaryPatient } from '@/components/hospital/temp-patient-actions';
+import {
+  RegisterInPlaceDialog,
+  MergeDialog,
+  isTemporaryPatient,
+} from '@/components/hospital/temp-patient-actions';
 import { BillGeneratorDialog } from '@/components/hospital/billing/bill-generator-dialog';
 import { AdvancePaymentDialog } from '@/components/hospital/billing/week12-dialogs';
 import { BillingSummaryDialog } from '@/components/pharmacy/billing-summary-dialog';
@@ -1685,9 +1690,16 @@ function RowActionsMenu({
   const [billOpen, setBillOpen] = useState(false);
   const [advanceOpen, setAdvanceOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
+  const [registerTempOpen, setRegisterTempOpen] = useState(false);
+  const [connectTempOpen, setConnectTempOpen] = useState(false);
 
   const canBill = useCanBillToHospital();
   const isActive = admission.status === 'admitted';
+  // Provisional (TEMP-) patient → offer Register / Connect right here.
+  const isTemp = isTemporaryPatient(admission.patient);
+  const tempPatient = admission.patient
+    ? ({ ...admission.patient, id: admission.patient.id ?? admission.patientId } as Patient)
+    : null;
 
   // Patient payload shared by the billing dialogs.
   const billingPatient = {
@@ -1724,6 +1736,19 @@ function RowActionsMenu({
             <Printer className="mr-2 h-4 w-4" />
             Print Admission Slip
           </DropdownMenuItem>
+          {isTemp && tempPatient && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setRegisterTempOpen(true)}>
+                <ClipboardCheck className="mr-2 h-4 w-4" />
+                Register Patient
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setConnectTempOpen(true)}>
+                <Link2 className="mr-2 h-4 w-4" />
+                Connect to Existing
+              </DropdownMenuItem>
+            </>
+          )}
           {canBill && (
             <>
               <DropdownMenuSeparator />
@@ -1779,6 +1804,16 @@ function RowActionsMenu({
         admission={admission}
         open={slipOpen}
         onOpenChange={setSlipOpen}
+      />
+
+      {/* Temporary-patient resolution — reachable from the row's 3-dots menu. */}
+      <RegisterInPlaceDialog
+        patient={registerTempOpen ? tempPatient : null}
+        onClose={() => setRegisterTempOpen(false)}
+      />
+      <MergeDialog
+        patient={connectTempOpen ? tempPatient : null}
+        onClose={() => setConnectTempOpen(false)}
       />
 
       {canBill && (
@@ -2019,15 +2054,10 @@ export function InPatientList() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {isTemporaryPatient(adm.patient) && adm.patient && (
-                            <TempPatientActions patient={adm.patient as any} />
-                          )}
-                          <RowActionsMenu
-                            admission={adm}
-                            onView={setViewAdmission}
-                          />
-                        </div>
+                        <RowActionsMenu
+                          admission={adm}
+                          onView={setViewAdmission}
+                        />
                       </td>
                     </tr>
                   );
