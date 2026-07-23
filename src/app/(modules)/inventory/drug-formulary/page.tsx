@@ -272,11 +272,10 @@ function PharmacyInventoryPageInner() {
   const updateHsn = (value: string) =>
     setFormData((prev) => {
       const next = { ...prev, hsnCode: value };
+      // HSN determines the GST rate — set GST whenever the HSN resolves to a
+      // known rate; an unrecognised / half-typed HSN leaves GST untouched.
       const newGst = gstForHsnCode(value);
-      const prevGst = gstForHsnCode(prev.hsnCode);
-      if (newGst && (!prev.taxPercent.trim() || prev.taxPercent.trim() === prevGst)) {
-        next.taxPercent = newGst;
-      }
+      if (newGst) next.taxPercent = newGst;
       return next;
     });
 

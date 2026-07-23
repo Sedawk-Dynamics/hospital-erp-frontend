@@ -735,15 +735,12 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
       prev.map((l) => {
         if (l.id !== id) return l;
         const next = { ...l, hsnCode: value };
+        // HSN legally determines the GST rate, so whenever the entered HSN
+        // resolves to a known rate, set GST to it. An unrecognised / half-typed
+        // HSN resolves to nothing and leaves GST untouched, so a manually keyed
+        // rate for an HSN not in the master survives.
         const newGst = gstForHsn(value);
-        // Fill GST from the new HSN when it's blank, OR when it still holds
-        // exactly what the PREVIOUS HSN auto-filled (i.e. it was derived, not
-        // hand-edited) — so re-typing a wrong HSN updates the GST, while a rate
-        // the operator keyed themselves (or one printed on the invoice) is kept.
-        const prevGst = gstForHsn(l.hsnCode);
-        if (newGst && (!l.gstPercent.trim() || l.gstPercent.trim() === prevGst)) {
-          next.gstPercent = newGst;
-        }
+        if (newGst) next.gstPercent = newGst;
         return next;
       }),
     );

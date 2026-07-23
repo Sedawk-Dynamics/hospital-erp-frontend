@@ -79,9 +79,10 @@ export function UnifiedItemForm({
     return hit ? String(hit.gstRate) : '';
   };
   const updateHsn = (value: string) => {
+    // HSN determines the GST rate — set GST whenever the HSN resolves to a known
+    // rate; an unrecognised / half-typed HSN leaves GST untouched.
     const newGst = gstForHsn(value);
-    const prevGst = gstForHsn(hsnCode);
-    if (newGst && (!gst.trim() || gst.trim() === prevGst)) setGst(newGst);
+    if (newGst) setGst(newGst);
     setHsnCode(value);
   };
 
