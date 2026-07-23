@@ -101,6 +101,8 @@ export interface PurchaseOrderItem {
     manufacturer: string | null;
     strength: string | null;
     dosageForm: string | null;
+    unitOfMeasurement?: string | null;
+    packSize?: number | null;
   } | null;
 }
 
@@ -119,6 +121,8 @@ export interface PurchaseOrder {
   supplier?: Supplier;
   items?: PurchaseOrderItem[];
   _count?: { items: number };
+  /** Who raised/approved the PO — shown on the detail card. */
+  approver?: { id: string; firstName: string; lastName: string } | null;
 }
 
 export interface SupplyRequest {
