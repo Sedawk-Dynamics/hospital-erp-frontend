@@ -634,6 +634,10 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
   const [matched, setMatched] = useState<InwardMatchedLine[]>([]);
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [result, setResult] = useState<CommitInwardResult | null>(null);
+  // The ORIGINAL name typed/scanned for each line, captured at match time. This
+  // is the learned-mapping key, so it survives even when the row's editable name
+  // is later replaced by an adopted catalog / match name during review.
+  const [externalNames, setExternalNames] = useState<string[]>([]);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const xlsxRef = useRef<HTMLInputElement>(null);
@@ -1076,6 +1080,9 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
       // Keep only the filled lines so matched[i]/decisions[i] align with lines[i].
       setLines(filled);
       setMatched(res);
+      // Snapshot the original typed names now — the learned-mapping key must be
+      // what the pharmacist entered, not a name adopted from a match during review.
+      setExternalNames(filled.map((l) => l.drugName.trim()));
       setDecisions(
         res.map((m) => ({
           action: m.recommendation === 'create' ? 'create' : 'map',
@@ -1206,8 +1213,10 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         targetFormularyId: d.action === 'map' ? d.targetId ?? undefined : undefined,
         // A 'create' seeded from the catalog links the new formulary row to the master.
         drugMasterId: d.action === 'create' ? l.drugMasterId || undefined : undefined,
-        // Raw line text is the learned-mapping key; GTIN/HSN carry onto a new drug.
-        externalName: l.drugName.trim(),
+        // Raw line text is the learned-mapping key — use the ORIGINAL typed name
+        // captured at match time (falls back to the current name for lines added
+        // after matching), so connecting "lolo" → "Loloxy" remembers "lolo".
+        externalName: (externalNames[i] || l.drugName).trim(),
         drugName: l.drugName.trim(),
         genericName: l.genericName.trim() || undefined,
         manufacturer: l.manufacturer.trim() || undefined,
