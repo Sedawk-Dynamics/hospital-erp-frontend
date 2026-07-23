@@ -18,6 +18,7 @@ import {
   Pencil,
   Trash2,
   Info,
+  Layers,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -40,12 +41,28 @@ import {
   useCreateHsnGstRate,
   useUpdateHsnGstRate,
   useDeleteHsnGstRate,
+  useBulkHsnGstRates,
   type HsnGstRate,
   type HsnGstRateInput,
 } from '@/hooks/use-drug-master';
 
 const CATEGORIES = ['medicine', 'consumable', 'device', 'supplement', 'other'] as const;
-const COMMON_RATES = [0, 5, 12, 18, 28];
+
+// GST 2.0 slabs (effective 22-Sep-2025). Pharma/healthcare falls in these:
+//   0%  — Nil-rated: 33 notified life-saving drugs, and all individual health &
+//         life insurance. Also NIL medicines like ORS.
+//   5%  — Standard rate for the vast majority of medicines (formulations,
+//         AYUSH, most APIs) and medical devices/consumables (reduced from 12%).
+//   18% — A handful of items still taxed higher (e.g. nicotine gums, certain
+//         non-medicinal wellness products).
+//   40% — Special de-merit slab (tobacco, pan masala, aerated/sugary drinks) —
+//         rarely a pharmacy line, kept for completeness.
+const GST_SLABS = [
+  { value: 0, label: '0% — Nil (life-saving / exempt)' },
+  { value: 5, label: '5% — Most medicines & devices' },
+  { value: 18, label: '18% — Higher-rated items' },
+  { value: 40, label: '40% — Special de-merit' },
+] as const;
 
 const EMPTY: HsnGstRateInput = {
   hsnCode: '',
@@ -69,11 +86,18 @@ export default function SuperAdminHsnGstPage() {
   const createRate = useCreateHsnGstRate();
   const updateRate = useUpdateHsnGstRate();
   const deleteRate = useDeleteHsnGstRate();
+  const bulkRates = useBulkHsnGstRates();
 
   const [editing, setEditing] = useState<HsnGstRate | null>(null);
   const [openForm, setOpenForm] = useState(false);
   const [form, setForm] = useState<HsnGstRateInput>(EMPTY);
   const [confirmDelete, setConfirmDelete] = useState<HsnGstRate | null>(null);
+
+  // Bulk import
+  const [openBulk, setOpenBulk] = useState(false);
+  const [bulkText, setBulkText] = useState('');
+  const [bulkGst, setBulkGst] = useState(5);
+  const [bulkCategory, setBulkCategory] = useState<string>('medicine');
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -151,6 +175,57 @@ export default function SuperAdminHsnGstPage() {
     }
   }
 
+  // Parse the bulk textarea. Each non-empty line is:
+  //   HSN [, GST%] [, description] [, category]
+  // A line that omits GST / category inherits the defaults chosen above.
+  function parseBulk(): HsnGstRateInput[] {
+    const out: HsnGstRateInput[] = [];
+    for (const raw of bulkText.split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line) continue;
+      const parts = line.split(/[,\t]/).map((p) => p.trim());
+      const hsnCode = (parts[0] ?? '').replace(/\D/g, '');
+      if (!hsnCode) continue;
+      const gstPart = parts[1] ? Number(parts[1].replace(/[^\d.]/g, '')) : NaN;
+      const catPart = parts[3]?.toLowerCase();
+      out.push({
+        hsnCode,
+        gstRate: Number.isNaN(gstPart) ? bulkGst : gstPart,
+        description: parts[2] || null,
+        category: (CATEGORIES as readonly string[]).includes(catPart ?? '')
+          ? catPart!
+          : bulkCategory || null,
+        isActive: true,
+      });
+    }
+    return out;
+  }
+
+  const bulkPreview = parseBulk();
+
+  async function handleBulkSave() {
+    const rows = parseBulk();
+    if (!rows.length) {
+      toast.error('Add at least one HSN code (one per line)');
+      return;
+    }
+    try {
+      const res = await bulkRates.mutateAsync(rows);
+      const skipped = res?.skipped?.length ?? 0;
+      toast.success(
+        `Imported ${res?.created ?? 0} new, updated ${res?.updated ?? 0}` +
+          (skipped ? `, skipped ${skipped}` : ''),
+      );
+      setBulkText('');
+      setOpenBulk(false);
+    } catch (e: unknown) {
+      const msg =
+        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        'Bulk import failed';
+      toast.error(msg);
+    }
+  }
+
   const saving = createRate.isPending || updateRate.isPending;
 
   return (
@@ -166,10 +241,16 @@ export default function SuperAdminHsnGstPage() {
             {rows.length ? ` ${rows.length} code(s).` : ''}
           </p>
         </div>
-        <Button onClick={openCreate} className="gap-1.5">
-          <Plus className="h-4 w-4" />
-          Add HSN code
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setOpenBulk(true)} className="gap-1.5">
+            <Layers className="h-4 w-4" />
+            Bulk add
+          </Button>
+          <Button onClick={openCreate} className="gap-1.5">
+            <Plus className="h-4 w-4" />
+            Add HSN code
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-start gap-2 rounded-xl bg-primary/5 p-3 text-xs text-on-surface-variant">
@@ -300,35 +381,23 @@ export default function SuperAdminHsnGstPage() {
               />
             </div>
             <div>
-              <label className="text-xs font-medium">GST % *</label>
-              <div className="flex items-center gap-1.5">
-                <Input
-                  type="number"
-                  step="0.01"
-                  min={0}
-                  max={100}
-                  value={form.gstRate}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, gstRate: e.target.value === '' ? 0 : Number(e.target.value) }))
-                  }
-                />
-              </div>
-              <div className="mt-1 flex flex-wrap gap-1">
-                {COMMON_RATES.map((rate) => (
-                  <button
-                    key={rate}
-                    type="button"
-                    onClick={() => setForm((p) => ({ ...p, gstRate: rate }))}
-                    className={`text-[10px] px-1.5 py-0.5 rounded border ${
-                      Number(form.gstRate) === rate
-                        ? 'bg-primary text-primary-foreground border-primary'
-                        : 'border-outline-variant text-muted-foreground hover:bg-surface-container-high'
-                    }`}
-                  >
-                    {rate}%
-                  </button>
+              <label className="text-xs font-medium">GST rate *</label>
+              <select
+                className="w-full h-9 rounded-md border bg-background px-2 text-sm"
+                value={String(form.gstRate)}
+                onChange={(e) => setForm((p) => ({ ...p, gstRate: Number(e.target.value) }))}
+              >
+                {GST_SLABS.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
                 ))}
-              </div>
+                {/* Preserve a legacy rate (e.g. 12% / 28%) when editing an older
+                    row so the dropdown still shows its real value. */}
+                {!GST_SLABS.some((s) => s.value === Number(form.gstRate)) && (
+                  <option value={String(form.gstRate)}>{form.gstRate}% (legacy)</option>
+                )}
+              </select>
             </div>
             <div className="col-span-2">
               <label className="text-xs font-medium">Description</label>
@@ -372,6 +441,79 @@ export default function SuperAdminHsnGstPage() {
             <Button onClick={handleSave} disabled={saving} className="gap-1.5">
               {saving && <Loader2 className="h-4 w-4 animate-spin" />}
               {editing ? 'Save changes' : 'Add code'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk add dialog */}
+      <Dialog open={openBulk} onOpenChange={setOpenBulk}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Bulk add HSN → GST rates</DialogTitle>
+            <DialogDescription>
+              One HSN code per line. Optionally add its rate and details:
+              <span className="font-mono"> HSN, GST%, description, category</span>. Lines that omit
+              the rate/category use the defaults below. Re-importing an existing HSN updates its rate.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium">Default GST rate</label>
+              <select
+                className="w-full h-9 rounded-md border bg-background px-2 text-sm"
+                value={String(bulkGst)}
+                onChange={(e) => setBulkGst(Number(e.target.value))}
+              >
+                {GST_SLABS.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium">Default category</label>
+              <select
+                className="w-full h-9 rounded-md border bg-background px-2 text-sm capitalize"
+                value={bulkCategory}
+                onChange={(e) => setBulkCategory(e.target.value)}
+              >
+                <option value="">—</option>
+                {CATEGORIES.map((c) => (
+                  <option key={c} value={c} className="capitalize">
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium">HSN codes</label>
+            <textarea
+              className="w-full min-h-40 rounded-md border bg-background px-2.5 py-2 text-sm font-mono"
+              value={bulkText}
+              onChange={(e) => setBulkText(e.target.value)}
+              placeholder={`3004\n30049010, 0, ORS sachets\n9018, 5, Medical devices, device\n300450, 18`}
+            />
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {bulkPreview.length} valid row{bulkPreview.length === 1 ? '' : 's'} detected.
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpenBulk(false)} disabled={bulkRates.isPending}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleBulkSave}
+              disabled={bulkRates.isPending || bulkPreview.length === 0}
+              className="gap-1.5"
+            >
+              {bulkRates.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              Import {bulkPreview.length || ''} code{bulkPreview.length === 1 ? '' : 's'}
             </Button>
           </DialogFooter>
         </DialogContent>

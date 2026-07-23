@@ -132,6 +132,23 @@ export function useCreateHsnGstRate() {
   });
 }
 
+export interface BulkHsnGstResult {
+  created: number;
+  updated: number;
+  skipped: Array<{ hsnCode: string; reason: string }>;
+}
+
+export function useBulkHsnGstRates() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (rows: HsnGstRateInput[]) => {
+      const response = await apiPost<BulkHsnGstResult>('/drug-master/hsn/bulk', { rows });
+      return response.data;
+    },
+    onSuccess: () => invalidateHsn(qc),
+  });
+}
+
 export function useUpdateHsnGstRate() {
   const qc = useQueryClient();
   return useMutation({
