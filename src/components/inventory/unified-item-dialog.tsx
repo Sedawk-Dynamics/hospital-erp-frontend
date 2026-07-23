@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dialog';
 import { BarcodeScanner } from '@/components/shared/barcode-scanner';
 import { getApiErrorMessage } from '@/lib/utils';
+import { useHsnGstRates, matchHsnGstRate } from '@/hooks/use-drug-master';
 import {
   useCreateUnifiedStock,
   type InventoryCategory,
@@ -69,6 +70,21 @@ export function UnifiedItemForm({
   const create = useCreateUnifiedStock();
   const scan = useInwardScan();
 
+  // HSN → GST tax master. HSN legally sets the GST rate in India, so changing
+  // the HSN keeps GST in sync: fill when GST is blank, or when it still holds
+  // exactly what the previous HSN auto-filled (derived, not hand-keyed).
+  const { data: hsnRates = [] } = useHsnGstRates();
+  const gstForHsn = (code: string): string => {
+    const hit = matchHsnGstRate(code, hsnRates);
+    return hit ? String(hit.gstRate) : '';
+  };
+  const updateHsn = (value: string) => {
+    const newGst = gstForHsn(value);
+    const prevGst = gstForHsn(hsnCode);
+    if (newGst && (!gst.trim() || gst.trim() === prevGst)) setGst(newGst);
+    setHsnCode(value);
+  };
+
   const num = (v: string) => (v.trim() !== '' && !isNaN(Number(v)) ? Number(v) : undefined);
   const intNum = (v: string) => {
     const n = parseInt(v, 10);
@@ -111,7 +127,7 @@ export function UnifiedItemForm({
         if (L.strength) setStrength(L.strength);
         if (L.dosageForm) setDosageForm(L.dosageForm);
         if (L.packSize) setPackSize(String(L.packSize));
-        if (L.hsnCode) setHsnCode(L.hsnCode);
+        if (L.hsnCode) updateHsn(L.hsnCode); // also auto-fills GST from the HSN
         setBarcode(L.gtin || res.gtin || c);
         toast.success(
           `Matched ${L.drugName}${res.suggestedFormularyId ? ' — already in your formulary' : ''}`,
@@ -262,7 +278,7 @@ export function UnifiedItemForm({
           </div>
           <div>
             <Label className="text-xs">HSN code</Label>
-            <Input value={hsnCode} onChange={(e) => setHsnCode(e.target.value)} />
+            <Input value={hsnCode} onChange={(e) => updateHsn(e.target.value)} />
           </div>
         </div>
 

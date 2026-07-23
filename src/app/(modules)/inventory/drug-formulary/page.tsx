@@ -260,15 +260,22 @@ function PharmacyInventoryPageInner() {
   const updateField = (field: keyof FormState, value: string | boolean) =>
     setFormData((prev) => ({ ...prev, [field]: value }));
 
-  // HSN → GST tax master: setting the HSN auto-fills GST (India taxes medicines
-  // by HSN) unless a rate was already typed. Also drives the matched-rate hint.
+  // HSN → GST tax master: HSN legally determines the GST rate in India, so
+  // changing the HSN keeps GST in sync. Fills GST when it's blank, or when it
+  // still holds exactly what the previous HSN auto-filled (i.e. derived, not
+  // hand-keyed) — so a manually typed rate is preserved. Drives the hint too.
   const { data: hsnRates = [] } = useHsnGstRates();
+  const gstForHsnCode = (code: string): string => {
+    const hit = matchHsnGstRate(code, hsnRates);
+    return hit ? String(hit.gstRate) : '';
+  };
   const updateHsn = (value: string) =>
     setFormData((prev) => {
       const next = { ...prev, hsnCode: value };
-      if (!prev.taxPercent.trim()) {
-        const hit = matchHsnGstRate(value, hsnRates);
-        if (hit) next.taxPercent = String(hit.gstRate);
+      const newGst = gstForHsnCode(value);
+      const prevGst = gstForHsnCode(prev.hsnCode);
+      if (newGst && (!prev.taxPercent.trim() || prev.taxPercent.trim() === prevGst)) {
+        next.taxPercent = newGst;
       }
       return next;
     });

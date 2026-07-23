@@ -722,9 +722,9 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
   const updateLine = (id: string, field: DraftCol, value: string) =>
     setLines((prev) => prev.map((l) => (l.id === id ? { ...l, [field]: value } : l)));
 
-  // HSN → GST tax master. Setting a line's HSN auto-fills its GST from here
-  // (India taxes medicines by HSN) — but only when GST is still blank, so a
-  // hand-typed rate is never overwritten. Derives a rate for a line's HSN too.
+  // HSN → GST tax master. HSN legally determines the GST rate in India, so
+  // changing a line's HSN keeps its GST in sync. Derives a rate for a line's
+  // HSN too.
   const { data: hsnRates = [] } = useHsnGstRates();
   const gstForHsn = (code: string): string => {
     const hit = matchHsnGstRate(code, hsnRates);
@@ -735,9 +735,14 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
       prev.map((l) => {
         if (l.id !== id) return l;
         const next = { ...l, hsnCode: value };
-        if (!l.gstPercent.trim()) {
-          const gst = gstForHsn(value);
-          if (gst) next.gstPercent = gst;
+        const newGst = gstForHsn(value);
+        // Fill GST from the new HSN when it's blank, OR when it still holds
+        // exactly what the PREVIOUS HSN auto-filled (i.e. it was derived, not
+        // hand-edited) — so re-typing a wrong HSN updates the GST, while a rate
+        // the operator keyed themselves (or one printed on the invoice) is kept.
+        const prevGst = gstForHsn(l.hsnCode);
+        if (newGst && (!l.gstPercent.trim() || l.gstPercent.trim() === prevGst)) {
+          next.gstPercent = newGst;
         }
         return next;
       }),
