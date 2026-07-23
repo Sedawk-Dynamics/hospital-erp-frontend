@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
-  ShoppingCart, Plus, PackageCheck, X, Ban, Truck, Phone, Search,
+  ShoppingCart, Plus, PackageCheck, X, Ban, Truck, Phone, Search, Printer,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -166,7 +166,12 @@ export default function PurchaseOrdersPage() {
       {createOpen && (
         <CreatePoDialog
           initialItems={seedItems}
-          onClose={() => { setCreateOpen(false); setSeedItems([]); }}
+          onClose={(createdId) => {
+            setCreateOpen(false);
+            setSeedItems([]);
+            // Jump straight to the new PO's detail so it can be printed.
+            if (createdId) setDetailId(createdId);
+          }}
         />
       )}
       {detailId && <PoDetailDialog id={detailId} onClose={() => setDetailId(null)} />}
@@ -191,7 +196,7 @@ interface PoLineSeed {
 const inr = (n: number | string | null | undefined) =>
   `₹${(Number(n) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initialItems?: PoLineSeed[] }) {
+function CreatePoDialog({ onClose, initialItems }: { onClose: (createdId?: string) => void; initialItems?: PoLineSeed[] }) {
   const [supplierId, setSupplierId] = useState<string>('');
   const [expectedDate, setExpectedDate] = useState('');
   const [notes, setNotes] = useState('');
@@ -247,9 +252,10 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
       })),
     };
     try {
-      await create.mutateAsync(data);
+      const created = await create.mutateAsync(data);
       toast.success('Purchase order created');
-      onClose();
+      // Hand the new PO id back so the list can open its detail (with Print).
+      onClose((created as { id?: string })?.id);
     } catch (err) {
       toast.error(getApiErrorMessage(err, 'Failed to create purchase order'));
     }
@@ -490,7 +496,7 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: () => void; initia
             </span>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose}>Cancel</Button>
+            <Button variant="outline" onClick={() => onClose()}>Cancel</Button>
             <Button onClick={handleSubmit} disabled={create.isPending}>
               <ShoppingCart className="mr-1.5 h-4 w-4" />
               {create.isPending ? 'Creating…' : 'Create PO'}
@@ -538,6 +544,101 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
   };
 
   const canCancel = data && ['draft', 'submitted', 'approved'].includes(data.status);
+
+  // Open a clean, printable Purchase Order document in a new window.
+  const handlePrint = () => {
+    if (!data) return;
+    const esc = (s: unknown) =>
+      String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
+    const money = (n: number) =>
+      `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const sup = data.supplier;
+    const orderedValue =
+      data.items?.reduce((s, it) => s + it.quantityOrdered * (Number(it.unitPrice) || 0), 0) ?? 0;
+
+    const rows = (data.items ?? [])
+      .map((it, idx) => {
+        const isDrug = !!it.drugId;
+        const name = isDrug
+          ? `${it.drug?.drugName ?? 'Drug'}${it.drug?.strength ? ` ${it.drug.strength}` : ''}`
+          : it.inventoryItem?.itemName ?? '-';
+        const sub = isDrug
+          ? [it.drug?.genericName, it.drug?.manufacturer].filter(Boolean).join(' · ')
+          : it.inventoryItem?.itemCode ?? '';
+        const amount = it.unitPrice ? it.quantityOrdered * Number(it.unitPrice) : 0;
+        return `<tr>
+          <td class="c">${idx + 1}</td>
+          <td>${esc(name)}${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</td>
+          <td class="r">${it.unitPrice ? money(Number(it.unitPrice)) : '—'}</td>
+          <td class="r">${it.quantityOrdered}</td>
+          <td class="r">${it.quantityReceived}</td>
+          <td class="r">${amount ? money(amount) : '—'}</td>
+        </tr>`;
+      })
+      .join('');
+
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>PO ${esc(data.orderNumber)}</title>
+      <style>
+        * { box-sizing: border-box; }
+        body { font-family: Arial, Helvetica, sans-serif; color: #111; margin: 24px; font-size: 12px; }
+        h1 { font-size: 20px; margin: 0; letter-spacing: .5px; }
+        .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #111; padding-bottom: 10px; margin-bottom: 14px; }
+        .meta { text-align: right; font-size: 12px; }
+        .meta .num { font-family: monospace; font-weight: bold; font-size: 14px; }
+        .cols { display: flex; gap: 24px; margin-bottom: 14px; }
+        .box { flex: 1; border: 1px solid #ccc; border-radius: 6px; padding: 10px; }
+        .box h3 { margin: 0 0 6px; font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: #666; }
+        table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+        th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; vertical-align: top; }
+        th { background: #f4f4f4; font-size: 10px; text-transform: uppercase; letter-spacing: .3px; }
+        td.r, th.r { text-align: right; } td.c, th.c { text-align: center; }
+        .sub { color: #777; font-size: 10px; }
+        tfoot td { font-weight: bold; background: #fafafa; }
+        .notes { margin-top: 12px; padding: 8px 10px; background: #f7f7f7; border-radius: 6px; }
+        .foot { margin-top: 28px; display: flex; justify-content: space-between; font-size: 11px; color: #555; }
+        @media print { body { margin: 12px; } }
+      </style></head><body onload="window.print()">
+      <div class="head">
+        <div><h1>PURCHASE ORDER</h1><div style="color:#666;margin-top:4px">Status: ${esc(STATUS_LABEL[data.status] ?? data.status)}</div></div>
+        <div class="meta">
+          <div class="num">${esc(data.orderNumber)}</div>
+          <div>Order date: ${esc(formatDate(data.orderDate))}</div>
+          <div>Expected: ${esc(data.expectedDeliveryDate ? formatDate(data.expectedDeliveryDate) : '—')}</div>
+        </div>
+      </div>
+      <div class="cols">
+        <div class="box">
+          <h3>Supplier</h3>
+          <div style="font-weight:bold">${esc(sup?.name ?? '—')}</div>
+          ${sup?.phone ? `<div>Phone: ${esc(sup.phone)}</div>` : ''}
+          ${sup?.gstNumber ? `<div>GSTIN: ${esc(sup.gstNumber)}</div>` : ''}
+          ${sup?.paymentTermDays != null ? `<div>Payment terms: ${esc(sup.paymentTermDays)} days</div>` : ''}
+        </div>
+        <div class="box">
+          <h3>Order</h3>
+          <div>Ordered value: ${money(orderedValue)}</div>
+          ${data.totalAmount ? `<div>Total amount: ${money(Number(data.totalAmount))}</div>` : ''}
+          ${data.approver ? `<div>Raised by: ${esc([data.approver.firstName, data.approver.lastName].filter(Boolean).join(' '))}</div>` : ''}
+        </div>
+      </div>
+      <table>
+        <thead><tr><th class="c">#</th><th>Item</th><th class="r">Rate</th><th class="r">Ordered</th><th class="r">Received</th><th class="r">Amount</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr><td colspan="5" class="r">Ordered value</td><td class="r">${money(orderedValue)}</td></tr></tfoot>
+      </table>
+      ${data.notes ? `<div class="notes"><b>Notes:</b> ${esc(data.notes)}</div>` : ''}
+      <div class="foot"><div>Authorised signatory: ____________________</div><div>Printed ${esc(formatDate(new Date().toISOString()))}</div></div>
+      </body></html>`;
+
+    const w = window.open('', '_blank', 'width=900,height=700');
+    if (!w) {
+      toast.error('Allow pop-ups to print the purchase order');
+      return;
+    }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+  };
 
   const handleReceive = async () => {
     if (!data) return;
@@ -800,6 +901,9 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
               <PackageCheck className="mr-1.5 h-4 w-4" /> Receive Stock
             </Button>
           )}
+          <Button variant="outline" onClick={handlePrint} disabled={!data}>
+            <Printer className="mr-1.5 h-4 w-4" /> Print PO
+          </Button>
           <Button variant="outline" onClick={onClose}>Close</Button>
         </DialogFooter>
       </DialogContent>
