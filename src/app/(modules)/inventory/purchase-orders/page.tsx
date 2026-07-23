@@ -577,8 +577,8 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
 
   return (
     <Dialog open={true} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="flex w-[96vw] max-w-none flex-col overflow-hidden p-0 sm:max-w-6xl">
-        <DialogHeader className="border-b px-6 py-4">
+      <DialogContent className="flex max-h-[92vh] w-[96vw] max-w-none flex-col overflow-hidden p-0 sm:max-w-6xl">
+        <DialogHeader className="shrink-0 border-b px-6 py-4 pr-14">
           <DialogTitle className="flex flex-wrap items-center gap-2 text-lg">
             <PackageCheck className="h-5 w-5 text-primary" />
             Purchase Order
@@ -590,7 +590,7 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
         {isLoading || !data ? (
           <div className="p-6"><Skeleton className="h-40 w-full" /></div>
         ) : (
-          <div className="space-y-4 px-6 py-4">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-4">
             {/* Info card — supplier context, dates, and order value */}
             {(() => {
               const totalOrdered = data.items?.reduce((s, it) => s + it.quantityOrdered, 0) ?? 0;
@@ -784,7 +784,7 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
             )}
           </div>
         )}
-        <DialogFooter className="border-t bg-muted/30 px-6 py-4">
+        <DialogFooter className="mx-0 mb-0 shrink-0 items-center border-t bg-muted/30 px-6 py-4">
           {canCancel && (
             <Button
               variant="outline"
