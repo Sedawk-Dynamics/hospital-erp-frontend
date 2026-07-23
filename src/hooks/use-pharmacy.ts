@@ -60,12 +60,6 @@ export interface FormularyItem {
   batchCount?: number;
   inStock?: boolean;
   nearestExpiry?: string | null;
-  // Set (to the matching nickname) when this row surfaced because the searcher
-  // typed one of their personal nicknames for it.
-  matchedNickname?: string | null;
-  // The searcher's nickname for this product, if they have one — present even
-  // when the search matched on the real name.
-  nickname?: string | null;
 }
 
 export interface DrugBatch {
@@ -2280,66 +2274,3 @@ export function useGstReport(params?: { fromDate?: string; toDate?: string; gstR
   });
 }
 
-// ============================================================
-// Personal medicine nicknames (per pharmacist). Typing a nickname in any drug
-// search surfaces the linked medicine first (see FormularyItem.matchedNickname).
-// ============================================================
-export interface DrugNickname {
-  id: string;
-  nickname: string;
-  drugFormularyId: string;
-  drug: {
-    id: string;
-    drugName: string;
-    genericName: string | null;
-    strength: string | null;
-    dosageForm: DosageForm | null;
-    manufacturer: string | null;
-  };
-  createdAt: string;
-  updatedAt: string;
-}
-
-const nicknameKey = ['pharmacy', 'nicknames'] as const;
-
-export function useNicknames() {
-  return useQuery({
-    queryKey: nicknameKey,
-    queryFn: async () => (await apiGet<DrugNickname[]>('/pharmacy/nicknames')).data ?? [],
-  });
-}
-
-export function useCreateNickname() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (data: { drugFormularyId: string; nickname: string }) =>
-      (await apiPost<DrugNickname>('/pharmacy/nicknames', data)).data,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: nicknameKey });
-      qc.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
-    },
-  });
-}
-
-export function useUpdateNickname() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, ...data }: { id: string; drugFormularyId?: string; nickname?: string }) =>
-      (await apiPut<DrugNickname>(`/pharmacy/nicknames/${id}`, data)).data,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: nicknameKey });
-      qc.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
-    },
-  });
-}
-
-export function useDeleteNickname() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: string) => (await apiDelete<{ id: string }>(`/pharmacy/nicknames/${id}`)).data,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: nicknameKey });
-      qc.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
-    },
-  });
-}

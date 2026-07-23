@@ -77,7 +77,6 @@ import { useAiStatus } from '@/hooks/use-ai';
 import { useDrugMasterSearch, useHsnGstRates, matchHsnGstRate, type HsnGstRate } from '@/hooks/use-drug-master';
 import { VendorFormDialog } from '@/components/inventory/vendor-form-dialog';
 import { BarcodeScanner } from '@/components/shared/barcode-scanner';
-import { NicknameBox } from '@/components/pharmacy/nickname-box';
 
 // ============================================================
 // G1 — Bulk Stock Inward (CSV / OCR / manual multi-row)
@@ -2269,13 +2268,6 @@ function EntryStep(props: {
                         onChange={(e) => updateLine(l.id, 'drugName', e.target.value)}
                         placeholder="Product name *  ·  e.g. Telmac 40 Tab"
                       />
-                      {/* Nickname, right beside the product name. Available once
-                          the line resolves to an existing product (any type) —
-                          a brand-new product has no id to attach a nickname to
-                          until it's created. */}
-                      {reviewing && decisions[i]?.action === 'map' && decisions[i]?.targetId && (
-                        <NicknameBox drugId={decisions[i]!.targetId as string} className="shrink-0" />
-                      )}
                       {/* Not in this hospital's master data — the row needs an
                           add decision (catalog pick, or add as new). */}
                       {flags?.notInFormulary && (

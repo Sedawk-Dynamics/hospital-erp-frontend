@@ -8,7 +8,6 @@ import {
   ScanLine,
   Plus,
   Minus,
-  Tag,
   NotebookPen,
   Trash2,
   User,
@@ -1039,24 +1038,11 @@ function PharmacyPOS() {
                       className="min-w-0 flex-1 text-left"
                     >
                       <p className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-                        {/* Always show the REAL medicine name first — the nickname
-                            is only an added chip, never a substitute, so nothing is
-                            ever dispensed on shorthand alone. */}
                         <span className="truncate">{item.drugName}</span>
                         {/* Non-medicine stock (consumable / surgical / …) — same
                             flow as a medicine, just flagged so the counter
                             knows what it is selling. */}
                         <StockTypeBadge category={item.category} />
-                        {/* Show the pharmacist's nickname whenever one exists —
-                            not only when the search matched on it. */}
-                        {(item.nickname || item.matchedNickname) && (
-                          <span
-                            title={`Your nickname for ${item.drugName}`}
-                            className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-px text-[10px] font-semibold text-primary"
-                          >
-                            <Tag className="h-2.5 w-2.5" /> {item.nickname || item.matchedNickname}
-                          </span>
-                        )}
                       </p>
                       <p className="text-xs text-muted-foreground truncate">
                         {item.genericName && `${item.genericName} · `}

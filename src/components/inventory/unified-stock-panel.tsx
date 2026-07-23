@@ -43,7 +43,6 @@ import { DrugFormDialog } from '@/components/pharmacy/drug-form-dialog';
 import { MergeDrugDialog } from '@/components/pharmacy/merge-drug-dialog';
 import { AlternativesDialog } from '@/components/pharmacy/alternatives-dialog';
 import { ImportFromCatalogDialog } from '@/components/pharmacy/import-from-catalog-dialog';
-import { NicknameBox } from '@/components/pharmacy/nickname-box';
 
 // A row's Type is its CATEGORY, not which table it lives in. Every kind of stock
 // (medicine, consumable, surgical, equipment) is now stocked the same way — as a
@@ -417,8 +416,6 @@ function StockRow({
         <TableCell>
           <div className="flex items-center gap-1.5">
             <span className="font-medium">{row.name}</span>
-            {/* Personal shorthand — only meaningful for a formulary drug. */}
-            {isDrug && <NicknameBox drugId={row.refId} />}
           </div>
           <div className="text-xs text-muted-foreground">
             {[row.code, row.unit].filter(Boolean).join(' · ') || stockTypeLabel(row.category).toLowerCase()}
