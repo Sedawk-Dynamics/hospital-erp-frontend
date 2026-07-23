@@ -141,6 +141,9 @@ function AdmissionDialog({
 
   // Patient mode toggle — switches between search and inline registration
   const [patientMode, setPatientMode] = useState<'existing' | 'new'>(initialMode);
+  // When ticked (new-patient mode), save a provisional (TEMP-) record instead of
+  // admitting — every field is optional.
+  const [isTemporary, setIsTemporary] = useState(false);
 
 
   // Form state
@@ -356,6 +359,7 @@ function AdmissionDialog({
       zipCode: '',
     });
     setPatientMode(initialMode);
+    setIsTemporary(false);
     setSelectedDoctorId('');
     setSelectedFloorId('');
     setSelectedWardId('');
@@ -486,6 +490,23 @@ function AdmissionDialog({
 
             {patientMode === 'new' ? (
               <div className="rounded-lg border border-dashed border-muted-foreground/30 p-3 space-y-3">
+
+                {/* Temporary-patient tickmark — relaxes all fields to optional */}
+                <label className="flex items-start gap-3 rounded-lg border border-outline-variant/40 bg-surface-container/40 p-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isTemporary}
+                    onChange={(e) => setIsTemporary(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-input accent-primary cursor-pointer"
+                  />
+                  <div>
+                    <p className="text-sm font-semibold text-on-surface">Temporary patient</p>
+                    <p className="text-xs text-on-surface-variant">
+                      Save now with partial details — all fields optional and the patient is not
+                      admitted. Complete or connect the record later from the Patients page.
+                    </p>
+                  </div>
+                </label>
 
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                   <UserPlus className="h-3.5 w-3.5" />
@@ -917,19 +938,19 @@ function AdmissionDialog({
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              {patientMode === 'new' && (
+              {patientMode === 'new' && isTemporary ? (
                 <Button
-                  variant="outline"
                   disabled={savingTemp || newPatient.firstName.trim().length === 0}
                   onClick={handleSaveAsTemporary}
                 >
                   {savingTemp && <Loader2 className="h-4 w-4 animate-spin" />}
-                  Save as Temporary
+                  Create Temporary Patient
+                </Button>
+              ) : (
+                <Button disabled={!patientValid} onClick={() => setStep('admit')}>
+                  Next: Admit Patient
                 </Button>
               )}
-              <Button disabled={!patientValid} onClick={() => setStep('admit')}>
-                Next: Admit Patient
-              </Button>
             </>
           ) : step === 'admit' ? (
             <>

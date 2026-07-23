@@ -181,6 +181,9 @@ export function FrontDeskRegisterDialog({
 
   // New-patient sub-mode: register standalone OR attach as family profile to an existing user
   const [newPatientMode, setNewPatientMode] = useState<'standalone' | 'linkUser'>('standalone');
+  // When ticked, the patient is saved as a provisional (TEMP-) record — every
+  // field is optional and no appointment is booked.
+  const [isTemporary, setIsTemporary] = useState(false);
   const [userSearchValue, setUserSearchValue] = useState('');
   const [userSearchType, setUserSearchType] = useState<'phone' | 'email'>('phone');
   const [userResults, setUserResults] = useState<AccountHolder[]>([]);
@@ -279,6 +282,7 @@ export function FrontDeskRegisterDialog({
       setPaymentReference('');
       setIsSubmitting(false);
       setNewPatientMode('standalone');
+      setIsTemporary(false);
       setUserSearchValue('');
       setUserSearchType('phone');
       setUserResults([]);
@@ -696,8 +700,30 @@ export function FrontDeskRegisterDialog({
               </div>
             ) : (
               <form onSubmit={handlePatientSubmit(handlePatientFormNext)} className="space-y-4">
-                {/* Account-holder linkage toggle */}
-                <div className="flex gap-2 p-1 rounded-xl bg-surface-container">
+                {/* Temporary-patient tickmark — relaxes all fields to optional */}
+                <label className="flex items-start gap-3 rounded-xl border border-outline-variant/40 bg-surface-container/40 p-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isTemporary}
+                    onChange={(e) => setIsTemporary(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-input accent-primary cursor-pointer"
+                  />
+                  <div>
+                    <p className="text-sm font-semibold text-on-surface">Temporary patient</p>
+                    <p className="text-xs text-on-surface-variant">
+                      Save now with whatever details you have — all fields become optional and no
+                      appointment is booked. Register the full record or connect it to an existing
+                      patient later from the Patients page.
+                    </p>
+                  </div>
+                </label>
+
+                {/* Account-holder linkage toggle — not applicable to temporary patients */}
+                <div
+                  className={`flex gap-2 p-1 rounded-xl bg-surface-container ${
+                    isTemporary ? 'pointer-events-none opacity-50' : ''
+                  }`}
+                >
                   <button
                     type="button"
                     onClick={() => {
@@ -968,20 +994,22 @@ export function FrontDeskRegisterDialog({
                 </div>
 
                 <div className="flex flex-wrap items-center justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="gap-2"
-                    onClick={handleSaveAsTemporary}
-                    disabled={savingTemp}
-                  >
-                    {savingTemp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
-                    Save as Temporary
-                  </Button>
-                  <Button type="submit" className="gap-2">
-                    Next: Book Appointment
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
+                  {isTemporary ? (
+                    <Button
+                      type="button"
+                      className="gap-2"
+                      onClick={handleSaveAsTemporary}
+                      disabled={savingTemp}
+                    >
+                      {savingTemp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
+                      Create Temporary Patient
+                    </Button>
+                  ) : (
+                    <Button type="submit" className="gap-2">
+                      Next: Book Appointment
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </form>
             )}

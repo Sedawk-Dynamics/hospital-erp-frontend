@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import {
   Users,
-  UserPlus,
   Search,
   Loader2,
   UserRound,
@@ -45,7 +44,6 @@ import { cn } from '@/lib/utils';
 import { formatDate } from '@/lib/date-utils';
 import {
   usePatientDirectory,
-  useCreateTemporaryPatient,
   useRegisterTemporaryPatient,
   useMergeTemporaryPatient,
   type PatientCategory,
@@ -88,7 +86,6 @@ export default function HospitalPatientsPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
 
-  const [createOpen, setCreateOpen] = useState(false);
   const [registerTarget, setRegisterTarget] = useState<Patient | null>(null);
   const [mergeTarget, setMergeTarget] = useState<Patient | null>(null);
 
@@ -123,10 +120,6 @@ export default function HospitalPatientsPage() {
             </p>
           </div>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <UserPlus className="size-4" />
-          New Temporary Patient
-        </Button>
       </div>
 
       {/* Tabs */}
@@ -265,112 +258,9 @@ export default function HospitalPatientsPage() {
         </div>
       )}
 
-      <CreateTemporaryDialog open={createOpen} onOpenChange={setCreateOpen} />
       <RegisterInPlaceDialog patient={registerTarget} onClose={() => setRegisterTarget(null)} />
       <MergeDialog patient={mergeTarget} onClose={() => setMergeTarget(null)} />
     </div>
-  );
-}
-
-// ============================================================
-// Create Temporary dialog
-// ============================================================
-
-function CreateTemporaryDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-}) {
-  const create = useCreateTemporaryPatient();
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [gender, setGender] = useState<string | null>(null);
-  const [age, setAge] = useState('');
-  const [phone, setPhone] = useState('');
-
-  const reset = () => {
-    setFirstName('');
-    setLastName('');
-    setGender(null);
-    setAge('');
-    setPhone('');
-  };
-
-  const submit = async () => {
-    try {
-      const created = await create.mutateAsync({
-        firstName: firstName.trim() || undefined,
-        lastName: lastName.trim() || undefined,
-        gender: (gender as any) || undefined,
-        age: age ? Number(age) : undefined,
-        phone: phone.trim() || undefined,
-      });
-      toast.success(`Temporary patient created (${created?.mrn ?? 'TEMP'})`);
-      reset();
-      onOpenChange(false);
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message ?? 'Failed to create temporary patient');
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>New Temporary Patient</DialogTitle>
-          <DialogDescription>
-            Capture whatever is known now — even just a name. The patient can be routed to OP or IP
-            immediately, and registered or connected to an existing record later.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid grid-cols-2 gap-4 py-2">
-          <div className="space-y-1.5">
-            <Label>First name</Label>
-            <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="e.g. Unknown" />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Last name</Label>
-            <Input value={lastName} onChange={(e) => setLastName(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Gender</Label>
-            <Select value={gender} onValueChange={(v) => setGender(v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select" />
-              </SelectTrigger>
-              <SelectContent>
-                {GENDERS.map((g) => (
-                  <SelectItem key={g} value={g} className="capitalize">
-                    {g.replace(/_/g, ' ')}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Approx. age</Label>
-            <Input type="number" min={0} max={150} value={age} onChange={(e) => setAge(e.target.value)} />
-          </div>
-          <div className="col-span-2 space-y-1.5">
-            <Label>Phone</Label>
-            <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Optional" />
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={create.isPending}>
-            Cancel
-          </Button>
-          <Button onClick={submit} disabled={create.isPending}>
-            {create.isPending && <Loader2 className="size-4 animate-spin" />}
-            Create Temporary
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 
