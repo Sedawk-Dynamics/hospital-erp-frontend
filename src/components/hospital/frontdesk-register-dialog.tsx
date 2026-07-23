@@ -8,8 +8,8 @@ import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { toInputDateStr, formatDate, getCurrentISTTime, isToday } from '@/lib/date-utils';
 import {
-  UserPlus, Search, Loader2, UserRound, Clock, CalendarCheck,
-  CreditCard, Banknote, Smartphone, Building2, ChevronRight,
+  UserPlus, Search, Loader2, UserRound, Clock,
+  CreditCard, Banknote, Smartphone, Building2,
   ChevronLeft, CheckCircle2, ArrowRight, Info,
 } from 'lucide-react';
 
@@ -145,46 +145,6 @@ const QUICK_DATES = [
     return toInputDateStr(d);
   }},
 ];
-
-// ============================================================
-// Step indicator
-// ============================================================
-
-const STEPS = [
-  { label: 'Patient', icon: UserPlus },
-  { label: 'Appointment', icon: CalendarCheck },
-  { label: 'Payment', icon: CreditCard },
-];
-
-function StepIndicator({ currentStep }: { currentStep: number }) {
-  return (
-    <div className="flex items-center justify-center gap-1 py-3">
-      {STEPS.map((step, index) => {
-        const isActive = index === currentStep;
-        const isCompleted = index < currentStep;
-        return (
-          <div key={step.label} className="flex items-center gap-1">
-            <div
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
-                isActive
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : isCompleted
-                    ? 'bg-primary/10 text-primary'
-                    : 'bg-surface-container text-on-surface-variant'
-              }`}
-            >
-              <step.icon className="h-3.5 w-3.5" />
-              {step.label}
-            </div>
-            {index < STEPS.length - 1 && (
-              <ChevronRight className="h-3.5 w-3.5 text-on-surface-variant/40" />
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 // ============================================================
 // Props
@@ -575,8 +535,6 @@ export function FrontDeskRegisterDialog({
                 : 'Select payment mode for the consultation'}
           </DialogDescription>
         </DialogHeader>
-
-        <StepIndicator currentStep={step} />
 
         {/* ════════════════════════════════════════════════ */}
         {/* STEP 0: Patient */}

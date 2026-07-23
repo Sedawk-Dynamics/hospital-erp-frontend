@@ -415,29 +415,6 @@ function AdmissionDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {/* Patient → Admit → Checklist. For an existing patient the first step
-            is just picking them; for a new one it's the registration form. */}
-        <div className="flex items-center gap-2 text-xs">
-          {([
-            ['patient', patientMode === 'new' ? '1. Register' : '1. Patient'],
-            ['admit', '2. Admit'],
-            ['checklist', '3. Checklist'],
-          ] as const).map(([key, label], i) => (
-            <div key={key} className="flex items-center gap-2">
-              {i > 0 && <span className="text-muted-foreground">→</span>}
-              <span
-                className={cn(
-                  'rounded-full px-3 py-1 font-bold',
-                  step === key
-                    ? 'bg-primary text-white'
-                    : 'bg-surface-container-high text-on-surface-variant',
-                )}
-              >
-                {label}
-              </span>
-            </div>
-          ))}
-        </div>
 
         {step === 'patient' && (
           <div className="grid gap-4 py-2">
