@@ -73,7 +73,7 @@ import {
   CommandGroup,
   CommandItem,
 } from '@/components/ui/command';
-import { cn } from '@/lib/utils';
+import { cn} from '@/lib/utils';
 import { formatDate, formatDateTimeAmPm, toInputDateStr } from '@/lib/date-utils';
 import { packSummary } from '@/lib/pharmacy-units';
 import { StockTypeBadge } from '@/components/shared/stock-type-badge';

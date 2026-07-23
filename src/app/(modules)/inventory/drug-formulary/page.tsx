@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
+import { cn, getApiErrorMessage } from '@/lib/utils';
 import { formatDate, toInputDateStr } from '@/lib/date-utils';
 import {
   Table,
@@ -334,7 +334,7 @@ function PharmacyInventoryPageInner() {
       setEditingItem(null);
       setFormData(EMPTY_FORM);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to save drug');
+      toast.error(getApiErrorMessage(err, 'Failed to save drug'));
     }
   };
 
@@ -345,13 +345,20 @@ function PharmacyInventoryPageInner() {
     }
     if (editingItem) {
       try {
-        await updateItem.mutateAsync({ id: editingItem.id, ...formStateToInput(formData) });
+        // Send gtin/hsn explicitly (null when cleared) so a wrong GTIN can be
+        // removed — formStateToInput omits blank fields, which otherwise leaves
+        // the old value in place and there's no way to unset it.
+        await updateItem.mutateAsync({
+          id: editingItem.id,
+          ...formStateToInput(formData),
+          gtin: formData.gtin.trim() || null,
+        });
         toast.success('Drug updated');
         setDialogOpen(false);
         setEditingItem(null);
         setFormData(EMPTY_FORM);
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'Failed to save drug');
+        toast.error(getApiErrorMessage(err, 'Failed to save drug'));
       }
       return;
     }
@@ -395,8 +402,7 @@ function PharmacyInventoryPageInner() {
       toast.success('Drug removed');
       setDeleteId(null);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to delete drug';
-      toast.error(msg);
+      toast.error(getApiErrorMessage(err, 'Failed to delete drug'));
     }
   };
 
@@ -432,8 +438,7 @@ function PharmacyInventoryPageInner() {
       setStockDrug(null);
       setStockForm(EMPTY_STOCK);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to add stock';
-      toast.error(msg);
+      toast.error(getApiErrorMessage(err, 'Failed to add stock'));
     }
   };
 
@@ -443,8 +448,7 @@ function PharmacyInventoryPageInner() {
       await updateItem.mutateAsync({ id: item.id, isActive: !item.isActive });
       toast.success(item.isActive ? 'Marked unavailable' : 'Marked available');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to update';
-      toast.error(msg);
+      toast.error(getApiErrorMessage(err, 'Failed to update'));
     }
   };
 

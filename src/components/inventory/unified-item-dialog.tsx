@@ -14,6 +14,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
 import { BarcodeScanner } from '@/components/shared/barcode-scanner';
+import { getApiErrorMessage } from '@/lib/utils';
 import {
   useCreateUnifiedStock,
   type InventoryCategory,
@@ -177,7 +178,7 @@ export function UnifiedItemForm({
       onCreated?.(isMedicine ? 'drug' : 'item', result.item?.id as string | undefined);
       reset();
     } catch (err) {
-      toast.error((err as Error).message ?? 'Failed to add to storage');
+      toast.error(getApiErrorMessage(err, 'Failed to add to storage'));
     }
   };
 

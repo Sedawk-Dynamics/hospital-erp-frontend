@@ -278,9 +278,10 @@ export interface CreateFormularyInput {
   looseUnitLabel?: string;
   taxPercent?: number;
   minStock?: number;
-  // Product Resolution Engine / compliance identity.
-  gtin?: string;
-  casePackGtin?: string;
+  // Product Resolution Engine / compliance identity. Nullable so an edit can
+  // CLEAR a wrong GTIN (send null); create simply omits it when blank.
+  gtin?: string | null;
+  casePackGtin?: string | null;
   unitsPerCase?: number;
   hsnCode?: string;
   manufacturerCode?: string;
