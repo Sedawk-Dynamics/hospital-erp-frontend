@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { EmergencyBadge } from '@/components/shared/emergency-badge';
 import { Button } from '@/components/ui/button';
 import { StatusProgression } from './status-progression';
 import {
@@ -138,7 +137,6 @@ export function AppointmentTable({
                         <div>
                           <p className="flex items-center gap-1.5 font-label text-sm font-bold">
                             {patient ? `${patient.firstName} ${patient.lastName}` : 'Unknown'}
-                            <EmergencyBadge patient={patient} size="sm" />
                           </p>
                           <div className="flex items-center gap-2 font-label text-[10px] text-on-surface-variant">
                             <span>{patient?.mrn || '-'}</span>

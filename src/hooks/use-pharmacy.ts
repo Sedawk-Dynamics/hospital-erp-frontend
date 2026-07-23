@@ -1935,8 +1935,6 @@ export function useIpBillingSummary(patientId: string | null) {
   });
 }
 
-// Emergency / Casualty patient flow moved to the front-desk module — see
-// `@/hooks/use-emergency` and `/emergency/*`.
 
 // G12: advance an IP prescription through the ward→pharmacy fulfilment lifecycle.
 export function useSetPharmacyOrderStatus() {

@@ -11,7 +11,6 @@ import {
   LogIn,
   MoreHorizontal,
   ShieldCheck,
-  Siren,
   UserX,
   XCircle,
 } from 'lucide-react';
@@ -25,17 +24,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import { isEmergencyPatient } from '@/lib/emergency';
 import { useUpdateAppointmentStatus, useInitiateFrontdeskPayment } from '@/hooks/use-hospital';
 
 import { CancelAppointmentDialog } from './cancel-appointment-dialog';
 import { RescheduleAppointmentDialog } from './reschedule-appointment-dialog';
 import { PatientDetailDialog } from './patient-detail-dialog';
 import { CollectFrontdeskPaymentDialog } from './collect-frontdesk-payment-dialog';
-import {
-  EmergencyResolveDialog,
-  type EmergencyResolveTarget,
-} from './emergency-resolve-dialog';
 import type { Appointment } from '@/types';
 
 /**
@@ -51,8 +45,7 @@ import type { Appointment } from '@/types';
  *   booked          → Confirm, or Collect ₹X & Confirm when payment is due
  *   confirmed       → Check In
  *   checked_in      → waiting for the doctor (they start the consultation)
- * plus View details / Reschedule / Cancel / Mark no-show on every live row,
- * and Register-or-Connect for a temporary casualty record.
+ * plus View details / Reschedule / Cancel / Mark no-show on every live row.
  */
 
 /** Minimal row shape both screens can satisfy. */
@@ -99,7 +92,6 @@ export function AppointmentRowActions({
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [collectTarget, setCollectTarget] = useState<Appointment | null>(null);
-  const [resolveTarget, setResolveTarget] = useState<EmergencyResolveTarget | null>(null);
 
   const updateStatus = useUpdateAppointmentStatus();
   const initiatePayment = useInitiateFrontdeskPayment();
@@ -253,28 +245,6 @@ export function AppointmentRowActions({
             drives those steps, and the Status column's progression already
             shows where the patient is. */}
 
-        {/* A temporary casualty record is resolved straight from the queue. */}
-        {patient && isEmergencyPatient(patient) && (
-          <Button
-            size="sm"
-            className="gap-1.5 bg-red-600 text-xs text-white hover:bg-red-700"
-            onClick={() =>
-              setResolveTarget({
-                id: patient.id,
-                mrn: patient.mrn ?? '',
-                firstName: patient.firstName,
-                lastName: patient.lastName,
-                gender: patient.gender ?? undefined,
-                phone: patient.phone ?? undefined,
-                type: 'op',
-              })
-            }
-          >
-            <Siren className="h-3.5 w-3.5" />
-            Register / Connect
-          </Button>
-        )}
-
         {/* ── Overflow: always available ── */}
         <DropdownMenu>
           <DropdownMenuTrigger
@@ -402,17 +372,6 @@ export function AppointmentRowActions({
         }}
       />
 
-      <EmergencyResolveDialog
-        open={!!resolveTarget}
-        onOpenChange={(o) => {
-          if (!o) setResolveTarget(null);
-        }}
-        patient={resolveTarget}
-        onResolved={() => {
-          setResolveTarget(null);
-          onChanged?.();
-        }}
-      />
     </>
   );
 }

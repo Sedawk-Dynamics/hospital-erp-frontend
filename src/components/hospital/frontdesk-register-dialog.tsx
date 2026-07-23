@@ -10,7 +10,7 @@ import { toInputDateStr, formatDate, getCurrentISTTime, isToday } from '@/lib/da
 import {
   UserPlus, Search, Loader2, UserRound, Clock, CalendarCheck,
   CreditCard, Banknote, Smartphone, Building2, ChevronRight,
-  ChevronLeft, CheckCircle2, ArrowRight, Siren, Info,
+  ChevronLeft, CheckCircle2, ArrowRight, Info,
 } from 'lucide-react';
 
 import {
@@ -38,7 +38,6 @@ import {
   useDoctorsList,
   useAvailableSlots,
 } from '@/hooks/use-hospital';
-import { useCreateEmergencyPatient } from '@/hooks/use-emergency';
 import { cn } from '@/lib/utils';
 import { apiPost, apiPatch, apiGet } from '@/lib/api';
 import type { Patient, Appointment, DoctorProfile } from '@/types';
@@ -220,12 +219,6 @@ export function FrontDeskRegisterDialog({
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [showPatientDropdown, setShowPatientDropdown] = useState(false);
 
-  // Tick "emergency" on the registration form and the casualty goes straight
-  // into the OP queue on a temporary MRN: nothing is required, no slot is
-  // picked, no payment is taken. Whatever the front desk already typed above is
-  // still kept. It's registered (or connected to an existing patient) later.
-  const [emergency, setEmergency] = useState(false);
-
   // New-patient sub-mode: register standalone OR attach as family profile to an existing user
   const [newPatientMode, setNewPatientMode] = useState<'standalone' | 'linkUser'>('standalone');
   const [userSearchValue, setUserSearchValue] = useState('');
@@ -252,10 +245,6 @@ export function FrontDeskRegisterDialog({
 
   // Submission
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Emergency only applies to a new patient — an existing one is already registered.
-  const isEmergency = mode === 'new' && emergency;
-  const createEmergency = useCreateEmergencyPatient();
 
   // Queries
   const { data: patients, isLoading: patientsLoading } = usePatientSearch(patientQuery);
@@ -335,7 +324,6 @@ export function FrontDeskRegisterDialog({
       setUserResults([]);
       setSelectedUser(null);
       setExistingProfiles([]);
-      setEmergency(false);
       resetPatientForm();
     }
   }, [open, resetPatientForm, initialMode]);
@@ -432,44 +420,6 @@ export function FrontDeskRegisterDialog({
   };
 
   // ── Final submit ──
-
-  // Emergency intake — reads whatever the registration form already holds (all
-  // of it optional) and posts to the dedicated endpoint, which mints the TEMP-ER
-  // patient, the checked-in emergency appointment and its queue token in one
-  // server-side call. It deliberately does NOT reuse the patient→appointment
-  // chain below: that would lose the temporary MRN and the credit-gate bypass.
-  // Bypasses the form's zod gate entirely — a casualty may be unidentified.
-  const handleEmergencySubmit = async () => {
-    setIsSubmitting(true);
-    try {
-      const p = watchPatient();
-      const result = await createEmergency.mutateAsync({
-        type: 'op',
-        firstName: p.firstName?.trim() || undefined,
-        lastName: p.lastName?.trim() || undefined,
-        gender: p.gender || undefined,
-        dateOfBirth: p.dateOfBirth || undefined,
-        phone: p.phone?.trim() || undefined,
-        email: p.email?.trim() || undefined,
-        address: p.address?.trim() || undefined,
-        chiefComplaint: reason.trim() || undefined,
-      });
-      toast.success(
-        `Emergency OP patient created — ${result.mrn}` +
-          (result.tokenNumber ? ` · Token #${result.tokenNumber}` : ''),
-      );
-      queryClient.invalidateQueries({ queryKey: ['hospital'] });
-      queryClient.invalidateQueries({ queryKey: ['front-desk'] });
-      onOpenChange(false);
-      onSuccess?.();
-    } catch (err: any) {
-      toast.error(
-        err?.response?.data?.message || err?.message || 'Failed to create emergency patient',
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   const handleFinalSubmit = async () => {
     setIsSubmitting(true);
@@ -608,34 +558,25 @@ export function FrontDeskRegisterDialog({
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto backdrop-blur-sm bg-background/95">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            {isEmergency ? (
-              <Siren className="h-5 w-5 text-red-600" />
-            ) : (
-              <UserPlus className="h-5 w-5 text-primary" />
-            )}
-            {isEmergency
-              ? 'Emergency / Casualty Patient'
-              : step === 0
-                ? 'Patient Details'
-                : step === 1
-                  ? 'Book Appointment'
-                  : 'Payment'}
+            <UserPlus className="h-5 w-5 text-primary" />
+            {step === 0
+              ? 'Patient Details'
+              : step === 1
+                ? 'Book Appointment'
+                : 'Payment'}
           </DialogTitle>
           <DialogDescription>
-            {isEmergency
-              ? 'A temporary casualty patient — no registration needed. Goes straight into the OP queue, highlighted as EMERGENCY, until you register or connect it.'
-              : step === 0
-                ? initialMode === 'new'
-                  ? 'Fill in the new patient details below'
-                  : 'Register a new patient or select an existing one'
-                : step === 1
-                  ? 'Choose doctor, date, and time for the appointment'
-                  : 'Select payment mode for the consultation'}
+            {step === 0
+              ? initialMode === 'new'
+                ? 'Fill in the new patient details below'
+                : 'Register a new patient or select an existing one'
+              : step === 1
+                ? 'Choose doctor, date, and time for the appointment'
+                : 'Select payment mode for the consultation'}
           </DialogDescription>
         </DialogHeader>
 
-        {/* Emergency intake is a single step — no slot to pick, no payment gate. */}
-        {!isEmergency && <StepIndicator currentStep={step} />}
+        <StepIndicator currentStep={step} />
 
         {/* ════════════════════════════════════════════════ */}
         {/* STEP 0: Patient */}
@@ -658,7 +599,7 @@ export function FrontDeskRegisterDialog({
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setMode('existing'); setEmergency(false); }}
+                  onClick={() => setMode('existing')}
                   className={`flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all ${
                     mode === 'existing'
                       ? 'bg-primary text-primary-foreground shadow-sm'
@@ -765,30 +706,6 @@ export function FrontDeskRegisterDialog({
               </div>
             ) : (
               <form onSubmit={handlePatientSubmit(handlePatientFormNext)} className="space-y-4">
-                {/* Emergency / casualty — one tick bypasses everything below */}
-                <label
-                  className={cn(
-                    'flex cursor-pointer items-center gap-2.5 rounded-xl border-2 px-3 py-2.5 transition-colors',
-                    emergency
-                      ? 'border-red-500 bg-red-50 dark:bg-red-950/30'
-                      : 'border-border hover:border-red-300',
-                  )}
-                >
-                  <input
-                    type="checkbox"
-                    checked={emergency}
-                    onChange={(e) => setEmergency(e.target.checked)}
-                    className="h-4 w-4 accent-red-600"
-                  />
-                  <Siren className="h-4 w-4 text-red-600" />
-                  <span className="text-sm font-semibold text-red-700 dark:text-red-400">
-                    Emergency / casualty patient
-                  </span>
-                  <span className="text-xs text-on-surface-variant">
-                    — treat now, register later. Nothing below is required.
-                  </span>
-                </label>
-
                 {/* Account-holder linkage toggle */}
                 <div className="flex gap-2 p-1 rounded-xl bg-surface-container">
                   <button
@@ -1061,26 +978,10 @@ export function FrontDeskRegisterDialog({
                 </div>
 
                 <div className="flex justify-end">
-                  {emergency ? (
-                    // type="button" — deliberately skips the form's zod gate.
-                    <Button
-                      type="button"
-                      onClick={handleEmergencySubmit}
-                      disabled={isSubmitting}
-                      className="gap-2 bg-red-600 text-white hover:bg-red-700"
-                    >
-                      {isSubmitting ? (
-                        <><Loader2 className="h-4 w-4 animate-spin" /> Creating…</>
-                      ) : (
-                        <><Siren className="h-4 w-4" /> Create Emergency Patient</>
-                      )}
-                    </Button>
-                  ) : (
-                    <Button type="submit" className="gap-2">
-                      Next: Book Appointment
-                      <ArrowRight className="h-4 w-4" />
-                    </Button>
-                  )}
+                  <Button type="submit" className="gap-2">
+                    Next: Book Appointment
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
                 </div>
               </form>
             )}

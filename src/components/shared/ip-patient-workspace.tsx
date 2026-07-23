@@ -54,7 +54,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { RecordVitalsDialog } from '@/components/shared/record-vitals-dialog';
 import { Badge } from '@/components/ui/badge';
-import { EmergencyBadge } from '@/components/shared/emergency-badge';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
@@ -182,7 +181,6 @@ function HeaderStrip({
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <h1 className="flex items-center gap-2 text-lg font-bold text-foreground">
               {patient?.firstName} {patient?.lastName}
-              <EmergencyBadge patient={patient} />
             </h1>
             <span className="text-xs text-muted-foreground">
               {patient?.mrn ? `MRN ${patient.mrn}` : ''}
