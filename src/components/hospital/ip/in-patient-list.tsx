@@ -134,7 +134,10 @@ function AdmissionDialog({
   initialMode?: 'existing' | 'new';
 }) {
   const queryClient = useQueryClient();
-  const [step, setStep] = useState<'details' | 'checklist'>('details');
+  // Register the patient first, then capture the admission, then confirm — the
+  // patient step mirrors the OP "Register New Patient" form; the second step is
+  // "Admit Patient" (the IP counterpart of OP's "Book Appointment").
+  const [step, setStep] = useState<'patient' | 'admit' | 'checklist'>('patient');
 
   // Patient mode toggle — switches between search and inline registration
   const [patientMode, setPatientMode] = useState<'existing' | 'new'>(initialMode);
@@ -155,6 +158,9 @@ function AdmissionDialog({
     phone: '',
     email: '',
     address: '',
+    city: '',
+    state: '',
+    zipCode: '',
   });
 
   const [selectedDoctorId, setSelectedDoctorId] = useState('');
@@ -278,6 +284,9 @@ function AdmissionDialog({
         if (newPatient.dateOfBirth) payload.dateOfBirth = newPatient.dateOfBirth;
         if (newPatient.email.trim()) payload.email = newPatient.email.trim();
         if (newPatient.address.trim()) payload.address = newPatient.address.trim();
+        if (newPatient.city.trim()) payload.city = newPatient.city.trim();
+        if (newPatient.state.trim()) payload.state = newPatient.state.trim();
+        if (newPatient.zipCode.trim()) payload.zipCode = newPatient.zipCode.trim();
 
         const patientRes = await apiPost<Patient>('/patients', payload);
         if (!patientRes.data?.id) throw new Error('Failed to register patient');
@@ -342,6 +351,9 @@ function AdmissionDialog({
       phone: '',
       email: '',
       address: '',
+      city: '',
+      state: '',
+      zipCode: '',
     });
     setPatientMode(initialMode);
     setSelectedDoctorId('');
@@ -354,7 +366,7 @@ function AdmissionDialog({
     setDepositAmount('');
     setBillingCategory('cash');
     setChecklist({});
-    setStep('details');
+    setStep('patient');
   }, [initialMode]);
 
   const newPatientValid =
@@ -393,37 +405,41 @@ function AdmissionDialog({
             )}
           </DialogTitle>
           <DialogDescription>
-            {step === 'details'
+            {step === 'patient'
               ? patientMode === 'new'
-                ? 'Register a new patient and admit them to a bed.'
-                : 'Fill in admission details (ward, bed, doctor, deposit).'
-              : 'Verify the admission checklist before confirming.'}
+                ? 'Register the new patient, then admit them to a bed.'
+                : 'Pick the patient, then admit them to a bed.'
+              : step === 'admit'
+                ? 'Fill in admission details (ward, bed, doctor, deposit).'
+                : 'Verify the admission checklist before confirming.'}
           </DialogDescription>
         </DialogHeader>
 
+        {/* Patient → Admit → Checklist. For an existing patient the first step
+            is just picking them; for a new one it's the registration form. */}
         <div className="flex items-center gap-2 text-xs">
-          <span
-            className={cn(
-              'rounded-full px-3 py-1 font-bold',
-              step === 'details' ? 'bg-primary text-white' : 'bg-primary/10 text-primary',
-            )}
-          >
-            1. Details
-          </span>
-          <span className="text-muted-foreground">→</span>
-          <span
-            className={cn(
-              'rounded-full px-3 py-1 font-bold',
-              step === 'checklist'
-                ? 'bg-primary text-white'
-                : 'bg-surface-container-high text-on-surface-variant',
-            )}
-          >
-            2. Checklist
-          </span>
+          {([
+            ['patient', patientMode === 'new' ? '1. Register' : '1. Patient'],
+            ['admit', '2. Admit'],
+            ['checklist', '3. Checklist'],
+          ] as const).map(([key, label], i) => (
+            <div key={key} className="flex items-center gap-2">
+              {i > 0 && <span className="text-muted-foreground">→</span>}
+              <span
+                className={cn(
+                  'rounded-full px-3 py-1 font-bold',
+                  step === key
+                    ? 'bg-primary text-white'
+                    : 'bg-surface-container-high text-on-surface-variant',
+                )}
+              >
+                {label}
+              </span>
+            </div>
+          ))}
         </div>
 
-        {step === 'details' && (
+        {step === 'patient' && (
           <div className="grid gap-4 py-2">
             {/* Patient mode toggle */}
             <div className="flex gap-2 p-1 rounded-xl bg-surface-container">
@@ -545,11 +561,30 @@ function AdmissionDialog({
                   <div className="grid gap-1.5 col-span-2">
                     <Label>Address</Label>
                     <Input
-                      placeholder="Street, city (optional)"
+                      placeholder="Street address (optional)"
                       value={newPatient.address}
                       onChange={(e) =>
                         setNewPatient((p) => ({ ...p, address: e.target.value }))
                       }
+                    />
+                  </div>
+                  {/* City / State / Zip — same optional address fields the OP
+                      registration form collects, so IP captures identical data. */}
+                  <div className="grid grid-cols-3 gap-3 col-span-2">
+                    <Input
+                      placeholder="City"
+                      value={newPatient.city}
+                      onChange={(e) => setNewPatient((p) => ({ ...p, city: e.target.value }))}
+                    />
+                    <Input
+                      placeholder="State"
+                      value={newPatient.state}
+                      onChange={(e) => setNewPatient((p) => ({ ...p, state: e.target.value }))}
+                    />
+                    <Input
+                      placeholder="Zip Code"
+                      value={newPatient.zipCode}
+                      onChange={(e) => setNewPatient((p) => ({ ...p, zipCode: e.target.value }))}
                     />
                   </div>
                 </div>
@@ -613,7 +648,11 @@ function AdmissionDialog({
               )}
               </div>
             )}
+          </div>
+        )}
 
+        {step === 'admit' && (
+          <div className="grid gap-4 py-2">
             <div className="grid grid-cols-2 gap-3">
               {/* Doctor */}
               <div className="grid gap-1.5">
@@ -866,10 +905,19 @@ function AdmissionDialog({
         )}
 
         <DialogFooter>
-          {step === 'details' ? (
+          {step === 'patient' ? (
             <>
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
+              </Button>
+              <Button disabled={!patientValid} onClick={() => setStep('admit')}>
+                Next: Admit Patient
+              </Button>
+            </>
+          ) : step === 'admit' ? (
+            <>
+              <Button variant="outline" onClick={() => setStep('patient')}>
+                Back
               </Button>
               <Button disabled={!detailsValid} onClick={() => setStep('checklist')}>
                 Next: Checklist
@@ -877,7 +925,7 @@ function AdmissionDialog({
             </>
           ) : (
             <>
-              <Button variant="outline" onClick={() => setStep('details')}>
+              <Button variant="outline" onClick={() => setStep('admit')}>
                 Back
               </Button>
               <Button
