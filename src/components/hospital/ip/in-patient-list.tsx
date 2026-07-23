@@ -51,12 +51,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiPatch } from '@/lib/api';
 import { formatDate, formatDateTime, toInputDateStr } from '@/lib/date-utils';
 import { toast } from 'sonner';
 import type { Admission, Patient, DoctorProfile, BedWithStatus } from '@/types';
 import { FrontDeskRegisterDialog } from '@/components/hospital/frontdesk-register-dialog';
+import { TempPatientActions, isTemporaryPatient } from '@/components/hospital/temp-patient-actions';
 import { BillGeneratorDialog } from '@/components/hospital/billing/bill-generator-dialog';
 import { AdvancePaymentDialog } from '@/components/hospital/billing/week12-dialogs';
 import { BillingSummaryDialog } from '@/components/pharmacy/billing-summary-dialog';
@@ -1968,6 +1970,9 @@ export function InPatientList() {
                               >
                                 {adm.patient?.firstName} {adm.patient?.lastName}
                               </Link>
+                              {isTemporaryPatient(adm.patient) && (
+                                <Badge variant="secondary" className="uppercase">Temp</Badge>
+                              )}
                             </span>
                             <p className="font-label text-[10px] text-on-surface-variant">
                               {adm.patient?.mrn} | {adm.patient?.phone}
@@ -2014,10 +2019,15 @@ export function InPatientList() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <RowActionsMenu
-                          admission={adm}
-                          onView={setViewAdmission}
-                        />
+                        <div className="flex items-center justify-end gap-2">
+                          {isTemporaryPatient(adm.patient) && adm.patient && (
+                            <TempPatientActions patient={adm.patient as any} />
+                          )}
+                          <RowActionsMenu
+                            admission={adm}
+                            onView={setViewAdmission}
+                          />
+                        </div>
                       </td>
                     </tr>
                   );

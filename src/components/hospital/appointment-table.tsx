@@ -3,7 +3,9 @@
 import { useState } from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { StatusProgression } from './status-progression';
+import { TempPatientActions, isTemporaryPatient } from '@/components/hospital/temp-patient-actions';
 import {
   AppointmentRowActions,
   type AppointmentRowLike,
@@ -137,6 +139,9 @@ export function AppointmentTable({
                         <div>
                           <p className="flex items-center gap-1.5 font-label text-sm font-bold">
                             {patient ? `${patient.firstName} ${patient.lastName}` : 'Unknown'}
+                            {isTemporaryPatient(patient) && (
+                              <Badge variant="secondary" className="uppercase">Temp</Badge>
+                            )}
                           </p>
                           <div className="flex items-center gap-2 font-label text-[10px] text-on-surface-variant">
                             <span>{patient?.mrn || '-'}</span>
@@ -210,10 +215,15 @@ export function AppointmentTable({
 
                     {/* Actions — shared with the Walk In / Front Desk queues */}
                     <td className="px-4 py-4">
-                      <AppointmentRowActions
-                        appointment={apt as unknown as AppointmentRowLike}
-                        onChanged={onChanged}
-                      />
+                      <div className="flex items-center gap-2">
+                        {isTemporaryPatient(patient) && patient && (
+                          <TempPatientActions patient={patient as any} />
+                        )}
+                        <AppointmentRowActions
+                          appointment={apt as unknown as AppointmentRowLike}
+                          onChanged={onChanged}
+                        />
+                      </div>
                     </td>
                   </tr>
                 );
