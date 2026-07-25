@@ -25,6 +25,13 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -49,6 +56,8 @@ import {
 } from '@/hooks/use-drug-master';
 
 const CATEGORIES = ['medicine', 'consumable', 'device', 'supplement', 'other'] as const;
+// Sentinel for the "no category" option (base-ui Select can't use an empty value).
+const NONE_CATEGORY = '__none__';
 
 // GST 2.0 slabs (effective 22-Sep-2025). Pharma/healthcare falls in these:
 //   0%  — Nil-rated: 33 notified life-saving drugs, and all individual health &
@@ -423,26 +432,34 @@ export default function SuperAdminHsnGstPage() {
                 autoFocus
               />
             </div>
-            <div>
+            <div className="space-y-1.5">
               <label className="text-xs font-medium">GST rate *</label>
-              <select
-                className="w-full h-9 rounded-md border bg-background px-2 text-sm"
+              <Select
                 value={String(form.gstRate)}
-                onChange={(e) => setForm((p) => ({ ...p, gstRate: Number(e.target.value) }))}
+                onValueChange={(v) => v != null && setForm((p) => ({ ...p, gstRate: Number(v) }))}
               >
-                {GST_SLABS.map((s) => (
-                  <option key={s.value} value={s.value}>
-                    {s.label}
-                  </option>
-                ))}
-                {/* Preserve a legacy rate (e.g. 12% / 28%) when editing an older
-                    row so the dropdown still shows its real value. */}
-                {!GST_SLABS.some((s) => s.value === Number(form.gstRate)) && (
-                  <option value={String(form.gstRate)}>{form.gstRate}% (legacy)</option>
-                )}
-              </select>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select rate">
+                    {(value) => {
+                      const s = GST_SLABS.find((x) => String(x.value) === value);
+                      return s ? s.label : value != null ? `${value}% (legacy)` : 'Select rate';
+                    }}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {GST_SLABS.map((s) => (
+                    <SelectItem key={s.value} value={String(s.value)}>
+                      {s.label}
+                    </SelectItem>
+                  ))}
+                  {/* Preserve a legacy rate (e.g. 12% / 28%) when editing an older row. */}
+                  {!GST_SLABS.some((s) => s.value === Number(form.gstRate)) && (
+                    <SelectItem value={String(form.gstRate)}>{form.gstRate}% (legacy)</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="col-span-2">
+            <div className="col-span-2 space-y-1.5">
               <label className="text-xs font-medium">Description</label>
               <Input
                 value={form.description ?? ''}
@@ -450,20 +467,26 @@ export default function SuperAdminHsnGstPage() {
                 placeholder="e.g. Medicaments in measured doses or retail packing"
               />
             </div>
-            <div>
+            <div className="space-y-1.5">
               <label className="text-xs font-medium">Category</label>
-              <select
-                className="w-full h-9 rounded-md border bg-background px-2 text-sm capitalize"
-                value={form.category ?? ''}
-                onChange={(e) => setForm((p) => ({ ...p, category: e.target.value || null }))}
+              <Select
+                value={form.category || NONE_CATEGORY}
+                onValueChange={(v) => setForm((p) => ({ ...p, category: v && v !== NONE_CATEGORY ? v : null }))}
               >
-                <option value="">—</option>
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c} className="capitalize">
-                    {c}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="w-full capitalize">
+                  <SelectValue placeholder="—">
+                    {(value) => (value && value !== NONE_CATEGORY ? value : '—')}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE_CATEGORY}>—</SelectItem>
+                  {CATEGORIES.map((c) => (
+                    <SelectItem key={c} value={c} className="capitalize">
+                      {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex items-end pb-1.5">
               <label className="flex items-center gap-2 text-xs font-medium">
@@ -502,34 +525,43 @@ export default function SuperAdminHsnGstPage() {
           </DialogHeader>
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
+            <div className="space-y-1.5">
               <label className="text-xs font-medium">Default GST rate</label>
-              <select
-                className="w-full h-9 rounded-md border bg-background px-2 text-sm"
-                value={String(bulkGst)}
-                onChange={(e) => setBulkGst(Number(e.target.value))}
-              >
-                {GST_SLABS.map((s) => (
-                  <option key={s.value} value={s.value}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
+              <Select value={String(bulkGst)} onValueChange={(v) => v != null && setBulkGst(Number(v))}>
+                <SelectTrigger className="w-full">
+                  <SelectValue>
+                    {(value) => GST_SLABS.find((x) => String(x.value) === value)?.label ?? 'Select rate'}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {GST_SLABS.map((s) => (
+                    <SelectItem key={s.value} value={String(s.value)}>
+                      {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div>
+            <div className="space-y-1.5">
               <label className="text-xs font-medium">Default category</label>
-              <select
-                className="w-full h-9 rounded-md border bg-background px-2 text-sm capitalize"
-                value={bulkCategory}
-                onChange={(e) => setBulkCategory(e.target.value)}
+              <Select
+                value={bulkCategory || NONE_CATEGORY}
+                onValueChange={(v) => setBulkCategory(v && v !== NONE_CATEGORY ? v : '')}
               >
-                <option value="">—</option>
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c} className="capitalize">
-                    {c}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="w-full capitalize">
+                  <SelectValue placeholder="—">
+                    {(value) => (value && value !== NONE_CATEGORY ? value : '—')}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE_CATEGORY}>—</SelectItem>
+                  {CATEGORIES.map((c) => (
+                    <SelectItem key={c} value={c} className="capitalize">
+                      {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
