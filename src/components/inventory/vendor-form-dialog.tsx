@@ -200,12 +200,12 @@ function VendorForm({
             >
               <SelectTrigger id="v-type" className="w-full">
                 <SelectValue placeholder="Select">
-                  {(value) => (value === 'credit' ? 'Credit (pay later)' : value === 'upfront' ? 'Upfront (pay now)' : 'Select')}
+                  {(value) => (value === 'credit' ? 'Credit' : value === 'upfront' ? 'Upfront' : 'Select')}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="credit">Credit (pay later)</SelectItem>
-                <SelectItem value="upfront">Upfront (pay now)</SelectItem>
+                <SelectItem value="credit">Credit</SelectItem>
+                <SelectItem value="upfront">Upfront</SelectItem>
               </SelectContent>
             </Select>
           </div>
