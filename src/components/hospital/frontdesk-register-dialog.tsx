@@ -774,63 +774,13 @@ export function FrontDeskRegisterDialog({
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Basic Info
                   </p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="fd-firstName">First Name *</Label>
-                      <Input id="fd-firstName" placeholder="Enter first name" {...register('firstName')} />
-                      {patientErrors.firstName && (
-                        <p className="text-xs text-destructive">{patientErrors.firstName.message}</p>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="fd-lastName">Last Name *</Label>
-                      <Input id="fd-lastName" placeholder="Enter last name" {...register('lastName')} />
-                      {patientErrors.lastName && (
-                        <p className="text-xs text-destructive">{patientErrors.lastName.message}</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label>Gender *</Label>
-                      <Select
-                        value={genderValue}
-                        onValueChange={(value: string | null) => {
-                          if (value) setPatientValue('gender', value as 'male' | 'female' | 'other');
-                        }}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Select gender" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {GENDERS.map((g) => (
-                            <SelectItem key={g.value} value={g.value}>{g.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {patientErrors.gender && (
-                        <p className="text-xs text-destructive">{patientErrors.gender.message}</p>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="fd-dob">Date of Birth</Label>
-                      <Input id="fd-dob" type="date" {...register('dateOfBirth')} />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="fd-phone">Phone *</Label>
-                      <Input id="fd-phone" placeholder="Enter phone number" {...register('phone')} />
-                      {patientErrors.phone && (
-                        <p className="text-xs text-destructive">{patientErrors.phone.message}</p>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="fd-email">Email</Label>
-                      <Input id="fd-email" type="email" placeholder="Optional" {...register('email')} />
-                    </div>
+                  {/* Phone is the account key — captured first, before anything else */}
+                  <div className="space-y-1.5">
+                    <Label htmlFor="fd-phone">Phone *</Label>
+                    <Input id="fd-phone" placeholder="Enter phone number" {...register('phone')} />
+                    {patientErrors.phone && (
+                      <p className="text-xs text-destructive">{patientErrors.phone.message}</p>
+                    )}
                   </div>
 
                   {/* Phone-driven account resolution. The number is the account
@@ -916,6 +866,56 @@ export function FrontDeskRegisterDialog({
                       )}
                     </div>
                   )}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="fd-firstName">First Name *</Label>
+                      <Input id="fd-firstName" placeholder="Enter first name" {...register('firstName')} />
+                      {patientErrors.firstName && (
+                        <p className="text-xs text-destructive">{patientErrors.firstName.message}</p>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="fd-lastName">Last Name *</Label>
+                      <Input id="fd-lastName" placeholder="Enter last name" {...register('lastName')} />
+                      {patientErrors.lastName && (
+                        <p className="text-xs text-destructive">{patientErrors.lastName.message}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>Gender *</Label>
+                      <Select
+                        value={genderValue}
+                        onValueChange={(value: string | null) => {
+                          if (value) setPatientValue('gender', value as 'male' | 'female' | 'other');
+                        }}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select gender" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {GENDERS.map((g) => (
+                            <SelectItem key={g.value} value={g.value}>{g.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {patientErrors.gender && (
+                        <p className="text-xs text-destructive">{patientErrors.gender.message}</p>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="fd-dob">Date of Birth</Label>
+                      <Input id="fd-dob" type="date" {...register('dateOfBirth')} />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="fd-email">Email</Label>
+                    <Input id="fd-email" type="email" placeholder="Optional" {...register('email')} />
+                  </div>
                 </div>
 
                 {/* Address (collapsed) */}
