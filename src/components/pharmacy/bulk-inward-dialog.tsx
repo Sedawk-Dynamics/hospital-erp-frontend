@@ -1212,10 +1212,11 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         targetFormularyId: d.action === 'map' ? d.targetId ?? undefined : undefined,
         // A 'create' seeded from the catalog links the new formulary row to the master.
         drugMasterId: d.action === 'create' ? l.drugMasterId || undefined : undefined,
-        // Raw line text is the learned-mapping key — the ORIGINAL typed name
-        // captured on the line at first match (falls back to the current name),
-        // so connecting "lolo" → "Loloxy" is remembered under "lolo".
-        externalName: (l.rawName || l.drugName).trim(),
+        // Raw line text is the learned-mapping key — the ORIGINAL typed name.
+        // Prefer the sticky rawName; else the pre-catalog-pick name (catalogBackup);
+        // else the current name. So connecting "lolo" → "Loloxy" (by match OR by
+        // catalog pick) is always remembered under "lolo".
+        externalName: (l.rawName || l.catalogBackup?.drugName || l.drugName).trim(),
         drugName: l.drugName.trim(),
         genericName: l.genericName.trim() || undefined,
         manufacturer: l.manufacturer.trim() || undefined,
