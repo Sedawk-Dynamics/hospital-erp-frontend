@@ -2548,16 +2548,19 @@ function LineMatchControl({
   const hasFormulary = formularyMatches.length > 0;
   const target = formularyMatches.find((x) => x.id === decision.targetId) ?? null;
 
-  // Free-text catalog search (in addition to the auto-suggested chips).
-  const [search, setSearch] = useState('');
-  const { data: searchResults } = useDrugMasterSearch(search, search.trim().length >= 2);
+  // ONE search across BOTH this hospital's stock (formulary) AND the platform
+  // drug catalog — results are shown together but grouped so the user can tell
+  // "already in your stock → map" from "from the catalog → add as new".
+  const [uSearch, setUSearch] = useState('');
+  const q = uSearch.trim();
+  const active = q.length >= 2;
+  const { data: catalogSearchResults } = useDrugMasterSearch(uSearch, active);
+  const fRes = useFormulary({ search: active ? q : undefined, limit: 6, isActive: true });
+  const stockResults = active ? (fRes.data?.data ?? []) : [];
+  const catalogResults = active ? (catalogSearchResults ?? []) : [];
 
-  // Free-text search of THIS hospital's own formulary — to map the line to an
-  // existing drug the matcher didn't auto-suggest (keeps the typed name as the
-  // learned-mapping key, so "test 2" → A-Card is remembered under "test 2").
-  const [fSearch, setFSearch] = useState('');
-  const fRes = useFormulary({ search: fSearch.trim() || undefined, limit: 8, isActive: true });
-  const fResults = fSearch.trim().length >= 2 ? (fRes.data?.data ?? []) : [];
+  // Pick an existing stocked drug → map the line to it (keeps the typed name as
+  // the learned-mapping key).
   const pickExisting = (r: {
     id: string; drugName: string; genericName?: string | null; strength?: string | null;
     manufacturer?: string | null; totalStock?: number | null;
@@ -2569,7 +2572,7 @@ function LineMatchControl({
     } as unknown as FormularyMatch;
     setExtraTargets((prev) => (prev.some((x) => x.id === r.id) ? prev : [...prev, chip]));
     onDecision({ action: 'map', targetId: r.id });
-    setFSearch('');
+    setUSearch('');
   };
 
   const matchToPick = (c: FormularyMatch): CatalogPick => ({
@@ -2579,9 +2582,9 @@ function LineMatchControl({
     packSize: c.packSize, hsnCode: c.hsnCode, gtin: c.gtin,
   });
 
-  // Show the catalog picker whenever the line is being created new (or has
-  // catalog suggestions) — that's when searching the catalog is useful.
-  const showCatalog = catalogMatches.length > 0 || decision.action === 'create';
+  // The auto-suggested closest catalog matches (free-text catalog search now
+  // lives in the single unified search box above).
+  const showCatalog = catalogMatches.length > 0;
   return (
     <div className="mt-2 rounded-md border border-primary/15 bg-primary/[0.03] p-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2619,40 +2622,86 @@ function LineMatchControl({
         </div>
       </div>
 
+      {/* One search — your stock AND the drug catalog together, grouped. Picking
+          a stock drug maps to it (keeps the typed name); picking a catalog drug
+          adopts its identity into the boxes and adds it as new. */}
+      <div className="mt-2">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={uSearch}
+            onChange={(e) => setUSearch(e.target.value)}
+            placeholder="Search your stock or the drug catalog by name…"
+            className="h-7 pl-7 text-xs"
+          />
+        </div>
+        {active && (stockResults.length > 0 || catalogResults.length > 0) && (
+          <div className="mt-1 max-h-64 overflow-y-auto rounded-md border bg-popover shadow-sm sanctuary-scrollbar">
+            {/* In your stock → map to existing */}
+            {stockResults.length > 0 && (
+              <>
+                <div className="sticky top-0 z-10 border-b bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
+                  In your stock — map to existing
+                </div>
+                {stockResults.map((r) => (
+                  <button
+                    key={`s-${r.id}`}
+                    type="button"
+                    onClick={() => pickExisting(r)}
+                    className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs hover:bg-emerald-50/60"
+                  >
+                    <span className="truncate font-medium">{r.drugName}</span>
+                    {r.strength && <span className="shrink-0 text-muted-foreground">{r.strength}</span>}
+                    <span className="ml-auto shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                      stock {r.totalStock ?? 0}
+                    </span>
+                  </button>
+                ))}
+              </>
+            )}
+            {/* From the catalog → add as new */}
+            {catalogResults.length > 0 && (
+              <>
+                <div className="sticky top-0 z-10 border-b border-t bg-blue-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-blue-700">
+                  Drug catalog — add as new
+                </div>
+                {catalogResults.map((r) => (
+                  <button
+                    key={`c-${r.id}`}
+                    type="button"
+                    onClick={() => {
+                      onPickCatalog({
+                        drugMasterId: r.id, drugName: r.name, genericName: r.genericName,
+                        manufacturer: r.manufacturer, strength: r.strength,
+                        dosageForm: r.dosageForm as string | null,
+                        packSize: r.packSize ?? undefined,
+                        hsnCode: r.hsnCode ?? undefined,
+                        gtin: r.gtin ?? undefined,
+                      });
+                      setUSearch('');
+                    }}
+                    className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs hover:bg-blue-50/60"
+                  >
+                    <Plus className="h-3 w-3 shrink-0 text-blue-600" />
+                    <span className="truncate font-medium">{r.name}</span>
+                    {r.strength && <span className="shrink-0 text-muted-foreground">{r.strength}</span>}
+                    {r.manufacturer && <span className="truncate text-muted-foreground">· {r.manufacturer}</span>}
+                    <Badge variant="outline" className="ml-auto shrink-0 border-blue-500/20 bg-blue-500/10 text-[10px] text-blue-700">
+                      catalog
+                    </Badge>
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
       {decision.action === 'map' ? (
         <div className="mt-2 space-y-2">
-          {/* Search THIS hospital's stock to map the line to an existing drug —
-              so a shorthand / vendor name the matcher didn't find can still be
-              pointed at a stocked drug (kept under the typed name). */}
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={fSearch}
-              onChange={(e) => setFSearch(e.target.value)}
-              placeholder="Search your stock to map to an existing drug…"
-              className="h-7 pl-7 text-xs"
-            />
-          </div>
-          {fResults.length > 0 && (
-            <div className="max-h-52 overflow-y-auto rounded-md border bg-popover shadow-sm sanctuary-scrollbar">
-              {fResults.map((r) => (
-                <button
-                  key={r.id}
-                  type="button"
-                  onClick={() => pickExisting(r)}
-                  className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs hover:bg-muted"
-                >
-                  <span className="truncate font-medium">{r.drugName}</span>
-                  {r.strength && <span className="shrink-0 text-muted-foreground">{r.strength}</span>}
-                  <span className="ml-auto shrink-0 text-[10px] text-emerald-700">stock {r.totalStock ?? 0}</span>
-                </button>
-              ))}
-            </div>
-          )}
-
           {!hasFormulary && (
             <p className="text-[11px] text-muted-foreground">
-              Search above and pick the drug this line should be added to.
+              Use the search above and pick the drug this line should be added to.
             </p>
           )}
 
@@ -2717,41 +2766,6 @@ function LineMatchControl({
               </button>
             )}
           </div>
-
-          {/* Free-text search of the whole catalog */}
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search the drug catalog by name…"
-              className="h-7 pl-7 text-xs"
-            />
-          </div>
-          {search.trim().length >= 2 && (searchResults?.length ?? 0) > 0 && (
-            <div className="mt-1 max-h-52 overflow-y-auto rounded-md border bg-popover shadow-sm sanctuary-scrollbar">
-              {searchResults!.map((r) => (
-                <button
-                  key={r.id}
-                  type="button"
-                  onClick={() => {
-                    onPickCatalog({
-                      drugMasterId: r.id, drugName: r.name, genericName: r.genericName,
-                      manufacturer: r.manufacturer, strength: r.strength,
-                      dosageForm: r.dosageForm as string | null,
-                    });
-                    setSearch('');
-                  }}
-                  className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs hover:bg-muted"
-                >
-                  <Plus className="h-3 w-3 shrink-0 text-muted-foreground" />
-                  <span className="truncate font-medium">{r.name}</span>
-                  {r.strength && <span className="shrink-0 text-muted-foreground">{r.strength}</span>}
-                  {r.manufacturer && <span className="truncate text-muted-foreground">· {r.manufacturer}</span>}
-                </button>
-              ))}
-            </div>
-          )}
 
           {/* Auto-suggested closest catalog drugs */}
           {catalogMatches.length > 0 && (

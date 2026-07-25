@@ -54,6 +54,9 @@ export interface DrugMasterSearchResult {
   dosageForm: DosageForm | null;
   strength: string | null;
   packSizeLabel: string | null;
+  packSize: number | null;
+  hsnCode: string | null;
+  gtin: string | null;
   mrp: number | string | null;
   type: string | null;
   schedule: string | null;
