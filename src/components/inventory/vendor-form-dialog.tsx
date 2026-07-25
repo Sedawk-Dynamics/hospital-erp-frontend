@@ -57,17 +57,9 @@ export function VendorFormDialog({
 }
 
 // How the vendor is paid. `credit` = pay later (terms + credit limit apply);
-// any of the upfront modes = pay at the time of purchase (no terms/credit).
+// Upfront (pay now) is stored as the neutral 'cash' marker (no terms/credit).
 type PaymentMode = 'cash' | 'cheque' | 'bank_transfer' | 'upi' | 'credit';
 type PaymentType = 'credit' | 'upfront';
-
-// Upfront settlement modes (shown only when the payment type is Upfront).
-const UPFRONT_MODES: { value: Exclude<PaymentMode, 'credit'>; label: string }[] = [
-  { value: 'cash', label: 'Cash' },
-  { value: 'cheque', label: 'Cheque' },
-  { value: 'bank_transfer', label: 'NEFT / RTGS' },
-  { value: 'upi', label: 'UPI' },
-];
 
 interface FormState {
   name: string;
@@ -79,8 +71,6 @@ interface FormState {
   supplyType: SupplyType;
   // Credit (pay later) vs Upfront (pay now).
   paymentType: '' | PaymentType;
-  // The upfront settlement mode — only meaningful when paymentType === 'upfront'.
-  upfrontMode: '' | Exclude<PaymentMode, 'credit'>;
   /** Kept as strings for the inputs; parsed to numbers on save. Credit-only. */
   paymentTermDays: string;
   creditLimit: string;
@@ -109,7 +99,6 @@ function VendorForm({
       supplyType: vendor?.supplyType ?? 'drugs',
       // Derive the type from the saved mode: 'credit' → Credit, any other → Upfront.
       paymentType: vm === 'credit' ? 'credit' : vm ? 'upfront' : '',
-      upfrontMode: vm && vm !== 'credit' ? vm : '',
       paymentTermDays: vendor?.paymentTermDays != null ? String(vendor.paymentTermDays) : '',
       creditLimit: vendor?.creditLimit != null ? String(vendor.creditLimit) : '',
     };
@@ -123,14 +112,9 @@ function VendorForm({
 
   const save = async () => {
     if (!form.name.trim()) return toast.error('Vendor name is required');
-    if (isUpfront && !form.upfrontMode) return toast.error('Pick how upfront payments are made');
-    // Credit → mode is 'credit' + terms/limit apply. Upfront → the chosen upfront
-    // mode, and terms/credit limit are cleared (null) so they don't linger.
-    const paymentMode: PaymentMode | null = isCredit
-      ? 'credit'
-      : isUpfront
-        ? form.upfrontMode || null
-        : null;
+    // Credit → mode 'credit' + terms/limit apply. Upfront → the neutral 'cash'
+    // marker (pay now), with terms/credit limit cleared (null) so none linger.
+    const paymentMode: PaymentMode | null = isCredit ? 'credit' : isUpfront ? 'cash' : null;
     const payload = {
       name: form.name.trim(),
       gstNumber: form.gstNumber.trim() || undefined,
@@ -256,26 +240,11 @@ function VendorForm({
             </div>
           )}
 
-          {/* Upfront → how they're paid at purchase (no terms / credit limit). */}
+          {/* Upfront → paid at purchase; no terms or credit limit apply. */}
           {isUpfront && (
-            <div className="space-y-1.5">
-              <Label htmlFor="v-mode">Paid by</Label>
-              <Select
-                value={form.upfrontMode || null}
-                onValueChange={(v) => set('upfrontMode', (v ?? '') as Exclude<PaymentMode, 'credit'>)}
-              >
-                <SelectTrigger id="v-mode" className="w-full">
-                  <SelectValue placeholder="Select">
-                    {(value) => UPFRONT_MODES.find((m) => m.value === value)?.label ?? 'Select'}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {UPFRONT_MODES.map((m) => (
-                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Paid at the time of purchase — no credit terms or limit apply.
+            </p>
           )}
         </div>
 
