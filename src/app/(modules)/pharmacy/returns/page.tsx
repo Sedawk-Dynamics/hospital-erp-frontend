@@ -9,6 +9,7 @@ import { NumberInput } from '@/components/ui/number-input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { StockTypeBadge } from '@/components/shared/stock-type-badge';
+import { DrugStockLabel } from '@/components/shared/drug-stock-label';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
@@ -304,6 +305,7 @@ function CounterReturnDialog({ onClose }: { onClose: () => void }) {
                           {d.drugName}
                           {d.strength && <span className="ml-1 text-xs text-muted-foreground">{d.strength}</span>}
                           <StockTypeBadge category={d.category} />
+                          <DrugStockLabel stock={d.totalStock} className="ml-auto" />
                         </div>
                         {d.genericName && (
                           <div className="text-xs text-muted-foreground">{d.genericName}</div>

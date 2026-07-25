@@ -26,6 +26,7 @@ import {
   type SurgicalTemplate,
 } from '@/hooks/use-ot-kit';
 import { useFormulary } from '@/hooks/use-pharmacy';
+import { DrugStockLabel } from '@/components/shared/drug-stock-label';
 import { useDoctorsList } from '@/hooks/use-hospital';
 
 const TEXTAREA_CLS =
@@ -348,6 +349,7 @@ function TemplateItemRow({
                         <span className="font-medium">{d.drugName}</span>
                         {d.strength && <span className="ml-2 text-xs text-muted-foreground">{d.strength}</span>}
                         {d.genericName && <span className="ml-2 text-xs text-muted-foreground">{d.genericName}</span>}
+                        <DrugStockLabel stock={d.totalStock} className="ml-2 align-middle" />
                       </button>
                     ))
                   ) : (

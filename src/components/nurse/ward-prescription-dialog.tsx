@@ -26,6 +26,7 @@ import { useDebounce } from '@/hooks/use-debounce';
 import { useFormularySearch, useCreatePrescription } from '@/hooks/use-doctor';
 import type { NurseAdmission } from '@/hooks/use-nurse';
 import { StockTypeBadge } from '@/components/shared/stock-type-badge';
+import { DrugStockLabel } from '@/components/shared/drug-stock-label';
 
 /**
  * §4.2 ward→pharmacy flow: the ward nurse enters the doctor's key-sheet
@@ -191,6 +192,11 @@ export function WardPrescriptionDialog({
                     <span className="font-medium">{d.drugName}</span>
                     {d.strength ? <span className="text-muted-foreground"> {d.strength}</span> : ''}
                     <StockTypeBadge category={d.category} className="ml-1.5 align-middle" />
+                    <DrugStockLabel
+                      stock={d.availableStock}
+                      catalog={d.source === 'master'}
+                      className="ml-1.5 align-middle"
+                    />
                     {d.genericName ? (
                       <span className="block text-xs text-muted-foreground">{d.genericName}</span>
                     ) : null}

@@ -77,6 +77,7 @@ import { cn} from '@/lib/utils';
 import { formatDate, formatDateTimeAmPm, toInputDateStr } from '@/lib/date-utils';
 import { packSummary } from '@/lib/pharmacy-units';
 import { StockTypeBadge } from '@/components/shared/stock-type-badge';
+import { DrugStockLabel } from '@/components/shared/drug-stock-label';
 import { BarcodeViewDialog } from '@/components/pharmacy/barcode-view-dialog';
 import {
   AdjustStockDialog,
@@ -800,6 +801,7 @@ export function DrugBatchesPanel({
                                   {drug.drugName}
                                   {drug.strength ? ` ${drug.strength}` : ''}
                                   <StockTypeBadge category={drug.category} />
+                                  <DrugStockLabel stock={drug.totalStock} />
                                 </span>
                                 <span className="text-xs text-muted-foreground">
                                   {drug.genericName || ''}

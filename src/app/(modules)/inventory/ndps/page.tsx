@@ -20,6 +20,7 @@ import {
 import { formatDate, formatDateTime, toInputDateStr } from '@/lib/date-utils';
 import { downloadCsv } from '@/lib/csv';
 import { useFormulary } from '@/hooks/use-pharmacy';
+import { DrugStockLabel } from '@/components/shared/drug-stock-label';
 import { useUsersList } from '@/hooks/use-users';
 import { usePatientSearch } from '@/hooks/use-hospital';
 import {
@@ -84,6 +85,7 @@ function NarcoticDrugPicker({ value, onChange }: { value: string; onChange: (v: 
                 className="block w-full border-b border-border/60 px-2 py-1.5 text-left text-sm last:border-b-0 hover:bg-muted"
               >
                 <span className="font-medium">{d.drugName}{d.strength ? ` ${d.strength}` : ''}</span>
+                <DrugStockLabel stock={d.totalStock} className="ml-1.5 align-middle" />
                 {(d as { genericName?: string | null }).genericName ? (
                   <span className="ml-1 text-xs text-muted-foreground">· {(d as { genericName?: string | null }).genericName}</span>
                 ) : null}

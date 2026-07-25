@@ -33,6 +33,7 @@ import {
 } from '@/hooks/use-inventory';
 import { useFormulary } from '@/hooks/use-pharmacy';
 import { StockTypeBadge } from '@/components/shared/stock-type-badge';
+import { DrugStockLabel } from '@/components/shared/drug-stock-label';
 
 type Tab = 'all' | 'created' | 'delivered';
 
@@ -401,6 +402,7 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: (createdId?: strin
                                 </p>
                               )}
                             </div>
+                            <DrugStockLabel stock={d.totalStock} className="mt-0.5 shrink-0" />
                           </button>
                         ))}
                       </div>

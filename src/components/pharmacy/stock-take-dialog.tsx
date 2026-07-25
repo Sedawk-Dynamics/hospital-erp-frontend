@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/lib/date-utils';
+import { DrugStockLabel } from '@/components/shared/drug-stock-label';
 import {
   useBatches,
   useFormulary,
@@ -203,7 +204,8 @@ export function StockTakeDialog({
                           onSelect={() => { setDrugFilter(d.id); setDrugLabel(d.drugName); setDrugComboOpen(false); }}
                         >
                           <Check className={cn('mr-2 h-4 w-4', drugFilter === d.id ? 'opacity-100' : 'opacity-0')} />
-                          {d.drugName}{d.strength ? ` ${d.strength}` : ''}
+                          <span className="truncate">{d.drugName}{d.strength ? ` ${d.strength}` : ''}</span>
+                          <DrugStockLabel stock={d.totalStock} className="ml-auto shrink-0" />
                         </CommandItem>
                       ))}
                     </CommandGroup>
