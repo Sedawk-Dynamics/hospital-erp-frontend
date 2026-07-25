@@ -56,10 +56,13 @@ export function VendorFormDialog({
   );
 }
 
+// How the vendor is paid. `credit` = pay later (terms + credit limit apply);
+// any of the upfront modes = pay at the time of purchase (no terms/credit).
 type PaymentMode = 'cash' | 'cheque' | 'bank_transfer' | 'upi' | 'credit';
+type PaymentType = 'credit' | 'upfront';
 
-const PAYMENT_MODES: { value: PaymentMode; label: string }[] = [
-  { value: 'credit', label: 'Credit' },
+// Upfront settlement modes (shown only when the payment type is Upfront).
+const UPFRONT_MODES: { value: Exclude<PaymentMode, 'credit'>; label: string }[] = [
   { value: 'cash', label: 'Cash' },
   { value: 'cheque', label: 'Cheque' },
   { value: 'bank_transfer', label: 'NEFT / RTGS' },
@@ -74,10 +77,13 @@ interface FormState {
   email: string;
   address: string;
   supplyType: SupplyType;
-  /** Kept as strings for the inputs; parsed to numbers on save. */
+  // Credit (pay later) vs Upfront (pay now).
+  paymentType: '' | PaymentType;
+  // The upfront settlement mode — only meaningful when paymentType === 'upfront'.
+  upfrontMode: '' | Exclude<PaymentMode, 'credit'>;
+  /** Kept as strings for the inputs; parsed to numbers on save. Credit-only. */
   paymentTermDays: string;
   creditLimit: string;
-  paymentMode: '' | PaymentMode;
 }
 
 function VendorForm({
@@ -91,24 +97,40 @@ function VendorForm({
 }) {
   const create = useCreateSupplier();
   const update = useUpdateSupplier();
-  const [form, setForm] = useState<FormState>(() => ({
-    name: vendor?.name ?? '',
-    gstNumber: vendor?.gstNumber ?? '',
-    licenseNumber: vendor?.licenseNumber ?? '',
-    phone: vendor?.phone ?? '',
-    email: vendor?.email ?? '',
-    address: vendor?.address ?? '',
-    supplyType: vendor?.supplyType ?? 'drugs',
-    paymentTermDays: vendor?.paymentTermDays != null ? String(vendor.paymentTermDays) : '',
-    creditLimit: vendor?.creditLimit != null ? String(vendor.creditLimit) : '',
-    paymentMode: (vendor?.paymentMode as PaymentMode | undefined) ?? '',
-  }));
+  const [form, setForm] = useState<FormState>(() => {
+    const vm = vendor?.paymentMode as PaymentMode | undefined;
+    return {
+      name: vendor?.name ?? '',
+      gstNumber: vendor?.gstNumber ?? '',
+      licenseNumber: vendor?.licenseNumber ?? '',
+      phone: vendor?.phone ?? '',
+      email: vendor?.email ?? '',
+      address: vendor?.address ?? '',
+      supplyType: vendor?.supplyType ?? 'drugs',
+      // Derive the type from the saved mode: 'credit' → Credit, any other → Upfront.
+      paymentType: vm === 'credit' ? 'credit' : vm ? 'upfront' : '',
+      upfrontMode: vm && vm !== 'credit' ? vm : '',
+      paymentTermDays: vendor?.paymentTermDays != null ? String(vendor.paymentTermDays) : '',
+      creditLimit: vendor?.creditLimit != null ? String(vendor.creditLimit) : '',
+    };
+  });
 
   const set = (k: keyof FormState, v: string) => setForm((p) => ({ ...p, [k]: v }));
   const pending = create.isPending || update.isPending;
 
+  const isCredit = form.paymentType === 'credit';
+  const isUpfront = form.paymentType === 'upfront';
+
   const save = async () => {
     if (!form.name.trim()) return toast.error('Vendor name is required');
+    if (isUpfront && !form.upfrontMode) return toast.error('Pick how upfront payments are made');
+    // Credit → mode is 'credit' + terms/limit apply. Upfront → the chosen upfront
+    // mode, and terms/credit limit are cleared (null) so they don't linger.
+    const paymentMode: PaymentMode | null = isCredit
+      ? 'credit'
+      : isUpfront
+        ? form.upfrontMode || null
+        : null;
     const payload = {
       name: form.name.trim(),
       gstNumber: form.gstNumber.trim() || undefined,
@@ -117,9 +139,9 @@ function VendorForm({
       email: form.email.trim() || undefined,
       address: form.address.trim() || undefined,
       supplyType: form.supplyType,
-      paymentTermDays: form.paymentTermDays.trim() ? Number(form.paymentTermDays) : undefined,
-      creditLimit: form.creditLimit.trim() ? Number(form.creditLimit) : undefined,
-      paymentMode: form.paymentMode || undefined,
+      paymentTermDays: isCredit && form.paymentTermDays.trim() ? Number(form.paymentTermDays) : null,
+      creditLimit: isCredit && form.creditLimit.trim() ? Number(form.creditLimit) : null,
+      paymentMode,
     };
     try {
       const saved = vendor
@@ -182,52 +204,79 @@ function VendorForm({
 
         {/* Payment section — reference figures the accounts team uses when
             clearing dues. Nothing here is enforced; there is no vendor login. */}
-        <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+        <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Payment</p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+
+          {/* Payment type: Credit (pay later) or Upfront (pay now). */}
+          <div className="space-y-1.5">
+            <Label htmlFor="v-type">Payment type</Label>
+            <Select
+              value={form.paymentType || null}
+              onValueChange={(v) => set('paymentType', (v ?? '') as PaymentType)}
+            >
+              <SelectTrigger id="v-type" className="w-full">
+                <SelectValue placeholder="Select">
+                  {(value) => (value === 'credit' ? 'Credit (pay later)' : value === 'upfront' ? 'Upfront (pay now)' : 'Select')}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="credit">Credit (pay later)</SelectItem>
+                <SelectItem value="upfront">Upfront (pay now)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Credit → terms + credit limit. */}
+          {isCredit && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="v-terms">Terms (days)</Label>
+                <Input
+                  id="v-terms"
+                  type="number"
+                  min={0}
+                  max={365}
+                  value={form.paymentTermDays}
+                  onChange={(e) => set('paymentTermDays', e.target.value)}
+                  placeholder="e.g. 30"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="v-credit">Credit limit (₹)</Label>
+                <Input
+                  id="v-credit"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={form.creditLimit}
+                  onChange={(e) => set('creditLimit', e.target.value)}
+                  placeholder="e.g. 50000"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Upfront → how they're paid at purchase (no terms / credit limit). */}
+          {isUpfront && (
             <div className="space-y-1.5">
-              <Label htmlFor="v-mode">Payment mode</Label>
+              <Label htmlFor="v-mode">Paid by</Label>
               <Select
-                value={form.paymentMode || null}
-                onValueChange={(v) => set('paymentMode', (v ?? '') as PaymentMode)}
+                value={form.upfrontMode || null}
+                onValueChange={(v) => set('upfrontMode', (v ?? '') as Exclude<PaymentMode, 'credit'>)}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="v-mode" className="w-full">
                   <SelectValue placeholder="Select">
-                    {(value) => PAYMENT_MODES.find((m) => m.value === value)?.label ?? 'Select'}
+                    {(value) => UPFRONT_MODES.find((m) => m.value === value)?.label ?? 'Select'}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {PAYMENT_MODES.map((m) => (
+                  {UPFRONT_MODES.map((m) => (
                     <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="v-terms">Terms (days)</Label>
-              <Input
-                id="v-terms"
-                type="number"
-                min={0}
-                max={365}
-                value={form.paymentTermDays}
-                onChange={(e) => set('paymentTermDays', e.target.value)}
-                placeholder="e.g. 30"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="v-credit">Credit limit (₹)</Label>
-              <Input
-                id="v-credit"
-                type="number"
-                min={0}
-                step="0.01"
-                value={form.creditLimit}
-                onChange={(e) => set('creditLimit', e.target.value)}
-                placeholder="e.g. 50000"
-              />
-            </div>
-          </div>
+          )}
         </div>
 
         <div className="space-y-1.5">
