@@ -2631,24 +2631,23 @@ function LineMatchControl({
               placeholder="Search your stock to map to an existing drug…"
               className="h-7 pl-7 text-xs"
             />
-            {fResults.length > 0 && (
-              <div className="absolute z-20 mt-1 max-h-52 w-full overflow-y-auto rounded-md border bg-popover shadow-lg sanctuary-scrollbar">
-                {fResults.map((r) => (
-                  <button
-                    key={r.id}
-                    type="button"
-                    onClick={() => pickExisting(r)}
-                    className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs hover:bg-muted"
-                  >
-                    <Check className="h-3 w-3 shrink-0 text-primary opacity-0" />
-                    <span className="truncate font-medium">{r.drugName}</span>
-                    {r.strength && <span className="shrink-0 text-muted-foreground">{r.strength}</span>}
-                    <span className="ml-auto shrink-0 text-[10px] text-emerald-700">stock {r.totalStock ?? 0}</span>
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
+          {fResults.length > 0 && (
+            <div className="max-h-52 overflow-y-auto rounded-md border bg-popover shadow-sm sanctuary-scrollbar">
+              {fResults.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => pickExisting(r)}
+                  className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs hover:bg-muted"
+                >
+                  <span className="truncate font-medium">{r.drugName}</span>
+                  {r.strength && <span className="shrink-0 text-muted-foreground">{r.strength}</span>}
+                  <span className="ml-auto shrink-0 text-[10px] text-emerald-700">stock {r.totalStock ?? 0}</span>
+                </button>
+              ))}
+            </div>
+          )}
 
           {!hasFormulary && (
             <p className="text-[11px] text-muted-foreground">
@@ -2727,31 +2726,31 @@ function LineMatchControl({
               placeholder="Search the drug catalog by name…"
               className="h-7 pl-7 text-xs"
             />
-            {search.trim().length >= 2 && (searchResults?.length ?? 0) > 0 && (
-              <div className="absolute z-20 mt-1 max-h-52 w-full overflow-y-auto rounded-md border bg-popover shadow-lg sanctuary-scrollbar">
-                {searchResults!.map((r) => (
-                  <button
-                    key={r.id}
-                    type="button"
-                    onClick={() => {
-                      onPickCatalog({
-                        drugMasterId: r.id, drugName: r.name, genericName: r.genericName,
-                        manufacturer: r.manufacturer, strength: r.strength,
-                        dosageForm: r.dosageForm as string | null,
-                      });
-                      setSearch('');
-                    }}
-                    className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs hover:bg-muted"
-                  >
-                    <Plus className="h-3 w-3 shrink-0 text-muted-foreground" />
-                    <span className="truncate font-medium">{r.name}</span>
-                    {r.strength && <span className="shrink-0 text-muted-foreground">{r.strength}</span>}
-                    {r.manufacturer && <span className="truncate text-muted-foreground">· {r.manufacturer}</span>}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
+          {search.trim().length >= 2 && (searchResults?.length ?? 0) > 0 && (
+            <div className="mt-1 max-h-52 overflow-y-auto rounded-md border bg-popover shadow-sm sanctuary-scrollbar">
+              {searchResults!.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => {
+                    onPickCatalog({
+                      drugMasterId: r.id, drugName: r.name, genericName: r.genericName,
+                      manufacturer: r.manufacturer, strength: r.strength,
+                      dosageForm: r.dosageForm as string | null,
+                    });
+                    setSearch('');
+                  }}
+                  className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs hover:bg-muted"
+                >
+                  <Plus className="h-3 w-3 shrink-0 text-muted-foreground" />
+                  <span className="truncate font-medium">{r.name}</span>
+                  {r.strength && <span className="shrink-0 text-muted-foreground">{r.strength}</span>}
+                  {r.manufacturer && <span className="truncate text-muted-foreground">· {r.manufacturer}</span>}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Auto-suggested closest catalog drugs */}
           {catalogMatches.length > 0 && (
