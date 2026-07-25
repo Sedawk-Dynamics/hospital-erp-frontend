@@ -113,10 +113,14 @@ interface DraftLine {
   // Product Resolution Engine: GTIN off the invoice/scan + HSN for compliance.
   gtin: string;
   hsnCode: string;
-  // Set when this line was seeded from a DrugMaster catalog match (create-from-catalog).
+  // Set when this line is LINKED to a DrugMaster catalog drug (create-from-catalog).
+  // The boxes are NOT overwritten — the new formulary row is built from the master
+  // at commit. `catalogPickName` is display-only (which catalog drug it will create).
   drugMasterId?: string;
+  catalogPickName?: string;
   // The scanned/typed identity captured before a catalog pick overwrote it, so
-  // the user can "Undo" back to the original scanned name.
+  // the user can "Undo" back to the original scanned name. (Legacy — kept for
+  // barcode/scan flows that still adopt catalog identity.)
   catalogBackup?: {
     drugName: string; genericName: string; manufacturer: string; strength: string;
     dosageForm: string; packSize: string; hsnCode: string; gtin: string;
@@ -140,7 +144,7 @@ interface Decision {
 
 // Column-mappable text fields of a draft line — excludes the structured
 // `catalogBackup` (a nested object), which is never set via CSV/column mapping.
-type DraftCol = Exclude<keyof DraftLine, 'catalogBackup'>;
+type DraftCol = Exclude<keyof DraftLine, 'catalogBackup' | 'catalogPickName' | 'rawName'>;
 
 // Normalised shape a catalog drug (auto-match chip OR free search result) is
 // adopted onto a line as.
@@ -1097,49 +1101,42 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
   const setDecision = (i: number, patch: Partial<Decision>) =>
     setDecisions((prev) => prev.map((d, idx) => (idx === i ? { ...d, ...patch } : d)));
 
-  // User picked a DrugMaster catalog drug for line i — either an auto-match chip
-  // or a free-search result. Adopt its identity onto the line + link it, and mark
-  // "create" so commit imports it into the formulary and stocks it. The original
-  // scanned/typed identity is captured (once) so "Undo" can restore it.
+  // User picked a DrugMaster catalog drug for line i. We DON'T overwrite the
+  // editable boxes — the line just gets LINKED to the catalog drug (drugMasterId)
+  // and marked "create". On commit the new formulary row is built from the
+  // catalog master's identity, so the boxes stay as the pharmacist left them.
+  // `catalogPickName` is display-only (which catalog drug this line will create).
   const pickCatalog = (i: number, c: CatalogPick) => {
     setLines((prev) =>
-      prev.map((l, idx) => {
-        if (idx !== i) return l;
-        const catalogBackup = l.catalogBackup ?? {
-          drugName: l.drugName, genericName: l.genericName, manufacturer: l.manufacturer,
-          strength: l.strength, dosageForm: l.dosageForm, packSize: l.packSize,
-          hsnCode: l.hsnCode, gtin: l.gtin,
-        };
-        return {
-          ...l,
-          catalogBackup,
-          // Lock in the original typed name as the learned-mapping key BEFORE the
-          // pick overwrites drugName (if it wasn't already captured at match).
-          rawName: l.rawName ?? l.drugName.trim(),
-          drugName: c.drugName || l.drugName,
-          genericName: c.genericName ?? l.genericName,
-          manufacturer: c.manufacturer ?? l.manufacturer,
-          strength: c.strength ?? l.strength,
-          dosageForm: (c.dosageForm as string) ?? l.dosageForm,
-          packSize: c.packSize != null ? String(c.packSize) : l.packSize,
-          hsnCode: c.hsnCode ?? l.hsnCode,
-          // Adopting the catalog HSN also fills GST from the tax master (unless
-          // the user already typed a rate) — so a catalog pick carries both.
-          gstPercent: l.gstPercent.trim() || gstForHsn(c.hsnCode ?? l.hsnCode),
-          gtin: c.gtin ?? l.gtin,
-          drugMasterId: c.drugMasterId,
-        };
-      }),
+      prev.map((l, idx) =>
+        idx === i
+          ? {
+              ...l,
+              // Keep the typed name as the learned-mapping key.
+              rawName: l.rawName ?? l.drugName.trim(),
+              drugMasterId: c.drugMasterId,
+              catalogPickName: c.drugName,
+            }
+          : l,
+      ),
     );
     setDecision(i, { action: 'create', targetId: null });
   };
 
   // Undo a catalog pick — restore the scanned/typed identity and unlink.
+  // Unlink a catalog pick. Restores any legacy catalog-adopted identity, and in
+  // the new link-only flow just clears the catalog link (boxes were untouched).
   const undoCatalog = (i: number) => {
     setLines((prev) =>
       prev.map((l, idx) =>
-        idx === i && l.catalogBackup
-          ? { ...l, ...l.catalogBackup, drugMasterId: undefined, catalogBackup: undefined }
+        idx === i
+          ? {
+              ...l,
+              ...(l.catalogBackup ?? {}),
+              drugMasterId: undefined,
+              catalogPickName: undefined,
+              catalogBackup: undefined,
+            }
           : l,
       ),
     );
@@ -2740,9 +2737,15 @@ function LineMatchControl({
         </div>
       ) : (
         <p className="mt-1.5 text-[11px] text-muted-foreground">
-          {line.drugMasterId
-            ? 'Identity taken from the drug catalog — will be added to your formulary, then stocked.'
-            : `Will be added as a new ${line.kind === 'item' ? 'inventory item' : 'drug'}, then stocked.`}
+          {line.drugMasterId ? (
+            <>
+              Linked to catalog drug{' '}
+              <span className="font-medium text-foreground">{line.catalogPickName ?? 'selected'}</span>
+              {' '}— it will be created in your formulary from the catalog, then stocked.
+            </>
+          ) : (
+            `Will be added as a new ${line.kind === 'item' ? 'inventory item' : 'drug'}, then stocked.`
+          )}
           {hasFormulary && ' A similar record exists — switch to “Map to existing” to avoid splitting stock.'}
         </p>
       )}
@@ -2755,14 +2758,14 @@ function LineMatchControl({
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
               From drug catalog {!hasFormulary && catalogMatches.length > 0 && '— closest matches'}
             </p>
-            {line.drugMasterId && line.catalogBackup && (
+            {line.drugMasterId && (
               <button
                 type="button"
                 onClick={onUndoCatalog}
-                title={`Undo — use the scanned name "${line.catalogBackup.drugName}"`}
+                title="Unlink this catalog drug"
                 className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-amber-700 hover:bg-amber-50"
               >
-                <Undo2 className="h-3 w-3" /> Undo — use scanned “{line.catalogBackup.drugName}”
+                <Undo2 className="h-3 w-3" /> Unlink{line.catalogPickName ? ` “${line.catalogPickName}”` : ''}
               </button>
             )}
           </div>
