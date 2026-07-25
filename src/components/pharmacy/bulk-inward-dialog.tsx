@@ -2619,40 +2619,37 @@ function LineMatchControl({
         </div>
       </div>
 
-      {/* Search THIS hospital's stock to map the line to an existing drug —
-          available in both modes, so a shorthand / vendor name the auto-matcher
-          didn't find can still be pointed at a stocked drug. Picking one switches
-          the line to "Map to existing". */}
-      <div className="mt-2">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={fSearch}
-            onChange={(e) => setFSearch(e.target.value)}
-            placeholder="Search your stock to map to an existing drug…"
-            className="h-7 pl-7 text-xs"
-          />
-        </div>
-        {fResults.length > 0 && (
-          <div className="mt-1 max-h-52 overflow-y-auto rounded-md border bg-popover shadow-sm sanctuary-scrollbar">
-            {fResults.map((r) => (
-              <button
-                key={r.id}
-                type="button"
-                onClick={() => pickExisting(r)}
-                className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs hover:bg-muted"
-              >
-                <span className="truncate font-medium">{r.drugName}</span>
-                {r.strength && <span className="shrink-0 text-muted-foreground">{r.strength}</span>}
-                <span className="ml-auto shrink-0 text-[10px] text-emerald-700">stock {r.totalStock ?? 0}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
       {decision.action === 'map' ? (
         <div className="mt-2 space-y-2">
+          {/* Search THIS hospital's stock to map the line to an existing drug —
+              so a shorthand / vendor name the matcher didn't find can still be
+              pointed at a stocked drug (kept under the typed name). */}
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={fSearch}
+              onChange={(e) => setFSearch(e.target.value)}
+              placeholder="Search your stock to map to an existing drug…"
+              className="h-7 pl-7 text-xs"
+            />
+          </div>
+          {fResults.length > 0 && (
+            <div className="max-h-52 overflow-y-auto rounded-md border bg-popover shadow-sm sanctuary-scrollbar">
+              {fResults.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => pickExisting(r)}
+                  className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs hover:bg-muted"
+                >
+                  <span className="truncate font-medium">{r.drugName}</span>
+                  {r.strength && <span className="shrink-0 text-muted-foreground">{r.strength}</span>}
+                  <span className="ml-auto shrink-0 text-[10px] text-emerald-700">stock {r.totalStock ?? 0}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           {!hasFormulary && (
             <p className="text-[11px] text-muted-foreground">
               Search above and pick the drug this line should be added to.
