@@ -64,6 +64,7 @@ import {
   useBatchLabels,
   useOcrInward,
   useInwardScan,
+  useFormulary,
   type InwardMatchedLine,
   type CommitInwardLine,
   type CommitInwardResult,
@@ -1112,6 +1113,9 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         return {
           ...l,
           catalogBackup,
+          // Lock in the original typed name as the learned-mapping key BEFORE the
+          // pick overwrites drugName (if it wasn't already captured at match).
+          rawName: l.rawName ?? l.drugName.trim(),
           drugName: c.drugName || l.drugName,
           genericName: c.genericName ?? l.genericName,
           manufacturer: c.manufacturer ?? l.manufacturer,
@@ -2533,14 +2537,40 @@ function LineMatchControl({
   onPickCatalog: (c: CatalogPick) => void;
   onUndoCatalog: () => void;
 }) {
-  const formularyMatches = m.matches.filter((c) => c.source !== 'catalog');
+  const autoFormulary = m.matches.filter((c) => c.source !== 'catalog');
   const catalogMatches = m.matches.filter((c) => c.source === 'catalog');
+  // Existing drugs the user pulled in via the formulary search below (so a
+  // shorthand like "test 2" can be mapped to ANY stocked drug, not only the
+  // auto-suggested ones). Merged with the auto matches for display.
+  const [extraTargets, setExtraTargets] = useState<FormularyMatch[]>([]);
+  const seenIds = new Set(autoFormulary.map((x) => x.id));
+  const formularyMatches = [...autoFormulary, ...extraTargets.filter((x) => !seenIds.has(x.id))];
   const hasFormulary = formularyMatches.length > 0;
   const target = formularyMatches.find((x) => x.id === decision.targetId) ?? null;
 
   // Free-text catalog search (in addition to the auto-suggested chips).
   const [search, setSearch] = useState('');
   const { data: searchResults } = useDrugMasterSearch(search, search.trim().length >= 2);
+
+  // Free-text search of THIS hospital's own formulary — to map the line to an
+  // existing drug the matcher didn't auto-suggest (keeps the typed name as the
+  // learned-mapping key, so "test 2" → A-Card is remembered under "test 2").
+  const [fSearch, setFSearch] = useState('');
+  const fRes = useFormulary({ search: fSearch.trim() || undefined, limit: 8, isActive: true });
+  const fResults = fSearch.trim().length >= 2 ? (fRes.data?.data ?? []) : [];
+  const pickExisting = (r: {
+    id: string; drugName: string; genericName?: string | null; strength?: string | null;
+    manufacturer?: string | null; totalStock?: number | null;
+  }) => {
+    const chip = {
+      id: r.id, drugName: r.drugName, genericName: r.genericName ?? null,
+      strength: r.strength ?? null, manufacturer: r.manufacturer ?? null,
+      totalStock: r.totalStock ?? 0, score: 100, source: 'formulary' as const,
+    } as unknown as FormularyMatch;
+    setExtraTargets((prev) => (prev.some((x) => x.id === r.id) ? prev : [...prev, chip]));
+    onDecision({ action: 'map', targetId: r.id });
+    setFSearch('');
+  };
 
   const matchToPick = (c: FormularyMatch): CatalogPick => ({
     drugMasterId: c.drugMasterId ?? '',
@@ -2566,10 +2596,9 @@ function LineMatchControl({
         <div className="flex items-center gap-1 rounded-md border p-0.5">
           <button
             type="button"
-            disabled={!hasFormulary}
             onClick={() => onDecision({ action: 'map', targetId: decision.targetId ?? formularyMatches[0]?.id ?? null })}
             className={cn(
-              'rounded px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-40',
+              'rounded px-2.5 py-1 text-xs font-medium transition-colors',
               decision.action === 'map' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted',
             )}
           >
@@ -2590,8 +2619,43 @@ function LineMatchControl({
         </div>
       </div>
 
-      {decision.action === 'map' && hasFormulary ? (
+      {decision.action === 'map' ? (
         <div className="mt-2 space-y-2">
+          {/* Search this hospital's formulary to map the line to ANY existing
+              drug — for shorthands / vendor names the auto-matcher didn't find. */}
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={fSearch}
+              onChange={(e) => setFSearch(e.target.value)}
+              placeholder="Search your stock to map to an existing drug…"
+              className="h-7 pl-7 text-xs"
+            />
+            {fResults.length > 0 && (
+              <div className="absolute z-20 mt-1 max-h-52 w-full overflow-y-auto rounded-md border bg-popover shadow-lg sanctuary-scrollbar">
+                {fResults.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => pickExisting(r)}
+                    className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs hover:bg-muted"
+                  >
+                    <Check className="h-3 w-3 shrink-0 text-primary opacity-0" />
+                    <span className="truncate font-medium">{r.drugName}</span>
+                    {r.strength && <span className="shrink-0 text-muted-foreground">{r.strength}</span>}
+                    <span className="ml-auto shrink-0 text-[10px] text-emerald-700">stock {r.totalStock ?? 0}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {!hasFormulary && (
+            <p className="text-[11px] text-muted-foreground">
+              Search above and pick the drug this line should be added to.
+            </p>
+          )}
+
           {/* In-stock drugs — pick which one to add this batch to. */}
           <div className="flex flex-wrap gap-1.5">
             {formularyMatches.map((c) => (
