@@ -2606,7 +2606,13 @@ function LineMatchControl({
                 {decision.targetId === c.id && <Check className="h-3 w-3 text-primary" />}
                 <span className="truncate max-w-[160px]">{c.drugName}</span>
                 {c.strength && <span className="text-muted-foreground">{c.strength}</span>}
-                <Badge variant="outline" className="font-mono text-[10px]">{c.score}%</Badge>
+                {(c as { remembered?: boolean }).remembered ? (
+                  <Badge className="border-violet-500/20 bg-violet-500/10 text-[10px] text-violet-700">
+                    Remembered
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="font-mono text-[10px]">{c.score}%</Badge>
+                )}
                 <span className="text-[10px] text-emerald-700">stock {c.totalStock}</span>
               </button>
             ))}
