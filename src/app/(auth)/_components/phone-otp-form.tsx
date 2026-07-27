@@ -31,16 +31,17 @@ export function PhoneOtpForm() {
   const [isExistingUser, setIsExistingUser] = useState(true);
   const [busy, setBusy] = useState(false);
 
-  const digits = phone.replace(/\D/g, '');
+  // `phone` holds exactly the 10 local digits; we always send +91 + those.
+  const fullPhone = `+91${phone}`;
 
   const sendCode = async () => {
-    if (digits.length < 10) {
-      toast.error('Enter a valid phone number');
+    if (phone.length !== 10) {
+      toast.error('Enter a 10-digit phone number');
       return;
     }
     setBusy(true);
     try {
-      const { isExistingUser: exists } = await requestPhoneOtp(phone.trim());
+      const { isExistingUser: exists } = await requestPhoneOtp(fullPhone);
       setIsExistingUser(exists);
       setStep('otp');
       toast.success('Verification code sent');
@@ -74,7 +75,7 @@ export function PhoneOtpForm() {
     setBusy(true);
     try {
       await loginWithPhoneOtp({
-        phone: phone.trim(),
+        phone: fullPhone,
         otp: otp.trim(),
         firstName: firstName.trim() || undefined,
         lastName: lastName.trim() || undefined,
@@ -99,16 +100,21 @@ export function PhoneOtpForm() {
           <label htmlFor="otp-phone" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">
             Phone Number
           </label>
-          <div className="relative">
+          <div className="relative flex items-center">
             <Phone className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant/60" />
+            <span className="pointer-events-none absolute left-9 top-1/2 -translate-y-1/2 font-label text-sm font-semibold text-on-surface">
+              +91
+            </span>
             <input
               id="otp-phone"
               type="tel"
+              inputMode="numeric"
               autoFocus
-              placeholder="+91 98765 43210"
-              className={`${INPUT_CLASS} pl-10`}
+              maxLength={10}
+              placeholder="98765 43210"
+              className={`${INPUT_CLASS} pl-[4.25rem] tracking-wider`}
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
               onKeyDown={(e) => e.key === 'Enter' && sendCode()}
             />
           </div>
@@ -148,7 +154,7 @@ export function PhoneOtpForm() {
         className="flex items-center gap-1.5 font-label text-xs font-semibold text-on-surface-variant hover:text-on-surface"
       >
         <ArrowLeft className="h-3.5 w-3.5" />
-        {phone}
+        +91 {phone}
       </button>
 
       <div className="space-y-2">
