@@ -263,7 +263,9 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: (createdId?: strin
           key: `c-${c.id}`, kind: 'catalog', refId: c.id,
           name: c.name, strength: c.strength,
           sub: [c.genericName, c.manufacturer].filter(Boolean).join(' · ') || undefined,
-          category: c.type ?? null, stock: null, isCatalog: true,
+          // Catalog (drug master) rows are all medicines — DrugMaster.type is the
+          // system ("allopathy"), not a stock category. Badge them as a drug.
+          category: 'drug', stock: null, isCatalog: true,
           price: Number(c.mrp) || undefined,
         })),
     ];
