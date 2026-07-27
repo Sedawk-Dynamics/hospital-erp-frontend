@@ -116,7 +116,7 @@ export function AppointmentRowActions({
   const outstanding = apt.paymentInfo ? apt.paymentInfo.balanceDue > 0 : true;
   const canCollect = isLive && outstanding;
 
-  const canReschedule = ['pending_payment', 'booked', 'confirmed', 'no_show'].includes(status);
+  const canReschedule = ['pending_payment', 'booked', 'confirmed', 'no_show', 'checked_in'].includes(status);
   const canCancel = ['pending_payment', 'booked', 'confirmed', 'checked_in'].includes(status);
   const canNoShow = ['pending_payment', 'booked', 'confirmed'].includes(status);
 
