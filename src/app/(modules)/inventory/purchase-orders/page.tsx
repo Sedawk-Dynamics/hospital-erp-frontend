@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ShoppingCart, Plus, PackageCheck, X, Ban, Truck, Phone, Search, Printer,
@@ -28,14 +28,30 @@ import { cn, getApiErrorMessage } from '@/lib/utils';
 import { formatDate } from '@/lib/date-utils';
 import {
   usePurchaseOrders, useCreatePurchaseOrder,
-  useReceivePurchaseOrder, useCancelPurchaseOrder, usePurchaseOrder, useSuppliers,
+  useReceivePurchaseOrder, useCancelPurchaseOrder, usePurchaseOrder, useInventoryItems, useSuppliers,
   type PurchaseOrderStatus, type CreatePurchaseOrderInput, type ReceivePurchaseOrderLine,
 } from '@/hooks/use-inventory';
-import { useImportFormularyItem } from '@/hooks/use-pharmacy';
-import { useFormularySearch, type FormularyDrug } from '@/hooks/use-doctor';
+import { useFormulary, useImportFormularyItem } from '@/hooks/use-pharmacy';
+import { useDrugMasterSearch } from '@/hooks/use-drug-master';
 import { StockTypeBadge } from '@/components/shared/stock-type-badge';
 
 type Tab = 'all' | 'created' | 'delivered';
+
+/** One row in the PO's unified search dropdown (own drug | inventory item | catalog drug). */
+type UnifiedHit = {
+  key: string;
+  kind: 'drug' | 'item' | 'catalog';
+  /** formulary id (drug) | inventory item id (item) | drugMasterId (catalog). */
+  refId: string;
+  name: string;
+  strength?: string | null;
+  sub?: string;
+  category?: string | null;
+  /** Available stock for own drug/item; null for a catalog drug (not stocked). */
+  stock?: number | null;
+  isCatalog: boolean;
+  price?: number;
+};
 
 // Simplified lifecycle: a PO is Created (ready to receive) → Delivered. The
 // older draft/submitted/approved states all read as "Created".
@@ -205,17 +221,53 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: (createdId?: strin
   // Seeded from a low-stock "Reorder" deep-link when present.
   const [items, setItems] = useState<PoLineSeed[]>(initialItems ?? []);
 
-  // Same unified, relevance-ranked search the doctor's Rx pad uses: own formulary
-  // drugs + the hospital's inventory items + platform-catalog drugs, one ranked
-  // list (name-prefix first, form words excluded). A catalog-only pick is
-  // imported into the formulary on the fly so a not-yet-stocked drug can be ordered.
-  const { data: searchData, isFetching: searching } = useFormularySearch(search.trim());
-  const results = searchData ?? [];
+  // Unified search like the doctor's Rx pad — own pharmacy stock + inventory
+  // items + the platform catalog, in one list (each group already name-prefix
+  // ranked by its endpoint). Uses pharmacy/inventory/catalog endpoints (which
+  // every PO role can read) rather than the prescriptions endpoint. A catalog
+  // pick is imported into the formulary on the fly so it can be ordered.
+  const q = search.trim();
+  const { data: drugsResp, isFetching: drugsBusy } = useFormulary({ search: q || undefined, limit: 20, isActive: true });
+  const { data: itemsResp, isFetching: itemsBusy } = useInventoryItems({ search: q || undefined, limit: 10, isActive: true });
+  const { data: catalog, isFetching: catBusy } = useDrugMasterSearch(q);
   const importDrug = useImportFormularyItem();
   const [importingId, setImportingId] = useState<string | null>(null);
   const { data: suppliersResp } = useSuppliers({ limit: 100, isActive: true });
   const suppliers = suppliersResp?.data ?? [];
   const create = useCreatePurchaseOrder();
+
+  const searching = drugsBusy || itemsBusy || catBusy;
+  // Catalog drugs already stocked (imported into the formulary) are dropped so
+  // they aren't listed twice. Order mirrors the doctor: own drugs → items → catalog.
+  const results = useMemo<UnifiedHit[]>(() => {
+    const drugs = drugsResp?.data ?? [];
+    const invItems = itemsResp?.data ?? [];
+    const stockedMasterIds = new Set(drugs.map((d) => d.drugMasterId).filter(Boolean) as string[]);
+    return [
+      ...drugs.map((d): UnifiedHit => ({
+        key: `f-${d.id}`, kind: 'drug', refId: d.id,
+        name: d.drugName, strength: d.strength,
+        sub: [d.genericName, d.manufacturer].filter(Boolean).join(' · ') || undefined,
+        category: d.category ?? null, stock: d.totalStock ?? 0, isCatalog: false,
+        price: Number(d.price) || undefined,
+      })),
+      ...invItems.map((i): UnifiedHit => ({
+        key: `i-${i.id}`, kind: 'item', refId: i.id,
+        name: i.itemName, sub: i.itemCode ?? undefined,
+        category: null, stock: i.currentStock ?? 0, isCatalog: false,
+        price: Number(i.costPerUnit) || undefined,
+      })),
+      ...(catalog ?? [])
+        .filter((c) => !stockedMasterIds.has(c.id))
+        .map((c): UnifiedHit => ({
+          key: `c-${c.id}`, kind: 'catalog', refId: c.id,
+          name: c.name, strength: c.strength,
+          sub: [c.genericName, c.manufacturer].filter(Boolean).join(' · ') || undefined,
+          category: c.type ?? null, stock: null, isCatalog: true,
+          price: Number(c.mrp) || undefined,
+        })),
+    ];
+  }, [drugsResp, itemsResp, catalog]);
 
   const supplier = suppliers.find((s) => s.id === supplierId);
 
@@ -234,28 +286,26 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: (createdId?: strin
     setSearch('');
   };
 
-  // Map a unified search result to a PO line by its source. A catalog-only drug
-  // (source 'master') is first imported into the formulary so it gets a drugId
-  // the PO can reference (backend dedupes on drugMasterId — safe to re-import).
-  const addResult = async (r: FormularyDrug) => {
-    const name = `${r.drugName}${r.strength ? ` ${r.strength}` : ''}`;
-    const sub = [r.genericName, r.manufacturer].filter(Boolean).join(' · ') || undefined;
-    const price = Number(r.price) || undefined;
-    if (r.source === 'inventory' && r.inventoryItemId) {
-      addLine('item', r.inventoryItemId, r.drugName, r.category ?? undefined, price);
-    } else if (r.source === 'master' && r.drugMasterId) {
+  // Map a unified search result to a PO line by its kind. A catalog drug is
+  // first imported into the formulary so it gets a drugId the PO can reference
+  // (backend dedupes on drugMasterId — safe to re-import).
+  const addResult = async (r: UnifiedHit) => {
+    const name = `${r.name}${r.strength ? ` ${r.strength}` : ''}`;
+    if (r.kind === 'item') {
+      addLine('item', r.refId, r.name, r.sub, r.price);
+    } else if (r.kind === 'catalog') {
       try {
-        setImportingId(r.drugMasterId);
-        const imported = await importDrug.mutateAsync({ drugMasterId: r.drugMasterId, price });
-        addLine('drug', imported.id, name, sub, price);
+        setImportingId(r.refId);
+        const imported = await importDrug.mutateAsync({ drugMasterId: r.refId, price: r.price });
+        addLine('drug', imported.id, name, r.sub, r.price);
         toast.success('Added to formulary and PO');
       } catch (err) {
         toast.error(getApiErrorMessage(err, 'Could not add catalog drug'));
       } finally {
         setImportingId(null);
       }
-    } else if (r.id) {
-      addLine('drug', r.id, name, sub, price);
+    } else {
+      addLine('drug', r.refId, name, r.sub, r.price);
     }
   };
 
@@ -384,36 +434,32 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: (createdId?: strin
                 {showResults && results.length > 0 && (
                   <div className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-lg border bg-popover shadow-lg">
                     {results.map((r) => {
-                      const busy = r.source === 'master' && importingId === r.drugMasterId;
+                      const busy = r.kind === 'catalog' && importingId === r.refId;
                       return (
                         <button
-                          key={r.id ?? r.inventoryItemId ?? r.drugMasterId ?? r.drugName}
+                          key={r.key}
                           disabled={busy}
                           onClick={() => addResult(r)}
                           className="flex w-full min-w-0 items-start gap-2 px-3 py-2 text-left text-sm hover:bg-muted disabled:opacity-60"
                         >
-                          <StockTypeBadge category={r.category} showMedicine className="mt-0.5" />
+                          <StockTypeBadge category={r.category ?? undefined} showMedicine className="mt-0.5" />
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5">
-                              <span className="truncate font-medium">{r.drugName}</span>
+                              <span className="truncate font-medium">{r.name}</span>
                               {r.strength && <span className="shrink-0 text-xs text-muted-foreground">{r.strength}</span>}
                             </div>
-                            {(r.genericName || r.manufacturer) && (
-                              <p className="truncate text-xs text-muted-foreground">
-                                {[r.genericName, r.manufacturer].filter(Boolean).join(' · ')}
-                              </p>
-                            )}
+                            {r.sub && <p className="truncate text-xs text-muted-foreground">{r.sub}</p>}
                           </div>
                           <span className="mt-0.5 shrink-0">
                             {busy ? (
                               <span className="text-[10px] text-muted-foreground">Adding…</span>
-                            ) : r.source === 'master' ? (
+                            ) : r.isCatalog ? (
                               <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-muted-foreground border-muted-foreground/30">
                                 catalog · not stocked
                               </Badge>
-                            ) : (r.availableStock ?? 0) > 0 ? (
+                            ) : (r.stock ?? 0) > 0 ? (
                               <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
-                                {r.availableStock} in stock
+                                {r.stock} in stock
                               </span>
                             ) : (
                               <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">
