@@ -45,6 +45,8 @@ interface AuthState {
     otp: string;
     firstName?: string;
     lastName?: string;
+    gender?: 'male' | 'female' | 'other';
+    dateOfBirth?: string;
   }) => Promise<string | undefined>;
   switchHospital: (tenantId: string) => Promise<SwitchHospitalResponse>;
   register: (data: RegisterData) => Promise<void>;

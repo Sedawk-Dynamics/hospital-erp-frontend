@@ -26,6 +26,8 @@ export function PhoneOtpForm() {
   const [otp, setOtp] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [gender, setGender] = useState<'male' | 'female' | 'other'>('male');
+  const [dateOfBirth, setDateOfBirth] = useState('');
   const [isExistingUser, setIsExistingUser] = useState(true);
   const [busy, setBusy] = useState(false);
 
@@ -76,6 +78,7 @@ export function PhoneOtpForm() {
         otp: otp.trim(),
         firstName: firstName.trim() || undefined,
         lastName: lastName.trim() || undefined,
+        ...(isExistingUser ? {} : { gender, dateOfBirth: dateOfBirth || undefined }),
       });
       toast.success('Signed in! Redirecting…');
       redirectByRole();
@@ -170,16 +173,40 @@ export function PhoneOtpForm() {
         </p>
       </div>
 
-      {/* New number → collect the patient's name to create the account */}
+      {/* New number → collect the patient's basics to create their profile */}
       {!isExistingUser && (
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-2">
-            <label htmlFor="otp-first" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">First Name</label>
-            <input id="otp-first" placeholder="John" className={INPUT_CLASS} value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+        <div className="space-y-3 rounded-xl bg-surface-container/40 p-3">
+          <p className="font-label text-[11px] font-semibold uppercase tracking-widest text-on-surface-variant">
+            Your details
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <label htmlFor="otp-first" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">First Name *</label>
+              <input id="otp-first" placeholder="John" className={INPUT_CLASS} value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="otp-last" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">Last Name</label>
+              <input id="otp-last" placeholder="Doe" className={INPUT_CLASS} value={lastName} onChange={(e) => setLastName(e.target.value)} />
+            </div>
           </div>
-          <div className="space-y-2">
-            <label htmlFor="otp-last" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">Last Name</label>
-            <input id="otp-last" placeholder="Doe" className={INPUT_CLASS} value={lastName} onChange={(e) => setLastName(e.target.value)} />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <label htmlFor="otp-gender" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">Gender</label>
+              <select
+                id="otp-gender"
+                className={INPUT_CLASS}
+                value={gender}
+                onChange={(e) => setGender(e.target.value as 'male' | 'female' | 'other')}
+              >
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="otp-dob" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">Date of Birth</label>
+              <input id="otp-dob" type="date" className={INPUT_CLASS} value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} />
+            </div>
           </div>
         </div>
       )}
