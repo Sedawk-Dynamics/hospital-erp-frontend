@@ -15,7 +15,7 @@ const registerSchema = z.object({
   firstName: z.string().min(1, 'First name is required').max(100),
   lastName: z.string().min(1, 'Last name is required').max(100),
   email: z.email('Please enter a valid email address'),
-  phone: z.string().min(10, 'Phone number must be at least 10 digits').optional().or(z.literal('')),
+  phone: z.string().min(10, 'Phone number must be at least 10 digits'),
   password: z
     .string()
     .min(8, 'Password must be at least 8 characters')
@@ -131,7 +131,7 @@ export default function PatientRegisterPage() {
         </div>
 
         <div className="space-y-2 animate-fade-in-up" style={{ animationDelay: '250ms' }}>
-          <Label htmlFor="phone" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">Phone Number <span className="text-on-surface-variant/60">(optional)</span></Label>
+          <Label htmlFor="phone" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">Phone Number</Label>
           <input
             id="phone"
             type="tel"
@@ -139,8 +139,13 @@ export default function PatientRegisterPage() {
             className="bg-surface-container-low border-none rounded-xl px-4 py-2.5 w-full font-label text-sm focus:ring-2 focus:ring-primary/20 transition-all outline-none placeholder:text-on-surface-variant/60"
             {...register('phone')}
           />
-          {errors.phone && (
+          {errors.phone ? (
             <p className="font-label text-xs text-error">{errors.phone.message}</p>
+          ) : (
+            <p className="font-label text-[11px] text-on-surface-variant/70">
+              Use the number you gave at the hospital — it links your and your family&apos;s
+              records to this account automatically.
+            </p>
           )}
         </div>
 
