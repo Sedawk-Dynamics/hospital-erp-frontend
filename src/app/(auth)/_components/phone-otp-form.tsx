@@ -10,16 +10,19 @@ const INPUT_CLASS =
   'bg-surface-container-low border-none rounded-xl px-4 py-2.5 w-full font-label text-sm focus:ring-2 focus:ring-primary/20 transition-all outline-none placeholder:text-on-surface-variant/60';
 
 /**
- * Patient sign-in / sign-up with phone + OTP. Signup and login are the same
- * flow: enter a number, receive a code, verify. If the number has no account
- * yet, name fields appear so the new patient can be created. On success the
- * user is routed by role (patients → the portal).
+ * Patient phone + OTP form, in one of two explicit modes:
+ *   - 'login'  → the number MUST already have an account; never creates one.
+ *   - 'signup' → the number must NOT have an account; collects details + creates.
+ * Each mode has its own page, so login never shows signup fields. On success
+ * the user is routed by role (patients → the portal).
  *
  * The OTP is a fixed dev code (123123) until SMS delivery is wired up.
  */
-export function PhoneOtpForm() {
+export function PhoneOtpForm({ mode }: { mode: 'login' | 'signup' }) {
   const router = useRouter();
   const { requestPhoneOtp, loginWithPhoneOtp } = useAuthStore();
+
+  const isSignup = mode === 'signup';
 
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
   const [phone, setPhone] = useState('');
@@ -28,7 +31,6 @@ export function PhoneOtpForm() {
   const [lastName, setLastName] = useState('');
   const [gender, setGender] = useState<'male' | 'female' | 'other'>('male');
   const [dateOfBirth, setDateOfBirth] = useState('');
-  const [isExistingUser, setIsExistingUser] = useState(true);
   const [busy, setBusy] = useState(false);
 
   // `phone` holds exactly the 10 local digits; we always send +91 + those.
@@ -42,7 +44,15 @@ export function PhoneOtpForm() {
     setBusy(true);
     try {
       const { isExistingUser: exists } = await requestPhoneOtp(fullPhone);
-      setIsExistingUser(exists);
+      // Gate each flow to its purpose before sending the user to the code step.
+      if (mode === 'login' && !exists) {
+        toast.error('No account found for this number. Please sign up first.');
+        return;
+      }
+      if (mode === 'signup' && exists) {
+        toast.error('An account already exists for this number. Please sign in.');
+        return;
+      }
       setStep('otp');
       toast.success('Verification code sent');
     } catch (error: unknown) {
@@ -68,7 +78,7 @@ export function PhoneOtpForm() {
       toast.error('Enter the verification code');
       return;
     }
-    if (!isExistingUser && !firstName.trim()) {
+    if (isSignup && !firstName.trim()) {
       toast.error('Please enter your name');
       return;
     }
@@ -77,9 +87,15 @@ export function PhoneOtpForm() {
       await loginWithPhoneOtp({
         phone: fullPhone,
         otp: otp.trim(),
-        firstName: firstName.trim() || undefined,
-        lastName: lastName.trim() || undefined,
-        ...(isExistingUser ? {} : { gender, dateOfBirth: dateOfBirth || undefined }),
+        intent: mode,
+        ...(isSignup
+          ? {
+              firstName: firstName.trim() || undefined,
+              lastName: lastName.trim() || undefined,
+              gender,
+              dateOfBirth: dateOfBirth || undefined,
+            }
+          : {}),
       });
       toast.success('Signed in! Redirecting…');
       redirectByRole();
@@ -171,7 +187,7 @@ export function PhoneOtpForm() {
             className={`${INPUT_CLASS} pl-10 tracking-[0.3em]`}
             value={otp}
             onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-            onKeyDown={(e) => e.key === 'Enter' && isExistingUser && verify()}
+            onKeyDown={(e) => e.key === 'Enter' && !isSignup && verify()}
           />
         </div>
         <p className="font-label text-[11px] text-on-surface-variant/70">
@@ -180,7 +196,7 @@ export function PhoneOtpForm() {
       </div>
 
       {/* New number → collect the patient's basics to create their profile */}
-      {!isExistingUser && (
+      {isSignup && (
         <div className="space-y-3 rounded-xl bg-surface-container/40 p-3">
           <p className="font-label text-[11px] font-semibold uppercase tracking-widest text-on-surface-variant">
             Your details
@@ -230,7 +246,7 @@ export function PhoneOtpForm() {
           </span>
         ) : (
           <span className="flex items-center justify-center gap-2">
-            {isExistingUser ? 'Verify & sign in' : 'Verify & create account'}
+            {isSignup ? 'Verify & create account' : 'Verify & sign in'}
             <ArrowRight className="h-4 w-4" />
           </span>
         )}

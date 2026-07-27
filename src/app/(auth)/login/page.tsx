@@ -108,7 +108,7 @@ export default function LoginPage() {
       </div>
 
       {mode === 'patient' ? (
-        <PhoneOtpForm />
+        <PhoneOtpForm mode="login" />
       ) : (
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div className="space-y-2 animate-fade-in-up" style={{ animationDelay: '100ms' }}>
@@ -180,8 +180,11 @@ export default function LoginPage() {
 
       {mode === 'patient' ? (
         <div className="mt-6 pt-5 border-t border-surface-container text-center">
-          <p className="font-label text-xs text-on-surface-variant">
-            New here? Just enter your phone number above — we&apos;ll create your account.
+          <p className="font-label text-sm text-on-surface-variant">
+            New patient?{' '}
+            <Link href="/register" className="text-primary hover:underline font-bold">
+              Create an account
+            </Link>
           </p>
         </div>
       ) : (

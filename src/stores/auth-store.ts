@@ -43,6 +43,7 @@ interface AuthState {
   loginWithPhoneOtp: (input: {
     phone: string;
     otp: string;
+    intent?: 'login' | 'signup';
     firstName?: string;
     lastName?: string;
     gender?: 'male' | 'female' | 'other';

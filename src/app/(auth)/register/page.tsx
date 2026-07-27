@@ -17,9 +17,9 @@ export default function PatientRegisterPage() {
         </p>
       </div>
 
-      {/* Phone + OTP handles both signup and login — a new number creates the
-          account (and asks for a name); an existing one just signs in. */}
-      <PhoneOtpForm />
+      {/* Patient signup: a new number creates the account (asks for details);
+          an existing number is rejected here and sent to sign in. */}
+      <PhoneOtpForm mode="signup" />
 
       <div className="mt-6 pt-5 border-t border-surface-container text-center">
         <p className="font-label text-sm text-on-surface-variant">
