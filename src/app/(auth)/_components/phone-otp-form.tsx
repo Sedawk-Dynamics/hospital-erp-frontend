@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { ArrowRight, ArrowLeft, Phone, ShieldCheck } from 'lucide-react';
+import { ArrowRight, ArrowLeft, ShieldCheck } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
+import { PhoneField, DEFAULT_PHONE, phoneToE164, type PhoneValue } from '@/components/ui/phone-field';
 
 const INPUT_CLASS =
   'bg-surface-container-low border-none rounded-xl px-4 py-2.5 w-full font-label text-sm focus:ring-2 focus:ring-primary/20 transition-all outline-none placeholder:text-on-surface-variant/60';
@@ -25,7 +26,7 @@ export function PhoneOtpForm({ mode }: { mode: 'login' | 'signup' }) {
   const isSignup = mode === 'signup';
 
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
-  const [phone, setPhone] = useState('');
+  const [phoneVal, setPhoneVal] = useState<PhoneValue>({ ...DEFAULT_PHONE });
   const [otp, setOtp] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -33,11 +34,11 @@ export function PhoneOtpForm({ mode }: { mode: 'login' | 'signup' }) {
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [busy, setBusy] = useState(false);
 
-  // `phone` holds exactly the 10 local digits; we always send +91 + those.
-  const fullPhone = `+91${phone}`;
+  // National number is 10 digits; the country code is chosen (default +91).
+  const fullPhone = phoneToE164(phoneVal);
 
   const sendCode = async () => {
-    if (phone.length !== 10) {
+    if (phoneVal.national.length !== 10) {
       toast.error('Enter a 10-digit phone number');
       return;
     }
@@ -116,24 +117,13 @@ export function PhoneOtpForm({ mode }: { mode: 'login' | 'signup' }) {
           <label htmlFor="otp-phone" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">
             Phone Number
           </label>
-          <div className="relative flex items-center">
-            <Phone className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant/60" />
-            <span className="pointer-events-none absolute left-9 top-1/2 -translate-y-1/2 font-label text-sm font-semibold text-on-surface">
-              +91
-            </span>
-            <input
-              id="otp-phone"
-              type="tel"
-              inputMode="numeric"
-              autoFocus
-              maxLength={10}
-              placeholder="98765 43210"
-              className={`${INPUT_CLASS} pl-[4.25rem] tracking-wider`}
-              value={phone}
-              onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-              onKeyDown={(e) => e.key === 'Enter' && sendCode()}
-            />
-          </div>
+          <PhoneField
+            id="otp-phone"
+            value={phoneVal}
+            onChange={setPhoneVal}
+            onEnter={sendCode}
+            autoFocus
+          />
           <p className="font-label text-[11px] text-on-surface-variant/70">
             Use the number you gave at the hospital — your and your family&apos;s records are
             linked to it automatically.
@@ -170,7 +160,7 @@ export function PhoneOtpForm({ mode }: { mode: 'login' | 'signup' }) {
         className="flex items-center gap-1.5 font-label text-xs font-semibold text-on-surface-variant hover:text-on-surface"
       >
         <ArrowLeft className="h-3.5 w-3.5" />
-        +91 {phone}
+        {phoneVal.code} {phoneVal.national}
       </button>
 
       <div className="space-y-2">
