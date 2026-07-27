@@ -34,7 +34,7 @@ export function StepExamination({ form, patientId, appointmentId, visitId }: Ste
       {/* ── Chief Complaint ── */}
       <div className="space-y-2">
         <Label htmlFor="chiefComplaint" className="text-sm font-semibold">
-          Chief Complaint <span className="text-error">*</span>
+          Chief Complaint
         </Label>
         <textarea
           id="chiefComplaint"
@@ -87,7 +87,7 @@ export function StepExamination({ form, patientId, appointmentId, visitId }: Ste
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold">
-            Diagnosis <span className="text-error">*</span>
+            Diagnosis
           </h3>
           <Button
             type="button"
@@ -118,7 +118,7 @@ export function StepExamination({ form, patientId, appointmentId, visitId }: Ste
                 </div>
                 <div>
                   <Input
-                    placeholder="Diagnosis name *"
+                    placeholder="Diagnosis name"
                     className="h-8 text-xs"
                     {...register(`diagnoses.${index}.diagnosisName`)}
                   />

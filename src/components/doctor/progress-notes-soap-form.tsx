@@ -819,7 +819,6 @@ export function SoapNoteFormDialog({
               <div className="md:col-span-2">
                 <FieldBlock
                   label="Diagnosis"
-                  required
                   voice={{
                     value: state.diagnosis,
                     onChange: (v) => setState((p) => ({ ...p, diagnosis: v })),
