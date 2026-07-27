@@ -39,6 +39,13 @@ interface AuthState {
 
   hydrate: () => void;
   login: (email: string, password: string) => Promise<string | undefined>;
+  requestPhoneOtp: (phone: string) => Promise<{ isExistingUser: boolean }>;
+  loginWithPhoneOtp: (input: {
+    phone: string;
+    otp: string;
+    firstName?: string;
+    lastName?: string;
+  }) => Promise<string | undefined>;
   switchHospital: (tenantId: string) => Promise<SwitchHospitalResponse>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
@@ -76,6 +83,30 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         email,
         password,
       });
+      const { accessToken, refreshToken, user, onboardingStatus } = data.data;
+      setTokens(accessToken, refreshToken);
+      persistUser(user);
+      set({ user, isAuthenticated: true, isLoading: false, onboardingStatus: onboardingStatus || null });
+      return onboardingStatus as string | undefined;
+    } catch (error) {
+      set({ isLoading: false });
+      throw error;
+    }
+  },
+
+  // Ask the backend to "send" an OTP to a phone (fixed dev code for now).
+  // Returns whether the number already has an account, so the UI knows if it
+  // must collect a name for a new patient.
+  requestPhoneOtp: async (phone: string) => {
+    const { data } = await apiClient.post('/auth/otp/request', { phone });
+    return { isExistingUser: !!data.data?.isExistingUser };
+  },
+
+  // Verify the OTP and log the patient in (creating the account if new).
+  loginWithPhoneOtp: async (input) => {
+    set({ isLoading: true });
+    try {
+      const { data } = await apiClient.post('/auth/otp/verify', input);
       const { accessToken, refreshToken, user, onboardingStatus } = data.data;
       setTokens(accessToken, refreshToken);
       persistUser(user);

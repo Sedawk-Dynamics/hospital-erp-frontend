@@ -10,7 +10,9 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useAuthStore } from '@/stores/auth-store';
-import { ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff, Phone, Building2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { PhoneOtpForm } from '../_components/phone-otp-form';
 
 const loginSchema = z.object({
   email: z.email('Please enter a valid email address'),
@@ -24,6 +26,8 @@ export default function LoginPage() {
   const { login } = useAuthStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  // Patients sign in with phone + OTP; staff use email + password.
+  const [mode, setMode] = useState<'patient' | 'staff'>('patient');
 
   const {
     register,
@@ -77,6 +81,35 @@ export default function LoginPage() {
         </p>
       </div>
 
+      {/* Patient (phone OTP) vs Staff (email/password) */}
+      <div className="mb-5 flex gap-1 rounded-xl bg-surface-container p-1">
+        <button
+          type="button"
+          onClick={() => setMode('patient')}
+          className={cn(
+            'flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 font-label text-sm font-semibold transition-all',
+            mode === 'patient' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface',
+          )}
+        >
+          <Phone className="h-3.5 w-3.5" />
+          Patient
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode('staff')}
+          className={cn(
+            'flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 font-label text-sm font-semibold transition-all',
+            mode === 'staff' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface',
+          )}
+        >
+          <Building2 className="h-3.5 w-3.5" />
+          Staff
+        </button>
+      </div>
+
+      {mode === 'patient' ? (
+        <PhoneOtpForm />
+      ) : (
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div className="space-y-2 animate-fade-in-up" style={{ animationDelay: '100ms' }}>
           <Label htmlFor="email" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">Email</Label>
@@ -143,15 +176,28 @@ export default function LoginPage() {
           )}
         </button>
       </form>
+      )}
 
-      <div className="mt-6 pt-5 border-t border-surface-container text-center">
-        <p className="font-label text-sm text-on-surface-variant">
-          Don&apos;t have an account?{' '}
-          <Link href="/register" className="text-primary hover:underline font-bold">
-            Register as Patient
-          </Link>
-        </p>
-      </div>
+      {mode === 'patient' ? (
+        <div className="mt-6 pt-5 border-t border-surface-container text-center">
+          <p className="font-label text-xs text-on-surface-variant">
+            New here? Just enter your phone number above — we&apos;ll create your account.
+          </p>
+        </div>
+      ) : (
+        <div className="mt-6 pt-5 border-t border-surface-container text-center">
+          <p className="font-label text-sm text-on-surface-variant">
+            Are you a patient?{' '}
+            <button
+              type="button"
+              onClick={() => setMode('patient')}
+              className="text-primary hover:underline font-bold"
+            >
+              Sign in with phone
+            </button>
+          </p>
+        </div>
+      )}
     </div>
   );
 }
