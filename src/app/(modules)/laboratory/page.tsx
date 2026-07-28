@@ -18,6 +18,8 @@ import {
   Eye,
   AlertTriangle,
   Lock,
+  ShieldCheck,
+  UserX,
   X as XIcon,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -75,20 +77,40 @@ export default function LaboratoryHomePage() {
 
       <LabDashboardSummary />
 
-      <Tabs defaultValue="status">
+      <Tabs defaultValue="pending">
         <TabsList variant="line">
-          <TabsTrigger value="status">Status</TabsTrigger>
-          <TabsTrigger value="test-report">Test Report</TabsTrigger>
+          <TabsTrigger value="pending">Pending</TabsTrigger>
+          <TabsTrigger value="completed">Completed</TabsTrigger>
+          <TabsTrigger value="awaiting-approval">
+            <ShieldCheck className="mr-1.5 size-3.5" /> Awaiting Approval
+          </TabsTrigger>
+          <TabsTrigger value="results">Results</TabsTrigger>
+          <TabsTrigger value="closed">
+            <UserX className="mr-1.5 size-3.5" /> Closed / Cancelled
+          </TabsTrigger>
+          <TabsTrigger value="status">All Orders</TabsTrigger>
           {isSupervisor && <TabsTrigger value="technicians">For Technicians</TabsTrigger>}
           {isSupervisor && <TabsTrigger value="outsource">Outsource List</TabsTrigger>}
           <TabsTrigger value="order">Order</TabsTrigger>
         </TabsList>
 
+        <TabsContent value="pending" className="pt-4">
+          <LabStatusTab variant="pending" />
+        </TabsContent>
+        <TabsContent value="completed" className="pt-4">
+          <LabStatusTab variant="completed" />
+        </TabsContent>
+        <TabsContent value="awaiting-approval" className="pt-4">
+          <TestReportTab lockedStatus="review" />
+        </TabsContent>
+        <TabsContent value="results" className="pt-4">
+          <TestReportTab lockedStatus="published" />
+        </TabsContent>
+        <TabsContent value="closed" className="pt-4">
+          <LabStatusTab variant="cancelled" />
+        </TabsContent>
         <TabsContent value="status" className="pt-4">
           <LabStatusTab />
-        </TabsContent>
-        <TabsContent value="test-report" className="pt-4">
-          <TestReportTab />
         </TabsContent>
         {isSupervisor && (
           <TabsContent value="technicians" className="pt-4">
@@ -111,21 +133,36 @@ export default function LaboratoryHomePage() {
 // ============================================================
 // Status Tab — orders by status (sample collection lifecycle)
 // ============================================================
-function LabStatusTab() {
+function LabStatusTab({
+  variant = 'worklist',
+}: {
+  // 'worklist' = full lifecycle with a status dropdown (default).
+  // 'pending'  = active queue only (excludes completed/cancelled), no dropdown.
+  // 'completed'/'cancelled' = locked to that server-side status, no dropdown.
+  variant?: 'worklist' | 'pending' | 'completed' | 'cancelled';
+} = {}) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const [date, setDate] = useState<string>('');
   const [page, setPage] = useState(1);
 
+  // Locked variants pin the server-side status; 'pending' fetches everything
+  // and filters client-side (the API status filter takes a single enum).
+  const lockedStatus =
+    variant === 'completed' ? 'completed' : variant === 'cancelled' ? 'cancelled' : undefined;
+  const effectiveStatus = lockedStatus ?? (variant === 'worklist' ? statusFilter : undefined);
+
   const { data, isLoading } = useLabOrders({
     search: search || undefined,
-    status: statusFilter,
+    status: effectiveStatus,
     date: date || undefined,
     page,
     limit: 20,
   });
 
-  const orders = data?.data ?? [];
+  const orders = (data?.data ?? []).filter((o) =>
+    variant === 'pending' ? o.status !== 'completed' && o.status !== 'cancelled' : true,
+  );
 
   const [activeOrder, setActiveOrder] = useState<LabOrder | null>(null);
   const [collectFor, setCollectFor] = useState<LabOrder | null>(null);
@@ -142,20 +179,22 @@ function LabStatusTab() {
             className="bg-surface-container-low border-none rounded-xl pl-12 pr-6 py-2.5 font-label text-sm focus:ring-2 focus:ring-primary/20 outline-none"
           />
         </div>
-        <select
-          value={statusFilter ?? ''}
-          onChange={(e) => { setStatusFilter(e.target.value || undefined); setPage(1); }}
-          className="rounded-lg border bg-background px-3 py-2 text-sm"
-        >
-          <option value="">All statuses</option>
-          <option value="ordered">Ordered</option>
-          <option value="sample_collected">Sample Collected</option>
-          <option value="in_transit">In Transit</option>
-          <option value="received">Received</option>
-          <option value="in_progress">In Progress</option>
-          <option value="completed">Completed</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
+        {variant === 'worklist' && (
+          <select
+            value={statusFilter ?? ''}
+            onChange={(e) => { setStatusFilter(e.target.value || undefined); setPage(1); }}
+            className="rounded-lg border bg-background px-3 py-2 text-sm"
+          >
+            <option value="">All statuses</option>
+            <option value="ordered">Ordered</option>
+            <option value="sample_collected">Sample Collected</option>
+            <option value="in_transit">In Transit</option>
+            <option value="received">Received</option>
+            <option value="in_progress">In Progress</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        )}
         <Input
           type="date"
           value={date}
@@ -167,7 +206,15 @@ function LabStatusTab() {
       <OrderTable
         orders={orders}
         loading={isLoading}
-        emptyMsg="No lab orders found."
+        emptyMsg={
+          variant === 'pending'
+            ? 'No pending orders.'
+            : variant === 'completed'
+              ? 'No completed orders.'
+              : variant === 'cancelled'
+                ? 'No cancelled orders.'
+                : 'No lab orders found.'
+        }
         onView={setActiveOrder}
         onCollect={setCollectFor}
       />
@@ -196,9 +243,15 @@ function LabStatusTab() {
 // Test Report Tab — published + corrected reports, plus a "Pending Approval"
 // filter so supervisors can quickly jump to the review queue.
 // ============================================================
-function TestReportTab() {
+function TestReportTab({
+  lockedStatus,
+}: {
+  // When set, pins the report queue (published = Results, review = Awaiting
+  // Approval) and hides the dropdown so it reads as a dedicated tab.
+  lockedStatus?: 'published' | 'review';
+} = {}) {
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'published' | 'review'>('published');
+  const [statusFilter, setStatusFilter] = useState<'published' | 'review'>(lockedStatus ?? 'published');
   const [page, setPage] = useState(1);
   const { data, isLoading } = useLabReports({
     search: search || undefined,
@@ -222,14 +275,16 @@ function TestReportTab() {
             className="bg-surface-container-low border-none rounded-xl pl-12 pr-6 py-2.5 font-label text-sm outline-none"
           />
         </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => { setStatusFilter(e.target.value as any); setPage(1); }}
-          className="rounded-lg border bg-background px-3 py-2 text-sm"
-        >
-          <option value="published">Published</option>
-          <option value="review">Pending approval</option>
-        </select>
+        {!lockedStatus && (
+          <select
+            value={statusFilter}
+            onChange={(e) => { setStatusFilter(e.target.value as any); setPage(1); }}
+            className="rounded-lg border bg-background px-3 py-2 text-sm"
+          >
+            <option value="published">Published</option>
+            <option value="review">Pending approval</option>
+          </select>
+        )}
       </div>
 
       <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary overflow-hidden">
