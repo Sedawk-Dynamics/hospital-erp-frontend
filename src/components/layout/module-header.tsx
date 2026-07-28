@@ -48,7 +48,13 @@ export function ModuleHeader() {
     ? `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}`.toUpperCase()
     : 'U';
 
-  const moduleLabel = activeModule === 'doctor' && user
+  // Base the doctor label on the USER's role, not the active route module — a
+  // doctor who deep-links into a nurse-namespaced page (e.g. /nurse/charting for
+  // IP charting/vitals) must still read "Dr …", not "Nurse".
+  const roleSlug = (user?.role?.slug ?? user?.role?.name ?? '')
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  const moduleLabel = roleSlug === 'doctor' && user
     ? `Dr ${user.firstName}`
     : activeModule
       ? MODULE_REGISTRY[activeModule]?.label
