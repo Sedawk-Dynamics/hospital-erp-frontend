@@ -278,6 +278,11 @@ function PharmacyPOS() {
       ? { patientId: selectedPatient.id, status: 'pending', dispensed: false, limit: 20 }
       : undefined,
   );
+  // --- Past (already dispensed) prescriptions — so a patient returning ONLY
+  // for a refill, with no new pending Rx, can still be served from a prior one. ---
+  const { data: pastForPatient } = usePrescriptionQueue(
+    selectedPatient ? { patientId: selectedPatient.id, dispensed: true, limit: 10 } : undefined,
+  );
 
   // --- Active prescription detail (when chosen via deep-link or picker) ---
   const { data: activePrescription } = usePrescriptionDetail(activePrescriptionId);
@@ -909,43 +914,72 @@ function PharmacyPOS() {
             <div className="absolute top-full left-0 z-50 mt-1 w-[420px] rounded-lg border bg-popover shadow-lg overflow-hidden">
               <div className="px-3 py-2 border-b bg-muted/30 flex items-center justify-between">
                 <p className="text-xs font-medium">
-                  Pending prescriptions for {selectedPatient.firstName} {selectedPatient.lastName}
+                  Prescriptions for {selectedPatient.firstName} {selectedPatient.lastName}
                 </p>
               </div>
               <div className="max-h-72 overflow-y-auto">
-                {(pendingForPatient?.data ?? []).length === 0 ? (
+                {(pendingForPatient?.data ?? []).length === 0 &&
+                (pastForPatient?.data ?? []).length === 0 ? (
                   <div className="px-4 py-6 text-sm text-muted-foreground text-center">
-                    No pending prescriptions for this patient.
+                    No prescriptions for this patient.
                   </div>
                 ) : (
-                  (pendingForPatient?.data ?? []).map((rx) => (
-                    <button
-                      key={rx.id}
-                      onClick={() => selectPrescription(rx)}
-                      className="flex w-full flex-col items-start gap-1 px-3 py-2.5 text-left hover:bg-muted/50 transition-colors border-b last:border-0"
-                    >
-                      <div className="flex w-full items-center justify-between">
-                        <span className="text-xs font-mono text-muted-foreground">
-                          {rx.id.slice(0, 8)}
-                        </span>
-                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                          {rx.prescriptionType} · {rx.status.replace('_', ' ')}
-                        </span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        <Stethoscope className="inline h-3 w-3 mr-1" />
-                        {rx.doctor?.user
-                          ? `Dr. ${rx.doctor.user.firstName} ${rx.doctor.user.lastName}`
-                          : 'Doctor'}
+                  <>
+                    {(pendingForPatient?.data ?? []).map((rx) => (
+                      <button
+                        key={rx.id}
+                        onClick={() => selectPrescription(rx)}
+                        className="flex w-full flex-col items-start gap-1 px-3 py-2.5 text-left hover:bg-muted/50 transition-colors border-b last:border-0"
+                      >
+                        <div className="flex w-full items-center justify-between">
+                          <span className="text-xs font-mono text-muted-foreground">
+                            {rx.id.slice(0, 8)}
+                          </span>
+                          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                            {rx.prescriptionType} · {rx.status.replace('_', ' ')}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          <Stethoscope className="inline h-3 w-3 mr-1" />
+                          {rx.doctor?.user
+                            ? `Dr. ${rx.doctor.user.firstName} ${rx.doctor.user.lastName}`
+                            : 'Doctor'}
+                        </p>
+                        <p className="text-xs text-foreground line-clamp-2">
+                          {rx.prescriptionItems.map((it) => it.drugName).join(', ') || '—'}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {formatDate(rx.createdAt)} · {rx.prescriptionItems.length} item{rx.prescriptionItems.length > 1 ? 's' : ''}
+                        </p>
+                      </button>
+                    ))}
+                    {/* Refill: previously dispensed prescriptions for this patient. */}
+                    {(pastForPatient?.data ?? []).length > 0 && (
+                      <p className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground border-t bg-muted/20">
+                        Previous prescriptions (refill)
                       </p>
-                      <p className="text-xs text-foreground line-clamp-2">
-                        {rx.prescriptionItems.map((it) => it.drugName).join(', ') || '—'}
-                      </p>
-                      <p className="text-[10px] text-muted-foreground">
-                        {formatDate(rx.createdAt)} · {rx.prescriptionItems.length} item{rx.prescriptionItems.length > 1 ? 's' : ''}
-                      </p>
-                    </button>
-                  ))
+                    )}
+                    {(pastForPatient?.data ?? []).map((rx) => (
+                      <button
+                        key={`past-${rx.id}`}
+                        onClick={() => selectPrescription(rx)}
+                        className="flex w-full flex-col items-start gap-1 px-3 py-2.5 text-left hover:bg-muted/50 transition-colors border-b last:border-0"
+                      >
+                        <div className="flex w-full items-center justify-between">
+                          <span className="text-xs font-mono text-muted-foreground">{rx.id.slice(0, 8)}</span>
+                          <span className="rounded-full bg-sky-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-sky-700">
+                            Dispense again
+                          </span>
+                        </div>
+                        <p className="text-xs text-foreground line-clamp-2">
+                          {rx.prescriptionItems.map((it) => it.drugName).join(', ') || '—'}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {formatDate(rx.createdAt)} · {rx.prescriptionItems.length} item{rx.prescriptionItems.length > 1 ? 's' : ''}
+                        </p>
+                      </button>
+                    ))}
+                  </>
                 )}
               </div>
             </div>
@@ -1202,11 +1236,30 @@ function PharmacyPOS() {
                             <>
                               <Package className="h-3 w-3" />
                               {item.batchNumber}
-                              {item.expiryDate && (
-                                <span className="text-muted-foreground ml-1">
-                                  (Exp: {formatDate(item.expiryDate)})
-                                </span>
-                              )}
+                              {item.expiryDate && (() => {
+                                const days = Math.floor(
+                                  (new Date(item.expiryDate).getTime() - Date.now()) / 86400000,
+                                );
+                                if (days < 0) {
+                                  return (
+                                    <span className="ml-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-red-700">
+                                      Expired {formatDate(item.expiryDate)}
+                                    </span>
+                                  );
+                                }
+                                if (days <= 30) {
+                                  return (
+                                    <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-amber-700">
+                                      Expires in {days}d
+                                    </span>
+                                  );
+                                }
+                                return (
+                                  <span className="text-muted-foreground ml-1">
+                                    (Exp: {formatDate(item.expiryDate)})
+                                  </span>
+                                );
+                              })()}
                               <ChevronDown className="h-3 w-3 opacity-60" />
                             </>
                           ) : (
