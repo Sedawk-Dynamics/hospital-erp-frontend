@@ -253,11 +253,23 @@ function CreateHandoverForm({ currentShift }: { currentShift: ShiftType }) {
       return;
     }
     try {
+      // The handover model only knows morning/afternoon/night. A nurse on a
+      // 'general' roster hands over at whatever part of day it is now — map it
+      // to a valid handover shift so the submit doesn't 400.
+      const hour = new Date().getHours();
+      const handoverShift =
+        shiftType === 'general'
+          ? hour < 12
+            ? 'morning'
+            : hour < 18
+              ? 'afternoon'
+              : 'night'
+          : shiftType;
       await createHandover.mutateAsync({
         wardId,
         toNurseId: toNurseId || undefined,
         shiftDate: todayIso,
-        shiftType,
+        shiftType: handoverShift,
         content: content.trim(),
       });
       toast.success('Handover note sent to next shift');
@@ -423,7 +435,9 @@ function HandoverHistoryList() {
     [acknowledgeHandover],
   );
 
-  const list = Array.isArray(handovers) ? handovers : [];
+  // `useHandovers` returns the raw API envelope { data, meta }; the list lives
+  // at `.data`. Checking the envelope itself was always non-array → empty feed.
+  const list = Array.isArray(handovers?.data) ? handovers.data : [];
 
   return (
     <div className="space-y-2">
