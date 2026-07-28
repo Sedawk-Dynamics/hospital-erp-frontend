@@ -62,7 +62,8 @@ import { NursingFormsPanel } from '@/components/doctor/nursing-forms-panel';
 import { ConsultationSummaryPanel } from '@/components/doctor/consultation-summary-panel';
 import { PatientAiAssistant } from '@/components/doctor/patient-ai-assistant';
 import { useAiStatus } from '@/hooks/use-ai';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, Plus } from 'lucide-react';
+import { RecordVitalsDialog } from '@/components/shared/record-vitals-dialog';
 import type { Patient, Appointment } from '@/types';
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -291,25 +292,61 @@ function SidebarCard({
 
 // ── Sidebar: Vitals (vertical, compact) ───────────────────────────────
 
-function VitalsSidebar({ patientId }: { patientId: string }) {
+function VitalsSidebar({
+  patientId,
+  appointmentId,
+  visitId,
+}: {
+  patientId: string;
+  appointmentId?: string | null;
+  visitId?: string | null;
+}) {
   const { data: latestResp, isLoading } = useLatestVitalsNurse(patientId);
   const v = (latestResp as any)?.data ?? null;
+  const [recordOpen, setRecordOpen] = useState(false);
+  // The treating doctor examines the patient and may record their own reading
+  // (nursing still owns routine rounds). Needs an encounter to hang the vital
+  // off, so require an appointment or active visit.
+  const canRecord = Boolean(patientId && (appointmentId || visitId));
+
+  const recordButton = canRecord ? (
+    <button
+      type="button"
+      onClick={() => setRecordOpen(true)}
+      className="inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-primary hover:bg-primary/10"
+    >
+      <Plus className="h-3 w-3" /> Record
+    </button>
+  ) : null;
+
+  const dialog = canRecord ? (
+    <RecordVitalsDialog
+      open={recordOpen}
+      onOpenChange={setRecordOpen}
+      patientId={patientId}
+      appointmentId={appointmentId ?? undefined}
+      visitId={visitId ?? undefined}
+    />
+  ) : null;
 
   if (isLoading) {
     return (
-      <SidebarCard title="Vitals" icon={Activity}>
+      <SidebarCard title="Vitals" icon={Activity} trailing={recordButton}>
         <div className="flex items-center justify-center py-3">
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
         </div>
+        {dialog}
       </SidebarCard>
     );
   }
   if (!v) {
     return (
-      <SidebarCard title="Vitals" icon={Activity}>
+      <SidebarCard title="Vitals" icon={Activity} trailing={recordButton}>
         <p className="text-[11px] text-muted-foreground italic leading-snug">
-          No vitals recorded yet. Nursing team captures these.
+          No vitals recorded yet. Nursing records these on rounds — or tap Record
+          to capture a reading at examination.
         </p>
+        {dialog}
       </SidebarCard>
     );
   }
@@ -337,11 +374,14 @@ function VitalsSidebar({ patientId }: { patientId: string }) {
       title="Vitals"
       icon={Activity}
       trailing={
-        v.recordedAt ? (
-          <span className="text-[9px] text-muted-foreground font-normal normal-case tracking-normal">
-            {formatDateTimeAmPm(v.recordedAt)}
-          </span>
-        ) : null
+        <span className="flex items-center gap-1.5">
+          {v.recordedAt && (
+            <span className="text-[9px] text-muted-foreground font-normal normal-case tracking-normal">
+              {formatDateTimeAmPm(v.recordedAt)}
+            </span>
+          )}
+          {recordButton}
+        </span>
       }
     >
       {rows.length === 0 ? (
@@ -361,6 +401,7 @@ function VitalsSidebar({ patientId }: { patientId: string }) {
           ))}
         </ul>
       )}
+      {dialog}
     </SidebarCard>
   );
 }
@@ -973,7 +1014,11 @@ export default function PatientConsultationPage({
           {/* ── Right aside (20%) ─────────────────────────────────── */}
           <aside className="lg:col-span-1 lg:sticky lg:top-14 lg:self-start lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto print:hidden">
             <div className="space-y-3">
-              <VitalsSidebar patientId={patient.id} />
+              <VitalsSidebar
+                patientId={patient.id}
+                appointmentId={appointmentId}
+                visitId={activeVisitId}
+              />
               <FamilyHistorySidebar patientId={patient.id} />
               <AllergiesSidebar patient={patient} />
             </div>
