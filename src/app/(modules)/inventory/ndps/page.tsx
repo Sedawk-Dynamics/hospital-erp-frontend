@@ -1,6 +1,6 @@
 'use client';
 
-import { PharmacyAdminGuard } from '@/components/pharmacy/pharmacy-admin-guard';
+import { NdpsGuard } from '@/components/pharmacy/ndps-guard';
 import { useState, useRef } from 'react';
 import { ShieldCheck, PackagePlus, ArrowLeftRight, Syringe, Trash2, CalendarClock, Download, FileText, Search, Upload } from 'lucide-react';
 import { toast } from 'sonner';
@@ -645,8 +645,8 @@ function NdpsInner() {
 
 export default function NdpsPage() {
   return (
-    <PharmacyAdminGuard>
+    <NdpsGuard>
       <NdpsInner />
-    </PharmacyAdminGuard>
+    </NdpsGuard>
   );
 }
