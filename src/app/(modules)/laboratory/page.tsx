@@ -35,6 +35,7 @@ import {
   useSubmitLabReport,
   usePublishLabReport,
   useLabOrder,
+  useCancelLabOrder,
   type LabOrder,
 } from '@/hooks/use-lab';
 import { useUsersList } from '@/hooks/use-users';
@@ -394,7 +395,7 @@ function OutsourceTab() {
                   <td className="px-4 py-3">{o.patient.firstName} {o.patient.lastName}</td>
                   <td className="px-4 py-3">{o.thirdPartyLabName ?? '-'}</td>
                   <td className="px-4 py-3">{o.labOrderItems?.length ?? 0}</td>
-                  <td className="px-4 py-3"><StatusBadge status={o.status} /></td>
+                  <td className="px-4 py-3"><StatusBadge status={o.status} reportStatus={o.labReport?.status} /></td>
                 </tr>
               ))
             )}
@@ -499,7 +500,7 @@ function OrderTable({
                     <SpecimensCell samples={o.labSamples} />
                   </td>
                   <td className="px-4 py-3"><PriorityBadge priority={(o.urgency ?? o.priority) as string} /></td>
-                  <td className="px-4 py-3"><StatusBadge status={o.status} /></td>
+                  <td className="px-4 py-3"><StatusBadge status={o.status} reportStatus={o.labReport?.status} /></td>
                   {showAssignee && (
                     <td className="px-4 py-3 text-xs">
                       {o.assignedTo ? `${o.assignedTo.firstName} ${o.assignedTo.lastName}` : '-'}
@@ -727,8 +728,22 @@ function OrderDetailDialog({
   const liveOrderQ = useLabOrder(order?.id ?? '');
   const liveOrder = liveOrderQ.data ?? order;
   const { data: attachments } = useLabOrderAttachments(order?.id);
+  const cancelOrder = useCancelLabOrder();
 
   if (!order || !liveOrder) return null;
+
+  const canCancel = liveOrder.status !== 'completed' && liveOrder.status !== 'cancelled';
+  const handleCancelOrder = async () => {
+    const reason = window.prompt('Reason for cancelling this order? (shown on the order)');
+    if (reason === null) return; // dismissed
+    try {
+      await cancelOrder.mutateAsync({ id: liveOrder.id, reason: reason.trim() || undefined });
+      toast.success('Order cancelled');
+      onOpenChange(false);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Failed to cancel order');
+    }
+  };
 
   const advanceSample = async (
     sampleId: string,
@@ -749,9 +764,22 @@ function OrderDetailDialog({
           <DialogTitle>
             Order #{liveOrder.id.slice(0, 8)} — {liveOrder.patient.firstName} {liveOrder.patient.lastName}
           </DialogTitle>
-          <DialogDescription>
-            <StatusBadge status={liveOrder.status} />
-            <span className="ml-2 text-xs">{liveOrder.labOrderItems?.length ?? 0} test(s)</span>
+          <DialogDescription className="flex items-center gap-2">
+            <StatusBadge status={liveOrder.status} reportStatus={liveOrder.labReport?.status} />
+            <span className="text-xs">{liveOrder.labOrderItems?.length ?? 0} test(s)</span>
+            {canCancel && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="ml-auto h-7 gap-1 text-xs text-red-600 border-red-200 hover:bg-red-50"
+                disabled={cancelOrder.isPending}
+                onClick={handleCancelOrder}
+              >
+                <XIcon className="h-3.5 w-3.5" />
+                Cancel order
+              </Button>
+            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -1764,7 +1792,12 @@ function PriorityBadge({ priority }: { priority?: string }) {
   );
 }
 
-function StatusBadge({ status }: { status?: string }) {
+function StatusBadge({ status, reportStatus }: { status?: string; reportStatus?: string }) {
+  // Once the report is published (or corrected), the order reads "Published"
+  // even though LabOrder.status stays 'completed' (no 'published' order status).
+  const effective =
+    reportStatus === 'published' || reportStatus === 'corrected' ? 'published' : status;
+  status = effective;
   return (
     <span className={cn(
       'text-[10px] font-bold px-2 py-0.5 rounded-full capitalize',
