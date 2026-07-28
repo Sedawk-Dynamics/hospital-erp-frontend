@@ -120,6 +120,7 @@ interface AdmissionParams {
   limit?: number;
   search?: string;
   status?: string;
+  patientId?: string;
   wardId?: string;
   date?: string;
   sortOrder?: 'asc' | 'desc';

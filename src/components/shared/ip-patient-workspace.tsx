@@ -232,6 +232,12 @@ function HeaderStrip({
               {admission.status}
             </Badge>
           </div>
+          {admission.admissionReason && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground/70">Admitting reason:</span>{' '}
+              {admission.admissionReason}
+            </p>
+          )}
         </div>
 
         {/* Role-aware quick actions */}
@@ -646,8 +652,14 @@ function parseProgressNote(content: string): ParsedNote {
 const noteSnippet = (p: ParsedNote): string =>
   p.fallback ?? p.sections.map((s) => `${s.key}: ${s.text}`).join('   ·   ');
 
-function ProgressNotesPanel({ admissionId, patientId, role, admissionDate }: { admissionId: string; patientId: string; role: WorkspaceRole; admissionDate?: string }) {
-  const { data, isLoading, refetch } = useProgressNotes({ admissionId, limit: 100 });
+function ProgressNotesPanel({ admissionId, visitId, patientId, role, admissionDate }: { admissionId: string; visitId?: string; patientId: string; role: WorkspaceRole; admissionDate?: string }) {
+  // An admission reuses the same Visit as the pre-admission OP encounter, so
+  // fetching by that visitId surfaces BOTH the OP notes recorded before the IP
+  // request and the IP round notes — the OP case details are no longer hidden.
+  // Fall back to admissionId for older rows without a resolvable visit.
+  const { data, isLoading, refetch } = useProgressNotes(
+    visitId ? { visitId, limit: 100 } : { admissionId, limit: 100 },
+  );
   // IP running log — this admission's notes, newest first.
   const ipNotes = useMemo<ProgressNote[]>(() => data?.data ?? [], [data]);
   const [composerOpen, setComposerOpen] = useState(false);
@@ -1383,7 +1395,7 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
           <EmarTodayPanel admissionId={admissionId} role={role} />
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <PrescriptionsPanel admissionId={admissionId} patientId={patientId} role={role} onNewRx={onNewRx} />
-            <ProgressNotesPanel admissionId={admissionId} patientId={patientId} role={role} admissionDate={admission.admissionDate} />
+            <ProgressNotesPanel admissionId={admissionId} visitId={admission.visitId} patientId={patientId} role={role} admissionDate={admission.admissionDate} />
           </div>
         </TabsContent>
 
@@ -1404,7 +1416,7 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
         </TabsContent>
 
         <TabsContent value="progress" className="pt-4">
-          <ProgressNotesPanel admissionId={admissionId} patientId={patientId} role={role} />
+          <ProgressNotesPanel admissionId={admissionId} visitId={admission.visitId} patientId={patientId} role={role} />
         </TabsContent>
 
         <TabsContent value="orders" className="pt-4">

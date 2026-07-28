@@ -55,6 +55,7 @@ import { OrdersPanel } from '@/components/doctor/orders-panel';
 import { AmendmentHistoryDialog } from '@/components/doctor/progress-notes-amendment-history';
 import { cn } from '@/lib/utils';
 import { usePatientDetail, useProgressNotes, usePrescriptions } from '@/hooks/use-doctor';
+import { useAdmissions } from '@/hooks/use-clinical';
 import { openPrescriptionPdf } from '@/lib/print-prescription';
 import { useLatestVitals as useLatestVitalsNurse } from '@/hooks/use-nurse';
 import { NursingFormsPanel } from '@/components/doctor/nursing-forms-panel';
@@ -101,6 +102,10 @@ function TopBar({
     `${patient.firstName?.[0] ?? ''}${patient.lastName?.[0] ?? ''}`.toUpperCase() || 'P';
   const [aiOpen, setAiOpen] = useState(false);
   const { data: aiStatus } = useAiStatus();
+  // Is this patient currently an inpatient? Drives the OP/IP indicator and stops
+  // a duplicate "Request IP" on an already-admitted patient.
+  const { data: admResp } = useAdmissions({ patientId: patient.id, status: 'admitted', limit: 1 });
+  const activeAdmission = admResp?.data?.[0] ?? null;
   const patientName = `${patient.firstName} ${patient.lastName ?? ''}`.trim();
 
   // "Print" opens the patient's LATEST prescription as the hospital-branded PDF
@@ -135,8 +140,18 @@ function TopBar({
           <span className="text-sm font-bold text-primary">{initials}</span>
         </div>
         <div className="min-w-0">
-          <p className="text-sm font-bold truncate">
+          <p className="text-sm font-bold truncate flex items-center gap-1.5">
             {patient.firstName} {patient.lastName}
+            <span
+              className={
+                activeAdmission
+                  ? 'shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-amber-700'
+                  : 'shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-emerald-700'
+              }
+              title={activeAdmission ? 'Inpatient (currently admitted)' : 'Outpatient'}
+            >
+              {activeAdmission ? 'IP · Admitted' : 'OP'}
+            </span>
           </p>
           <p className="text-[10px] text-muted-foreground truncate">
             {[
@@ -186,9 +201,11 @@ function TopBar({
         size="sm"
         className="h-8 gap-1 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
         onClick={onRequestIp}
+        disabled={!!activeAdmission}
+        title={activeAdmission ? 'Patient is already admitted' : 'Raise an IP admission request'}
       >
         <BedDouble className="h-3.5 w-3.5" />
-        Request IP
+        {activeAdmission ? 'Admitted' : 'Request IP'}
       </Button>
       {aiStatus?.features.patientChat && (
         <Button

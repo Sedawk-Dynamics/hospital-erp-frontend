@@ -28,6 +28,7 @@ export interface NurseAdmission {
   admissionDate: string;
   dischargeDate?: string;
   status: string;
+  admissionReason?: string;
   diagnosis?: string;
   complaints?: string;
   notes?: string;
