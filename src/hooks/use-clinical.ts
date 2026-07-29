@@ -244,6 +244,21 @@ export function useDischargePatient() {
   });
 }
 
+// Convert an admission's care type (ip / emergency / daycare).
+export function useChangeAdmissionType() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, admissionType }: { id: string; admissionType: string }) => {
+      const response = await apiPatch<Admission>(`/clinical/admissions/${id}/type`, { admissionType });
+      return response.data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: clinicalKeys.admissions.all });
+      queryClient.invalidateQueries({ queryKey: clinicalKeys.admissions.detail(variables.id) });
+    },
+  });
+}
+
 // Front-desk instant bed assign / change / clear from the IP ledger.
 export function useAssignAdmissionBed() {
   const queryClient = useQueryClient();

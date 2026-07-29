@@ -95,6 +95,7 @@ import { apiGet } from '@/lib/api';
 
 import type { NurseAdmission, NursingNote, Prescription, Vital } from '@/hooks/use-nurse';
 import { AssignBedDialog } from '@/components/hospital/ip/assign-bed-dialog';
+import { AdmissionTypeControl } from '@/components/shared/admission-type-control';
 
 // Hooks here return raw `ApiResponse<T>` — pull out the inner payload safely.
 function unwrapList<T>(value: unknown): T[] {
@@ -197,6 +198,11 @@ function HeaderStrip({
             <Badge variant="outline" className="font-mono">
               IP {admission.ipNumber || admission.id.slice(0, 8).toUpperCase()}
             </Badge>
+            <AdmissionTypeControl
+              admissionId={admission.id}
+              type={(admission as { admissionType?: string }).admissionType}
+              editable={admission.status === 'admitted'}
+            />
             <span className="inline-flex items-center gap-1">
               <BedDouble className="h-3.5 w-3.5" />
               {admission.ward?.name ?? '—'} / Bed {admission.bed?.bedNumber ?? '—'}

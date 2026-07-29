@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { cn, getApiErrorMessage } from '@/lib/utils';
+import { AdmissionTypeBadge, ADMISSION_TYPE_OPTIONS, type AdmissionType } from '@/components/shared/admission-type-badge';
 import {
   Search,
   Plus,
@@ -176,6 +177,7 @@ function AdmissionDialog({
   });
 
   const [selectedDoctorId, setSelectedDoctorId] = useState('');
+  const [admissionType, setAdmissionType] = useState<AdmissionType>('ip');
   const [selectedFloorId, setSelectedFloorId] = useState('');
   const [selectedWardId, setSelectedWardId] = useState('');
   const [selectedBedId, setSelectedBedId] = useState('');
@@ -318,7 +320,9 @@ function AdmissionDialog({
       const admissionRes = await apiPost<Admission>('/clinical/admissions', {
         visitId,
         patientId,
-        doctorId: selectedDoctorId,
+        // Doctor optional now — omit when not chosen.
+        doctorId: selectedDoctorId || undefined,
+        admissionType,
         // No bed/ward at registration — assigned later from the IP workspace.
         admissionDate,
         expectedDischargeDate: expectedDischarge || undefined,
@@ -401,6 +405,7 @@ function AdmissionDialog({
     setPatientMode(initialMode);
     setIsTemporary(false);
     setSelectedDoctorId('');
+    setAdmissionType('ip');
     setSelectedFloorId('');
     setSelectedWardId('');
     setSelectedBedId('');
@@ -451,9 +456,9 @@ function AdmissionDialog({
     }
   };
 
-  // Bed/ward are no longer part of registration — only patient + main doctor are
-  // required to admit; the bed is assigned later from the IP workspace.
-  const detailsValid = patientValid && !!selectedDoctorId;
+  // Only the patient is required to admit now — doctor, bed and ward are all
+  // optional and assigned later. Admission type always has a value (defaults IP).
+  const detailsValid = patientValid;
 
   const requiredChecklistDone = ADMISSION_CHECKLIST.filter((c) => c.required).every(
     (c) => checklist[c.key],
@@ -689,13 +694,39 @@ function AdmissionDialog({
         {step === 'admit' && (
           <div className="grid gap-4 py-2">
             <div className="grid grid-cols-2 gap-3">
-              {/* Doctor */}
-              <div className="grid gap-1.5">
-                <Label>Consultant Doctor *</Label>
+              {/* Admission type — IP / Emergency / Day Care. All three run the
+                  same IP flow; this just tags + filters the admission. */}
+              <div className="col-span-2 grid gap-1.5">
+                <Label>Admission Type *</Label>
+                <div className="flex gap-1.5">
+                  {ADMISSION_TYPE_OPTIONS.map((o) => (
+                    <button
+                      key={o.value}
+                      type="button"
+                      onClick={() => setAdmissionType(o.value)}
+                      className={cn(
+                        'flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
+                        admissionType === o.value
+                          ? 'border-primary bg-primary/5 text-primary shadow-sm'
+                          : 'border-border text-muted-foreground hover:bg-muted/50',
+                      )}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Consultant doctor — optional (assign now or later). Kept
+                  low-key since a patient can be admitted before a doctor is set. */}
+              <div className="col-span-2 grid gap-1">
+                <Label className="text-xs text-muted-foreground">
+                  Consultant Doctor <span className="font-normal">(optional)</span>
+                </Label>
                 <Select value={selectedDoctorId} onValueChange={(v) => setSelectedDoctorId(v ?? '')}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select doctor">
-                      {() => (selectedDoctor ? doctorName(selectedDoctor) : 'Select doctor')}
+                  <SelectTrigger className="h-8 w-full text-xs">
+                    <SelectValue placeholder="Assign a doctor (optional)">
+                      {() => (selectedDoctor ? doctorName(selectedDoctor) : 'Assign a doctor (optional)')}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
@@ -707,16 +738,6 @@ function AdmissionDialog({
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-
-              {/* Bed & ward are NOT chosen at registration — front desk assigns
-                  them afterwards from the IP workspace (beds move around during a
-                  stay). */}
-              <div className="col-span-2 rounded-lg border border-dashed border-outline-variant/50 bg-surface-container-lowest px-3 py-2 text-xs text-muted-foreground">
-                <span className="inline-flex items-center gap-1.5">
-                  <BedDouble className="h-3.5 w-3.5" />
-                  Bed &amp; ward are assigned later from the IP workspace, not here.
-                </span>
               </div>
 
               <>
@@ -1917,6 +1938,7 @@ export function InPatientList() {
                               >
                                 {adm.patient?.firstName} {adm.patient?.lastName}
                               </Link>
+                              <AdmissionTypeBadge type={(adm as { admissionType?: string }).admissionType} />
                               {isTemporaryPatient(adm.patient) && (
                                 <Badge variant="secondary" className="uppercase">Temp</Badge>
                               )}

@@ -28,6 +28,8 @@ export interface NurseAdmission {
   admissionDate: string;
   dischargeDate?: string;
   status: string;
+  // Care type — ip | emergency | daycare (all share the same IP flow).
+  admissionType?: string;
   admissionReason?: string;
   diagnosis?: string;
   complaints?: string;
@@ -423,6 +425,7 @@ export function useNurseAdmissions(params?: {
   status?: string;
   search?: string;
   date?: string;
+  admissionType?: string;
 }) {
   return useQuery({
     queryKey: nurseKeys.admissions.list(params as Record<string, unknown>),

@@ -16,7 +16,7 @@ export default function IPHomePage() {
 
   return (
     <div className="space-y-4 animate-fade-in-up">
-      <h1 className="font-headline text-xl font-bold">IP Home</h1>
+      <h1 className="font-headline text-xl font-bold">Patient Home</h1>
 
       <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-6">
         <Tabs defaultValue="in-patient">

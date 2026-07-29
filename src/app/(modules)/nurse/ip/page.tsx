@@ -24,14 +24,17 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useNurseAdmissions, type NurseAdmission } from '@/hooks/use-nurse';
 import { formatDate } from '@/lib/date-utils';
+import { AdmissionTypeBadge, ADMISSION_TYPE_OPTIONS } from '@/components/shared/admission-type-badge';
 
 export default function NurseIPListPage() {
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'admitted' | 'discharged'>('admitted');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'ip' | 'emergency' | 'daycare'>('all');
 
   const { data, isLoading } = useNurseAdmissions({
     status: statusFilter === 'all' ? undefined : statusFilter,
+    admissionType: typeFilter === 'all' ? undefined : typeFilter,
     limit: 200,
   });
 
@@ -88,14 +91,26 @@ export default function NurseIPListPage() {
             ))}
           </div>
 
-          <div className="relative w-full sm:w-72">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name, MRN, IP no, ward, bed..."
-              className="pl-9"
-            />
+          <div className="flex items-center gap-2">
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value as typeof typeFilter)}
+              className="rounded-md border bg-background px-3 py-1.5 text-xs"
+            >
+              <option value="all">All Types</option>
+              {ADMISSION_TYPE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <div className="relative w-full sm:w-72">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by name, MRN, IP no, ward, bed..."
+                className="pl-9"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -144,13 +159,16 @@ export default function NurseIPListPage() {
                           <AvatarFallback className="text-xs bg-primary/10 text-primary">{initials}</AvatarFallback>
                         </Avatar>
                         <div>
-                          <Link
-                            href={`/nurse/ip/${a.id}`}
-                            className="font-semibold text-foreground hover:text-primary"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {a.patient?.firstName} {a.patient?.lastName}
-                          </Link>
+                          <div className="flex items-center gap-1.5">
+                            <Link
+                              href={`/nurse/ip/${a.id}`}
+                              className="font-semibold text-foreground hover:text-primary"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {a.patient?.firstName} {a.patient?.lastName}
+                            </Link>
+                            <AdmissionTypeBadge type={a.admissionType} />
+                          </div>
                           <p className="text-[10px] text-muted-foreground">
                             {a.patient?.mrn ?? '-'}{a.patient?.phone ? ` · ${a.patient.phone}` : ''}
                           </p>

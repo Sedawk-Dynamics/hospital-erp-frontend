@@ -458,6 +458,7 @@ interface DoctorAdmissionsParams {
   doctorUserId?: string;
   wardId?: string;
   date?: string;
+  admissionType?: string;
 }
 
 export function useDoctorAdmissions(params?: DoctorAdmissionsParams) {

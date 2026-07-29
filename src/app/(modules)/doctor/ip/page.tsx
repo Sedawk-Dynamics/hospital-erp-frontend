@@ -33,6 +33,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useDoctorAdmissions, useDischargePatient, useCreateProgressNote } from '@/hooks/use-doctor';
 import { apiPost } from '@/lib/api';
 import { IpPrescriptionDialog } from '@/components/doctor/ip-prescription-dialog';
+import { AdmissionTypeBadge, ADMISSION_TYPE_OPTIONS } from '@/components/shared/admission-type-badge';
 
 const ipStatItems = [
   { key: 'all', label: 'All', color: 'text-on-surface' },
@@ -49,6 +50,7 @@ export default function DoctorIPHomePage() {
   // 'my' = patients where I'm the main doctor; 'all' = every IP patient (shared
   // across all doctors). Tagged/mentioned patients also surface under 'my'.
   const [scope, setScope] = useState<'my' | 'all'>('my');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'ip' | 'emergency' | 'daycare'>('all');
   const [selectedWard, setSelectedWard] = useState('all');
   const [fromDate, setFromDate] = useState(toInputDateStr());
   const [toDate, setToDate] = useState(toInputDateStr());
@@ -75,6 +77,7 @@ export default function DoctorIPHomePage() {
     // only scopes the historical (discharged / transferred / …) views.
     date: activeFilter === 'admitted' ? undefined : fromDate,
     wardId: selectedWard !== 'all' ? selectedWard : undefined,
+    admissionType: typeFilter !== 'all' ? typeFilter : undefined,
   });
 
   const dischargeMutation = useDischargePatient();
@@ -182,6 +185,17 @@ export default function DoctorIPHomePage() {
       {/* Filters row */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between bg-surface-container-lowest rounded-xl shadow-sanctuary p-6">
         <div className="flex items-center gap-3">
+          <Select value={typeFilter} onValueChange={(v) => { setTypeFilter((v ?? 'all') as typeof typeFilter); setPage(1); }}>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue placeholder="All Types" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              {ADMISSION_TYPE_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select value={selectedWard} onValueChange={(v) => { setSelectedWard(v ?? 'all'); setPage(1); }}>
             <SelectTrigger className="w-[160px]">
               <SelectValue placeholder="Select Ward" />
@@ -322,6 +336,9 @@ export default function DoctorIPHomePage() {
                                 </span>
                               )}
                             </button>
+                            <div className="mt-0.5">
+                              <AdmissionTypeBadge type={(admission as { admissionType?: string }).admissionType} />
+                            </div>
                             <div className="text-xs text-muted-foreground">
                               {patient?.mrn || patient?.uhid || '-'} | {patient?.phone || '-'}
                             </div>
