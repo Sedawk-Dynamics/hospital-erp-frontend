@@ -717,29 +717,6 @@ function AdmissionDialog({
                 </div>
               </div>
 
-              {/* Consultant doctor — optional (assign now or later). Kept
-                  low-key since a patient can be admitted before a doctor is set. */}
-              <div className="col-span-2 grid gap-1">
-                <Label className="text-xs text-muted-foreground">
-                  Consultant Doctor <span className="font-normal">(optional)</span>
-                </Label>
-                <Select value={selectedDoctorId} onValueChange={(v) => setSelectedDoctorId(v ?? '')}>
-                  <SelectTrigger className="h-8 w-full text-xs">
-                    <SelectValue placeholder="Assign a doctor (optional)">
-                      {() => (selectedDoctor ? doctorName(selectedDoctor) : 'Assign a doctor (optional)')}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {doctors.map((d) => (
-                      <SelectItem key={d.id} value={d.id}>
-                        {doctorName(d)}
-                        {d.specialization ? ` — ${d.specialization}` : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
               <>
                   <div className="grid gap-1.5">
                     <Label>Admission Date *</Label>
@@ -781,6 +758,28 @@ function AdmissionDialog({
                     <SelectItem value="package">Package</SelectItem>
                     <SelectItem value="insurance">Insurance (TPA)</SelectItem>
                     <SelectItem value="corporate">Corporate (TPA)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Consultant doctor — optional (assign now or later); kept small. */}
+              <div className="grid gap-1.5">
+                <Label className="text-muted-foreground">
+                  Consultant Doctor <span className="font-normal">(optional)</span>
+                </Label>
+                <Select value={selectedDoctorId} onValueChange={(v) => setSelectedDoctorId(v ?? '')}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Assign a doctor">
+                      {() => (selectedDoctor ? doctorName(selectedDoctor) : 'Assign a doctor')}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {doctors.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {doctorName(d)}
+                        {d.specialization ? ` — ${d.specialization}` : ''}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
