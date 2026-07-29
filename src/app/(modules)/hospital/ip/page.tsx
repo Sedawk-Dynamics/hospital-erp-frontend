@@ -21,7 +21,7 @@ export default function IPHomePage() {
       <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-6">
         <Tabs defaultValue="in-patient">
           <TabsList variant="line">
-            <TabsTrigger value="in-patient">In Patient List</TabsTrigger>
+            <TabsTrigger value="in-patient">Patients</TabsTrigger>
             <TabsTrigger value="ip-requests">
               <span className="inline-flex items-center gap-1.5">
                 IP Requests

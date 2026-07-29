@@ -1644,6 +1644,7 @@ function useAdmissionStats() {
 export function InPatientList() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | AdmissionType>('all');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [admitOpen, setAdmitOpen] = useState(false);
@@ -1654,10 +1655,11 @@ export function InPatientList() {
   const { data: stats } = useAdmissionStats();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['hospital', 'admissions', { status: statusFilter, search, page }],
+    queryKey: ['hospital', 'admissions', { status: statusFilter, type: typeFilter, search, page }],
     queryFn: async () => {
       const params: Record<string, unknown> = { page, limit: 20 };
       if (statusFilter !== 'all') params.status = statusFilter;
+      if (typeFilter !== 'all') params.admissionType = typeFilter;
       if (search) params.search = search;
       const response = await apiGet<Admission[]>('/clinical/admissions', { params });
       return { data: response.data, meta: response.meta! };
@@ -1720,6 +1722,30 @@ export function InPatientList() {
           <Plus className="h-4 w-4" />
           Admit Patient
         </Button>
+      </div>
+
+      {/* Care-type filter — All / IP / Emergency / Day Care */}
+      <div className="flex items-center gap-1.5">
+        <span className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant mr-1">
+          Type
+        </span>
+        {[{ value: 'all', label: 'All' }, ...ADMISSION_TYPE_OPTIONS].map((o) => (
+          <button
+            key={o.value}
+            onClick={() => {
+              setTypeFilter(o.value as 'all' | AdmissionType);
+              setPage(1);
+            }}
+            className={cn(
+              'rounded-full border px-3 py-1 font-label text-xs font-semibold transition-all',
+              typeFilter === o.value
+                ? 'border-primary bg-primary/10 text-primary'
+                : 'border-outline-variant/30 bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-high',
+            )}
+          >
+            {o.label}
+          </button>
+        ))}
       </div>
 
       {/* Table */}
