@@ -82,6 +82,11 @@ export function useMarkAllNotificationsRead() {
  * relevant record. Kept in sync with the notifications page.
  */
 export function notificationLink(n: AppNotification): string | null {
+  // IP progress-note mention → the IP workspace (referenceId = admissionId).
+  if (n.referenceType === 'progress_note_mention_ip' && n.referenceId) {
+    return `/doctor/ip/${n.referenceId}`;
+  }
+  // OP progress-note mention → the patient's consultation (referenceId = patientId).
   if (n.referenceType === 'progress_note_mention' && n.referenceId) {
     return `/doctor/consultation/${n.referenceId}`;
   }
