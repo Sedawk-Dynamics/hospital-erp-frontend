@@ -13,15 +13,14 @@ import {
   CommandList,
 } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
-import { useUsersList, type UserListItem } from '@/hooks/use-users';
+import { useDoctorsList } from '@/hooks/use-hospital';
+import type { DoctorProfile } from '@/types';
 
-function isDoctor(u: UserListItem): boolean {
-  return (u.userRoles ?? []).some((r) => /^doctor(_|$)/i.test(r.role.name));
-}
-const nameOf = (u: UserListItem) => `${u.firstName} ${u.lastName ?? ''}`.trim() || u.email;
+const nameOf = (d: DoctorProfile) =>
+  `${d.user?.firstName ?? ''} ${d.user?.lastName ?? ''}`.trim() || d.user?.email || 'Doctor';
 
 interface DoctorMentionPickerProps {
-  /** Selected doctor USER ids. */
+  /** Selected doctor USER ids (the mention targets). */
   value: string[];
   onChange: (userIds: string[]) => void;
   /** User id to exclude from the list (the author). */
@@ -31,21 +30,22 @@ interface DoctorMentionPickerProps {
 
 /**
  * Multi-select doctor picker for @mentioning colleagues on a progress note.
- * Mirrors NursePicker (Popover + cmdk) but toggles a set of doctors and shows
- * the picks as removable chips. Tagged doctors get a notification.
+ * Lists doctors via /appointments/doctors (auth-only — a doctor CAN call it,
+ * unlike /users which needs users:read), and returns each doctor's User id so
+ * mentions/notifications key off the right id.
  */
 export function DoctorMentionPicker({ value, onChange, excludeUserId, className }: DoctorMentionPickerProps) {
   const [open, setOpen] = useState(false);
-  const { data } = useUsersList({ limit: 500, isActive: 'true' });
+  const { data } = useDoctorsList();
 
   const doctors = useMemo(
-    () => (data?.data ?? []).filter((u) => isDoctor(u) && u.id !== excludeUserId),
+    () => (data ?? []).filter((d) => d.userId && d.userId !== excludeUserId),
     [data, excludeUserId],
   );
-  const selected = useMemo(() => doctors.filter((u) => value.includes(u.id)), [doctors, value]);
+  const selected = useMemo(() => doctors.filter((d) => value.includes(d.userId)), [doctors, value]);
 
-  const toggle = (id: string) =>
-    onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id]);
+  const toggle = (userId: string) =>
+    onChange(value.includes(userId) ? value.filter((v) => v !== userId) : [...value, userId]);
 
   return (
     <div className={cn('space-y-1.5', className)}>
@@ -71,17 +71,22 @@ export function DoctorMentionPicker({ value, onChange, excludeUserId, className 
             <CommandList>
               <CommandEmpty>No matching doctor.</CommandEmpty>
               <CommandGroup>
-                {doctors.map((u) => {
-                  const checked = value.includes(u.id);
+                {doctors.map((d) => {
+                  const checked = value.includes(d.userId);
                   return (
                     <CommandItem
-                      key={u.id}
-                      value={`${nameOf(u)} ${u.email}`}
-                      onSelect={() => toggle(u.id)}
+                      key={d.userId}
+                      value={`${nameOf(d)} ${d.specialization ?? ''} ${d.user?.email ?? ''}`}
+                      onSelect={() => toggle(d.userId)}
                       data-checked={checked || undefined}
                     >
                       <div className="flex w-full items-center justify-between gap-2">
-                        <span className="truncate text-sm">{nameOf(u)}</span>
+                        <div className="min-w-0">
+                          <div className="truncate text-sm">{nameOf(d)}</div>
+                          {d.specialization && (
+                            <div className="truncate text-[10px] text-muted-foreground">{d.specialization}</div>
+                          )}
+                        </div>
                         {checked && <Check className="h-3.5 w-3.5 shrink-0 text-primary" />}
                       </div>
                     </CommandItem>
@@ -95,17 +100,17 @@ export function DoctorMentionPicker({ value, onChange, excludeUserId, className 
 
       {selected.length > 0 && (
         <div className="flex flex-wrap gap-1">
-          {selected.map((u) => (
+          {selected.map((d) => (
             <span
-              key={u.id}
+              key={d.userId}
               className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary"
             >
-              @{nameOf(u)}
+              @{nameOf(d)}
               <button
                 type="button"
-                onClick={() => toggle(u.id)}
+                onClick={() => toggle(d.userId)}
                 className="rounded-full hover:bg-primary/20"
-                aria-label={`Remove ${nameOf(u)}`}
+                aria-label={`Remove ${nameOf(d)}`}
               >
                 <X className="h-3 w-3" />
               </button>
