@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Upload,
   Plus,
@@ -241,10 +241,11 @@ const HEADER_MAP: Record<string, DraftCol> = {
   // Medicine vs consumable/surgical/equipment. Routed through `parseTypeCell`,
   // which turns the text into { kind, category } — see buildLinesFromRows.
   type: 'category', category: 'category', kind: 'category', item_type: 'category',
-  generic: 'genericName', composition: 'genericName', salt: 'genericName',
+  // NOTE: composition (generic), strength and GTIN are deliberately NOT imported
+  // — they are properties of the mapped medicine in OUR database, filled from the
+  // drug the line is mapped to, never from an invoice / sheet / OCR. See the
+  // read-only fields in the entry grid.
   manufacturer: 'manufacturer', mfr: 'manufacturer', company: 'manufacturer', mfg_company: 'manufacturer',
-  strength: 'strength', dose: 'strength', dosage: 'strength',
-  gtin: 'gtin', barcode: 'gtin', ean: 'gtin', upc: 'gtin', gs1: 'gtin',
   hsn: 'hsnCode', hsn_code: 'hsnCode', hsncode: 'hsnCode',
   batch: 'batchNumber', batchno: 'batchNumber', batch_no: 'batchNumber', lot: 'batchNumber', bno: 'batchNumber',
   expiry: 'expiryDate', exp: 'expiryDate', exp_date: 'expiryDate', expiry_date: 'expiryDate', expdate: 'expiryDate',
@@ -341,10 +342,10 @@ type RowFilter = 'all' | 'issues' | 'new' | 'review';
 const MAP_FIELDS: { value: DraftCol | 'ignore'; label: string }[] = [
   { value: 'drugName', label: 'Name' },
   { value: 'category', label: 'Type / Category' },
-  { value: 'genericName', label: 'Generic' },
+  // Generic / Strength / GTIN are NOT mappable — they come from the mapped
+  // medicine in our database, not from the imported sheet.
   { value: 'manufacturer', label: 'Manufacturer' },
   { value: 'dosageForm', label: 'Dosage form' },
-  { value: 'strength', label: 'Strength' },
   { value: 'packSize', label: 'Pack size' },
   { value: 'unit', label: 'Unit' },
   { value: 'minStock', label: 'Reorder level' },
@@ -359,7 +360,6 @@ const MAP_FIELDS: { value: DraftCol | 'ignore'; label: string }[] = [
   { value: 'purchaseDiscountPercent', label: 'Discount %' },
   { value: 'gstPercent', label: 'GST %' },
   { value: 'sellingPrice', label: 'Selling price' },
-  { value: 'gtin', label: 'GTIN / barcode' },
   { value: 'hsnCode', label: 'HSN code' },
   { value: 'ignore', label: '— Ignore —' },
 ];
@@ -383,14 +383,13 @@ interface TemplateCol {
 const TEMPLATE_COLUMNS: TemplateCol[] = [
   { header: 'Type', hint: 'Medicine (default if blank), Consumable, Surgical or Equipment.', samples: ['Medicine', 'Consumable'] },
   { header: 'Name', required: true, hint: 'REQUIRED. Product name as printed on your invoice. A row with no Name is skipped.', samples: ['Telmac 40 Tab', 'Nitrile Gloves M'] },
-  { header: 'Generic', hint: 'Composition / salt.', samples: ['Telmisartan', ''] },
+  // Composition / Strength / GTIN are NOT imported — they come from the medicine
+  // in our database once the line is mapped, so they are left out of the template.
   { header: 'Manufacturer', hint: 'Brand / manufacturing company.', samples: ['Cipla', 'Safeguard'] },
-  { header: 'Strength', hint: 'e.g. 40mg, 5ml.', samples: ['40mg', ''] },
   { header: 'Dosage Form', hint: 'tablet, capsule, syrup, injection, cream, drops, inhaler, other.', samples: ['tablet', ''] },
   { header: 'Pack Size', hint: 'Units per pack, e.g. 10 for a strip of 10.', samples: ['10', '100'] },
   { header: 'Unit', hint: 'Loose unit label, e.g. tablet, ml, piece.', samples: ['tablet', 'piece'] },
   { header: 'HSN', hint: 'HSN code (tax classification).', samples: ['30049099', '40151900'] },
-  { header: 'GTIN', hint: 'Barcode / GS1 number on the pack, if printed.', samples: ['8901234567890', ''] },
   { header: 'Batch', hint: 'Batch / lot number. Required for a medicine when Qty is filled.', samples: ['B23A01', ''] },
   { header: 'Expiry', hint: 'MM/YYYY or DD/MM/YYYY, e.g. 12/2026. Required for a medicine when Qty is filled.', samples: ['12/2026', ''] },
   { header: 'Mfg Date', hint: 'MM/YYYY or DD/MM/YYYY. Optional.', samples: ['01/2024', ''] },
@@ -849,10 +848,12 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
     minStock: '',
     description: '',
     drugName: o.drugName ?? '',
-    genericName: o.genericName ?? '',
+    // Composition / strength / GTIN are DB-sourced (filled from the mapped
+    // medicine), never from the scanned invoice — leave blank here.
+    genericName: '',
     manufacturer: o.manufacturer ?? '',
-    strength: o.strength ?? '',
-    gtin: o.gtin ?? '',
+    strength: '',
+    gtin: '',
     hsnCode: o.hsnCode ?? '',
     batchNumber: o.batchNumber ?? '',
     expiryDate: o.expiryDate ?? '',
@@ -1116,11 +1117,34 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
               rawName: l.rawName ?? l.drugName.trim(),
               drugMasterId: c.drugMasterId,
               catalogPickName: c.drugName,
+              // Composition / strength / GTIN are DB-sourced — adopt them from the
+              // picked catalog drug so the read-only fields reflect our data.
+              genericName: c.genericName ?? '',
+              strength: c.strength ?? '',
+              gtin: c.gtin ?? '',
             }
           : l,
       ),
     );
     setDecision(i, { action: 'create', targetId: null });
+  };
+
+  // Sync a line's DB-sourced identity (composition / strength / GTIN) from the
+  // medicine it is mapped to. These fields are read-only and never typed or
+  // imported, so this is their only writer (besides a catalog pick / scan).
+  const setLineIdentity = (
+    i: number,
+    idn: { genericName: string; strength: string; gtin: string },
+  ) => {
+    setLines((prev) =>
+      prev.map((l, idx) => {
+        if (idx !== i) return l;
+        if (l.genericName === idn.genericName && l.strength === idn.strength && l.gtin === idn.gtin) {
+          return l; // unchanged — avoid a needless re-render
+        }
+        return { ...l, genericName: idn.genericName, strength: idn.strength, gtin: idn.gtin };
+      }),
+    );
   };
 
   // Undo a catalog pick — restore the scanned/typed identity and unlink.
@@ -1460,6 +1484,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
               setDecision={setDecision}
               onPickCatalog={pickCatalog}
               onUndoCatalog={undoCatalog}
+              onLineIdentity={setLineIdentity}
               reviewing={reviewing}
             />
           )}
@@ -1833,6 +1858,9 @@ function EntryStep(props: {
   setDecision: (i: number, patch: Partial<Decision>) => void;
   onPickCatalog: (i: number, c: CatalogPick) => void;
   onUndoCatalog: (i: number) => void;
+  // Sync a line's DB-sourced identity (composition / strength / GTIN) from the
+  // medicine it maps to.
+  onLineIdentity: (i: number, idn: { genericName: string; strength: string; gtin: string }) => void;
   reviewing: boolean;
 }) {
   const {
@@ -1842,7 +1870,7 @@ function EntryStep(props: {
     purchaseTotals, lines, updateLine, applyHsn, hsnRates, onResolveGtin, addLine, removeLine, showPaste, setShowPaste,
     pasteText, setPasteText, ingest, fileRef, onFile, xlsxRef, onXlsxFile,
     ocrRef, onOcrFile, ocrEnabled, ocrPending, onScan, lineIssues,
-    matched, decisions, setDecision, onPickCatalog, onUndoCatalog, reviewing,
+    matched, decisions, setDecision, onPickCatalog, onUndoCatalog, onLineIdentity, reviewing,
   } = props;
   const money = (n: number) => `₹${n.toFixed(2)}`;
 
@@ -2295,15 +2323,20 @@ function EntryStep(props: {
                         </Badge>
                       )}
                     </div>
+                    {/* Composition · Strength · GTIN — READ-ONLY. These belong to
+                        the medicine in our database and are filled from the drug
+                        this line is mapped to (below). They are never typed here
+                        or written by OCR / Excel / paste. */}
                     <div className="grid grid-cols-3 gap-1.5">
-                      <Input className={cn(cell, 'text-muted-foreground')} value={l.genericName} onChange={(e) => updateLine(l.id, 'genericName', e.target.value)} placeholder="composition" />
-                      <Input className={cell} value={l.strength} onChange={(e) => updateLine(l.id, 'strength', e.target.value)} placeholder="strength · 40mg" />
+                      <Input className={cn(cell, 'text-muted-foreground')} value={l.genericName} readOnly tabIndex={-1} title="Composition — from the mapped medicine" placeholder="composition (from medicine)" />
+                      <Input className={cn(cell, 'text-muted-foreground')} value={l.strength} readOnly tabIndex={-1} title="Strength — from the mapped medicine" placeholder="strength (from medicine)" />
                       <Input
                         className={cn(cell, 'font-mono text-muted-foreground')}
                         value={l.gtin}
-                        onChange={(e) => updateLine(l.id, 'gtin', e.target.value)}
-                        onBlur={(e) => onResolveGtin(l.id, e.target.value)}
-                        placeholder="GTIN / barcode → auto-fills"
+                        readOnly
+                        tabIndex={-1}
+                        title="GTIN / barcode — from the mapped medicine"
+                        placeholder="GTIN (from medicine)"
                       />
                     </div>
                   </div>
@@ -2506,6 +2539,7 @@ function EntryStep(props: {
                   onDecision={(patch) => setDecision(i, patch)}
                   onPickCatalog={(c) => onPickCatalog(i, c)}
                   onUndoCatalog={() => onUndoCatalog(i)}
+                  onIdentity={(idn) => onLineIdentity(i, idn)}
                 />
               )}
             </div>
@@ -2525,7 +2559,7 @@ function EntryStep(props: {
 //  • DrugMaster catalog matches → "From drug catalog" (pick one → import + stock)
 // so OCR never dead-ends on a blank "create new" when a similar drug exists.
 function LineMatchControl({
-  line, m, decision, onDecision, onPickCatalog, onUndoCatalog,
+  line, m, decision, onDecision, onPickCatalog, onUndoCatalog, onIdentity,
 }: {
   line: DraftLine;
   m: InwardMatchedLine;
@@ -2533,6 +2567,9 @@ function LineMatchControl({
   onDecision: (patch: Partial<Decision>) => void;
   onPickCatalog: (c: CatalogPick) => void;
   onUndoCatalog: () => void;
+  // Report the mapped medicine's DB identity (composition / strength / GTIN) so
+  // the read-only fields on the row reflect it.
+  onIdentity: (idn: { genericName: string; strength: string; gtin: string }) => void;
 }) {
   const autoFormulary = m.matches.filter((c) => c.source !== 'catalog');
   const catalogMatches = m.matches.filter((c) => c.source === 'catalog');
@@ -2544,6 +2581,27 @@ function LineMatchControl({
   const formularyMatches = [...autoFormulary, ...extraTargets.filter((x) => !seenIds.has(x.id))];
   const hasFormulary = formularyMatches.length > 0;
   const target = formularyMatches.find((x) => x.id === decision.targetId) ?? null;
+
+  // Keep the row's read-only composition / strength / GTIN in sync with the
+  // medicine this line is tied to — these values come from our DB, never typed
+  // or imported:
+  //   • mapped to an existing drug → adopt that drug's identity
+  //   • "add as new" WITH a catalog link → identity set by the catalog pick (leave)
+  //   • "add as new" without a catalog link → a brand-new drug, no DB medicine yet → blank
+  // Keyed so it fires once per target/decision change, not every render.
+  const mapKey = decision.action === 'map' ? (target?.id ?? '') : null;
+  useEffect(() => {
+    if (decision.action === 'map') {
+      onIdentity({
+        genericName: target?.genericName ?? '',
+        strength: target?.strength ?? '',
+        gtin: target?.gtin ?? '',
+      });
+    } else if (!line.drugMasterId) {
+      onIdentity({ genericName: '', strength: '', gtin: '' });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapKey, decision.action, line.drugMasterId]);
 
   // ONE search across BOTH this hospital's stock (formulary) AND the platform
   // drug catalog — results are shown together but grouped so the user can tell
