@@ -1269,6 +1269,10 @@ export interface UnifiedStockRow {
   batchCount: number;
   nearestExpiry: string | null;
   isRecalled: boolean;
+  // Drug composition (generic/salt) and learned vendor/invoice names mapped to
+  // this drug — shown under the name and searchable.
+  composition: string | null;
+  mappingNames: string | null;
 }
 
 export interface UnifiedStockParams extends PaginatedParams {

@@ -417,9 +417,17 @@ function StockRow({
           <div className="flex items-center gap-1.5">
             <span className="font-medium">{row.name}</span>
           </div>
+          {row.composition && (
+            <div className="text-xs text-muted-foreground italic">{row.composition}</div>
+          )}
           <div className="text-xs text-muted-foreground">
             {[row.code, row.unit].filter(Boolean).join(' · ') || stockTypeLabel(row.category).toLowerCase()}
           </div>
+          {row.mappingNames && (
+            <div className="text-[11px] text-muted-foreground/80">
+              also known as: {row.mappingNames}
+            </div>
+          )}
         </TableCell>
         <TableCell>
           {/* A dedicated Type column — show it for medicines too, since silence
