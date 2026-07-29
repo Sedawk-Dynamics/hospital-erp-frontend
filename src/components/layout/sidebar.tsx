@@ -30,7 +30,6 @@ import {
   UserCog,
   Clock,
   Banknote,
-  Bell,
   MessageSquare,
   UserPlus,
   Building2,
@@ -136,7 +135,6 @@ const navGroups: NavGroup[] = [
   {
     title: 'Communication',
     items: [
-      { label: 'Notifications', href: '/notifications', icon: Bell },
       { label: 'Messages', href: '/messages', icon: MessageSquare },
     ],
   },

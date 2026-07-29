@@ -37,9 +37,11 @@ export function NotificationBell({ variant = 'plain' }: { variant?: 'module' | '
 
   const open = (n: AppNotification) => {
     if (!n.isRead) markRead.mutate(n.id);
+    // Only navigate when the notification points somewhere useful (e.g. a
+    // mention → the patient). Otherwise just mark it read in place — there is
+    // no separate notifications page to fall back to.
     const link = notificationLink(n);
     if (link) router.push(link);
-    else router.push('/notifications');
   };
 
   const triggerClass =
@@ -126,14 +128,6 @@ export function NotificationBell({ variant = 'plain' }: { variant?: 'module' | '
             ))
           )}
         </div>
-
-        <button
-          type="button"
-          onClick={() => router.push('/notifications')}
-          className="block w-full border-t px-4 py-2.5 text-center text-sm font-medium text-primary hover:bg-accent/60 transition-colors"
-        >
-          View all notifications
-        </button>
       </DropdownMenuContent>
     </DropdownMenu>
   );
