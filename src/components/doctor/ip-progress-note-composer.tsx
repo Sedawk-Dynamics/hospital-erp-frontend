@@ -19,6 +19,9 @@ import { apiGet } from '@/lib/api';
 import { formatDate } from '@/lib/date-utils';
 import { useCreateProgressNote, usePrescriptions, type SoapSectionPayload } from '@/hooks/use-doctor';
 import { useRecordDoctorVisit } from '@/hooks/use-ip-ledger';
+import { DoctorMentionPicker } from '@/components/doctor/doctor-mention-picker';
+import { useAuthStore } from '@/stores/auth-store';
+import { AtSign } from 'lucide-react';
 
 // IP progress note = a doctor's daily round / visit note that accumulates into
 // the admission's running clinical log. It is DELIBERATELY different from an OP
@@ -53,7 +56,9 @@ export function IpProgressNoteComposer({
 }) {
   const createNote = useCreateProgressNote();
   const recordVisit = useRecordDoctorVisit(admissionId);
+  const currentUserId = useAuthStore((s) => s.user?.id);
 
+  const [mentions, setMentions] = useState<string[]>([]);
   const [condition, setCondition] = useState<string>('stable');
   const [subjective, setSubjective] = useState('');
   const [objective, setObjective] = useState('');
@@ -85,6 +90,7 @@ export function IpProgressNoteComposer({
   const reset = () => {
     setCondition('stable'); setSubjective(''); setObjective('');
     setAssessment(''); setPlan(''); setBillVisit(defaultBillVisit); setPrescriptionId('');
+    setMentions([]);
   };
 
   const anyFilled = [subjective, objective, assessment, plan].some((s) => s.trim());
@@ -114,7 +120,11 @@ export function IpProgressNoteComposer({
         objective: free(objective),
         assessment: free(assessment),
         plan: free(plan),
+        mentionedUserIds: mentions.length ? mentions : undefined,
       });
+      if (mentions.length) {
+        toast.success(`${mentions.length} doctor${mentions.length === 1 ? '' : 's'} notified.`);
+      }
       // "Adding a visit" optionally also posts the doctor's visit fee to the IP bill.
       if (billVisit) {
         try {
@@ -186,6 +196,15 @@ export function IpProgressNoteComposer({
               <SoapField label="Assessment" hint="Clinical impression / progress" value={assessment} onChange={setAssessment} />
               <SoapField label="Plan" hint="Today's plan, order changes, next steps" value={plan} onChange={setPlan} />
             </div>
+          </div>
+
+          {/* Tag / @mention other doctors — they get a notification and can open
+              this patient + note. */}
+          <div>
+            <Label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <AtSign className="h-3.5 w-3.5" /> Tag doctors <span className="font-normal normal-case">· optional</span>
+            </Label>
+            <DoctorMentionPicker value={mentions} onChange={setMentions} excludeUserId={currentUserId} />
           </div>
 
           {/* Options side by side — connect to a prescription + billing. */}

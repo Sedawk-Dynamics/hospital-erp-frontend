@@ -553,6 +553,8 @@ export interface CreateProgressNoteInput {
   plan?: SoapSectionPayload | null;
   pinToDischargeSummary?: boolean;
   pins?: Array<{ dischargeSection: ProgressNotePinEntry['dischargeSection']; content: string }>;
+  // @mentioned doctors (User ids) — they get a notification linking to the patient.
+  mentionedUserIds?: string[];
 }
 
 export interface UpdateProgressNoteInput extends Partial<CreateProgressNoteInput> {
