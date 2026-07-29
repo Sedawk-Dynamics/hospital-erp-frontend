@@ -244,6 +244,22 @@ export function useDischargePatient() {
   });
 }
 
+// Front-desk instant bed assign / change / clear from the IP ledger.
+export function useAssignAdmissionBed() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, bedId }: { id: string; bedId: string | null }) => {
+      const response = await apiPatch<Admission>(`/clinical/admissions/${id}/assign-bed`, { bedId });
+      return response.data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: clinicalKeys.admissions.all });
+      queryClient.invalidateQueries({ queryKey: clinicalKeys.admissions.detail(variables.id) });
+      queryClient.invalidateQueries({ queryKey: clinicalKeys.beds.all });
+    },
+  });
+}
+
 // ============================================================
 // Visit Hooks
 // ============================================================

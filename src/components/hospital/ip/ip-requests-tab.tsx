@@ -327,7 +327,9 @@ function AcceptRequestDialog({
 
   const open = !!request;
   const accept = useAcceptAdmissionRequest();
-  const needsBed = action !== 'accept_only';
+  // Only a reservation shows ward/bed pickers now (to hold a slot). Direct-admit
+  // and accept-only don't — the bed is assigned later from the IP workspace.
+  const needsBed = action === 'reserve';
 
   // Reset on open
   useMemo(() => {
@@ -377,19 +379,11 @@ function AcceptRequestDialog({
 
   const handleSubmit = async () => {
     if (!request) return;
+    // Only a reservation needs a ward (it holds a slot). Direct-admit no longer
+    // takes a bed/ward — front desk assigns the bed later from the IP workspace.
     if (action === 'reserve' && !wardId) {
       toast.error('Pick a ward to create a reservation');
       return;
-    }
-    if (action === 'admit') {
-      if (!wardId) {
-        toast.error('Pick a ward to admit the patient');
-        return;
-      }
-      if (!bedId) {
-        toast.error('Pick a bed to admit the patient');
-        return;
-      }
     }
     try {
       await accept.mutateAsync({
@@ -412,8 +406,6 @@ function AcceptRequestDialog({
             : action === 'admit'
               ? {
                   directAdmit: true,
-                  wardId,
-                  bedId,
                   ...(admissionDate
                     ? { admissionDate: new Date(admissionDate).toISOString() }
                     : {}),
@@ -539,7 +531,7 @@ function AcceptRequestDialog({
 
               <div>
                 <Label className="text-xs font-medium">
-                  Bed {action === 'admit' ? '*' : wardId ? '(optional)' : ''}
+                  Bed {wardId ? '(optional)' : ''}
                 </Label>
                 <Select
                   value={bedId || null}

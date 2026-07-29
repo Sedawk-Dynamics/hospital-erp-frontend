@@ -305,15 +305,13 @@ function AdmitReservationDialog({
 
   const handleSubmit = async () => {
     if (!reservation) return;
-    if (!bedId) {
-      toast.error('Pick a bed to admit the patient');
-      return;
-    }
+    // Bed is optional — admit without one and assign it later from the IP
+    // workspace, or use the bed the reservation blocked.
     try {
       await admit.mutateAsync({
         id: reservation.id,
         payload: {
-          bedId,
+          ...(bedId ? { bedId } : {}),
           ...(admissionDate ? { admissionDate: new Date(admissionDate).toISOString() } : {}),
           ...(expectedDischarge
             ? { expectedDischargeDate: new Date(expectedDischarge).toISOString() }
@@ -352,7 +350,7 @@ function AdmitReservationDialog({
         <div className="space-y-4 pt-2 max-h-[70vh] overflow-y-auto">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label className="text-xs font-medium">Bed *</Label>
+              <Label className="text-xs font-medium">Bed (optional)</Label>
               <Select
                 value={bedId || null}
                 onValueChange={(v) => setBedId(v ?? '')}

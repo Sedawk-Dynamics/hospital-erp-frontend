@@ -21,6 +21,7 @@ import {
   PieChart,
   Wallet,
   Loader2,
+  BedDouble,
   FileText,
   FileWarning,
 } from 'lucide-react';
@@ -318,8 +319,7 @@ function AdmissionDialog({
         visitId,
         patientId,
         doctorId: selectedDoctorId,
-        wardId: selectedWardId,
-        bedId: selectedBedId,
+        // No bed/ward at registration — assigned later from the IP workspace.
         admissionDate,
         expectedDischargeDate: expectedDischarge || undefined,
         admissionReason: admissionReason || undefined,
@@ -451,8 +451,9 @@ function AdmissionDialog({
     }
   };
 
-  const detailsValid =
-    patientValid && !!selectedDoctorId && !!selectedWardId && !!selectedBedId;
+  // Bed/ward are no longer part of registration — only patient + main doctor are
+  // required to admit; the bed is assigned later from the IP workspace.
+  const detailsValid = patientValid && !!selectedDoctorId;
 
   const requiredChecklistDone = ADMISSION_CHECKLIST.filter((c) => c.required).every(
     (c) => checklist[c.key],
@@ -708,110 +709,14 @@ function AdmissionDialog({
                 </Select>
               </div>
 
-              {/* Floor (optional pre-filter) */}
-              <div className="grid gap-1.5">
-                <Label>Floor</Label>
-                <Select
-                  value={selectedFloorId || null}
-                  onValueChange={(v) => setSelectedFloorId(v ?? '')}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="All floors">
-                      {() =>
-                        selectedFloor
-                          ? `L${selectedFloor.level} — ${selectedFloor.name}`
-                          : 'All floors'
-                      }
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {floors.map((f) => (
-                      <SelectItem key={f.id} value={f.id}>
-                        L{f.level} — {f.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Ward (filtered by floor when set) */}
-              <div className="grid gap-1.5">
-                <Label>Ward *</Label>
-                <Select value={selectedWardId} onValueChange={(v) => setSelectedWardId(v ?? '')}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select ward">
-                      {() => (selectedWard ? selectedWard.name : 'Select ward')}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {wards.map((w) => {
-                      const a = availabilityByWard.get(w.id);
-                      const floorPart = w.floor ? `L${w.floor.level}` : null;
-                      const typePart = w.wardType ? w.wardType.toUpperCase() : null;
-                      const availPart = a ? `${a.available}/${a.totalBeds} free` : null;
-                      const meta = [floorPart, typePart, availPart].filter(Boolean).join(' · ');
-                      const noBeds = a?.available === 0;
-                      return (
-                        <SelectItem key={w.id} value={w.id} disabled={noBeds}>
-                          <span>
-                            {w.name}
-                            {meta ? <span className="text-muted-foreground"> · {meta}</span> : null}
-                            {noBeds ? <span className="text-destructive"> (full)</span> : null}
-                          </span>
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Bed (filtered by ward) */}
-              <div className="grid gap-1.5 col-span-2">
-                <Label>Bed *</Label>
-                <Select
-                  value={selectedBedId}
-                  onValueChange={(v) => setSelectedBedId(v ?? '')}
-                  disabled={!selectedWardId}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue
-                      placeholder={selectedWardId ? 'Select available bed' : 'Select ward first'}
-                    >
-                      {() =>
-                        selectedBed
-                          ? `Bed ${selectedBed.bedNumber}${selectedBed.bedType ? ` · ${selectedBed.bedType.toUpperCase()}` : ''}`
-                          : selectedWardId
-                            ? 'Select available bed'
-                            : 'Select ward first'
-                      }
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {beds.map((b) => {
-                      const heldForThisPatient =
-                        selectedPatientId && b.status !== 'available' &&
-                        b.currentPatientId === selectedPatientId;
-                      return (
-                        <SelectItem key={b.id} value={b.id}>
-                          <span>
-                            Bed {b.bedNumber}
-                            {b.bedType ? (
-                              <span className="text-muted-foreground"> · {b.bedType.toUpperCase()}</span>
-                            ) : null}
-                            {heldForThisPatient ? (
-                              <span className="text-primary"> · reserved for patient</span>
-                            ) : null}
-                          </span>
-                        </SelectItem>
-                      );
-                    })}
-                    {beds.length === 0 && selectedWardId && (
-                      <div className="px-3 py-2 text-sm text-muted-foreground">
-                        No available beds in this ward
-                      </div>
-                    )}
-                  </SelectContent>
-                </Select>
+              {/* Bed & ward are NOT chosen at registration — front desk assigns
+                  them afterwards from the IP workspace (beds move around during a
+                  stay). */}
+              <div className="col-span-2 rounded-lg border border-dashed border-outline-variant/50 bg-surface-container-lowest px-3 py-2 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5">
+                  <BedDouble className="h-3.5 w-3.5" />
+                  Bed &amp; ward are assigned later from the IP workspace, not here.
+                </span>
               </div>
 
               <>

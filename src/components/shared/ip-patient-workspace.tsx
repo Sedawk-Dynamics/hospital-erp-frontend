@@ -94,6 +94,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
 
 import type { NurseAdmission, NursingNote, Prescription, Vital } from '@/hooks/use-nurse';
+import { AssignBedDialog } from '@/components/hospital/ip/assign-bed-dialog';
 
 // Hooks here return raw `ApiResponse<T>` — pull out the inner payload safely.
 function unwrapList<T>(value: unknown): T[] {
@@ -165,6 +166,7 @@ function HeaderStrip({
   const patient = admission.patient;
   const age = calcAge(patient?.dateOfBirth);
   const initials = `${patient?.firstName?.[0] ?? ''}${patient?.lastName?.[0] ?? ''}`.toUpperCase();
+  const [assignBedOpen, setAssignBedOpen] = useState(false);
 
   return (
     <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4">
@@ -198,6 +200,16 @@ function HeaderStrip({
             <span className="inline-flex items-center gap-1">
               <BedDouble className="h-3.5 w-3.5" />
               {admission.ward?.name ?? '—'} / Bed {admission.bed?.bedNumber ?? '—'}
+              {role === 'admin' && admission.status === 'admitted' && (
+                <button
+                  type="button"
+                  onClick={() => setAssignBedOpen(true)}
+                  className="ml-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/10"
+                  title="Assign or change bed"
+                >
+                  {admission.bed?.bedNumber ? 'Change' : 'Assign bed'}
+                </button>
+              )}
             </span>
             {admission.doctor?.user && (
               <span className="inline-flex items-center gap-1">
@@ -276,6 +288,17 @@ function HeaderStrip({
       </div>
 
       <AllergyBanner patientId={admission.patientId} />
+
+      {role === 'admin' && (
+        <AssignBedDialog
+          admissionId={admission.id}
+          currentBedId={admission.bed?.id ?? admission.bedId ?? null}
+          currentWardName={admission.ward?.name ?? null}
+          currentBedNumber={admission.bed?.bedNumber ?? null}
+          open={assignBedOpen}
+          onOpenChange={setAssignBedOpen}
+        />
+      )}
     </div>
   );
 }
