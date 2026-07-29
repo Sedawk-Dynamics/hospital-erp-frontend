@@ -46,6 +46,9 @@ export default function DoctorIPHomePage() {
   const { user } = useAuthStore();
   const router = useRouter();
   const [activeFilter, setActiveFilter] = useState('admitted');
+  // 'my' = patients where I'm the main doctor; 'all' = every IP patient (shared
+  // across all doctors). Tagged/mentioned patients also surface under 'my'.
+  const [scope, setScope] = useState<'my' | 'all'>('my');
   const [selectedWard, setSelectedWard] = useState('all');
   const [fromDate, setFromDate] = useState(toInputDateStr());
   const [toDate, setToDate] = useState(toInputDateStr());
@@ -62,10 +65,9 @@ export default function DoctorIPHomePage() {
   const { data: admissionsData, isLoading } = useDoctorAdmissions({
     page,
     limit: 10,
-    // user.id is the User ID; the backend resolves the matching DoctorProfile
-    // before filtering Admission.doctorId. Passing user.id as doctorId here
-    // would compare against DoctorProfile.id and silently return nothing.
-    doctorUserId: user?.id,
+    // 'My Patients' scopes to this doctor (user.id → DoctorProfile → Admission.doctorId);
+    // 'All Patients' omits the filter so every IP patient is listed (shared model).
+    doctorUserId: scope === 'my' ? user?.id : undefined,
     status: statusFilter,
     search: search || undefined,
     // Currently-admitted patients must stay on the list until they are
@@ -158,6 +160,23 @@ export default function DoctorIPHomePage() {
             </SelectContent>
           </Select>
         </div>
+      </div>
+
+      {/* My Patients vs All Patients — every IP patient is shared across doctors. */}
+      <div className="inline-flex items-center rounded-lg border bg-surface-container-lowest p-0.5 text-sm shadow-sanctuary">
+        {([['my', 'My Patients'], ['all', 'All Patients']] as const).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => { setScope(key); setPage(1); }}
+            className={cn(
+              'rounded-md px-4 py-1.5 text-xs font-medium transition-colors',
+              scope === key ? 'bg-primary text-on-primary shadow-sm' : 'text-muted-foreground hover:bg-surface-container-high',
+            )}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* Filters row */}
