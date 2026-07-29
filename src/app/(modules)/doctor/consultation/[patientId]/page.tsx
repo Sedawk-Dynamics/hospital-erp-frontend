@@ -39,6 +39,13 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from '@/components/ui/sheet';
 import { apiGet, apiPost } from '@/lib/api';
 import { toast } from 'sonner';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
@@ -235,23 +242,29 @@ function TopBar({
         Print
       </Button>
 
-      {/* UC2: in-context patient AI assistant */}
-      <Dialog open={aiOpen} onOpenChange={setAiOpen}>
-        <DialogContent className="flex max-h-[88vh] min-h-[55vh] w-[calc(100%-2rem)] flex-col sm:max-w-3xl">
-          <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-primary" /> AI Assistant — {patientName}
-          </DialogTitle>
-          <DialogDescription className="sr-only">
-            AI decision-support chat for this patient
-          </DialogDescription>
+      {/* UC2: in-context patient AI assistant — opens as a right-side chat panel
+          so the doctor keeps the consultation in view while asking the assistant. */}
+      <Sheet open={aiOpen} onOpenChange={setAiOpen}>
+        <SheetContent
+          side="right"
+          className="flex w-full flex-col gap-0 p-0 sm:max-w-md"
+        >
+          <SheetHeader className="shrink-0 border-b border-outline-variant/40 p-4 pr-12 pb-3">
+            <SheetTitle className="flex items-center gap-2 text-base">
+              <Sparkles className="h-4 w-4 text-primary" /> AI Assistant — {patientName}
+            </SheetTitle>
+            <SheetDescription className="sr-only">
+              AI decision-support chat for this patient
+            </SheetDescription>
+          </SheetHeader>
           <PatientAiAssistant
             patientId={patient.id}
             patientName={patientName}
-            className="min-h-0 flex-1"
+            className="min-h-0 flex-1 p-4 pt-3"
             scrollClassName="min-h-0"
           />
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
