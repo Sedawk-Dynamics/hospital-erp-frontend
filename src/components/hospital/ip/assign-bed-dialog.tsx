@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { BedDouble, Loader2, ArrowLeftRight } from 'lucide-react';
+import { BedDouble, Loader2 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -14,7 +13,6 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -23,34 +21,24 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useWards, useBeds, useAssignAdmissionBed } from '@/hooks/use-clinical';
-import { apiPost } from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/utils';
 
 /**
- * The single ward/bed picker dialog used everywhere a patient gets (or moves)
- * a bed. Two modes over the SAME UI:
- *  - `assign`   — instant assign/change via PATCH /admissions/:id/assign-bed
- *                 (front-desk power from the IP workspace; can also clear).
- *  - `transfer` — records a ward/bed transfer via POST /clinical/transfers
- *                 (auto-approved → applied instantly) with an optional reason.
- * Both render styled Selects so the two never drift apart visually again.
+ * The ONE ward/bed dialog used everywhere a patient gets, moves, or clears a
+ * bed — front-desk list, IP workspace, everywhere. Single behavior: pick a
+ * ward + bed and it's applied instantly via PATCH /admissions/:id/assign-bed
+ * (moving between wards happens naturally because a bed belongs to a ward).
+ * There is no separate "transfer" flow — same popup, same logic, always.
  */
 interface AssignBedDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   admissionId: string;
-  mode?: 'assign' | 'transfer';
 
-  /** Current location (shown in the banner + used as the transfer `from`). */
+  /** Current location — shown in the banner. */
   currentBedId?: string | null;
-  currentWardId?: string | null;
   currentWardName?: string | null;
   currentBedNumber?: string | null;
-
-  /** Transfer mode only. */
-  patientId?: string;
-  visitId?: string;
-  patientName?: string;
 
   /** Extra query invalidation the caller wants after a successful move. */
   onSuccess?: () => void;
@@ -60,25 +48,17 @@ export function AssignBedDialog({
   open,
   onOpenChange,
   admissionId,
-  mode = 'assign',
   currentBedId,
-  currentWardId,
   currentWardName,
   currentBedNumber,
-  patientId,
-  visitId,
-  patientName,
   onSuccess,
 }: AssignBedDialogProps) {
-  const isTransfer = mode === 'transfer';
-  const queryClient = useQueryClient();
-
   const { data: wards } = useWards();
   const [wardId, setWardId] = useState('');
   const [bedId, setBedId] = useState('');
-  const [reason, setReason] = useState('');
+  const assign = useAssignAdmissionBed();
 
-  // Re-fetch beds whenever the ward changes; only free beds are assignable.
+  // Only free beds in the chosen ward are assignable.
   const { data: beds } = useBeds(wardId ? { wardId, status: 'available' } : undefined);
   const bedOptions = useMemo(() => beds ?? [], [beds]);
 
@@ -90,7 +70,6 @@ export function AssignBedDialog({
   const reset = () => {
     setWardId('');
     setBedId('');
-    setReason('');
   };
 
   const close = () => {
@@ -98,51 +77,15 @@ export function AssignBedDialog({
     onOpenChange(false);
   };
 
-  // --- assign mode ---------------------------------------------------------
-  const assign = useAssignAdmissionBed();
-
-  // --- transfer mode -------------------------------------------------------
-  const transfer = useMutation({
-    mutationFn: () => {
-      const transferType: 'ward_to_ward' | 'bed_to_bed' =
-        wardId && wardId !== currentWardId ? 'ward_to_ward' : 'bed_to_bed';
-      // `from` fields may be null (a patient can be admitted without a bed) —
-      // null fails uuid validation, so omit any empty field entirely.
-      const payload: Record<string, unknown> = {
-        patientId,
-        visitId,
-        transferType,
-        toWardId: wardId,
-        toBedId: bedId,
-        reason: reason || undefined,
-        autoApprove: true, // front desk moves the patient instantly
-      };
-      if (currentWardId) payload.fromWardId = currentWardId;
-      if (currentBedId) payload.fromBedId = currentBedId;
-      return apiPost('/clinical/transfers', payload);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['hospital', 'admissions'] });
-      queryClient.invalidateQueries({ queryKey: ['hospital', 'beds'] });
-    },
-  });
-
-  const pending = isTransfer ? transfer.isPending : assign.isPending;
-
-  const handleSubmit = async () => {
+  const handleAssign = async () => {
     if (!bedId) return;
     try {
-      if (isTransfer) {
-        await transfer.mutateAsync();
-        toast.success('Patient transferred to the new bed.');
-      } else {
-        await assign.mutateAsync({ id: admissionId, bedId });
-        toast.success('Bed assigned');
-      }
+      await assign.mutateAsync({ id: admissionId, bedId });
+      toast.success('Bed assigned');
       onSuccess?.();
       close();
     } catch (err) {
-      toast.error(getApiErrorMessage(err) ?? (isTransfer ? 'Transfer failed' : 'Failed to assign bed'));
+      toast.error(getApiErrorMessage(err) ?? 'Failed to assign bed');
     }
   };
 
@@ -162,19 +105,11 @@ export function AssignBedDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            {isTransfer ? (
-              <ArrowLeftRight className="h-4 w-4 text-primary" />
-            ) : (
-              <BedDouble className="h-4 w-4 text-primary" />
-            )}
-            {isTransfer ? 'Transfer Patient' : currentBedId ? 'Change bed' : 'Assign bed'}
+            <BedDouble className="h-4 w-4 text-primary" />
+            {currentBedId ? 'Change bed' : 'Assign bed'}
           </DialogTitle>
           <DialogDescription>
-            {isTransfer && patientName ? (
-              <>Transfer <strong>{patientName}</strong> to a different ward/bed.</>
-            ) : (
-              'Move the patient to a ward/bed. Applied immediately.'
-            )}
+            Move the patient to a ward/bed. Applied immediately.
           </DialogDescription>
         </DialogHeader>
 
@@ -221,27 +156,15 @@ export function AssignBedDialog({
               </SelectContent>
             </Select>
           </div>
-
-          {isTransfer && (
-            <div className="grid gap-1.5">
-              <Label>Reason</Label>
-              <Textarea
-                placeholder="Reason for transfer..."
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                rows={2}
-              />
-            </div>
-          )}
         </div>
 
         <DialogFooter className="sm:justify-between">
-          {!isTransfer && currentBedId ? (
+          {currentBedId ? (
             <Button
               variant="ghost"
               className="text-red-600 hover:bg-red-50 sm:mr-auto"
               onClick={handleClear}
-              disabled={pending}
+              disabled={assign.isPending}
             >
               Clear bed
             </Button>
@@ -249,12 +172,12 @@ export function AssignBedDialog({
             <span className="hidden sm:block" />
           )}
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={close} disabled={pending}>
+            <Button variant="outline" onClick={close} disabled={assign.isPending}>
               Cancel
             </Button>
-            <Button onClick={handleSubmit} disabled={!bedId || pending} className="gap-1.5">
-              {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              {isTransfer ? 'Transfer' : currentBedId ? 'Move here' : 'Assign'}
+            <Button onClick={handleAssign} disabled={!bedId || assign.isPending} className="gap-1.5">
+              {assign.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              {currentBedId ? 'Move here' : 'Assign'}
             </Button>
           </div>
         </DialogFooter>

@@ -1453,6 +1453,7 @@ function RowActionsMenu({
   onView: (adm: Admission) => void;
 }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [transferOpen, setTransferOpen] = useState(false);
   const [dischargeOpen, setDischargeOpen] = useState(false);
   const [slipOpen, setSlipOpen] = useState(false);
@@ -1560,17 +1561,16 @@ function RowActionsMenu({
       />
 
       <AssignBedDialog
-        mode="transfer"
         admissionId={admission.id}
-        patientId={admission.patientId}
-        visitId={admission.visitId}
-        patientName={`${admission.patient?.firstName ?? ''} ${admission.patient?.lastName ?? ''}`.trim()}
-        currentWardId={admission.wardId ?? null}
         currentBedId={admission.bedId ?? null}
         currentWardName={admission.ward?.name ?? null}
         currentBedNumber={admission.bed?.bedNumber ?? null}
         open={transferOpen}
         onOpenChange={setTransferOpen}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['hospital', 'admissions'] });
+          queryClient.invalidateQueries({ queryKey: ['hospital', 'beds'] });
+        }}
       />
       <DischargeDialog
         admission={admission}
