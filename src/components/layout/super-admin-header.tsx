@@ -1,7 +1,8 @@
 'use client';
 
-import { Bell, HelpCircle, LogOut, User, ArrowLeft } from 'lucide-react';
+import { HelpCircle, LogOut, User, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { NotificationBell } from '@/components/layout/notification-bell';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -80,11 +81,8 @@ export function SuperAdminHeader() {
 
       {/* Right side */}
       <div className="flex items-center gap-4">
-        {/* Notifications */}
-        <button className="relative p-2 text-on-surface-variant hover:bg-surface-container-high rounded-lg transition-colors">
-          <Bell className="h-5 w-5" />
-          <span className="absolute top-2 right-2 w-2 h-2 bg-error rounded-full ring-2 ring-background" />
-        </button>
+        {/* Notifications — live unread badge + dropdown */}
+        <NotificationBell variant="module" />
 
         {/* Help — opens the in-app User Guide (/help) */}
         <button

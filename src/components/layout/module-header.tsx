@@ -1,7 +1,8 @@
 'use client';
 
-import { Menu, Bell, HelpCircle, LogOut, Building2, Settings, ArrowLeftRight, Search, User, CreditCard, ArrowLeft } from 'lucide-react';
+import { Menu, HelpCircle, LogOut, Building2, Settings, ArrowLeftRight, Search, User, CreditCard, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { NotificationBell } from '@/components/layout/notification-bell';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -108,11 +109,8 @@ export function ModuleHeader() {
 
       {/* Right: Actions — code.html: gap-6 */}
       <div className="flex items-center gap-6">
-        {/* Notifications — code.html: relative p-2, rounded-lg, red dot */}
-        <button className="relative p-2 text-on-surface-variant hover:bg-surface-container-high rounded-lg transition-colors">
-          <Bell className="h-5 w-5" />
-          <span className="absolute top-2 right-2 w-2 h-2 bg-error rounded-full ring-2 ring-background" />
-        </button>
+        {/* Notifications — live unread badge + dropdown */}
+        <NotificationBell variant="module" />
 
         {/* Help — opens the in-app User Guide (/help) */}
         <button

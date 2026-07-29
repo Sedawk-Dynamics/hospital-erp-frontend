@@ -1,7 +1,8 @@
 'use client';
 
-import { Menu, PanelLeftClose, PanelLeft, Bell, LogOut, User, Settings } from 'lucide-react';
+import { Menu, PanelLeftClose, PanelLeft, LogOut, User, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { NotificationBell } from '@/components/layout/notification-bell';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -67,12 +68,8 @@ export function Header() {
 
       {/* Right side */}
       <div className="flex items-center gap-2">
-        {/* Notifications */}
-        <Button variant="ghost" size="icon" className="relative" onClick={() => router.push('/notifications')}>
-          <Bell className="h-5 w-5" />
-          <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-destructive" />
-          <span className="sr-only">Notifications</span>
-        </Button>
+        {/* Notifications — live unread badge + dropdown */}
+        <NotificationBell variant="plain" />
 
         {/* User menu */}
         <DropdownMenu>
