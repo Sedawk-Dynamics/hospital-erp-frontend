@@ -69,6 +69,7 @@ import {
 import { BillGeneratorDialog } from '@/components/hospital/billing/bill-generator-dialog';
 import { AdvancePaymentDialog } from '@/components/hospital/billing/week12-dialogs';
 import { BillingSummaryDialog } from '@/components/pharmacy/billing-summary-dialog';
+import { AssignBedDialog } from '@/components/hospital/ip/assign-bed-dialog';
 import { usePermissions } from '@/hooks/use-permissions';
 import { useAuthStore } from '@/stores/auth-store';
 
@@ -1085,170 +1086,6 @@ function AdmissionSlipDialog({
   );
 }
 
-// ---------------------------------------------------------------------------
-// TransferDialog — Transfer a patient to a different ward/bed
-// ---------------------------------------------------------------------------
-function TransferDialog({
-  admission,
-  open,
-  onOpenChange,
-}: {
-  admission: Admission;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const queryClient = useQueryClient();
-
-  const [targetWardId, setTargetWardId] = useState('');
-  const [targetBedId, setTargetBedId] = useState('');
-  const [reason, setReason] = useState('');
-
-  const { data: wardsData } = useQuery({
-    queryKey: ['wards-list'],
-    queryFn: () => apiGet<Ward[]>('/infrastructure/wards', { params: { limit: 200 } }),
-  });
-
-  const { data: bedsData } = useQuery({
-    queryKey: ['beds-available', targetWardId],
-    queryFn: () =>
-      apiGet<BedWithStatus[]>('/infrastructure/beds', {
-        params: { wardId: targetWardId, status: 'available', limit: 200 },
-      }),
-    enabled: !!targetWardId,
-  });
-
-  useEffect(() => {
-    setTargetBedId('');
-  }, [targetWardId]);
-
-  const wards = wardsData?.data ?? [];
-  const beds = bedsData?.data ?? [];
-
-  const transferType: 'ward_to_ward' | 'bed_to_bed' =
-    targetWardId && targetWardId !== admission.wardId ? 'ward_to_ward' : 'bed_to_bed';
-
-  const transferMutation = useMutation({
-    mutationFn: () => {
-      // Build a clean payload — the `from` bed/ward may be null now that a patient
-      // can be admitted without a bed; sending null fails the uuid validation, so
-      // omit any empty field entirely.
-      const payload: Record<string, unknown> = {
-        patientId: admission.patientId,
-        visitId: admission.visitId,
-        transferType,
-        toWardId: targetWardId,
-        toBedId: targetBedId,
-        reason: reason || undefined,
-        // Front desk moves the patient instantly — no separate approval step.
-        autoApprove: true,
-      };
-      if (admission.wardId) payload.fromWardId = admission.wardId;
-      if (admission.bedId) payload.fromBedId = admission.bedId;
-      return apiPost('/clinical/transfers', payload);
-    },
-    onSuccess: () => {
-      toast.success('Patient transferred to the new bed.');
-      queryClient.invalidateQueries({ queryKey: ['hospital', 'admissions'] });
-      queryClient.invalidateQueries({ queryKey: ['hospital', 'beds'] });
-      onOpenChange(false);
-      setTargetWardId('');
-      setTargetBedId('');
-      setReason('');
-    },
-    onError: (err) => {
-      toast.error(getApiErrorMessage(err) || 'Transfer failed');
-    },
-  });
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Transfer Patient</DialogTitle>
-          <DialogDescription>
-            Transfer{' '}
-            <strong>
-              {admission.patient?.firstName} {admission.patient?.lastName}
-            </strong>{' '}
-            to a different ward/bed.
-          </DialogDescription>
-        </DialogHeader>
-
-        {/* Current location */}
-        <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm">
-          <span className="text-muted-foreground">Current:</span>{' '}
-          <strong>{admission.ward?.name ?? '-'}</strong> / Bed{' '}
-          <strong>{admission.bed?.bedNumber ?? '-'}</strong>
-        </div>
-
-        <div className="grid gap-4 py-2">
-          <div className="grid gap-1.5">
-            <Label>Target Ward *</Label>
-            <Select value={targetWardId} onValueChange={(v) => setTargetWardId(v ?? '')}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select ward" />
-              </SelectTrigger>
-              <SelectContent>
-                {wards.map((w) => (
-                  <SelectItem key={w.id} value={w.id}>
-                    {w.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="grid gap-1.5">
-            <Label>Target Bed *</Label>
-            <Select
-              value={targetBedId}
-              onValueChange={(v) => setTargetBedId(v ?? '')}
-              disabled={!targetWardId}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder={targetWardId ? 'Select bed' : 'Select ward first'} />
-              </SelectTrigger>
-              <SelectContent>
-                {beds.map((b) => (
-                  <SelectItem key={b.id} value={b.id}>
-                    Bed {b.bedNumber}
-                  </SelectItem>
-                ))}
-                {beds.length === 0 && targetWardId && (
-                  <div className="px-3 py-2 text-sm text-muted-foreground">
-                    No available beds
-                  </div>
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="grid gap-1.5">
-            <Label>Reason</Label>
-            <Textarea
-              placeholder="Reason for transfer..."
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              rows={2}
-            />
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button
-            onClick={() => transferMutation.mutate()}
-            disabled={transferMutation.isPending || !targetWardId || !targetBedId}
-          >
-            {transferMutation.isPending ? 'Transferring...' : 'Transfer'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // DischargeDialog
@@ -1722,8 +1559,16 @@ function RowActionsMenu({
         onOpenChange={setSummaryOpen}
       />
 
-      <TransferDialog
-        admission={admission}
+      <AssignBedDialog
+        mode="transfer"
+        admissionId={admission.id}
+        patientId={admission.patientId}
+        visitId={admission.visitId}
+        patientName={`${admission.patient?.firstName ?? ''} ${admission.patient?.lastName ?? ''}`.trim()}
+        currentWardId={admission.wardId ?? null}
+        currentBedId={admission.bedId ?? null}
+        currentWardName={admission.ward?.name ?? null}
+        currentBedNumber={admission.bed?.bedNumber ?? null}
         open={transferOpen}
         onOpenChange={setTransferOpen}
       />
