@@ -1119,13 +1119,15 @@ function TransferDialog({
         toWardId: targetWardId,
         toBedId: targetBedId,
         reason: reason || undefined,
+        // Front desk moves the patient instantly — no separate approval step.
+        autoApprove: true,
       };
       if (admission.wardId) payload.fromWardId = admission.wardId;
       if (admission.bedId) payload.fromBedId = admission.bedId;
       return apiPost('/clinical/transfers', payload);
     },
     onSuccess: () => {
-      toast.success('Transfer request created. Awaiting approval.');
+      toast.success('Patient transferred to the new bed.');
       queryClient.invalidateQueries({ queryKey: ['hospital', 'admissions'] });
       queryClient.invalidateQueries({ queryKey: ['hospital', 'beds'] });
       onOpenChange(false);
