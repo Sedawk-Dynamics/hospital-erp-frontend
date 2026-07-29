@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { cn } from '@/lib/utils';
+import { cn, getApiErrorMessage } from '@/lib/utils';
 import {
   Search,
   Plus,
@@ -1108,17 +1108,22 @@ function TransferDialog({
     targetWardId && targetWardId !== admission.wardId ? 'ward_to_ward' : 'bed_to_bed';
 
   const transferMutation = useMutation({
-    mutationFn: () =>
-      apiPost('/clinical/transfers', {
+    mutationFn: () => {
+      // Build a clean payload — the `from` bed/ward may be null now that a patient
+      // can be admitted without a bed; sending null fails the uuid validation, so
+      // omit any empty field entirely.
+      const payload: Record<string, unknown> = {
         patientId: admission.patientId,
         visitId: admission.visitId,
         transferType,
-        fromWardId: admission.wardId,
         toWardId: targetWardId,
-        fromBedId: admission.bedId,
         toBedId: targetBedId,
         reason: reason || undefined,
-      }),
+      };
+      if (admission.wardId) payload.fromWardId = admission.wardId;
+      if (admission.bedId) payload.fromBedId = admission.bedId;
+      return apiPost('/clinical/transfers', payload);
+    },
     onSuccess: () => {
       toast.success('Transfer request created. Awaiting approval.');
       queryClient.invalidateQueries({ queryKey: ['hospital', 'admissions'] });
@@ -1128,8 +1133,8 @@ function TransferDialog({
       setTargetBedId('');
       setReason('');
     },
-    onError: (err: Error) => {
-      toast.error(err.message || 'Transfer failed');
+    onError: (err) => {
+      toast.error(getApiErrorMessage(err) || 'Transfer failed');
     },
   });
 
