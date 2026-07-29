@@ -307,10 +307,10 @@ function AdmissionDialog({
         patientId = patientRes.data.id;
       }
 
-      // Step 1: create an IP visit
+      // Step 1: create an IP visit (doctor optional — omit when not chosen).
       const visitRes = await apiPost<{ id: string }>('/clinical/visits', {
         patientId,
-        doctorId: selectedDoctorId,
+        doctorId: selectedDoctorId || undefined,
         visitType: 'ip',
         visitDate: admissionDate,
       });
