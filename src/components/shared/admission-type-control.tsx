@@ -1,7 +1,8 @@
 'use client';
 
 import { toast } from 'sonner';
-import { ChevronDown, Loader2 } from 'lucide-react';
+import { ChevronDown, Loader2, ArrowRightLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -68,6 +69,54 @@ export function AdmissionTypeControl({
           >
             {o.value === current ? '✓ ' : '  '}
             {o.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/**
+ * A proper "Convert" action button (for the workspace quick-actions row). The
+ * dropdown reads each option as a transition from the current type, e.g.
+ * "Emergency → IP" / "Emergency → Day Care".
+ */
+export function AdmissionTypeConvertButton({
+  admissionId,
+  type,
+}: {
+  admissionId: string;
+  type: string | null | undefined;
+}) {
+  const change = useChangeAdmissionType();
+  const current = normalizeAdmissionType(type);
+  const targets = ADMISSION_TYPE_OPTIONS.filter((o) => o.value !== current);
+
+  const onPick = async (t: string) => {
+    try {
+      await change.mutateAsync({ id: admissionId, admissionType: t });
+      toast.success(
+        `Converted ${ADMISSION_TYPE_LABELS[current]} → ${ADMISSION_TYPE_LABELS[normalizeAdmissionType(t)]}`,
+      );
+    } catch (err) {
+      toast.error(getApiErrorMessage(err) || 'Could not change the admission type');
+    }
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<Button variant="outline" size="sm" className="gap-1.5" />}>
+        {change.isPending ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <ArrowRightLeft className="h-3.5 w-3.5" />
+        )}
+        Convert
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {targets.map((o) => (
+          <DropdownMenuItem key={o.value} onClick={() => onPick(o.value)} disabled={change.isPending}>
+            {ADMISSION_TYPE_LABELS[current]} → {o.label}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
