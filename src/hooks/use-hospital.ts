@@ -1112,6 +1112,28 @@ export function useAddBillItem() {
   });
 }
 
+export function useUpdateBillItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      billId,
+      itemId,
+      data,
+    }: {
+      billId: string;
+      itemId: string;
+      data: { description?: string; quantity?: number; unitPrice?: number; discount?: number; taxRate?: number };
+    }) => {
+      const response = await apiPatch(`/billing/${billId}/items/${itemId}`, data);
+      return response.data ?? null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bills'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bill'] });
+    },
+  });
+}
+
 export function useRemoveBillItem() {
   const queryClient = useQueryClient();
   return useMutation({

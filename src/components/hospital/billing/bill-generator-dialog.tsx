@@ -17,7 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Loader2, Search, Plus, Trash2, Stethoscope, FlaskConical, Pill, Scan, BedDouble,
-  Percent, IndianRupee, FileCheck2, CheckCircle2, X, Undo2,
+  Percent, IndianRupee, FileCheck2, CheckCircle2, X, Undo2, Pencil, Check,
 } from 'lucide-react';
 
 import {
@@ -37,6 +37,7 @@ import {
   usePullCharges,
   useAddBillItem,
   useRemoveBillItem,
+  useUpdateBillItem,
   useSetBillDiscount,
   useFinalizeBill,
   useReopenBill,
@@ -97,7 +98,7 @@ export function BillGeneratorDialog({
   // to re-seed step/patient/billId.
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-5xl max-h-[92vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[92rem] w-[96vw] max-h-[94vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Generate Bill</DialogTitle>
           <DialogDescription>
@@ -343,6 +344,7 @@ function ComposeStep({
   const pullCharges = usePullCharges();
   const addBillItem = useAddBillItem();
   const removeBillItem = useRemoveBillItem();
+  const updateBillItem = useUpdateBillItem();
   const setBillDiscount = useSetBillDiscount();
   const finalizeBill = useFinalizeBill();
   const reopenBill = useReopenBill();
@@ -412,6 +414,19 @@ function ComposeStep({
       }
     },
     [effectiveBillId, removeBillItem],
+  );
+
+  const handleUpdateItem = useCallback(
+    async (itemId: string, data: { description?: string; quantity?: number; unitPrice?: number; discount?: number; taxRate?: number }) => {
+      if (!effectiveBillId) return;
+      try {
+        await updateBillItem.mutateAsync({ billId: effectiveBillId, itemId, data });
+        toast.success('Line updated');
+      } catch (e: unknown) {
+        toast.error(e instanceof Error ? e.message : 'Failed to update line');
+      }
+    },
+    [effectiveBillId, updateBillItem],
   );
 
   const handleSetDiscount = useCallback(
@@ -509,6 +524,9 @@ function ComposeStep({
             loading={billLoading || !effectiveBillId}
             onRemove={handleRemove}
             removing={removeBillItem.isPending}
+            onUpdate={handleUpdateItem}
+            updating={updateBillItem.isPending}
+            editable={billTyped?.status === 'draft'}
           />
         </div>
 
@@ -660,7 +678,7 @@ function ChargesPanel({
         )}
       </div>
 
-      <div className="max-h-[280px] overflow-y-auto">
+      <div className="max-h-[42vh] overflow-y-auto">
         {loading ? (
           <p className="px-4 py-8 text-center text-sm text-on-surface-variant">
             <Loader2 className="inline h-4 w-4 animate-spin" /> Loading charges...
@@ -820,27 +838,37 @@ function ManualLineForm({
 // Bill lines table (with remove)
 // ────────────────────────────────────────────────────────────────────────
 
+type BillLineItem = {
+  id: string; description: string; quantity: number; unitPrice: string | number;
+  discountAmount: string | number; taxPercent: string | number; taxAmount: string | number;
+  totalAmount: string | number; isAutoPulled?: boolean; category?: string;
+};
+
+type BillLineEdit = { description?: string; quantity?: number; unitPrice?: number; discount?: number; taxRate?: number };
+
 function BillLinesPanel({
   items,
   loading,
   onRemove,
   removing,
+  onUpdate,
+  updating,
+  editable,
 }: {
-  items: Array<{
-    id: string; description: string; quantity: number; unitPrice: string | number;
-    discountAmount: string | number; taxPercent: string | number; taxAmount: string | number;
-    totalAmount: string | number; isAutoPulled?: boolean; category?: string;
-  }>;
+  items: BillLineItem[];
   loading: boolean;
   onRemove: (itemId: string) => void;
   removing: boolean;
+  onUpdate: (itemId: string, data: BillLineEdit) => Promise<void>;
+  updating: boolean;
+  editable: boolean;
 }) {
   return (
     <div className="rounded-xl border bg-surface-container-lowest">
       <p className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant px-3 py-2 border-b border-surface-container">
-        Bill Lines ({items.length})
+        Bill Lines ({items.length}){editable && <span className="ml-2 normal-case tracking-normal text-primary">· click the pencil to edit any price</span>}
       </p>
-      <div className="max-h-[260px] overflow-y-auto">
+      <div className="max-h-[320px] overflow-y-auto">
         {loading ? (
           <p className="px-4 py-8 text-center text-sm text-on-surface-variant">
             <Loader2 className="inline h-4 w-4 animate-spin" /> Loading...
@@ -857,44 +885,147 @@ function BillLinesPanel({
                 <th className="px-3 py-2 text-right">Qty</th>
                 <th className="px-3 py-2 text-right">Unit</th>
                 <th className="px-3 py-2 text-right">Disc</th>
-                <th className="px-3 py-2 text-right">Tax</th>
+                <th className="px-3 py-2 text-right">Tax%</th>
                 <th className="px-3 py-2 text-right">Total</th>
-                <th className="px-3 py-2 w-8"></th>
+                <th className="px-3 py-2 w-16"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-container/40">
               {items.map((it) => (
-                <tr key={it.id} className="hover:bg-surface-container-low transition-colors">
-                  <td className="px-3 py-2">
-                    <p className="font-label text-sm">{it.description}</p>
-                    <p className="font-label text-[10px] text-on-surface-variant capitalize">
-                      {it.category ?? 'other'}
-                      {it.isAutoPulled && <span className="ml-2 text-primary">· auto</span>}
-                    </p>
-                  </td>
-                  <td className="px-3 py-2 text-right font-label text-sm">{it.quantity}</td>
-                  <td className="px-3 py-2 text-right font-label text-sm">{fmt(Number(it.unitPrice))}</td>
-                  <td className="px-3 py-2 text-right font-label text-sm">{fmt(Number(it.discountAmount))}</td>
-                  <td className="px-3 py-2 text-right font-label text-sm">{fmt(Number(it.taxAmount))}</td>
-                  <td className="px-3 py-2 text-right font-label text-sm font-bold">{fmt(Number(it.totalAmount))}</td>
-                  <td className="px-3 py-2 text-right">
-                    <button
-                      type="button"
-                      onClick={() => onRemove(it.id)}
-                      disabled={removing}
-                      className="text-error hover:opacity-70 transition-opacity disabled:opacity-30"
-                      aria-label="Remove line"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
+                <BillLineRow
+                  key={it.id}
+                  item={it}
+                  onRemove={onRemove}
+                  removing={removing}
+                  onUpdate={onUpdate}
+                  updating={updating}
+                  editable={editable}
+                />
               ))}
             </tbody>
           </table>
         )}
       </div>
     </div>
+  );
+}
+
+// One bill line — displays read-only, or inline inputs when the pencil is
+// clicked. Front desk can change description / qty / unit price / discount /
+// tax% on any draft line (including auto-pulled ones); Total recomputes on save.
+function BillLineRow({
+  item,
+  onRemove,
+  removing,
+  onUpdate,
+  updating,
+  editable,
+}: {
+  item: BillLineItem;
+  onRemove: (itemId: string) => void;
+  removing: boolean;
+  onUpdate: (itemId: string, data: BillLineEdit) => Promise<void>;
+  updating: boolean;
+  editable: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [desc, setDesc] = useState(item.description);
+  const [qty, setQty] = useState<number>(item.quantity);
+  const [unit, setUnit] = useState<number>(Number(item.unitPrice));
+  const [disc, setDisc] = useState<number>(Number(item.discountAmount));
+  const [tax, setTax] = useState<number>(Number(item.taxPercent));
+
+  const start = () => {
+    setDesc(item.description);
+    setQty(item.quantity);
+    setUnit(Number(item.unitPrice));
+    setDisc(Number(item.discountAmount));
+    setTax(Number(item.taxPercent));
+    setEditing(true);
+  };
+
+  const preview = Math.max(0, qty * unit - disc) * (1 + tax / 100);
+
+  const save = async () => {
+    if (!desc.trim()) { toast.error('Description is required'); return; }
+    if (qty <= 0) { toast.error('Quantity must be positive'); return; }
+    await onUpdate(item.id, { description: desc.trim(), quantity: qty, unitPrice: unit, discount: disc, taxRate: tax });
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <tr className="bg-primary/5">
+        <td className="px-3 py-2">
+          <Input value={desc} onChange={(e) => setDesc(e.target.value)} className="h-7 text-sm" />
+        </td>
+        <td className="px-2 py-2">
+          <NumberInput value={qty} onValueChange={setQty} min={0} integer className="h-7 w-14 text-right text-sm" />
+        </td>
+        <td className="px-2 py-2">
+          <NumberInput value={unit} onValueChange={setUnit} min={0} className="h-7 w-20 text-right text-sm" />
+        </td>
+        <td className="px-2 py-2">
+          <NumberInput value={disc} onValueChange={setDisc} min={0} className="h-7 w-16 text-right text-sm" />
+        </td>
+        <td className="px-2 py-2">
+          <NumberInput value={tax} onValueChange={setTax} min={0} max={100} className="h-7 w-14 text-right text-sm" />
+        </td>
+        <td className="px-3 py-2 text-right font-label text-sm font-bold">{fmt(preview)}</td>
+        <td className="px-2 py-2">
+          <div className="flex items-center justify-end gap-1">
+            <button type="button" onClick={save} disabled={updating} title="Save" className="rounded p-1 text-emerald-600 hover:bg-emerald-50 disabled:opacity-40">
+              {updating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-4 w-4" />}
+            </button>
+            <button type="button" onClick={() => setEditing(false)} disabled={updating} title="Cancel" className="rounded p-1 text-on-surface-variant hover:bg-surface-container-high disabled:opacity-40">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr className="hover:bg-surface-container-low transition-colors">
+      <td className="px-3 py-2">
+        <p className="font-label text-sm">{item.description}</p>
+        <p className="font-label text-[10px] text-on-surface-variant capitalize">
+          {item.category ?? 'other'}
+          {item.isAutoPulled && <span className="ml-2 text-primary">· auto</span>}
+        </p>
+      </td>
+      <td className="px-3 py-2 text-right font-label text-sm">{item.quantity}</td>
+      <td className="px-3 py-2 text-right font-label text-sm">{fmt(Number(item.unitPrice))}</td>
+      <td className="px-3 py-2 text-right font-label text-sm">{fmt(Number(item.discountAmount))}</td>
+      <td className="px-3 py-2 text-right font-label text-sm">{Number(item.taxPercent)}%</td>
+      <td className="px-3 py-2 text-right font-label text-sm font-bold">{fmt(Number(item.totalAmount))}</td>
+      <td className="px-2 py-2">
+        <div className="flex items-center justify-end gap-1">
+          {editable && (
+            <button
+              type="button"
+              onClick={start}
+              className="rounded p-1 text-on-surface-variant hover:bg-surface-container-high hover:text-primary"
+              aria-label="Edit line"
+              title="Edit this line"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => onRemove(item.id)}
+            disabled={removing}
+            className="rounded p-1 text-error hover:bg-error/10 transition-opacity disabled:opacity-30"
+            aria-label="Remove line"
+            title="Remove this line"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      </td>
+    </tr>
   );
 }
 
