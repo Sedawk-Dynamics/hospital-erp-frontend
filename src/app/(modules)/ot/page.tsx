@@ -47,7 +47,9 @@ import {
   useOperatingTheaters,
   type OTRequest,
 } from '@/hooks/use-ot';
-import { useDoctorsList, usePatientSearch } from '@/hooks/use-hospital';
+import { useDoctorsList } from '@/hooks/use-hospital';
+import { useAdmissions } from '@/hooks/use-clinical';
+import { AdmissionTypeBadge } from '@/components/shared/admission-type-badge';
 
 // ============================================================
 // Constants
@@ -813,7 +815,15 @@ function CreateOTDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const [patientQuery, setPatientQuery] = useState('');
-  const { data: patients, isLoading: patientsLoading } = usePatientSearch(patientQuery);
+  // Only admitted patients (IP / Emergency / Day Care — all admissions carry one
+  // of these care types) can be booked into OT, so the surgery charge routes
+  // straight onto their running in-patient bill (ledger). OP/walk-in excluded.
+  const { data: admissionsData, isLoading: patientsLoading } = useAdmissions({
+    status: 'admitted',
+    search: patientQuery || undefined,
+    limit: 50,
+  });
+  const admissions = admissionsData?.data ?? [];
   const { data: doctorsRaw } = useDoctorsList();
   const createMutation = useCreateOTRequest();
 
@@ -854,10 +864,10 @@ function CreateOTDialog({
 
   const selectedPatientId = watch('patientId');
 
-  const selectedPatient = useMemo(() => {
-    if (!selectedPatientId || !patients) return null;
-    return patients.find((p) => p.id === selectedPatientId) ?? null;
-  }, [selectedPatientId, patients]);
+  const selectedAdmission = useMemo(() => {
+    if (!selectedPatientId) return null;
+    return admissions.find((a) => a.patientId === selectedPatientId) ?? null;
+  }, [selectedPatientId, admissions]);
 
   const handleClose = useCallback(() => {
     onOpenChange(false);
@@ -904,25 +914,23 @@ function CreateOTDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 py-2">
-          {/* Patient Search */}
+          {/* Patient — admitted (IP / Emergency / Day Care) only */}
           <div className="space-y-1.5">
             <Label>Patient *</Label>
-            {selectedPatient ? (
+            {selectedAdmission ? (
               <div className="flex items-center justify-between rounded-md border px-3 py-2 bg-muted/30">
-                <div>
-                  <span className="font-medium">
-                    {selectedPatient.firstName} {selectedPatient.lastName}
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-medium truncate">
+                      {selectedAdmission.patient?.firstName} {selectedAdmission.patient?.lastName}
+                    </span>
+                    <AdmissionTypeBadge type={(selectedAdmission as { admissionType?: string }).admissionType} />
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {(selectedAdmission.patient as { mrn?: string } | undefined)?.mrn ?? selectedAdmission.patient?.uhid ?? ''}
+                    {selectedAdmission.ward?.name ? ` · ${selectedAdmission.ward.name}` : ''}
+                    {selectedAdmission.bed?.bedNumber ? ` / Bed ${selectedAdmission.bed.bedNumber}` : ''}
                   </span>
-                  {selectedPatient.mrn && (
-                    <span className="ml-2 text-xs text-muted-foreground">
-                      MRN: {selectedPatient.mrn}
-                    </span>
-                  )}
-                  {selectedPatient.phone && (
-                    <span className="ml-2 text-xs text-muted-foreground">
-                      {selectedPatient.phone}
-                    </span>
-                  )}
                 </div>
                 <Button
                   type="button"
@@ -939,47 +947,48 @@ function CreateOTDialog({
             ) : (
               <div className="space-y-1">
                 <Input
-                  placeholder="Search by patient name or MRN..."
+                  placeholder="Search admitted patient by name or MRN..."
                   value={patientQuery}
                   onChange={(e) => setPatientQuery(e.target.value)}
                 />
-                {patientQuery.length >= 2 && (
-                  <div className="rounded-md border bg-popover max-h-40 overflow-y-auto shadow-md">
-                    {patientsLoading ? (
-                      <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                        Searching...
-                      </div>
-                    ) : patients && patients.length > 0 ? (
-                      patients.map((p) => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => {
-                            setValue('patientId', p.id, { shouldValidate: true });
-                          }}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-muted transition-colors border-b last:border-b-0"
-                        >
+                <div className="rounded-md border bg-popover max-h-48 overflow-y-auto shadow-md">
+                  {patientsLoading ? (
+                    <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Searching...
+                    </div>
+                  ) : admissions.length > 0 ? (
+                    admissions.map((a) => (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => setValue('patientId', a.patientId, { shouldValidate: true })}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-muted transition-colors border-b last:border-b-0"
+                      >
+                        <div className="flex items-center gap-1.5">
                           <span className="font-medium">
-                            {p.firstName} {p.lastName}
+                            {a.patient?.firstName} {a.patient?.lastName}
                           </span>
-                          {p.mrn && (
-                            <span className="ml-2 text-muted-foreground">MRN: {p.mrn}</span>
-                          )}
-                          {p.phone && (
-                            <span className="ml-2 text-muted-foreground">{p.phone}</span>
-                          )}
-                        </button>
-                      ))
-                    ) : (
-                      <div className="px-3 py-2 text-sm text-muted-foreground">
-                        No patients found
-                      </div>
-                    )}
-                  </div>
-                )}
+                          <AdmissionTypeBadge type={(a as { admissionType?: string }).admissionType} />
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {(a.patient as { mrn?: string } | undefined)?.mrn ?? a.patient?.uhid ?? ''}
+                          {a.ward?.name ? ` · ${a.ward.name}` : ''}
+                          {a.bed?.bedNumber ? ` / Bed ${a.bed.bedNumber}` : ''}
+                        </span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="px-3 py-2 text-sm text-muted-foreground">
+                      No admitted patients found. Only IP / Emergency / Day Care patients can be booked for OT.
+                    </div>
+                  )}
+                </div>
               </div>
             )}
+            <p className="text-[11px] text-muted-foreground">
+              Only admitted patients (IP / Emergency / Day Care) can be scheduled — the OT charge is added to their in-patient bill (ledger).
+            </p>
             {errors.patientId && (
               <p className="text-xs text-red-500">{errors.patientId.message}</p>
             )}
@@ -999,7 +1008,7 @@ function CreateOTDialog({
               <Select
                 onValueChange={(v: string | null) => setValue('surgeryType', v ?? '')}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select type" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1020,7 +1029,7 @@ function CreateOTDialog({
               <Select
                 onValueChange={(v: string | null) => setValue('speciality', v ?? '')}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select speciality" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1038,7 +1047,7 @@ function CreateOTDialog({
                 defaultValue="routine"
                 onValueChange={(v: string | null) => setValue('priority', v ?? 'routine')}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select priority" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1059,7 +1068,7 @@ function CreateOTDialog({
               <Select
                 onValueChange={(v: string | null) => setValue('surgeonId', v ?? '')}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select surgeon" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1079,7 +1088,7 @@ function CreateOTDialog({
               <Select
                 onValueChange={(v: string | null) => setValue('anaesthetistId', v ?? '')}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select anaesthetist" />
                 </SelectTrigger>
                 <SelectContent>
