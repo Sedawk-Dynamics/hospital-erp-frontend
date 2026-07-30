@@ -20,6 +20,7 @@ export interface FormularyItem {
   id: string;
   drugName: string;
   genericName: string | null;
+  composition: string | null;
   manufacturer: string | null;
   // Stock type — every kind (medicine, consumable, surgical supply, equipment,
   // other) lives in the formulary and shares one flow. 'drug' = medicine.
@@ -263,6 +264,7 @@ export interface CreateFormularyInput {
   // Type of stock — the formulary holds consumables/surgical/equipment too.
   category?: 'drug' | 'consumable' | 'surgical_supply' | 'equipment' | 'other';
   genericName?: string;
+  composition?: string;
   manufacturer?: string;
   dosageForm?: DosageForm;
   strength?: string;

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, X } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -51,6 +51,7 @@ interface FormState {
   drugName: string;
   category: string;
   genericName: string;
+  composition: string;
   manufacturer: string;
   dosageForm: string;
   strength: string;
@@ -71,7 +72,7 @@ interface FormState {
 }
 
 const EMPTY_FORM: FormState = {
-  drugName: '', category: 'drug', genericName: '', manufacturer: '', dosageForm: '',
+  drugName: '', category: 'drug', genericName: '', composition: '', manufacturer: '', dosageForm: '',
   strength: '', unitOfMeasurement: '', price: '', packSize: '', looseUnitLabel: '',
   taxPercent: '', minStock: '', gtin: '', hsnCode: '', indications: '', contraindications: '',
   isLifeSaving: false, isNarcotic: false, isReimbursable: true, isActive: true,
@@ -82,6 +83,7 @@ function formStateFromItem(item: FormularyItem): FormState {
     drugName: item.drugName,
     category: item.category ?? 'drug',
     genericName: item.genericName ?? '',
+    composition: item.composition ?? '',
     manufacturer: item.manufacturer ?? '',
     dosageForm: item.dosageForm ?? '',
     strength: item.strength ?? '',
@@ -106,6 +108,7 @@ function formStateToInput(form: FormState): CreateFormularyInput {
   const out: CreateFormularyInput = { drugName: form.drugName.trim() };
   if (form.category) out.category = form.category as CreateFormularyInput['category'];
   if (form.genericName.trim()) out.genericName = form.genericName.trim();
+  if (form.composition.trim()) out.composition = form.composition.trim();
   if (form.manufacturer.trim()) out.manufacturer = form.manufacturer.trim();
   if (form.dosageForm) out.dosageForm = form.dosageForm as DosageForm;
   if (form.strength.trim()) out.strength = form.strength.trim();
@@ -124,6 +127,47 @@ function formStateToInput(form: FormState): CreateFormularyInput {
   out.isReimbursable = form.isReimbursable;
   out.isActive = form.isActive;
   return out;
+}
+
+// Multi-value input for generic names — a brand can map to more than one
+// molecule. Stored as a comma-joined string in the single `genericName` column;
+// this renders each as a removable chip.
+function GenericNamesInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [draft, setDraft] = useState('');
+  const names = value.split(',').map((s) => s.trim()).filter(Boolean);
+
+  const commit = () => {
+    const t = draft.trim().replace(/,+$/, '').trim();
+    if (t && !names.some((n) => n.toLowerCase() === t.toLowerCase())) {
+      onChange([...names, t].join(', '));
+    }
+    setDraft('');
+  };
+  const remove = (n: string) => onChange(names.filter((x) => x !== n).join(', '));
+
+  return (
+    <div className="flex min-h-8 flex-wrap items-center gap-1 rounded-xl bg-surface-container-low px-2 py-1">
+      {names.map((n) => (
+        <span key={n} className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+          {n}
+          <button type="button" onClick={() => remove(n)} className="hover:opacity-70" aria-label={`Remove ${n}`}>
+            <X className="h-3 w-3" />
+          </button>
+        </span>
+      ))}
+      <input
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); commit(); }
+          else if (e.key === 'Backspace' && !draft && names.length) remove(names[names.length - 1]);
+        }}
+        onBlur={commit}
+        placeholder={names.length ? 'Add another…' : 'e.g. Acetaminophen'}
+        className="min-w-[110px] flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-on-surface-variant/50"
+      />
+    </div>
+  );
 }
 
 /**
@@ -339,9 +383,22 @@ function DrugForm({
             )}
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="genericName">Generic Name</Label>
-            <Input id="genericName" value={formData.genericName} onChange={(e) => updateField('genericName', e.target.value)} placeholder="e.g. Acetaminophen" />
+            <Label htmlFor="genericName">Generic Name(s)</Label>
+            <GenericNamesInput value={formData.genericName} onChange={(v) => updateField('genericName', v)} />
+            <p className="text-[10px] text-on-surface-variant">Add one or more — press Enter or comma after each.</p>
           </div>
+        </div>
+
+        {/* Composition — the salt composition, separate from the generic name(s).
+            Sometimes identical, sometimes different. */}
+        <div className="space-y-1.5">
+          <Label htmlFor="composition">Composition</Label>
+          <Input
+            id="composition"
+            value={formData.composition}
+            onChange={(e) => updateField('composition', e.target.value)}
+            placeholder="e.g. Paracetamol (500mg) + Caffeine (65mg)"
+          />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
