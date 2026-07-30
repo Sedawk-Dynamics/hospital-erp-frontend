@@ -815,6 +815,7 @@ function CreateOTDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const [patientQuery, setPatientQuery] = useState('');
+  const [patientListOpen, setPatientListOpen] = useState(false);
   // Only admitted patients (IP / Emergency / Day Care — all admissions carry one
   // of these care types) can be booked into OT, so the surgery charge routes
   // straight onto their running in-patient bill (ledger). OP/walk-in excluded.
@@ -945,13 +946,19 @@ function CreateOTDialog({
                 </Button>
               </div>
             ) : (
-              <div className="space-y-1">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Search admitted patient by name or MRN..."
                   value={patientQuery}
                   onChange={(e) => setPatientQuery(e.target.value)}
+                  onFocus={() => setPatientListOpen(true)}
+                  // Delay so a click on a result registers before the list closes.
+                  onBlur={() => setTimeout(() => setPatientListOpen(false), 150)}
+                  className="pl-9"
                 />
-                <div className="rounded-md border bg-popover max-h-48 overflow-y-auto shadow-md">
+                {patientListOpen && (
+                <div className="absolute z-20 mt-1 w-full rounded-md border bg-popover max-h-56 overflow-y-auto shadow-md">
                   {patientsLoading ? (
                     <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
                       <Loader2 className="h-3 w-3 animate-spin" />
@@ -962,7 +969,10 @@ function CreateOTDialog({
                       <button
                         key={a.id}
                         type="button"
-                        onClick={() => setValue('patientId', a.patientId, { shouldValidate: true })}
+                        onClick={() => {
+                          setValue('patientId', a.patientId, { shouldValidate: true });
+                          setPatientListOpen(false);
+                        }}
                         className="w-full text-left px-3 py-2 text-sm hover:bg-muted transition-colors border-b last:border-b-0"
                       >
                         <div className="flex items-center gap-1.5">
@@ -984,6 +994,7 @@ function CreateOTDialog({
                     </div>
                   )}
                 </div>
+                )}
               </div>
             )}
             <p className="text-[11px] text-muted-foreground">
