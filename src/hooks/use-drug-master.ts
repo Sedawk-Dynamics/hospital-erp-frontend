@@ -227,6 +227,7 @@ export function useDrugMasterList(params?: DrugMasterListParams) {
 export interface DrugMasterInput {
   name: string;
   genericName?: string | null;
+  saltComposition?: string | null;
   manufacturer?: string | null;
   type?: string | null;
   dosageForm?: DosageForm | null;

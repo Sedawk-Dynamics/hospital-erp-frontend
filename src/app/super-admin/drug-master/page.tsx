@@ -59,6 +59,7 @@ const DOSAGE_FORMS = [
 const EMPTY: DrugMasterInput = {
   name: '',
   genericName: '',
+  saltComposition: '',
   manufacturer: '',
   type: 'allopathy',
   dosageForm: null,
@@ -113,6 +114,7 @@ export default function SuperAdminDrugMasterPage() {
     setForm({
       name: d.name,
       genericName: d.genericName ?? '',
+      saltComposition: d.saltComposition ?? '',
       manufacturer: d.manufacturer ?? '',
       type: d.type ?? '',
       dosageForm: d.dosageForm,
@@ -134,6 +136,7 @@ export default function SuperAdminDrugMasterPage() {
       ...form,
       name: form.name.trim(),
       genericName: form.genericName?.toString().trim() || null,
+      saltComposition: form.saltComposition?.toString().trim() || null,
       manufacturer: form.manufacturer?.toString().trim() || null,
       type: form.type?.toString().trim() || null,
       strength: form.strength?.toString().trim() || null,
@@ -225,7 +228,7 @@ export default function SuperAdminDrugMasterPage() {
               <thead className="text-[10px] uppercase tracking-wider text-muted-foreground">
                 <tr className="border-b">
                   <th className="text-left py-2 px-2">Brand</th>
-                  <th className="text-left py-2 px-2">Composition</th>
+                  <th className="text-left py-2 px-2">Generic / Composition</th>
                   <th className="text-left py-2 px-2">Manufacturer</th>
                   <th className="text-left py-2 px-2">Form</th>
                   <th className="text-right py-2 px-2">MRP ₹</th>
@@ -243,7 +246,10 @@ export default function SuperAdminDrugMasterPage() {
                       )}
                     </td>
                     <td className="py-2 px-2 text-xs text-muted-foreground max-w-[260px]">
-                      <span className="line-clamp-1">{d.genericName ?? '—'}</span>
+                      <span className="line-clamp-1 text-foreground">{d.genericName ?? '—'}</span>
+                      {d.saltComposition && (
+                        <span className="line-clamp-1 text-[10px] text-muted-foreground">{d.saltComposition}</span>
+                      )}
                     </td>
                     <td className="py-2 px-2 text-xs text-muted-foreground">{d.manufacturer ?? '—'}</td>
                     <td className="py-2 px-2 text-xs capitalize">{d.dosageForm ?? '—'}</td>
@@ -348,10 +354,19 @@ export default function SuperAdminDrugMasterPage() {
               />
             </div>
             <div className="col-span-2">
-              <label className="text-xs font-medium">Composition / generic</label>
+              <label className="text-xs font-medium">Generic Name(s)</label>
               <Input
                 value={form.genericName ?? ''}
                 onChange={(e) => setForm((p) => ({ ...p, genericName: e.target.value }))}
+                placeholder="e.g. Paracetamol, Caffeine (comma-separate multiple)"
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="text-xs font-medium">Composition</label>
+              <Input
+                value={form.saltComposition ?? ''}
+                onChange={(e) => setForm((p) => ({ ...p, saltComposition: e.target.value }))}
+                placeholder="e.g. Paracetamol (500mg) + Caffeine (65mg)"
               />
             </div>
             <div>
@@ -412,12 +427,9 @@ export default function SuperAdminDrugMasterPage() {
           </div>
 
           {/* Read-only clinical detail (from the dataset / provider feed) */}
-          {editing && (editing.description || editing.sideEffects || editing.saltComposition) && (
+          {editing && (editing.description || editing.sideEffects) && (
             <div className="space-y-2 rounded-lg border bg-surface-container-low p-3 text-xs max-h-56 overflow-y-auto">
               <p className="font-semibold text-on-surface-variant">Clinical detail (reference)</p>
-              {editing.saltComposition && (
-                <p><span className="text-muted-foreground">Salt: </span>{editing.saltComposition}</p>
-              )}
               {editing.description && (
                 <p><span className="text-muted-foreground">Uses: </span>{editing.description}</p>
               )}
