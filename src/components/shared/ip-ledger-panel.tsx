@@ -402,6 +402,7 @@ export function IpLedgerPanel({ admissionId, patientId, role }: { admissionId: s
                 <table className="w-full text-xs">
                   <thead className="bg-muted/40">
                     <tr className="text-left text-[10px] uppercase tracking-widest text-muted-foreground">
+                      <th className="px-2 py-1.5 whitespace-nowrap">Date / Time</th>
                       <th className="px-2 py-1.5">Item</th>
                       <th className="px-2 py-1.5">Category</th>
                       <th className="px-2 py-1.5 text-right">Qty</th>
@@ -413,6 +414,7 @@ export function IpLedgerPanel({ admissionId, patientId, role }: { admissionId: s
                   <tbody>
                     {ledger.lines.map((l) => (
                       <tr key={l.id} className="border-t">
+                        <td className="px-2 py-1.5 whitespace-nowrap text-muted-foreground">{l.at ? formatDateTimeAmPm(l.at) : '—'}</td>
                         <td className="px-2 py-1.5 max-w-[240px]"><span className="truncate block">{l.description}</span></td>
                         <td className="px-2 py-1.5 capitalize text-muted-foreground">{catLabel(l.category)}</td>
                         <td className="px-2 py-1.5 text-right">{l.quantity}</td>
