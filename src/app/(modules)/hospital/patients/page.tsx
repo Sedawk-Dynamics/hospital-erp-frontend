@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { Users, Search, Loader2, Link2, ClipboardCheck, Eye, UserRound, BadgeCheck, Clock } from 'lucide-react';
+import { Users, Search, Loader2, Link2, ClipboardCheck, Eye, UserRound, BadgeCheck, Clock, Building2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,7 @@ import {
   isTemporaryPatient,
 } from '@/components/hospital/temp-patient-actions';
 import { PatientDetailDialog } from '@/components/hospital/patient-detail-dialog';
+import { PatientGlobalHistoryDialog } from '@/components/hospital/patient-global-history-dialog';
 import type { Patient } from '@/types';
 
 const TABS: { key: PatientCategory; label: string; hint: string }[] = [
@@ -75,6 +76,7 @@ export default function HospitalPatientsPage() {
   const [registerTarget, setRegisterTarget] = useState<Patient | null>(null);
   const [mergeTarget, setMergeTarget] = useState<Patient | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [historyTarget, setHistoryTarget] = useState<Patient | null>(null);
 
   const { data, isLoading, isFetching } = usePatientDirectory({
     category,
@@ -237,6 +239,10 @@ export default function HospitalPatientsPage() {
                           <Eye className="size-3.5" />
                           Details
                         </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setHistoryTarget(p)} title="History across all hospitals">
+                          <Building2 className="size-3.5" />
+                          History
+                        </Button>
                         {temp && (
                           <>
                             <Button size="sm" variant="outline" onClick={() => setRegisterTarget(p)}>
@@ -281,6 +287,12 @@ export default function HospitalPatientsPage() {
       </div>
 
       <PatientDetailDialog open={!!detailId} onOpenChange={(o) => !o && setDetailId(null)} patientId={detailId} />
+      <PatientGlobalHistoryDialog
+        open={!!historyTarget}
+        onOpenChange={(o) => !o && setHistoryTarget(null)}
+        patientId={historyTarget?.id ?? null}
+        patientName={historyTarget ? `${historyTarget.firstName ?? ''} ${historyTarget.lastName ?? ''}`.trim() : undefined}
+      />
       <RegisterInPlaceDialog patient={registerTarget} onClose={() => setRegisterTarget(null)} />
       <MergeDialog patient={mergeTarget} onClose={() => setMergeTarget(null)} />
     </div>
