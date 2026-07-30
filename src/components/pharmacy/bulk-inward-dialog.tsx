@@ -78,6 +78,7 @@ import { useAiStatus } from '@/hooks/use-ai';
 import { useDrugMasterSearch, useHsnGstRates, matchHsnGstRate, type HsnGstRate } from '@/hooks/use-drug-master';
 import { VendorFormDialog } from '@/components/inventory/vendor-form-dialog';
 import { BarcodeScanner } from '@/components/shared/barcode-scanner';
+import { apiGet } from '@/lib/api';
 
 // ============================================================
 // G1 — Bulk Stock Inward (CSV / OCR / manual multi-row)
@@ -1035,6 +1036,48 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
     }
   };
 
+  // Typing a medicine NAME that already exists in our formulary auto-fills the
+  // three DB-sourced read-only fields (composition / strength / GTIN) + HSN→GST,
+  // without waiting for the "Find matches" step. Runs on blur; a confident match
+  // = an exact (case-insensitive) name, else a name that starts with what was
+  // typed. Never overwrites a line already linked to a catalog drug or GTIN.
+  const resolveNameForLine = async (id: string, rawName: string) => {
+    const name = rawName.trim();
+    if (name.length < 2) return;
+    const cur = lines.find((l) => l.id === id);
+    if (!cur || cur.drugMasterId || cur.gtin.trim()) return; // catalog/GTIN already set identity
+    if (cur.genericName.trim() || cur.strength.trim()) return; // already identified
+    try {
+      const res = await apiGet<Array<{ drugName: string; genericName: string | null; strength: string | null; gtin: string | null; hsnCode: string | null }>>(
+        '/pharmacy/formulary',
+        { params: { search: name, limit: 5, isActive: true } },
+      );
+      const items = res.data ?? [];
+      const norm = name.toLowerCase();
+      const pick =
+        items.find((d) => d.drugName.trim().toLowerCase() === norm) ??
+        items.find((d) => d.drugName.trim().toLowerCase().startsWith(norm)) ??
+        null;
+      if (!pick) return;
+      setLines((prev) =>
+        prev.map((l) =>
+          l.id === id
+            ? {
+                ...l,
+                genericName: pick.genericName ?? '',
+                strength: pick.strength ?? '',
+                gtin: pick.gtin ?? '',
+                hsnCode: pick.hsnCode ?? l.hsnCode,
+              }
+            : l,
+        ),
+      );
+      if (pick.hsnCode) applyHsn(id, pick.hsnCode);
+    } catch {
+      // Best-effort — leave the line as typed.
+    }
+  };
+
   // Import parity: resolve each imported line's GTIN (parallel, capped) so a
   // vendor sheet that carries only Name + GTIN comes in with identity + HSN/GST
   // filled. Capped so a huge sheet doesn't flood the lookup API.
@@ -1461,6 +1504,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
               applyHsn={applyHsn}
               hsnRates={hsnRates}
               onResolveGtin={resolveGtinForLine}
+              onResolveName={resolveNameForLine}
               addLine={addLine}
               removeLine={removeLine}
               showPaste={showPaste}
@@ -1834,6 +1878,8 @@ function EntryStep(props: {
   hsnRates: HsnGstRate[];
   // Resolve a typed/pasted GTIN → fill the line's identity + HSN/GST + batch.
   onResolveGtin: (id: string, code: string) => void;
+  // Resolve a typed NAME → fill the line's identity (composition/strength/GTIN) + HSN/GST.
+  onResolveName: (id: string, name: string) => void;
   addLine: () => void;
   removeLine: (id: string) => void;
   showPaste: boolean;
@@ -1867,7 +1913,7 @@ function EntryStep(props: {
     suppliers, supplierId, setSupplierId, selectedSupplier, invoiceNumber, setInvoiceNumber,
     openPOs, poId, poNumber, poItems, poDetail, onSelectPO, onClearPO,
     invoiceDate, setInvoiceDate, invoiceDiscPct, setInvoiceDiscPct, invoiceDiscAmt, setInvoiceDiscAmt,
-    purchaseTotals, lines, updateLine, applyHsn, hsnRates, onResolveGtin, addLine, removeLine, showPaste, setShowPaste,
+    purchaseTotals, lines, updateLine, applyHsn, hsnRates, onResolveGtin, onResolveName, addLine, removeLine, showPaste, setShowPaste,
     pasteText, setPasteText, ingest, fileRef, onFile, xlsxRef, onXlsxFile,
     ocrRef, onOcrFile, ocrEnabled, ocrPending, onScan, lineIssues,
     matched, decisions, setDecision, onPickCatalog, onUndoCatalog, onLineIdentity, reviewing,
@@ -2306,6 +2352,7 @@ function EntryStep(props: {
                         className="h-9 flex-1 text-sm font-semibold"
                         value={l.drugName}
                         onChange={(e) => updateLine(l.id, 'drugName', e.target.value)}
+                        onBlur={(e) => onResolveName(l.id, e.target.value)}
                         placeholder="Product name *  ·  e.g. Telmac 40 Tab"
                       />
                       {/* Not in this hospital's master data — the row needs an
