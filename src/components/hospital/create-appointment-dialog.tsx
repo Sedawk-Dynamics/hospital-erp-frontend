@@ -30,7 +30,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-import { usePatientSearch, useDoctorsList } from '@/hooks/use-hospital';
+import { useDoctorsList, useGlobalPatientSearch, useProvisionLocalPatient, type GlobalPatientMatch } from '@/hooks/use-hospital';
 import { DoctorCalendarPicker } from '@/components/hospital/doctor-calendar-picker';
 import { apiPost, apiGet } from '@/lib/api';
 import type { Patient, Appointment } from '@/types';
@@ -90,7 +90,8 @@ export function CreateAppointmentDialog({
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [showPatientDropdown, setShowPatientDropdown] = useState(false);
 
-  const { data: patients, isLoading: patientsLoading } = usePatientSearch(patientQuery);
+  const { data: matches, isLoading: patientsLoading } = useGlobalPatientSearch(patientQuery);
+  const provisionLocal = useProvisionLocalPatient();
   const { data: doctorsRaw, isLoading: doctorsLoading } = useDoctorsList();
 
   const doctors = (doctorsRaw || []).map((d) => ({
@@ -143,13 +144,33 @@ export function CreateAppointmentDialog({
   }, [watchedDoctorId, watchedDate, setValue]);
 
   const handleSelectPatient = useCallback(
-    (patient: Patient) => {
-      setSelectedPatient(patient);
-      setValue('patientId', patient.id, { shouldValidate: true });
-      setPatientQuery(`${[patient.firstName, patient.lastName].filter(Boolean).join(' ')} (${patient.mrn})`);
+    async (m: GlobalPatientMatch) => {
+      // Local patient → use directly. Cross-hospital patient → provision a local
+      // record here (new MRN, same person) and use that.
+      let localId = m.localPatientId;
+      let firstName = m.firstName;
+      let lastName = m.lastName ?? '';
+      let mrn = m.mrn ?? '';
+      if (!localId) {
+        try {
+          const p = await provisionLocal.mutateAsync(m.sourcePatientId);
+          if (!p?.id) throw new Error('no id');
+          localId = p.id;
+          firstName = p.firstName ?? firstName;
+          lastName = p.lastName ?? lastName;
+          mrn = p.mrn ?? mrn;
+          toast.success(`Added ${firstName} to this hospital (MRN ${mrn})`);
+        } catch {
+          toast.error('Could not add this patient to your hospital');
+          return;
+        }
+      }
+      setSelectedPatient({ id: localId, firstName, lastName, mrn } as Patient);
+      setValue('patientId', localId, { shouldValidate: true });
+      setPatientQuery(`${[firstName, lastName].filter(Boolean).join(' ')} (${mrn})`);
       setShowPatientDropdown(false);
     },
-    [setValue]
+    [setValue, provisionLocal]
   );
 
   const handlePatientInputChange = useCallback(
@@ -249,37 +270,43 @@ export function CreateAppointmentDialog({
                 <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
               )}
 
-              {/* Patient dropdown */}
-              {showPatientDropdown && patients && patients.length > 0 && (
-                <div className="absolute z-50 mt-1 w-full rounded-lg border bg-popover shadow-lg max-h-48 overflow-y-auto">
-                  {patients.map((patient) => (
+              {/* Patient dropdown — searches EVERY hospital on the ERP. */}
+              {showPatientDropdown && matches && matches.length > 0 && (
+                <div className="absolute z-50 mt-1 w-full rounded-lg border bg-popover shadow-lg max-h-56 overflow-y-auto">
+                  {matches.map((m) => (
                     <button
-                      key={patient.id}
+                      key={m.sourcePatientId}
                       type="button"
-                      className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-accent transition-colors"
-                      onClick={() => handleSelectPatient(patient)}
+                      disabled={provisionLocal.isPending}
+                      className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-accent transition-colors disabled:opacity-50"
+                      onClick={() => handleSelectPatient(m)}
                     >
                       <UserRound className="h-4 w-4 shrink-0 text-muted-foreground" />
                       <div className="min-w-0 flex-1">
                         <p className="font-medium truncate">
-                          {patient.firstName} {patient.lastName}
+                          {m.firstName} {m.lastName}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          MRN: {patient.mrn} &middot; {patient.phone}
+                          {m.isLocal ? `MRN: ${m.mrn ?? '—'}` : `at ${m.hospital}`} &middot; {m.phone ?? '—'}
                         </p>
                       </div>
+                      {!m.isLocal && (
+                        <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                          Add here
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>
               )}
 
               {showPatientDropdown &&
-                patients &&
-                patients.length === 0 &&
+                matches &&
+                matches.length === 0 &&
                 !patientsLoading &&
                 patientQuery.length >= 2 && (
                   <div className="absolute z-50 mt-1 w-full rounded-lg border bg-popover p-3 shadow-lg">
-                    <p className="text-sm text-muted-foreground">No patients found.</p>
+                    <p className="text-sm text-muted-foreground">No patients found on the ERP.</p>
                   </div>
                 )}
             </div>

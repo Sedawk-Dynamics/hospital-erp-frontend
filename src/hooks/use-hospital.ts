@@ -140,6 +140,46 @@ export function usePatientSearch(query: string) {
   });
 }
 
+// A person found anywhere on the ERP. `localPatientId` is set when they already
+// have a record in THIS hospital; otherwise the row lives at `hospital` and a
+// local record is provisioned on selection.
+export interface GlobalPatientMatch {
+  sourcePatientId: string;
+  localPatientId: string | null;
+  isLocal: boolean;
+  firstName: string;
+  lastName: string | null;
+  dateOfBirth: string | null;
+  gender: string | null;
+  phone: string | null;
+  mrn: string | null;
+  hospital: string;
+}
+
+/** Cross-hospital patient search for the appointment / admit pickers. */
+export function useGlobalPatientSearch(query: string) {
+  return useQuery({
+    queryKey: ['patients', 'global-search', query],
+    queryFn: async () => {
+      const response = await apiGet<GlobalPatientMatch[]>('/patients/global-search', {
+        params: { search: query.trim() },
+      });
+      return response.data ?? [];
+    },
+    enabled: query.trim().length >= 2,
+  });
+}
+
+/** Ensure a cross-hospital patient has a local record (new MRN); returns it. */
+export function useProvisionLocalPatient() {
+  return useMutation({
+    mutationFn: async (sourcePatientId: string) => {
+      const response = await apiPost<Patient>('/patients/provision-local', { sourcePatientId });
+      return response.data;
+    },
+  });
+}
+
 // ============================================================
 // Slot & Queue Query Hooks
 // ============================================================

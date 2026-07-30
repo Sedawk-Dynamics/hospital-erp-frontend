@@ -71,6 +71,7 @@ import { AdvancePaymentDialog } from '@/components/hospital/billing/week12-dialo
 import { BillingSummaryDialog } from '@/components/pharmacy/billing-summary-dialog';
 import { AssignBedDialog } from '@/components/hospital/ip/assign-bed-dialog';
 import { usePermissions } from '@/hooks/use-permissions';
+import { useGlobalPatientSearch, useProvisionLocalPatient } from '@/hooks/use-hospital';
 import { useAuthStore } from '@/stores/auth-store';
 
 // Generating a bill or collecting advance are billing actions. Gate on the
@@ -197,15 +198,11 @@ function AdmissionDialog({
     return () => clearTimeout(t);
   }, [patientSearch]);
 
-  // Queries
-  const { data: patientsData } = useQuery({
-    queryKey: ['patients-search', debouncedPatientSearch],
-    queryFn: () =>
-      apiGet<Patient[]>('/patients', {
-        params: { search: debouncedPatientSearch, limit: 10 },
-      }),
-    enabled: patientMode === 'existing' && debouncedPatientSearch.length >= 2,
-  });
+  // Patient search spans EVERY hospital on the ERP (a patient is one person).
+  const { data: matches } = useGlobalPatientSearch(
+    patientMode === 'existing' ? debouncedPatientSearch : '',
+  );
+  const provisionLocal = useProvisionLocalPatient();
 
   const { data: doctorsData } = useQuery({
     queryKey: ['doctors-list'],
@@ -263,7 +260,7 @@ function AdmissionDialog({
     setSelectedBedId('');
   }, [selectedFloorId]);
 
-  const patients = patientsData?.data ?? [];
+  const patientMatches = matches ?? [];
   const doctors = doctorsData?.data ?? [];
   const floors = floorsData?.data ?? [];
   const wards = wardsData?.data ?? [];
@@ -272,8 +269,7 @@ function AdmissionDialog({
     (availabilityData?.data?.wards ?? []).map((w) => [w.wardId, w]),
   );
 
-  const selectedPatient =
-    selectedPatientSnapshot ?? patients.find((p) => p.id === selectedPatientId);
+  const selectedPatient = selectedPatientSnapshot ?? undefined;
   const selectedDoctor = doctors.find((d) => d.id === selectedDoctorId);
   const selectedFloor = floors.find((f) => f.id === selectedFloorId);
   const selectedWard = wards.find((w) => w.id === selectedWardId);
@@ -662,25 +658,47 @@ function AdmissionDialog({
                     value={patientSearch}
                     onChange={(e) => setPatientSearch(e.target.value)}
                   />
-                  {patients.length > 0 && (
-                    <div className="max-h-40 overflow-y-auto rounded-lg border bg-popover">
-                      {patients.map((p) => (
+                  {patientMatches.length > 0 && (
+                    <div className="max-h-48 overflow-y-auto rounded-lg border bg-popover">
+                      {patientMatches.map((m) => (
                         <button
-                          key={p.id}
+                          key={m.sourcePatientId}
                           type="button"
-                          className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent text-left"
-                          onClick={() => {
-                            setSelectedPatientId(p.id);
-                            setSelectedPatientSnapshot(p);
-                            setPatientSearch([p.firstName, p.lastName].filter(Boolean).join(' '));
+                          disabled={provisionLocal.isPending}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent text-left disabled:opacity-50"
+                          onClick={async () => {
+                            // Local → use directly; cross-hospital → provision a
+                            // local record (new MRN, same person) then use it.
+                            let localId = m.localPatientId;
+                            let snap: Patient = { id: localId ?? m.sourcePatientId, firstName: m.firstName, lastName: m.lastName, mrn: m.mrn, phone: m.phone } as Patient;
+                            if (!localId) {
+                              try {
+                                const p = await provisionLocal.mutateAsync(m.sourcePatientId);
+                                if (!p?.id) throw new Error('no id');
+                                localId = p.id;
+                                snap = p;
+                                toast.success(`Added ${p.firstName} to this hospital (MRN ${p.mrn})`);
+                              } catch {
+                                toast.error('Could not add this patient to your hospital');
+                                return;
+                              }
+                            }
+                            setSelectedPatientId(localId);
+                            setSelectedPatientSnapshot(snap);
+                            setPatientSearch([snap.firstName, snap.lastName].filter(Boolean).join(' '));
                           }}
                         >
                           <span className="font-medium">
-                            {p.firstName} {p.lastName}
+                            {m.firstName} {m.lastName}
                           </span>
                           <span className="text-muted-foreground text-xs">
-                            {p.mrn} | {p.phone}
+                            {m.isLocal ? (m.mrn ?? '—') : `at ${m.hospital}`} | {m.phone ?? '—'}
                           </span>
+                          {!m.isLocal && (
+                            <span className="ml-auto shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                              Add here
+                            </span>
+                          )}
                         </button>
                       ))}
                     </div>
