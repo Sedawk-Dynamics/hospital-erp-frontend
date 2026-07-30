@@ -20,6 +20,13 @@ export interface DrugMaster {
   mrp: number | string | null;
   isDiscontinued: boolean;
   schedule: string | null;
+  // Product Resolution Engine / compliance identity.
+  gtin?: string | null;
+  casePackGtin?: string | null;
+  unitsPerCase?: number | null;
+  manufacturerCode?: string | null;
+  hsnCode?: string | null;
+  gstRate?: number | string | null;
   aliases: string[];
   tags: string[];
   isPublished: boolean;
@@ -236,6 +243,12 @@ export interface DrugMasterInput {
   mrp?: number | null;
   isDiscontinued?: boolean;
   schedule?: string | null;
+  gtin?: string | null;
+  casePackGtin?: string | null;
+  unitsPerCase?: number | null;
+  manufacturerCode?: string | null;
+  hsnCode?: string | null;
+  gstRate?: number | null;
   aliases?: string[];
   tags?: string[];
   isPublished?: boolean;

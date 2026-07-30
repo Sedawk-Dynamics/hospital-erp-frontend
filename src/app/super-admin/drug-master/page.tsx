@@ -66,6 +66,14 @@ const EMPTY: DrugMasterInput = {
   strength: '',
   packSizeLabel: '',
   mrp: null,
+  schedule: '',
+  gtin: '',
+  casePackGtin: '',
+  unitsPerCase: null,
+  manufacturerCode: '',
+  hsnCode: '',
+  gstRate: null,
+  isDiscontinued: false,
   isPublished: true,
 };
 
@@ -122,6 +130,13 @@ export default function SuperAdminDrugMasterPage() {
       packSizeLabel: d.packSizeLabel ?? '',
       mrp: d.mrp != null ? Number(d.mrp) : null,
       schedule: d.schedule ?? '',
+      gtin: d.gtin ?? '',
+      casePackGtin: d.casePackGtin ?? '',
+      unitsPerCase: d.unitsPerCase ?? null,
+      manufacturerCode: d.manufacturerCode ?? '',
+      hsnCode: d.hsnCode ?? '',
+      gstRate: d.gstRate != null ? Number(d.gstRate) : null,
+      isDiscontinued: d.isDiscontinued,
       isPublished: d.isPublished,
     });
     setOpenForm(true);
@@ -143,6 +158,12 @@ export default function SuperAdminDrugMasterPage() {
       packSizeLabel: form.packSizeLabel?.toString().trim() || null,
       schedule: form.schedule?.toString().trim() || null,
       mrp: form.mrp != null && !Number.isNaN(Number(form.mrp)) ? Number(form.mrp) : null,
+      gtin: form.gtin?.toString().trim() || null,
+      casePackGtin: form.casePackGtin?.toString().trim() || null,
+      unitsPerCase: form.unitsPerCase != null && !Number.isNaN(Number(form.unitsPerCase)) ? Number(form.unitsPerCase) : null,
+      manufacturerCode: form.manufacturerCode?.toString().trim() || null,
+      hsnCode: form.hsnCode?.toString().trim() || null,
+      gstRate: form.gstRate != null && !Number.isNaN(Number(form.gstRate)) ? Number(form.gstRate) : null,
     };
     try {
       if (editing) {
@@ -336,7 +357,7 @@ export default function SuperAdminDrugMasterPage() {
 
       {/* Create / edit dialog */}
       <Dialog open={openForm} onOpenChange={setOpenForm}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-2xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? 'Edit drug' : 'Add drug to catalog'}</DialogTitle>
             <DialogDescription>
@@ -423,6 +444,91 @@ export default function SuperAdminDrugMasterPage() {
                 value={form.schedule ?? ''}
                 onChange={(e) => setForm((p) => ({ ...p, schedule: e.target.value }))}
               />
+            </div>
+            <div>
+              <label className="text-xs font-medium">Type</label>
+              <Input
+                value={form.type ?? ''}
+                onChange={(e) => setForm((p) => ({ ...p, type: e.target.value }))}
+                placeholder="allopathy / ayurvedic / …"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium">HSN code</label>
+              <Input
+                className="font-mono"
+                value={form.hsnCode ?? ''}
+                onChange={(e) => setForm((p) => ({ ...p, hsnCode: e.target.value }))}
+                placeholder="e.g. 30049099"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium">GST %</label>
+              <Input
+                type="number"
+                step="0.01"
+                value={form.gstRate ?? ''}
+                onChange={(e) => setForm((p) => ({ ...p, gstRate: e.target.value === '' ? null : Number(e.target.value) }))}
+                placeholder="e.g. 12"
+              />
+            </div>
+            <div className="col-span-2 border-t pt-2 mt-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Barcodes / Product Resolution</p>
+            </div>
+            <div>
+              <label className="text-xs font-medium">GTIN (consumer unit)</label>
+              <Input
+                className="font-mono"
+                value={form.gtin ?? ''}
+                onChange={(e) => setForm((p) => ({ ...p, gtin: e.target.value }))}
+                placeholder="e.g. 8901234567890"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium">Case-pack GTIN (outer)</label>
+              <Input
+                className="font-mono"
+                value={form.casePackGtin ?? ''}
+                onChange={(e) => setForm((p) => ({ ...p, casePackGtin: e.target.value }))}
+                placeholder="GTIN-14"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium">Units / case</label>
+              <Input
+                type="number"
+                min={1}
+                value={form.unitsPerCase ?? ''}
+                onChange={(e) => setForm((p) => ({ ...p, unitsPerCase: e.target.value === '' ? null : Number(e.target.value) }))}
+                placeholder="e.g. 24"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium">Manufacturer code</label>
+              <Input
+                value={form.manufacturerCode ?? ''}
+                onChange={(e) => setForm((p) => ({ ...p, manufacturerCode: e.target.value }))}
+              />
+            </div>
+            <div className="col-span-2 flex flex-wrap items-center gap-4 border-t pt-3 mt-1">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={form.isPublished ?? true}
+                  onChange={(e) => setForm((p) => ({ ...p, isPublished: e.target.checked }))}
+                />
+                Published (visible to hospitals)
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={form.isDiscontinued ?? false}
+                  onChange={(e) => setForm((p) => ({ ...p, isDiscontinued: e.target.checked }))}
+                />
+                Discontinued
+              </label>
             </div>
           </div>
 
