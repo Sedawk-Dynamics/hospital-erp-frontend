@@ -13,9 +13,6 @@ import { Badge } from '@/components/ui/badge';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/shared/page-header';
 import { EmptyState } from '@/components/shared/empty-state';
@@ -30,8 +27,6 @@ function useCanBillToHospital() {
   const n = (roleSlug ?? '').toLowerCase().replace(/[\s-]+/g, '_');
   return n === 'admin' || n === 'super_admin';
 }
-
-const PAYMENT_METHODS = ['cash', 'upi', 'credit_card', 'debit_card', 'bank_transfer', 'cheque', 'insurance'] as const;
 
 const STATUS_COLOR: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700 border-amber-300',
@@ -55,7 +50,23 @@ export default function OTTransactionsPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [editingId, setEditingId] = useState<OTRequest | null>(null);
-  const [billingTarget, setBillingTarget] = useState<OTRequest | null>(null);
+  const [billingId, setBillingId] = useState<string | null>(null);
+  const bill = useBillOtRequest();
+
+  // One click → add the surgery's charge onto the patient's running in-patient
+  // bill (ledger). OT is admitted-only, so there's no payment to collect here —
+  // it's settled with the consolidated IP bill at discharge.
+  const addToLedger = (r: OTRequest) => {
+    setBillingId(r.id);
+    bill.mutate(
+      { id: r.id },
+      {
+        onSuccess: () => toast.success(`Added to ${formatPatientName(r)}'s in-patient bill (ledger)`),
+        onError: (e: any) => toast.error(e?.message ?? 'Failed to add to ledger'),
+        onSettled: () => setBillingId(null),
+      },
+    );
+  };
 
   const { data, isLoading } = useOTRequests({ page, limit: 20, search: search.trim() || undefined });
   const all = data?.data ?? [];
@@ -189,10 +200,16 @@ export default function OTTransactionsPage() {
                             size="sm"
                             variant="ghost"
                             className="h-8 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50"
-                            onClick={() => setBillingTarget(r)}
-                            title="Push this surgery's charge to the patient's hospital bill"
+                            onClick={() => addToLedger(r)}
+                            disabled={billingId === r.id}
+                            title="Add this surgery's charge to the patient's in-patient bill (ledger)"
                           >
-                            <Receipt className="h-3.5 w-3.5 mr-1" /> To Bill
+                            {billingId === r.id ? (
+                              <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                            ) : (
+                              <Receipt className="h-3.5 w-3.5 mr-1" />
+                            )}
+                            Add to Ledger
                           </Button>
                         )}
                       </div>
@@ -222,96 +239,14 @@ export default function OTTransactionsPage() {
         />
       )}
 
-      {billingTarget && (
-        <PushToBillDialog
-          request={billingTarget}
-          onClose={() => setBillingTarget(null)}
-        />
-      )}
     </div>
   );
 }
 
-// Push the surgery's charge onto the patient's hospital bill, optionally
-// collecting full payment. Backed by POST /billing/ot/:id/bill (idempotent).
-function PushToBillDialog({ request, onClose }: { request: OTRequest; onClose: () => void }) {
-  const [collectPayment, setCollectPayment] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<string>('cash');
-  const bill = useBillOtRequest();
-
-  const submit = () => {
-    bill.mutate(
-      { id: request.id, collectPayment, paymentMethod: collectPayment ? paymentMethod : undefined },
-      {
-        onSuccess: (res) => {
-          toast.success(
-            res.paid
-              ? `Billed ${res.billNumber ?? ''} — ${rupees(res.totalAmount)} collected`
-              : `Added to bill ${res.billNumber ?? ''} (${rupees(res.balanceDue)} due)`,
-          );
-          onClose();
-        },
-        onError: (e: any) => toast.error(e?.message ?? 'Failed to push to bill'),
-      },
-    );
-  };
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Push to Hospital Bill</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div className="rounded-md bg-muted/40 p-3 text-sm space-y-1">
-            <div><span className="font-medium">Patient:</span> {formatPatientName(request)}</div>
-            <div><span className="font-medium">Surgery:</span> {request.surgeryName}</div>
-            <div><span className="font-medium">Charge:</span> {rupees(request.billingAmount)}</div>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Creates a finalized hospital bill for this surgery (idempotent — re-pushing reuses the same bill).
-          </p>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={collectPayment}
-              onChange={(e) => setCollectPayment(e.target.checked)}
-              className="h-4 w-4"
-            />
-            Collect full payment now
-          </label>
-          {collectPayment && (
-            <div>
-              <Label>Payment method</Label>
-              <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v ?? 'cash')}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {PAYMENT_METHODS.map((m) => (
-                    <SelectItem key={m} value={m} className="capitalize">{m.replace('_', ' ')}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={submit} disabled={bill.isPending}>
-            {bill.isPending && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
-            <Receipt className="h-4 w-4 mr-1.5" />
-            {collectPayment ? 'Bill & Collect' : 'Push to Bill'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
+// Set the surgery charge only — no payment status here. Payment is settled on
+// the patient's consolidated in-patient bill at discharge, not per surgery.
 function BillingDialog({ request, onOpenChange }: { request: OTRequest; onOpenChange: (o: boolean) => void }) {
   const [amount, setAmount] = useState(request.billingAmount?.toString() ?? '');
-  const [status, setStatus] = useState<'pending' | 'paid' | 'partially_paid' | 'cancelled'>(
-    (request.billingStatus as 'pending' | 'paid' | 'partially_paid' | 'cancelled') ?? 'pending',
-  );
   const update = useUpdateOTRequest();
 
   const save = () => {
@@ -321,10 +256,10 @@ function BillingDialog({ request, onOpenChange }: { request: OTRequest; onOpenCh
       return;
     }
     update.mutate(
-      { id: request.id, billingAmount: amt, billingStatus: status },
+      { id: request.id, billingAmount: amt },
       {
         onSuccess: () => {
-          toast.success('Billing updated');
+          toast.success('OT charge set');
           onOpenChange(false);
         },
         onError: (e: any) => toast.error(e?.message ?? 'Update failed'),
@@ -336,7 +271,7 @@ function BillingDialog({ request, onOpenChange }: { request: OTRequest; onOpenCh
     <Dialog open onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>OT Billing — {request.surgeryName}</DialogTitle>
+          <DialogTitle>OT Charge — {request.surgeryName}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
           <div className="rounded-md bg-muted/40 p-3 text-sm">
@@ -345,20 +280,11 @@ function BillingDialog({ request, onOpenChange }: { request: OTRequest; onOpenCh
           </div>
           <div>
             <Label>Amount (₹)</Label>
-            <Input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            <Input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus />
           </div>
-          <div>
-            <Label>Payment Status</Label>
-            <Select value={status} onValueChange={(v) => setStatus((v as 'pending' | 'paid' | 'partially_paid' | 'cancelled') ?? 'pending')}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="partially_paid">Partially Paid</SelectItem>
-                <SelectItem value="paid">Paid</SelectItem>
-                <SelectItem value="cancelled">Cancelled</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <p className="text-xs text-muted-foreground">
+            Set the charge, then click <span className="font-medium">Add to Ledger</span> on the row to post it to the patient&apos;s in-patient bill.
+          </p>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
