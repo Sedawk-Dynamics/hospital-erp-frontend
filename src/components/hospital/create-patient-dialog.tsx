@@ -26,7 +26,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { apiPost } from '@/lib/api';
+import { apiGet, apiPost } from '@/lib/api';
 import type { Patient } from '@/types';
 
 // ============================================================
@@ -163,6 +163,44 @@ export function CreatePatientDialog({
     },
   });
 
+  // Cross-hospital lookup: a patient is one person across the whole ERP. When
+  // the desk enters a phone/ABHA that already exists at ANY hospital, we pull
+  // their details in and just mint a new MRN here — no re-registration.
+  const [globalHit, setGlobalHit] = useState<{ hospitals: { name: string }[]; count: number } | null>(null);
+  const checkGlobalPatient = async () => {
+    const phone = watch('phone')?.trim();
+    const abha = watch('abhaNumber')?.trim();
+    if ((!phone || phone.length < 7) && !abha) return;
+    try {
+      const res = await apiGet<{
+        found: boolean;
+        patient: Record<string, string | null> | null;
+        hospitals: { name: string }[];
+        count: number;
+      }>('/patients/global-lookup', { params: { phone: phone || undefined, abha: abha || undefined } });
+      const d = res.data;
+      if (!d?.found || !d.patient) { setGlobalHit(null); return; }
+      const p = d.patient;
+      setGlobalHit({ hospitals: d.hospitals ?? [], count: d.count ?? 0 });
+      // Adopt the person's identity; fill the rest only where the desk left blank.
+      const fill = (name: keyof CreatePatientFormData, val?: string | null, force = false) => {
+        if (val && (force || !watch(name))) setValue(name, val as never, { shouldValidate: true });
+      };
+      fill('firstName', p.firstName, true);
+      fill('lastName', p.lastName, true);
+      const g = (p.gender ?? '').toLowerCase();
+      if (g === 'male' || g === 'female' || g === 'other') setValue('gender', g);
+      if (p.dateOfBirth) setValue('dateOfBirth', String(p.dateOfBirth).slice(0, 10));
+      fill('email', p.email); fill('address', p.address); fill('city', p.city);
+      fill('state', p.state); fill('zipCode', p.zipCode); fill('country', p.country);
+      fill('bloodGroup', p.bloodGroup); fill('maritalStatus', p.maritalStatus);
+      fill('nationality', p.nationality); fill('occupation', p.occupation);
+      fill('abhaNumber', p.abhaNumber); fill('nationalId', p.nationalId);
+    } catch {
+      /* best-effort — leave the form as typed */
+    }
+  };
+
   const genderValue = watch('gender');
   const bloodGroupValue = watch('bloodGroup');
   const maritalStatusValue = watch('maritalStatus');
@@ -291,6 +329,19 @@ export function CreatePatientDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          {/* Cross-hospital match — this person already exists on the ERP. */}
+          {globalHit && (
+            <div className="rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 text-xs">
+              <p className="font-semibold text-primary">Existing patient found on the ERP</p>
+              <p className="mt-0.5 text-muted-foreground">
+                Already registered at{' '}
+                <span className="font-medium text-foreground">
+                  {globalHit.hospitals.map((h) => h.name).join(', ') || 'another hospital'}
+                </span>
+                . Details pre-filled — a new MRN will be created for this hospital, no need to re-register.
+              </p>
+            </div>
+          )}
           {/* ── Temporary-patient tickmark — relaxes all fields to optional ── */}
           <label className="flex items-start gap-3 rounded-lg border border-outline-variant/40 bg-surface-container/40 p-3 cursor-pointer">
             <input
@@ -378,7 +429,7 @@ export function CreatePatientDialog({
                 <Input
                   id="cp-phone"
                   placeholder="Enter phone number"
-                  {...register('phone')}
+                  {...register('phone', { onBlur: checkGlobalPatient })}
                 />
                 {errors.phone && (
                   <p className="text-xs text-destructive">{errors.phone.message}</p>
@@ -545,7 +596,7 @@ export function CreatePatientDialog({
               <Input
                 id="cp-abhaNumber"
                 placeholder="Enter ABHA number"
-                {...register('abhaNumber')}
+                {...register('abhaNumber', { onBlur: checkGlobalPatient })}
               />
               <p className="text-xs text-muted-foreground">
                 Ayushman Bharat Health Account ID
