@@ -97,6 +97,8 @@ import type { NurseAdmission, NursingNote, Prescription, Vital } from '@/hooks/u
 import { AssignBedDialog } from '@/components/hospital/ip/assign-bed-dialog';
 import { AdmissionTypeBadge } from '@/components/shared/admission-type-badge';
 import { AdmissionTypeConvertButton } from '@/components/shared/admission-type-control';
+import { PatientHistoryPanel } from '@/components/shared/patient-history-panel';
+import { PatientFormsPanel } from '@/components/shared/patient-forms-panel';
 
 // Hooks here return raw `ApiResponse<T>` — pull out the inner payload safely.
 function unwrapList<T>(value: unknown): T[] {
@@ -1418,6 +1420,8 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
           <TabsTrigger value="charting">Nursing Charting</TabsTrigger>
           <TabsTrigger value="progress">Progress Notes</TabsTrigger>
           <TabsTrigger value="orders">Orders</TabsTrigger>
+          <TabsTrigger value="forms">Forms</TabsTrigger>
+          <TabsTrigger value="history">History</TabsTrigger>
           <TabsTrigger value="ledger">Billing / Ledger</TabsTrigger>
           <TabsTrigger value="activity">Activity Log</TabsTrigger>
           <TabsTrigger value="patient">Patient Info</TabsTrigger>
@@ -1453,6 +1457,27 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
 
         <TabsContent value="orders" className="pt-4">
           <OrdersPanel admissionId={admissionId} patientId={patientId} role={role} />
+        </TabsContent>
+
+        {/* Dynamic patient forms, bound to this admission — the same catalogue
+            the nurse fills for an OP appointment, now reachable for IP /
+            emergency / day-care stays without leaving the workspace. Every role
+            that reaches this workspace (doctor, nurse, hospital admin / front
+            desk) holds forms:create, so no role gate is needed here. */}
+        <TabsContent value="forms" className="pt-4">
+          <PatientFormsPanel
+            patientId={patientId}
+            ctx={{ admissionId, visitId: admission.visitId }}
+          />
+        </TabsContent>
+
+        {/* Personal / family / medical-surgical history + allergies — the same
+            panel the doctor sees in an OP consultation, so an admitted or
+            emergency patient's history is not invisible at the bedside. */}
+        <TabsContent value="history" className="pt-4">
+          <div className="rounded-xl bg-surface-container-lowest p-4 shadow-sanctuary">
+            <PatientHistoryPanel patientId={patientId} />
+          </div>
         </TabsContent>
 
         <TabsContent value="ledger" className="pt-4">

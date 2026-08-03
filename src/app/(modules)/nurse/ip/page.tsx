@@ -13,6 +13,7 @@ import {
   BedDouble,
   ClipboardList,
   Eye,
+  FileText,
   HeartPulse,
   PillBottle,
   Search,
@@ -244,6 +245,23 @@ export default function NurseIPListPage() {
                           render={<Link href={`/nurse/emar?admissionId=${a.id}`} />}
                         >
                           <PillBottle className="h-3.5 w-3.5" />
+                        </Button>
+                        {/* Patient forms bound to this admission — the same
+                            catalogue the OPD flow uses, now one click away for
+                            IP / emergency / day-care stays. */}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          title="Patient forms"
+                          nativeButton={false}
+                          render={
+                            <Link
+                              href={`/nurse/forms/${a.patientId}?admissionId=${a.id}${a.visitId ? `&visitId=${a.visitId}` : ''}`}
+                            />
+                          }
+                        >
+                          <FileText className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     </td>
