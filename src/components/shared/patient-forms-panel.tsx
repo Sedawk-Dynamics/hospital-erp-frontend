@@ -63,7 +63,11 @@ export interface PatientFormsContext {
 export interface PatientFormsPanelProps {
   patientId: string;
   ctx?: PatientFormsContext;
-  /** Hide the "Fill out" action — roles that can read forms but not submit. */
+  /**
+   * Hide the "Fill out" action. Patient forms are nursing documentation —
+   * doctors read them but do not file them (the server denies the role too),
+   * so the doctor-facing mounts pass this.
+   */
   readOnly?: boolean;
   /** Scope the submissions list to this encounter instead of the whole patient. */
   scopeSubmissionsToContext?: boolean;
@@ -256,10 +260,13 @@ export function PatientFormsPanel({
     <div className="rounded-xl bg-surface-container-lowest p-4 shadow-sanctuary">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="font-headline text-sm font-bold text-foreground">Pick a form to fill</h2>
+          <h2 className="font-headline text-sm font-bold text-foreground">
+            {readOnly ? 'Nursing forms for this patient' : 'Pick a form to fill'}
+          </h2>
           <p className="text-[11px] text-muted-foreground">
-            {forms.length} form{forms.length === 1 ? '' : 's'} available · {recentCount} prior
-            submission{recentCount === 1 ? '' : 's'} for this patient
+            {readOnly
+              ? `${recentCount} submission${recentCount === 1 ? '' : 's'} on record · recorded by nursing staff`
+              : `${forms.length} form${forms.length === 1 ? '' : 's'} available · ${recentCount} prior submission${recentCount === 1 ? '' : 's'} for this patient`}
           </p>
         </div>
         <div className="relative w-full sm:w-72">
@@ -273,7 +280,8 @@ export function PatientFormsPanel({
         </div>
       </div>
 
-      <Tabs defaultValue="all" className="mt-4">
+      {/* A reader wants what was recorded, not the blank catalogue. */}
+      <Tabs defaultValue={readOnly ? 'recent' : 'all'} className="mt-4">
         <div className="-mx-1 overflow-x-auto pb-1">
           <TabsList className="!h-auto w-max items-center gap-1.5 !rounded-none !bg-transparent px-1 py-1">
             <TabsTrigger value="all" className={cn(TAB_BASE, TAB_ALL_ACTIVE)}>

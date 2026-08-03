@@ -1461,13 +1461,15 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
 
         {/* Dynamic patient forms, bound to this admission — the same catalogue
             the nurse fills for an OP appointment, now reachable for IP /
-            emergency / day-care stays without leaving the workspace. Every role
-            that reaches this workspace (doctor, nurse, hospital admin / front
-            desk) holds forms:create, so no role gate is needed here. */}
+            emergency / day-care stays without leaving the workspace.
+            Read-only for doctors: patient forms are nursing documentation, so
+            a doctor reads what the nurse recorded but never files it. The
+            server enforces the same rule. */}
         <TabsContent value="forms" className="pt-4">
           <PatientFormsPanel
             patientId={patientId}
             ctx={{ admissionId, visitId: admission.visitId }}
+            readOnly={role === 'doctor'}
           />
         </TabsContent>
 
