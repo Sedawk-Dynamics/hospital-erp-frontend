@@ -90,5 +90,14 @@ export function notificationLink(n: AppNotification): string | null {
   if (n.referenceType === 'progress_note_mention' && n.referenceId) {
     return `/doctor/consultation/${n.referenceId}`;
   }
+  // OT desk moved a surgery → the doctor's OT list, where they accept the new
+  // time, ask for another, or cancel.
+  if (n.referenceType === 'ot_reschedule') {
+    return '/doctor/ot-list';
+  }
+  // The doctor answered a proposal → the OT desk's board.
+  if (n.referenceType === 'ot_response') {
+    return '/ot';
+  }
   return null;
 }

@@ -128,7 +128,7 @@ function AlertsPanel({ pendingOTCount }: { pendingOTCount: number }) {
       {pendingOTCount > 0 && (
         <div className="inline-flex items-center gap-2 rounded-lg bg-tertiary/10 border border-tertiary/20 px-3 py-1.5 font-label text-xs font-bold text-tertiary">
           <Scissors className="h-3.5 w-3.5" />
-          {pendingOTCount} OT approvals pending
+          {pendingOTCount} OT request{pendingOTCount === 1 ? '' : 's'} awaiting the OT desk
         </div>
       )}
     </div>
@@ -190,8 +190,14 @@ export default function DoctorHomePage() {
     viewMode === 'today' ? fromDate : undefined,
   );
 
-  // Alerts data
-  const { data: otRequestsData } = useDoctorOTRequests({ status: 'pending', limit: 5 });
+  // Alerts data. `pending` is not an OtRequestStatus — the API rejected it, so
+  // this widget never showed anything. `requested` is the pending-with-OT state.
+  // Scoped with `mine` so a doctor sees their own backlog, not the hospital's.
+  const { data: otRequestsData } = useDoctorOTRequests({
+    status: 'requested',
+    mine: true,
+    limit: 5,
+  });
 
   const pendingOTCount = otRequestsData?.meta?.total ?? otRequestsData?.data?.length ?? 0;
 

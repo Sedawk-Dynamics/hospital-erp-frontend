@@ -64,6 +64,19 @@ export interface OTRequest {
   billingStatus?: string | null;
   cancellationReason?: string | null;
   status: 'requested' | 'scheduled' | 'in_progress' | 'completed' | 'cancelled' | string;
+  // ── Reschedule ↔ doctor-confirmation loop ────────────────────────────────
+  // `awaiting_doctor` = the OT admin booked a slot other than the one the
+  // doctor asked for; the surgery cannot start until the doctor accepts.
+  scheduleState?: 'awaiting_doctor' | 'confirmed' | null;
+  rescheduleReason?: string | null;
+  rescheduledBy?: string | null;
+  rescheduledAt?: string | null;
+  previousScheduledDate?: string | null;
+  previousScheduledTime?: string | null;
+  doctorResponse?: 'accepted' | 'rejected' | null;
+  doctorResponseNote?: string | null;
+  doctorRespondedAt?: string | null;
+  rescheduleCount?: number;
   // The OT Home table also handles the legacy display alias "pending" which the
   // frontend was originally mapping. We accept it on the type for back-compat.
   otName?: string | null;
@@ -89,6 +102,9 @@ interface OTRequestParams {
   otId?: string;
   surgeonId?: string;
   doctorId?: string;
+  /** Doctor's own list — the server resolves the caller's DoctorProfile. */
+  mine?: boolean;
+  scheduleState?: 'awaiting_doctor' | 'confirmed';
 }
 
 // ============================================================
@@ -152,6 +168,12 @@ export interface CreateOTInput {
   notes?: string;
   otId?: string;
   otName?: string;
+  /**
+   * What the *doctor* asks for. Leaving scheduledDate empty keeps the request
+   * in the OT admin's pending queue instead of self-scheduling it.
+   */
+  preferredDate?: string;
+  preferredTime?: string;
 }
 
 export function useCreateOTRequest() {
@@ -190,6 +212,12 @@ export interface ScheduleOTInput {
   surgeonId?: string;
   anaesthetistId?: string;
   durationMinutes?: number;
+  /**
+   * Required by the server whenever the booked slot is not the one the doctor
+   * asked for, or moves an already-scheduled surgery. The doctor is notified
+   * with this reason and must accept before the surgery can start.
+   */
+  rescheduleReason?: string;
 }
 
 export function useScheduleOT() {
@@ -202,6 +230,38 @@ export function useScheduleOT() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: otKeys.requests.all });
       queryClient.invalidateQueries({ queryKey: otKeys.requests.detail(variables.id) });
+    },
+  });
+}
+
+/**
+ * The doctor's answer to a slot the OT admin proposed:
+ *   accept     → booking confirmed, surgery may start
+ *   reschedule → counter-proposal; needs a new preferred slot + reason, and
+ *                sends the request back to the OT admin's pending queue
+ *   cancel     → surgery called off, reason required
+ */
+export interface OtScheduleResponseInput {
+  action: 'accept' | 'reschedule' | 'cancel';
+  note?: string;
+  preferredDate?: string;
+  preferredTime?: string;
+  onBehalf?: boolean;
+}
+
+export function useRespondToOtSchedule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...data }: { id: string } & OtScheduleResponseInput) => {
+      const response = await apiPatch<OTRequest>(`/compliance/ot-requests/${id}/respond`, data);
+      return response.data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: otKeys.requests.all });
+      queryClient.invalidateQueries({ queryKey: otKeys.requests.detail(variables.id) });
+      // The doctor's own OT list lives under a different key namespace.
+      queryClient.invalidateQueries({ queryKey: ['doctor', 'ot-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
     },
   });
 }

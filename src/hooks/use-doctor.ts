@@ -907,6 +907,9 @@ export interface DoctorOTRequest {
     id: string;
     user?: { firstName: string; lastName: string };
   };
+  /** What the doctor asked for when raising the request. */
+  preferredDate?: string | null;
+  preferredTime?: string | null;
   scheduledDate?: string;
   scheduledStartTime?: string;
   scheduledEndTime?: string;
@@ -917,6 +920,18 @@ export interface DoctorOTRequest {
   notes?: string;
   billingAmount?: number;
   billingStatus?: string;
+  cancellationReason?: string | null;
+  // Reschedule ↔ doctor-confirmation loop. `awaiting_doctor` means the OT
+  // admin booked a slot other than the requested one and this doctor has to
+  // accept it, ask for another time, or cancel.
+  scheduleState?: 'awaiting_doctor' | 'confirmed' | null;
+  rescheduleReason?: string | null;
+  rescheduledAt?: string | null;
+  previousScheduledDate?: string | null;
+  previousScheduledTime?: string | null;
+  doctorResponse?: 'accepted' | 'rejected' | null;
+  doctorResponseNote?: string | null;
+  rescheduleCount?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -928,6 +943,9 @@ interface OTRequestParams {
   status?: string;
   date?: string;
   surgeonId?: string;
+  /** Restrict to the calling doctor's own requests (server-resolved profile). */
+  mine?: boolean;
+  scheduleState?: 'awaiting_doctor' | 'confirmed';
 }
 
 export function useDoctorOTRequests(params?: OTRequestParams) {
@@ -950,6 +968,11 @@ export function useCreateOTRequest() {
       speciality?: string;
       surgeonId?: string;
       anaesthetistId?: string;
+      // A doctor states a *preference*; the OT admin owns the real schedule.
+      // Sending scheduledDate here would self-approve the booking and skip the
+      // OT desk entirely, which is why the doctor form only sends preferred*.
+      preferredDate?: string;
+      preferredTime?: string;
       scheduledDate?: string;
       scheduledStartTime?: string;
       scheduledEndTime?: string;

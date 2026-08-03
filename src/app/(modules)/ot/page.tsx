@@ -18,6 +18,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Ban,
+  Clock3,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -126,6 +127,10 @@ const scheduleSchema = z.object({
   otName: z.string().optional(),
   surgeonId: z.string().optional(),
   anaesthetistId: z.string().optional(),
+  // Required (enforced below + server-side) when the booked slot differs from
+  // what the doctor asked for — they are notified with this reason and have to
+  // accept it before the surgery can start.
+  rescheduleReason: z.string().optional(),
 });
 
 type ScheduleFormValues = z.infer<typeof scheduleSchema>;
@@ -176,6 +181,37 @@ function statusLabel(status: string): string {
   if (status === 'requested') return 'Pending';
   return status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
+
+/** "12/08/2026 · 09:30 AM", or null when there is no date. */
+function slotText(date?: string | null, time?: string | null): string | null {
+  if (!date) return null;
+  const t = time ? formatTime(time) : '';
+  return `${formatDate(date)}${t ? ` · ${t}` : ''}`;
+}
+
+/** The doctor's requested slot, as stated on the OT request. */
+function preferredSlotText(r: OTRequest): string | null {
+  return slotText(r.preferredDate, r.preferredTime);
+}
+
+/** True when the booked slot is exactly what the doctor asked for. */
+function honoursPreference(r: OTRequest): boolean {
+  if (!r.preferredDate || !r.scheduledDate) return false;
+  const day = (v: string) => {
+    try {
+      return toInputDateStr(v);
+    } catch {
+      return v.slice(0, 10);
+    }
+  };
+  const hhmm = (v?: string | null) => (v ? (v.match(/(\d{2}):(\d{2})/)?.[0] ?? null) : null);
+  return (
+    day(r.preferredDate) === day(r.scheduledDate) &&
+    hhmm(r.preferredTime) === hhmm(r.scheduledStartTime)
+  );
+}
+
+const AWAITING_DOCTOR = 'awaiting_doctor';
 
 // ============================================================
 // Main Page
@@ -401,6 +437,12 @@ export default function OTHomePage() {
                   Patient Details
                 </th>
                 <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">OT Name</th>
+                {/* The doctor states a preferred slot when raising the request;
+                    it used to be stored but never shown, so the OT desk was
+                    scheduling blind. */}
+                <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">
+                  Doctor&apos;s Preferred / Scheduled
+                </th>
                 <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">
                   Surgery / Speciality
                 </th>
@@ -415,14 +457,14 @@ export default function OTHomePage() {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center">
+                  <td colSpan={8} className="px-4 py-12 text-center">
                     <Loader2 className="mx-auto h-6 w-6 animate-spin text-primary" />
                     <p className="mt-2 text-sm text-muted-foreground">Loading OT requests...</p>
                   </td>
                 </tr>
               ) : !isError && requests.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center">
+                  <td colSpan={8} className="px-4 py-12 text-center">
                     <Stethoscope className="mx-auto h-8 w-8 text-muted-foreground/40" />
                     <p className="mt-2 text-sm text-muted-foreground">
                       No OT requests found
@@ -459,7 +501,12 @@ export default function OTHomePage() {
                     </td>
 
                     {/* OT Name */}
-                    <td className="px-4 py-3 text-muted-foreground">{req.otName ?? '-'}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{req.otName ?? req.ot?.name ?? '-'}</td>
+
+                    {/* Doctor's preferred slot vs what is actually booked */}
+                    <td className="px-4 py-3">
+                      <PreferredScheduleCell req={req} />
+                    </td>
 
                     {/* Surgery / Speciality */}
                     <td className="px-4 py-3">
@@ -506,6 +553,29 @@ export default function OTHomePage() {
                           {req.priority}
                         </Badge>
                       )}
+                      {/* A rescheduled surgery is only a proposal until the
+                          doctor signs off — surface that, and block Start. */}
+                      {req.scheduleState === AWAITING_DOCTOR && (
+                        <div className="mt-1">
+                          <Badge
+                            variant="outline"
+                            className="border-amber-300 bg-amber-100 text-[10px] text-amber-800"
+                          >
+                            <Clock3 className="mr-1 h-3 w-3" />
+                            Awaiting doctor
+                          </Badge>
+                        </div>
+                      )}
+                      {req.doctorResponse === 'accepted' && req.scheduleState === 'confirmed' && (
+                        <div className="mt-1">
+                          <Badge
+                            variant="outline"
+                            className="border-emerald-300 bg-emerald-100 text-[10px] text-emerald-800"
+                          >
+                            Doctor accepted
+                          </Badge>
+                        </div>
+                      )}
                     </td>
 
                     {/* Action */}
@@ -534,7 +604,10 @@ export default function OTHomePage() {
                               onClick={() => openScheduleDialog(req)}
                             >
                               <CalendarClock className="mr-1 h-3.5 w-3.5" />
-                              Schedule
+                              {/* The doctor already named a slot, so booking
+                                  anything else is a reschedule they must be
+                                  told about — label it honestly. */}
+                              {req.preferredDate ? 'Reschedule' : 'Schedule'}
                             </Button>
                           </>
                         )}
@@ -545,7 +618,14 @@ export default function OTHomePage() {
                               variant="ghost"
                               className="text-purple-600 hover:text-purple-700 hover:bg-purple-50"
                               onClick={() => handleStartSurgery(req.id)}
-                              disabled={updateMutation.isPending}
+                              disabled={
+                                updateMutation.isPending || req.scheduleState === AWAITING_DOCTOR
+                              }
+                              title={
+                                req.scheduleState === AWAITING_DOCTOR
+                                  ? 'Waiting for the doctor to accept the rescheduled time'
+                                  : undefined
+                              }
                             >
                               <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
                               Start
@@ -671,6 +751,45 @@ export default function OTHomePage() {
 // Surgery Details (read-only) + Cancel
 // ============================================================
 
+/**
+ * What the doctor asked for, and what the theatre actually booked. Shows both
+ * whenever they differ so the OT desk can see at a glance that a request has
+ * been moved off the surgeon's preference.
+ */
+function PreferredScheduleCell({ req }: { req: OTRequest }) {
+  const preferred = preferredSlotText(req);
+  const scheduled = slotText(req.scheduledDate, req.scheduledStartTime ?? req.scheduledTime);
+  const moved = !!preferred && !!scheduled && !honoursPreference(req);
+
+  if (!preferred && !scheduled) {
+    return <span className="text-xs text-muted-foreground">No time requested</span>;
+  }
+
+  return (
+    <div className="space-y-0.5 text-xs">
+      {preferred && (
+        <div className={cn(moved && 'text-muted-foreground line-through')}>
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Preferred:{' '}
+          </span>
+          {preferred}
+        </div>
+      )}
+      {scheduled ? (
+        <div className={cn('font-medium', moved && 'text-amber-700')}>
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Booked:{' '}
+          </span>
+          {scheduled}
+          {req.scheduledEndTime ? ` – ${formatTime(req.scheduledEndTime)}` : ''}
+        </div>
+      ) : (
+        <div className="italic text-muted-foreground">Not scheduled yet</div>
+      )}
+    </div>
+  );
+}
+
 function DetailRow({ label, value }: { label: string; value?: ReactNode }) {
   if (value === undefined || value === null || value === '' || value === '-') return null;
   return (
@@ -722,10 +841,42 @@ function SurgeryDetailsDialog({ request, onClose }: { request: OTRequest; onClos
           </section>
           <section>
             <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Timing</h4>
+            <DetailRow label="Doctor's preferred" value={preferredSlotText(r) ?? undefined} />
             <DetailRow label="Scheduled" value={sched} />
             <DetailRow label="Actual" value={actual} />
             <DetailRow label="Duration" value={r.durationMinutes ? `${r.durationMinutes} min` : (r.estimatedDuration ? `${r.estimatedDuration} min (est.)` : undefined)} />
           </section>
+
+          {/* Reschedule trail — why the surgery moved and what the doctor said. */}
+          {(r.rescheduleReason || r.doctorResponse || r.scheduleState === AWAITING_DOCTOR) && (
+            <section>
+              <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Rescheduling
+              </h4>
+              <DetailRow
+                label="Moved from"
+                value={slotText(r.previousScheduledDate, r.previousScheduledTime) ?? undefined}
+              />
+              <DetailRow label="Reason" value={r.rescheduleReason ?? undefined} />
+              <DetailRow
+                label="Times moved"
+                value={r.rescheduleCount ? String(r.rescheduleCount) : undefined}
+              />
+              <DetailRow
+                label="Doctor"
+                value={
+                  r.scheduleState === AWAITING_DOCTOR ? (
+                    <span className="text-amber-700">Awaiting confirmation</span>
+                  ) : r.doctorResponse === 'accepted' ? (
+                    <span className="text-emerald-700">Accepted</span>
+                  ) : r.doctorResponse === 'rejected' ? (
+                    <span className="text-red-700">Asked for a change</span>
+                  ) : undefined
+                }
+              />
+              <DetailRow label="Doctor's remark" value={r.doctorResponseNote ?? undefined} />
+            </section>
+          )}
           <section>
             <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Clinical</h4>
             <DetailRow label="Pre-op diagnosis" value={r.preOpDiagnosis} />
@@ -1196,6 +1347,23 @@ function ScheduleOTDialog({
     [doctorsRaw],
   );
 
+  const toDateInput = (v?: string | null) => {
+    if (!v) return '';
+    try {
+      return toInputDateStr(v);
+    } catch {
+      return '';
+    }
+  };
+  const toTimeInput = (v?: string | null) => (v ? (v.match(/\d{2}:\d{2}/)?.[0] ?? '') : '');
+
+  const preferredDateInput = toDateInput(request.preferredDate);
+  const preferredTimeInput = toTimeInput(request.preferredTime);
+  const preferredLabel = preferredSlotText(request);
+  // Anything already booked is being *moved*; anything the doctor asked for is
+  // being *answered*. Either way this dialog is a reschedule, not a blank slate.
+  const isMove = !!request.scheduledDate;
+
   const {
     register,
     handleSubmit,
@@ -1205,25 +1373,45 @@ function ScheduleOTDialog({
   } = useForm<ScheduleFormValues>({
     resolver: zodResolver(scheduleSchema),
     defaultValues: {
-      scheduledDate: request.scheduledDate
-        ? (() => {
-            try {
-              return toInputDateStr(request.scheduledDate);
-            } catch {
-              return '';
-            }
-          })()
-        : '',
-      scheduledStartTime: request.scheduledStartTime ?? '',
+      // Start from the doctor's preference when nothing is booked yet — the OT
+      // desk should be nudged towards honouring it, not typing from scratch.
+      scheduledDate: toDateInput(request.scheduledDate) || preferredDateInput,
+      scheduledStartTime: request.scheduledStartTime ?? preferredTimeInput,
       scheduledEndTime: request.scheduledEndTime ?? '',
       otId: request.otId ?? '',
       otName: request.otName ?? request.ot?.name ?? '',
       surgeonId: request.surgeonId ?? '',
       anaesthetistId: request.anaesthetistId ?? '',
+      rescheduleReason: '',
     },
   });
 
+  const chosenDate = watch('scheduledDate');
+  const chosenTime = watch('scheduledStartTime');
+
+  // Mirrors the server rule: a reason is required unless the doctor gets
+  // exactly the slot they asked for and nothing is being moved.
+  const matchesPreference =
+    !!preferredDateInput &&
+    chosenDate === preferredDateInput &&
+    (preferredTimeInput ? chosenTime === preferredTimeInput : !chosenTime);
+  const movesExisting =
+    isMove &&
+    (chosenDate !== toDateInput(request.scheduledDate) ||
+      chosenTime !== (request.scheduledStartTime ?? ''));
+  const reasonRequired = movesExisting || (!!request.preferredDate && !matchesPreference);
+
+  const useDoctorsSlot = () => {
+    setValue('scheduledDate', preferredDateInput, { shouldValidate: true });
+    setValue('scheduledStartTime', preferredTimeInput, { shouldValidate: true });
+  };
+
   const onSubmit = (values: ScheduleFormValues) => {
+    const reason = values.rescheduleReason?.trim();
+    if (reasonRequired && !reason) {
+      toast.error('Tell the doctor why the surgery is not at the time they asked for');
+      return;
+    }
     scheduleMutation.mutate(
       {
         id: request.id,
@@ -1234,10 +1422,15 @@ function ScheduleOTDialog({
         otName: values.otName || undefined,
         surgeonId: values.surgeonId || undefined,
         anaesthetistId: values.anaesthetistId || undefined,
+        rescheduleReason: reason || undefined,
       },
       {
         onSuccess: () => {
-          toast.success('OT scheduled successfully');
+          toast.success(
+            reasonRequired
+              ? 'Rescheduled — the doctor has been notified to confirm'
+              : 'OT scheduled successfully',
+          );
           onOpenChange(false);
         },
         onError: (err: any) => {
@@ -1249,9 +1442,9 @@ function ScheduleOTDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Schedule OT</DialogTitle>
+          <DialogTitle>{isMove || preferredLabel ? 'Reschedule Surgery' : 'Schedule OT'}</DialogTitle>
         </DialogHeader>
 
         {/* Request summary */}
@@ -1267,7 +1460,44 @@ function ScheduleOTDialog({
               <span className="font-medium">Speciality:</span> {request.speciality}
             </p>
           )}
+          <p>
+            <span className="font-medium">Requested by:</span>{' '}
+            {formatDoctorName(request.doctor)}
+          </p>
         </div>
+
+        {/* The doctor's preferred slot — the whole point of the request. */}
+        {preferredLabel ? (
+          <div className="flex items-start justify-between gap-3 rounded-md border border-primary/30 bg-primary/5 p-3">
+            <div className="min-w-0 text-sm">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Doctor&apos;s preferred time
+              </p>
+              <p className="font-semibold">{preferredLabel}</p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="shrink-0"
+              onClick={useDoctorsSlot}
+              disabled={matchesPreference}
+            >
+              {matchesPreference ? 'Using it' : 'Use this slot'}
+            </Button>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            The doctor did not state a preferred time for this request.
+          </p>
+        )}
+
+        {request.rescheduleCount ? (
+          <p className="text-[11px] text-muted-foreground">
+            Moved {request.rescheduleCount} time{request.rescheduleCount === 1 ? '' : 's'} already
+            {request.rescheduleReason ? ` · last reason: ${request.rescheduleReason}` : ''}
+          </p>
+        ) : null}
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-1.5">
@@ -1352,6 +1582,31 @@ function ScheduleOTDialog({
             </div>
           </div>
 
+          {/* Reason — mandatory whenever the doctor does not get their slot.
+              It is sent to them in the notification, and they have to accept
+              the new time before the surgery can start. */}
+          <div className="space-y-1.5">
+            <Label>
+              Reason for rescheduling {reasonRequired && <span className="text-red-500">*</span>}
+            </Label>
+            <textarea
+              {...register('rescheduleReason')}
+              rows={3}
+              placeholder="e.g. OT-2 is occupied until 1 PM, anaesthetist unavailable at the requested hour…"
+              className="flex min-h-[72px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+            {reasonRequired ? (
+              <p className="text-[11px] text-amber-700">
+                This slot is not what the doctor asked for. They will be notified with this reason
+                and must confirm it before the surgery can start.
+              </p>
+            ) : (
+              <p className="text-[11px] text-muted-foreground">
+                This is the doctor&apos;s preferred slot — no confirmation needed.
+              </p>
+            )}
+          </div>
+
           <DialogFooter>
             <Button
               type="button"
@@ -1365,7 +1620,7 @@ function ScheduleOTDialog({
               {scheduleMutation.isPending && (
                 <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
               )}
-              Schedule
+              {reasonRequired ? 'Reschedule & notify doctor' : 'Confirm schedule'}
             </Button>
           </DialogFooter>
         </form>
