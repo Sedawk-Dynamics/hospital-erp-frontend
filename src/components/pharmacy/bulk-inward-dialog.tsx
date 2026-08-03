@@ -102,6 +102,10 @@ interface DraftLine {
   // is the learned-mapping key, so "lolo" → "Loloxy" is remembered under "lolo".
   rawName?: string;
   genericName: string;
+  // Salt composition — a DIFFERENT field from genericName on the formulary.
+  // Read-only and DB-sourced, like strength/GTIN: it is adopted from the
+  // medicine the line resolves to, never typed or imported.
+  composition: string;
   manufacturer: string;
   // Full product-definition fields ("New Item" parity), edited in the row's
   // expandable detail panel and carried onto a newly-created product.
@@ -153,6 +157,7 @@ interface CatalogPick {
   drugMasterId: string;
   drugName: string;
   genericName?: string | null;
+  composition?: string | null;
   manufacturer?: string | null;
   strength?: string | null;
   dosageForm?: string | null;
@@ -217,6 +222,7 @@ function emptyLine(): DraftLine {
     description: '',
     drugName: '',
     genericName: '',
+    composition: '',
     manufacturer: '',
     strength: '',
     gtin: '',
@@ -852,6 +858,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
     // Composition / strength / GTIN are DB-sourced (filled from the mapped
     // medicine), never from the scanned invoice — leave blank here.
     genericName: '',
+    composition: '',
     manufacturer: o.manufacturer ?? '',
     strength: '',
     gtin: '',
@@ -925,6 +932,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         description: '',
         drugName: L.drugName || '',
         genericName: L.genericName || '',
+        composition: '',
         manufacturer: L.manufacturer || '',
         strength: L.strength || '',
         gtin: L.gtin || res.gtin || '',
@@ -1048,7 +1056,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
     if (!cur || cur.drugMasterId || cur.gtin.trim()) return; // catalog/GTIN already set identity
     if (cur.genericName.trim() || cur.strength.trim()) return; // already identified
     try {
-      const res = await apiGet<Array<{ drugName: string; genericName: string | null; strength: string | null; gtin: string | null; hsnCode: string | null }>>(
+      const res = await apiGet<Array<{ drugName: string; genericName: string | null; composition: string | null; strength: string | null; gtin: string | null; hsnCode: string | null }>>(
         '/pharmacy/formulary',
         { params: { search: name, limit: 5, isActive: true } },
       );
@@ -1065,6 +1073,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
             ? {
                 ...l,
                 genericName: pick.genericName ?? '',
+                composition: pick.composition ?? '',
                 strength: pick.strength ?? '',
                 gtin: pick.gtin ?? '',
                 hsnCode: pick.hsnCode ?? l.hsnCode,
@@ -1119,6 +1128,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         lines: filled.map((l) => ({
           drugName: l.drugName.trim(),
           genericName: l.genericName.trim() || undefined,
+          composition: l.composition.trim() || undefined,
           manufacturer: l.manufacturer.trim() || undefined,
           strength: l.strength.trim() || undefined,
           gtin: l.gtin.trim() || undefined,
@@ -1163,6 +1173,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
               // Composition / strength / GTIN are DB-sourced — adopt them from the
               // picked catalog drug so the read-only fields reflect our data.
               genericName: c.genericName ?? '',
+              composition: c.composition ?? '',
               strength: c.strength ?? '',
               gtin: c.gtin ?? '',
             }
@@ -1177,15 +1188,26 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
   // imported, so this is their only writer (besides a catalog pick / scan).
   const setLineIdentity = (
     i: number,
-    idn: { genericName: string; strength: string; gtin: string },
+    idn: { genericName: string; composition: string; strength: string; gtin: string },
   ) => {
     setLines((prev) =>
       prev.map((l, idx) => {
         if (idx !== i) return l;
-        if (l.genericName === idn.genericName && l.strength === idn.strength && l.gtin === idn.gtin) {
+        if (
+          l.genericName === idn.genericName &&
+          l.composition === idn.composition &&
+          l.strength === idn.strength &&
+          l.gtin === idn.gtin
+        ) {
           return l; // unchanged — avoid a needless re-render
         }
-        return { ...l, genericName: idn.genericName, strength: idn.strength, gtin: idn.gtin };
+        return {
+          ...l,
+          genericName: idn.genericName,
+          composition: idn.composition,
+          strength: idn.strength,
+          gtin: idn.gtin,
+        };
       }),
     );
   };
@@ -1906,7 +1928,10 @@ function EntryStep(props: {
   onUndoCatalog: (i: number) => void;
   // Sync a line's DB-sourced identity (composition / strength / GTIN) from the
   // medicine it maps to.
-  onLineIdentity: (i: number, idn: { genericName: string; strength: string; gtin: string }) => void;
+  onLineIdentity: (
+    i: number,
+    idn: { genericName: string; composition: string; strength: string; gtin: string },
+  ) => void;
   reviewing: boolean;
 }) {
   const {
@@ -2375,7 +2400,21 @@ function EntryStep(props: {
                         this line is mapped to (below). They are never typed here
                         or written by OCR / Excel / paste. */}
                     <div className="grid grid-cols-3 gap-1.5">
-                      <Input className={cn(cell, 'text-muted-foreground')} value={l.genericName} readOnly tabIndex={-1} title="Composition — from the mapped medicine" placeholder="composition (from medicine)" />
+                      {/* Prefer the medicine's real salt composition; most rows
+                          still carry their molecule in genericName alone, so
+                          fall back to that rather than showing an empty box. */}
+                      <Input
+                        className={cn(cell, 'text-muted-foreground')}
+                        value={l.composition || l.genericName}
+                        readOnly
+                        tabIndex={-1}
+                        title={
+                          l.composition
+                            ? `Composition — from the mapped medicine${l.genericName ? ` · generic: ${l.genericName}` : ''}`
+                            : 'Composition — from the mapped medicine (generic name; no salt composition on record)'
+                        }
+                        placeholder="composition (from medicine)"
+                      />
                       <Input className={cn(cell, 'text-muted-foreground')} value={l.strength} readOnly tabIndex={-1} title="Strength — from the mapped medicine" placeholder="strength (from medicine)" />
                       <Input
                         className={cn(cell, 'font-mono text-muted-foreground')}
@@ -2616,7 +2655,7 @@ function LineMatchControl({
   onUndoCatalog: () => void;
   // Report the mapped medicine's DB identity (composition / strength / GTIN) so
   // the read-only fields on the row reflect it.
-  onIdentity: (idn: { genericName: string; strength: string; gtin: string }) => void;
+  onIdentity: (idn: { genericName: string; composition: string; strength: string; gtin: string }) => void;
 }) {
   const autoFormulary = m.matches.filter((c) => c.source !== 'catalog');
   const catalogMatches = m.matches.filter((c) => c.source === 'catalog');
@@ -2641,11 +2680,12 @@ function LineMatchControl({
     if (decision.action === 'map') {
       onIdentity({
         genericName: target?.genericName ?? '',
+        composition: target?.composition ?? '',
         strength: target?.strength ?? '',
         gtin: target?.gtin ?? '',
       });
     } else if (!line.drugMasterId) {
-      onIdentity({ genericName: '', strength: '', gtin: '' });
+      onIdentity({ genericName: '', composition: '', strength: '', gtin: '' });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapKey, decision.action, line.drugMasterId]);

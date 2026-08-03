@@ -296,6 +296,8 @@ export interface FormularyMatch {
   id: string;
   drugName: string;
   genericName: string | null;
+  /** Salt composition — a separate column from genericName on the formulary. */
+  composition?: string | null;
   manufacturer: string | null;
   dosageForm: DosageForm | null;
   strength: string | null;
