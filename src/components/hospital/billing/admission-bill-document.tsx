@@ -192,7 +192,8 @@ export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: Admis
             <tbody>
               <SumRow label="Gross charges" value={fmtMoney(t.grossCharges)} />
               {t.discount > 0 && <SumRow label="Discount" value={`− ${fmtMoney(t.discount)}`} />}
-              {t.tax > 0 && <SumRow label="Tax" value={fmtMoney(t.tax)} />}
+              {/* Tax is already inside the line amounts — informational, not added. */}
+              {t.tax > 0 && <SumRow label="(of which tax)" value={fmtMoney(t.tax)} />}
               {t.insuranceCovered > 0 && (
                 <SumRow label="Covered by insurer / TPA" value={`− ${fmtMoney(t.insuranceCovered)}`} />
               )}

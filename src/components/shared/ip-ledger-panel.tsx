@@ -372,6 +372,11 @@ export function IpLedgerPanel({ admissionId, patientId, role }: { admissionId: s
               <div className="rounded-lg border bg-card px-3 py-2">
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Grand total</p>
                 <p className="text-base font-bold text-foreground">{money(ledger.totals.grandTotal)}</p>
+                {/* A counter concession is recorded on the bill header, not on
+                    the lines — say so, or the total looks short of the charges. */}
+                {ledger.totals.discount > 0 && (
+                  <p className="text-[10px] text-emerald-600">after {money(ledger.totals.discount)} discount</p>
+                )}
               </div>
               <div className="rounded-lg border bg-card px-3 py-2">
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Posted / pending</p>

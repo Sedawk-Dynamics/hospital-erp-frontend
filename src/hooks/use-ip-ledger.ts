@@ -31,6 +31,8 @@ export interface AdmissionLedger {
   totals: {
     posted: number;
     pending: number;
+    /** Bill-header concession, already deducted from `grandTotal`. */
+    discount: number;
     grandTotal: number;
     paid: number;
     cashPaid: number;
