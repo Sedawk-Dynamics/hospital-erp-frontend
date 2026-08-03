@@ -298,8 +298,6 @@ function HeaderStrip({
         </div>
       </div>
 
-      <AllergyBanner patientId={admission.patientId} />
-
       {role === 'admin' && (
         <AssignBedDialog
           admissionId={admission.id}
@@ -310,23 +308,6 @@ function HeaderStrip({
           onOpenChange={setAssignBedOpen}
         />
       )}
-    </div>
-  );
-}
-
-function AllergyBanner({ patientId }: { patientId: string }) {
-  const { data: patient } = usePatientDetail(patientId);
-  if (!patient?.allergies || patient.allergies.length === 0) return null;
-  return (
-    <div className="mt-3 flex items-start gap-2 rounded-md border border-error/30 bg-error/10 px-3 py-2 text-xs">
-      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-error" />
-      <div className="flex flex-wrap gap-1.5">
-        {patient.allergies.map((a) => (
-          <Badge key={a.id} variant="destructive" className="text-[10px]">
-            {a.allergen}{a.severity ? ` (${a.severity})` : ''}
-          </Badge>
-        ))}
-      </div>
     </div>
   );
 }
