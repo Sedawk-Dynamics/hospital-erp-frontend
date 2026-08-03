@@ -2,13 +2,14 @@
 
 import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Search, Loader2, ShieldCheck, RefreshCw, BedDouble, Undo2 } from 'lucide-react';
+import { Search, Loader2, ShieldCheck, RefreshCw, BedDouble, Undo2, Printer } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useIpAdmissions, type IpBill } from '@/hooks/use-ip-billing';
 import { IpBillingDetailDialog } from '@/components/hospital/billing/ip-billing-detail-dialog';
+import { BillPrintDialog } from '@/components/hospital/billing/bill-print-dialog';
 
 // IP billing section: one consolidated bill per admission, shown separately from
 // OP. Click a row to open the full IP bill (edit charges, discount, collect,
@@ -41,6 +42,7 @@ export function IpBillingTab() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [detailBill, setDetailBill] = useState<IpBill | null>(null);
+  const [printAdmissionId, setPrintAdmissionId] = useState<string | null>(null);
 
   // One row per ADMISSION — listed from the moment the patient is admitted
   // (the endpoint ensures each active admission has its running IP bill).
@@ -173,6 +175,19 @@ export function IpBillingTab() {
                             <Undo2 className="h-3 w-3" /> Return deposit
                           </Button>
                         )}
+                        {/* Printable bill — available at any time, not only
+                            once the stay is settled. Reads as an interim bill
+                            while the patient is still admitted. */}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 gap-1 text-[11px]"
+                          onClick={() => setPrintAdmissionId(b.admissionId ?? null)}
+                          disabled={!b.admissionId}
+                          title="Print / download the bill for this stay"
+                        >
+                          <Printer className="h-3 w-3" /> Bill
+                        </Button>
                         <Button size="sm" className="h-7 gap-1 text-[11px]" onClick={() => setDetailBill(b)} title="Open the full IP bill — charges, deposit, discount, collect, TPA">
                           Manage
                         </Button>
@@ -190,6 +205,11 @@ export function IpBillingTab() {
       </p>
 
       <IpBillingDetailDialog bill={detailBill} open={!!detailBill} onOpenChange={(o) => { if (!o) setDetailBill(null); }} />
+      <BillPrintDialog
+        admissionId={printAdmissionId}
+        open={!!printAdmissionId}
+        onOpenChange={(o) => { if (!o) setPrintAdmissionId(null); }}
+      />
     </div>
   );
 }

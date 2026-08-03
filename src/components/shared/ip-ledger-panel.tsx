@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import {
   Plus, Loader2, Receipt, Wallet, Stethoscope, LogIn, LogOut, UserCog,
-  FlaskConical, ScanLine, Pill, History, Activity, NotebookPen, Trash2,
+  FlaskConical, ScanLine, Pill, History, Activity, NotebookPen, Trash2, Printer,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
+import { BillPrintDialog } from '@/components/hospital/billing/bill-print-dialog';
 import {
   useAdmissionLedger, useAddIpCharge, useRemoveIpCharge, useAdmissionActivity,
   type ActivityEvent, type LedgerLine,
@@ -308,6 +309,7 @@ export function IpActivityLog({ admissionId }: { admissionId: string }) {
 export function IpLedgerPanel({ admissionId, patientId, role }: { admissionId: string; patientId: string; role: Role }) {
   const { data: ledger, isLoading } = useAdmissionLedger(admissionId);
   const [addOpen, setAddOpen] = useState(false);
+  const [printOpen, setPrintOpen] = useState(false);
   const removeCharge = useRemoveIpCharge(admissionId);
   const isTpa = ledger?.billingCategory === 'insurance' || ledger?.billingCategory === 'corporate';
 
@@ -339,6 +341,17 @@ export function IpLedgerPanel({ admissionId, patientId, role }: { admissionId: s
           </h2>
           <div className="flex items-center gap-2">
             {role === 'doctor' && <RecordVisitButton admissionId={admissionId} patientId={patientId} />}
+            {/* The printable bill for this stay — reachable from the ward, not
+                only from the billing counter, and at any point in the stay. */}
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1 text-xs"
+              onClick={() => setPrintOpen(true)}
+              title="Print / download the bill for this stay"
+            >
+              <Printer className="h-3 w-3" /> Print bill
+            </Button>
             <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setAddOpen(true)}>
               <Plus className="h-3 w-3" /> Add charge
             </Button>
@@ -346,6 +359,7 @@ export function IpLedgerPanel({ admissionId, patientId, role }: { admissionId: s
         </div>
 
         <AddChargeDialog admissionId={admissionId} role={role} open={addOpen} onOpenChange={setAddOpen} />
+        <BillPrintDialog admissionId={printOpen ? admissionId : null} open={printOpen} onOpenChange={setPrintOpen} />
 
         {isLoading ? (
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />

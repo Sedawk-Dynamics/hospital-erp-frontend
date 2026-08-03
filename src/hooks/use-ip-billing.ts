@@ -185,3 +185,98 @@ export function useBillPayments(billId: string | null) {
     enabled: !!billId,
   });
 }
+
+// ============================================================
+// Printable bill for an IP / Emergency / Day Care stay
+// ============================================================
+// Read-only and available at any time: interim while the patient is admitted,
+// final once discharged, and reprintable forever afterwards.
+
+export interface BillDocumentLine {
+  description: string;
+  category: string;
+  quantity: number;
+  unitPrice: number;
+  totalAmount: number;
+  status: string;
+  at: string;
+}
+
+export interface AdmissionBillDocument {
+  admissionId: string;
+  admissionType: 'ip' | 'emergency' | 'daycare';
+  admissionTypeLabel: string;
+  isPaid: boolean;
+  isDischarged: boolean;
+  documentTitle: string;
+  patient: {
+    id: string;
+    name: string;
+    mrn: string | null;
+    age: string | null;
+    gender: string | null;
+    phone: string | null;
+    address: string | null;
+    bloodGroup: string | null;
+  };
+  admission: {
+    ipNumber: string | null;
+    admittedOn: string;
+    dischargedOn: string | null;
+    lengthOfStayDays: number;
+    ward: string | null;
+    bed: string | null;
+    doctor: string | null;
+    billingCategory: string;
+    reason: string | null;
+  };
+  bills: Array<{ billNumber: string; status: string; totalAmount: number }>;
+  groups: Array<{ category: string; label: string; lines: BillDocumentLine[]; total: number }>;
+  payments: Array<{
+    date: string;
+    amount: number;
+    method: string;
+    type: string;
+    reference: string | null;
+    receiptNumber: string | null;
+  }>;
+  totals: {
+    grossCharges: number;
+    posted: number;
+    pending: number;
+    discount: number;
+    tax: number;
+    insuranceCovered: number;
+    deposit: number;
+    depositApplied: number;
+    depositRefunded: number;
+    paid: number;
+    cashPaid: number;
+    netPayable: number;
+    balanceDue: number;
+    refundable: number;
+  };
+  generatedAt: string;
+}
+
+export function useAdmissionBillDocument(admissionId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['admission-bill-document', admissionId],
+    queryFn: async () =>
+      (await apiGet<AdmissionBillDocument>(`/billing/admissions/${admissionId}/bill-document`)).data,
+    enabled: !!admissionId && enabled,
+    // The bill must reflect charges posted a moment ago, never a cached copy.
+    staleTime: 0,
+  });
+}
+
+/** Open the branded PDF in a new tab (auth-gated, so it goes through the client). */
+export async function openAdmissionBillPdf(admissionId: string): Promise<void> {
+  const apiClientMod = await import('@/lib/api-client');
+  const res = await apiClientMod.default.get(`/billing/admissions/${admissionId}/bill-document/pdf`, {
+    responseType: 'blob',
+  });
+  const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+  window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
