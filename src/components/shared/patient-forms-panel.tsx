@@ -64,9 +64,11 @@ export interface PatientFormsPanelProps {
   patientId: string;
   ctx?: PatientFormsContext;
   /**
-   * Hide the "Fill out" action. Patient forms are nursing documentation —
-   * doctors read them but do not file them (the server denies the role too),
-   * so the doctor-facing mounts pass this.
+   * Show only the forms nursing has FILLED for this patient, not the blank
+   * catalogue. Patient forms are nursing documentation — a doctor reads the
+   * record but never files one (the server denies the role too), so a list of
+   * blanks they cannot complete would be pure noise. Doctor-facing mounts
+   * pass this.
    */
   readOnly?: boolean;
   /** Scope the submissions list to this encounter instead of the whole patient. */
@@ -115,10 +117,24 @@ export function categoryLabel(c: FormCategory): string {
   return FORM_CATEGORIES.find((x) => x.value === c)?.label ?? c;
 }
 
-export function PatientFormsPanel({
+/**
+ * Two genuinely different views, not one view with a hidden button:
+ *
+ *  • fill mode (nurse)   — the hospital's blank-form catalogue to pick from.
+ *  • read mode (doctor)  — only the forms nursing has actually filled for this
+ *                          patient. A doctor has no use for a catalogue of
+ *                          blanks they are not allowed to complete.
+ *
+ * They are separate components so each fetches only what it needs — the
+ * read-only view never loads the catalogue at all.
+ */
+export function PatientFormsPanel(props: PatientFormsPanelProps) {
+  return props.readOnly ? <SubmittedFormsView {...props} /> : <FormCatalogueView {...props} />;
+}
+
+function FormCatalogueView({
   patientId,
   ctx,
-  readOnly = false,
   scopeSubmissionsToContext = false,
 }: PatientFormsPanelProps) {
   const formsQ = useHospitalForms({ status: 'active', limit: 200 });
@@ -235,12 +251,10 @@ export function PatientFormsPanel({
             <Eye className="h-3.5 w-3.5" />
             Preview
           </Button>
-          {!readOnly && (
-            <Button size="sm" onClick={() => setOpenFill(f)} className="h-8 flex-1 gap-1 text-xs">
-              <Plus className="h-3.5 w-3.5" />
-              Fill out
-            </Button>
-          )}
+          <Button size="sm" onClick={() => setOpenFill(f)} className="h-8 flex-1 gap-1 text-xs">
+            <Plus className="h-3.5 w-3.5" />
+            Fill out
+          </Button>
         </div>
       </div>
     );
@@ -260,13 +274,10 @@ export function PatientFormsPanel({
     <div className="rounded-xl bg-surface-container-lowest p-4 shadow-sanctuary">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="font-headline text-sm font-bold text-foreground">
-            {readOnly ? 'Nursing forms for this patient' : 'Pick a form to fill'}
-          </h2>
+          <h2 className="font-headline text-sm font-bold text-foreground">Pick a form to fill</h2>
           <p className="text-[11px] text-muted-foreground">
-            {readOnly
-              ? `${recentCount} submission${recentCount === 1 ? '' : 's'} on record · recorded by nursing staff`
-              : `${forms.length} form${forms.length === 1 ? '' : 's'} available · ${recentCount} prior submission${recentCount === 1 ? '' : 's'} for this patient`}
+            {forms.length} form{forms.length === 1 ? '' : 's'} available · {recentCount} prior
+            submission{recentCount === 1 ? '' : 's'} for this patient
           </p>
         </div>
         <div className="relative w-full sm:w-72">
@@ -280,8 +291,7 @@ export function PatientFormsPanel({
         </div>
       </div>
 
-      {/* A reader wants what was recorded, not the blank catalogue. */}
-      <Tabs defaultValue={readOnly ? 'recent' : 'all'} className="mt-4">
+      <Tabs defaultValue="all" className="mt-4">
         <div className="-mx-1 overflow-x-auto pb-1">
           <TabsList className="!h-auto w-max items-center gap-1.5 !rounded-none !bg-transparent px-1 py-1">
             <TabsTrigger value="all" className={cn(TAB_BASE, TAB_ALL_ACTIVE)}>
@@ -378,11 +388,7 @@ export function PatientFormsPanel({
           ) : (submissionsQ.data?.data ?? []).length === 0 ? (
             <FormsEmptyState
               title="No submissions yet"
-              hint={
-                readOnly
-                  ? 'Nothing has been recorded against this patient yet.'
-                  : 'Pick a form above and tap Fill out to record the first one.'
-              }
+              hint="Pick a form above and tap Fill out to record the first one."
             />
           ) : (
             <ul className="divide-y rounded-lg border bg-surface-container-lowest">
@@ -445,6 +451,195 @@ export function PatientFormsPanel({
             <DialogTitle>{openView?.form?.name ?? 'Submission'}</DialogTitle>
             <DialogDescription>
               {openView ? `Submitted ${formatDateTimeAmPm(openView.createdAt)}` : null}
+            </DialogDescription>
+          </DialogHeader>
+          {openView && <FormSubmissionView schema={openView.formSnapshot} data={openView.data} />}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ── Read-only view: the forms nursing has filled for this patient ──────────
+//
+// Deliberately does NOT render the blank-form catalogue. A doctor cannot file
+// a submission (the server denies the role), so a list of empty forms is
+// noise — what they need is the record of what nursing documented.
+
+function SubmittedFormsView({ patientId, ctx, scopeSubmissionsToContext = false }: PatientFormsPanelProps) {
+  const submissionsQ = useFormSubmissions({
+    patientId,
+    limit: 100,
+    ...(scopeSubmissionsToContext && ctx?.admissionId ? { admissionId: ctx.admissionId } : {}),
+  });
+
+  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState<FormCategory | 'all'>('all');
+  const [openView, setOpenView] = useState<FormSubmission | null>(null);
+
+  const submissions = useMemo(() => submissionsQ.data?.data ?? [], [submissionsQ.data]);
+
+  // Categories come from what was actually submitted, not from the catalogue.
+  const categories = useMemo(() => {
+    const counts = new Map<FormCategory, number>();
+    for (const s of submissions) {
+      const c = s.form?.category;
+      if (c) counts.set(c, (counts.get(c) ?? 0) + 1);
+    }
+    return FORM_CATEGORIES.filter((c) => counts.has(c.value)).map((c) => ({
+      ...c,
+      count: counts.get(c.value) ?? 0,
+    }));
+  }, [submissions]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return submissions.filter((s) => {
+      if (category !== 'all' && s.form?.category !== category) return false;
+      if (!q) return true;
+      const who = s.submittedBy
+        ? `${s.submittedBy.firstName} ${s.submittedBy.lastName ?? ''}`
+        : '';
+      return [s.form?.name ?? '', who, categoryLabel(s.form?.category ?? 'other')]
+        .join(' ')
+        .toLowerCase()
+        .includes(q);
+    });
+  }, [submissions, search, category]);
+
+  return (
+    <div className="rounded-xl bg-surface-container-lowest p-4 shadow-sanctuary">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="font-headline text-sm font-bold text-foreground">
+            Forms filled by nursing
+          </h2>
+          <p className="text-[11px] text-muted-foreground">
+            {submissions.length} record{submissions.length === 1 ? '' : 's'} for this patient
+          </p>
+        </div>
+        {submissions.length > 0 && (
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search form or nurse…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-9 pl-8 text-xs"
+            />
+          </div>
+        )}
+      </div>
+
+      {categories.length > 1 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={() => setCategory('all')}
+            className={cn(
+              'rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ring-inset transition-colors',
+              category === 'all'
+                ? 'bg-primary/10 text-primary ring-primary/40'
+                : 'text-muted-foreground ring-border/60 hover:bg-surface-container-low',
+            )}
+          >
+            All <span className="ml-0.5 opacity-70">{submissions.length}</span>
+          </button>
+          {categories.map((c) => (
+            <button
+              key={c.value}
+              type="button"
+              onClick={() => setCategory(c.value)}
+              className={cn(
+                'rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ring-inset transition-colors',
+                category === c.value
+                  ? cn(CATEGORY_TINT[c.value], 'ring-current/40')
+                  : 'text-muted-foreground ring-border/60 hover:bg-surface-container-low',
+              )}
+            >
+              {c.label} <span className="ml-0.5 opacity-70">{c.count}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-4">
+        {submissionsQ.isLoading ? (
+          <div className="py-10 text-center">
+            <Loader2 className="mx-auto h-5 w-5 animate-spin text-primary" />
+          </div>
+        ) : filtered.length === 0 ? (
+          <FormsEmptyState
+            title={
+              submissions.length === 0
+                ? 'No forms recorded yet'
+                : 'No forms match your search'
+            }
+            hint={
+              submissions.length === 0
+                ? 'Assessments and notes filled by nursing staff for this patient will appear here.'
+                : 'Try a different keyword or category.'
+            }
+          />
+        ) : (
+          <ul className="divide-y rounded-lg border bg-surface-container-lowest">
+            {filtered.map((s) => (
+              <li key={s.id}>
+                <button
+                  onClick={() => setOpenView(s)}
+                  className="block w-full px-3 py-3 text-left transition-colors hover:bg-surface-container-low"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                      <span className="truncate text-sm font-semibold text-foreground">
+                        {s.form?.name ?? 'Form'}
+                      </span>
+                      {s.form?.category && (
+                        <span
+                          className={cn(
+                            'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ring-1 ring-inset',
+                            CATEGORY_TINT[s.form.category],
+                          )}
+                        >
+                          {categoryLabel(s.form.category)}
+                        </span>
+                      )}
+                    </div>
+                    <span className="shrink-0 text-[11px] text-muted-foreground">
+                      {formatDateTimeAmPm(s.createdAt)}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    Recorded by{' '}
+                    {s.submittedBy
+                      ? `${s.submittedBy.firstName} ${s.submittedBy.lastName ?? ''}`.trim()
+                      : '—'}
+                    {' · v'}
+                    {s.formVersion}
+                    {s.form?.archivedAt && (
+                      <span className="ml-1 text-amber-700">(form since deleted)</span>
+                    )}
+                  </p>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Read the submission exactly as the nurse saw it (formSnapshot). */}
+      <Dialog open={!!openView} onOpenChange={(open) => !open && setOpenView(null)}>
+        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{openView?.form?.name ?? 'Submission'}</DialogTitle>
+            <DialogDescription>
+              {openView
+                ? `Recorded ${formatDateTimeAmPm(openView.createdAt)}${
+                    openView.submittedBy
+                      ? ` by ${openView.submittedBy.firstName} ${openView.submittedBy.lastName ?? ''}`.trimEnd()
+                      : ''
+                  }`
+                : null}
             </DialogDescription>
           </DialogHeader>
           {openView && <FormSubmissionView schema={openView.formSnapshot} data={openView.data} />}

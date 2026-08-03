@@ -1462,9 +1462,10 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
         {/* Dynamic patient forms, bound to this admission — the same catalogue
             the nurse fills for an OP appointment, now reachable for IP /
             emergency / day-care stays without leaving the workspace.
-            Read-only for doctors: patient forms are nursing documentation, so
-            a doctor reads what the nurse recorded but never files it. The
-            server enforces the same rule. */}
+            For doctors this renders only the forms nursing has actually
+            filled — patient forms are nursing documentation, so a doctor
+            reads the record rather than a catalogue of blanks they cannot
+            complete. The server denies the role as well. */}
         <TabsContent value="forms" className="pt-4">
           <PatientFormsPanel
             patientId={patientId}
