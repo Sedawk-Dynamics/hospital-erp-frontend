@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Users, ShieldCheck } from 'lucide-react';
 import { apiGet } from '@/lib/api';
+import { allergiesKey, familyKey, LIVE } from '@/components/shared/patient-history-panel';
 import { cn } from '@/lib/utils';
 
 /**
@@ -43,22 +44,27 @@ export function PatientSafetyBanner({
   patientId: string;
   className?: string;
 }) {
+  // Same query keys as PatientHistoryPanel on purpose: adding an allergy there
+  // — or the patient adding one in the portal — has to refresh this banner,
+  // which it never did while the two used different keys.
   const { data: allergies, isLoading: allergiesLoading } = useQuery({
-    queryKey: ['doctor', 'allergies', patientId],
+    queryKey: allergiesKey(patientId),
     queryFn: async () => {
       const res = await apiGet<Allergy[]>(`/medical-history/${patientId}/allergies`);
       return res.data ?? [];
     },
     enabled: !!patientId,
+    ...LIVE,
   });
 
   const { data: family } = useQuery({
-    queryKey: ['doctor', 'family-history', patientId],
+    queryKey: familyKey(patientId),
     queryFn: async () => {
       const res = await apiGet<FamilyEntry[]>(`/medical-history/${patientId}/family`);
       return res.data ?? [];
     },
     enabled: !!patientId,
+    ...LIVE,
   });
 
   if (!patientId || allergiesLoading) return null;

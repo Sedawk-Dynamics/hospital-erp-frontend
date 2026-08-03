@@ -7,6 +7,15 @@ import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
+// The doctor and nurse write these same rows from the hospital side, so the
+// app-wide 60s staleTime / no-refetch-on-focus defaults would leave a patient
+// looking at a record their clinician has already updated. Always refetch.
+const LIVE = {
+  staleTime: 0,
+  refetchOnMount: 'always',
+  refetchOnWindowFocus: true,
+} as const;
+
 type Tab = 'personal' | 'family' | 'allergies';
 
 export default function MedicalHistoryPage() {
@@ -80,6 +89,7 @@ function PersonalTab() {
       const res = await apiGet<PersonalHistory | null>('/patient-portal/medical-history/personal');
       return res.data ?? {};
     },
+    ...LIVE,
   });
   const [form, setForm] = useState<PersonalHistory>({});
   const current = { ...(data || {}), ...form };
@@ -178,7 +188,7 @@ function PersonalTab() {
       <div className="flex justify-end">
         <Button
           disabled={mutation.isPending || Object.keys(form).length === 0}
-          onClick={() => mutation.mutate(current)}
+          onClick={() => mutation.mutate(form)}
           className="gap-1.5"
         >
           <Save className="h-3.5 w-3.5" />
@@ -207,6 +217,7 @@ function FamilyTab() {
       const res = await apiGet<FamilyEntry[]>('/patient-portal/medical-history/family');
       return res.data ?? [];
     },
+    ...LIVE,
   });
   const [draft, setDraft] = useState<Partial<FamilyEntry>>({ relationSide: 'maternal' });
 
@@ -353,6 +364,7 @@ function AllergiesTab() {
       const res = await apiGet<AllergyEntry[]>('/patient-portal/medical-history/allergies');
       return res.data ?? [];
     },
+    ...LIVE,
   });
   const [draft, setDraft] = useState<Partial<AllergyEntry>>({ allergyType: 'drug', severity: 'mild' });
 

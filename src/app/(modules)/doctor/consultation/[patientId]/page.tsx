@@ -53,6 +53,7 @@ import { PrescriptionPad, clearConsultationDraft } from '@/components/doctor/pre
 import { DrugHistoryPanel } from '@/components/doctor/drug-history-panel';
 import { CurrentMedicationsPanel } from '@/components/doctor/current-medications-panel';
 import { MedicalHistoryPanel } from '@/components/doctor/medical-history-panel';
+import { familyKey, LIVE } from '@/components/shared/patient-history-panel';
 import { PatientSafetyBanner } from '@/components/doctor/patient-safety-banner';
 import { InvestigationHistoryPanel } from '@/components/doctor/investigation-history-panel';
 import { LabOrderDialog } from '@/components/doctor/lab-order-dialog';
@@ -422,12 +423,15 @@ function VitalsSidebar({
 // ── Sidebar: Family Medical History (read-only, compact) ──────────────
 
 function FamilyHistorySidebar({ patientId }: { patientId: string }) {
+  // Shares PatientHistoryPanel's key so an edit in the History tab — or by the
+  // patient in their portal — refreshes this sidebar too.
   const { data, isLoading } = useQuery({
-    queryKey: ['doctor', 'family-history', patientId],
+    queryKey: familyKey(patientId),
     queryFn: async () => {
       const res = await apiGet<any[]>(`/medical-history/${patientId}/family`);
       return res.data ?? [];
     },
+    ...LIVE,
   });
   const entries = data ?? [];
 

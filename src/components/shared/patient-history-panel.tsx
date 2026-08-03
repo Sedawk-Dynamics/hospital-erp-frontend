@@ -81,10 +81,20 @@ export function PatientHistoryPanel({
 
 // Query keys are shared across roles on purpose — a nurse saving the personal
 // history in the IP workspace should invalidate the doctor's copy of it.
-const personalKey = (patientId: string) => ['patient-history', 'personal', patientId] as const;
-const medicalKey = (patientId: string) => ['patient-history', 'medical-surgical', patientId] as const;
-const familyKey = (patientId: string) => ['patient-history', 'family', patientId] as const;
-const allergiesKey = (patientId: string) => ['patient-history', 'allergies', patientId] as const;
+export const personalKey = (patientId: string) => ['patient-history', 'personal', patientId] as const;
+export const medicalKey = (patientId: string) => ['patient-history', 'medical-surgical', patientId] as const;
+export const familyKey = (patientId: string) => ['patient-history', 'family', patientId] as const;
+export const allergiesKey = (patientId: string) => ['patient-history', 'allergies', patientId] as const;
+
+// These rows have three authors — the patient (portal), the doctor and the
+// nurse — so the app-wide 60s staleTime / no-refetch-on-focus defaults are
+// wrong here: a doctor would keep looking at habits the patient changed
+// minutes ago. Always refetch on mount and when the tab regains focus.
+export const LIVE = {
+  staleTime: 0,
+  refetchOnMount: 'always',
+  refetchOnWindowFocus: true,
+} as const;
 
 // ── Medical & Surgical History ───────────────────────────────────────────
 //
@@ -126,22 +136,19 @@ function MedicalSurgicalTab({ patientId, readOnly }: { patientId: string; readOn
       const res = await apiGet<MedicalSurgical>(`/medical-history/${patientId}/medical-surgical`);
       return res.data ?? null;
     },
+    ...LIVE,
   });
 
-  // Editing the narrative writes back through the personal-history record,
-  // which is where those two columns live.
-  const { data: personal } = useQuery({
-    queryKey: personalKey(patientId),
-    queryFn: async () => {
-      const res = await apiGet<any>(`/medical-history/${patientId}/personal`);
-      return res.data ?? {};
-    },
-  });
-
+  // The narrative columns live on the personal-history record, so editing them
+  // writes back through that endpoint — but only the edited keys; the server
+  // merges the rest.
   const [draft, setDraft] = useState<Record<string, string>>({});
   const save = useMutation({
     mutationFn: async () => {
-      await apiPut(`/medical-history/${patientId}/personal`, { ...(personal || {}), ...draft });
+      // Only the edited fields — the server merges. Sending the whole record
+      // back would let a page opened before the patient's last portal save
+      // overwrite it.
+      await apiPut(`/medical-history/${patientId}/personal`, draft);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: medicalKey(patientId) });
@@ -318,6 +325,7 @@ function PersonalTab({ patientId, readOnly }: { patientId: string; readOnly: boo
       const res = await apiGet<any>(`/medical-history/${patientId}/personal`);
       return res.data ?? {};
     },
+    ...LIVE,
   });
   const [form, setForm] = useState<any>({});
   const current = { ...(data || {}), ...form };
@@ -413,7 +421,7 @@ function PersonalTab({ patientId, readOnly }: { patientId: string; readOnly: boo
           <Button
             size="sm"
             disabled={Object.keys(form).length === 0 || mutation.isPending}
-            onClick={() => mutation.mutate(current)}
+            onClick={() => mutation.mutate(form)}
             className="gap-1 text-xs h-7"
           >
             <Save className="h-3 w-3" /> Save
@@ -442,6 +450,7 @@ function FamilyTab({ patientId, readOnly }: { patientId: string; readOnly: boole
       const res = await apiGet<FamilyEntry[]>(`/medical-history/${patientId}/family`);
       return res.data ?? [];
     },
+    ...LIVE,
   });
   const [draft, setDraft] = useState<{ conditionName: string; relationSide: string; relationship: string }>({
     conditionName: '',
@@ -547,6 +556,7 @@ function AllergiesTab({ patientId, readOnly }: { patientId: string; readOnly: bo
       const res = await apiGet<any[]>(`/medical-history/${patientId}/allergies`);
       return res.data ?? [];
     },
+    ...LIVE,
   });
   const [draft, setDraft] = useState<any>({ allergyType: 'drug', severity: 'mild' });
   const add = useMutation({
