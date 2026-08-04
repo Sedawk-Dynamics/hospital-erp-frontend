@@ -2,7 +2,6 @@
 
 import { forwardRef } from 'react';
 import { resolveLogoUrl } from '@/hooks/use-branding';
-import { useHospitalBranding } from '@/hooks/use-hospital-branding';
 import type { AdmissionBillDocument } from '@/hooks/use-ip-billing';
 import { cn } from '@/lib/utils';
 
@@ -24,7 +23,9 @@ const dash = (v?: string | number | null) =>
 
 export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: AdmissionBillDocument }>(
   function AdmissionBillDocumentView({ doc }, ref) {
-    const { data: h } = useHospitalBranding();
+    // Branding rides on the document — GET /hospital-branding is admin-only, so
+    // fetching it here blanked the letterhead for doctors, nurses and front desk.
+    const h = doc.hospital;
     const accent = h?.accentColor && /^#[0-9a-fA-F]{6}$/.test(h.accentColor) ? h.accentColor : '#0f766e';
     const sh = h?.show;
     const logo = h?.showLogo && h.logoUrl ? resolveLogoUrl(h.logoUrl) : null;

@@ -192,6 +192,31 @@ export function useBillPayments(billId: string | null) {
 // Read-only and available at any time: interim while the patient is admitted,
 // final once discharged, and reprintable forever afterwards.
 
+/** The subset of the hospital branding the printed bill renders. */
+export interface HospitalBrandingLike {
+  name: string;
+  tagline: string | null;
+  logoUrl: string | null;
+  showLogo: boolean;
+  headerStyle: 'centered' | 'left';
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  state: string | null;
+  pincode: string | null;
+  country: string | null;
+  phone: string | null;
+  altPhone: string | null;
+  email: string | null;
+  website: string | null;
+  registrationNo: string | null;
+  gstin: string | null;
+  accreditation: string | null;
+  footerText: string | null;
+  accentColor: string;
+  show: Record<string, boolean>;
+}
+
 export interface BillDocumentLine {
   description: string;
   category: string;
@@ -203,6 +228,12 @@ export interface BillDocumentLine {
 }
 
 export interface AdmissionBillDocument {
+  /**
+   * Letterhead, served WITH the document. GET /hospital-branding is admin-only,
+   * so fetching it client-side left every doctor / nurse / front-desk user with
+   * a blank letterhead on the printed bill.
+   */
+  hospital: HospitalBrandingLike | null;
   admissionId: string;
   admissionType: 'ip' | 'emergency' | 'daycare';
   admissionTypeLabel: string;
