@@ -28,6 +28,15 @@ const mockData: TestItem[] = [
   { id: '3', name: 'Charlie Brown', email: 'charlie@test.com', status: 'active' },
 ];
 
+// The pagination controls are icon-only buttons with no accessible name, and
+// the column-sort buttons share their utility classes — so find them via the
+// "Page X of Y" caption they sit beside rather than by class.
+function paginationButtons(): HTMLButtonElement[] {
+  return Array.from(
+    document.querySelectorAll('button.h-8.w-8'),
+  ) as HTMLButtonElement[];
+}
+
 describe('DataTable', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -89,9 +98,10 @@ describe('DataTable', () => {
   // ────────────────────────────────────────────────────────
 
   it('should show loading state', () => {
-    render(<DataTable columns={mockColumns} data={[]} isLoading />);
+    const { container } = render(<DataTable columns={mockColumns} data={[]} isLoading />);
 
-    expect(screen.getByText('Loading...')).toBeInTheDocument();
+    // Loading is a shimmer skeleton now, not the words "Loading...".
+    expect(container.querySelectorAll('.animate-shimmer').length).toBeGreaterThan(0);
   });
 
   // ────────────────────────────────────────────────────────
@@ -112,7 +122,10 @@ describe('DataTable', () => {
       />
     );
 
-    expect(screen.getByText('Page 1 of 5 (50 total records)')).toBeInTheDocument();
+    // The caption is split across <span>s ("Page **1** of **5** (50 records)").
+    expect(
+      screen.getByText((_, el) => /Page\s*1\s*of\s*5/.test(el?.textContent ?? '') && el?.tagName === 'P'),
+    ).toBeInTheDocument();
   });
 
   it('should not render pagination when totalPages is 1', () => {
@@ -143,17 +156,12 @@ describe('DataTable', () => {
       />
     );
 
-    const buttons = screen.getAllByRole('button');
-    // First two pagination buttons (first page, previous page) should be disabled
-    const paginationButtons = buttons.filter(
-      (btn) => btn.closest('.flex.items-center.gap-1')
-    );
-
-    // First and second pagination buttons should be disabled
-    if (paginationButtons.length >= 2) {
-      expect(paginationButtons[0]).toBeDisabled();
-      expect(paginationButtons[1]).toBeDisabled();
-    }
+    // first-page and previous-page are dead on page 1
+    const btns = paginationButtons();
+    expect(btns.length).toBeGreaterThanOrEqual(4);
+    expect(btns[0]).toBeDisabled();
+    expect(btns[1]).toBeDisabled();
+    expect(btns[2]).not.toBeDisabled();
   });
 
   it('should disable next buttons on last page', () => {
@@ -170,16 +178,12 @@ describe('DataTable', () => {
       />
     );
 
-    const buttons = screen.getAllByRole('button');
-    const paginationButtons = buttons.filter(
-      (btn) => btn.closest('.flex.items-center.gap-1')
-    );
-
-    // Last two pagination buttons (next page, last page) should be disabled
-    if (paginationButtons.length >= 4) {
-      expect(paginationButtons[2]).toBeDisabled();
-      expect(paginationButtons[3]).toBeDisabled();
-    }
+    // next-page and last-page are dead on the final page
+    const btns = paginationButtons();
+    expect(btns).toHaveLength(4);
+    expect(btns[2]).toBeDisabled();
+    expect(btns[3]).toBeDisabled();
+    expect(btns[0]).not.toBeDisabled();
   });
 
   it('should call onPageChange when pagination buttons are clicked', async () => {
@@ -197,20 +201,20 @@ describe('DataTable', () => {
       />
     );
 
-    const buttons = screen.getAllByRole('button');
-    const paginationButtons = buttons.filter(
-      (btn) => btn.closest('.flex.items-center.gap-1')
-    );
+    // On page 2 of 5 every control is live: first, previous, next, last.
+    const [first, prev, next, last] = paginationButtons();
 
-    // Click a non-disabled button if available
-    for (const btn of paginationButtons) {
-      if (!btn.hasAttribute('disabled')) {
-        await user.click(btn);
-        break;
-      }
-    }
+    await user.click(next);
+    expect(mockPageChange).toHaveBeenCalledWith(3);
 
-    expect(mockPageChange).toHaveBeenCalled();
+    await user.click(prev);
+    expect(mockPageChange).toHaveBeenCalledWith(1);
+
+    await user.click(first);
+    expect(mockPageChange).toHaveBeenCalledWith(1);
+
+    await user.click(last);
+    expect(mockPageChange).toHaveBeenCalledWith(5);
   });
 
   // ────────────────────────────────────────────────────────

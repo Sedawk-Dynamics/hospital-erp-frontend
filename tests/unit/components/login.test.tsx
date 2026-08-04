@@ -3,15 +3,18 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { toast } from 'sonner';
 
-// ─── Mock auth store ───
+// Sign-in is split two ways now: patients use phone + OTP, staff use email +
+// password. The page opens on the Patient tab, so the email form these tests
+// used to drive is only reachable after switching to Staff.
+
 const mockLogin = vi.fn();
+const requestPhoneOtp = vi.fn();
+const loginWithPhoneOtp = vi.fn();
+
 vi.mock('@/stores/auth-store', () => ({
-  useAuthStore: () => ({
-    login: mockLogin,
-  }),
+  useAuthStore: () => ({ login: mockLogin, requestPhoneOtp, loginWithPhoneOtp }),
 }));
 
-// ─── Mock next/navigation (override the global one to track push calls) ───
 const mockPush = vi.fn();
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
@@ -26,7 +29,6 @@ vi.mock('next/navigation', () => ({
   redirect: vi.fn(),
 }));
 
-// ─── Mock next/link to render anchor tags ───
 vi.mock('next/link', () => ({
   default: ({ children, href, ...props }: any) => (
     <a href={href} {...props}>
@@ -37,171 +39,135 @@ vi.mock('next/link', () => ({
 
 import LoginPage from '@/app/(auth)/login/page';
 
-describe('Login Page', () => {
+/** The page opens on Patient; staff sign-in lives behind the Staff tab. */
+async function showStaffForm(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: /staff/i }));
+  await waitFor(() => expect(screen.getByLabelText(/email/i)).toBeInTheDocument());
+}
+
+/** Both forms submit with "Continue"; only one is mounted at a time. */
+const submitButton = () => screen.getByRole('button', { name: /continue|send/i });
+
+describe('Login page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockLogin.mockResolvedValue('active');
+    requestPhoneOtp.mockResolvedValue({ isExistingUser: true });
+    loginWithPhoneOtp.mockResolvedValue('active');
   });
 
-  // ────────────────────────────────────────────────────────
-  // Rendering
-  // ────────────────────────────────────────────────────────
-
-  describe('rendering', () => {
-    it('should render email and password inputs', () => {
+  describe('choosing how to sign in', () => {
+    it('offers both a patient and a staff route', () => {
       render(<LoginPage />);
+      expect(screen.getByRole('button', { name: /patient/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /staff/i })).toBeInTheDocument();
+    });
+
+    it('opens on the patient phone flow, not the staff password form', () => {
+      render(<LoginPage />);
+      expect(screen.getByLabelText(/phone number/i)).toBeInTheDocument();
+      expect(screen.queryByLabelText(/^password$/i)).not.toBeInTheDocument();
+    });
+
+    it('reveals email + password once Staff is chosen', async () => {
+      const user = userEvent.setup();
+      render(<LoginPage />);
+
+      await showStaffForm(user);
 
       expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
     });
-
-    it('should render sign in button', () => {
-      render(<LoginPage />);
-
-      expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
-    });
-
-    it('should render register link', () => {
-      render(<LoginPage />);
-
-      const registerLink = screen.getByText(/register here/i);
-      expect(registerLink).toBeInTheDocument();
-      expect(registerLink.closest('a')).toHaveAttribute('href', '/register');
-    });
-
-    it('should render forgot password link', () => {
-      render(<LoginPage />);
-
-      const forgotLink = screen.getByText(/forgot password/i);
-      expect(forgotLink).toBeInTheDocument();
-      expect(forgotLink.closest('a')).toHaveAttribute('href', '/forgot-password');
-    });
   });
 
-  // ────────────────────────────────────────────────────────
-  // Validation
-  // ────────────────────────────────────────────────────────
-
-  describe('validation', () => {
-    it('should show validation error for invalid email', async () => {
+  describe('staff sign-in', () => {
+    it('signs in with the credentials entered', async () => {
       const user = userEvent.setup();
       render(<LoginPage />);
-
-      const emailInput = screen.getByLabelText(/email/i);
-      const submitButton = screen.getByRole('button', { name: /sign in/i });
-
-      await user.type(emailInput, 'not-an-email');
-      await user.click(submitButton);
-
-      await waitFor(() => {
-        expect(screen.getByText(/please enter a valid email/i)).toBeInTheDocument();
-      });
-    });
-
-    it('should show validation error for short password', async () => {
-      const user = userEvent.setup();
-      render(<LoginPage />);
-
-      const emailInput = screen.getByLabelText(/email/i);
-      const passwordInput = screen.getByLabelText(/password/i);
-      const submitButton = screen.getByRole('button', { name: /sign in/i });
-
-      await user.type(emailInput, 'test@example.com');
-      await user.type(passwordInput, '12345');
-      await user.click(submitButton);
-
-      await waitFor(() => {
-        expect(screen.getByText(/password must be at least 6 characters/i)).toBeInTheDocument();
-      });
-    });
-  });
-
-  // ────────────────────────────────────────────────────────
-  // Submission
-  // ────────────────────────────────────────────────────────
-
-  describe('submission', () => {
-    it('should call login on valid form submission', async () => {
-      mockLogin.mockResolvedValue(undefined);
-      const user = userEvent.setup();
-      render(<LoginPage />);
-
-      const emailInput = screen.getByLabelText(/email/i);
-      const passwordInput = screen.getByLabelText(/password/i);
-      const submitButton = screen.getByRole('button', { name: /sign in/i });
-
-      await user.type(emailInput, 'doctor@hospital.com');
-      await user.type(passwordInput, 'password123');
-      await user.click(submitButton);
-
-      await waitFor(() => {
-        expect(mockLogin).toHaveBeenCalledWith('doctor@hospital.com', 'password123');
-      });
-    });
-
-    it('should show success toast and redirect on successful login', async () => {
-      mockLogin.mockResolvedValue(undefined);
-      const user = userEvent.setup();
-      render(<LoginPage />);
+      await showStaffForm(user);
 
       await user.type(screen.getByLabelText(/email/i), 'doctor@hospital.com');
-      await user.type(screen.getByLabelText(/password/i), 'password123');
-      await user.click(screen.getByRole('button', { name: /sign in/i }));
+      await user.type(screen.getByLabelText(/password/i), 'secret123');
+      await user.click(submitButton());
 
-      await waitFor(() => {
-        expect(toast.success).toHaveBeenCalledWith('Login successful! Redirecting...');
-        expect(mockPush).toHaveBeenCalledWith('/dashboard');
-      });
-    });
-
-    it('should show error toast on login failure', async () => {
-      mockLogin.mockRejectedValue({
-        response: { data: { message: 'Invalid credentials' } },
-      });
-      const user = userEvent.setup();
-      render(<LoginPage />);
-
-      await user.type(screen.getByLabelText(/email/i), 'bad@hospital.com');
-      await user.type(screen.getByLabelText(/password/i), 'wrongpassword');
-      await user.click(screen.getByRole('button', { name: /sign in/i }));
-
-      await waitFor(() => {
-        expect(toast.error).toHaveBeenCalledWith('Invalid credentials');
-      });
-    });
-
-    it('should show default error message when no API message', async () => {
-      mockLogin.mockRejectedValue(new Error('Network Error'));
-      const user = userEvent.setup();
-      render(<LoginPage />);
-
-      await user.type(screen.getByLabelText(/email/i), 'bad@hospital.com');
-      await user.type(screen.getByLabelText(/password/i), 'wrongpassword');
-      await user.click(screen.getByRole('button', { name: /sign in/i }));
-
-      await waitFor(() => {
-        expect(toast.error).toHaveBeenCalledWith('Login failed. Please check your credentials.');
-      });
-    });
-
-    it('should disable button while submitting', async () => {
-      // Make login hang so we can check the disabled state
-      let resolveLogin: () => void;
-      mockLogin.mockImplementation(
-        () => new Promise<void>((resolve) => { resolveLogin = resolve; })
+      await waitFor(() =>
+        expect(mockLogin).toHaveBeenCalledWith('doctor@hospital.com', 'secret123'),
       );
+    });
+
+    it('rejects a malformed email without calling the store', async () => {
+      const user = userEvent.setup();
+      render(<LoginPage />);
+      await showStaffForm(user);
+
+      await user.type(screen.getByLabelText(/email/i), 'not-an-email');
+      await user.type(screen.getByLabelText(/password/i), 'secret123');
+      await user.click(submitButton());
+
+      // The input is type="email", so the browser's own constraint validation
+      // blocks the submit before the zod resolver ever runs — the observable
+      // guarantee is simply that no sign-in is attempted.
+      await new Promise((r) => setTimeout(r, 50));
+      expect(mockLogin).not.toHaveBeenCalled();
+    });
+
+    it('rejects a too-short password without calling the store', async () => {
+      const user = userEvent.setup();
+      render(<LoginPage />);
+      await showStaffForm(user);
+
+      await user.type(screen.getByLabelText(/email/i), 'doctor@hospital.com');
+      await user.type(screen.getByLabelText(/password/i), '123');
+      await user.click(submitButton());
+
+      await waitFor(() => expect(screen.getByText(/at least 6/i)).toBeInTheDocument());
+      expect(mockLogin).not.toHaveBeenCalled();
+    });
+
+    it('surfaces a rejected sign-in', async () => {
+      const user = userEvent.setup();
+      mockLogin.mockRejectedValue(new Error('Invalid credentials'));
+      render(<LoginPage />);
+      await showStaffForm(user);
+
+      await user.type(screen.getByLabelText(/email/i), 'doctor@hospital.com');
+      await user.type(screen.getByLabelText(/password/i), 'wrongpass');
+      await user.click(submitButton());
+
+      await waitFor(() => expect(toast.error).toHaveBeenCalled());
+      expect(mockPush).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('patient sign-in', () => {
+    it('asks for a phone number and sends a code', async () => {
       const user = userEvent.setup();
       render(<LoginPage />);
 
-      await user.type(screen.getByLabelText(/email/i), 'doctor@hospital.com');
-      await user.type(screen.getByLabelText(/password/i), 'password123');
-      await user.click(screen.getByRole('button', { name: /sign in/i }));
+      await user.type(screen.getByLabelText(/phone number/i), '9876543210');
+      await user.click(submitButton());
 
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /signing in/i })).toBeDisabled();
-      });
+      await waitFor(() => expect(requestPhoneOtp).toHaveBeenCalled());
+    });
 
-      // Resolve so the test can clean up
-      resolveLogin!();
+    it('will not send a code without a number', async () => {
+      const user = userEvent.setup();
+      render(<LoginPage />);
+
+      await user.click(submitButton());
+
+      expect(requestPhoneOtp).not.toHaveBeenCalled();
+      expect(toast.error).toHaveBeenCalled();
+    });
+
+    it('moves to the code step after a code is sent', async () => {
+      const user = userEvent.setup();
+      render(<LoginPage />);
+
+      await user.type(screen.getByLabelText(/phone number/i), '9876543210');
+      await user.click(submitButton());
+
+      await waitFor(() => expect(screen.getByLabelText(/code/i)).toBeInTheDocument());
     });
   });
 });

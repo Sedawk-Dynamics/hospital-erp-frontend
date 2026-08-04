@@ -76,7 +76,7 @@ describe('Middleware', () => {
 
       expect(mockRedirect).toHaveBeenCalled();
       const redirectUrl = mockRedirect.mock.calls[0][0];
-      expect(redirectUrl.pathname).toBe('/dashboard');
+      expect(redirectUrl.pathname).toBe('/select-hospital');
     });
 
     it('should redirect to /dashboard when accessing /register with token', () => {
@@ -85,7 +85,7 @@ describe('Middleware', () => {
 
       expect(mockRedirect).toHaveBeenCalled();
       const redirectUrl = mockRedirect.mock.calls[0][0];
-      expect(redirectUrl.pathname).toBe('/dashboard');
+      expect(redirectUrl.pathname).toBe('/select-hospital');
     });
 
     it('should redirect to /dashboard when accessing /forgot-password with token', () => {
@@ -94,7 +94,7 @@ describe('Middleware', () => {
 
       expect(mockRedirect).toHaveBeenCalled();
       const redirectUrl = mockRedirect.mock.calls[0][0];
-      expect(redirectUrl.pathname).toBe('/dashboard');
+      expect(redirectUrl.pathname).toBe('/select-hospital');
     });
   });
 

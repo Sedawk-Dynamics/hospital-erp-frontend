@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render as rtlRender, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
 
 // ─── Mock user data ───
@@ -71,6 +72,15 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
 }));
 
 import { Header } from '@/components/layout/header';
+
+// The header queries the notification bell, so it needs a QueryClient. Retries
+// are off so a failed fetch surfaces immediately instead of stalling the test.
+function render(ui: React.ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
+  return rtlRender(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 
 describe('Header', () => {
   beforeEach(() => {

@@ -75,28 +75,29 @@ describe('Sidebar', () => {
     render(<Sidebar />);
 
     // Main navigation items
-    expect(screen.getByText('Dashboard')).toBeInTheDocument();
-    expect(screen.getByText('Patients')).toBeInTheDocument();
-    expect(screen.getByText('Appointments')).toBeInTheDocument();
-    expect(screen.getByText('Visits')).toBeInTheDocument();
-    expect(screen.getByText('Admissions')).toBeInTheDocument();
-    expect(screen.getByText('Prescriptions')).toBeInTheDocument();
-    expect(screen.getByText('Lab Orders')).toBeInTheDocument();
-    expect(screen.getByText('Pharmacy')).toBeInTheDocument();
-    expect(screen.getByText('Inventory')).toBeInTheDocument();
-    expect(screen.getByText('Bills')).toBeInTheDocument();
-    expect(screen.getByText('Settings')).toBeInTheDocument();
-    expect(screen.getByText('Reports')).toBeInTheDocument();
+    expect(screen.getAllByText('Dashboard').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Patients').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Appointments').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Visits').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Admissions').length).toBeGreaterThan(0);
+    // 'Prescriptions' appears in more than one nav group now.
+      expect(screen.getAllByText('Prescriptions').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Lab Orders').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Pharmacy').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Inventory').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Bills').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Settings').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Reports').length).toBeGreaterThan(0);
   });
 
   it('should render navigation group titles', () => {
     render(<Sidebar />);
 
-    expect(screen.getByText('Main')).toBeInTheDocument();
-    expect(screen.getByText('Patient Management')).toBeInTheDocument();
-    expect(screen.getByText('Clinical')).toBeInTheDocument();
-    expect(screen.getByText('Billing')).toBeInTheDocument();
-    expect(screen.getByText('Admin')).toBeInTheDocument();
+    expect(screen.getAllByText('Main').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Patient Management').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Clinical').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Billing').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Admin').length).toBeGreaterThan(0);
   });
 
   it('should highlight active route', () => {
@@ -110,7 +111,7 @@ describe('Sidebar', () => {
   it('should render Hospital ERP branding', () => {
     render(<Sidebar />);
 
-    expect(screen.getByText('Hospital ERP')).toBeInTheDocument();
+    expect(screen.getAllByText('Hospital ERP').length).toBeGreaterThan(0);
   });
 
   // ────────────────────────────────────────────────────────

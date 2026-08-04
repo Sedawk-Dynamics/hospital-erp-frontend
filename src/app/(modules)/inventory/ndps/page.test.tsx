@@ -2,8 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-vi.mock('@/components/pharmacy/pharmacy-admin-guard', () => ({
-  PharmacyAdminGuard: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+// The page is wrapped in NdpsGuard (it was PharmacyAdminGuard once). Leaving
+// the real guard in place renders nothing, because the test user holds no
+// narcotics permission — which made every assertion here fail on an empty DOM.
+vi.mock('@/components/pharmacy/ndps-guard', () => ({
+  NdpsGuard: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
 const stub = { data: undefined, isLoading: false };
