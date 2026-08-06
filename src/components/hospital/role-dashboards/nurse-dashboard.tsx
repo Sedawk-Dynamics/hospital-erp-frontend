@@ -24,12 +24,19 @@ interface AssignedPatient {
 
 interface Handover {
   id: string;
-  fromNurse: string;
-  toNurse: string;
-  patientCount: number;
-  status: 'pending' | 'acknowledged';
+  // These are RELATIONS on ShiftHandoverNote, not strings. Typing them as
+  // strings and rendering {h.fromNurse} threw "Objects are not valid as a React
+  // child" the moment this table had a row.
+  fromNurse?: { id: string; firstName: string; lastName?: string | null } | null;
+  toNurse?: { id: string; firstName: string; lastName?: string | null } | null;
+  ward?: { id: string; name: string } | null;
+  shiftType: string;
+  status: 'submitted' | 'acknowledged';
   createdAt: string;
 }
+
+const nurseName = (n?: { firstName: string; lastName?: string | null } | null, fallback = '—') =>
+  n ? `${n.firstName} ${n.lastName ?? ''}`.trim() : fallback;
 
 export function NurseDashboard() {
   const [page, setPage] = useState(1);
@@ -47,8 +54,11 @@ export function NurseDashboard() {
   const { data: handovers, isLoading: handoversLoading } = useQuery({
     queryKey: ['nurse', 'handovers'],
     queryFn: async () => {
+      // `status` is not in getHandoversQuerySchema, and validate() REPLACES
+      // req.query with the parsed object — so this filter was silently dropped
+      // and the "pending handovers" table listed every handover in the tenant.
       const response = await apiGet<Handover[]>('/communication/handovers', {
-        params: { status: 'pending', limit: 10 },
+        params: { isAcknowledged: 'false', limit: 10 },
       });
       return response.data;
     },
@@ -228,7 +238,7 @@ export function NurseDashboard() {
               <tr className="text-on-surface-variant font-label text-[10px] uppercase tracking-widest border-b border-surface-container">
                 <th className="px-4 pb-4 pt-5 text-left font-semibold">From</th>
                 <th className="px-4 pb-4 pt-5 text-left font-semibold">To</th>
-                <th className="px-4 pb-4 pt-5 text-center font-semibold">Patients</th>
+                <th className="px-4 pb-4 pt-5 text-left font-semibold">Ward</th>
                 <th className="px-4 pb-4 pt-5 text-left font-semibold">Time</th>
                 <th className="px-4 pb-4 pt-5 text-left font-semibold">Status</th>
               </tr>
@@ -249,9 +259,9 @@ export function NurseDashboard() {
               ) : (
                 pendingHandovers.map((h) => (
                   <tr key={h.id} className="group hover:bg-surface-container-low transition-colors">
-                    <td className="px-4 py-3 font-label text-sm font-bold">{h.fromNurse}</td>
-                    <td className="px-4 py-3 font-label text-sm">{h.toNurse}</td>
-                    <td className="px-4 py-3 text-center font-label text-sm font-bold">{h.patientCount}</td>
+                    <td className="px-4 py-3 font-label text-sm font-bold">{nurseName(h.fromNurse)}</td>
+                    <td className="px-4 py-3 font-label text-sm">{nurseName(h.toNurse, 'Anyone on next shift')}</td>
+                    <td className="px-4 py-3 font-label text-sm">{h.ward?.name ?? '—'}</td>
                     <td className="px-4 py-3 font-label text-[10px] text-on-surface-variant">
                       {formatDateTime(h.createdAt)}
                     </td>

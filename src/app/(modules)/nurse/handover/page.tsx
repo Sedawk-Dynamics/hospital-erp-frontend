@@ -411,8 +411,9 @@ function CreateHandoverForm({ currentShift }: { currentShift: ShiftType }) {
 
 // ── Handover History ─────────────────────────────────────────
 
+// Only two states exist — a note is created already submitted (there is no
+// draft) and the one transition is acknowledgement.
 const STATUS_BADGE: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-600',
   submitted: 'bg-blue-100 text-blue-700',
   acknowledged: 'bg-emerald-100 text-emerald-700',
 };
@@ -481,17 +482,20 @@ function HandoverRow({
 }) {
   const cfg = SHIFT_CONFIG[handover.shiftType as ShiftType] ?? SHIFT_CONFIG.morning;
   const Icon = cfg.icon;
-  const fromName = handover.fromUser
-    ? `${handover.fromUser.firstName} ${handover.fromUser.lastName}`
+  const fromName = handover.fromNurse
+    ? `${handover.fromNurse.firstName} ${handover.fromNurse.lastName ?? ''}`.trim()
     : 'Unknown';
-  const toName = handover.toUser
-    ? `${handover.toUser.firstName} ${handover.toUser.lastName}`
-    : 'Anyone';
-  const canAck =
-    handover.status === 'submitted' &&
-    currentUserId &&
-    handover.toUserId === currentUserId &&
-    handover.toUserId !== handover.fromUserId;
+  const toName = handover.toNurse
+    ? `${handover.toNurse.firstName} ${handover.toNurse.lastName ?? ''}`.trim()
+    : 'Anyone on next shift';
+  // A note addressed to "anyone on next shift" (toNurseId null) has to be
+  // claimable, or the most common case can never be acknowledged at all — the
+  // old rule required toNurseId === me, which is false for everyone when it is
+  // null. The server does the same thing, stamping the acknowledger as the
+  // recipient. You still cannot acknowledge your own note.
+  const isMine = currentUserId === handover.fromNurseId;
+  const addressedToMe = !handover.toNurseId || handover.toNurseId === currentUserId;
+  const canAck = handover.status === 'submitted' && !!currentUserId && addressedToMe && !isMine;
 
   return (
     <div className="rounded-xl border bg-card p-3">
@@ -513,14 +517,14 @@ function HandoverRow({
         <span
           className={cn(
             'rounded-full px-2 py-0.5 text-[10px] font-bold capitalize',
-            STATUS_BADGE[handover.status] ?? STATUS_BADGE.draft,
+            STATUS_BADGE[handover.status] ?? STATUS_BADGE.submitted,
           )}
         >
           {handover.status}
         </span>
       </div>
 
-      <p className="whitespace-pre-wrap text-sm text-foreground">{handover.summary}</p>
+      <p className="whitespace-pre-wrap text-sm text-foreground">{handover.content}</p>
 
       {canAck ? (
         <div className="mt-3 flex justify-end">

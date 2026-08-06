@@ -396,7 +396,9 @@ function HandoverStatusCard({
                 <Clock className="h-3 w-3 text-amber-600 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="truncate font-medium text-foreground">
-                    {h.fromUser?.firstName ?? 'Unknown'} {h.fromUser?.lastName ?? ''}
+                    {h.fromNurse
+                      ? `${h.fromNurse.firstName} ${h.fromNurse.lastName ?? ''}`.trim()
+                      : 'Unknown'}
                   </p>
                   <p className="text-[9px] text-muted-foreground truncate">
                     {h.ward?.name ?? 'All wards'} · {h.shiftType}

@@ -147,23 +147,37 @@ export interface MedicationSchedule {
   }[];
 }
 
+/**
+ * Mirrors the `ShiftHandoverNote` row the API actually returns.
+ *
+ * This interface used to invent its own names — fromUser / toUser / summary /
+ * a three-state `status` — none of which the backend has ever sent. Because
+ * `apiGet<T>` casts the JSON rather than validating it, TypeScript happily
+ * agreed and every handover rendered as "Unknown → Anyone" with an empty body
+ * and no Acknowledge button. Keep these names in step with the Prisma model.
+ *
+ * `status` is the one derived field: there is no status column (only
+ * `isAcknowledged`), so the server computes it so all clients agree.
+ */
 export interface ShiftHandover {
   id: string;
-  fromUserId: string;
-  fromUser?: { firstName: string; lastName: string };
-  toUserId?: string;
-  toUser?: { firstName: string; lastName: string };
+  fromNurseId: string;
+  fromNurse?: { id: string; firstName: string; lastName?: string | null };
+  toNurseId?: string | null;
+  toNurse?: { id: string; firstName: string; lastName?: string | null } | null;
   wardId?: string;
   ward?: { id: string; name: string };
   shiftType: 'morning' | 'afternoon' | 'night';
-  summary: string;
-  patientNotes?: { patientId: string; patientName: string; note: string; priority?: string }[];
-  outstandingTasks?: string[];
-  specialInstructions?: string;
-  status: 'draft' | 'submitted' | 'acknowledged';
-  acknowledgedAt?: string;
+  shiftDate: string;
+  /** The handover narrative itself. */
+  content: string;
+  patientStatuses?: unknown;
+  outstandingTasks?: unknown;
+  isAcknowledged: boolean;
+  /** Derived server-side from isAcknowledged — there is no draft state. */
+  status: 'submitted' | 'acknowledged';
+  acknowledgedAt?: string | null;
   createdAt: string;
-  updatedAt: string;
 }
 
 export interface DutyRoster {
