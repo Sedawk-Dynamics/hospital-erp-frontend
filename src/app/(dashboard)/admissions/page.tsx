@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Plus, Filter, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDate } from '@/lib/date-utils';
+import { isActiveAdmissionStatus } from '@/components/shared/admission-status-badge';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -151,7 +152,9 @@ export default function AdmissionsPage() {
           >
             View
           </Button>
-          {admission.status === 'admitted' && (
+          {/* Still in a bed — includes a patient signed off and waiting on the
+              counter, who is exactly the one this button is for. */}
+          {isActiveAdmissionStatus(admission.status) && (
             <Button
               variant="ghost"
               size="sm"

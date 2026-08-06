@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatDate, toInputDateStr } from '@/lib/date-utils';
 import { Search, CalendarIcon, Eye, FileText, FlaskConical, MoreVertical } from 'lucide-react';
@@ -36,13 +36,16 @@ import { IpPrescriptionDialog } from '@/components/doctor/ip-prescription-dialog
 import { AdmissionTypeBadge, ADMISSION_TYPE_OPTIONS } from '@/components/shared/admission-type-badge';
 import { AdmissionStatusBadge } from '@/components/shared/admission-status-badge';
 
-// "Ready" is a slice of `admitted`, not a separate server status — the patient
-// is still in the bed until the counter clears the bill. Splitting the tab keeps
-// signed-off patients from reading as ordinary in-patients.
+// `ready_to_discharge` is a real status: the patient is still in the bed but the
+// doctor has signed off, so "In IP" means still being treated and this tab means
+// waiting on the counter.
 const ipStatItems = [
   { key: 'all', label: 'All', color: 'text-on-surface' },
+  // "In IP" is everyone in a bed — a signed-off patient is still one of them.
+  // "Ready to Discharge" narrows to the subset waiting on the counter; the row
+  // badge tells them apart inside the wider list.
   { key: 'admitted', label: 'In IP', color: 'text-primary-container' },
-  { key: 'ready', label: 'Ready to Discharge', color: 'text-secondary' },
+  { key: 'ready_to_discharge', label: 'Ready to Discharge', color: 'text-secondary' },
   { key: 'discharged', label: 'Discharge', color: 'text-secondary' },
   { key: 'transferred', label: 'Transferred', color: 'text-primary' },
   { key: 'absconded', label: 'Absconded', color: 'text-error' },
@@ -67,11 +70,8 @@ export default function DoctorIPHomePage() {
   const [selectedAdmissionId, setSelectedAdmissionId] = useState('');
   const [noteContent, setNoteContent] = useState('');
 
-  // 'ready' is a client-side slice of `admitted` (see ipStatItems), so the
-  // server is still asked for admitted rows and the split happens below.
-  const isReadyView = activeFilter === 'ready';
-  const statusFilter =
-    activeFilter === 'all' ? undefined : isReadyView ? 'admitted' : activeFilter;
+  const isReadyView = activeFilter === 'ready_to_discharge';
+  const statusFilter = activeFilter === 'all' ? undefined : activeFilter;
 
   const { data: admissionsData, isLoading } = useDoctorAdmissions({
     page,
@@ -91,26 +91,17 @@ export default function DoctorIPHomePage() {
 
   const createNoteMutation = useCreateProgressNote();
 
-  const allRows = useMemo(() => admissionsData?.data ?? [], [admissionsData]);
+  // The server filters by status now, so the rows arrive already scoped.
+  const admissions = admissionsData?.data ?? [];
   const meta = admissionsData?.meta;
 
-  // A signed-off patient is still `admitted` on the server; split the two views
-  // here so "In IP" means "still being treated" and "Ready to Discharge" means
-  // "waiting on the counter".
-  const admissions = useMemo(() => {
-    if (isReadyView) return allRows.filter((a) => a.dischargeReady);
-    if (activeFilter === 'admitted') return allRows.filter((a) => !a.dischargeReady);
-    return allRows;
-  }, [allRows, isReadyView, activeFilter]);
-
-  // Compute stats from current data
   const stats = {
-    all: meta?.total ?? allRows.length,
-    admitted: allRows.filter((a) => a.status === 'admitted' && !a.dischargeReady).length,
-    ready: allRows.filter((a) => a.dischargeReady).length,
-    discharged: allRows.filter((a) => a.status === 'discharged').length,
-    transferred: allRows.filter((a) => a.status === 'transferred').length,
-    absconded: allRows.filter((a) => a.status === 'absconded').length,
+    all: meta?.total ?? admissions.length,
+    admitted: admissions.filter((a) => a.status === 'admitted').length,
+    ready_to_discharge: admissions.filter((a) => a.status === 'ready_to_discharge').length,
+    discharged: admissions.filter((a) => a.status === 'discharged').length,
+    transferred: admissions.filter((a) => a.status === 'transferred').length,
+    absconded: admissions.filter((a) => a.status === 'absconded').length,
   };
 
   const handleAddNote = useCallback((patientId: string, admissionId: string) => {

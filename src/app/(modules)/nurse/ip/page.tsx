@@ -10,6 +10,10 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
+  AdmissionStatusBadge,
+  isActiveAdmissionStatus,
+} from '@/components/shared/admission-status-badge';
+import {
   BedDouble,
   ClipboardList,
   Eye,
@@ -22,7 +26,6 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { useNurseAdmissions, type NurseAdmission } from '@/hooks/use-nurse';
 import { formatDate } from '@/lib/date-utils';
 import { AdmissionTypeBadge, ADMISSION_TYPE_OPTIONS } from '@/components/shared/admission-type-badge';
@@ -60,9 +63,11 @@ export default function NurseIPListPage() {
   }, [admissions, search]);
 
   const counts = useMemo(() => {
+    // "In IP" counts everyone still in a bed — a patient the doctor has signed
+    // off is still on the ward until the counter clears their bill.
     const c = { all: admissions.length, admitted: 0, discharged: 0 };
     for (const a of admissions) {
-      if (a.status === 'admitted') c.admitted++;
+      if (isActiveAdmissionStatus(a.status)) c.admitted++;
       else if (a.status === 'discharged') c.discharged++;
     }
     return c;
@@ -192,17 +197,7 @@ export default function NurseIPListPage() {
                     </td>
                     <td className="px-4 py-3 text-xs">{formatDate(a.admissionDate)}</td>
                     <td className="px-4 py-3">
-                      <Badge
-                        variant="outline"
-                        className={`capitalize text-[10px] ${
-                          a.status === 'admitted' ? 'bg-blue-100 text-blue-700' :
-                          a.status === 'discharged' ? 'bg-green-100 text-green-700' :
-                          a.status === 'transferred' ? 'bg-cyan-100 text-cyan-700' :
-                          'bg-red-100 text-red-700'
-                        }`}
-                      >
-                        {a.status}
-                      </Badge>
+                      <AdmissionStatusBadge status={a.status} />
                     </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1">

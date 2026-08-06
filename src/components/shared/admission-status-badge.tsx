@@ -3,17 +3,23 @@ import { cn } from '@/lib/utils';
 /**
  * The admission's status as the ward and the counter should read it.
  *
- * "Ready to Discharge" is NOT an AdmissionStatus — it is derived server-side
- * from a published discharge summary on a still-admitted patient. The DB status
- * stays `admitted` on purpose: the patient is still in the bed, eMAR is still
- * administering, pharmacy / indents / OT / NDPS still resolve their charges
- * through `status: 'admitted'`, and room charges still accrue. Only the label
- * changes, so nobody reads them as a plain in-patient and forgets the bill.
+ * `ready_to_discharge` is a real AdmissionStatus: the doctor has published the
+ * discharge summary and the patient is clinically cleared, but they are STILL
+ * IN THE BED until Front Desk / Billing clears the final bill. It is an ACTIVE
+ * admission everywhere in the backend (see shared/admission-status.ts) — eMAR
+ * still administers, the bed still reads occupied, room charges still accrue.
+ * Only `discharged` ends the stay.
  */
-export type AdmissionStatusLike = 'admitted' | 'discharged' | 'transferred' | 'absconded' | string;
+export type AdmissionStatusLike =
+  | 'admitted'
+  | 'ready_to_discharge'
+  | 'discharged'
+  | 'transferred'
+  | 'absconded'
+  | string;
 
 const STATUS_STYLES: Record<string, string> = {
-  ready: 'bg-amber-100 text-amber-800',
+  ready_to_discharge: 'bg-amber-100 text-amber-800',
   admitted: 'bg-primary/10 text-primary',
   discharged: 'bg-emerald-100 text-emerald-700',
   transferred: 'bg-blue-100 text-blue-700',
@@ -21,20 +27,30 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  ready: 'Ready to Discharge',
+  ready_to_discharge: 'Ready to Discharge',
   admitted: 'Admitted',
   discharged: 'Discharged',
   transferred: 'Transferred',
   absconded: 'Absconded',
 };
 
-/** The key a row should be bucketed under — `ready` outranks `admitted`. */
+/**
+ * The key a row is bucketed under. `dischargeReady` is still honoured so a
+ * client reading an older payload (flag only, status not yet migrated) lands on
+ * the same bucket.
+ */
 export function admissionStatusKey(
   status: AdmissionStatusLike | null | undefined,
   dischargeReady?: boolean | null,
 ): string {
-  if (dischargeReady && status === 'admitted') return 'ready';
+  if (status === 'ready_to_discharge') return 'ready_to_discharge';
+  if (dischargeReady && status === 'admitted') return 'ready_to_discharge';
   return status ?? 'admitted';
+}
+
+/** True while the patient still occupies a bed. Mirrors the backend set. */
+export function isActiveAdmissionStatus(status: AdmissionStatusLike | null | undefined): boolean {
+  return status === 'admitted' || status === 'ready_to_discharge';
 }
 
 export function admissionStatusLabel(

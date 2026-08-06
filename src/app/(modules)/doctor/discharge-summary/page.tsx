@@ -16,6 +16,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useAiStatus, useGenerateDischargeNarrative } from '@/hooks/use-ai';
 import { formatDate, toInputDateStr } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
+import { AdmissionStatusBadge } from '@/components/shared/admission-status-badge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -782,15 +783,7 @@ export default function DischargeSummaryPage() {
 
                       {/* Status */}
                       <td className="px-4 py-3">
-                        <span className={cn(
-                          'font-label text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full',
-                          admission.status === 'admitted' && 'bg-primary-container/10 text-primary-container',
-                          admission.status === 'discharged' && 'bg-primary/10 text-primary',
-                          admission.status === 'transferred' && 'bg-secondary/10 text-secondary',
-                          admission.status === 'absconded' && 'bg-error/10 text-error',
-                        )}>
-                          {admission.status.charAt(0).toUpperCase() + admission.status.slice(1)}
-                        </span>
+                        <AdmissionStatusBadge status={admission.status} />
                       </td>
 
                       {/* Action */}

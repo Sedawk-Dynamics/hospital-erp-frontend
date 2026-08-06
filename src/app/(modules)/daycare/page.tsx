@@ -92,7 +92,10 @@ export default function DayCareHomePage() {
   const admissions = (data?.data ?? []) as (Admission & Record<string, unknown>)[];
   const total = data?.meta?.total ?? 0;
 
-  const inProgressCount = admissions.filter((a) => a.status === 'in_progress' || a.status === 'admitted').length;
+  // A day-care patient signed off but still waiting on the bill is in progress.
+  const inProgressCount = admissions.filter(
+    (a) => a.status === 'in_progress' || a.status === 'admitted' || a.status === 'ready_to_discharge',
+  ).length;
   const completedCount = admissions.filter((a) => a.status === 'completed' || a.status === 'discharged').length;
   const pendingCount = admissions.filter((a) => a.status === 'pending' || a.status === 'scheduled').length;
 
