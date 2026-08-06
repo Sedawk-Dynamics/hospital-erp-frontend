@@ -44,6 +44,8 @@ export interface IpBill {
     depositAmount?: number | string | null;
     admissionDate?: string | null; dischargeDate?: string | null;
     ward?: { name: string } | null; bed?: { bedNumber: string } | null;
+    /** Care type — ip | emergency | daycare. All three share this worklist. */
+    admissionType?: 'ip' | 'emergency' | 'daycare';
     /**
      * The doctor has published the discharge summary but the patient is still
      * admitted — this row is waiting on the counter to clear the bill and

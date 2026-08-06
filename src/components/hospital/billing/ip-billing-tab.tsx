@@ -20,6 +20,11 @@ import { cn } from '@/lib/utils';
 import { useIpAdmissions, useClearAndDischarge, type IpBill } from '@/hooks/use-ip-billing';
 import { IpBillingDetailDialog } from '@/components/hospital/billing/ip-billing-detail-dialog';
 import { BillPrintDialog } from '@/components/hospital/billing/bill-print-dialog';
+import {
+  AdmissionTypeBadge,
+  ADMISSION_TYPE_LABELS,
+  normalizeAdmissionType,
+} from '@/components/shared/admission-type-badge';
 
 // IP billing section: one consolidated bill per admission, shown separately from
 // OP. Click a row to open the full IP bill (edit charges, discount, collect,
@@ -119,7 +124,7 @@ export function IpBillingTab() {
             <thead className="bg-muted/40">
               <tr className="text-left text-[10px] uppercase tracking-widest text-muted-foreground">
                 <th className="px-3 py-2">Patient</th>
-                <th className="px-3 py-2">Category</th>
+                <th className="px-3 py-2">Type / Category</th>
                 <th className="px-3 py-2">Bill</th>
                 <th className="px-3 py-2 text-right">Charges</th>
                 <th className="px-3 py-2 text-right">Deposit</th>
@@ -156,7 +161,13 @@ export function IpBillingTab() {
                       )}
                     </td>
                     <td className="px-3 py-2">
-                      <Badge className={cn('text-[10px] capitalize', CATEGORY_BADGE[cat] ?? CATEGORY_BADGE.cash)}>{cat}</Badge>
+                      {/* Two different dimensions: the CARE type (IP / Emergency
+                          / Day Care — all three run the same IP flow and share
+                          this worklist) above how the stay is SETTLED. */}
+                      <div className="flex flex-col items-start gap-1">
+                        <AdmissionTypeBadge type={b.admission?.admissionType} className="text-[10px]" />
+                        <Badge className={cn('text-[10px] capitalize', CATEGORY_BADGE[cat] ?? CATEGORY_BADGE.cash)}>{cat}</Badge>
+                      </div>
                     </td>
                     <td className="px-3 py-2">
                       <div className="font-mono text-[11px]">{b.billNumber}</div>
@@ -313,6 +324,8 @@ function ClearAndDischargeDialog({
   const outstanding = bill ? outstandingOf(bill) : 0;
   const blocked = outstanding > 0;
   const patientName = `${bill?.patient?.firstName ?? ''} ${bill?.patient?.lastName ?? ''}`.trim();
+  // IP / Emergency / Day Care all reach this dialog — name the one being closed.
+  const typeLabel = ADMISSION_TYPE_LABELS[normalizeAdmissionType(bill?.admission?.admissionType)];
 
   const close = () => {
     setReason('');
@@ -350,9 +363,10 @@ function ClearAndDischargeDialog({
             Complete Discharge
           </DialogTitle>
           <DialogDescription>
-            {patientName || 'This patient'} has a signed discharge summary
+            {patientName || 'This patient'} has a signed discharge summary for this{' '}
+            <strong>{typeLabel}</strong> stay
             {bill?.admission?.ward?.name || bill?.admission?.bed?.bedNumber
-              ? ` and is in ${[bill?.admission?.ward?.name, bill?.admission?.bed?.bedNumber].filter(Boolean).join(' · ')}`
+              ? ` in ${[bill?.admission?.ward?.name, bill?.admission?.bed?.bedNumber].filter(Boolean).join(' · ')}`
               : ''}
             . Completing the discharge closes the admission and frees the bed.
           </DialogDescription>
