@@ -32,6 +32,7 @@ import {
   useFormulary,
   type PharmacyReturn, type ReturnableDispense, type FormularyItem,
 } from '@/hooks/use-pharmacy';
+import { useSuppliers } from '@/hooks/use-inventory';
 
 const inr = (n: number | string | null | undefined) =>
   n == null ? '—' : `₹${Number(n).toFixed(2)}`;
@@ -695,17 +696,33 @@ function VendorReturnDialog({ onClose }: { onClose: () => void }) {
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [quantity, setQuantity] = useState<number>(0);
   const [reason, setReason] = useState('');
-  const [supplierId, setSupplierId] = useState('');
+  // null = "whatever vendor supplied this batch". Picking from the dropdown
+  // sets an explicit override; choosing a different batch clears it (done in
+  // the batch button's handler, so no effect is needed to keep them in step).
+  const [supplierOverride, setSupplierOverride] = useState<string | null>(null);
   const [creditNoteNumber, setCreditNoteNumber] = useState('');
   const [creditAmount, setCreditAmount] = useState('');
 
   const { data: batchesResp } = useBatches({ search: batchSearch || undefined, limit: 25 });
   const batches = batchesResp?.data ?? [];
 
+  // The vendor a return is booked against. The server requires it (you cannot
+  // send stock back to nobody) and validates it as a UUID, so it has to be
+  // PICKED — the old free-text "Supplier ID" box meant typing a vendor's name
+  // produced a 400, and batches received without a vendor had nothing to fall
+  // back to.
+  const { data: suppliersResp } = useSuppliers({ isActive: true, limit: 200 });
+  const suppliers = suppliersResp?.data ?? [];
+
   const selectedBatch = useMemo(
     () => batches.find((b) => b.id === selectedBatchId),
     [batches, selectedBatchId],
   );
+
+  // Defaults to the vendor that supplied this batch — null for batches entered
+  // manually, in which case the pharmacist picks one.
+  const supplierId = supplierOverride ?? selectedBatch?.supplier?.id ?? '';
+  const inStock = Number(selectedBatch?.quantityInStock ?? 0);
 
   // G5: default credit = returned qty × purchase price (what the distributor
   // should credit back). The user can override.
@@ -714,14 +731,18 @@ function VendorReturnDialog({ onClose }: { onClose: () => void }) {
 
   const createReturn = useCreateReturn();
 
+  const canSubmit = !!selectedBatchId && quantity > 0 && quantity <= inStock && !!supplierId;
+
   const handleSubmit = async () => {
     if (!selectedBatchId) return toast.error('Pick a batch');
     if (quantity <= 0) return toast.error('Enter a quantity');
+    if (quantity > inStock) return toast.error(`Only ${inStock} in stock for this batch`);
+    if (!supplierId) return toast.error('Pick the supplier this stock goes back to');
     try {
       await createReturn.mutateAsync({
         returnType: 'vendor_return',
         drugBatchId: selectedBatchId,
-        supplierId: supplierId || selectedBatch?.supplier?.id,
+        supplierId,
         quantity,
         reason: reason || undefined,
         creditNoteNumber: creditNoteNumber.trim() || undefined,
@@ -730,7 +751,13 @@ function VendorReturnDialog({ onClose }: { onClose: () => void }) {
       toast.success('Vendor return recorded — stock reduced');
       onClose();
     } catch (err) {
-      toast.error((err as Error).message ?? 'Failed to create return');
+      // The server says exactly what is wrong (missing supplier, quantity above
+      // stock, expired batch…). An AxiosError's own message is only "Request
+      // failed with status code 400", which is what the pharmacist used to see.
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        (err as Error)?.message;
+      toast.error(msg || 'Failed to create return');
     }
   };
 
@@ -759,7 +786,12 @@ function VendorReturnDialog({ onClose }: { onClose: () => void }) {
               {batches.map((b) => (
                 <button
                   key={b.id}
-                  onClick={() => setSelectedBatchId(b.id)}
+                  onClick={() => {
+                    setSelectedBatchId(b.id);
+                    // Fall back to the new batch's own vendor rather than
+                    // carrying the previous pick onto a different batch.
+                    setSupplierOverride(null);
+                  }}
                   className={`w-full px-3 py-2 text-left text-sm hover:bg-muted ${
                     selectedBatchId === b.id ? 'bg-primary/10' : ''
                   }`}
@@ -777,27 +809,61 @@ function VendorReturnDialog({ onClose }: { onClose: () => void }) {
           {selectedBatch && (
             <div className="bg-muted/40 rounded-md p-2 text-xs">
               Selected: <b>{selectedBatch.drug?.drugName}</b> · batch{' '}
-              <span className="font-mono">{selectedBatch.batchNumber}</span>
+              <span className="font-mono">{selectedBatch.batchNumber}</span> · in stock{' '}
+              <b>{inStock}</b>
             </div>
           )}
 
           <div>
             <label className="text-xs font-medium">Quantity</label>
+            {/* Capped at what the batch holds — the server rejects more, since
+                sending back stock you do not have would credit money for units
+                that never left the shelf. */}
             <NumberInput
               min={0}
+              max={inStock}
               integer
               value={quantity}
               onValueChange={setQuantity}
             />
+            {quantity > inStock && (
+              <p className="mt-1 text-[11px] text-error">
+                Only {inStock} in stock for this batch.
+              </p>
+            )}
           </div>
 
           <div>
-            <label className="text-xs font-medium">Supplier ID (optional)</label>
-            <Input
-              placeholder={selectedBatch?.supplier?.id ?? 'Defaults to batch supplier'}
-              value={supplierId}
-              onChange={(e) => setSupplierId(e.target.value)}
-            />
+            <label className="text-xs font-medium">Supplier *</label>
+            <Select value={supplierId || null} onValueChange={(v) => setSupplierOverride(v ?? '')}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select the vendor this stock goes back to">
+                  {(value) =>
+                    value
+                      ? (suppliers.find((s) => s.id === value)?.name ?? 'Selected supplier')
+                      : 'Select the vendor this stock goes back to'
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {suppliers.length === 0 ? (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">
+                    No active vendors yet — add one under Inventory → Vendors.
+                  </div>
+                ) : (
+                  suppliers.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+            {selectedBatch && !selectedBatch.supplier?.id && (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                This batch has no vendor on record — pick who it goes back to.
+              </p>
+            )}
           </div>
 
           {/* G5: supplier credit note for the returned (expired/damaged) stock */}
@@ -839,7 +905,7 @@ function VendorReturnDialog({ onClose }: { onClose: () => void }) {
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={createReturn.isPending}>
+          <Button onClick={handleSubmit} disabled={!canSubmit || createReturn.isPending}>
             {createReturn.isPending ? 'Saving…' : 'Create Return'}
           </Button>
         </DialogFooter>
