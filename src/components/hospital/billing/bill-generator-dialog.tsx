@@ -17,12 +17,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Loader2, Search, Plus, Trash2, Stethoscope, FlaskConical, Pill, Scan, BedDouble,
-  Percent, IndianRupee, FileCheck2, CheckCircle2, X, Undo2, Pencil, Check,
+  Percent, IndianRupee, FileCheck2, CheckCircle2, X, Undo2, Pencil, Check, Printer,
 } from 'lucide-react';
 
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
+import { BillPrintDialog } from '@/components/hospital/billing/bill-print-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
@@ -70,6 +71,13 @@ interface BillGeneratorDialogProps {
   initialPatient?: { id: string; firstName: string; lastName: string; mrn?: string | null } | null;
   /** Resume an existing draft bill. */
   initialBillId?: string | null;
+  /**
+   * Set when this bill belongs to an IP / Emergency / Day Care stay. It enables
+   * Print Bill, which renders the branded stay document
+   * (/billing/admissions/:id/bill-document). OP bills have no such document —
+   * only payment receipts — so the button is hidden without it.
+   */
+  admissionId?: string | null;
   onBillFinalized?: (billId: string) => void;
 }
 
@@ -90,6 +98,7 @@ export function BillGeneratorDialog({
   onOpenChange,
   initialPatient,
   initialBillId,
+  admissionId,
   onBillFinalized,
 }: BillGeneratorDialogProps) {
   // The internal state is keyed by the open session — every re-open of the
@@ -111,6 +120,7 @@ export function BillGeneratorDialog({
             key={`${initialBillId ?? ''}|${initialPatient?.id ?? ''}`}
             initialPatient={initialPatient ?? null}
             initialBillId={initialBillId ?? null}
+            admissionId={admissionId ?? null}
             onClose={() => onOpenChange(false)}
             onBillFinalized={onBillFinalized}
           />
@@ -123,11 +133,13 @@ export function BillGeneratorDialog({
 function BillGeneratorBody({
   initialPatient,
   initialBillId,
+  admissionId,
   onClose,
   onBillFinalized,
 }: {
   initialPatient: { id: string; firstName: string; lastName: string; mrn?: string | null } | null;
   initialBillId: string | null;
+  admissionId: string | null;
   onClose: () => void;
   onBillFinalized?: (billId: string) => void;
 }) {
@@ -166,6 +178,7 @@ function BillGeneratorBody({
           <ComposeStep
             patient={patient}
             initialBillId={billId}
+            admissionId={admissionId}
             onClose={onClose}
             onFinalized={(id) => {
               toast.success('Bill finalized');
@@ -289,17 +302,20 @@ function ResolveBillPatient({
 function ComposeStep({
   patient,
   initialBillId,
+  admissionId,
   onClose,
   onFinalized,
 }: {
   patient: { id: string; firstName: string; lastName: string; mrn?: string | null };
   initialBillId: string | null;
+  admissionId: string | null;
   onClose: () => void;
   onFinalized: (billId: string) => void;
 }) {
   const [activeSource, setActiveSource] = useState<ChargeSource>('all');
   const [billId, setBillId] = useState<string | null>(initialBillId);
   const [selectedRefs, setSelectedRefs] = useState<Record<string, ChargeRow>>({});
+  const [printOpen, setPrintOpen] = useState(false);
 
   // Reuse an existing draft for this patient if one is already there — keeps
   // the workflow idempotent (e.g. cashier re-opens the dialog).
@@ -320,6 +336,11 @@ function ComposeStep({
     // Only kick off auto-create when the search has settled, there's no
     // existing draft and we haven't already requested one in this session.
     if (effectiveBillId) return;
+    // NEVER auto-create for a stay. createBill makes a plain OP bill with no
+    // admissionId, which would sit outside the admission's ledger and split the
+    // stay across two bills. An admission always arrives with its running bill
+    // (getIpAdmissionsForBilling ensures one), so this is a guard, not a path.
+    if (admissionId) return;
     if (!existingBills) return;
     if (existingBills.data && existingBills.data.length > 0) return;
     if (createBillRequestedRef.current) return;
@@ -333,7 +354,7 @@ function ComposeStep({
         onError: () => toast.error('Could not create draft bill'),
       },
     );
-  }, [effectiveBillId, existingBills, createBill, patient.id]);
+  }, [effectiveBillId, existingBills, createBill, patient.id, admissionId]);
 
   const { data: bill, isLoading: billLoading } = useBill(effectiveBillId ?? '');
   const billTyped = (bill as unknown) as BackendBill | null;
@@ -571,12 +592,25 @@ function ComposeStep({
                 )}
               </Button>
             )}
+            {/* Print the branded stay document. Available at any point — an
+                interim bill while the patient is admitted, the final one after.
+                Only stays have such a document; an OP bill prints a receipt
+                from the transactions screen instead. */}
+            {admissionId && (
+              <Button variant="outline" className="w-full gap-1.5" onClick={() => setPrintOpen(true)}>
+                <Printer className="h-4 w-4" /> Print Bill
+              </Button>
+            )}
             <Button variant="outline" onClick={onClose}>
               {billTyped?.status === 'draft' ? 'Close (keep as draft)' : 'Close'}
             </Button>
           </div>
         </div>
       </div>
+
+      {admissionId && (
+        <BillPrintDialog admissionId={admissionId} open={printOpen} onOpenChange={setPrintOpen} />
+      )}
     </div>
   );
 }

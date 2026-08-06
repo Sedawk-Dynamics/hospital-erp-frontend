@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils';
 import { useIpAdmissions, useClearAndDischarge, type IpBill } from '@/hooks/use-ip-billing';
 import { IpBillingDetailDialog } from '@/components/hospital/billing/ip-billing-detail-dialog';
 import { BillPrintDialog } from '@/components/hospital/billing/bill-print-dialog';
+import { BillGeneratorDialog } from '@/components/hospital/billing/bill-generator-dialog';
 import {
   AdmissionTypeBadge,
   ADMISSION_TYPE_LABELS,
@@ -56,10 +57,18 @@ const CATEGORY_BADGE: Record<string, string> = {
 /** Deposit-adjusted money still owed — the number the discharge gate checks. */
 const outstandingOf = (b: IpBill) => n(b.deposit?.balanceAfterDeposit ?? b.balanceDue);
 
+/**
+ * The worklist falls back to the ADMISSION id when a stay has no bill yet
+ * (`id: primary?.id ?? a.id`, billNumber '—'). Handing that to the bill screen
+ * would look up a bill that does not exist, so gate on a real bill number.
+ */
+const hasRealBill = (b: IpBill) => !!b.billNumber && b.billNumber !== '—';
+
 export function IpBillingTab() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [detailBill, setDetailBill] = useState<IpBill | null>(null);
+  const [manageBill, setManageBill] = useState<IpBill | null>(null);
   const [printAdmissionId, setPrintAdmissionId] = useState<string | null>(null);
   const [readyOnly, setReadyOnly] = useState(false);
   const [dischargeTarget, setDischargeTarget] = useState<IpBill | null>(null);
@@ -269,7 +278,30 @@ export function IpBillingTab() {
                             {outstandingOf(b) > 0 ? `Due ${money(outstandingOf(b))}` : 'Clear & Discharge'}
                           </Button>
                         )}
-                        <Button size="sm" className="h-7 gap-1 text-[11px]" onClick={() => setDetailBill(b)} title="Open the full IP bill — charges, deposit, discount, collect, TPA">
+                        {/* Deposit, TPA settlement, insurance split and the
+                            payment history live only on the IP detail dialog —
+                            Manage now opens the shared Generate Bill screen, so
+                            they keep their own entry point here. */}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 gap-1 text-[11px]"
+                          onClick={() => setDetailBill(b)}
+                          title="Deposit, TPA settlement, insurance split and payment history"
+                        >
+                          Deposit / TPA
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="h-7 gap-1 text-[11px]"
+                          onClick={() => setManageBill(b)}
+                          disabled={!hasRealBill(b)}
+                          title={
+                            hasRealBill(b)
+                              ? 'Open the bill — pull charges, add lines, discount, finalize, print'
+                              : 'No bill on this stay yet'
+                          }
+                        >
                           Manage
                         </Button>
                       </div>
@@ -286,6 +318,26 @@ export function IpBillingTab() {
       </p>
 
       <IpBillingDetailDialog bill={detailBill} open={!!detailBill} onOpenChange={(o) => { if (!o) setDetailBill(null); }} />
+
+      {/* IP / Emergency / Day Care bills open the SAME screen as OP, so the
+          counter learns one billing surface. `admissionId` is what enables
+          Print Bill inside it. */}
+      <BillGeneratorDialog
+        open={!!manageBill}
+        onOpenChange={(o) => { if (!o) setManageBill(null); }}
+        initialBillId={manageBill?.id ?? null}
+        admissionId={manageBill?.admissionId ?? null}
+        initialPatient={
+          manageBill?.patient
+            ? {
+                id: manageBill.patient.id,
+                firstName: manageBill.patient.firstName,
+                lastName: manageBill.patient.lastName,
+                mrn: manageBill.patient.mrn,
+              }
+            : null
+        }
+      />
       <BillPrintDialog
         admissionId={printAdmissionId}
         open={!!printAdmissionId}
