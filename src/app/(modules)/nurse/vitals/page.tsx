@@ -34,6 +34,7 @@ import {
   Wind,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { PatientSafetyBanner } from '@/components/shared/patient-safety-banner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -884,13 +885,6 @@ export default function NurseVitalsPage() {
                         .join(' · ')}
                     </p>
                   </div>
-                  {selectedEncounter.patient.allergies &&
-                    selectedEncounter.patient.allergies.length > 0 && (
-                      <span className="flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
-                        <AlertTriangle className="h-3 w-3" />
-                        Allergies: {selectedEncounter.patient.allergies.join(', ')}
-                      </span>
-                    )}
                 </div>
                 {selectedEncounter.kind === 'opd' && !selectedEncounter.visitId && (
                   <p className="mt-2 rounded-md bg-cyan-50 px-2 py-1 text-[11px] text-cyan-700">
@@ -898,6 +892,11 @@ export default function NurseVitalsPage() {
                   </p>
                 )}
               </div>
+
+              {/* Was an inline chip off `selectedEncounter.patient.allergies`,
+                  which no encounter endpoint returns — so it never appeared.
+                  The shared banner fetches them and shows severity + reaction. */}
+              <PatientSafetyBanner patientId={selectedPatientId} />
 
               {/* Latest vitals */}
               <LatestVitalsCard vitals={latestVitals} />

@@ -7,12 +7,19 @@ import { allergiesKey, familyKey, LIVE } from '@/components/shared/patient-histo
 import { cn } from '@/lib/utils';
 
 /**
- * Allergies and family disorders, shown the moment a consultation opens.
+ * Allergies and family disorders, shown the moment a patient is on screen.
  *
  * These used to be buried two levels deep (Medical History tab → Allergies /
  * Family sub-tab), so a doctor could write a whole prescription without ever
  * seeing that the patient is allergic to what they just prescribed. They are
  * the two facts that must be on screen before anything else.
+ *
+ * Lives in `shared` because it is not a doctor-only concern: the nurse
+ * administering the drug is the last person who can catch the allergy, so this
+ * renders on the IP workspace, eMAR and vitals too. It fetches allergies
+ * itself rather than relying on the caller's payload — the admissions endpoint
+ * does not return them, which is why the eMAR's own hand-rolled banner was
+ * permanently invisible.
  */
 
 interface Allergy {

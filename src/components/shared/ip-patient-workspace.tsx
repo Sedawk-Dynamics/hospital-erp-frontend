@@ -53,6 +53,7 @@ import {
 
 import { Button } from '@/components/ui/button';
 import { RecordVitalsDialog } from '@/components/shared/record-vitals-dialog';
+import { PatientSafetyBanner } from '@/components/shared/patient-safety-banner';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -1390,6 +1391,10 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
         />
       )}
       <HeaderStrip admission={admission} role={role} backHref={back} onNewRx={onNewRx} />
+      {/* Above everything else on the bedside record: whoever opens this — the
+          doctor prescribing or the nurse administering — sees the allergies
+          before they see anything they could act on. */}
+      <PatientSafetyBanner patientId={patientId} />
       <LatestVitalsStrip patientId={patientId} role={role} admissionId={admissionId} />
 
       <Tabs defaultValue="overview" className="w-full">

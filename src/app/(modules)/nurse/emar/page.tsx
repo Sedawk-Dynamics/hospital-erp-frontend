@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { PatientSafetyBanner } from '@/components/shared/patient-safety-banner';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
@@ -62,7 +63,6 @@ import {
   Pause,
   Clock,
   Loader2,
-  ShieldAlert,
   Pill,
   Plus,
   CircleDot,
@@ -174,7 +174,6 @@ export default function EmarPage() {
     [admissions, selectedAdmissionId],
   );
   const patientId = selectedAdmission?.patientId ?? '';
-  const allergies = selectedAdmission?.patient?.allergies ?? [];
 
   const { data: timeSlotsRaw } = useEmarTimeSlots();
   const timeSlots = useMemo(() => {
@@ -557,18 +556,18 @@ export default function EmarPage() {
         </div>
       </div>
 
-      {/* Allergy banner */}
-      {selectedAdmissionId && allergies.length > 0 && (
-        <div className="flex items-start gap-3 rounded-xl border-2 border-red-300 bg-red-50 px-4 py-3 shadow-sm">
-          <ShieldAlert className="h-5 w-5 text-red-600 mt-0.5 shrink-0" />
-          <div>
-            <p className="text-sm font-bold text-red-800">Allergy Alert</p>
-            <p className="text-xs text-red-700 mt-0.5">
-              Known allergies: <span className="font-bold uppercase">{allergies.join(', ')}</span>
-            </p>
-            <p className="text-[10px] text-red-600 mt-1">Verify all medications against patient allergy profile before administration.</p>
-          </div>
-        </div>
+      {/* Allergy banner. This used to be hand-rolled from
+          `selectedAdmission.patient.allergies`, which the admissions endpoint
+          has never returned — so it silently never rendered, on the one screen
+          where an allergy matters most. PatientSafetyBanner fetches them itself
+          and shows severity + reaction. */}
+      {selectedAdmissionId && patientId && (
+        <>
+          <PatientSafetyBanner patientId={patientId} />
+          <p className="-mt-2 text-[10px] text-red-600">
+            Verify every medication against the allergy profile before administration.
+          </p>
+        </>
       )}
 
       {/* Interactions banner */}
@@ -880,12 +879,9 @@ export default function EmarPage() {
                 )}
               </div>
 
-              {allergies.length > 0 && (
-                <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
-                  <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                  <p className="text-[10px] text-amber-800">Patient allergies: <span className="font-bold">{allergies.join(', ')}</span></p>
-                </div>
-              )}
+              {/* Last chance to catch it — this dialog is the act of giving
+                  the drug. Same dead-data bug as the page-level banner. */}
+              {patientId && <PatientSafetyBanner patientId={patientId} />}
 
               {/* Amend mode: pick target status */}
               {actionDialog.mode === 'amend' && (

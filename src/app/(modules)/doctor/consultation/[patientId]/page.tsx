@@ -54,7 +54,7 @@ import { DrugHistoryPanel } from '@/components/doctor/drug-history-panel';
 import { CurrentMedicationsPanel } from '@/components/doctor/current-medications-panel';
 import { MedicalHistoryPanel } from '@/components/doctor/medical-history-panel';
 import { familyKey, LIVE } from '@/components/shared/patient-history-panel';
-import { PatientSafetyBanner } from '@/components/doctor/patient-safety-banner';
+import { PatientSafetyBanner } from '@/components/shared/patient-safety-banner';
 import { InvestigationHistoryPanel } from '@/components/doctor/investigation-history-panel';
 import { LabOrderDialog } from '@/components/doctor/lab-order-dialog';
 import { ImagingRequestDialog } from '@/components/doctor/imaging-request-dialog';
