@@ -32,6 +32,14 @@ interface LabOrder {
   createdAt: string;
   orderer?: { firstName: string; lastName: string } | null;
   visit?: { visitType: string; visitDate: string } | null;
+  /**
+   * The lab supervisor has published this report. Until then the server sends
+   * no values and no attachments — a result nobody has signed off is a draft,
+   * not something to act on.
+   */
+  released?: boolean;
+  /** A report exists but is still inside the lab's review loop. */
+  awaitingApproval?: boolean;
   labOrderItems: LabOrderItem[];
   labReport?: { id: string; status: string; signedAt?: string | null; publishedAt?: string | null; pdfUrl?: string | null } | null;
   attachments?: Array<{
@@ -182,19 +190,29 @@ function OrderCard({
           </p>
         </div>
         <Badge className={cn('text-[9px] px-1 py-0', reportPublished ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>
-          {hasReport ? order.labReport!.status : order.status}
+          {order.awaitingApproval ? 'awaiting approval' : hasReport ? order.labReport!.status : order.status}
         </Badge>
       </button>
 
       {isExpanded && (
         <div className="border-t bg-muted/30 p-2 space-y-2">
+          {/* Results and files are withheld until the lab supervisor releases
+              the report, so say so rather than showing an empty test that reads
+              like nothing was done. */}
+          {order.awaitingApproval && (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
+              Results are with the lab supervisor for approval. They appear here once released.
+            </p>
+          )}
           {order.labOrderItems.map((item) => (
             <div key={item.id}>
               <p className="font-semibold text-foreground/90">
                 {item.test?.testName || 'Test'}
               </p>
               {item.labResults.length === 0 ? (
-                <p className="text-[10px] text-muted-foreground italic pl-2">No results entered yet</p>
+                <p className="text-[10px] text-muted-foreground italic pl-2">
+                  {order.awaitingApproval ? 'Awaiting lab approval' : 'No results entered yet'}
+                </p>
               ) : (
                 <table className="w-full text-[11px] mt-1">
                   <tbody>
