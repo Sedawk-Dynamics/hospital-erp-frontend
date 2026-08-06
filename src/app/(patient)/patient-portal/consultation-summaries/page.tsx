@@ -5,13 +5,25 @@ import Link from 'next/link';
 import { FileSignature, Stethoscope } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import type { ProgressNote } from '@/hooks/use-doctor';
+
+/** What the portal list endpoint returns — a signed consultation plus enough
+ *  visit context to say what it was about. */
+interface ConsultationListItem {
+  id: string;
+  signedAt?: string | null;
+  doctor?: { user?: { firstName: string; lastName?: string | null } } | null;
+  patient?: { tenant?: { name?: string } | null } | null;
+  visit?: {
+    chiefComplaint?: string | null;
+    diagnoses?: { id: string; diagnosisName: string }[];
+  } | null;
+}
 
 export default function ConsultationSummariesListPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['patient', 'consultation-summaries'],
     queryFn: async () => {
-      const res = await apiGet<ProgressNote[]>('/patient-portal/consultation-summaries');
+      const res = await apiGet<ConsultationListItem[]>('/patient-portal/consultation-summaries');
       return res.data ?? [];
     },
   });
@@ -61,8 +73,13 @@ export default function ConsultationSummariesListPage() {
                   year: 'numeric',
                 })
               : '—';
-            const tenantName = (s as any).patient?.tenant?.name as string | undefined;
-            const pinCount = (s.pins ?? []).length;
+            const tenantName = s.patient?.tenant?.name;
+            // What the visit was actually for reads better than a count of
+            // pinned sections, which meant nothing to a patient.
+            const subtitle =
+              (s.visit?.diagnoses ?? []).map((d) => d.diagnosisName).join(', ') ||
+              s.visit?.chiefComplaint ||
+              null;
             return (
               <div
                 key={s.id}
@@ -78,8 +95,10 @@ export default function ConsultationSummariesListPage() {
                   <p className="font-label text-xs text-on-surface-variant mt-0.5">
                     {doctorName}
                     {tenantName ? ` · ${tenantName}` : ''}
-                    {pinCount > 0 ? ` · ${pinCount} section${pinCount === 1 ? '' : 's'}` : ''}
                   </p>
+                  {subtitle && (
+                    <p className="mt-0.5 truncate font-label text-xs text-primary">{subtitle}</p>
+                  )}
                 </div>
                 <Link href={`/patient-portal/consultation-summaries/${s.id}`}>
                   <Button size="sm" variant="outline">

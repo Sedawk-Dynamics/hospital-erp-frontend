@@ -6,8 +6,7 @@ import Link from 'next/link';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { ConsultationSummaryPanel } from '@/components/doctor/consultation-summary-panel';
-import type { ProgressNote } from '@/hooks/use-doctor';
+import { FullConsultationSummary, type FullConsultation } from './_full-summary';
 
 export default function ConsultationSummaryDetailPage({
   params,
@@ -19,7 +18,7 @@ export default function ConsultationSummaryDetailPage({
   const { data, isLoading, isError } = useQuery({
     queryKey: ['patient', 'consultation-summaries', id],
     queryFn: async () => {
-      const res = await apiGet<ProgressNote>(`/patient-portal/consultation-summaries/${id}`);
+      const res = await apiGet<FullConsultation>(`/patient-portal/consultation-summaries/${id}`);
       return res.data;
     },
   });
@@ -55,7 +54,7 @@ export default function ConsultationSummaryDetailPage({
           </Link>
         </div>
       ) : (
-        <ConsultationSummaryPanel note={data} patientView />
+        <FullConsultationSummary note={data} />
       )}
     </div>
   );
