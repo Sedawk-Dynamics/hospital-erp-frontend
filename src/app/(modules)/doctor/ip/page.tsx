@@ -30,7 +30,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
-import { useDoctorAdmissions, useDischargePatient, useCreateProgressNote } from '@/hooks/use-doctor';
+import { useDoctorAdmissions, useCreateProgressNote } from '@/hooks/use-doctor';
 import { apiPost } from '@/lib/api';
 import { IpPrescriptionDialog } from '@/components/doctor/ip-prescription-dialog';
 import { AdmissionTypeBadge, ADMISSION_TYPE_OPTIONS } from '@/components/shared/admission-type-badge';
@@ -80,7 +80,6 @@ export default function DoctorIPHomePage() {
     admissionType: typeFilter !== 'all' ? typeFilter : undefined,
   });
 
-  const dischargeMutation = useDischargePatient();
   const createNoteMutation = useCreateProgressNote();
 
   const admissions = admissionsData?.data ?? [];
@@ -94,15 +93,6 @@ export default function DoctorIPHomePage() {
     transferred: admissions.filter((a) => a.status === 'transferred').length,
     absconded: admissions.filter((a) => a.status === 'absconded').length,
   };
-
-  const handleDischarge = useCallback(async (id: string) => {
-    try {
-      await dischargeMutation.mutateAsync({ id });
-      toast.success('Patient discharged successfully');
-    } catch {
-      toast.error('Failed to discharge patient');
-    }
-  }, [dischargeMutation]);
 
   const handleAddNote = useCallback((patientId: string, admissionId: string) => {
     setSelectedPatientId(patientId);
@@ -453,14 +443,11 @@ export default function DoctorIPHomePage() {
                               >
                                 Prepare Discharge Summary
                               </DropdownMenuItem>
-                              {admission.status === 'admitted' && (
-                                <DropdownMenuItem
-                                  className="text-destructive"
-                                  onClick={() => handleDischarge(admission.id)}
-                                >
-                                  Discharge Patient
-                                </DropdownMenuItem>
-                              )}
+                              {/* Discharging is the cash counter's action, not
+                                  the doctor's: publishing the discharge summary
+                                  is the clinical sign-off, and Front Desk /
+                                  Billing completes the discharge once the final
+                                  bill is cleared. */}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>

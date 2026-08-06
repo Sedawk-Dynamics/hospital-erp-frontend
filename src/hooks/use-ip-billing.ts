@@ -44,6 +44,12 @@ export interface IpBill {
     depositAmount?: number | string | null;
     admissionDate?: string | null; dischargeDate?: string | null;
     ward?: { name: string } | null; bed?: { bedNumber: string } | null;
+    /**
+     * The doctor has published the discharge summary but the patient is still
+     * admitted — this row is waiting on the counter to clear the bill and
+     * complete the discharge.
+     */
+    dischargeReady?: boolean;
   } | null;
   insuranceClaims?: IpClaim[];
   deposit?: IpDeposit;
@@ -90,6 +96,35 @@ function useIpBillingInvalidate() {
     qc.invalidateQueries({ queryKey: ['ip-ledger'] });
     qc.invalidateQueries({ queryKey: ['ip-ledger-activity'] });
   };
+}
+
+/**
+ * Complete the discharge once the final bill is settled. The doctor's published
+ * discharge summary only marks the patient ready; this is the counter action
+ * that actually closes the admission and frees the bed. The server re-checks
+ * both gates (published summary + zero balance), so a stale UI can't slip a
+ * patient out with money outstanding.
+ *
+ * `force` is the LAMA / transfer-out / death override and requires a reason.
+ */
+export function useClearAndDischarge() {
+  const invalidate = useIpBillingInvalidate();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: { admissionId: string; force?: boolean; reason?: string }) =>
+      (await apiPatch(`/clinical/admissions/${v.admissionId}/discharge`, {
+        dischargeDate: new Date().toISOString(),
+        ...(v.force ? { force: true, reason: v.reason } : {}),
+      })).data,
+    onSuccess: () => {
+      invalidate();
+      // The bed, the IP worklists and the admission detail all change state.
+      qc.invalidateQueries({ queryKey: ['hospital'] });
+      qc.invalidateQueries({ queryKey: ['clinical'] });
+      qc.invalidateQueries({ queryKey: ['doctor', 'admissions'] });
+      qc.invalidateQueries({ queryKey: ['nurse'] });
+    },
+  });
 }
 
 export function useConsolidateIpBill() {

@@ -2,12 +2,22 @@
 
 import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Search, Loader2, ShieldCheck, RefreshCw, BedDouble, Undo2, Printer } from 'lucide-react';
+import { toast } from 'sonner';
+import { Search, Loader2, ShieldCheck, RefreshCw, BedDouble, Undo2, Printer, LogOut, AlertTriangle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { useIpAdmissions, type IpBill } from '@/hooks/use-ip-billing';
+import { useIpAdmissions, useClearAndDischarge, type IpBill } from '@/hooks/use-ip-billing';
 import { IpBillingDetailDialog } from '@/components/hospital/billing/ip-billing-detail-dialog';
 import { BillPrintDialog } from '@/components/hospital/billing/bill-print-dialog';
 
@@ -38,16 +48,29 @@ const CATEGORY_BADGE: Record<string, string> = {
   cash: 'bg-gray-100 text-gray-600',
 };
 
+/** Deposit-adjusted money still owed — the number the discharge gate checks. */
+const outstandingOf = (b: IpBill) => n(b.deposit?.balanceAfterDeposit ?? b.balanceDue);
+
 export function IpBillingTab() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [detailBill, setDetailBill] = useState<IpBill | null>(null);
   const [printAdmissionId, setPrintAdmissionId] = useState<string | null>(null);
+  const [readyOnly, setReadyOnly] = useState(false);
+  const [dischargeTarget, setDischargeTarget] = useState<IpBill | null>(null);
 
   // One row per ADMISSION — listed from the moment the patient is admitted
   // (the endpoint ensures each active admission has its running IP bill).
   const { data, isLoading } = useIpAdmissions(search || undefined);
-  const grouped = useMemo(() => data ?? [], [data]);
+  const all = useMemo(() => data ?? [], [data]);
+  const readyCount = useMemo(
+    () => all.filter((b) => b.admission?.dischargeReady).length,
+    [all],
+  );
+  const grouped = useMemo(
+    () => (readyOnly ? all.filter((b) => b.admission?.dischargeReady) : all),
+    [all, readyOnly],
+  );
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ['hospital', 'ip-bills'] });
@@ -62,6 +85,23 @@ export function IpBillingTab() {
           <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search IP bills / patient / MRN…" className="pl-8 h-9 text-sm" />
         </div>
+        {/* The doctor has signed off on these; they are holding a bed until the
+            counter settles the bill. */}
+        <Button
+          variant={readyOnly ? 'default' : 'outline'}
+          size="sm"
+          className="gap-1.5"
+          onClick={() => setReadyOnly((v) => !v)}
+          title="Patients whose discharge summary is published — waiting on bill clearance"
+        >
+          <LogOut className="h-3.5 w-3.5" /> Ready for discharge
+          <span className={cn(
+            'rounded-full px-1.5 text-[10px] font-bold',
+            readyOnly ? 'bg-white/20' : 'bg-amber-100 text-amber-700',
+          )}>
+            {readyCount}
+          </span>
+        </Button>
         <Button variant="outline" size="sm" className="gap-1.5" onClick={refresh}>
           <RefreshCw className="h-3.5 w-3.5" /> Refresh
         </Button>
@@ -70,7 +110,9 @@ export function IpBillingTab() {
       {isLoading ? (
         <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading IP patients…</div>
       ) : grouped.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">No IP patients admitted.</p>
+        <p className="py-8 text-center text-sm text-muted-foreground">
+          {readyOnly ? 'No patients are waiting for discharge clearance.' : 'No IP patients admitted.'}
+        </p>
       ) : (
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full text-sm">
@@ -106,6 +148,11 @@ export function IpBillingTab() {
                       )}
                       {b.admission?.status === 'discharged' && (
                         <div className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">discharged</div>
+                      )}
+                      {b.admission?.dischargeReady && (
+                        <Badge className="mt-1 gap-1 bg-amber-100 text-[10px] text-amber-800">
+                          <LogOut className="h-2.5 w-2.5" /> Ready for discharge
+                        </Badge>
                       )}
                     </td>
                     <td className="px-3 py-2">
@@ -188,6 +235,29 @@ export function IpBillingTab() {
                         >
                           <Printer className="h-3 w-3" /> Bill
                         </Button>
+                        {/* The counter completes the discharge — the doctor's
+                            published summary only marks the patient ready. The
+                            server re-checks the balance, so this button is a
+                            convenience gate, not the security boundary. */}
+                        {b.admission?.dischargeReady && (
+                          <Button
+                            size="sm"
+                            variant={outstandingOf(b) > 0 ? 'outline' : 'default'}
+                            className={cn(
+                              'h-7 gap-1 text-[11px]',
+                              outstandingOf(b) > 0 && 'border-amber-300 text-amber-700',
+                            )}
+                            onClick={() => setDischargeTarget(b)}
+                            title={
+                              outstandingOf(b) > 0
+                                ? `${money(outstandingOf(b))} still outstanding — collect it first, or use the override`
+                                : 'Bill is settled — complete the discharge and free the bed'
+                            }
+                          >
+                            <LogOut className="h-3 w-3" />
+                            {outstandingOf(b) > 0 ? `Due ${money(outstandingOf(b))}` : 'Clear & Discharge'}
+                          </Button>
+                        )}
                         <Button size="sm" className="h-7 gap-1 text-[11px]" onClick={() => setDetailBill(b)} title="Open the full IP bill — charges, deposit, discount, collect, TPA">
                           Manage
                         </Button>
@@ -210,6 +280,153 @@ export function IpBillingTab() {
         open={!!printAdmissionId}
         onOpenChange={(o) => { if (!o) setPrintAdmissionId(null); }}
       />
+      <ClearAndDischargeDialog
+        bill={dischargeTarget}
+        onClose={() => setDischargeTarget(null)}
+        onCollect={(b) => { setDischargeTarget(null); setDetailBill(b); }}
+      />
     </div>
+  );
+}
+
+// ============================================================
+// Clear & Discharge — the counter's half of the discharge
+// ============================================================
+// The doctor publishes the discharge summary (clinical sign-off); the patient
+// stays admitted, holding their bed, until this runs. Discharging with money
+// outstanding drops the patient off every active-IP worklist and effectively
+// writes the balance off, so a balance blocks the normal path entirely — LAMA /
+// transfer-out / death go through the explicit override with a reason.
+function ClearAndDischargeDialog({
+  bill,
+  onClose,
+  onCollect,
+}: {
+  bill: IpBill | null;
+  onClose: () => void;
+  onCollect: (bill: IpBill) => void;
+}) {
+  const discharge = useClearAndDischarge();
+  const [reason, setReason] = useState('');
+  const [overriding, setOverriding] = useState(false);
+
+  const outstanding = bill ? outstandingOf(bill) : 0;
+  const blocked = outstanding > 0;
+  const patientName = `${bill?.patient?.firstName ?? ''} ${bill?.patient?.lastName ?? ''}`.trim();
+
+  const close = () => {
+    setReason('');
+    setOverriding(false);
+    onClose();
+  };
+
+  const submit = async (force: boolean) => {
+    if (!bill?.admissionId) return;
+    try {
+      await discharge.mutateAsync({
+        admissionId: bill.admissionId,
+        ...(force ? { force: true, reason: reason.trim() } : {}),
+      });
+      toast.success(
+        force
+          ? `${patientName || 'Patient'} discharged by override — bed released`
+          : `${patientName || 'Patient'} discharged — bill cleared and bed released`,
+      );
+      close();
+    } catch (err) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        'Failed to discharge patient';
+      toast.error(msg);
+    }
+  };
+
+  return (
+    <Dialog open={!!bill} onOpenChange={(o) => { if (!o) close(); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <LogOut className="h-4 w-4 text-primary" />
+            Complete Discharge
+          </DialogTitle>
+          <DialogDescription>
+            {patientName || 'This patient'} has a signed discharge summary
+            {bill?.admission?.ward?.name || bill?.admission?.bed?.bedNumber
+              ? ` and is in ${[bill?.admission?.ward?.name, bill?.admission?.bed?.bedNumber].filter(Boolean).join(' · ')}`
+              : ''}
+            . Completing the discharge closes the admission and frees the bed.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div
+          className={cn(
+            'rounded-lg border p-3 text-sm',
+            blocked ? 'border-amber-300 bg-amber-50' : 'border-emerald-300 bg-emerald-50',
+          )}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Balance after deposit</span>
+            <span className={cn('font-semibold', blocked ? 'text-amber-800' : 'text-emerald-800')}>
+              {money(outstanding)}
+            </span>
+          </div>
+          <p className={cn('mt-1 text-[11px]', blocked ? 'text-amber-700' : 'text-emerald-700')}>
+            {blocked
+              ? 'The bill is not settled. Collect the balance first — or record an override below.'
+              : 'The bill is fully settled. This patient is clear to leave.'}
+          </p>
+        </div>
+
+        {blocked && overriding && (
+          <div className="space-y-1.5">
+            <label className="flex items-center gap-1.5 text-xs font-medium text-amber-800">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              Reason for discharging with an outstanding balance *
+            </label>
+            <Textarea
+              rows={3}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="e.g. LAMA — patient left against medical advice / transferred to another hospital / death"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              This is written to the audit log against your user.
+            </p>
+          </div>
+        )}
+
+        <DialogFooter className="gap-2 sm:justify-between">
+          <Button variant="outline" onClick={close} disabled={discharge.isPending}>
+            Cancel
+          </Button>
+          <div className="flex items-center gap-2">
+            {blocked && !overriding && (
+              <>
+                <Button variant="ghost" className="text-xs" onClick={() => setOverriding(true)}>
+                  Override…
+                </Button>
+                <Button onClick={() => bill && onCollect(bill)}>Collect payment</Button>
+              </>
+            )}
+            {blocked && overriding && (
+              <Button
+                variant="destructive"
+                onClick={() => submit(true)}
+                disabled={!reason.trim() || discharge.isPending}
+              >
+                {discharge.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                Discharge anyway
+              </Button>
+            )}
+            {!blocked && (
+              <Button onClick={() => submit(false)} disabled={discharge.isPending}>
+                {discharge.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                Clear &amp; Discharge
+              </Button>
+            )}
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

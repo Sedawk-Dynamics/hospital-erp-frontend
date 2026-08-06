@@ -1336,8 +1336,13 @@ export interface DischargeSummary {
   visitId: string;
   patientId: string;
   doctorId: string;
-  // Set on the publish response: true when publishing also discharged the patient.
+  // Set on the publish response. Publishing is the CLINICAL sign-off only:
+  // `dischargeReady` means the patient now sits on the Billing / Front Desk
+  // clearance queue, still admitted and holding their bed, until the counter
+  // settles the final bill. `discharged` only reports an already-closed
+  // admission (e.g. a re-publish after the counter completed the discharge).
   discharged?: boolean;
+  dischargeReady?: boolean;
   admissionDate?: string;
   dischargeDate?: string;
   diagnosesSummary?: string;
@@ -1485,11 +1490,14 @@ export function usePublishDischargeSummary() {
       return response.data;
     },
     onSuccess: () => {
-      // Publishing the summary discharges the patient — refresh admissions
-      // (doctor + hospital lists) and the discharge-summary status caches.
+      // Publishing puts the patient on the counter's discharge-clearance queue
+      // (it no longer discharges them). Refresh the admission lists and the
+      // IP billing worklist, which is where the "Ready for discharge" flag and
+      // the Clear & Discharge action live.
       queryClient.invalidateQueries({ queryKey: doctorKeys.dischargeSummary.all });
       queryClient.invalidateQueries({ queryKey: doctorKeys.admissions.all });
       queryClient.invalidateQueries({ queryKey: ['hospital', 'admissions'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'ip-bills'] });
       queryClient.invalidateQueries({ queryKey: ['discharge-summary', 'by-admission'] });
     },
   });

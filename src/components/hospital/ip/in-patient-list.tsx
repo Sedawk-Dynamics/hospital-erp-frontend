@@ -1163,10 +1163,16 @@ function DischargeDialog({
   const published = dsStatus === 'published';
 
   const dischargeMutation = useMutation({
+    // `force` skips BOTH discharge gates (published summary + cleared bill) and
+    // the server requires a reason for it — the discharge notes are that reason.
     mutationFn: async (opts?: { force?: boolean }) =>
       (await apiPatch<{ dischargeBilling?: DischargeBillingSummary | null }>(
         `/clinical/admissions/${admission.id}/discharge`,
-        { dischargeDate, notes: notes || undefined, force: opts?.force || undefined },
+        {
+          dischargeDate,
+          notes: notes || undefined,
+          ...(opts?.force ? { force: true, reason: notes.trim() } : {}),
+        },
       )).data?.dischargeBilling ?? null,
     onSuccess: (billing) => {
       toast.success('Patient discharged successfully');
@@ -1175,11 +1181,18 @@ function DischargeDialog({
       queryClient.invalidateQueries({ queryKey: ['hospital', 'occupancy'] });
       queryClient.invalidateQueries({ queryKey: ['infrastructure', 'beds'] });
       queryClient.invalidateQueries({ queryKey: ['beds-available'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'ip-bills'] });
       // Keep the dialog open to show the final-bill summary; close if none.
       if (billing) setSummary(billing); else onOpenChange(false);
     },
-    onError: (err: Error) => {
-      toast.error(err.message || 'Discharge failed');
+    onError: (err: unknown) => {
+      // The server explains WHY (unpublished summary, or the exact outstanding
+      // amount). An AxiosError's own `message` is just "Request failed with
+      // status code 400", which tells the front desk nothing.
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        (err as Error)?.message;
+      toast.error(msg || 'Discharge failed');
     },
   });
   const money = (n: number) => `₹${(n ?? 0).toFixed(2)}`;
@@ -1243,7 +1256,7 @@ function DischargeDialog({
                   <div className="text-sm">
                     <p className="font-medium text-amber-800">Discharge summary required</p>
                     <p className="mt-0.5 text-[13px] text-amber-700">
-                      The doctor must complete and <strong>publish</strong> the discharge summary before this patient can be discharged. Publishing the summary discharges the patient automatically.
+                      The doctor must complete and <strong>publish</strong> the discharge summary before this patient can be discharged. Publishing is the clinical sign-off only — the final bill still has to be cleared here.
                     </p>
                     <p className="mt-1.5 text-[11px] text-amber-700">
                       Current status:{' '}
@@ -1257,6 +1270,21 @@ function DischargeDialog({
                 <p><span className="text-muted-foreground">Bed:</span> {admission.bed?.bedNumber ?? '-'}</p>
                 <p><span className="text-muted-foreground">Admitted:</span> {admission.admissionDate ? formatDate(admission.admissionDate) : '-'}</p>
               </div>
+
+              {/* The override below needs a reason, so the field has to exist on
+                  this branch too — it is only rendered in the normal-discharge
+                  branch otherwise. */}
+              {canForce && (
+                <div className="grid gap-1.5">
+                  <Label>Override reason *</Label>
+                  <Textarea
+                    placeholder="Required to discharge without a summary — e.g. LAMA, transfer-out, death"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={2}
+                  />
+                </div>
+              )}
             </div>
           ) : (
             // Published summary → normal discharge confirmation.
@@ -1306,8 +1334,15 @@ function DischargeDialog({
                 <Button
                   variant="ghost"
                   className="text-destructive hover:text-destructive"
-                  onClick={() => dischargeMutation.mutate({ force: true })}
+                  onClick={() => {
+                    if (!notes.trim()) {
+                      toast.error('Enter a reason in Notes before overriding (e.g. LAMA, transfer-out, death)');
+                      return;
+                    }
+                    dischargeMutation.mutate({ force: true });
+                  }}
                   disabled={dischargeMutation.isPending}
+                  title="Skips the discharge-summary and bill-clearance gates — the reason you type in Notes is written to the audit log"
                 >
                   {dischargeMutation.isPending ? 'Discharging…' : 'Discharge without summary'}
                 </Button>

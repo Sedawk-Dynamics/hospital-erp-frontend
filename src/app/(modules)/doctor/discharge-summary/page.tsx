@@ -264,9 +264,11 @@ export default function DischargeSummaryPage() {
     try {
       const published = await publishMutation.mutateAsync(summaryData.id);
       if (published) setSummaryData(published);
+      // Publishing is the clinical sign-off only. The patient keeps their bed
+      // until Front Desk / Billing clears the final bill and discharges them.
       toast.success(
-        published?.discharged
-          ? 'Discharge summary published — patient discharged & notified'
+        published?.dischargeReady
+          ? 'Discharge summary published — sent to Billing for bill clearance & discharge'
           : 'Discharge summary published — patient notified via portal & email',
       );
     } catch {
