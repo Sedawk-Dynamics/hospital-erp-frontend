@@ -99,5 +99,11 @@ export function notificationLink(n: AppNotification): string | null {
   if (n.referenceType === 'ot_response') {
     return '/ot';
   }
+  // Doctor published the discharge summary → the counter has to clear the bill
+  // before the patient can leave. Land straight on that stay's bill screen with
+  // it already open (referenceId = admissionId).
+  if (n.referenceType === 'discharge_ready' && n.referenceId) {
+    return `/hospital/billing?tab=ip&admissionId=${n.referenceId}`;
+  }
   return null;
 }

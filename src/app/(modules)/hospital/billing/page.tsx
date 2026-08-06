@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Search, Banknote, CreditCard, Smartphone, Building2, Plus, FileText, ListChecks,
@@ -19,6 +20,14 @@ import { IpBillingTab } from '@/components/hospital/billing/ip-billing-tab';
 type TopAction = 'op-list' | 'draft' | 'order-list' | null;
 
 export default function HospitalBillingPage() {
+  // The "patient ready for discharge" notification deep-links here as
+  // ?tab=ip&admissionId=… so the counter lands on that stay's bill instead of
+  // having to find the row. Read once for the initial tab; the IP tab picks the
+  // admission up from the same query string.
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get('tab') === 'ip' ? 'ip' : 'billing';
+  const focusAdmissionId = searchParams.get('admissionId');
+
   const [generatorOpen, setGeneratorOpen] = useState(false);
   const [initialPatient, setInitialPatient] = useState<
     { id: string; firstName: string; lastName: string; mrn: string | null } | null
@@ -65,7 +74,7 @@ export default function HospitalBillingPage() {
       </div>
 
       <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-6">
-        <Tabs defaultValue="billing">
+        <Tabs defaultValue={initialTab}>
           <TabsList variant="line">
             <TabsTrigger value="billing">Hospital Billing</TabsTrigger>
             <TabsTrigger value="ip">IP Patients</TabsTrigger>
@@ -77,7 +86,7 @@ export default function HospitalBillingPage() {
             <BillingTab onOpenBill={(id, patient) => openGenerator(patient, id)} />
           </TabsContent>
           <TabsContent value="ip" className="pt-4">
-            <IpBillingTab />
+            <IpBillingTab focusAdmissionId={focusAdmissionId} />
           </TabsContent>
           <TabsContent value="cash-counter" className="pt-4">
             <CashCounterTab />

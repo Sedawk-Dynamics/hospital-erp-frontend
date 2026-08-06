@@ -64,7 +64,7 @@ const outstandingOf = (b: IpBill) => n(b.deposit?.balanceAfterDeposit ?? b.balan
  */
 const hasRealBill = (b: IpBill) => !!b.billNumber && b.billNumber !== '—';
 
-export function IpBillingTab() {
+export function IpBillingTab({ focusAdmissionId }: { focusAdmissionId?: string | null } = {}) {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [detailBill, setDetailBill] = useState<IpBill | null>(null);
@@ -72,6 +72,9 @@ export function IpBillingTab() {
   const [printAdmissionId, setPrintAdmissionId] = useState<string | null>(null);
   const [readyOnly, setReadyOnly] = useState(false);
   const [dischargeTarget, setDischargeTarget] = useState<IpBill | null>(null);
+  // Set once the deep-linked bill has been auto-opened, so closing it doesn't
+  // immediately re-open on the next render.
+  const [autoOpened, setAutoOpened] = useState(false);
 
   // One row per ADMISSION — listed from the moment the patient is admitted
   // (the endpoint ensures each active admission has its running IP bill).
@@ -90,6 +93,15 @@ export function IpBillingTab() {
     qc.invalidateQueries({ queryKey: ['hospital', 'ip-bills'] });
     qc.invalidateQueries({ queryKey: ['ip-ledger'] });
   };
+
+  // Arriving from the "patient ready for discharge" notification: open that
+  // stay's bill as soon as the row is loaded. Derived during render rather than
+  // set from an effect, so there is no cascading re-render.
+  const deepLinked =
+    focusAdmissionId && !autoOpened
+      ? all.find((b) => b.admissionId === focusAdmissionId && hasRealBill(b))
+      : undefined;
+  const activeManageBill = manageBill ?? deepLinked ?? null;
 
 
   return (
@@ -323,17 +335,23 @@ export function IpBillingTab() {
           counter learns one billing surface. `admissionId` is what enables
           Print Bill inside it. */}
       <BillGeneratorDialog
-        open={!!manageBill}
-        onOpenChange={(o) => { if (!o) setManageBill(null); }}
-        initialBillId={manageBill?.id ?? null}
-        admissionId={manageBill?.admissionId ?? null}
+        key={activeManageBill?.id ?? 'none'}
+        open={!!activeManageBill}
+        onOpenChange={(o) => {
+          if (!o) {
+            setManageBill(null);
+            setAutoOpened(true);
+          }
+        }}
+        initialBillId={activeManageBill?.id ?? null}
+        admissionId={activeManageBill?.admissionId ?? null}
         initialPatient={
-          manageBill?.patient
+          activeManageBill?.patient
             ? {
-                id: manageBill.patient.id,
-                firstName: manageBill.patient.firstName,
-                lastName: manageBill.patient.lastName,
-                mrn: manageBill.patient.mrn,
+                id: activeManageBill.patient.id,
+                firstName: activeManageBill.patient.firstName,
+                lastName: activeManageBill.patient.lastName,
+                mrn: activeManageBill.patient.mrn,
               }
             : null
         }

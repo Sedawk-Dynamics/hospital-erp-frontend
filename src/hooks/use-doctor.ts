@@ -483,6 +483,13 @@ export function useDoctorAdmissions(params?: DoctorAdmissionsParams) {
           diagnosis?: string;
           procedure?: string;
           status: string;
+          /**
+           * Derived, not an AdmissionStatus: the discharge summary is published
+           * but the patient is still in the bed waiting on the cash counter.
+           * They stay `admitted` server-side so eMAR, pharmacy, indents, OT and
+           * room charges all keep working.
+           */
+          dischargeReady?: boolean;
           notes?: string;
           ipNumber?: string;
           complaints?: string;

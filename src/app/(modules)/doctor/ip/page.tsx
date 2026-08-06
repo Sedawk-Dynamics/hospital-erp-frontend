@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatDate, toInputDateStr } from '@/lib/date-utils';
 import { Search, CalendarIcon, Eye, FileText, FlaskConical, MoreVertical } from 'lucide-react';
@@ -34,10 +34,15 @@ import { useDoctorAdmissions, useCreateProgressNote } from '@/hooks/use-doctor';
 import { apiPost } from '@/lib/api';
 import { IpPrescriptionDialog } from '@/components/doctor/ip-prescription-dialog';
 import { AdmissionTypeBadge, ADMISSION_TYPE_OPTIONS } from '@/components/shared/admission-type-badge';
+import { AdmissionStatusBadge } from '@/components/shared/admission-status-badge';
 
+// "Ready" is a slice of `admitted`, not a separate server status — the patient
+// is still in the bed until the counter clears the bill. Splitting the tab keeps
+// signed-off patients from reading as ordinary in-patients.
 const ipStatItems = [
   { key: 'all', label: 'All', color: 'text-on-surface' },
   { key: 'admitted', label: 'In IP', color: 'text-primary-container' },
+  { key: 'ready', label: 'Ready to Discharge', color: 'text-secondary' },
   { key: 'discharged', label: 'Discharge', color: 'text-secondary' },
   { key: 'transferred', label: 'Transferred', color: 'text-primary' },
   { key: 'absconded', label: 'Absconded', color: 'text-error' },
@@ -62,7 +67,11 @@ export default function DoctorIPHomePage() {
   const [selectedAdmissionId, setSelectedAdmissionId] = useState('');
   const [noteContent, setNoteContent] = useState('');
 
-  const statusFilter = activeFilter === 'all' ? undefined : activeFilter;
+  // 'ready' is a client-side slice of `admitted` (see ipStatItems), so the
+  // server is still asked for admitted rows and the split happens below.
+  const isReadyView = activeFilter === 'ready';
+  const statusFilter =
+    activeFilter === 'all' ? undefined : isReadyView ? 'admitted' : activeFilter;
 
   const { data: admissionsData, isLoading } = useDoctorAdmissions({
     page,
@@ -75,23 +84,33 @@ export default function DoctorIPHomePage() {
     // Currently-admitted patients must stay on the list until they are
     // discharged, regardless of when they were admitted — so the date filter
     // only scopes the historical (discharged / transferred / …) views.
-    date: activeFilter === 'admitted' ? undefined : fromDate,
+    date: activeFilter === 'admitted' || isReadyView ? undefined : fromDate,
     wardId: selectedWard !== 'all' ? selectedWard : undefined,
     admissionType: typeFilter !== 'all' ? typeFilter : undefined,
   });
 
   const createNoteMutation = useCreateProgressNote();
 
-  const admissions = admissionsData?.data ?? [];
+  const allRows = useMemo(() => admissionsData?.data ?? [], [admissionsData]);
   const meta = admissionsData?.meta;
+
+  // A signed-off patient is still `admitted` on the server; split the two views
+  // here so "In IP" means "still being treated" and "Ready to Discharge" means
+  // "waiting on the counter".
+  const admissions = useMemo(() => {
+    if (isReadyView) return allRows.filter((a) => a.dischargeReady);
+    if (activeFilter === 'admitted') return allRows.filter((a) => !a.dischargeReady);
+    return allRows;
+  }, [allRows, isReadyView, activeFilter]);
 
   // Compute stats from current data
   const stats = {
-    all: meta?.total ?? admissions.length,
-    admitted: admissions.filter((a) => a.status === 'admitted').length,
-    discharged: admissions.filter((a) => a.status === 'discharged').length,
-    transferred: admissions.filter((a) => a.status === 'transferred').length,
-    absconded: admissions.filter((a) => a.status === 'absconded').length,
+    all: meta?.total ?? allRows.length,
+    admitted: allRows.filter((a) => a.status === 'admitted' && !a.dischargeReady).length,
+    ready: allRows.filter((a) => a.dischargeReady).length,
+    discharged: allRows.filter((a) => a.status === 'discharged').length,
+    transferred: allRows.filter((a) => a.status === 'transferred').length,
+    absconded: allRows.filter((a) => a.status === 'absconded').length,
   };
 
   const handleAddNote = useCallback((patientId: string, admissionId: string) => {
@@ -370,15 +389,10 @@ export default function DoctorIPHomePage() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={cn(
-                          'font-label text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full',
-                          admission.status === 'admitted' && 'bg-primary-container/10 text-primary-container',
-                          admission.status === 'discharged' && 'bg-primary/10 text-primary',
-                          admission.status === 'transferred' && 'bg-secondary/10 text-secondary',
-                          admission.status === 'absconded' && 'bg-error/10 text-error',
-                        )}>
-                          {admission.status.charAt(0).toUpperCase() + admission.status.slice(1)}
-                        </span>
+                        <AdmissionStatusBadge
+                          status={admission.status}
+                          dischargeReady={admission.dischargeReady}
+                        />
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-1">
