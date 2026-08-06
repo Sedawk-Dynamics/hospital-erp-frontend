@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { Search, Loader2, UserRound, Link2, ClipboardCheck } from 'lucide-react';
+import { Search, Loader2, UserRound, Link2, ClipboardCheck, Building2 } from 'lucide-react';
 
 import {
   Dialog,
@@ -26,9 +26,11 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import {
-  usePatientDirectory,
   useRegisterTemporaryPatient,
   useMergeTemporaryPatient,
+  useGlobalPatientSearch,
+  useProvisionLocalPatient,
+  type GlobalPatientMatch,
 } from '@/hooks/use-hospital';
 import type { Patient } from '@/types';
 
@@ -45,6 +47,15 @@ export function tempFullName(p: Pick<Patient, 'firstName' | 'lastName'>): string
 
 export function tempInitials(p: Pick<Patient, 'firstName' | 'lastName'>): string {
   return `${p.firstName?.[0] ?? '?'}${p.lastName?.[0] ?? ''}`.toUpperCase();
+}
+
+/** A global-search hit carries the same name fields, under its own type. */
+function matchName(r: GlobalPatientMatch): string {
+  return `${r.firstName ?? ''} ${r.lastName ?? ''}`.trim() || '—';
+}
+
+function matchInitials(r: GlobalPatientMatch): string {
+  return `${r.firstName?.[0] ?? '?'}${r.lastName?.[0] ?? ''}`.toUpperCase();
 }
 
 // ============================================================
@@ -219,16 +230,16 @@ export function MergeDialog({
   onClose: () => void;
 }) {
   const merge = useMergeTemporaryPatient();
+  const provisionLocal = useProvisionLocalPatient();
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<Patient | null>(null);
+  const [selected, setSelected] = useState<GlobalPatientMatch | null>(null);
 
-  const { data, isFetching } = usePatientDirectory({
-    category: 'registered',
-    search: search.trim() || undefined,
-    page: 1,
-    limit: 10,
-  });
-  const results = (data?.patients ?? []).filter((p) => p.id !== patient?.id);
+  // A patient is one PERSON across the whole ERP, so search globally rather
+  // than only this hospital's rows. Someone with a portal account, or who was
+  // registered at another hospital, was previously unfindable here — which is
+  // exactly the person a temporary record usually turns out to be.
+  const { data, isFetching } = useGlobalPatientSearch(search);
+  const results = (data ?? []).filter((r) => r.localPatientId !== patient?.id);
 
   const close = () => {
     setSearch('');
@@ -236,11 +247,29 @@ export function MergeDialog({
     onClose();
   };
 
+  const busy = merge.isPending || provisionLocal.isPending;
+
   const submit = async () => {
     if (!patient || !selected) return;
     try {
-      await merge.mutateAsync({ id: patient.id, targetPatientId: selected.id });
-      toast.success(`Connected ${patient.mrn} to ${selected.mrn}`);
+      // Someone known only at another hospital has no record here to merge
+      // into, so give them one first. provisionLocal is idempotent and carries
+      // the account holder across, so the two rows stay the same person.
+      const targetPatientId =
+        selected.localPatientId ??
+        (await provisionLocal.mutateAsync(selected.sourcePatientId))?.id;
+
+      if (!targetPatientId) {
+        toast.error('Could not create a local record for this patient');
+        return;
+      }
+
+      await merge.mutateAsync({ id: patient.id, targetPatientId });
+      toast.success(
+        selected.localPatientId
+          ? `Connected ${patient.mrn} to ${selected.mrn ?? 'the existing record'}`
+          : `Registered ${matchName(selected)} here and connected ${patient.mrn}`,
+      );
       close();
     } catch (e: any) {
       toast.error(e?.response?.data?.message ?? 'Failed to connect patient');
@@ -253,8 +282,9 @@ export function MergeDialog({
         <DialogHeader>
           <DialogTitle>Connect to Existing Patient</DialogTitle>
           <DialogDescription>
-            Move this temporary record&apos;s visits, admissions and bills onto an already-registered
-            patient. The temporary record is retired — no duplicate is left behind.
+            Search the whole ERP — the person may already have a record at another hospital or a
+            patient-portal account. Their visits, admissions and bills move onto that record and the
+            temporary one is retired, so no duplicate is left behind.
           </DialogDescription>
         </DialogHeader>
 
@@ -291,7 +321,7 @@ export function MergeDialog({
                 setSearch(e.target.value);
                 setSelected(null);
               }}
-              placeholder="Search registered patients by name, MRN, phone…"
+              placeholder="Search any hospital by name, MRN, phone or ABHA…"
               className="pl-9"
             />
           </div>
@@ -302,43 +332,56 @@ export function MergeDialog({
                 <Loader2 className="size-5 animate-spin text-on-surface-variant" />
               </div>
             ) : results.length === 0 ? (
-              <div className="flex h-24 items-center justify-center text-sm text-on-surface-variant">
-                {search.trim() ? 'No matching patients.' : 'Type to search patients.'}
+              <div className="flex h-24 items-center justify-center px-4 text-center text-sm text-on-surface-variant">
+                {search.trim().length >= 2
+                  ? 'Nobody found. Try their phone number or ABHA.'
+                  : 'Type at least 2 characters to search.'}
               </div>
             ) : (
-              results.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => setSelected(p)}
-                  className={cn(
-                    'flex w-full items-center gap-3 rounded-md p-2 text-left transition-colors',
-                    selected?.id === p.id ? 'bg-primary/10' : 'hover:bg-surface-container-high',
-                  )}
-                >
-                  <Avatar className="size-8">
-                    <AvatarFallback className="text-xs">{tempInitials(p)}</AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium text-on-surface">{tempFullName(p)}</div>
-                    <div className="truncate text-xs text-on-surface-variant">
-                      {p.mrn} · {p.phone || 'no phone'}
+              results.map((r) => {
+                const isSelected = selected?.sourcePatientId === r.sourcePatientId;
+                return (
+                  <button
+                    key={r.sourcePatientId}
+                    type="button"
+                    onClick={() => setSelected(r)}
+                    className={cn(
+                      'flex w-full items-center gap-3 rounded-md p-2 text-left transition-colors',
+                      isSelected ? 'bg-primary/10' : 'hover:bg-surface-container-high',
+                    )}
+                  >
+                    <Avatar className="size-8">
+                      <AvatarFallback className="text-xs">{matchInitials(r)}</AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-medium text-on-surface">{matchName(r)}</div>
+                      <div className="truncate text-xs text-on-surface-variant">
+                        {r.mrn ?? 'no MRN here'} · {r.phone || 'no phone'}
+                      </div>
+                      {/* Where this person is already known. Someone found only
+                          at another hospital gets a local record on connect. */}
+                      {!r.localPatientId && (
+                        <Badge variant="secondary" className="mt-0.5 gap-1 text-[10px]">
+                          <Building2 className="size-2.5" />
+                          {r.hospital} · will be registered here
+                        </Badge>
+                      )}
                     </div>
-                  </div>
-                  {selected?.id === p.id && <UserRound className="size-4 text-primary" />}
-                </button>
-              ))
+                    {isSelected && <UserRound className="size-4 text-primary" />}
+                  </button>
+                );
+              })
             )}
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={close} disabled={merge.isPending}>
+          <Button variant="outline" onClick={close} disabled={busy}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={!selected || merge.isPending}>
-            {merge.isPending && <Loader2 className="size-4 animate-spin" />}
-            Connect Patient
+          <Button onClick={submit} disabled={!selected || busy}>
+            {busy && <Loader2 className="size-4 animate-spin" />}
+            {selected && !selected.localPatientId ? 'Register & Connect' : 'Connect Patient'}
           </Button>
         </DialogFooter>
       </DialogContent>
