@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Heart, Users, AlertTriangle, Plus, Trash2, Save } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
@@ -81,6 +81,95 @@ interface PersonalHistory {
   notes?: string | null;
 }
 
+const FIELD_CLASS =
+  'w-full rounded-lg bg-surface-container-low border border-outline-variant/30 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30';
+
+/**
+ * These two live at MODULE scope on purpose.
+ *
+ * They used to be declared inside PersonalTab's body, so every keystroke ran
+ * setForm → PersonalTab re-rendered → the component functions were re-created
+ * with a fresh identity → React saw a different component type and unmounted /
+ * remounted the <input>. The field lost focus after every single character and
+ * the tab was unusable. Never define a component inside another component's
+ * render.
+ */
+const LABEL_CLASS = 'font-label text-xs font-bold text-on-surface-variant block mb-1.5';
+
+function TextField({
+  label,
+  value,
+  onChange,
+  textarea,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  textarea?: boolean;
+}) {
+  // The label was a bare sibling of the control, so nothing tied the two
+  // together — a screen reader read an unlabelled box, and clicking the label
+  // didn't focus the field.
+  const id = useId();
+  return (
+    <div>
+      <label htmlFor={id} className={LABEL_CLASS}>
+        {label}
+      </label>
+      {textarea ? (
+        <textarea
+          id={id}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          rows={3}
+          className={FIELD_CLASS}
+        />
+      ) : (
+        <input
+          id={id}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={FIELD_CLASS}
+        />
+      )}
+    </div>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: string[];
+}) {
+  const id = useId();
+  return (
+    <div>
+      <label htmlFor={id} className={LABEL_CLASS}>
+        {label}
+      </label>
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={FIELD_CLASS}
+      >
+        <option value="">—</option>
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 function PersonalTab() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
@@ -105,85 +194,39 @@ function PersonalTab() {
     },
   });
 
+  const valueOf = (field: keyof PersonalHistory) =>
+    ((current as Record<string, unknown>)[field] as string | null | undefined) ?? '';
+  // Text fields keep '' (the column is nullable but an empty string round-trips
+  // fine); a cleared SELECT writes null so "no answer" is distinguishable.
+  const setText = (field: keyof PersonalHistory) => (value: string) =>
+    setForm((f) => ({ ...f, [field]: value }));
+  const setChoice = (field: keyof PersonalHistory) => (value: string) =>
+    setForm((f) => ({ ...f, [field]: value || null }));
+
   if (isLoading) return <Loader />;
-
-  const inputClass =
-    'w-full rounded-lg bg-surface-container-low border border-outline-variant/30 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30';
-
-  const Input = ({
-    label,
-    field,
-    textarea,
-  }: {
-    label: string;
-    field: keyof PersonalHistory;
-    textarea?: boolean;
-  }) => (
-    <div>
-      <label className="font-label text-xs font-bold text-on-surface-variant block mb-1.5">
-        {label}
-      </label>
-      {textarea ? (
-        <textarea
-          value={(current as Record<string, unknown>)[field] as string ?? ''}
-          onChange={(e) => setForm((f) => ({ ...f, [field]: e.target.value }))}
-          rows={3}
-          className={inputClass}
-        />
-      ) : (
-        <input
-          value={(current as Record<string, unknown>)[field] as string ?? ''}
-          onChange={(e) => setForm((f) => ({ ...f, [field]: e.target.value }))}
-          className={inputClass}
-        />
-      )}
-    </div>
-  );
-
-  const Select = ({
-    label,
-    field,
-    options,
-  }: {
-    label: string;
-    field: keyof PersonalHistory;
-    options: string[];
-  }) => (
-    <div>
-      <label className="font-label text-xs font-bold text-on-surface-variant block mb-1.5">
-        {label}
-      </label>
-      <select
-        value={(current as Record<string, unknown>)[field] as string ?? ''}
-        onChange={(e) => setForm((f) => ({ ...f, [field]: e.target.value || null }))}
-        className={inputClass}
-      >
-        <option value="">—</option>
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {o}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
 
   return (
     <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-6 space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Input label="Appetite" field="appetite" />
-        <Input label="Diet" field="diet" />
-        <Input label="Sleep Pattern" field="sleepPattern" />
-        <Input label="Exercise Habits" field="exerciseHabits" />
-        <Select label="Smoking" field="smokingStatus" options={['never', 'former', 'current']} />
-        <Select
+        <TextField label="Appetite" value={valueOf('appetite')} onChange={setText('appetite')} />
+        <TextField label="Diet" value={valueOf('diet')} onChange={setText('diet')} />
+        <TextField label="Sleep Pattern" value={valueOf('sleepPattern')} onChange={setText('sleepPattern')} />
+        <TextField label="Exercise Habits" value={valueOf('exerciseHabits')} onChange={setText('exerciseHabits')} />
+        <SelectField
+          label="Smoking"
+          value={valueOf('smokingStatus')}
+          onChange={setChoice('smokingStatus')}
+          options={['never', 'former', 'current']}
+        />
+        <SelectField
           label="Alcohol"
-          field="alcoholConsumption"
+          value={valueOf('alcoholConsumption')}
+          onChange={setChoice('alcoholConsumption')}
           options={['none', 'occasional', 'moderate', 'heavy']}
         />
       </div>
-      <Input label="Disorders" field="disorders" textarea />
-      <Input label="Notes" field="notes" textarea />
+      <TextField label="Disorders" value={valueOf('disorders')} onChange={setText('disorders')} textarea />
+      <TextField label="Notes" value={valueOf('notes')} onChange={setText('notes')} textarea />
 
       <div className="flex justify-end">
         <Button
