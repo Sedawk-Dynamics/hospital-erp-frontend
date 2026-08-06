@@ -24,6 +24,7 @@ import {
   BedDouble,
   Clock,
   FlaskConical,
+  FolderOpen,
   Heart,
   History,
   Loader2,
@@ -56,6 +57,7 @@ import { MedicalHistoryPanel } from '@/components/doctor/medical-history-panel';
 import { familyKey, LIVE } from '@/components/shared/patient-history-panel';
 import { PatientSafetyBanner } from '@/components/shared/patient-safety-banner';
 import { InvestigationHistoryPanel } from '@/components/doctor/investigation-history-panel';
+import { PatientDocumentsPanel } from '@/components/shared/patient-documents-panel';
 import { LabOrderDialog } from '@/components/doctor/lab-order-dialog';
 import { ImagingRequestDialog } from '@/components/doctor/imaging-request-dialog';
 import { AdmissionRequestDialog } from '@/components/doctor/admission-request-dialog';
@@ -647,14 +649,14 @@ export default function PatientConsultationPage({
 
   const [clinicalOpen, setClinicalOpen] = useState(false);
   const [activeClinical, setActiveClinical] = useState<
-    'medications' | 'history' | 'investigations' | 'drugs' | null
+    'medications' | 'history' | 'investigations' | 'drugs' | 'files' | null
   >(null);
   const [labDialogOpen, setLabDialogOpen] = useState(false);
   const [imagingDialogOpen, setImagingDialogOpen] = useState(false);
   const [admissionRequestOpen, setAdmissionRequestOpen] = useState(false);
   const [amendmentOpen, setAmendmentOpen] = useState(false);
 
-  const openClinical = (key: 'medications' | 'history' | 'investigations' | 'drugs') => {
+  const openClinical = (key: 'medications' | 'history' | 'investigations' | 'drugs' | 'files') => {
     setActiveClinical(key);
     setClinicalOpen(true);
   };
@@ -885,7 +887,7 @@ export default function PatientConsultationPage({
                   Click any card for details
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
                 <ClinicalCard
                   label="Current Medications"
                   subtitle="Active prescriptions"
@@ -913,6 +915,13 @@ export default function PatientConsultationPage({
                   icon={Pill}
                   accent="border-tertiary"
                   onClick={() => openClinical('drugs')}
+                />
+                <ClinicalCard
+                  label="Miscellaneous Files"
+                  subtitle="Patient uploads & documents"
+                  icon={FolderOpen}
+                  accent="border-secondary"
+                  onClick={() => openClinical('files')}
                 />
               </div>
             </section>
@@ -1077,6 +1086,12 @@ export default function PatientConsultationPage({
                 subtitle: 'Past medications & adherence',
                 icon: Pill,
                 panel: <DrugHistoryPanel patientId={patient.id} />,
+              },
+              files: {
+                title: 'Miscellaneous Files',
+                subtitle: 'Documents the patient uploaded, plus anything on file',
+                icon: FolderOpen,
+                panel: <PatientDocumentsPanel patientId={patient.id} />,
               },
             } as const;
             const entry = activeClinical ? map[activeClinical] : null;

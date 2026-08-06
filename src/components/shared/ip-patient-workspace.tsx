@@ -49,11 +49,13 @@ import {
   User,
   Wind,
   X,
+  FolderOpen,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { RecordVitalsDialog } from '@/components/shared/record-vitals-dialog';
 import { PatientSafetyBanner } from '@/components/shared/patient-safety-banner';
+import { PatientDocumentsPanel } from '@/components/shared/patient-documents-panel';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -1437,8 +1439,17 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
           <NursingNotesPanel patientId={patientId} admissionId={admissionId} />
         </TabsContent>
 
-        <TabsContent value="progress" className="pt-4">
+        <TabsContent value="progress" className="pt-4 space-y-4">
           <ProgressNotesPanel admissionId={admissionId} visitId={admission.visitId} patientId={patientId} role={role} />
+          {/* Referral letters, outside scans and old reports the patient
+              uploaded from their portal — they belong beside the notes, which
+              is where a clinician looks for them. */}
+          <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4">
+            <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
+              <FolderOpen className="h-4 w-4 text-primary" /> Miscellaneous Files
+            </h3>
+            <PatientDocumentsPanel patientId={patientId} />
+          </div>
         </TabsContent>
 
         <TabsContent value="orders" className="pt-4">
