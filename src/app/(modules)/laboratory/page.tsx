@@ -701,7 +701,7 @@ function SampleCollectionDialog({
     if (!sampleType.trim()) { toast.error('Sample type is required'); return; }
     try {
       await collectMutation.mutateAsync({
-        orderId: order.id,
+        labOrderId: order.id,
         sampleType: sampleType.trim(),
         barcode: barcode || undefined,
         notes: notes || undefined,

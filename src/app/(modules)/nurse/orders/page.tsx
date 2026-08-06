@@ -44,24 +44,52 @@ import {
 } from '@/hooks/use-nurse';
 import type { BedInfo, SupplyRequest, InventoryItem, NurseClinicalOrder } from '@/hooks/use-nurse';
 import { useWards } from '@/hooks/use-clinical';
+import { useCollectSample } from '@/hooks/use-lab';
 import { LabOrderDetailDialog } from '@/components/shared/lab-order-detail-dialog';
 import { resolveAttachmentUrl } from '@/hooks/use-lab-attachments';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 // ============================================================
 // Types
 // ============================================================
 
+/**
+ * Mirrors the LabSample row the API returns. The patient and the tests hang off
+ * the ORDER, not the sample — this used to declare a flat `patient` / `testName`
+ * / `sampleId` that the API has never sent, so the table rendered "-" in every
+ * one of those columns. There is also no 'ordered' sample status: a sample only
+ * exists once it has been drawn, so it starts at 'collected'.
+ */
 interface LabSample {
   id: string;
-  sampleId?: string;
-  patientId?: string;
-  patient?: { firstName: string; lastName: string; mrn?: string };
-  testName?: string;
-  status: 'ordered' | 'collected' | 'in_transit' | 'received';
-  collectedAt?: string;
+  labOrderId: string;
+  /** The tube's real identifier. Falls back to a short id when unlabelled. */
+  barcode?: string | null;
+  sampleType: string;
+  status: 'collected' | 'in_transit' | 'received' | 'processing' | 'completed' | 'rejected';
+  rejectionReason?: string | null;
+  collectedAt?: string | null;
+  collector?: { id: string; firstName: string; lastName?: string | null } | null;
+  labOrder?: {
+    id: string;
+    status: string;
+    urgency?: string;
+    patient?: { id: string; mrn?: string; firstName: string; lastName?: string | null };
+    labOrderItems?: { test: { id: string; testName: string } | null }[];
+  };
   updatedAt: string;
   createdAt: string;
 }
+
+/** Common draw types — free text is still accepted by the API. */
+const SAMPLE_TYPES = ['Blood', 'Serum', 'Plasma', 'Urine', 'Stool', 'Sputum', 'Swab', 'Tissue', 'CSF'];
 
 interface TransferRequest {
   id: string;
@@ -154,6 +182,7 @@ function DoctorOrdersTab() {
   const [scope, setScope] = useState<'mine' | 'all'>('mine');
   const [ackedIds, setAckedIds] = useState<Set<string>>(new Set());
   const [openLabOrderId, setOpenLabOrderId] = useState<string | null>(null);
+  const [collectForOrder, setCollectForOrder] = useState<{ id: string; label: string } | null>(null);
 
   const { data: wardsData } = useWards();
   const wards = (wardsData ?? []) as { id: string; name: string }[];
@@ -286,6 +315,8 @@ function DoctorOrdersTab() {
         onOpenChange={(open) => !open && setOpenLabOrderId(null)}
       />
 
+      <CollectSampleDialog target={collectForOrder} onClose={() => setCollectForOrder(null)} />
+
       <div className="overflow-x-auto rounded-lg border border-outline-variant">
         <table className="w-full text-sm">
           <thead>
@@ -402,6 +433,19 @@ function DoctorOrdersTab() {
                             View
                           </Button>
                         )}
+                        {/* The ward draws the sample. Once collected the order
+                            leaves 'ordered', so the button retires itself. */}
+                        {order.orderType === 'lab' && order.status === 'ordered' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            onClick={() => setCollectForOrder({ id: order.id, label: order.description })}
+                          >
+                            <FlaskConical className="mr-1 h-3 w-3" />
+                            Collect Sample
+                          </Button>
+                        )}
                         {/* Source-aware report link:
                             - patient self-completion → "Patient Uploaded" (green)
                             - else lab/imaging report → "Lab Report" / "Imaging Report" (primary)
@@ -477,6 +521,116 @@ function DoctorOrdersTab() {
 }
 
 // ============================================================
+// Collect Sample (ward-side)
+// ============================================================
+// The nurse draws at the bedside, so collection starts here rather than in the
+// lab module. Creating the sample also moves the order to `sample_collected`.
+
+function CollectSampleDialog({
+  target,
+  onClose,
+}: {
+  target: { id: string; label: string } | null;
+  onClose: () => void;
+}) {
+  const collect = useCollectSample();
+  const [sampleType, setSampleType] = useState<string>('Blood');
+  const [barcode, setBarcode] = useState('');
+  const [notes, setNotes] = useState('');
+
+  const close = () => {
+    setSampleType('Blood');
+    setBarcode('');
+    setNotes('');
+    onClose();
+  };
+
+  const submit = async () => {
+    if (!target) return;
+    if (!sampleType.trim()) return toast.error('Pick a sample type');
+    try {
+      await collect.mutateAsync({
+        labOrderId: target.id,
+        sampleType: sampleType.trim(),
+        barcode: barcode.trim() || undefined,
+        notes: notes.trim() || undefined,
+      });
+      toast.success('Sample collected — the order is now with the ward for transit');
+      close();
+    } catch (err) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        (err as Error)?.message;
+      toast.error(msg || 'Failed to collect sample');
+    }
+  };
+
+  return (
+    <Dialog open={!!target} onOpenChange={(o) => !o && close()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-primary" />
+            Collect Sample
+          </DialogTitle>
+          <DialogDescription>{target?.label}</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium">Sample type *</label>
+            <Select value={sampleType} onValueChange={(v) => setSampleType(v ?? '')}>
+              <SelectTrigger className="h-9 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SAMPLE_TYPES.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium">Barcode / tube label</label>
+            <Input
+              placeholder="Scan or type the tube label (optional)"
+              value={barcode}
+              onChange={(e) => setBarcode(e.target.value)}
+            />
+            <p className="mt-1 text-[11px] text-on-surface-variant">
+              Must be unique across the hospital — the lab uses it to identify the tube.
+            </p>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium">Notes</label>
+            <Textarea
+              rows={2}
+              placeholder="e.g. difficult draw, fasting sample"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={close} disabled={collect.isPending}>
+            Cancel
+          </Button>
+          <Button onClick={submit} disabled={!sampleType.trim() || collect.isPending}>
+            {collect.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+            Record Collection
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============================================================
 // 2. Sample Collection Tab
 // ============================================================
 
@@ -487,23 +641,25 @@ function SampleCollectionTab() {
 
   const samples = (data?.data ?? data ?? []) as LabSample[];
 
+  // The ward's half of the journey: drawn → sent down → the lab has it.
+  // Everything past 'received' (processing/completed/rejected) is the lab's.
   const nextStatusMap: Record<string, string> = {
-    ordered: 'collected',
     collected: 'in_transit',
     in_transit: 'received',
   };
 
   const nextStatusLabel: Record<string, string> = {
-    ordered: 'Mark Collected',
-    collected: 'Mark In Transit',
+    collected: 'Send to Lab',
     in_transit: 'Mark Received',
   };
 
   const sampleStatusColor: Record<string, string> = {
-    ordered: 'bg-amber-100 text-amber-700',
     collected: 'bg-blue-100 text-blue-700',
     in_transit: 'bg-purple-100 text-purple-700',
     received: 'bg-emerald-100 text-emerald-700',
+    processing: 'bg-amber-100 text-amber-700',
+    completed: 'bg-emerald-100 text-emerald-700',
+    rejected: 'bg-red-100 text-red-700',
   };
 
   const handleUpdateStatus = useCallback(
@@ -569,20 +725,34 @@ function SampleCollectionTab() {
                 </td>
               </tr>
             ) : (
-              samples.map((sample) => (
+              samples.map((sample) => {
+                const patient = sample.labOrder?.patient;
+                const tests = (sample.labOrder?.labOrderItems ?? [])
+                  .map((i) => i.test?.testName)
+                  .filter(Boolean)
+                  .join(', ');
+                return (
                 <tr key={sample.id} className="border-b border-outline-variant last:border-0 hover:bg-surface-container-low/50 transition-colors">
-                  <td className="px-4 py-3 font-medium font-mono text-xs">{sample.sampleId || sample.id.slice(0, 8)}</td>
+                  <td className="px-4 py-3 font-medium font-mono text-xs">
+                    {sample.barcode || sample.id.slice(0, 8)}
+                    <p className="text-[10px] font-sans text-on-surface-variant">{sample.sampleType}</p>
+                  </td>
                   <td className="px-4 py-3">
                     <div>
-                      <p className="font-medium">{sample.patient ? `${sample.patient.firstName} ${sample.patient.lastName}` : '-'}</p>
-                      {sample.patient?.mrn && <p className="text-xs text-on-surface-variant">{sample.patient.mrn}</p>}
+                      <p className="font-medium">
+                        {patient ? `${patient.firstName} ${patient.lastName ?? ''}`.trim() : '-'}
+                      </p>
+                      {patient?.mrn && <p className="text-xs text-on-surface-variant">{patient.mrn}</p>}
                     </div>
                   </td>
-                  <td className="px-4 py-3">{sample.testName || '-'}</td>
+                  <td className="px-4 py-3">{tests || '-'}</td>
                   <td className="px-4 py-3">
                     <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full uppercase', sampleStatusColor[sample.status])}>
                       {sample.status.replace('_', ' ')}
                     </span>
+                    {sample.status === 'rejected' && sample.rejectionReason && (
+                      <p className="mt-0.5 text-[10px] text-red-700">{sample.rejectionReason}</p>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-xs text-on-surface-variant">
                     {formatDateTime(sample.updatedAt)}
@@ -606,11 +776,17 @@ function SampleCollectionTab() {
                     )}
                   </td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>
       </div>
+      <p className="text-[11px] text-on-surface-variant">
+        Collect a sample from the <strong>Doctor Orders</strong> tab — each lab order there has a
+        Collect Sample action. Advancing a sample here also moves its order forward, so the ward and
+        the lab see the same status.
+      </p>
     </div>
   );
 }

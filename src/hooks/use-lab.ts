@@ -583,8 +583,11 @@ export function useLabSamples(params?: PaginatedParams & { status?: string }) {
 export function useCollectSample() {
   const queryClient = useQueryClient();
   return useMutation({
+    // The field is `labOrderId` — collectSampleSchema requires it and rejects
+    // anything else. This used to send `orderId`, so EVERY collect attempt 400d
+    // on "Invalid order ID" and no sample could be created from any surface.
     mutationFn: async (data: {
-      orderId: string;
+      labOrderId: string;
       sampleType: string;
       barcode?: string;
       notes?: string;
@@ -616,12 +619,17 @@ export function useUpdateSampleStatus() {
 export function useRejectSample() {
   const queryClient = useQueryClient();
   return useMutation({
+    // Body key is `rejectionReason` — sending `reason` failed the schema's
+    // min(1) check on a field that was never present.
     mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
-      const response = await apiPatch<LabSample>(`/lab/samples/${id}/reject`, { reason });
+      const response = await apiPatch<LabSample>(`/lab/samples/${id}/reject`, {
+        rejectionReason: reason,
+      });
       return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: labKeys.samples.all });
+      queryClient.invalidateQueries({ queryKey: labKeys.orders.all });
     },
   });
 }
