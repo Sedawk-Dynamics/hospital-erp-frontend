@@ -151,6 +151,14 @@ export const DischargeSummaryDocument = forwardRef<HTMLDivElement, { doc: Discha
           ))}
         </div>
 
+        {/* The doctor's own notes on the header column, including "general"
+            pins. This never reached the document at all. */}
+        {doc.sections.headerNotes?.trim() && (
+          <Section title="Summary">
+            <Prose text={doc.sections.headerNotes} />
+          </Section>
+        )}
+
         {/* Diagnoses */}
         <Section title="Diagnosis">
           {doc.sections.diagnosesText && doc.sections.diagnosesText.trim() ? (
@@ -230,16 +238,22 @@ export const DischargeSummaryDocument = forwardRef<HTMLDivElement, { doc: Discha
           </Section>
         )}
 
-        {/* Medications */}
+        {/* Medications — the prescribed table AND anything the doctor typed.
+            These used to be either/or, so a hand-written medication note
+            vanished the moment the stay had any prescription. */}
         <Section title="Medications on Discharge">
-          {doc.medications.length ? (
+          {doc.medications.length > 0 && (
             <Table
               head={['Medication', 'Dose', 'Frequency', 'Duration', 'Route', 'Instructions']}
               rows={doc.medications.map((m) => [m.drug, m.dosage, m.frequency, m.duration ?? 'ongoing', m.route, m.instructions])}
             />
-          ) : doc.sections.medicationsText ? (
-            <Prose text={doc.sections.medicationsText} />
-          ) : (
+          )}
+          {doc.sections.medicationsText?.trim() && (
+            <div className={doc.medications.length > 0 ? 'mt-2' : undefined}>
+              <Prose text={doc.sections.medicationsText} />
+            </div>
+          )}
+          {doc.medications.length === 0 && !doc.sections.medicationsText?.trim() && (
             <p className="italic text-[#6b7280]">No discharge medications prescribed.</p>
           )}
         </Section>

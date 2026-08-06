@@ -1434,7 +1434,18 @@ export interface DischargeDocument {
   vitals: { admission: DischargeVitalRow | null; discharge: DischargeVitalRow | null };
   procedures: Array<{ name: string; type: string | null; date: string | null; status: string; surgeon: string | null }>;
   imaging: Array<{ study: string; indication: string | null; impression: string | null; date: string | null }>;
-  sections: { diagnosesText: string | null; hospitalCourse: string | null; keyLabs: string | null; labResults: string | null; medicationsText: string | null; dischargeInstructions: string | null; followUpDate: string | null; followUpInstructions: string | null };
+  sections: {
+    /** Free text on the header column, incl. "general" pins. */
+    headerNotes: string | null;
+    diagnosesText: string | null;
+    hospitalCourse: string | null;
+    keyLabs: string | null;
+    labResults: string | null;
+    medicationsText: string | null;
+    dischargeInstructions: string | null;
+    followUpDate: string | null;
+    followUpInstructions: string | null;
+  };
   medications: Array<{ drug: string; dosage: string; frequency: string; duration: string | null; route: string; instructions: string | null }>;
 }
 
