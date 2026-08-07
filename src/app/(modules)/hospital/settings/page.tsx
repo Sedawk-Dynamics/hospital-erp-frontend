@@ -40,6 +40,7 @@ const settingsGroups: SettingsGroup[] = [
     icon: Wrench,
     items: [
       { label: 'Service Master Configuration', href: '/hospital/settings/services' },
+      { label: 'Registration Fee', href: '/hospital/settings/registration-fee' },
     ],
   },
   {

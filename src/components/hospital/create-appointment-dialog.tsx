@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { Search, Loader2, UserRound, CalendarDays, ClipboardList } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { usePatientVisitStatus } from '@/hooks/use-registration-fee';
 
 import {
   Dialog,
@@ -32,9 +33,8 @@ import {
 
 import { useDoctorsList, useGlobalPatientSearch, useProvisionLocalPatient, type GlobalPatientMatch } from '@/hooks/use-hospital';
 import { DoctorCalendarPicker } from '@/components/hospital/doctor-calendar-picker';
-import { apiPost, apiGet } from '@/lib/api';
+import { apiPost } from '@/lib/api';
 import type { Patient, Appointment } from '@/types';
-import { useQuery } from '@tanstack/react-query';
 
 // ============================================================
 // Schema
@@ -87,6 +87,9 @@ export function CreateAppointmentDialog({
 
   // Patient search state
   const [patientQuery, setPatientQuery] = useState('');
+  // The desk's registration-fee decision. Null until the visit-status lookup
+  // comes back and pre-ticks it, so we never send a guess.
+  const [chargeRegistration, setChargeRegistration] = useState<boolean | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [showPatientDropdown, setShowPatientDropdown] = useState(false);
 
@@ -210,6 +213,10 @@ export function CreateAppointmentDialog({
         priority: data.priority,
         notes: data.notes || undefined,
         reason: data.reason || undefined,
+        // Only sent when the desk was actually shown the choice. Omitting it
+        // lets the server fall back to the rule, which is what a portal
+        // booking (no checkbox) relies on.
+        chargeRegistrationFee: chargeRegistration ?? undefined,
       });
 
       // Invalidate appointment queries
@@ -313,7 +320,13 @@ export function CreateAppointmentDialog({
             {errors.patientId && (
               <p className="text-xs text-destructive">{errors.patientId.message}</p>
             )}
-            {selectedPatient && <PatientTypeBadge patientId={selectedPatient.id} isNew={(selectedPatient as any).isNew} />}
+            {selectedPatient && (
+              <PatientVisitPanel
+                patientId={selectedPatient.id}
+                chargeRegistration={chargeRegistration}
+                onChangeCharge={setChargeRegistration}
+              />
+            )}
           </div>
 
           {/* Doctor Select */}
@@ -559,36 +572,91 @@ function SectionHeading({
   );
 }
 
-// ── Patient Type Badge ─────────────────────────────────────
+// ── First visit here? ──────────────────────────────────────
+//
+// Two things the desk needs before booking: has this patient been to THIS
+// hospital before (and if so, when), and is the one-time registration fee due.
+//
+// "First time" is per-hospital. A patient who already has an account on the
+// portal, or who is a regular at another hospital on this platform, is still
+// opening a new file here.
 
-function PatientTypeBadge({ patientId, isNew }: { patientId: string; isNew?: boolean }) {
-  // Check if patient has any completed appointments to determine old vs new
-  const { data } = useQuery({
-    queryKey: ['patient-type-check', patientId],
-    queryFn: async () => {
-      const res = await apiGet<Appointment[]>('/appointments', {
-        params: { patientId, status: 'completed', limit: 1 },
-      });
-      const appointments = res.data ?? [];
-      if (appointments.length === 0) return 'new' as const;
-      const lastDate = new Date((appointments[0] as any).appointmentDate);
-      const days = Math.floor((Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
-      return days <= 30 ? ('review' as const) : ('old' as const);
-    },
-    enabled: !!patientId,
-    staleTime: 60_000,
-  });
+function PatientVisitPanel({
+  patientId,
+  chargeRegistration,
+  onChangeCharge,
+}: {
+  patientId: string;
+  chargeRegistration: boolean | null;
+  onChangeCharge: (v: boolean | null) => void;
+}) {
+  const { data, isLoading } = usePatientVisitStatus(patientId);
 
-  const type = data ?? (isNew !== false ? 'new' : 'old');
-  const config = {
-    new: { label: 'New Patient', className: 'bg-red-100 text-red-700' },
-    review: { label: 'Review Patient', className: 'bg-blue-100 text-blue-700' },
-    old: { label: 'Old Patient', className: 'bg-purple-100 text-purple-700' },
-  }[type];
+  // Pre-tick from the server's suggestion, once per patient. The desk can then
+  // untick it; their choice is not overwritten by a refetch.
+  const suggested = data?.suggestCharge ?? null;
+  useEffect(() => {
+    onChangeCharge(suggested);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patientId, suggested]);
+
+  if (isLoading || !data) {
+    return (
+      <p className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+        <Loader2 className="h-3 w-3 animate-spin" /> Checking visit history…
+      </p>
+    );
+  }
+
+  const fee = data.settings;
+  const feeTotal = fee.amount + Math.round(fee.amount * (fee.gstRatePercent / 100) * 100) / 100;
 
   return (
-    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold mt-1 ${config.className}`}>
-      {config.label}
-    </span>
+    <div className="mt-1 space-y-1.5">
+      <div className="flex flex-wrap items-center gap-2">
+        {data.isFirstVisit ? (
+          <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
+            First visit to this hospital
+          </span>
+        ) : (
+          <>
+            <span className="inline-flex rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-bold text-purple-700">
+              Existing patient
+            </span>
+            {data.lastVisitAt && (
+              <span className="text-[11px] text-muted-foreground">
+                Last visit {formatDate(data.lastVisitAt)}
+                {data.priorEncounters > 0 && ` · ${data.priorEncounters} visit${data.priorEncounters === 1 ? '' : 's'}`}
+              </span>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Only shown when the hospital actually charges one. */}
+      {fee.enabled && fee.amount > 0 && (
+        <label className="flex items-start gap-2 rounded-md border bg-muted/30 px-2.5 py-1.5">
+          <input
+            type="checkbox"
+            checked={chargeRegistration === true}
+            disabled={fee.oncePerPatient && data.registrationFeeCharged}
+            onChange={(e) => onChangeCharge(e.target.checked)}
+            className="mt-0.5 h-3.5 w-3.5 accent-primary"
+          />
+          <span className="min-w-0">
+            <span className="text-xs font-medium">
+              Add {fee.label} — ₹{feeTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            </span>
+            <span className="block text-[10px] leading-tight text-muted-foreground">
+              {fee.oncePerPatient && data.registrationFeeCharged
+                ? `Already charged${data.registrationFeeChargedAt ? ` on ${formatDate(data.registrationFeeChargedAt)}` : ''} — it cannot be taken twice.`
+                : data.isFirstVisit
+                  ? 'Ticked because this is their first visit here. It goes on this appointment’s bill.'
+                  : 'Not a first visit — tick only if this patient still owes the registration fee.'}
+            </span>
+          </span>
+        </label>
+      )}
+    </div>
   );
 }
