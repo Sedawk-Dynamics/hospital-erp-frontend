@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { Users, Search, Loader2, Link2, ClipboardCheck, Eye, UserRound, BadgeCheck, Clock, Building2 } from 'lucide-react';
+import Link from 'next/link';
+import { Users, Search, Loader2, Link2, ClipboardCheck, Eye, UserRound, BadgeCheck, Clock, Building2, FolderOpen } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -215,13 +216,14 @@ export default function HospitalPatientsPage() {
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setDetailId(p.id)}
-                            className="truncate font-label font-semibold text-on-surface hover:text-primary"
+                          {/* The name opens the full file; "Details" still opens
+                              the quick edit dialog for a one-field correction. */}
+                          <Link
+                            href={`/hospital/patients/${p.id}`}
+                            className="truncate font-label font-semibold text-on-surface hover:text-primary hover:underline"
                           >
                             {fullName(p)}
-                          </button>
+                          </Link>
                           {temp && (
                             <Badge className="border-amber-500/20 bg-amber-500/10 uppercase text-amber-700">Temp</Badge>
                           )}
@@ -235,7 +237,17 @@ export default function HospitalPatientsPage() {
                     <td className="px-4 py-2.5 text-xs text-on-surface-variant">{formatDate(p.createdAt)}</td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center justify-end gap-1.5">
-                        <Button size="sm" variant="outline" onClick={() => setDetailId(p.id)}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          nativeButton={false}
+                          render={<Link href={`/hospital/patients/${p.id}`} />}
+                          title="Everything this hospital holds on this patient"
+                        >
+                          <FolderOpen className="size-3.5" />
+                          File
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setDetailId(p.id)} title="Edit demographics">
                           <Eye className="size-3.5" />
                           Details
                         </Button>

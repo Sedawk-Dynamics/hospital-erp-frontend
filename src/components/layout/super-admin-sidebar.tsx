@@ -27,6 +27,7 @@ import {
   Sparkles,
   Receipt,
   Image as ImageIcon,
+  HeartPulse,
 } from 'lucide-react';
 import { PlatformLogo } from '@/components/branding/platform-logo';
 
@@ -35,6 +36,7 @@ const NAV_ITEMS = [
   { href: '/super-admin/demo-requests', label: 'Demo Requests', icon: CalendarCheck },
   { href: '/super-admin/hospitals', label: 'Hospitals', icon: Building2 },
   { href: '/super-admin/users', label: 'Users', icon: Users },
+  { href: '/super-admin/patients', label: 'Patients', icon: HeartPulse },
   { href: '/super-admin/subscriptions', label: 'Subscriptions', icon: CreditCard },
   { href: '/super-admin/commission', label: 'Commission', icon: Percent },
   { href: '/super-admin/features', label: 'Features', icon: ToggleLeft },
