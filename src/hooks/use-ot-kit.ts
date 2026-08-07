@@ -79,13 +79,19 @@ export const otKitKeys = {
 };
 
 // --- Templates ---
-export function useSurgicalTemplates(params?: { search?: string; doctorId?: string; includeInactive?: boolean }) {
+export function useSurgicalTemplates(
+  params?: { search?: string; doctorId?: string; includeInactive?: boolean },
+  // Callers that only need the cards once a dialog opens pass { enabled: open }
+  // rather than fetching preference cards on every page load.
+  options?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: otKitKeys.templates(params),
     queryFn: async () => {
       const res = await apiGet<ListWrap<SurgicalTemplate>>('/ot-kit/templates', { params });
       return res.data;
     },
+    enabled: options?.enabled ?? true,
   });
 }
 

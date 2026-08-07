@@ -126,13 +126,14 @@ export const otKeys = {
 // OT Request Hooks
 // ============================================================
 
-export function useOTRequests(params?: OTRequestParams) {
+export function useOTRequests(params?: OTRequestParams, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: otKeys.requests.list(params),
     queryFn: async () => {
       const response = await apiGet<OTRequest[]>('/compliance/ot-requests', { params });
       return { data: response.data, meta: response.meta as PaginationMeta };
     },
+    enabled: options?.enabled ?? true,
   });
 }
 

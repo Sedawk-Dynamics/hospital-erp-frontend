@@ -13,27 +13,17 @@
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
-  Search,
   Plus,
   Loader2,
   Eye,
   Ban,
   PackageOpen,
   ClipboardList,
-  Stethoscope,
   ArrowRight,
 } from 'lucide-react';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -42,19 +32,17 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { cn } from '@/lib/utils';
+import { cn, getApiErrorMessage } from '@/lib/utils';
 import { formatDate } from '@/lib/date-utils';
 import {
   useSurgicalTemplates,
   useOtKitIssues,
-  useRequestKit,
   useCancelKit,
-  type SurgicalTemplate,
   type OtKitIssue,
 } from '@/hooks/use-ot-kit';
-import { useOTRequests, type OTRequest } from '@/hooks/use-ot';
-import { usePatientSearch } from '@/hooks/use-hospital';
 import { SurgicalTemplatesTab } from '@/components/ot-kit/surgical-templates-tab';
+// Shared with the surgeon's own OT list — see components/ot-kit/request-kit-dialog.
+import { RequestKitDialog } from '@/components/ot-kit/request-kit-dialog';
 
 // ============================================================
 // Helpers
@@ -74,8 +62,6 @@ const STATUS_LABEL: Record<string, string> = {
   reconciled: 'Reconciled & billed',
   cancelled: 'Cancelled',
 };
-
-const inr = (n?: number | null) => (n == null ? '—' : `₹${Number(n).toFixed(2)}`);
 
 const TEXTAREA_CLS =
   'flex min-h-[72px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
@@ -264,222 +250,6 @@ function RequestsTab() {
 }
 
 // ============================================================
-// Request Kit dialog — pick a scheduled surgery (or a patient) + template
-// ============================================================
-
-function RequestKitDialog({
-  open,
-  onOpenChange,
-  templates,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  templates: SurgicalTemplate[];
-}) {
-  // Scheduled surgeries the nurse can attach a kit to.
-  const { data: otData } = useOTRequests({ status: 'scheduled', limit: 100 });
-  const surgeries = otData?.data ?? [];
-
-  const [otRequestId, setOtRequestId] = useState('');
-  const [manualPatient, setManualPatient] = useState<{ id: string; name: string; mrn?: string } | null>(null);
-  const [patientQuery, setPatientQuery] = useState('');
-  const { data: patients, isLoading: patientsLoading } = usePatientSearch(patientQuery);
-  const [templateId, setTemplateId] = useState('');
-  const [notes, setNotes] = useState('');
-
-  const requestMutation = useRequestKit();
-
-  const selectedSurgery = useMemo(
-    () => surgeries.find((s) => s.id === otRequestId) ?? null,
-    [surgeries, otRequestId],
-  );
-
-  // Suggest the surgeon's preference card when a surgery is picked.
-  const suggestedTemplates = useMemo(() => {
-    const active = templates.filter((t) => t.isActive);
-    if (!selectedSurgery?.surgeonId) return active;
-    const pref = active.filter((t) => t.doctorId === selectedSurgery.surgeonId);
-    return pref.length ? [...pref, ...active.filter((t) => t.doctorId !== selectedSurgery.surgeonId)] : active;
-  }, [templates, selectedSurgery]);
-
-  const resolvedPatient = selectedSurgery
-    ? { id: selectedSurgery.patientId, name: `${selectedSurgery.patient?.firstName ?? ''} ${selectedSurgery.patient?.lastName ?? ''}`.trim() || selectedSurgery.patientId, mrn: selectedSurgery.patient?.mrn ?? selectedSurgery.patient?.uhid }
-    : manualPatient;
-
-  const reset = () => {
-    setOtRequestId('');
-    setManualPatient(null);
-    setPatientQuery('');
-    setTemplateId('');
-    setNotes('');
-  };
-  const handleClose = () => {
-    onOpenChange(false);
-    reset();
-  };
-
-  const submit = () => {
-    if (!resolvedPatient) {
-      toast.error('Select a scheduled surgery or a patient');
-      return;
-    }
-    if (!templateId) {
-      toast.error('Select the surgeon’s preference-card kit');
-      return;
-    }
-    requestMutation.mutate(
-      {
-        patientId: resolvedPatient.id,
-        otRequestId: otRequestId || undefined,
-        templateId,
-        notes: notes.trim() || undefined,
-      },
-      {
-        onSuccess: () => {
-          toast.success('Kit requested — sent to the pharmacy');
-          handleClose();
-        },
-        onError: (err: any) => toast.error(err?.message ?? 'Failed to request kit'),
-      },
-    );
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={(v) => (v ? onOpenChange(true) : handleClose())}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Request OT Kit</DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-4 py-1">
-          {/* Scheduled surgery */}
-          <div className="space-y-1.5">
-            <Label>Scheduled surgery</Label>
-            <Select
-              value={otRequestId || 'none'}
-              onValueChange={(v: string | null) => {
-                setOtRequestId(v === 'none' ? '' : (v ?? ''));
-                if (v && v !== 'none') setManualPatient(null);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select a scheduled surgery" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">— Not linked to a scheduled surgery —</SelectItem>
-                {surgeries.map((s: OTRequest) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {(s.patient ? `${s.patient.firstName} ${s.patient.lastName ?? ''}`.trim() : s.patientId)} · {s.surgeryName ?? s.procedureName}
-                    {s.scheduledDate ? ` · ${formatDate(s.scheduledDate)}` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {selectedSurgery && (
-              <div className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                <div className="flex items-center gap-1.5 text-foreground">
-                  <Stethoscope className="h-3.5 w-3.5" />
-                  <span className="font-medium">{selectedSurgery.surgeryName ?? selectedSurgery.procedureName}</span>
-                </div>
-                {selectedSurgery.speciality && <span>{selectedSurgery.speciality}</span>}
-              </div>
-            )}
-          </div>
-
-          {/* Manual patient (only when no surgery is linked) */}
-          {!otRequestId && (
-            <div className="space-y-1.5">
-              <Label>Patient {resolvedPatient ? '' : '*'}</Label>
-              {manualPatient ? (
-                <div className="flex items-center justify-between rounded-md border px-3 py-2 bg-muted/30">
-                  <div>
-                    <span className="font-medium">{manualPatient.name}</span>
-                    {manualPatient.mrn && <span className="ml-2 text-xs text-muted-foreground">MRN: {manualPatient.mrn}</span>}
-                  </div>
-                  <Button type="button" variant="ghost" size="sm" onClick={() => { setManualPatient(null); setPatientQuery(''); }}>
-                    Change
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input placeholder="Search by patient name or MRN..." value={patientQuery} onChange={(e) => setPatientQuery(e.target.value)} className="pl-9" />
-                  </div>
-                  {patientQuery.length >= 2 && (
-                    <div className="rounded-md border bg-popover max-h-40 overflow-y-auto shadow-md">
-                      {patientsLoading ? (
-                        <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" /> Searching...</div>
-                      ) : patients && patients.length > 0 ? (
-                        patients.map((p) => (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => setManualPatient({ id: p.id, name: `${p.firstName} ${p.lastName ?? ''}`.trim(), mrn: p.mrn ?? undefined })}
-                            className="w-full text-left px-3 py-2 text-sm hover:bg-muted transition-colors border-b last:border-b-0"
-                          >
-                            <span className="font-medium">{p.firstName} {p.lastName}</span>
-                            {p.mrn && <span className="ml-2 text-muted-foreground">MRN: {p.mrn}</span>}
-                          </button>
-                        ))
-                      ) : (
-                        <div className="px-3 py-2 text-sm text-muted-foreground">No patients found</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Template — required (design doc: the OT nurse clicks the required surgical template) */}
-          <div className="space-y-1.5">
-            <Label>Surgeon&apos;s preference-card kit *</Label>
-            <Select value={templateId || null} onValueChange={(v: string | null) => setTemplateId(v ?? '')}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select the required surgical kit" />
-              </SelectTrigger>
-              <SelectContent>
-                {suggestedTemplates.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.name}
-                    {t.procedureName ? ` · ${t.procedureName}` : ''}
-                    {selectedSurgery?.surgeonId && t.doctorId === selectedSurgery.surgeonId ? '  (surgeon preference)' : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {suggestedTemplates.length === 0 ? (
-              <p className="text-xs text-amber-600">
-                No preference cards yet — create one in the “Preference Cards” tab (or the pharmacy can).
-              </p>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                The kit&apos;s items are the bundle the pharmacy issues whole to the theatre (expanded to FEFO batches on issue).
-              </p>
-            )}
-          </div>
-
-          {/* Notes */}
-          <div className="space-y-1.5">
-            <Label>Notes</Label>
-            <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional notes for the pharmacy..." className={TEXTAREA_CLS} />
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={handleClose}>Cancel</Button>
-          <Button type="button" onClick={submit} disabled={requestMutation.isPending}>
-            {requestMutation.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-            Send Request to Pharmacy
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ============================================================
 // Request details (read-only) — OT nurse sees issued/consumed once reconciled
 // ============================================================
 
@@ -560,7 +330,7 @@ function WithdrawDialog({ issue, onClose }: { issue: OtKitIssue; onClose: () => 
       { id: issue.id, reason: reason.trim() || undefined },
       {
         onSuccess: () => { toast.success('Kit request withdrawn'); onClose(); },
-        onError: (err: any) => toast.error(err?.message ?? 'Failed to withdraw request'),
+        onError: (err) => toast.error(getApiErrorMessage(err, 'Failed to withdraw request')),
       },
     );
   };

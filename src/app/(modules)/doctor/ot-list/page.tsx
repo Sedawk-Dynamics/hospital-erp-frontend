@@ -30,6 +30,7 @@ import {
   Ban,
   Clock3,
   Loader2,
+  PackageOpen,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -59,6 +60,8 @@ import {
   type DoctorOTRequest,
 } from '@/hooks/use-doctor';
 import { useRespondToOtSchedule } from '@/hooks/use-ot';
+import { RequestKitDialog } from '@/components/ot-kit/request-kit-dialog';
+import { useOtKitIssues } from '@/hooks/use-ot-kit';
 
 const AWAITING_DOCTOR = 'awaiting_doctor';
 
@@ -75,6 +78,10 @@ const otStatItems = [
 ];
 
 const PAGE_SIZE = 10;
+
+// A kit can be raised while a case is still ahead of the theatre. Once it is
+// completed or cancelled there is nothing left to issue.
+const KIT_REQUESTABLE = new Set(['requested', 'scheduled', 'in_progress']);
 
 function hhmm(v?: string | null): string {
   return v ? (v.match(/\d{2}:\d{2}/)?.[0] ?? '') : '';
@@ -101,6 +108,7 @@ export default function DoctorOTListPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [viewTarget, setViewTarget] = useState<DoctorOTRequest | null>(null);
   const [respondTarget, setRespondTarget] = useState<DoctorOTRequest | null>(null);
+  const [kitTarget, setKitTarget] = useState<DoctorOTRequest | null>(null);
 
   // Form state
   const [patientSearch, setPatientSearch] = useState('');
@@ -460,6 +468,20 @@ export default function DoctorOTListPage() {
                               Review
                             </Button>
                           )}
+                          {/* The surgeon is the one who knows which preference
+                              card a case needs, so the kit request belongs on
+                              their own row. Closed cases have nothing to kit. */}
+                          {KIT_REQUESTABLE.has(req.status) && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              title="Request OT kit from the pharmacy"
+                              onClick={() => setKitTarget(req)}
+                            >
+                              <PackageOpen className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="icon"
@@ -526,12 +548,24 @@ export default function DoctorOTListPage() {
         <OTDetailsDialog
           request={viewTarget}
           onClose={() => setViewTarget(null)}
+          onRequestKit={() => {
+            setKitTarget(viewTarget);
+            setViewTarget(null);
+          }}
           onRespond={() => {
             setRespondTarget(viewTarget);
             setViewTarget(null);
           }}
         />
       )}
+
+      {/* Ask the pharmacy for this case's preference-card kit. Same dialog the
+          OT nurse uses, with the case fixed to the row it was opened from. */}
+      <RequestKitDialog
+        open={!!kitTarget}
+        onOpenChange={(v) => !v && setKitTarget(null)}
+        surgery={kitTarget}
+      />
 
       {/* Create OT Request Dialog */}
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
@@ -709,10 +743,12 @@ function OTDetailsDialog({
   request: r,
   onClose,
   onRespond,
+  onRequestKit,
 }: {
   request: DoctorOTRequest;
   onClose: () => void;
   onRespond: () => void;
+  onRequestKit: () => void;
 }) {
   const awaiting = r.scheduleState === AWAITING_DOCTOR && r.status !== 'cancelled';
   return (
@@ -780,15 +816,52 @@ function OTDetailsDialog({
             <Row label="Notes" value={r.notes} />
             {r.status === 'cancelled' && <Row label="Cancelled because" value={r.cancellationReason ?? undefined} />}
           </section>
+          <OtKitStatusSection otRequestId={r.id} />
         </div>
         <DialogFooter>
           {awaiting && <Button onClick={onRespond}>Review new time</Button>}
+          {KIT_REQUESTABLE.has(r.status) && (
+            <Button variant="outline" className="gap-1.5" onClick={onRequestKit}>
+              <PackageOpen className="h-4 w-4" />
+              Request OT Kit
+            </Button>
+          )}
           <Button variant="outline" onClick={onClose}>
             Close
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Where this case's kit has got to on the pharmacy side. Without it the
+// surgeon could raise a request and never learn whether it was issued, so the
+// only way to find out was to ask the OT nurse.
+const KIT_STATUS_LABEL: Record<string, string> = {
+  requested: 'Requested — with the pharmacy',
+  issued: 'Issued to theatre',
+  reconciled: 'Reconciled & billed',
+  cancelled: 'Cancelled',
+};
+
+function OtKitStatusSection({ otRequestId }: { otRequestId: string }) {
+  const { data, isLoading } = useOtKitIssues({ otRequestId });
+  const kits = data?.items ?? [];
+  if (isLoading || kits.length === 0) return null;
+  return (
+    <section>
+      <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        OT Kits
+      </h4>
+      {kits.map((k) => (
+        <Row
+          key={k.id}
+          label={k.issueNumber}
+          value={KIT_STATUS_LABEL[k.status] ?? k.status}
+        />
+      ))}
+    </section>
   );
 }
 
