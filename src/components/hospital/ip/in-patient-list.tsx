@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import { AdmissionTypeBadge, ADMISSION_TYPE_OPTIONS, type AdmissionType } from '@/components/shared/admission-type-badge';
+import { AdmissionDoctorControl } from '@/components/shared/admission-doctor-control';
 import {
   Search,
   Plus,
@@ -1881,13 +1882,15 @@ export function InPatientList() {
                         </p>
                       </td>
                       <td className="px-4 py-3">
-                        <p className="font-label text-sm">
-                          {adm.doctor
-                            ? `Dr. ${adm.doctor.user?.firstName || ''} ${
-                                adm.doctor.user?.lastName || ''
-                              }`
-                            : '-'}
-                        </p>
+                        {/* An emergency admission is usually opened before a
+                            consultant is named, and until now nothing could
+                            name one afterwards. The desk can set it here. */}
+                        <AdmissionDoctorControl
+                          admissionId={adm.id}
+                          doctor={adm.doctor}
+                          editable={adm.status !== 'discharged'}
+                          className="text-left font-label text-sm hover:text-primary hover:underline"
+                        />
                       </td>
                       <td className="px-4 py-3">
                         <p className="font-label text-sm">

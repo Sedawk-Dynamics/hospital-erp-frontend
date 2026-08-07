@@ -1597,6 +1597,12 @@ export interface PrescriptionListItem {
       billingCategory: IpBillingCategory | null;
       ward?: { id: string; name: string } | null;
       bed?: { id: string; bedNumber: string } | null;
+      /**
+       * ip | emergency | daycare. All three are the same IP flow, so all three
+       * already reach this queue — the tag is what lets the counter tell an
+       * emergency order apart from a planned one.
+       */
+      admissionType?: string | null;
     } | null;
   };
   prescriptionItems: Array<{

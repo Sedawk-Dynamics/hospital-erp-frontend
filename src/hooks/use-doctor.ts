@@ -459,6 +459,12 @@ interface DoctorAdmissionsParams {
   wardId?: string;
   date?: string;
   admissionType?: string;
+  /**
+   * With doctorUserId: also return admissions that have no consultant yet.
+   * The front desk opens an emergency admission without naming one, so without
+   * this those patients belong to nobody and appear on nobody's list.
+   */
+  includeUnassigned?: boolean;
 }
 
 export function useDoctorAdmissions(params?: DoctorAdmissionsParams) {

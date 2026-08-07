@@ -8,6 +8,15 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
 import { formatBaseQty } from '@/lib/pharmacy-units';
+import { cn } from '@/lib/utils';
+import { AdmissionTypeBadge } from '@/components/shared/admission-type-badge';
+
+const ADMISSION_TYPE_FILTERS = [
+  { value: 'all', label: 'All' },
+  { value: 'ip', label: 'In-Patient' },
+  { value: 'emergency', label: 'Emergency' },
+  { value: 'daycare', label: 'Day Care' },
+] as const;
 
 // "Medicines sent to IP" — every medicine dispensed to an admitted patient,
 // billed onto the hospital IP bill (NOT the pharmacy counter).
@@ -29,6 +38,9 @@ interface IpDispensedRow {
   bill: { id: string; billNumber: string; status: string };
   ward: string | null;
   bed: string | null;
+  admissionId: string | null;
+  /** ip | emergency | daycare — same flow, different tag. */
+  admissionType: string;
 }
 interface IpDispensedResp { rows: IpDispensedRow[]; count: number; totalAmount: number }
 
@@ -36,10 +48,18 @@ const money = (n: number) => `₹${(n ?? 0).toFixed(2)}`;
 
 export default function IpMedicinesPage() {
   const [search, setSearch] = useState('');
+  // Emergency and Day Care dispenses are already in this list — they are the
+  // same IP flow. The filter is what lets the pharmacy look at one of them.
+  const [typeFilter, setTypeFilter] = useState<'all' | 'ip' | 'emergency' | 'daycare'>('all');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['pharmacy', 'ip-dispensed'],
-    queryFn: async () => (await apiGet<IpDispensedResp>('/pharmacy/ip-dispensed', { params: { limit: 300 } })).data,
+    queryKey: ['pharmacy', 'ip-dispensed', typeFilter],
+    queryFn: async () =>
+      (
+        await apiGet<IpDispensedResp>('/pharmacy/ip-dispensed', {
+          params: { limit: 300, admissionType: typeFilter === 'all' ? undefined : typeFilter },
+        })
+      ).data,
   });
 
   const rows = useMemo(() => {
@@ -63,7 +83,7 @@ export default function IpMedicinesPage() {
           <h1 className="flex items-center gap-2 font-headline text-xl font-bold">
             <Pill className="h-5 w-5 text-primary" /> IP Medicines
           </h1>
-          <p className="text-sm text-muted-foreground">All medicines dispensed to admitted patients — billed to the hospital IP bill, not the pharmacy counter.</p>
+          <p className="text-sm text-muted-foreground">All medicines dispensed to admitted patients — inpatient, emergency and day care alike — billed to the hospital IP bill, not the pharmacy counter.</p>
         </div>
       </div>
 
@@ -72,6 +92,23 @@ export default function IpMedicinesPage() {
           <div className="relative w-full max-w-sm">
             <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search drug / patient / MRN / ward…" className="pl-8 h-9 text-sm" />
+          </div>
+          <div className="flex items-center gap-1 rounded-lg border bg-muted/40 p-0.5">
+            {ADMISSION_TYPE_FILTERS.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => setTypeFilter(o.value)}
+                className={cn(
+                  'rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors',
+                  typeFilter === o.value
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {o.label}
+              </button>
+            ))}
           </div>
           <div className="flex items-center gap-3 text-sm">
             <span className="text-muted-foreground">{rows.length} line{rows.length === 1 ? '' : 's'}</span>
@@ -90,6 +127,7 @@ export default function IpMedicinesPage() {
                 <tr className="text-left text-[10px] uppercase tracking-widest text-muted-foreground">
                   <th className="px-3 py-2">When</th>
                   <th className="px-3 py-2">Patient</th>
+                  <th className="px-3 py-2">Care type</th>
                   <th className="px-3 py-2">Ward / Bed</th>
                   <th className="px-3 py-2">Medicine</th>
                   <th className="px-3 py-2 text-right">Qty</th>
@@ -104,6 +142,9 @@ export default function IpMedicinesPage() {
                     <td className="px-3 py-2">
                       <div className="font-medium">{r.patient.firstName} {r.patient.lastName}</div>
                       <div className="text-[11px] text-muted-foreground">{r.patient.mrn}</div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <AdmissionTypeBadge type={r.admissionType} />
                     </td>
                     <td className="px-3 py-2 text-[12px]">
                       <span className="inline-flex items-center gap-1"><BedDouble className="h-3 w-3 text-muted-foreground" />{[r.ward, r.bed].filter(Boolean).join(' · ') || '—'}</span>

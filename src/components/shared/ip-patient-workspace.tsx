@@ -99,6 +99,7 @@ import { apiGet } from '@/lib/api';
 import type { NurseAdmission, NursingNote, Prescription, Vital } from '@/hooks/use-nurse';
 import { AssignBedDialog } from '@/components/hospital/ip/assign-bed-dialog';
 import { AdmissionTypeBadge } from '@/components/shared/admission-type-badge';
+import { AdmissionDoctorControl } from '@/components/shared/admission-doctor-control';
 import { AdmissionTypeConvertButton } from '@/components/shared/admission-type-control';
 import { PatientHistoryPanel } from '@/components/shared/patient-history-panel';
 import { PatientFormsPanel } from '@/components/shared/patient-forms-panel';
@@ -219,12 +220,18 @@ function HeaderStrip({
                 </button>
               )}
             </span>
-            {admission.doctor?.user && (
-              <span className="inline-flex items-center gap-1">
-                <Stethoscope className="h-3.5 w-3.5" />
-                Dr. {admission.doctor.user.firstName} {admission.doctor.user.lastName}
-              </span>
-            )}
+            {/* The consultant. Nullable so an emergency admission can be opened
+                before one is named — and settable here, because until now
+                nothing could name one afterwards and the stay stayed on
+                nobody's list. */}
+            <span className="inline-flex items-center gap-1">
+              <Stethoscope className="h-3.5 w-3.5" />
+              <AdmissionDoctorControl
+                admissionId={admission.id}
+                doctor={admission.doctor}
+                editable={admission.status !== 'discharged' && (role === 'doctor' || role === 'admin')}
+              />
+            </span>
             {(() => {
               const na = (admission as unknown as { nurseAssignments?: Array<{ nurse?: { firstName?: string; lastName?: string }; shiftType?: string }> }).nurseAssignments?.[0];
               if (!na?.nurse) return null;

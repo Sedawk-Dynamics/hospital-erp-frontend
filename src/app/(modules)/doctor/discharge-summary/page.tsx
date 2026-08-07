@@ -97,7 +97,14 @@ export default function DischargeSummaryPage() {
   const { data: admissionsData, isLoading: admissionsLoading } = useDoctorAdmissions({
     page,
     limit: 10,
-    doctorId: user?.id,
+    // `doctorUserId`, NOT `doctorId`: Admission.doctorId is a DoctorProfile id,
+    // so filtering it by a user id is a valid uuid that matches nothing — this
+    // screen silently listed zero patients. The server resolves the profile.
+    doctorUserId: user?.id,
+    // …and includes admissions with no consultant, which is how the front desk
+    // opens an emergency case. Otherwise nobody can write their discharge
+    // summary, and the summary is the gate on discharging them at all.
+    includeUnassigned: true,
     search: search || undefined,
   });
 

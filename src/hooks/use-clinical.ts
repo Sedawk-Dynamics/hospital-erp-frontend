@@ -259,6 +259,30 @@ export function useChangeAdmissionType() {
   });
 }
 
+/**
+ * Set / claim the treating consultant on an admission.
+ *
+ * `Admission.doctorId` is nullable so the front desk can open an emergency
+ * admission before a consultant is named — but nothing could fill it in
+ * afterwards, so it stayed unassigned and appeared on nobody's list. Passing
+ * null hands the patient back to the pool.
+ */
+export function useAssignAdmissionDoctor() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, doctorId }: { id: string; doctorId: string | null }) => {
+      const response = await apiPatch<Admission>(`/clinical/admissions/${id}/doctor`, { doctorId });
+      return response.data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: clinicalKeys.admissions.all });
+      queryClient.invalidateQueries({ queryKey: clinicalKeys.admissions.detail(variables.id) });
+      // The doctor's IP list lives in its own namespace.
+      queryClient.invalidateQueries({ queryKey: ['doctor'] });
+    },
+  });
+}
+
 // Front-desk instant bed assign / change / clear from the IP ledger.
 export function useAssignAdmissionBed() {
   const queryClient = useQueryClient();

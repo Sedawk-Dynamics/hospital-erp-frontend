@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { StockTypeBadge } from '@/components/shared/stock-type-badge';
+import { AdmissionTypeBadge } from '@/components/shared/admission-type-badge';
 import {
   Table,
   TableHeader,
@@ -221,13 +222,19 @@ export default function PrescriptionQueuePage() {
                         </div>
                         <div className="text-xs text-muted-foreground font-mono">{rx.patient.mrn}</div>
                         {/* IP context — ward / bed (IP meds bill to the patient ledger, not the counter) */}
-                        {rx.prescriptionType === 'ip' && rx.visit?.admission && (rx.visit.admission.ward || rx.visit.admission.bed) && (
+                        {rx.prescriptionType === 'ip' && rx.visit?.admission && (
                           <div className="mt-1 flex flex-wrap items-center gap-1">
-                            <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                              <BedDouble className="h-3 w-3" />
-                              {rx.visit.admission.ward?.name}
-                              {rx.visit.admission.bed?.bedNumber ? ` · ${rx.visit.admission.bed.bedNumber}` : ''}
-                            </span>
+                            {/* Emergency / Day Care orders already arrive in this
+                                queue — they are the same IP flow. The tag is how
+                                the counter tells them apart. */}
+                            <AdmissionTypeBadge type={rx.visit.admission.admissionType} />
+                            {(rx.visit.admission.ward || rx.visit.admission.bed) && (
+                              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                                <BedDouble className="h-3 w-3" />
+                                {rx.visit.admission.ward?.name}
+                                {rx.visit.admission.bed?.bedNumber ? ` · ${rx.visit.admission.bed.bedNumber}` : ''}
+                              </span>
+                            )}
                           </div>
                         )}
                       </TableCell>
