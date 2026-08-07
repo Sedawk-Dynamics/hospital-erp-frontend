@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Loader2, Upload, Trash2, Save, FileText, Image as ImageIcon, ExternalLink, RotateCcw, Eye } from 'lucide-react';
+import { Loader2, Upload, Trash2, Save, FileText, Image as ImageIcon, ExternalLink, RotateCcw, Eye, LayoutTemplate } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,8 +12,10 @@ import { cn } from '@/lib/utils';
 import { resolveLogoUrl } from '@/hooks/use-branding';
 import {
   useHospitalBranding, useUpdateHospitalBranding, useUploadBrandingLogo, useRemoveBrandingLogo,
-  fetchBrandingPreviewUrl, DEFAULT_ACCENT, type HospitalBranding, type BrandingVisibility, type PreviewDocType,
+  fetchBrandingPreviewUrl, DEFAULT_ACCENT, type HospitalBranding, type BrandingVisibility, type PdfDocumentType,
 } from '@/hooks/use-hospital-branding';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { TemplateDesigner } from '@/components/pdf-builder/template-designer';
 
 const ALL_VISIBLE: BrandingVisibility = {
   tagline: true, address: true, phone: true, email: true, website: true,
@@ -40,20 +42,62 @@ const VISIBILITY_FIELDS: Array<{ key: keyof BrandingVisibility; label: string }>
   { key: 'footer', label: 'Footer note' },
 ];
 
-// Document types the live preview can mimic.
-const PREVIEW_TYPES: Array<{ key: PreviewDocType; label: string }> = [
+// Document types the letterhead preview can mimic. The full list — and the
+// per-type styling — lives on the Templates tab.
+const PREVIEW_TYPES: Array<{ key: PdfDocumentType; label: string }> = [
   { key: 'prescription', label: 'Prescription' },
-  { key: 'discharge', label: 'Discharge' },
-  { key: 'receipt', label: 'Receipt' },
+  { key: 'discharge_summary', label: 'Discharge' },
+  { key: 'payment_receipt', label: 'Receipt' },
 ];
 
 // Every document that inherits this branding — shown so the admin knows the reach.
 const COVERED_DOCS = [
   'Prescriptions', 'Discharge summaries', 'Bills & receipts', 'Salary slips',
-  'Lab & radiology reports', 'Day-end reports',
+  'NDPS registers', 'Lab & radiology reports',
 ];
 
 export default function PdfBuilderPage() {
+  return (
+    <div className="space-y-4 animate-fade-in-up">
+      <div>
+        <h1 className="flex items-center gap-2 font-headline text-xl font-bold">
+          <FileText className="h-5 w-5 text-primary" /> PDF &amp; Print Builder
+        </h1>
+        <p className="text-xs text-muted-foreground">
+          Two layers. <strong>Letterhead</strong> is your hospital&apos;s identity — logo, name,
+          address, colours — shared by every document. <strong>Templates</strong> is how each
+          document type presents it: page size, fonts, watermark, footer, signatures and your own
+          text.
+        </p>
+      </div>
+
+      <Tabs defaultValue="letterhead">
+        <TabsList variant="line">
+          <TabsTrigger value="letterhead">
+            <ImageIcon className="h-4 w-4" /> Letterhead
+          </TabsTrigger>
+          <TabsTrigger value="templates">
+            <LayoutTemplate className="h-4 w-4" /> Templates
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="letterhead">
+          <LetterheadTab />
+        </TabsContent>
+        <TabsContent value="templates">
+          <TemplatesTab />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+/** The Templates tab needs the saved letterhead so its preview is the real thing. */
+function TemplatesTab() {
+  const { data } = useHospitalBranding();
+  return <TemplateDesigner branding={data} />;
+}
+
+function LetterheadTab() {
   const { data, isLoading } = useHospitalBranding();
   const update = useUpdateHospitalBranding();
   const uploadLogo = useUploadBrandingLogo();
@@ -62,7 +106,7 @@ export default function PdfBuilderPage() {
   const [form, setForm] = useState<HospitalBranding>(EMPTY);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
-  const [previewType, setPreviewType] = useState<PreviewDocType>('prescription');
+  const [previewType, setPreviewType] = useState<PdfDocumentType>('prescription');
   const fileRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -129,12 +173,12 @@ export default function PdfBuilderPage() {
   }
 
   return (
-    <div className="space-y-4 animate-fade-in-up">
+    <div className="space-y-4 pt-2">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 font-headline text-xl font-bold"><FileText className="h-5 w-5 text-primary" /> PDF &amp; Print Builder</h1>
-          <p className="text-xs text-muted-foreground">Your hospital&apos;s letterhead — logo, name, address, contact &amp; colours. It appears on <strong>every</strong> PDF and print the system produces.</p>
-        </div>
+        <p className="text-xs text-muted-foreground">
+          Your hospital&apos;s letterhead — logo, name, address, contact &amp; colours. It appears on
+          <strong> every</strong> PDF and print the system produces.
+        </p>
         <Button onClick={onSave} disabled={update.isPending} className="gap-1.5">
           {update.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save branding
         </Button>
