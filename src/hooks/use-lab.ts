@@ -117,6 +117,10 @@ export interface LabOrder {
       isAbnormal?: boolean | null;
       status?: string;
       correctionNotes?: string | null;
+      // How the value got here. 'ocr' was read off an uploaded report file and
+      // is unverified — the entry grid flags it so the lab checks it before the
+      // supervisor approves. 'manual'/absent means a human typed it.
+      source?: string | null;
     }>;
   }>;
   labSamples?: Array<{

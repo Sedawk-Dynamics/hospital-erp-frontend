@@ -20,6 +20,7 @@ import {
   Lock,
   ShieldCheck,
   UserX,
+  ScanText,
   X as XIcon,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -41,7 +42,7 @@ import {
   type LabOrder,
 } from '@/hooks/use-lab';
 import { useUsersList } from '@/hooks/use-users';
-import { cn } from '@/lib/utils';
+import { cn, getApiErrorMessage } from '@/lib/utils';
 import { formatDateTime } from '@/lib/date-utils';
 import { toast } from 'sonner';
 import {
@@ -58,6 +59,8 @@ import {
   useLabOrderAttachments,
   useUploadLabAttachment,
   useDeleteLabAttachment,
+  useExtractAttachmentResults,
+  canOcrAttachment,
   resolveAttachmentUrl,
   formatFileSize,
   isImageMime,
@@ -1092,6 +1095,7 @@ function TestItemRow({
   const { canApprove } = useLabRole();
   const upload = useUploadLabAttachment();
   const remove = useDeleteLabAttachment();
+  const extract = useExtractAttachmentResults();
   const complete = useCompleteLabOrderItem();
   const enterResults = useEnterResults();
   const verifyResult = useVerifyResults();
@@ -1220,6 +1224,28 @@ function TestItemRow({
       toast.success('File removed');
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? 'Delete failed');
+    }
+  };
+
+  // Re-run the reader on an uploaded file. Uploading already triggers this in
+  // the background; this is the retry for when the AI key was missing, the
+  // quota was spent, or the first pass got nothing off a poor scan.
+  const onExtract = async (attachmentId: string) => {
+    try {
+      const res = await extract.mutateAsync({ attachmentId, orderId });
+      if (res && res.created > 0) {
+        toast.success(
+          `Read ${res.created} value${res.created === 1 ? '' : 's'} off the report — check them under Add Details.`,
+        );
+        setMode('details');
+      } else {
+        toast.warning(
+          res?.warnings?.[0] ??
+            'Nothing could be read off this file. Enter the values under Add Details.',
+        );
+      }
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Could not read this report'));
     }
   };
 
@@ -1410,7 +1436,22 @@ function TestItemRow({
                 Queues the report for supervisor approval once every test is marked done.
               </span>
             </div>
-            <AttachmentList attachments={attachments} onDelete={onDelete} pending={remove.isPending} canDelete={isEditable} />
+            <AttachmentList
+              attachments={attachments}
+              onDelete={onDelete}
+              onExtract={onExtract}
+              extracting={extract.isPending}
+              pending={remove.isPending}
+              canDelete={isEditable}
+            />
+            {attachments.length > 0 && (
+              <p className="text-[10px] text-muted-foreground">
+                Uploaded reports are read into the result grid automatically so doctors, the
+                discharge summary and the AI assistant can use the values. Check them under
+                <span className="font-medium"> Add Details</span> — use
+                <span className="font-medium"> Read values</span> to try again if nothing appeared.
+              </p>
+            )}
           </TabsContent>
 
           {/* Add Details mode */}
@@ -1436,6 +1477,14 @@ function TestItemRow({
                           <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700">
                             <AlertTriangle className="size-3" /> Abnormal
                           </span>
+                        )}
+                        {r.source === 'ocr' && (
+                          <Badge
+                            className="ml-2 gap-1 bg-amber-100 text-amber-800"
+                            title="Read off the uploaded report file — check it against the file before approving"
+                          >
+                            <ScanText className="size-3" /> Read from file — verify
+                          </Badge>
                         )}
                         {r.status && r.status !== 'entered' && (
                           <Badge className="ml-2 capitalize">{r.status}</Badge>
@@ -1716,11 +1765,16 @@ function SchemaParamGrid({
 function AttachmentList({
   attachments,
   onDelete,
+  onExtract,
+  extracting,
   pending,
   canDelete,
 }: {
   attachments: LabAttachment[];
   onDelete?: (id: string) => void;
+  /** Re-run the report reader on this file. Lab roles only. */
+  onExtract?: (id: string) => void;
+  extracting?: boolean;
   pending?: boolean;
   canDelete?: boolean;
 }) {
@@ -1753,6 +1807,19 @@ function AttachmentList({
                 {formatDateTime(a.createdAt)}
               </p>
             </div>
+            {onExtract && canOcrAttachment(a.mimeType) && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => onExtract(a.id)}
+                disabled={extracting}
+                className="h-7 gap-1 px-2 text-[10px]"
+                title="Read the values off this report into the result grid so doctors and the AI assistant can use them"
+              >
+                <ScanText className="size-3.5" />
+                {extracting ? 'Reading…' : 'Read values'}
+              </Button>
+            )}
             <Button
               size="icon"
               variant="ghost"

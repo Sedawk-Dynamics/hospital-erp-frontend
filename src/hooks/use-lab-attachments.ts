@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiDelete, apiClient } from '@/lib/api';
+import { apiGet, apiPost, apiDelete, apiClient } from '@/lib/api';
 import { labKeys } from '@/hooks/use-lab';
 
 // Lab attachments — files (PDFs, images, scans, raw data) tied to an order or
@@ -92,6 +92,36 @@ export function useUploadLabAttachment() {
   });
 }
 
+export interface ExtractAttachmentResult {
+  created: number;
+  skipped: number;
+  warnings: string[];
+}
+
+/**
+ * Re-read an uploaded report file into structured LabResult rows.
+ *
+ * The upload already kicks this off in the background, but the AI reader can be
+ * unconfigured or rate-limited at that moment — so the lab needs a way to ask
+ * again. Invalidates the order so the freshly-read values appear in the grid.
+ */
+export function useExtractAttachmentResults() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { attachmentId: string; orderId: string }) => {
+      const res = await apiPost<ExtractAttachmentResult>(
+        `/lab/attachments/${input.attachmentId}/extract`,
+        {},
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: labKeys.orders.all });
+      queryClient.invalidateQueries({ queryKey: ['doctor', 'investigation-history'] });
+    },
+  });
+}
+
 export function useDeleteLabAttachment() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -136,4 +166,21 @@ export function isImageMime(mime?: string | null): boolean {
 
 export function isPdfMime(mime?: string | null): boolean {
   return mime === 'application/pdf';
+}
+
+// File types the report reader can extract values from. Mirrors
+// OCR_SUPPORTED_MIME in backend/src/services/gemini-vision.ts — a Word doc or
+// raw instrument dump has no "Read values" action because the reader would
+// reject it anyway.
+const OCR_READABLE_MIME = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+  'application/pdf',
+]);
+
+export function canOcrAttachment(mime?: string | null): boolean {
+  return !!mime && OCR_READABLE_MIME.has(mime.toLowerCase());
 }
