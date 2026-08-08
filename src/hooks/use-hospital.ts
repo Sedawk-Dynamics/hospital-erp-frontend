@@ -172,10 +172,19 @@ export function useGlobalPatientSearch(query: string) {
 
 /** Ensure a cross-hospital patient has a local record (new MRN); returns it. */
 export function useProvisionLocalPatient() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (sourcePatientId: string) => {
       const response = await apiPost<Patient>('/patients/provision-local', { sourcePatientId });
       return response.data;
+    },
+    // This mints a brand new patient row with a local MRN, so every list that
+    // could show it is now out of date — including the global search the desk
+    // just used to find the patient in the first place.
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'patient-search'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'patient-directory'] });
+      queryClient.invalidateQueries({ queryKey: ['patients'] });
     },
   });
 }
