@@ -181,13 +181,16 @@ export const clinicalKeys = {
 // Admission Hooks
 // ============================================================
 
-export function useAdmissions(params?: AdmissionParams) {
+export function useAdmissions(params?: AdmissionParams, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: clinicalKeys.admissions.list(params),
     queryFn: async () => {
       const response = await apiGet<Admission[]>('/clinical/admissions', { params });
       return { data: response.data, meta: response.meta as PaginationMeta };
     },
+    // Pickers that only search once the user has typed pass { enabled: … } so
+    // the ward list is not fetched on every mount.
+    enabled: options?.enabled ?? true,
   });
 }
 

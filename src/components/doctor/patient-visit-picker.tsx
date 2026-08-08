@@ -13,6 +13,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { usePatientSearch } from '@/hooks/use-doctor';
+import { useAdmissions } from '@/hooks/use-clinical';
+import { AdmissionTypeBadge } from '@/components/shared/admission-type-badge';
 import { apiGet, apiPost } from '@/lib/api';
 import { formatDate, formatTime, toInputDateStr, getCurrentISTDate } from '@/lib/date-utils';
 
@@ -60,6 +62,13 @@ interface PatientVisitPickerProps {
   doctorId?: string;
   /** Restrict visit and appointment options to today's IST date only. */
   onlyToday?: boolean;
+  /**
+   * Search only patients currently admitted at this hospital — IP, Emergency
+   * and Day Care alike, since all three are admissions. Used where the action
+   * only makes sense for someone in a bed (booking theatre, whose charge posts
+   * to the in-patient bill).
+   */
+  admittedOnly?: boolean;
 }
 
 export function PatientVisitPicker({
@@ -70,6 +79,7 @@ export function PatientVisitPicker({
   requireVisit = true,
   doctorId,
   onlyToday = false,
+  admittedOnly = false,
 }: PatientVisitPickerProps) {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -80,7 +90,31 @@ export function PatientVisitPicker({
     return () => clearTimeout(t);
   }, [query]);
 
-  const { data: patientResults, isLoading: patientsLoading } = usePatientSearch(debouncedQuery);
+  // Two sources, one of which is disabled: every patient, or only those
+  // currently admitted here. Admissions carry ward/bed and the care-type tag,
+  // which is exactly what you need to pick the right person off a ward list.
+  const { data: allPatients, isLoading: allLoading } = usePatientSearch(
+    admittedOnly ? '' : debouncedQuery,
+  );
+  const { data: admittedData, isLoading: admittedLoading } = useAdmissions(
+    { status: 'admitted', search: debouncedQuery || undefined, limit: 50 },
+    { enabled: admittedOnly && debouncedQuery.length >= 2 },
+  );
+
+  const patientsLoading = admittedOnly ? admittedLoading : allLoading;
+  const patientResults: Array<SelectedPatient & { subline?: string; admissionType?: string }> =
+    admittedOnly
+      ? (admittedData?.data ?? []).map((a) => ({
+          id: a.patientId,
+          firstName: a.patient?.firstName ?? '',
+          lastName: a.patient?.lastName ?? '',
+          mrn: (a.patient as { mrn?: string } | undefined)?.mrn,
+          admissionType: (a as { admissionType?: string }).admissionType,
+          subline: [a.ward?.name, a.bed?.bedNumber ? `Bed ${a.bed.bedNumber}` : null]
+            .filter(Boolean)
+            .join(' / '),
+        }))
+      : (allPatients ?? []);
 
   // Fetch active visits once a patient is selected; fall back to recent
   // appointments with the requesting doctor when no visit exists yet.
@@ -298,14 +332,26 @@ export function PatientVisitPicker({
                       onClick={() => handleSelectPatient(p)}
                     >
                       <UserRound className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                      <span className="font-medium">
-                        {p.firstName} {p.lastName}
+                      <span className="min-w-0">
+                        <span className="flex items-center gap-1.5">
+                          <span className="truncate font-medium">
+                            {p.firstName} {p.lastName}
+                          </span>
+                          {admittedOnly && <AdmissionTypeBadge type={p.admissionType} />}
+                        </span>
+                        {p.subline && (
+                          <span className="block text-[11px] text-muted-foreground">{p.subline}</span>
+                        )}
                       </span>
-                      <span className="text-xs text-muted-foreground ml-auto">{p.mrn || ''}</span>
+                      <span className="ml-auto shrink-0 text-xs text-muted-foreground">{p.mrn || ''}</span>
                     </button>
                   ))
                 ) : (
-                  <div className="p-3 text-center text-xs text-muted-foreground">No patients found</div>
+                  <div className="p-3 text-center text-xs text-muted-foreground">
+                    {admittedOnly
+                      ? 'No admitted patient matches. Only patients currently admitted here \u2014 IP, Emergency or Day Care \u2014 can be picked.'
+                      : 'No patients found'}
+                  </div>
                 )}
               </div>
             )}

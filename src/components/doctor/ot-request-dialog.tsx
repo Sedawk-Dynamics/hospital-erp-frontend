@@ -154,6 +154,9 @@ export function OTRequestDialog({
             onSelectVisitId={setVisitId}
             doctorId={myDoctor?.id}
             onlyToday
+            // Theatre is booked for someone in a bed — the surgery charge posts
+            // to their in-patient bill, so an OP/walk-in has nowhere to put it.
+            admittedOnly
           />
 
           <div className="space-y-1.5">

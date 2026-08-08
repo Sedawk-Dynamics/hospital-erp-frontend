@@ -56,10 +56,11 @@ import { toast } from 'sonner';
 import {
   useDoctorOTRequests,
   useCreateOTRequest,
-  usePatientSearch,
   type DoctorOTRequest,
 } from '@/hooks/use-doctor';
 import { useRespondToOtSchedule } from '@/hooks/use-ot';
+import { useAdmissions } from '@/hooks/use-clinical';
+import { AdmissionTypeBadge } from '@/components/shared/admission-type-badge';
 import { RequestKitDialog } from '@/components/ot-kit/request-kit-dialog';
 import { useOtKitIssues } from '@/hooks/use-ot-kit';
 
@@ -132,7 +133,17 @@ export default function DoctorOTListPage() {
     date: dateFilter || undefined,
   });
 
-  const { data: patientResults } = usePatientSearch(patientSearch);
+  // Admitted patients only — IP, Emergency and Day Care alike, since all three
+  // are admissions. The surgery charge posts to the in-patient bill, so booking
+  // theatre for a walk-in would leave the charge with nowhere to land. Tenant
+  // scoping comes from the endpoint; `status: 'admitted'` also covers the
+  // ready-to-discharge patients who are still in a bed.
+  const { data: admittedData, isLoading: patientsLoading } = useAdmissions({
+    status: 'admitted',
+    search: patientSearch || undefined,
+    limit: 50,
+  });
+  const admittedMatches = admittedData?.data ?? [];
   const createOTMutation = useCreateOTRequest();
 
   const allRequests = useMemo(() => otData?.data ?? [], [otData]);
@@ -593,20 +604,43 @@ export default function DoctorOTListPage() {
                     onChange={(e) => setPatientSearch(e.target.value)}
                     className="pl-8"
                   />
-                  {patientResults && patientResults.length > 0 && patientSearch.length >= 2 && (
-                    <div className="absolute top-full left-0 right-0 mt-1 z-10 rounded-lg border bg-background max-h-40 overflow-y-auto shadow-lg">
-                      {patientResults.map((p) => (
-                        <button
-                          key={p.id}
-                          onClick={() => {
-                            setSelectedPatient({ id: p.id, name: `${p.firstName} ${p.lastName}` });
-                            setPatientSearch('');
-                          }}
-                          className="w-full text-left px-3 py-2 hover:bg-muted/50 text-sm border-b last:border-0"
-                        >
-                          {p.firstName} {p.lastName} - {p.mrn}
-                        </button>
-                      ))}
+                  {patientSearch.length >= 2 && (
+                    <div className="absolute top-full left-0 right-0 mt-1 z-10 max-h-56 overflow-y-auto rounded-lg border bg-background shadow-lg">
+                      {patientsLoading ? (
+                        <p className="px-3 py-2 text-xs text-muted-foreground">Searching…</p>
+                      ) : admittedMatches.length === 0 ? (
+                        <p className="px-3 py-2 text-xs text-muted-foreground">
+                          No admitted patient matches. Only patients currently admitted here —
+                          IP, Emergency or Day Care — can be booked for theatre.
+                        </p>
+                      ) : (
+                        admittedMatches.map((a) => (
+                          <button
+                            key={a.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedPatient({
+                                id: a.patientId,
+                                name: `${a.patient?.firstName ?? ''} ${a.patient?.lastName ?? ''}`.trim(),
+                              });
+                              setPatientSearch('');
+                            }}
+                            className="w-full border-b px-3 py-2 text-left text-sm transition-colors last:border-0 hover:bg-muted/50"
+                          >
+                            <span className="flex items-center gap-1.5">
+                              <span className="font-medium">
+                                {a.patient?.firstName} {a.patient?.lastName}
+                              </span>
+                              <AdmissionTypeBadge type={(a as { admissionType?: string }).admissionType} />
+                            </span>
+                            <span className="block text-xs text-muted-foreground">
+                              {(a.patient as { mrn?: string } | undefined)?.mrn ?? a.patient?.uhid ?? ''}
+                              {a.ward?.name ? ` · ${a.ward.name}` : ''}
+                              {a.bed?.bedNumber ? ` / Bed ${a.bed.bedNumber}` : ''}
+                            </span>
+                          </button>
+                        ))
+                      )}
                     </div>
                   )}
                 </div>
