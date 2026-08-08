@@ -423,6 +423,9 @@ export function useMergeFormulary() {
 export interface InwardMatchLine {
   drugName: string;
   genericName?: string | null;
+  // Salt composition — a separate field from genericName, scored on its own by
+  // the matcher and carried onto a product created at inward.
+  composition?: string | null;
   manufacturer?: string | null;
   strength?: string | null;
   dosageForm?: string | null;

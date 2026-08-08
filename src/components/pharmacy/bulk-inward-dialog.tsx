@@ -1309,6 +1309,11 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         externalName: (l.rawName || l.catalogBackup?.drugName || l.drugName).trim(),
         drugName: l.drugName.trim(),
         genericName: l.genericName.trim() || undefined,
+        // The salt. Sent at match time but not here, so a product created at
+        // inward was stored with an empty composition — which is also what the
+        // matcher scores, so the next invoice for the same drug could not
+        // recognise it.
+        composition: l.composition.trim() || undefined,
         manufacturer: l.manufacturer.trim() || undefined,
         strength: l.strength.trim() || undefined,
         // Full product-definition fields carried onto a newly-created product.
@@ -2353,6 +2358,12 @@ function EntryStep(props: {
           const warn = issue?.warnings ?? [];
           const open = expandedRows.has(l.id);
           const isItem = l.kind === 'item';
+          // This line is defining a product that does not exist yet, so there
+          // is no medicine to source its composition / strength from. Those two
+          // boxes become editable — otherwise they are blank at creation and
+          // stay blank forever, and composition is what the matcher scores the
+          // NEXT invoice for this drug against.
+          const isNewProduct = reviewing && decisions[i]?.action === 'create';
           const rate = parseFloat(l.purchasePrice);
           const net = !rate || isNaN(rate)
             ? null
@@ -2395,27 +2406,55 @@ function EntryStep(props: {
                         </Badge>
                       )}
                     </div>
-                    {/* Composition · Strength · GTIN — READ-ONLY. These belong to
-                        the medicine in our database and are filled from the drug
-                        this line is mapped to (below). They are never typed here
-                        or written by OCR / Excel / paste. */}
+                    {/* Composition · Strength · GTIN.
+                        Read-only while the line MAPS onto an existing medicine —
+                        they belong to the drug in our database and are filled
+                        from it, never typed here or written by OCR / Excel.
+                        But a line that CREATES a new product has no medicine to
+                        source them from, so they stayed blank forever and the
+                        new product was born with no salt and no strength on
+                        record. For those lines they are typed here, which is the
+                        only chance to capture them. */}
                     <div className="grid grid-cols-3 gap-1.5">
                       {/* Prefer the medicine's real salt composition; most rows
                           still carry their molecule in genericName alone, so
                           fall back to that rather than showing an empty box. */}
                       <Input
-                        className={cn(cell, 'text-muted-foreground')}
-                        value={l.composition || l.genericName}
-                        readOnly
-                        tabIndex={-1}
-                        title={
-                          l.composition
-                            ? `Composition — from the mapped medicine${l.genericName ? ` · generic: ${l.genericName}` : ''}`
-                            : 'Composition — from the mapped medicine (generic name; no salt composition on record)'
+                        className={cn(cell, !isNewProduct && 'text-muted-foreground')}
+                        value={isNewProduct ? l.composition : l.composition || l.genericName}
+                        onChange={
+                          isNewProduct
+                            ? (e) => updateLine(l.id, 'composition', e.target.value)
+                            : undefined
                         }
-                        placeholder="composition (from medicine)"
+                        readOnly={!isNewProduct}
+                        tabIndex={isNewProduct ? undefined : -1}
+                        title={
+                          isNewProduct
+                            ? 'Composition — salt of the new product being created'
+                            : l.composition
+                              ? `Composition — from the mapped medicine${l.genericName ? ` · generic: ${l.genericName}` : ''}`
+                              : 'Composition — from the mapped medicine (generic name; no salt composition on record)'
+                        }
+                        placeholder={isNewProduct ? 'composition (salt)' : 'composition (from medicine)'}
                       />
-                      <Input className={cn(cell, 'text-muted-foreground')} value={l.strength} readOnly tabIndex={-1} title="Strength — from the mapped medicine" placeholder="strength (from medicine)" />
+                      <Input
+                        className={cn(cell, !isNewProduct && 'text-muted-foreground')}
+                        value={l.strength}
+                        onChange={
+                          isNewProduct
+                            ? (e) => updateLine(l.id, 'strength', e.target.value)
+                            : undefined
+                        }
+                        readOnly={!isNewProduct}
+                        tabIndex={isNewProduct ? undefined : -1}
+                        title={
+                          isNewProduct
+                            ? 'Strength — of the new product being created'
+                            : 'Strength — from the mapped medicine'
+                        }
+                        placeholder={isNewProduct ? 'strength' : 'strength (from medicine)'}
+                      />
                       <Input
                         className={cn(cell, 'font-mono text-muted-foreground')}
                         value={l.gtin}
@@ -2676,7 +2715,15 @@ function LineMatchControl({
   //   • "add as new" without a catalog link → a brand-new drug, no DB medicine yet → blank
   // Keyed so it fires once per target/decision change, not every render.
   const mapKey = decision.action === 'map' ? (target?.id ?? '') : null;
+  // Composition and strength are TYPED by the user on an unmapped "add as new"
+  // line, so the blanking below must only clear an identity we actually adopted
+  // from a mapping — never a value someone entered. Without this, collapsing the
+  // row or changing the filter remounts the panel, the effect runs again on
+  // mount, and their typing is wiped.
+  const prevAction = useRef<Decision['action'] | null>(null);
   useEffect(() => {
+    const leavingAMapping = prevAction.current === 'map';
+    prevAction.current = decision.action;
     if (decision.action === 'map') {
       onIdentity({
         genericName: target?.genericName ?? '',
@@ -2684,7 +2731,7 @@ function LineMatchControl({
         strength: target?.strength ?? '',
         gtin: target?.gtin ?? '',
       });
-    } else if (!line.drugMasterId) {
+    } else if (!line.drugMasterId && leavingAMapping) {
       onIdentity({ genericName: '', composition: '', strength: '', gtin: '' });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
