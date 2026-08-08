@@ -275,7 +275,14 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
       <CollectBillPaymentDialog
         open={collectOpen}
         onOpenChange={setCollectOpen}
-        bill={{ id: bill.id, billNumber: bill.billNumber, balanceDue: n(bill.balanceDue), patientName }}
+        bill={{
+          id: bill.id,
+          billNumber: bill.billNumber,
+          balanceDue: n(bill.balanceDue),
+          patientName,
+          // Lets the counter settle from a deposit the patient has already paid.
+          patientId: bill.patient?.id,
+        }}
         onCollected={() => {
           qc.invalidateQueries({ queryKey: ['hospital', 'ip-bills'] });
           qc.invalidateQueries({ queryKey: ['bill-payments', bill.id] });

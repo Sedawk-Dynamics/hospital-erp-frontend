@@ -587,6 +587,9 @@ function PendingListTab() {
                   patientName: collectTarget.patient
                     ? `${collectTarget.patient.firstName} ${collectTarget.patient.lastName}`
                     : undefined,
+                  // Lets the desk settle an OP bill from a deposit the patient
+                  // has already paid, instead of collecting the money twice.
+                  patientId: collectTarget.patientId ?? collectTarget.patient?.id,
                 }
               : null
           }

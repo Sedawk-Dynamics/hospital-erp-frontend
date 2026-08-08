@@ -41,7 +41,12 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 
-import { useRecordPayment, type FrontdeskPaymentMethod } from '@/hooks/use-hospital';
+import {
+  useRecordPayment,
+  useAdvanceBalance,
+  useAdjustAdvance,
+  type FrontdeskPaymentMethod,
+} from '@/hooks/use-hospital';
 
 const PAYMENT_METHODS: {
   value: FrontdeskPaymentMethod;
@@ -82,6 +87,12 @@ export interface CollectBillPaymentDialogProps {
     billNumber: string;
     balanceDue: number;
     patientName?: string;
+    /**
+     * Enables settling from money the patient has already deposited. Without
+     * it the advance is invisible here and the desk has to take the payment
+     * twice over — once into the advance, once again at the counter.
+     */
+    patientId?: string;
   } | null;
   /** Called after the payment has been recorded successfully. */
   onCollected?: () => void;
@@ -102,11 +113,21 @@ export function CollectBillPaymentDialog({
   onCollected,
 }: CollectBillPaymentDialogProps) {
   const recordPayment = useRecordPayment();
+  const adjustAdvance = useAdjustAdvance();
   const [submitting, setSubmitting] = useState(false);
+  // Settle from the advance instead of taking money at the counter.
+  const [payFromAdvance, setPayFromAdvance] = useState(false);
 
   const balanceDue = bill?.balanceDue ?? 0;
   const billNumber = bill?.billNumber ?? '-';
   const patientName = bill?.patientName ?? 'Unknown patient';
+
+  const { data: advance } = useAdvanceBalance(bill?.patientId);
+  const advanceBalance = advance?.balance ?? 0;
+  const canUseAdvance = !!bill?.patientId && advanceBalance > 0;
+  // Neither side can be exceeded: not the deposit, not what the bill owes.
+  const maxFromAdvance = Math.min(advanceBalance, balanceDue);
+  const maxAmount = payFromAdvance ? maxFromAdvance : balanceDue;
 
   const {
     register,
@@ -128,7 +149,8 @@ export function CollectBillPaymentDialog({
   const selectedMethod = watch('paymentMethod');
   const amountValue = watch('amount');
   const isPartial = amountValue > 0 && amountValue < balanceDue;
-  const refRequired = REFERENCE_REQUIRED.includes(selectedMethod);
+  // An advance is money already taken — there is no card or cheque to reference.
+  const refRequired = !payFromAdvance && REFERENCE_REQUIRED.includes(selectedMethod);
 
   // Re-seed form when the dialog opens for a new bill — we want the amount
   // to default to the full balance every time, not carry across bills.
@@ -141,13 +163,18 @@ export function CollectBillPaymentDialog({
         notes: '',
       });
       setSubmitting(false);
+      setPayFromAdvance(false);
     }
   }, [open, bill, reset]);
 
   const onSubmit = async (data: FormData) => {
     if (!bill || balanceDue <= 0) return;
-    if (data.amount > balanceDue) {
-      toast.error(`Amount cannot exceed balance due (₹${balanceDue.toLocaleString('en-IN')})`);
+    if (data.amount > maxAmount) {
+      toast.error(
+        payFromAdvance
+          ? `Only ₹${maxFromAdvance.toLocaleString('en-IN')} can be taken from the advance`
+          : `Amount cannot exceed balance due (₹${balanceDue.toLocaleString('en-IN')})`,
+      );
       return;
     }
     if (refRequired && !data.referenceNumber?.trim()) {
@@ -157,18 +184,28 @@ export function CollectBillPaymentDialog({
 
     setSubmitting(true);
     try {
-      await recordPayment.mutateAsync({
-        billId: bill.id,
-        amount: data.amount,
-        paymentMethod: data.paymentMethod,
-        referenceNumber: data.referenceNumber?.trim() || undefined,
-        notes: data.notes?.trim() || undefined,
-      });
+      if (payFromAdvance && bill.patientId) {
+        // Moves money already on deposit onto this bill — no cash changes hands.
+        await adjustAdvance.mutateAsync({
+          patientId: bill.patientId,
+          billId: bill.id,
+          amount: data.amount,
+        });
+      } else {
+        await recordPayment.mutateAsync({
+          billId: bill.id,
+          amount: data.amount,
+          paymentMethod: data.paymentMethod,
+          referenceNumber: data.referenceNumber?.trim() || undefined,
+          notes: data.notes?.trim() || undefined,
+        });
+      }
 
+      const settled = payFromAdvance ? 'adjusted from advance' : 'collected';
       toast.success(
         isPartial
-          ? `Partial payment of ₹${data.amount.toLocaleString('en-IN')} collected`
-          : `Payment of ₹${data.amount.toLocaleString('en-IN')} collected — bill cleared`,
+          ? `Partial payment of ₹${data.amount.toLocaleString('en-IN')} ${settled}`
+          : `Payment of ₹${data.amount.toLocaleString('en-IN')} ${settled} — bill cleared`,
       );
       onOpenChange(false);
       onCollected?.();
@@ -212,8 +249,63 @@ export function CollectBillPaymentDialog({
             </div>
           </div>
 
-          {/* Payment method grid */}
-          <div className="space-y-1.5">
+          {/* Money the patient has already deposited. Shown above the payment
+              methods because if there is an advance sitting there, using it is
+              almost always the right answer — otherwise the desk collects the
+              same money twice and has to refund the deposit later. */}
+          {canUseAdvance && (
+            <div className="space-y-2">
+              <Label>Settle using</Label>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setPayFromAdvance(false)}
+                  className={cn(
+                    'flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left transition-all',
+                    !payFromAdvance
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-surface-container bg-surface-container-low hover:border-primary/40',
+                  )}
+                >
+                  <Coins className="h-4 w-4 shrink-0" />
+                  <span className="font-label text-xs font-bold">Collect now</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPayFromAdvance(true);
+                    // Default to whatever the advance can actually cover.
+                    setValue('amount', maxFromAdvance, { shouldValidate: true });
+                  }}
+                  className={cn(
+                    'flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left transition-all',
+                    payFromAdvance
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-surface-container bg-surface-container-low hover:border-primary/40',
+                  )}
+                >
+                  <span className="flex items-center gap-2">
+                    <Wallet className="h-4 w-4 shrink-0" />
+                    <span className="font-label text-xs font-bold">From advance</span>
+                  </span>
+                  <span className="font-label text-[11px] font-bold">
+                    ₹{advanceBalance.toLocaleString('en-IN')}
+                  </span>
+                </button>
+              </div>
+              {payFromAdvance && advanceBalance < balanceDue && (
+                <p className="text-[11px] text-muted-foreground">
+                  The advance covers ₹{maxFromAdvance.toLocaleString('en-IN')} of ₹
+                  {balanceDue.toLocaleString('en-IN')}. Collect the rest separately once this is
+                  applied.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Payment method grid — irrelevant when the money is already on
+              deposit, so it is hidden rather than left there to be filled in. */}
+          <div className={cn('space-y-1.5', payFromAdvance && 'hidden')}>
             <Label>Payment Method *</Label>
             <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
               {PAYMENT_METHODS.map((m) => {
@@ -251,7 +343,7 @@ export function CollectBillPaymentDialog({
                 type="number"
                 step="0.01"
                 min="0"
-                max={balanceDue}
+                max={maxAmount}
                 {...register('amount', { valueAsNumber: true })}
               />
               {errors.amount && (
@@ -264,7 +356,8 @@ export function CollectBillPaymentDialog({
                 </p>
               )}
             </div>
-            <div className="space-y-1.5">
+            {/* No card, cheque or UPI id exists for money already on deposit. */}
+            <div className={cn('space-y-1.5', payFromAdvance && 'hidden')}>
               <Label htmlFor="payment-reference">
                 Reference{refRequired ? ' *' : ' (optional)'}
               </Label>
