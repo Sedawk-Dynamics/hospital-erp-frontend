@@ -37,6 +37,7 @@ import {
   BarChart3,
   ChevronLeft,
   Activity,
+  Bell,
 } from 'lucide-react';
 
 interface NavItem {
@@ -55,6 +56,7 @@ const navGroups: NavGroup[] = [
     title: 'Main',
     items: [
       { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+      { label: 'Notifications', href: '/notifications', icon: Bell },
     ],
   },
   {

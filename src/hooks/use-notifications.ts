@@ -55,6 +55,49 @@ export function useUnreadNotificationCount() {
   });
 }
 
+export interface NotificationPage {
+  notifications: AppNotification[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+/**
+ * The full notification list for the dedicated page — paginated and filterable,
+ * unlike the bell which only ever shows the most recent few.
+ */
+export function useNotificationList(params: {
+  page?: number;
+  limit?: number;
+  isRead?: boolean;
+  notificationType?: string;
+  search?: string;
+}) {
+  return useQuery({
+    queryKey: [...KEYS.list, 'page', params],
+    queryFn: async (): Promise<NotificationPage> => {
+      const res = await apiGet<AppNotification[]>('/communication/notifications', {
+        params: {
+          page: params.page ?? 1,
+          limit: params.limit ?? 25,
+          // Only send it when filtering — the server treats any present value
+          // as a filter, so `undefined` must not become "false".
+          isRead: params.isRead === undefined ? undefined : String(params.isRead),
+          notificationType: params.notificationType || undefined,
+          search: params.search || undefined,
+        },
+      });
+      return {
+        notifications: res.data ?? [],
+        total: res.meta?.total ?? 0,
+        page: res.meta?.page ?? 1,
+        limit: res.meta?.limit ?? 25,
+      };
+    },
+    refetchOnWindowFocus: true,
+  });
+}
+
 export function useMarkNotificationRead() {
   const qc = useQueryClient();
   return useMutation({

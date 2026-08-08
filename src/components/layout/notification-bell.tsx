@@ -1,7 +1,7 @@
 'use client';
 
-import { Bell, CheckCheck } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { Bell, CheckCheck, ArrowRight } from 'lucide-react';
+import { useRouter, usePathname } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
 import {
@@ -29,6 +29,7 @@ import { useAuthStore } from '@/stores/auth-store';
  */
 export function NotificationBell({ variant = 'plain' }: { variant?: 'module' | 'plain' }) {
   const router = useRouter();
+  const pathname = usePathname();
   const user = useAuthStore((s) => s.user);
   const { data: unreadCount = 0 } = useUnreadNotificationCount();
   const { data: notifications = [], isLoading } = useNotifications(8);
@@ -36,6 +37,14 @@ export function NotificationBell({ variant = 'plain' }: { variant?: 'module' | '
   const markAllRead = useMarkAllNotificationsRead();
 
   const hasUnread = unreadCount > 0;
+
+  // Each portal mounts the same list under its own layout, so the path depends
+  // on where the bell is being rendered.
+  const allNotificationsHref = pathname.startsWith('/patient-portal')
+    ? '/patient-portal/notifications'
+    : pathname.startsWith('/super-admin')
+      ? '/super-admin/notifications'
+      : '/notifications';
 
   const open = (n: AppNotification) => {
     if (!n.isRead) markRead.mutate(n.id);
@@ -132,6 +141,17 @@ export function NotificationBell({ variant = 'plain' }: { variant?: 'module' | '
             ))
           )}
         </div>
+
+        {/* The dropdown only ever holds the most recent few — anything that
+            arrived while someone was off shift is only reachable here. */}
+        <button
+          type="button"
+          onClick={() => router.push(allNotificationsHref)}
+          className="flex w-full items-center justify-center gap-1 border-t px-4 py-2.5 text-xs font-medium text-primary transition-colors hover:bg-accent/60"
+        >
+          See all notifications
+          <ArrowRight className="h-3 w-3" />
+        </button>
       </DropdownMenuContent>
     </DropdownMenu>
   );
