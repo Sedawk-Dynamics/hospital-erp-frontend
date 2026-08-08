@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,6 +29,7 @@ import {
 } from '@/hooks/use-schedule-overrides';
 import { ScheduleOverrideEditor } from '@/components/hospital/schedule-override-editor';
 import { toInputDateStr, formatDate } from '@/lib/date-utils';
+import { useSeedOnChange } from '@/hooks/use-seed-on-change';
 
 // ── Constants ────────────────────────────────────────────────
 
@@ -162,8 +163,10 @@ export function DoctorScheduleManager({
 
   const [editingDate, setEditingDate] = useState<string | null>(null);
 
-  // Sync from API on load
-  useEffect(() => {
+  // Sync from the API once per doctor. Re-running this on every refetch also
+  // reset `dirty` to false, so unsaved shift edits were discarded AND the
+  // unsaved-changes warning disappeared with them.
+  useSeedOnChange(profile ? doctorId : null, () => {
     if (profile?.schedules) {
       setShifts(fromApi(profile.schedules));
       setDirty(false);
@@ -171,7 +174,7 @@ export function DoctorScheduleManager({
     if (profile?.consultationFee !== undefined) {
       setConsultationFee(profile.consultationFee != null ? String(profile.consultationFee) : '');
     }
-  }, [profile]);
+  });
 
   const weeklySchedulesForEditor = useMemo(
     () => (profile?.schedules ?? []),

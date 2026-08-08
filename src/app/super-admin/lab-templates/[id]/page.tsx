@@ -5,7 +5,7 @@
 // grid (delegated to <LabParameterBuilder/>) + clinical interpretation
 // notes that print at the foot of the branded report.
 
-import { use, useEffect, useMemo, useState } from 'react';
+import { use, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -34,6 +34,7 @@ import {
   splitSynonyms,
   SYNONYMS_MAX,
 } from '@/components/laboratory/lab-tags-input';
+import { useSeedOnChange } from '@/hooks/use-seed-on-change';
 
 interface LabTemplateBuilderPageProps {
   params: Promise<{ id: string }>;
@@ -68,7 +69,9 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
   const [dirty, setDirty] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
 
-  useEffect(() => {
+  // Seed once per template. This also clears `dirty`, so re-running it on a
+  // refetch threw away unsaved parameter edits without any warning.
+  useSeedOnChange(template?.id ?? null, () => {
     if (!template) return;
     setMeta({
       name: template.name,
@@ -85,7 +88,7 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
     setParameters(template.parameters ?? []);
     setSynonyms(mergeSynonyms(template.aliases, template.tags));
     setDirty(false);
-  }, [template]);
+  });
 
   const grouped = useMemo(() => {
     const map = new Map<string, number>();

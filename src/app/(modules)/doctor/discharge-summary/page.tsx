@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   useDoctorAdmissions,
@@ -14,6 +14,7 @@ import {
 import { DischargeSummaryDocument } from '@/components/doctor/discharge-summary-document';
 import { useAuthStore } from '@/stores/auth-store';
 import { useAiStatus, useGenerateDischargeNarrative } from '@/hooks/use-ai';
+import { useSeedOnChange } from '@/hooks/use-seed-on-change';
 import { formatDate, toInputDateStr } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
 import { AdmissionStatusBadge } from '@/components/shared/admission-status-badge';
@@ -132,19 +133,28 @@ export default function DischargeSummaryPage() {
   const { data: aiStatus } = useAiStatus();
   const aiNarrativeMutation = useGenerateDischargeNarrative();
 
-  // Populate local form when summary loads
-  useEffect(() => {
-    if (generatedSummary) {
-      setSummaryData(generatedSummary);
-      setDiagnosesSummary(generatedSummary.diagnosesSummary ?? '');
-      setProceduresSummary(generatedSummary.proceduresSummary ?? '');
-      setLabResultsSummary(generatedSummary.labResultsSummary ?? '');
-      setMedicationReconciliation(generatedSummary.medicationReconciliation ?? '');
-      setDischargeInstructions(generatedSummary.dischargeInstructions ?? '');
-      setFollowUpDate(generatedSummary.followUpDate ? toInputDateStr(generatedSummary.followUpDate) : '');
-      setFollowUpInstructions(generatedSummary.followUpInstructions ?? '');
-    }
-  }, [generatedSummary]);
+  // Populate the local form when a summary is opened.
+  //
+  // Keyed on the admission, NOT on the query object. `/generate` re-assembles
+  // the summary from live clinical data on every call, so it hands back a fresh
+  // object each time and structural sharing cannot hold its identity. Depending
+  // on the object meant every refetch re-seeded the form — and since queries now
+  // refetch on window focus, a doctor who alt-tabbed to check a lab value
+  // half-way through writing a narrative would come back to find it reset.
+  //
+  // Gated on the data having arrived, because keyed on the admission alone the
+  // identity would latch while the query was still in flight and never seed.
+  useSeedOnChange(generatedSummary ? selectedAdmissionId : null, () => {
+    if (!generatedSummary) return;
+    setSummaryData(generatedSummary);
+    setDiagnosesSummary(generatedSummary.diagnosesSummary ?? '');
+    setProceduresSummary(generatedSummary.proceduresSummary ?? '');
+    setLabResultsSummary(generatedSummary.labResultsSummary ?? '');
+    setMedicationReconciliation(generatedSummary.medicationReconciliation ?? '');
+    setDischargeInstructions(generatedSummary.dischargeInstructions ?? '');
+    setFollowUpDate(generatedSummary.followUpDate ? toInputDateStr(generatedSummary.followUpDate) : '');
+    setFollowUpInstructions(generatedSummary.followUpInstructions ?? '');
+  });
 
   // -- Handlers --
 

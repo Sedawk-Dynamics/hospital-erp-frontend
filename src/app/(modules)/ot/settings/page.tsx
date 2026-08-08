@@ -28,6 +28,7 @@ import {
   type OperatingTheater,
 } from '@/hooks/use-ot';
 import { useAuthStore } from '@/stores/auth-store';
+import { useSeedOnChange } from '@/hooks/use-seed-on-change';
 
 // Adding / editing / deleting operation theaters is a hospital-admin action
 // (the backend enforces the same). Other OT users see theaters read-only.
@@ -247,7 +248,9 @@ function SchedulingPreferencesCard() {
     dayEndTime: '',
   });
 
-  useEffect(() => {
+  // Seed once, when the settings first arrive — not on every refetch, which
+  // would wipe unsaved edits the moment the tab regained focus.
+  useSeedOnChange(settings ? 'ot-settings' : null, () => {
     if (!settings) return;
     setForm({
       defaultDurationMinutes: settings.defaultDurationMinutes,
@@ -256,7 +259,7 @@ function SchedulingPreferencesCard() {
       dayStartTime: settings.dayStartTime ?? '',
       dayEndTime: settings.dayEndTime ?? '',
     });
-  }, [settings]);
+  });
 
   const handleSave = () => {
     update.mutate(

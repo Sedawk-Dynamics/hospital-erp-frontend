@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   useAiConfig,
   useUpdateAiConfig,
@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { Sparkles, AlertTriangle, Save, Building2, RotateCcw, Info } from 'lucide-react';
+import { useSeedOnChange } from '@/hooks/use-seed-on-change';
 
 function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
@@ -92,7 +93,10 @@ export default function AiSettingsPage() {
     ocrInvoiceEnabled: true,
   });
 
-  useEffect(() => {
+  // Seed once per scope, so a refetch cannot discard unsaved changes — but
+  // switching between the platform default and a hospital still reloads the
+  // form, because that is a different record.
+  useSeedOnChange(config ? (tenantId ?? 'platform') : null, () => {
     if (config) {
       setForm({
         provider: config.provider,
@@ -109,7 +113,7 @@ export default function AiSettingsPage() {
         ocrInvoiceEnabled: config.features.ocrInvoiceEnabled,
       });
     }
-  }, [config]);
+  });
 
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }));
 

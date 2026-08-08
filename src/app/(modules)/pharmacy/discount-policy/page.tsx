@@ -1,7 +1,7 @@
 'use client';
 import { PharmacyAdminGuard } from '@/components/pharmacy/pharmacy-admin-guard';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Plus, Pencil, Trash2, Percent, Check, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
@@ -43,6 +43,7 @@ import {
   type DiscountMode,
   type MarginDiscountRule,
 } from '@/hooks/use-discount-policy';
+import { useSeedOnChange } from '@/hooks/use-seed-on-change';
 
 interface RuleForm {
   label: string;
@@ -72,12 +73,13 @@ function DiscountPolicyInner() {
 
   const [enabled, setEnabled] = useState(false);
   const [mode, setMode] = useState<DiscountMode>('cap');
-  useEffect(() => {
-    if (config) {
-      setEnabled(config.enabled);
-      setMode(config.mode);
-    }
-  }, [config]);
+  // Seed once on arrival. Re-seeding on every refetch would flip the toggles
+  // back under the user as soon as the window regained focus.
+  useSeedOnChange(config ? 'discount-policy' : null, () => {
+    if (!config) return;
+    setEnabled(config.enabled);
+    setMode(config.mode);
+  });
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
