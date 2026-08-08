@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatDate, toInputDateStr } from '@/lib/date-utils';
-import { Search, CalendarIcon, Eye, FileText, FlaskConical, MoreVertical, UserPlus } from 'lucide-react';
+import { Search, CalendarIcon, Eye, FileText, FlaskConical, MoreVertical } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -30,10 +30,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
-import { useDoctorAdmissions, useCreateProgressNote, useDoctorProfile } from '@/hooks/use-doctor';
-import { useAssignAdmissionDoctor } from '@/hooks/use-clinical';
+import { useDoctorAdmissions, useCreateProgressNote } from '@/hooks/use-doctor';
 import { Badge } from '@/components/ui/badge';
-import { getApiErrorMessage } from '@/lib/utils';
 import { apiPost } from '@/lib/api';
 import { IpPrescriptionDialog } from '@/components/doctor/ip-prescription-dialog';
 import { AdmissionTypeBadge, ADMISSION_TYPE_OPTIONS } from '@/components/shared/admission-type-badge';
@@ -81,11 +79,10 @@ export default function DoctorIPHomePage() {
     limit: 10,
     // 'My Patients' scopes to this doctor (user.id → DoctorProfile → Admission.doctorId);
     // 'All Patients' omits the filter so every IP patient is listed (shared model).
+    // Strictly this doctor. Admissions with no consultant live under "All
+    // Patients" — folding them into "my" made the two tabs return nearly the
+    // same list, since an emergency admission usually starts with no doctor.
     doctorUserId: scope === 'my' ? user?.id : undefined,
-    // …and includes admissions with NO consultant yet. The front desk opens an
-    // emergency admission without naming one, so those patients used to belong
-    // to nobody and show on nobody's list. They appear here to be picked up.
-    includeUnassigned: scope === 'my' ? true : undefined,
     status: statusFilter,
     search: search || undefined,
     // Currently-admitted patients must stay on the list until they are
@@ -97,28 +94,6 @@ export default function DoctorIPHomePage() {
   });
 
   const createNoteMutation = useCreateProgressNote();
-  const assignDoctor = useAssignAdmissionDoctor();
-  // Needed because Admission.doctorId is a DoctorProfile id, not a user id.
-  const { data: doctorProfile } = useDoctorProfile();
-
-  // Take an unassigned patient — the front desk opens emergency admissions
-  // without a consultant, and until someone claims it the stay has nobody
-  // answerable for it.
-  const handleClaim = useCallback(
-    async (admissionId: string) => {
-      if (!doctorProfile?.id) {
-        toast.error('Your doctor profile could not be loaded.');
-        return;
-      }
-      try {
-        await assignDoctor.mutateAsync({ id: admissionId, doctorId: doctorProfile.id });
-        toast.success('You are now the treating consultant for this patient.');
-      } catch (err) {
-        toast.error(getApiErrorMessage(err, 'Could not take this patient'));
-      }
-    },
-    [assignDoctor, doctorProfile],
-  );
 
   // The server filters by status now, so the rows arrive already scoped.
   const admissions = admissionsData?.data ?? [];
@@ -174,7 +149,7 @@ export default function DoctorIPHomePage() {
     } catch {
       toast.error('Failed to add progress note');
     }
-  }, [noteContent, selectedPatientId, user?.id, createNoteMutation]);
+  }, [noteContent, selectedPatientId, user, createNoteMutation]);
 
   return (
     <div className="space-y-4 animate-fade-in-up">
@@ -410,22 +385,11 @@ export default function DoctorIPHomePage() {
                           <p className="font-medium text-foreground">
                             {admission.bed?.bedNumber || '-'} / {admission.ward?.name || '-'}
                           </p>
-                          {admission.doctor?.user ? (
-                            <p className="text-xs text-muted-foreground">
-                              Dr {admission.doctor.user.firstName} {admission.doctor.user.lastName}
-                            </p>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleClaim(admission.id)}
-                              disabled={assignDoctor.isPending}
-                              className="text-xs font-medium text-primary hover:underline disabled:opacity-50"
-                              title="Take this patient — records you as the treating consultant"
-                            >
-                              <UserPlus className="mr-0.5 inline h-3 w-3" />
-                              Take patient
-                            </button>
-                          )}
+                          <p className="text-xs text-muted-foreground">
+                            {admission.doctor?.user
+                              ? `Dr ${admission.doctor.user.firstName} ${admission.doctor.user.lastName}`
+                              : 'No consultant assigned'}
+                          </p>
                         </div>
                       </td>
                       <td className="px-4 py-3">

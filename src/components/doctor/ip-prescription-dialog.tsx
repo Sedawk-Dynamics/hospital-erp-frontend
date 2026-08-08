@@ -16,21 +16,15 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { apiGet, apiPost } from '@/lib/api';
-import { calcQuantity } from '@/lib/dosage-calc';
 import { MedicineTable } from '@/components/doctor/prescription-pad/medicine-table';
-import {
-  encodeFrequency,
-  encodeDuration,
-  type MedicineFormData,
-} from '@/components/doctor/consultation-completion/consultation-completion-schema';
+import { buildPrescriptionItems } from '@/lib/prescription-items';
+import type { MedicineFormData } from '@/components/doctor/consultation-completion/consultation-completion-schema';
 
 // Write an IP prescription directly on the IP patient page — same M-A-N dose /
 // frequency / duration / auto-Qty capture as the OP prescription pad (via the
 // shared MedicineTable), so the dispense quantity is computed and reaches the
 // pharmacy. Captures the formulary drugId so the order connects to pharmacy
 // (eMAR schedule + the auto-pre-filled pharmacy indent key off the prescription).
-
-const ALLOWED_ROUTES = new Set(['oral', 'iv', 'im', 'topical', 'sublingual', 'inhalation', 'other']);
 
 interface Visit { id: string; visitType: string; status?: string }
 
@@ -78,32 +72,8 @@ export function IpPrescriptionDialog({
 
   const save = useCallback(async () => {
     if (!visitId) { toast.error('No active IP visit for this patient.'); return; }
-    const valid = medicines.filter((m) => m.drugName.trim());
-    if (valid.length === 0) { toast.error('Add at least one medicine.'); return; }
-
-    const items = valid.map((med) => {
-      const durationUnit = med.durationUnit || 'days';
-      const explicitQty = typeof med.quantity === 'number' && !Number.isNaN(med.quantity) && med.quantity > 0
-        ? med.quantity : undefined;
-      const autoQty = calcQuantity(med.frequency, med.durationValue, durationUnit, med.doseQuantity);
-      const total = explicitQty ?? autoQty ?? undefined;
-      const route = (med.route || 'oral').toLowerCase();
-      return {
-        drugId: med.drugId || undefined,
-        drugName: med.drugName.trim(),
-        genericName: med.genericName || undefined,
-        // Dosage is required by the API — fall back to strength / name.
-        dosage: (med.dosage || med.strength || med.drugName).trim(),
-        // "1-0-1 - After Meal" / "As Needed (SOS)" / "Stat" — parseable downstream.
-        frequency: encodeFrequency(med.frequency, med.timing, med.isPrn) || 'As directed',
-        duration: med.durationValue ? encodeDuration(med.durationValue, durationUnit) : undefined,
-        route: ALLOWED_ROUTES.has(route) ? route : 'other',
-        instructions: med.instructions || undefined,
-        doseQuantity: Number(med.doseQuantity) > 0 ? Number(med.doseQuantity) : 1,
-        quantity: total != null ? Math.max(1, Math.round(total)) : undefined,
-        isPrn: med.isPrn ?? false,
-      };
-    });
+    const items = buildPrescriptionItems(medicines);
+    if (items.length === 0) { toast.error('Add at least one medicine.'); return; }
 
     setSaving(true);
     try {

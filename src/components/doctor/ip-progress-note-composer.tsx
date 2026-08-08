@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { NotebookPen, Loader2, Stethoscope, Pill, Link2, Activity } from 'lucide-react';
 import {
@@ -11,13 +11,12 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
-import { cn } from '@/lib/utils';
-import { apiGet } from '@/lib/api';
-import { formatDate } from '@/lib/date-utils';
-import { useCreateProgressNote, usePrescriptions, type SoapSectionPayload } from '@/hooks/use-doctor';
+import { cn, getApiErrorMessage } from '@/lib/utils';
+import { apiGet, apiPost } from '@/lib/api';
+import { MedicineTable } from '@/components/doctor/prescription-pad/medicine-table';
+import { buildPrescriptionItems } from '@/lib/prescription-items';
+import type { MedicineFormData } from '@/components/doctor/consultation-completion/consultation-completion-schema';
+import { useCreateProgressNote, type SoapSectionPayload } from '@/hooks/use-doctor';
 import { useRecordDoctorVisit } from '@/hooks/use-ip-ledger';
 import { DoctorMentionPicker } from '@/components/doctor/doctor-mention-picker';
 import { useAuthStore } from '@/stores/auth-store';
@@ -65,12 +64,13 @@ export function IpProgressNoteComposer({
   const [assessment, setAssessment] = useState('');
   const [plan, setPlan] = useState('');
   const [billVisit, setBillVisit] = useState(defaultBillVisit);
-  // Optional prescription to connect this note to (so prescription viewers see it).
-  const [prescriptionId, setPrescriptionId] = useState<string>('');
-
-  // The patient's prescriptions, for the optional "connect to prescription" picker.
-  const { data: rxList } = usePrescriptions({ patientId, limit: 20 });
-  const prescriptions = rxList?.data ?? [];
+  // Write a prescription as part of this round, rather than hunting for one the
+  // doctor already wrote elsewhere. It is saved first and the note is linked to
+  // it, so the medicines and the reasoning behind them stay together.
+  const [writeRx, setWriteRx] = useState(false);
+  const [medicines, setMedicines] = useState<MedicineFormData[]>([]);
+  const [rxNotes, setRxNotes] = useState('');
+  const qc = useQueryClient();
 
   // Bind the note to the patient's active IP visit (the ProgressNote row needs a
   // visitId; admissionId flags it as an IP running-log note).
@@ -89,7 +89,8 @@ export function IpProgressNoteComposer({
 
   const reset = () => {
     setCondition('stable'); setSubjective(''); setObjective('');
-    setAssessment(''); setPlan(''); setBillVisit(defaultBillVisit); setPrescriptionId('');
+    setAssessment(''); setPlan(''); setBillVisit(defaultBillVisit);
+    setWriteRx(false); setMedicines([]); setRxNotes('');
     setMentions([]);
   };
 
@@ -108,12 +109,45 @@ export function IpProgressNoteComposer({
   const submit = async () => {
     if (!anyFilled) return toast.error('Write at least one section of the round note.');
     if (!visitId) return toast.error('No active IP visit found for this patient.');
+
+    const rxItems = writeRx ? buildPrescriptionItems(medicines) : [];
+    if (writeRx && rxItems.length === 0) {
+      return toast.error('Add at least one medicine, or turn the prescription off.');
+    }
+
+    // The prescription is written FIRST, because the note carries its id. If it
+    // fails nothing is saved and the dialog stays exactly as it is \u2014 the doctor
+    // keeps everything they typed and can retry or turn the prescription off.
+    let newPrescriptionId: string | undefined;
+    if (rxItems.length > 0) {
+      try {
+        const res = await apiPost<{ id: string }>('/prescriptions', {
+          patientId,
+          doctorId: currentUserId,
+          visitId,
+          prescriptionType: 'ip',
+          notes: rxNotes || undefined,
+          items: rxItems,
+        });
+        newPrescriptionId = res.data?.id;
+        qc.invalidateQueries({
+          predicate: (q) =>
+            q.queryKey.some((k) => k === 'prescriptions' || k === 'indents' || k === 'emar'),
+        });
+      } catch (e) {
+        toast.error(
+          getApiErrorMessage(e, 'Could not write the prescription \u2014 the note has not been saved.'),
+        );
+        return;
+      }
+    }
+
     try {
       await createNote.mutateAsync({
         patientId,
         visitId,
         admissionId,
-        prescriptionId: prescriptionId || undefined,
+        prescriptionId: newPrescriptionId,
         noteType: 'general',
         content: buildContent(),
         subjective: free(subjective),
@@ -135,7 +169,11 @@ export function IpProgressNoteComposer({
           toast.success('Visit note saved (could not post the visit fee — post it from the ledger).');
         }
       } else {
-        toast.success('IP progress note saved to the admission log.');
+        toast.success(
+          newPrescriptionId
+            ? `Visit note saved with ${rxItems.length} medicine${rxItems.length === 1 ? '' : 's'} prescribed.`
+            : 'IP progress note saved to the admission log.',
+        );
       }
       reset();
       onOpenChange(false);
@@ -207,59 +245,64 @@ export function IpProgressNoteComposer({
             <DoctorMentionPicker value={mentions} onChange={setMentions} excludeUserId={currentUserId} />
           </div>
 
-          {/* Options side by side — connect to a prescription + billing. */}
-          <div className="grid items-stretch gap-3 sm:grid-cols-2">
-            {/* Connect to prescription */}
-            {prescriptions.length > 0 && (
-              <div className="rounded-xl border border-primary/25 bg-primary/[0.04] p-3.5">
-                <div className="mb-2 flex items-center gap-2">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10">
-                    <Pill className="h-4 w-4 text-primary" />
-                  </span>
-                  <div className="leading-tight">
-                    <p className="text-sm font-semibold text-foreground">
-                      Connect to prescription <span className="font-normal text-muted-foreground">· optional</span>
-                    </p>
-                    <p className="text-[11px] text-muted-foreground">Ride this note along with a prescription.</p>
-                  </div>
+          {/* Write a prescription as part of this round. This used to be a picker
+              over prescriptions written elsewhere, which meant leaving the note
+              to write one and coming back to link it. */}
+          <div className="rounded-xl border border-primary/25 bg-primary/[0.04] p-3.5">
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={writeRx}
+                onChange={(e) => setWriteRx(e.target.checked)}
+                className="h-4 w-4 accent-primary"
+              />
+              <span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10">
+                <Pill className="h-4 w-4 text-primary" />
+              </span>
+              <span className="leading-tight">
+                <span className="block text-sm font-semibold text-foreground">
+                  Prescribe with this note{' '}
+                  <span className="font-normal text-muted-foreground">· optional</span>
+                </span>
+                <span className="block text-[11px] text-muted-foreground">
+                  Written as an IP prescription and linked to this note, so the medicines and the
+                  reasoning behind them stay together.
+                </span>
+              </span>
+            </label>
+
+            {writeRx && (
+              <div className="mt-3 space-y-3">
+                <MedicineTable medicines={medicines} onChange={setMedicines} patientId={patientId} />
+                <div>
+                  <Label className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                    Prescription notes
+                  </Label>
+                  <Textarea
+                    value={rxNotes}
+                    onChange={(e) => setRxNotes(e.target.value)}
+                    rows={2}
+                    placeholder="Notes for the pharmacy / nursing…"
+                    className="mt-1"
+                  />
                 </div>
-                <Select value={prescriptionId || 'none'} onValueChange={(v) => setPrescriptionId(v === 'none' ? '' : (v ?? ''))}>
-                  <SelectTrigger className="h-10 w-full bg-background text-sm">
-                    <SelectValue placeholder="Not linked to a prescription" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">— Not linked —</SelectItem>
-                    {prescriptions.map((p) => {
-                      const items = (p as { items?: Array<{ drugName?: string }> }).items ?? [];
-                      const first = items[0]?.drugName;
-                      const extra = items.length > 1 ? ` +${items.length - 1}` : '';
-                      const date = (p as { createdAt?: string }).createdAt ? formatDate((p as { createdAt?: string }).createdAt!) : '';
-                      const label = [date, first ? `${first}${extra}` : `${items.length} item(s)`].filter(Boolean).join(' · ');
-                      return <SelectItem key={p.id} value={p.id}>{label || 'Prescription'}</SelectItem>;
-                    })}
-                  </SelectContent>
-                </Select>
-                <p className="mt-2 flex items-start gap-1.5 text-[11px] text-muted-foreground">
+                <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
                   <Link2 className="mt-px h-3 w-3 shrink-0 text-primary" />
-                  Visible to anyone who can view that prescription.
+                  Goes to the pharmacy queue and the eMAR chart, exactly as a prescription written
+                  from the IP page does.
                 </p>
               </div>
             )}
-
-            {/* Bill this visit */}
-            <label
-              className={cn(
-                'flex cursor-pointer flex-col justify-center gap-1.5 rounded-xl border bg-muted/30 p-3.5 transition-colors hover:bg-muted/50',
-                prescriptions.length === 0 && 'sm:col-span-2',
-              )}
-            >
-              <span className="flex items-center gap-2 text-sm font-medium">
-                <input type="checkbox" checked={billVisit} onChange={(e) => setBillVisit(e.target.checked)} className="h-4 w-4 accent-primary" />
-                <Stethoscope className="h-4 w-4 text-primary" /> Bill this visit (post consultation fee)
-              </span>
-              <span className="pl-6 text-[11px] text-muted-foreground">Flows into the discharge summary&apos;s hospital course automatically — no need to pin.</span>
-            </label>
           </div>
+
+          {/* Bill this visit */}
+          <label className="flex cursor-pointer flex-col justify-center gap-1.5 rounded-xl border bg-muted/30 p-3.5 transition-colors hover:bg-muted/50">
+            <span className="flex items-center gap-2 text-sm font-medium">
+              <input type="checkbox" checked={billVisit} onChange={(e) => setBillVisit(e.target.checked)} className="h-4 w-4 accent-primary" />
+              <Stethoscope className="h-4 w-4 text-primary" /> Bill this visit (post consultation fee)
+            </span>
+            <span className="pl-6 text-[11px] text-muted-foreground">Flows into the discharge summary&apos;s hospital course automatically — no need to pin.</span>
+          </label>
         </div>
 
         <DialogFooter className="mx-0 mb-0 gap-2 px-5 py-3">
