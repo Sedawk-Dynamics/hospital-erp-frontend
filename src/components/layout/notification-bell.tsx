@@ -17,6 +17,7 @@ import {
   notificationLink,
   type AppNotification,
 } from '@/hooks/use-notifications';
+import { useAuthStore } from '@/stores/auth-store';
 
 /**
  * Bell with a live unread badge + a dropdown of recent notifications. Clicking
@@ -28,6 +29,7 @@ import {
  */
 export function NotificationBell({ variant = 'plain' }: { variant?: 'module' | 'plain' }) {
   const router = useRouter();
+  const user = useAuthStore((s) => s.user);
   const { data: unreadCount = 0 } = useUnreadNotificationCount();
   const { data: notifications = [], isLoading } = useNotifications(8);
   const markRead = useMarkNotificationRead();
@@ -40,7 +42,9 @@ export function NotificationBell({ variant = 'plain' }: { variant?: 'module' | '
     // Only navigate when the notification points somewhere useful (e.g. a
     // mention → the patient). Otherwise just mark it read in place — there is
     // no separate notifications page to fall back to.
-    const link = notificationLink(n);
+    // Roles matter: the same OT notification reference is read by both the OT
+    // desk and the doctor, and they belong on different screens.
+    const link = notificationLink(n, user?.roles);
     if (link) router.push(link);
   };
 

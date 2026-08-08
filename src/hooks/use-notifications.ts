@@ -79,9 +79,18 @@ export function useMarkAllNotificationsRead() {
 
 /**
  * Map a notification's reference to an in-app route so clicking it opens the
- * relevant record. Kept in sync with the notifications page.
+ * relevant record.
+ *
+ * Some references are sent to BOTH sides of a conversation, so the destination
+ * depends on who is reading it, not only on what happened — `ot_response` goes
+ * to the OT desk when a doctor answers a proposal AND to the doctor when the
+ * desk cancels a surgery. Pass the reader's roles so each lands on their own
+ * screen; without them the OT links fall back to the desk's board, which is
+ * where they pointed before.
  */
-export function notificationLink(n: AppNotification): string | null {
+export function notificationLink(n: AppNotification, roles?: string[]): string | null {
+  const isDoctor = !!roles?.includes('doctor');
+
   // IP progress-note mention → the IP workspace (referenceId = admissionId).
   if (n.referenceType === 'progress_note_mention_ip' && n.referenceId) {
     return `/doctor/ip/${n.referenceId}`;
@@ -91,13 +100,15 @@ export function notificationLink(n: AppNotification): string | null {
     return `/doctor/consultation/${n.referenceId}`;
   }
   // OT desk moved a surgery → the doctor's OT list, where they accept the new
-  // time, ask for another, or cancel.
+  // time, ask for another, or cancel. Only ever sent to the doctor.
   if (n.referenceType === 'ot_reschedule') {
     return '/doctor/ot-list';
   }
-  // The doctor answered a proposal → the OT desk's board.
+  // Either the doctor answered a proposal (read by the OT desk) or the desk
+  // cancelled a surgery (read by the doctor). A doctor has no business on the
+  // OT desk's board — send them to their own list.
   if (n.referenceType === 'ot_response') {
-    return '/ot';
+    return isDoctor ? '/doctor/ot-list' : '/ot';
   }
   // Doctor published the discharge summary → the counter has to clear the bill
   // before the patient can leave. Land straight on that stay's bill screen with
