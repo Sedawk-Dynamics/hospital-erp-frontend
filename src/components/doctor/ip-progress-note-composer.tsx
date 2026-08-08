@@ -187,8 +187,11 @@ export function IpProgressNoteComposer({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!busy) { onOpenChange(o); if (!o) reset(); } }}>
-      <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-3xl max-h-[92vh] overflow-y-auto p-0">
-        <DialogHeader className="border-b bg-muted/30 px-5 py-4">
+      {/* Wide + tall: the note now carries a full medicine table alongside the
+          SOAP grid, and both need room. Header and footer stay fixed; only the
+          body scrolls, so Save is always reachable. */}
+      <DialogContent className="flex h-[94vh] w-[96vw] max-w-[88rem] flex-col gap-0 overflow-hidden p-0 sm:max-w-[88rem]">
+        <DialogHeader className="shrink-0 border-b bg-muted/30 px-5 py-4 pr-14">
           <DialogTitle className="flex items-center gap-2 text-base">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
               <NotebookPen className="h-5 w-5 text-primary" />
@@ -202,7 +205,7 @@ export function IpProgressNoteComposer({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5 px-5 py-4">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
           {/* Condition / progress */}
           <div>
             <Label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -228,7 +231,7 @@ export function IpProgressNoteComposer({
           {/* SOAP — two columns on wider screens to use the space. */}
           <div>
             <Label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Round note (SOAP)</Label>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <SoapField label="Subjective" hint="Overnight events, complaints, how the patient feels" value={subjective} onChange={setSubjective} />
               <SoapField label="Objective" hint="Examination findings, today's vitals, device/line checks" value={objective} onChange={setObjective} />
               <SoapField label="Assessment" hint="Clinical impression / progress" value={assessment} onChange={setAssessment} />
@@ -236,13 +239,24 @@ export function IpProgressNoteComposer({
             </div>
           </div>
 
-          {/* Tag / @mention other doctors — they get a notification and can open
-              this patient + note. */}
-          <div>
-            <Label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              <AtSign className="h-3.5 w-3.5" /> Tag doctors <span className="font-normal normal-case">· optional</span>
-            </Label>
-            <DoctorMentionPicker value={mentions} onChange={setMentions} excludeUserId={currentUserId} />
+          <div className="grid gap-3 lg:grid-cols-2">
+            {/* Tag / @mention other doctors — they get a notification and can
+                open this patient + note. */}
+            <div>
+              <Label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <AtSign className="h-3.5 w-3.5" /> Tag doctors <span className="font-normal normal-case">· optional</span>
+              </Label>
+              <DoctorMentionPicker value={mentions} onChange={setMentions} excludeUserId={currentUserId} />
+            </div>
+
+            {/* Bill this visit */}
+            <label className="flex cursor-pointer flex-col justify-center gap-1.5 rounded-xl border bg-muted/30 p-3.5 transition-colors hover:bg-muted/50">
+              <span className="flex items-center gap-2 text-sm font-medium">
+                <input type="checkbox" checked={billVisit} onChange={(e) => setBillVisit(e.target.checked)} className="h-4 w-4 accent-primary" />
+                <Stethoscope className="h-4 w-4 text-primary" /> Bill this visit (post consultation fee)
+              </span>
+              <span className="pl-6 text-[11px] text-muted-foreground">Flows into the discharge summary&apos;s hospital course automatically — no need to pin.</span>
+            </label>
           </div>
 
           {/* Write a prescription as part of this round. This used to be a picker
@@ -294,18 +308,9 @@ export function IpProgressNoteComposer({
               </div>
             )}
           </div>
-
-          {/* Bill this visit */}
-          <label className="flex cursor-pointer flex-col justify-center gap-1.5 rounded-xl border bg-muted/30 p-3.5 transition-colors hover:bg-muted/50">
-            <span className="flex items-center gap-2 text-sm font-medium">
-              <input type="checkbox" checked={billVisit} onChange={(e) => setBillVisit(e.target.checked)} className="h-4 w-4 accent-primary" />
-              <Stethoscope className="h-4 w-4 text-primary" /> Bill this visit (post consultation fee)
-            </span>
-            <span className="pl-6 text-[11px] text-muted-foreground">Flows into the discharge summary&apos;s hospital course automatically — no need to pin.</span>
-          </label>
         </div>
 
-        <DialogFooter className="mx-0 mb-0 gap-2 px-5 py-3">
+        <DialogFooter className="mx-0 mb-0 shrink-0 gap-2 border-t px-5 py-3">
           <Badge variant="outline" className="mr-auto self-center text-[10px]">Running IP log</Badge>
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={busy}>Cancel</Button>
           <Button size="sm" onClick={submit} disabled={busy || !anyFilled} className="gap-1.5">
@@ -325,7 +330,7 @@ function SoapField({ label, hint, value, onChange }: { label: string; hint: stri
         <span className="font-semibold text-foreground">{label}</span>
         <span className="ml-1.5 font-normal text-muted-foreground">— {hint}</span>
       </Label>
-      <Textarea value={value} onChange={(e) => onChange(e.target.value)} rows={3} className="resize-none border-0 bg-transparent p-0 text-sm shadow-none focus-visible:ring-0" placeholder={`${label}…`} />
+      <Textarea value={value} onChange={(e) => onChange(e.target.value)} rows={6} className="resize-none border-0 bg-transparent p-0 text-sm shadow-none focus-visible:ring-0" placeholder={`${label}…`} />
     </div>
   );
 }
