@@ -78,43 +78,112 @@ export function useMarkAllNotificationsRead() {
 }
 
 /**
- * Map a notification's reference to an in-app route so clicking it opens the
- * relevant record.
+ * Where clicking a notification should take the reader.
  *
- * Some references are sent to BOTH sides of a conversation, so the destination
- * depends on who is reading it, not only on what happened — `ot_response` goes
- * to the OT desk when a doctor answers a proposal AND to the doctor when the
- * desk cancels a surgery. Pass the reader's roles so each lands on their own
- * screen; without them the OT links fall back to the desk's board, which is
- * where they pointed before.
+ * Three things make this more than a lookup table:
+ *
+ *  1. Some references are written for BOTH sides of a conversation, so the
+ *     destination depends on who is reading. `ot_response` goes to the OT desk
+ *     when a doctor answers a proposal AND to the doctor when the desk cancels
+ *     a surgery — and a doctor cannot even open the OT desk's board, since
+ *     `doctor` is their only module.
+ *  2. Some go to the PATIENT, not to staff. A discharge summary or a refund
+ *     notification belongs on the portal, not on a hospital screen the patient
+ *     has no access to.
+ *  3. A user can hold several roles, so the checks run most-specific first.
+ *
+ * Only reference types that are genuinely emitted as notifications appear here.
+ * Several similar-looking strings — `lab_order_item`, `ward_dispense`,
+ * `ot_kit_issue`, `purchase_order`, `supply_request` — are BillItem or
+ * StockTransaction references, never notifications, so listing them would
+ * suggest a notification exists that does not.
+ *
+ * Roles are optional: without them the shared references resolve to the staff
+ * destination, which is where they pointed before this existed. Anything
+ * unmapped returns null and the bell just marks it read in place rather than
+ * navigating somewhere unhelpful.
  */
 export function notificationLink(n: AppNotification, roles?: string[]): string | null {
-  const isDoctor = !!roles?.includes('doctor');
+  const has = (r: string) => !!roles?.includes(r);
+  const isPatient = has('patient');
+  const isDoctor = has('doctor');
+  const isPharmacy = has('pharmacist') || has('pharmacy_admin');
+  const isAdmin = has('admin') || has('super_admin');
+  const ref = n.referenceId;
 
-  // IP progress-note mention → the IP workspace (referenceId = admissionId).
-  if (n.referenceType === 'progress_note_mention_ip' && n.referenceId) {
-    return `/doctor/ip/${n.referenceId}`;
+  switch (n.referenceType) {
+    // ── Clinical mentions ──────────────────────────────────────────────
+    // referenceId = admissionId for IP, patientId for OP.
+    case 'progress_note_mention_ip':
+      return ref ? `/doctor/ip/${ref}` : '/doctor/ip';
+    case 'progress_note_mention':
+      return ref ? `/doctor/consultation/${ref}` : '/doctor/progress-notes';
+
+    // ── Operating theatre ──────────────────────────────────────────────
+    // Only ever sent to the doctor: the desk moved their slot and needs an
+    // answer.
+    case 'ot_reschedule':
+      return '/doctor/ot-list';
+    // Sent to the doctor when the desk books their case.
+    case 'ot_scheduled':
+      return isDoctor ? '/doctor/ot-list' : '/ot';
+    // Both directions: the doctor answered a proposal (read by the desk), or
+    // the desk cancelled a surgery (read by the doctor).
+    case 'ot_response':
+      return isDoctor ? '/doctor/ot-list' : '/ot';
+
+    // ── Discharge ──────────────────────────────────────────────────────
+    // The counter has to clear the bill before the patient can leave; land on
+    // that stay's bill with it already open.
+    case 'discharge_ready':
+      return ref ? `/hospital/billing?tab=ip&admissionId=${ref}` : '/hospital/billing?tab=ip';
+    // Goes to the PATIENT — their copy is on the portal.
+    case 'discharge_summary':
+      return isPatient || !roles?.length
+        ? '/patient-portal/discharge-summaries'
+        : '/doctor/discharge-summary';
+
+    // ── Lab & imaging ──────────────────────────────────────────────────
+    // A critical value must not be a dead end — the doctor needs the record,
+    // not a worklist.
+    case 'lab_critical':
+    case 'lab_order':
+    case 'lab_report':
+      if (isPatient) return '/patient-portal/lab-reports';
+      return isDoctor ? '/doctor/registry' : '/laboratory';
+    case 'imaging_request':
+      if (isPatient) return '/patient-portal/imaging-reports';
+      return isDoctor ? '/doctor/registry' : '/radiology';
+
+    // ── Pharmacy ───────────────────────────────────────────────────────
+    case 'prescription':
+      if (isPatient) return '/patient-portal/prescriptions';
+      return isDoctor ? '/doctor/progress-notes' : '/pharmacy/queue';
+    // Refund on a returned medicine — sent to the patient.
+    case 'drug_return':
+      return isPharmacy ? '/pharmacy/returns' : '/patient-portal/billing';
+    // A recalled batch goes to pharmacy + inventory staff.
+    case 'drug_batch':
+    case 'pharmacy_expiry':
+      return '/pharmacy/stock-ledger';
+
+    // ── Inventory ──────────────────────────────────────────────────────
+    case 'inventory_low_stock':
+      return '/inventory';
+    case 'inventory_expiry':
+      return '/inventory/reports/expiry-waste';
+
+    // ── HR ─────────────────────────────────────────────────────────────
+    // The doctor's own leave lives in their portal; HR reviews everyone's.
+    case 'leave_request':
+      return isDoctor ? '/doctor/leaves' : '/hr/leaves';
+
+    // ── Platform ───────────────────────────────────────────────────────
+    case 'subscription':
+    case 'offered_plans':
+      return isAdmin ? '/hospital/settings' : null;
+
+    default:
+      return null;
   }
-  // OP progress-note mention → the patient's consultation (referenceId = patientId).
-  if (n.referenceType === 'progress_note_mention' && n.referenceId) {
-    return `/doctor/consultation/${n.referenceId}`;
-  }
-  // OT desk moved a surgery → the doctor's OT list, where they accept the new
-  // time, ask for another, or cancel. Only ever sent to the doctor.
-  if (n.referenceType === 'ot_reschedule') {
-    return '/doctor/ot-list';
-  }
-  // Either the doctor answered a proposal (read by the OT desk) or the desk
-  // cancelled a surgery (read by the doctor). A doctor has no business on the
-  // OT desk's board — send them to their own list.
-  if (n.referenceType === 'ot_response') {
-    return isDoctor ? '/doctor/ot-list' : '/ot';
-  }
-  // Doctor published the discharge summary → the counter has to clear the bill
-  // before the patient can leave. Land straight on that stay's bill screen with
-  // it already open (referenceId = admissionId).
-  if (n.referenceType === 'discharge_ready' && n.referenceId) {
-    return `/hospital/billing?tab=ip&admissionId=${n.referenceId}`;
-  }
-  return null;
 }
