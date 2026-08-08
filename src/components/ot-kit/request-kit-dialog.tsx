@@ -16,7 +16,7 @@
 
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Search, Loader2, Stethoscope } from 'lucide-react';
+import { Search, Loader2, Stethoscope, PackageOpen } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -132,6 +132,11 @@ export function RequestKitDialog({
       ? [...pref, ...active.filter((t) => t.doctorId !== selectedSurgery.surgeonId)]
       : active;
   }, [templates, selectedSurgery]);
+
+  const selectedTemplate = useMemo(
+    () => templates.find((t) => t.id === templateId) ?? null,
+    [templates, templateId],
+  );
 
   const resolvedPatient = selectedSurgery
     ? {
@@ -329,6 +334,7 @@ export function RequestKitDialog({
                   <SelectItem key={t.id} value={t.id}>
                     {t.name}
                     {t.procedureName ? ` · ${t.procedureName}` : ''}
+                    {` · ${t.items?.length ?? 0} item${(t.items?.length ?? 0) === 1 ? '' : 's'}`}
                     {selectedSurgery?.surgeonId && t.doctorId === selectedSurgery.surgeonId
                       ? '  (surgeon preference)'
                       : ''}
@@ -347,6 +353,11 @@ export function RequestKitDialog({
                 (expanded to FEFO batches on issue).
               </p>
             )}
+
+            {/* What is actually IN the kit. A surgeon picking a preference card
+                by name alone is trusting a label — this shows the contents so
+                they can check before the pharmacy packs it. */}
+            {selectedTemplate && <KitContents template={selectedTemplate} />}
           </div>
 
           {/* Notes */}
@@ -373,5 +384,51 @@ export function RequestKitDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * What a preference card contains. Read-only: the card is shared master data
+ * maintained by the OT nurse and the pharmacy, so the surgeon checks it here
+ * and asks for it to be changed there rather than editing it mid-request.
+ */
+function KitContents({ template }: { template: SurgicalTemplate }) {
+  const items = template.items ?? [];
+  return (
+    <div className="mt-2 rounded-lg border bg-muted/20">
+      <div className="flex items-center justify-between gap-2 border-b px-3 py-1.5">
+        <span className="inline-flex items-center gap-1.5 font-label text-[10px] uppercase tracking-widest text-muted-foreground">
+          <PackageOpen className="h-3 w-3" /> In this kit
+        </span>
+        <span className="text-[10px] text-muted-foreground">
+          {items.length} item{items.length === 1 ? '' : 's'}
+        </span>
+      </div>
+      {items.length === 0 ? (
+        <p className="px-3 py-2 text-[11px] text-muted-foreground">
+          This preference card has no items yet — the pharmacy would have nothing to pack.
+        </p>
+      ) : (
+        <ul className="max-h-44 divide-y overflow-y-auto">
+          {items.map((i) => (
+            <li key={i.id} className="flex items-start justify-between gap-2 px-3 py-1.5">
+              <span className="min-w-0">
+                <span className="block truncate text-xs font-medium">{i.drugName ?? '—'}</span>
+                {i.notes && (
+                  <span className="block text-[10px] text-muted-foreground">{i.notes}</span>
+                )}
+              </span>
+              <span className="shrink-0 font-mono text-xs">
+                {i.defaultQuantity}
+                {i.looseUnitLabel ? ` ${i.looseUnitLabel}` : ''}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {template.notes && (
+        <p className="border-t px-3 py-1.5 text-[11px] text-muted-foreground">{template.notes}</p>
+      )}
+    </div>
   );
 }

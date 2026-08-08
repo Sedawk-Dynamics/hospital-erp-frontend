@@ -62,7 +62,7 @@ import { useRespondToOtSchedule } from '@/hooks/use-ot';
 import { useAdmissions } from '@/hooks/use-clinical';
 import { AdmissionTypeBadge } from '@/components/shared/admission-type-badge';
 import { RequestKitDialog } from '@/components/ot-kit/request-kit-dialog';
-import { useOtKitIssues } from '@/hooks/use-ot-kit';
+import { useOtKitIssues, type OtKitIssue } from '@/hooks/use-ot-kit';
 
 const AWAITING_DOCTOR = 'awaiting_doctor';
 
@@ -889,13 +889,85 @@ function OtKitStatusSection({ otRequestId }: { otRequestId: string }) {
         OT Kits
       </h4>
       {kits.map((k) => (
-        <Row
-          key={k.id}
-          label={k.issueNumber}
-          value={KIT_STATUS_LABEL[k.status] ?? k.status}
-        />
+        <div key={k.id} className="mb-2">
+          <Row label={k.issueNumber} value={KIT_STATUS_LABEL[k.status] ?? k.status} />
+          <KitItemList issue={k} />
+        </div>
       ))}
     </section>
+  );
+}
+
+/**
+ * What is actually in the kit — the whole point of asking. Before the pharmacy
+ * issues it these are the requested quantities; afterwards the same rows carry
+ * what went to theatre and, once reconciled, what was used. The surgeon should
+ * not have to ask the OT nurse which it is.
+ */
+function KitItemList({ issue }: { issue: OtKitIssue }) {
+  const [open, setOpen] = useState(false);
+  const items = issue.items ?? [];
+  if (items.length === 0) return null;
+
+  const reconciled = issue.status === 'reconciled';
+  const issued = issue.status === 'issued' || reconciled;
+
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+      >
+        <PackageOpen className="h-3 w-3" />
+        {open ? 'Hide contents' : `See what's in this kit (${items.length})`}
+      </button>
+
+      {open && (
+        <div className="mt-1 overflow-hidden rounded-md border">
+          <table className="w-full text-[11px]">
+            <thead className="bg-muted/40">
+              <tr className="text-left text-muted-foreground">
+                <th className="px-2 py-1 font-medium">Item</th>
+                <th className="px-2 py-1 text-right font-medium">
+                  {issued ? 'Issued' : 'Requested'}
+                </th>
+                {reconciled && <th className="px-2 py-1 text-right font-medium">Returned</th>}
+                {reconciled && <th className="px-2 py-1 text-right font-medium">Used</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((i) => {
+                const used = i.consumedQty ?? i.issuedQty - (i.returnedQty ?? 0);
+                return (
+                  <tr key={i.id} className="border-t">
+                    <td className="px-2 py-1">
+                      {i.drugName ?? '—'}
+                      {i.batchNumber && (
+                        <span className="ml-1 text-muted-foreground">· {i.batchNumber}</span>
+                      )}
+                    </td>
+                    <td className="px-2 py-1 text-right font-mono">
+                      {i.issuedQty}
+                      {i.looseUnitLabel ? ` ${i.looseUnitLabel}` : ''}
+                    </td>
+                    {reconciled && (
+                      <td className="px-2 py-1 text-right font-mono">{i.returnedQty ?? 0}</td>
+                    )}
+                    {reconciled && <td className="px-2 py-1 text-right font-mono">{used}</td>}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {reconciled && (
+            <p className="border-t bg-muted/20 px-2 py-1 text-[10px] text-muted-foreground">
+              Only what was used is billed — returns go back to pharmacy stock.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
