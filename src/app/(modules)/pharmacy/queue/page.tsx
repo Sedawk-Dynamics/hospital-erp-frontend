@@ -47,6 +47,7 @@ import {
   type PrescriptionQueueParams,
   type PharmacyOrderStatus,
 } from '@/hooks/use-pharmacy';
+import { RecallAlertBanner } from '@/components/pharmacy/recall-alert-banner';
 
 const statusBadge: Record<PrescriptionListItem['status'], string> = {
   active: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
@@ -127,6 +128,9 @@ export default function PrescriptionQueuePage() {
           <Button size="sm" variant="outline">Open POS Billing</Button>
         </Link>
       </div>
+
+      {/* The other place medicine is handed over, so the same warning belongs here. */}
+      <RecallAlertBanner />
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">

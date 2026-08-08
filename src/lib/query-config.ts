@@ -128,6 +128,10 @@ const LIVE_KEYS: string[][] = [
   ['pharmacy', 'dispensing'],
   ['pharmacy', 'returns'],
   ['pharmacy', 'batches'],
+  // Safety-critical and written by someone else: a pharmacy admin declares the
+  // recall, and the pharmacist at the till needs the warning before they hand
+  // the medicine over, not at their next page load.
+  ['pharmacy', 'recalls'],
   ['indents'],
   ['inventory', 'supply-requests'],
   ['inventory', 'transfers'],

@@ -59,11 +59,16 @@ import { DrugSubstitutesDialog } from '@/components/pharmacy/drug-substitutes-di
 import { StockTypeBadge } from '@/components/shared/stock-type-badge';
 import { BillingSummaryDialog } from '@/components/pharmacy/billing-summary-dialog';
 import { PharmacyReceiptDialog } from '@/components/pharmacy/pharmacy-receipt-dialog';
+import { RecallAlertBanner } from '@/components/pharmacy/recall-alert-banner';
 
 export default function PharmacyBillingPage() {
   return (
     <div className="space-y-4 animate-fade-in-up">
       <h1 className="font-headline text-xl font-bold">Pharmacy Billing</h1>
+
+      {/* A recalled batch is refused at the till by the server. Without this the
+          counter meets that refusal with no idea why. */}
+      <RecallAlertBanner />
 
       <Tabs defaultValue="billing">
         <TabsList variant="line">

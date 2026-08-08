@@ -38,6 +38,7 @@ import {
   Percent,
   Sparkles,
   History,
+  ShieldOff,
   type LucideIcon,
 } from 'lucide-react';
 import type { ModuleKey } from '@/stores/module-store';
@@ -128,6 +129,11 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Prescription Queue', href: '/pharmacy/queue', icon: ClipboardList },
       { label: 'Pre-Pack Holds', href: '/pharmacy/pre-pack', icon: PackagePlus },
       { label: 'Returns', href: '/pharmacy/returns', icon: ArrowLeftRight },
+      // Deliberately NOT restricted to pharmacy_admin: a recall blocks the
+      // pharmacist's own dispensing, so the counter has to be able to see what
+      // is recalled and who already received it. Declaring/lifting still needs
+      // pharmacy:approve, which the page hides and the server enforces.
+      { label: 'Recalled Stock', href: '/pharmacy/recalls', icon: ShieldOff },
       // pharmacy_admin only (management + financials). admin/super_admin bypass.
       { label: 'Billing Transaction', href: '/pharmacy/transactions', icon: ArrowLeftRight, restrictTo: ['pharmacy_admin'] },
       { label: 'Reports', href: '/pharmacy/reports', icon: BarChart3, restrictTo: ['pharmacy_admin'] },
