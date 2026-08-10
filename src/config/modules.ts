@@ -233,6 +233,11 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Patient Forms', href: '/nurse/forms', icon: FileText },
       { label: 'Shift Handover', href: '/nurse/handover', icon: ArrowRightLeft },
       { label: 'Orders & Ward', href: '/nurse/orders', icon: ClipboardCheck },
+      // The ward nurse usually raises the pre-op kit for the surgeon. The
+      // request endpoint was always open to them; the OT module that hosted the
+      // only screen for it is not (admin / inventory_manager), so they had no
+      // way in until this page.
+      { label: 'OT Kits', href: '/nurse/ot-kits', icon: Package },
       { label: 'Settings', href: '/nurse/settings', icon: Settings },
     ],
   },
