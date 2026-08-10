@@ -978,37 +978,11 @@ export function useDayEnd(date?: string) {
   });
 }
 
-// Razorpay online payment
-export interface OnlineOrderResponse {
-  orderId: string;
-  amount: number;
-  currency: string;
-  keyId: string;
-  paymentId: string;
-}
-
-export function useCreateOnlineOrder() {
-  return useMutation({
-    mutationFn: async (data: { billId: string }) => {
-      const r = await apiPost<OnlineOrderResponse>('/online-payments/create-order', data);
-      return r.data ?? null;
-    },
-  });
-}
-
-export function useVerifyOnlinePayment() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (data: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
-      const r = await apiPost('/online-payments/verify', data);
-      return r.data ?? null;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['hospital', 'bills'] });
-      queryClient.invalidateQueries({ queryKey: ['hospital', 'payments'] });
-    },
-  });
-}
+// Razorpay is reachable from the patient portal (paying for an appointment or a
+// bill) and from the SaaS subscription checkout — the only two screens where the
+// person paying is the one at the keyboard. Hospital, pharmacy and lab staff
+// mark payments as received by hand, so the counter has no gateway hooks here.
+// The dialog that used to sit in this file was never rendered on any screen.
 
 // ============================================================
 // Credit Settlement (Week 12 extension)

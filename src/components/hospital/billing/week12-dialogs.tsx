@@ -8,11 +8,11 @@
 // the cashier surfaces use them by passing the relevant bill/payment.
 // ───────────────────────────────────────────────────────────────────────
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import {
   Loader2, Plus, Trash2, Wallet, CreditCard, Landmark, Smartphone, ScrollText,
-  Coins, AlertTriangle, CheckCircle2, X, RotateCcw, Ban, Globe, IndianRupee,
+  Coins, AlertTriangle, CheckCircle2, X, RotateCcw, Ban, IndianRupee,
 } from 'lucide-react';
 
 import {
@@ -36,8 +36,6 @@ import {
   useCreateRefund,
   useApproveRefund,
   useRejectRefund,
-  useCreateOnlineOrder,
-  useVerifyOnlinePayment,
   type BillingPaymentMethod,
   type SplitEntry,
 } from '@/hooks/use-hospital';
@@ -808,144 +806,6 @@ function CancelBillBody({
         >
           <Ban className="mr-1 h-4 w-4" />
           {cancel.isPending ? 'Cancelling...' : 'Cancel Bill'}
-        </Button>
-      </DialogFooter>
-    </>
-  );
-}
-
-// ────────────────────────────────────────────────────────────────────────
-// 6. Razorpay Online Payment Dialog (loads checkout via SDK)
-// ────────────────────────────────────────────────────────────────────────
-
-function useLoadRazorpay() {
-  // External-script load: setState IS the right action when the script
-  // finishes loading. The lint rule's "no setState in effect" doesn't apply
-  // when synchronizing with an external system (which is the whole point
-  // of useEffect).
-  const [ready, setReady] = useState<boolean>(typeof window !== 'undefined' && !!window.Razorpay);
-  useEffect(() => {
-    if (typeof window === 'undefined' || window.Razorpay) return;
-    const id = 'razorpay-checkout-js';
-    const existing = document.getElementById(id);
-    if (existing) {
-      const check = setInterval(() => {
-        if (window.Razorpay) {
-          setReady(true);
-          clearInterval(check);
-        }
-      }, 100);
-      return () => clearInterval(check);
-    }
-    const s = document.createElement('script');
-    s.id = id;
-    s.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    s.onload = () => setReady(true);
-    document.body.appendChild(s);
-  }, []);
-  return ready;
-}
-
-export interface OnlinePaymentDialogProps {
-  open: boolean;
-  onOpenChange: (o: boolean) => void;
-  bill: { id: string; billNumber: string; balanceDue: number; patientName?: string; patientPhone?: string; patientEmail?: string } | null;
-  onSettled?: () => void;
-}
-
-export function OnlinePaymentDialog({ open, onOpenChange, bill, onSettled }: OnlinePaymentDialogProps) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Online Payment</DialogTitle>
-          <DialogDescription>
-            Patient pays via UPI / card / netbanking through Razorpay. Webhook will confirm even if the patient closes the browser.
-          </DialogDescription>
-        </DialogHeader>
-        {open && bill && (
-          <OnlinePaymentBody
-            key={bill.id}
-            bill={bill}
-            onClose={() => onOpenChange(false)}
-            onSettled={() => {
-              onSettled?.();
-              onOpenChange(false);
-            }}
-          />
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function OnlinePaymentBody({
-  bill,
-  onClose,
-  onSettled,
-}: {
-  bill: { id: string; billNumber: string; balanceDue: number; patientName?: string; patientPhone?: string; patientEmail?: string };
-  onClose: () => void;
-  onSettled: () => void;
-}) {
-  const ready = useLoadRazorpay();
-  const createOrder = useCreateOnlineOrder();
-  const verify = useVerifyOnlinePayment();
-  const [phase, setPhase] = useState<'idle' | 'opening' | 'verifying' | 'done'>('idle');
-
-  const start = async () => {
-    if (!ready || !window.Razorpay) {
-      toast.error('Razorpay SDK not loaded yet — try again in a moment');
-      return;
-    }
-    try {
-      setPhase('opening');
-      const order = await createOrder.mutateAsync({ billId: bill.id });
-      if (!order) throw new Error('Failed to create order');
-      const rzp = new window.Razorpay({
-        key: order.keyId,
-        amount: order.amount,
-        currency: order.currency,
-        order_id: order.orderId,
-        name: 'Hospital Bill',
-        description: `Bill ${bill.billNumber}`,
-        prefill: { name: bill.patientName, contact: bill.patientPhone, email: bill.patientEmail },
-        handler: async (resp: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
-          setPhase('verifying');
-          try {
-            await verify.mutateAsync(resp);
-            toast.success('Payment captured');
-            setPhase('done');
-            onSettled();
-          } catch (e: unknown) {
-            toast.error(e instanceof Error ? e.message : 'Verification failed');
-            setPhase('idle');
-          }
-        },
-        modal: {
-          ondismiss: () => setPhase('idle'),
-        },
-      });
-      rzp.open();
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Failed to start payment');
-      setPhase('idle');
-    }
-  };
-
-  return (
-    <>
-      <div className="rounded-xl bg-primary/5 border border-primary/20 px-3 py-2 text-xs space-y-1">
-        <p><strong>Bill #{bill.billNumber}</strong> · {bill.patientName ?? '-'}</p>
-        <p>Balance Due: <strong>{fmt(bill.balanceDue)}</strong></p>
-      </div>
-      <DialogFooter>
-        <Button variant="outline" onClick={onClose}>Close</Button>
-        <Button onClick={start} disabled={!ready || createOrder.isPending || phase !== 'idle'}>
-          {!ready ? 'Loading SDK...' :
-            phase === 'opening' ? 'Opening...' :
-            phase === 'verifying' ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verifying...</> :
-            <><Globe className="mr-2 h-4 w-4" /> Pay {fmt(bill.balanceDue)}</>}
         </Button>
       </DialogFooter>
     </>
