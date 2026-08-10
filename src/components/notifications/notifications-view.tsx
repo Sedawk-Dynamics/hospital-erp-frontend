@@ -1,29 +1,26 @@
 'use client';
 
 // ============================================================
-// The notification list, shared by every portal.
+// The full notification history — the BODY of the slide-over panel.
 //
-// The bell only ever shows the most recent handful, so anything that arrived
-// while someone was off shift fell off the end and was effectively lost. This
-// is the full history: grouped by day, newest first, filterable, and every row
-// opens the record it is about.
+// The bell dropdown only ever holds the most recent handful, so anything that
+// arrived while someone was off shift used to fall off the end and be
+// unrecoverable. This is everything: grouped by day, newest first, filterable,
+// and every row opens the record it is about.
 //
-// One component, mounted per layout group, because the surrounding chrome
-// differs (module sidebar / patient portal / super-admin) but the list does not.
+// It lives in a panel rather than on its own page on purpose. Notifications are
+// something you check WHILE doing something else — a nurse mid-round, a
+// pharmacist mid-sale. Navigating to a separate page threw away whatever screen
+// they were on and made them find their way back.
+//
+// The heading, the unread count and "mark all read" belong to the panel's
+// header; this component owns the filters and the list.
 // ============================================================
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
-import {
-  Bell,
-  CheckCheck,
-  ChevronLeft,
-  ChevronRight,
-  Loader2,
-  Search,
-  ChevronRight as Chevron,
-} from 'lucide-react';
+import { Bell, ChevronLeft, ChevronRight, Loader2, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -33,7 +30,6 @@ import { useAuthStore } from '@/stores/auth-store';
 import {
   useNotificationList,
   useMarkNotificationRead,
-  useMarkAllNotificationsRead,
   useUnreadNotificationCount,
   notificationLink,
   type AppNotification,
@@ -90,7 +86,12 @@ function dayLabel(iso: string): string {
 const timeLabel = (iso: string) =>
   new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 
-export function NotificationsView() {
+export function NotificationsView({
+  /** Called after a notification navigates, so the panel can close behind it. */
+  onNavigate,
+}: {
+  onNavigate?: () => void;
+}) {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const [tab, setTab] = useState<'all' | 'unread' | 'read'>('all');
@@ -107,7 +108,6 @@ export function NotificationsView() {
   });
   const { data: unreadCount = 0 } = useUnreadNotificationCount();
   const markRead = useMarkNotificationRead();
-  const markAllRead = useMarkAllNotificationsRead();
 
   const rows = useMemo(() => data?.notifications ?? [], [data]);
   const total = data?.total ?? 0;
@@ -130,7 +130,11 @@ export function NotificationsView() {
     // Roles matter: several references are written for both sides of a
     // conversation, and for the patient as well as for staff.
     const link = notificationLink(n, user?.roles);
-    if (link) router.push(link);
+    if (!link) return;
+    router.push(link);
+    // Only close when we actually went somewhere. Marking something read in
+    // place should leave the panel open so the list can carry on being read.
+    onNavigate?.();
   };
 
   const switchTab = (key: 'all' | 'unread' | 'read') => {
@@ -139,36 +143,9 @@ export function NotificationsView() {
   };
 
   return (
-    <div className="space-y-4 animate-fade-in-up">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 font-headline text-xl font-bold">
-            <Bell className="h-5 w-5 text-primary" /> Notifications
-            {unreadCount > 0 && (
-              <Badge className="bg-primary/10 text-primary">{unreadCount} unread</Badge>
-            )}
-          </h1>
-          <p className="text-xs text-muted-foreground">
-            Everything sent to you, newest first. Opening one takes you to the record it is about.
-          </p>
-        </div>
-        <Button
-          size="sm"
-          variant="outline"
-          className="gap-1.5"
-          onClick={() => markAllRead.mutate()}
-          disabled={markAllRead.isPending || unreadCount === 0}
-        >
-          {markAllRead.isPending ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <CheckCheck className="h-3.5 w-3.5" />
-          )}
-          Mark all read
-        </Button>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* Filters — pinned; only the list below scrolls. */}
+      <div className="space-y-2 border-b px-4 pb-3">
         <div className="flex items-center gap-1 rounded-lg border bg-muted/40 p-0.5">
           {TABS.map((t) => (
             <button
@@ -176,7 +153,7 @@ export function NotificationsView() {
               type="button"
               onClick={() => switchTab(t.key)}
               className={cn(
-                'rounded-md px-3 py-1 text-xs font-medium transition-colors',
+                'flex-1 rounded-md px-3 py-1 text-xs font-medium transition-colors',
                 tab === t.key
                   ? 'bg-background text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground',
@@ -189,24 +166,26 @@ export function NotificationsView() {
             </button>
           ))}
         </div>
-        <div className="relative min-w-[220px] flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-            placeholder="Search notifications…"
-            className="h-9 pl-9"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              placeholder="Search notifications…"
+              className="h-9 pl-9"
+            />
+          </div>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {isLoading ? '…' : total.toLocaleString('en-IN')}
+          </span>
         </div>
-        <span className="text-xs text-muted-foreground">
-          {isLoading ? 'Loading…' : `${total.toLocaleString('en-IN')} total`}
-        </span>
       </div>
 
-      <div className="overflow-hidden rounded-xl bg-surface-container-lowest shadow-sanctuary">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {isLoading ? (
           <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading notifications…
@@ -225,7 +204,7 @@ export function NotificationsView() {
         ) : (
           groups.map((g) => (
             <div key={g.label}>
-              <p className="sticky top-0 z-10 border-b bg-muted/50 px-4 py-1.5 font-label text-[10px] uppercase tracking-widest text-muted-foreground backdrop-blur">
+              <p className="sticky top-0 z-10 border-b bg-muted/60 px-4 py-1.5 font-label text-[10px] uppercase tracking-widest text-muted-foreground backdrop-blur">
                 {g.label}
               </p>
               <ul className="divide-y">
@@ -280,7 +259,7 @@ export function NotificationsView() {
                         </span>
                         {/* Only promise navigation when there is somewhere to go. */}
                         {link && (
-                          <Chevron className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
+                          <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
                         )}
                       </button>
                     </li>
@@ -290,37 +269,37 @@ export function NotificationsView() {
             </div>
           ))
         )}
-
-        {rows.length > 0 && (
-          <div className="flex items-center justify-between border-t px-4 py-3 text-xs text-muted-foreground">
-            <span>
-              {(page - 1) * PAGE_SIZE + 1}–{(page - 1) * PAGE_SIZE + rows.length} of {total}
-            </span>
-            <div className="flex items-center gap-1">
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-7 w-7"
-                disabled={page <= 1}
-                onClick={() => setPage((v) => v - 1)}
-                aria-label="Previous page"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-7 w-7"
-                disabled={page >= totalPages}
-                onClick={() => setPage((v) => v + 1)}
-                aria-label="Next page"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        )}
       </div>
+
+      {rows.length > 0 && (
+        <div className="flex items-center justify-between border-t px-4 py-2.5 text-xs text-muted-foreground">
+          <span>
+            {(page - 1) * PAGE_SIZE + 1}–{(page - 1) * PAGE_SIZE + rows.length} of {total}
+          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7"
+              disabled={page <= 1}
+              onClick={() => setPage((v) => v - 1)}
+              aria-label="Previous page"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7"
+              disabled={page >= totalPages}
+              onClick={() => setPage((v) => v + 1)}
+              aria-label="Next page"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

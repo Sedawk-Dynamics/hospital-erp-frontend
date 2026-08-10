@@ -39,7 +39,6 @@ import { ProfileSelector } from './patient-portal/_components/profile-selector';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', href: '/patient-portal', icon: Home },
-  { label: 'Notifications', href: '/patient-portal/notifications', icon: Bell },
   { label: 'Appointments', href: '/patient-portal/appointments', icon: Calendar },
   { label: 'Book Appointment', href: '/patient-portal/book-appointment', icon: Building2 },
   { label: 'My Investigations', href: '/patient-portal/orders', icon: ClipboardList },

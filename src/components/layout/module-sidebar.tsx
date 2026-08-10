@@ -8,7 +8,6 @@ import { useSidebarStore } from '@/stores/sidebar-store';
 import { MODULE_REGISTRY, getModuleFromPathname, type NavItem } from '@/config/modules';
 import { getModulesForRole, getRolePortalLabel } from '@/config/role-modules';
 import { useAuthStore } from '@/stores/auth-store';
-import { useUnreadNotificationCount } from '@/hooks/use-notifications';
 import { PlatformLogo } from '@/components/branding/platform-logo';
 
 function normalizeRoleSlug(slug?: string | null): string {
@@ -25,7 +24,7 @@ function visibleSidebarItems(items: NavItem[], roleSlug?: string): NavItem[] {
   return items.filter((it) => !it.restrictTo || it.restrictTo.includes(role));
 }
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { ChevronDown, HeartPulse, PanelLeftClose, PanelLeft, Bell } from 'lucide-react';
+import { ChevronDown, HeartPulse, PanelLeftClose, PanelLeft } from 'lucide-react';
 import type { ModuleKey } from '@/stores/module-store';
 
 function SidebarContent({
@@ -43,7 +42,6 @@ function SidebarContent({
   const router = useRouter();
   const { close } = useSidebarStore();
   const { user } = useAuthStore();
-  const { data: unreadCount = 0 } = useUnreadNotificationCount();
 
   const roleSlug = user?.role?.slug;
   const allowedModules = getModulesForRole(roleSlug);
@@ -261,40 +259,6 @@ function SidebarContent({
           );
         })}
       </nav>
-
-      {/* Notifications — not part of any module, but every role needs it, so it
-          sits below the module nav rather than being repeated inside each one. */}
-      <div className="mt-4 w-full">
-        <Link
-          href="/notifications"
-          onClick={() => close()}
-          title={!pinned && collapsed && !hoverExpand ? 'Notifications' : undefined}
-          className={cn(
-            'relative flex items-center px-6 py-3 w-full transition-all duration-200',
-            pathname.startsWith('/notifications')
-              ? 'bg-white text-primary rounded-l-xl rounded-r-none sidebar-branch'
-              : 'text-slate-400 hover:text-primary hover:bg-primary/5',
-          )}
-        >
-          <span className="relative min-w-[32px]">
-            <Bell
-              className="h-5 w-5 shrink-0"
-              style={pathname.startsWith('/notifications') ? { strokeWidth: 2.5 } : undefined}
-            />
-            {unreadCount > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-error px-1 text-[9px] font-bold text-white">
-                {unreadCount > 99 ? '99+' : unreadCount}
-              </span>
-            )}
-          </span>
-          <span className={cn(
-            'ml-4 font-sans text-sm font-medium tracking-wide whitespace-nowrap transition-opacity duration-300',
-            labelVisibility,
-          )}>
-            Notifications
-          </span>
-        </Link>
-      </div>
 
       {/* User info at bottom */}
       <div className="mt-auto px-6 w-full">

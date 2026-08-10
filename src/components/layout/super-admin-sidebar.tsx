@@ -28,13 +28,11 @@ import {
   Receipt,
   Image as ImageIcon,
   HeartPulse,
-  Bell,
 } from 'lucide-react';
 import { PlatformLogo } from '@/components/branding/platform-logo';
 
 const NAV_ITEMS = [
   { href: '/super-admin', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/super-admin/notifications', label: 'Notifications', icon: Bell },
   { href: '/super-admin/demo-requests', label: 'Demo Requests', icon: CalendarCheck },
   { href: '/super-admin/hospitals', label: 'Hospitals', icon: Building2 },
   { href: '/super-admin/users', label: 'Users', icon: Users },

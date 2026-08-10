@@ -1,9 +1,11 @@
 'use client';
 
+import { useState } from 'react';
 import { Bell, CheckCheck, ArrowRight } from 'lucide-react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { NotificationsPanel } from '@/components/notifications/notifications-panel';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,22 +31,18 @@ import { useAuthStore } from '@/stores/auth-store';
  */
 export function NotificationBell({ variant = 'plain' }: { variant?: 'module' | 'plain' }) {
   const router = useRouter();
-  const pathname = usePathname();
   const user = useAuthStore((s) => s.user);
   const { data: unreadCount = 0 } = useUnreadNotificationCount();
   const { data: notifications = [], isLoading } = useNotifications(8);
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllNotificationsRead();
 
-  const hasUnread = unreadCount > 0;
+  // The dropdown is controlled so that opening the full panel can close it —
+  // leaving a floating menu on top of the slide-over looks broken.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
 
-  // Each portal mounts the same list under its own layout, so the path depends
-  // on where the bell is being rendered.
-  const allNotificationsHref = pathname.startsWith('/patient-portal')
-    ? '/patient-portal/notifications'
-    : pathname.startsWith('/super-admin')
-      ? '/super-admin/notifications'
-      : '/notifications';
+  const hasUnread = unreadCount > 0;
 
   const open = (n: AppNotification) => {
     if (!n.isRead) markRead.mutate(n.id);
@@ -54,7 +52,10 @@ export function NotificationBell({ variant = 'plain' }: { variant?: 'module' | '
     // Roles matter: the same OT notification reference is read by both the OT
     // desk and the doctor, and they belong on different screens.
     const link = notificationLink(n, user?.roles);
-    if (link) router.push(link);
+    if (link) {
+      setMenuOpen(false);
+      router.push(link);
+    }
   };
 
   const triggerClass =
@@ -63,7 +64,8 @@ export function NotificationBell({ variant = 'plain' }: { variant?: 'module' | '
       : 'relative inline-flex h-9 w-9 items-center justify-center rounded-md text-foreground hover:bg-accent transition-colors outline-none';
 
   return (
-    <DropdownMenu>
+    <>
+    <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
       <DropdownMenuTrigger className={triggerClass} aria-label="Notifications">
         <Bell className="h-5 w-5" />
         {hasUnread && (
@@ -143,10 +145,15 @@ export function NotificationBell({ variant = 'plain' }: { variant?: 'module' | '
         </div>
 
         {/* The dropdown only ever holds the most recent few — anything that
-            arrived while someone was off shift is only reachable here. */}
+            arrived while someone was off shift is only reachable here. Opens a
+            slide-over rather than navigating, so whatever the person was in the
+            middle of is still there behind it. */}
         <button
           type="button"
-          onClick={() => router.push(allNotificationsHref)}
+          onClick={() => {
+            setMenuOpen(false);
+            setPanelOpen(true);
+          }}
           className="flex w-full items-center justify-center gap-1 border-t px-4 py-2.5 text-xs font-medium text-primary transition-colors hover:bg-accent/60"
         >
           See all notifications
@@ -154,5 +161,8 @@ export function NotificationBell({ variant = 'plain' }: { variant?: 'module' | '
         </button>
       </DropdownMenuContent>
     </DropdownMenu>
+
+    <NotificationsPanel open={panelOpen} onOpenChange={setPanelOpen} />
+    </>
   );
 }
