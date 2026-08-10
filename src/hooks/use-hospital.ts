@@ -949,11 +949,19 @@ export function useReceipts(params?: { patientId?: string; billId?: string; from
 
 export interface DayEndReport {
   date: string;
+  /** Money taken in. Excludes refunds — those are money going the other way. */
   collected: number;
+  /** Money handed back out of the drawer. */
+  refunded: number;
+  /** collected − refunded: what the counter should actually be holding. */
+  netCollection: number;
   reversed: number;
   billed: number;
   byMethod: Record<string, number>;
+  refundsByMethod: Record<string, number>;
   byType: Record<string, number>;
+  /** Per-cashier tally — the unit a shift reconciles on when entry is manual. */
+  byCashier: Array<{ userId: string; name: string; collected: number; refunded: number }>;
   byStatusBills: { generated: number; paid: number; pending: number; cancelled: number };
   payments: Array<{
     id: string;
@@ -965,6 +973,7 @@ export interface DayEndReport {
     status: string;
     paymentDate: string;
     transactionId: string | null;
+    cashier: string | null;
   }>;
 }
 

@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Search, Banknote, CreditCard, Smartphone, Building2, Plus, FileText, ListChecks,
-  Users, Activity, Clock,
+  Users, Activity, Clock, Undo2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -279,7 +279,7 @@ function CashCounterTab() {
     queryFn: async () => {
       const response = await apiGet<{
         totalCollection: number; cash: number; card: number; upi: number;
-        bankTransfer: number; cheque: number;
+        bankTransfer: number; cheque: number; refunds?: number; netCollection?: number;
       }>('/billing/collection-summary', { params: { startDate: today, endDate: today } });
       return response.data;
     },
@@ -292,8 +292,9 @@ function CashCounterTab() {
       if (search) params.search = search;
       const response = await apiGet<Array<{
         id: string; amount: number; paymentMethod: string; status: string;
-        paymentDate: string; transactionId?: string;
+        paymentType?: string; paymentDate: string; transactionId?: string;
         bill?: { billNumber: string; patient?: { firstName: string; lastName: string } };
+        processor?: { id: string; firstName: string; lastName: string };
       }>>('/billing/payments', { params });
       return response.data;
     },
@@ -301,8 +302,12 @@ function CashCounterTab() {
 
   const fmt = (n: number) => `₹${(Number(n) || 0).toLocaleString('en-IN')}`;
 
+  const refunds = summary?.refunds ?? 0;
   const summaryCards = [
-    { label: 'Total Collection', value: fmt(summary?.totalCollection ?? 0), icon: Building2, border: 'border-primary', iconStyle: 'bg-primary/10 text-primary' },
+    { label: 'Collected', value: fmt(summary?.totalCollection ?? 0), icon: Building2, border: 'border-primary', iconStyle: 'bg-primary/10 text-primary' },
+    // Money handed back today. Shown next to the takings so the counter counts
+    // against what it is actually holding, not against gross collection.
+    { label: 'Refunded', value: fmt(refunds), icon: Undo2, border: 'border-error', iconStyle: 'bg-error-container text-on-error-container' },
     { label: 'Cash', value: fmt(summary?.cash ?? 0), icon: Banknote, border: 'border-primary-container', iconStyle: 'bg-primary-container/10 text-primary-container' },
     { label: 'Card', value: fmt(summary?.card ?? 0), icon: CreditCard, border: 'border-secondary', iconStyle: 'bg-secondary/10 text-secondary' },
     { label: 'UPI', value: fmt(summary?.upi ?? 0), icon: Smartphone, border: 'border-tertiary', iconStyle: 'bg-tertiary/10 text-tertiary' },
@@ -315,15 +320,18 @@ function CashCounterTab() {
     for (const p of payments ?? []) {
       if (p.status !== 'completed') continue;
       const d = new Date(p.paymentDate);
-      buckets[d.getHours()] += Number(p.amount) || 0;
+      // A refund is cash going out — net it off the hour it happened in rather
+      // than charting it as another hour of takings.
+      const signed = (Number(p.amount) || 0) * (p.paymentType === 'refund' ? -1 : 1);
+      buckets[d.getHours()] += signed;
     }
-    const max = Math.max(...buckets, 1);
+    const max = Math.max(...buckets.map(Math.abs), 1);
     return { buckets, max };
   }, [payments]);
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
         {summaryCards.map((s) => (
           <div key={s.label} className={`bg-surface-container-lowest rounded-xl shadow-sanctuary p-4 border-l-4 ${s.border}`}>
             <div className="flex items-center gap-2 mb-2">
@@ -336,6 +344,17 @@ function CashCounterTab() {
           </div>
         ))}
       </div>
+
+      {refunds > 0 && (
+        <div className="rounded-xl border-l-4 border-primary bg-primary/5 px-4 py-3">
+          <span className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
+            Net in drawer — count against this
+          </span>
+          <p className="font-headline text-xl font-extrabold">
+            {fmt((summary?.netCollection ?? (summary?.totalCollection ?? 0) - refunds))}
+          </p>
+        </div>
+      )}
 
       {/* Hourly distribution */}
       <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4">
@@ -350,14 +369,21 @@ function CashCounterTab() {
             <div
               key={h}
               className="flex-1 flex flex-col items-center justify-end gap-1"
-              title={`${h.toString().padStart(2, '0')}:00 — ₹${amt.toLocaleString('en-IN')}`}
+              title={`${h.toString().padStart(2, '0')}:00 — ₹${amt.toLocaleString('en-IN')}${amt < 0 ? ' (net refund)' : ''}`}
             >
               <div
                 className={cn(
                   'w-full rounded-t transition-all',
-                  amt > 0 ? 'bg-primary' : 'bg-surface-container',
+                  amt > 0 && 'bg-primary',
+                  // An hour that gave back more than it took still needs a bar,
+                  // or the refund silently disappears off the chart.
+                  amt < 0 && 'bg-error',
+                  amt === 0 && 'bg-surface-container',
                 )}
-                style={{ height: `${(amt / hourlyDist.max) * 100}%`, minHeight: amt > 0 ? '4px' : '2px' }}
+                style={{
+                  height: `${(Math.abs(amt) / hourlyDist.max) * 100}%`,
+                  minHeight: amt !== 0 ? '4px' : '2px',
+                }}
               />
               <span className="font-label text-[8px] text-on-surface-variant">{h}</span>
             </div>
@@ -384,6 +410,7 @@ function CashCounterTab() {
                 <th className="px-4 pb-4 pt-5 font-semibold">Patient</th>
                 <th className="px-4 pb-4 pt-5 font-semibold">Method</th>
                 <th className="px-4 pb-4 pt-5 font-semibold text-right">Amount</th>
+                <th className="px-4 pb-4 pt-5 font-semibold">Cashier</th>
                 <th className="px-4 pb-4 pt-5 font-semibold">Reference</th>
                 <th className="px-4 pb-4 pt-5 font-semibold">Time</th>
                 <th className="px-4 pb-4 pt-5 font-semibold">Status</th>
@@ -391,9 +418,9 @@ function CashCounterTab() {
             </thead>
             <tbody className="divide-y divide-surface-container/50">
               {isLoading ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center"><div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" /></td></tr>
+                <tr><td colSpan={8} className="px-4 py-8 text-center"><div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" /></td></tr>
               ) : (payments ?? []).length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center font-label text-on-surface-variant">No payments today.</td></tr>
+                <tr><td colSpan={8} className="px-4 py-8 text-center font-label text-on-surface-variant">No payments today.</td></tr>
               ) : (
                 (payments ?? []).map((p) => (
                   <tr key={p.id} className="group hover:bg-surface-container-low transition-colors">
@@ -402,7 +429,15 @@ function CashCounterTab() {
                     <td className="px-4 py-4">
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant capitalize">{p.paymentMethod?.replace('_', ' ')}</span>
                     </td>
-                    <td className="px-4 py-4 text-right font-label text-sm font-bold">{fmt(Number(p.amount))}</td>
+                    <td className={cn(
+                      'px-4 py-4 text-right font-label text-sm font-bold',
+                      p.paymentType === 'refund' && 'text-error',
+                    )}>
+                      {p.paymentType === 'refund' ? '−' : ''}{fmt(Number(p.amount))}
+                    </td>
+                    <td className="px-4 py-4 font-label text-sm text-on-surface-variant">
+                      {p.processor ? `${p.processor.firstName} ${p.processor.lastName}` : '—'}
+                    </td>
                     <td className="px-4 py-4 font-label text-sm text-on-surface-variant">{p.transactionId || '-'}</td>
                     <td className="px-4 py-4 font-label text-sm text-on-surface-variant">{formatTime24(p.paymentDate)}</td>
                     <td className="px-4 py-4">

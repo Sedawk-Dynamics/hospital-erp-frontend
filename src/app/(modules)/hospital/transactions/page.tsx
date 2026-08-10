@@ -391,14 +391,15 @@ function RefundsTab() {
                 <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Reason</th>
                 <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Status</th>
                 <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Requested</th>
+                <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Decided by</th>
                 <th className="px-4 pb-4 pt-5 text-right font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-container/50">
               {isLoading ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center"><div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" /></td></tr>
+                <tr><td colSpan={8} className="px-4 py-8 text-center"><div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" /></td></tr>
               ) : refunds.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center font-label text-on-surface-variant">No refunds.</td></tr>
+                <tr><td colSpan={8} className="px-4 py-8 text-center font-label text-on-surface-variant">No refunds.</td></tr>
               ) : (
                 refunds.map((r) => (
                   <tr key={r.id} className="group hover:bg-surface-container-low transition-colors">
@@ -415,7 +416,22 @@ function RefundsTab() {
                         r.status === 'rejected' && 'bg-error-container text-on-error-container',
                       )}>{r.status}</span>
                     </td>
-                    <td className="px-4 py-3 font-label text-[10px] text-on-surface-variant">{formatDate(r.createdAt)}</td>
+                    <td className="px-4 py-3 font-label text-[10px] text-on-surface-variant">
+                      {formatDate(r.createdAt)}
+                      {r.requester && (
+                        <div className="text-on-surface">by {r.requester.firstName} {r.requester.lastName}</div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 font-label text-[10px] text-on-surface-variant">
+                      {r.approver
+                        ? (
+                          <>
+                            <div className="text-on-surface">{r.approver.firstName} {r.approver.lastName}</div>
+                            {r.processedAt && <div>{formatDate(r.processedAt)}</div>}
+                          </>
+                        )
+                        : '—'}
+                    </td>
                     <td className="px-4 py-3 text-right">
                       {r.status === 'requested' && (
                         <div className="flex justify-end gap-1">
@@ -493,30 +509,47 @@ function DayEndTab() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3">
-        <SummaryCell label="Total Collection" value={fmt(data.collected)} accent="border-l-primary" />
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        <SummaryCell label="Collected" value={fmt(data.collected)} accent="border-l-primary" />
+        <SummaryCell label="Refunded" value={fmt(data.refunded ?? 0)} sub="paid back out of the drawer" accent="border-l-error" />
+        <SummaryCell
+          label="Net in Drawer"
+          value={fmt(data.netCollection ?? data.collected)}
+          sub="collected less refunds — count against this"
+          accent="border-l-primary"
+        />
         <SummaryCell label="Bills Generated" value={String(data.byStatusBills.generated)} sub={`${data.byStatusBills.paid} paid · ${data.byStatusBills.pending} pending`} accent="border-l-secondary" />
         <SummaryCell label="Reversed" value={fmt(data.reversed)} accent="border-l-error" />
         <SummaryCell label="Total Billed" value={fmt(data.billed)} accent="border-l-tertiary" />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {/* By method */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {/* By method — what to count in each tender at close of day */}
         <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4">
           <p className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant mb-2">Collection by Method</p>
           {grouped.length === 0 ? (
             <p className="text-xs text-on-surface-variant">No payments.</p>
           ) : (
             <ul className="space-y-1.5">
-              {grouped.map(([m, v]) => (
-                <li key={m} className="flex items-center justify-between text-sm">
-                  <span className="flex items-center gap-2 capitalize">
-                    {methodIcons[m] ?? <Banknote className="h-3.5 w-3.5 text-on-surface-variant" />}
-                    {m.replace('_', ' ')}
-                  </span>
-                  <span className="font-bold">{fmt(v)}</span>
-                </li>
-              ))}
+              {grouped.map(([m, v]) => {
+                const back = data.refundsByMethod?.[m] ?? 0;
+                return (
+                  <li key={m} className="flex items-center justify-between text-sm">
+                    <span className="flex items-center gap-2 capitalize">
+                      {methodIcons[m] ?? <Banknote className="h-3.5 w-3.5 text-on-surface-variant" />}
+                      {m.replace('_', ' ')}
+                    </span>
+                    <span className="text-right">
+                      <span className="font-bold">{fmt(v - back)}</span>
+                      {back > 0 && (
+                        <span className="block font-label text-[10px] text-error">
+                          {fmt(v)} in · {fmt(back)} back
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -535,6 +568,31 @@ function DayEndTab() {
               <span>Refund</span><span className="font-bold text-error">{fmt(data.byType.refund ?? 0)}</span>
             </li>
           </ul>
+        </div>
+
+        {/* By cashier — with payments marked by hand, this is the unit a shift
+            actually reconciles on: whose drawer is holding what. */}
+        <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4">
+          <p className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant mb-2">By Cashier</p>
+          {(data.byCashier?.length ?? 0) === 0 ? (
+            <p className="text-xs text-on-surface-variant">No attributed payments.</p>
+          ) : (
+            <ul className="space-y-1.5 text-sm">
+              {data.byCashier.map((c) => (
+                <li key={c.userId} className="flex items-center justify-between gap-2">
+                  <span className="truncate" title={c.name}>{c.name}</span>
+                  <span className="text-right whitespace-nowrap">
+                    <span className="font-bold">{fmt(c.collected - c.refunded)}</span>
+                    {c.refunded > 0 && (
+                      <span className="block font-label text-[10px] text-error">
+                        {fmt(c.refunded)} refunded
+                      </span>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
 
@@ -555,6 +613,7 @@ function DayEndTab() {
                 <th className="px-4 pb-3 pt-3 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Method</th>
                 <th className="px-4 pb-3 pt-3 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Type</th>
                 <th className="px-4 pb-3 pt-3 text-right font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Amount</th>
+                <th className="px-4 pb-3 pt-3 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Cashier</th>
                 <th className="px-4 pb-3 pt-3 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Time</th>
                 <th className="px-4 pb-3 pt-3 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Status</th>
                 <th className="px-4 pb-3 pt-3 text-right font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Actions</th>
@@ -562,7 +621,7 @@ function DayEndTab() {
             </thead>
             <tbody className="divide-y divide-surface-container/50">
               {data.payments.length === 0 ? (
-                <tr><td colSpan={8} className="px-4 py-8 text-center font-label text-on-surface-variant">No transactions today.</td></tr>
+                <tr><td colSpan={9} className="px-4 py-8 text-center font-label text-on-surface-variant">No transactions today.</td></tr>
               ) : data.payments.map((p) => (
                 <tr key={p.id} className="group hover:bg-surface-container-low transition-colors">
                   <td className="px-4 py-2.5 font-label text-sm font-bold">{p.billNumber ?? '-'}</td>
@@ -576,7 +635,13 @@ function DayEndTab() {
                       p.type === 'regular' && 'bg-primary/10 text-primary',
                     )}>{p.type}</span>
                   </td>
-                  <td className="px-4 py-2.5 text-right font-label text-sm font-bold">₹{p.amount.toLocaleString('en-IN')}</td>
+                  <td className={cn(
+                    'px-4 py-2.5 text-right font-label text-sm font-bold',
+                    p.type === 'refund' && 'text-error',
+                  )}>
+                    {p.type === 'refund' ? '−' : ''}₹{p.amount.toLocaleString('en-IN')}
+                  </td>
+                  <td className="px-4 py-2.5 font-label text-[10px] text-on-surface-variant">{p.cashier ?? '—'}</td>
                   <td className="px-4 py-2.5 font-label text-[10px] text-on-surface-variant">{formatTime24(p.paymentDate)}</td>
                   <td className="px-4 py-2.5">
                     <span className={cn(
