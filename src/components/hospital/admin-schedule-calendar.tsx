@@ -122,7 +122,7 @@ export function AdminScheduleCalendar({ doctorId, doctorName, doctorUserId }: Pr
       <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs">
         <Info className="h-3.5 w-3.5 text-blue-700 mt-0.5 flex-shrink-0" />
         <span className="text-blue-900">
-          <strong>Tip:</strong> Click any date to set custom shifts or mark it as a day off. Use <strong>Bulk Apply</strong> to set shifts across many dates at once (e.g. "8am-2pm every Sunday this month").
+          <strong>Tip:</strong> Click any date to set custom shifts or mark it as a day off. Use <strong>Bulk Apply</strong> to set shifts across many dates at once (e.g. &quot;8am-2pm every Sunday this month&quot;).
           Overrides take priority over the weekly recurring schedule.
         </span>
       </div>

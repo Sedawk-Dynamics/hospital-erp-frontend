@@ -481,7 +481,7 @@ function AcceptRequestDialog({
                 </p>
               )}
               {request.notes && (
-                <p className="text-xs text-muted-foreground italic">"{request.notes}"</p>
+                <p className="text-xs text-muted-foreground italic">&quot;{request.notes}&quot;</p>
               )}
             </div>
           )}

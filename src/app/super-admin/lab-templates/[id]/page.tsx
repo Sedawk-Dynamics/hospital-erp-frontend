@@ -299,8 +299,8 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
           Search & synonyms
         </h2>
         <p className="text-[11px] text-muted-foreground">
-          Add alternative names and keywords that should surface this test in search — e.g. "FBC",
-          "Hemogram", "hemoglobin", "anemia". Out-of-range numeric values are still auto-flagged on
+          Add alternative names and keywords that should surface this test in search — e.g. &quot;FBC&quot;,
+          &quot;Hemogram&quot;, &quot;hemoglobin&quot;, &quot;anemia&quot;. Out-of-range numeric values are still auto-flagged on
           the result entry form. Part of the dynamic-search layer agreed in the 2026-05-23 meeting.
         </p>
         <div className="space-y-1">
@@ -324,7 +324,7 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
             </h2>
             <p className="text-[11px] text-muted-foreground mt-0.5">
               Each row becomes one input field when a lab technician enters results. Group rows with the same
-              "Group" label render together on the printed report.
+              &quot;Group&quot; label render together on the printed report.
             </p>
           </div>
         </div>
@@ -336,7 +336,7 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Clinical interpretation</h2>
         <p className="text-[11px] text-muted-foreground">
           Free-text notes printed at the bottom of the branded report. Use this to explain the clinical significance
-          of each finding (e.g. "Microcytic hypochromic picture suggests iron-deficiency anaemia").
+          of each finding (e.g. &quot;Microcytic hypochromic picture suggests iron-deficiency anaemia&quot;).
         </p>
         <Textarea
           rows={5}

@@ -184,7 +184,7 @@ function ModalitiesSection() {
           <DialogHeader>
             <DialogTitle>Delete modality?</DialogTitle>
             <DialogDescription>
-              "{deleting?.serviceName}" will be removed from the imaging catalog and
+              &quot;{deleting?.serviceName}&quot; will be removed from the imaging catalog and
               doctors will no longer be able to order it. Existing bills are unaffected.
             </DialogDescription>
           </DialogHeader>

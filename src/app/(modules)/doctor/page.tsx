@@ -230,7 +230,7 @@ export default function DoctorHomePage() {
       <div className="flex items-end justify-between">
         <div>
           <h1 className="font-headline text-2xl font-extrabold tracking-tight text-on-surface">Doctor Appointments</h1>
-          <p className="font-label text-sm text-on-surface-variant mt-0.5">Manage today's consultations, upcoming visits & patient queue</p>
+          <p className="font-label text-sm text-on-surface-variant mt-0.5">Manage today&apos;s consultations, upcoming visits & patient queue</p>
         </div>
       </div>
 

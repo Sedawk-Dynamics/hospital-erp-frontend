@@ -323,7 +323,7 @@ export function LabUnitsManager({ allowGlobal = false }: LabUnitsManagerProps) {
                         <td colSpan={5} className="px-3 py-2">
                           {g.units.length === 0 && newUnitForGroup !== g.id ? (
                             <p className="text-xs text-muted-foreground italic py-2">
-                              No units in this group yet. Click "+ Unit" to add one.
+                              No units in this group yet. Click &quot;+ Unit&quot; to add one.
                             </p>
                           ) : (
                             <div className="overflow-x-auto">

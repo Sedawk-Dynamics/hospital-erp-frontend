@@ -200,7 +200,7 @@ export default function NurseFormsLandingPage() {
           <p className="text-xs text-muted-foreground">Loading…</p>
         ) : forms.length === 0 ? (
           <p className="text-xs text-muted-foreground">
-            Your hospital admin hasn't published any forms yet. Ask them to set them up under{' '}
+            Your hospital admin hasn&apos;t published any forms yet. Ask them to set them up under{' '}
             <span className="font-semibold">Settings → Patient Forms</span>.
           </p>
         ) : (

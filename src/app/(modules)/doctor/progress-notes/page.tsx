@@ -97,7 +97,7 @@ export default function ProgressNotesHistoryPage() {
           <h1 className="font-headline text-xl font-bold">Progress Notes — History</h1>
           <p className="text-xs text-on-surface-variant mt-0.5">
             Read-only archive of SOAP notes across your patients. New notes are authored inside
-            each patient's <em>Consultation</em> page.
+            each patient&apos;s <em>Consultation</em> page.
           </p>
         </div>
       </div>
@@ -161,7 +161,7 @@ export default function ProgressNotesHistoryPage() {
           <FileText className="mx-auto h-10 w-10 text-muted-foreground/50" />
           <p className="mt-3 text-sm text-muted-foreground">No progress notes found.</p>
           <p className="mt-2 text-xs text-muted-foreground">
-            Notes are created when you finish a consultation. Open a patient's appointment to start
+            Notes are created when you finish a consultation. Open a patient&apos;s appointment to start
             one.
           </p>
         </div>

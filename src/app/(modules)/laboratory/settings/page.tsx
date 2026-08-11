@@ -544,8 +544,8 @@ function TestFormDialog({
                 </div>
                 <p className="text-[11px] text-muted-foreground mt-0.5">
                   Alternative names and keywords that should surface this test in search — e.g.
-                  "FBC", "Hemogram", "hemoglobin", "anemia". Edits here stay on your catalog and
-                  don't touch the master template.
+                  &quot;FBC&quot;, &quot;Hemogram&quot;, &quot;hemoglobin&quot;, &quot;anemia&quot;. Edits here stay on your catalog and
+                  don&apos;t touch the master template.
                 </p>
               </div>
               <div className="col-span-12 space-y-1">

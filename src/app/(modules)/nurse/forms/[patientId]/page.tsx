@@ -93,7 +93,7 @@ export default function NursePatientFormsPage(props: { params: Promise<{ patient
 
       {!hasContext && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          No encounter was selected. Anything recorded here is filed against the patient's most
+          No encounter was selected. Anything recorded here is filed against the patient&apos;s most
           recent visit or admission — or against the patient record itself if they have none yet
           (a temporary patient the front desk has not routed).
         </div>

@@ -969,7 +969,7 @@ export default function PatientConsultationPage({
                 ) : prefillUnavailable ? (
                   <div className="m-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">
                     <p className="font-semibold text-amber-900">
-                      Couldn't load this consultation for editing.
+                      Couldn&apos;t load this consultation for editing.
                     </p>
                     <p className="text-amber-800 mt-1 text-xs">
                       {prefillError

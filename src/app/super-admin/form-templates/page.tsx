@@ -246,7 +246,7 @@ export default function SuperAdminFormTemplatesPage() {
           <DialogHeader>
             <DialogTitle>New form template</DialogTitle>
             <DialogDescription>
-              Give it a name to start. You'll add fields on the next screen.
+              Give it a name to start. You&apos;ll add fields on the next screen.
             </DialogDescription>
           </DialogHeader>
           <Input

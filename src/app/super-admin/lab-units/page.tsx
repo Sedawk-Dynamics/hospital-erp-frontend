@@ -23,7 +23,7 @@ export default function SuperAdminLabUnitsPage() {
         </h1>
         <p className="font-label text-sm text-on-surface-variant">
           Platform-wide unit catalogue used by every lab test template. Hospital admins can add their own local
-          groups + units on top — they don't need write access here.
+          groups + units on top — they don&apos;t need write access here.
         </p>
       </div>
 

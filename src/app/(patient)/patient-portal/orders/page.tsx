@@ -128,7 +128,7 @@ export default function PatientOrdersPage() {
         <p className="font-label text-sm text-on-surface-variant mt-1.5">
           Tests and scans your doctor has ordered for you. Got it done somewhere else? Use the{' '}
           <span className="font-semibold text-on-surface">Mark as Done</span> button to upload the
-          report and clear it from the lab's queue.
+          report and clear it from the lab&apos;s queue.
         </p>
       </div>
 
@@ -457,7 +457,7 @@ function MarkDoneDialog({
           </DialogTitle>
           <DialogDescription>
             Already had this done elsewhere? Upload the report so it appears in your medical
-            history, and we'll clear it from the hospital's lab queue.
+            history, and we&apos;ll clear it from the hospital&apos;s lab queue.
           </DialogDescription>
         </DialogHeader>
 

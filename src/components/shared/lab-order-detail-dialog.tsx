@@ -136,7 +136,7 @@ export function LabOrderDetailDialog({ orderId, onOpenChange }: LabOrderDetailDi
                   Marked done by patient · {formatDateTime(order.completedExternallyAt)}
                 </p>
                 <p className="text-[11px] text-emerald-800/80">
-                  Patient had this test performed outside the hospital. Hospital's lab queue no
+                  Patient had this test performed outside the hospital. Hospital&apos;s lab queue no
                   longer sees this order.
                 </p>
                 {order.externalNotes && (

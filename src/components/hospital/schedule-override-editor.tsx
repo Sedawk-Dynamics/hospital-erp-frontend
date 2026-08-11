@@ -349,7 +349,7 @@ export function ScheduleOverrideEditor({
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 flex items-start gap-2 text-xs">
               <AlertCircle className="h-3.5 w-3.5 text-amber-600 mt-0.5 flex-shrink-0" />
               <span className="text-amber-800">
-                An override exists for this date. Saving replaces it. Use "Revert to Weekly" to remove the override entirely.
+                An override exists for this date. Saving replaces it. Use &quot;Revert to Weekly&quot; to remove the override entirely.
               </span>
             </div>
           )}

@@ -282,7 +282,7 @@ export default function HospitalFormsSettingsPage() {
           <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4">
             <p className="text-xs text-muted-foreground mb-3">
               Templates are built by the platform team. Cloning copies the schema into your hospital — later
-              edits to the template don't affect your copy.
+              edits to the template don&apos;t affect your copy.
             </p>
             {templates.isLoading ? (
               <Loader2 className="h-5 w-5 animate-spin text-primary mx-auto my-8" />
@@ -395,7 +395,7 @@ export default function HospitalFormsSettingsPage() {
           <DialogHeader>
             <DialogTitle>New form</DialogTitle>
             <DialogDescription>
-              Give it a name to start. You'll add fields on the next screen.
+              Give it a name to start. You&apos;ll add fields on the next screen.
             </DialogDescription>
           </DialogHeader>
           <Input
@@ -430,7 +430,7 @@ export default function HospitalFormsSettingsPage() {
           <DialogHeader>
             <DialogTitle>Delete this form?</DialogTitle>
             <DialogDescription>
-              "{archiveTarget?.name}" will disappear from the nurse list and stop accepting new submissions.
+              &quot;{archiveTarget?.name}&quot; will disappear from the nurse list and stop accepting new submissions.
               All {archiveTarget?._count?.submissions ?? 0} past submission(s) stay readable in the patient
               record. You can restore from the Deleted tab any time.
             </DialogDescription>

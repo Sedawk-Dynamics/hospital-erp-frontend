@@ -1618,7 +1618,7 @@ function TestItemRow({
               </div>
             </div>
             <p className="text-[10px] text-muted-foreground">
-              Saved parameters roll up into the order's branded report.
+              Saved parameters roll up into the order&apos;s branded report.
               Use <span className="font-medium">Submit for Approval</span> below once results are entered;
               a lab supervisor must approve before the patient sees anything.
             </p>
