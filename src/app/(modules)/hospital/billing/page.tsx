@@ -802,108 +802,113 @@ function DraftListPanel({ onPickBill }: { onPickBill: (b: Bill) => void }) {
   );
 }
 
+interface PendingOrderRow {
+  key: string;
+  source: 'lab' | 'imaging' | 'ot';
+  description: string;
+  amount: number;
+  orderedAt: string;
+  status: string;
+  patient: { id: string; firstName: string; lastName: string | null; mrn: string } | null;
+}
+
+const SOURCE_LABEL: Record<string, string> = { lab: 'Lab', imaging: 'Imaging', ot: 'Surgery' };
+
 function OrderListPanel({
   onPickPatient,
 }: {
   onPickPatient: (p: { id: string; firstName: string; lastName: string; mrn: string | null }) => void;
 }) {
-  // Pull lab+imaging+pharmacy unbilled orders. Backend aggregation isn't
-  // exposed yet — we query each module's existing read endpoint and merge.
-  const { data: labOrders } = useQuery({
-    queryKey: ['hospital', 'billing-order-list', 'lab'],
+  // One backend feed that actually knows what has been billed. This panel used
+  // to merge the last 30 lab orders and the last 30 imaging requests straight
+  // from those modules with no billing filter, so work that was already on a
+  // bill sat here inviting the desk to bill it again — and the charges feed
+  // then correctly refused, which read as a broken button.
+  const { data, isLoading } = useQuery({
+    queryKey: ['hospital', 'billing-pending-orders'],
     queryFn: async () => {
-      const r = await apiGet<Array<{
-        id: string; createdAt: string;
-        patient?: { id: string; firstName: string; lastName: string; mrn?: string };
-        labOrderItems?: Array<{ test?: { testName: string } }>;
-      }>>('/lab/orders', { params: { limit: 30 } });
-      return r.data ?? [];
+      const r = await apiGet<{
+        orders: PendingOrderRow[];
+        summary: { count: number; lab: number; imaging: number; ot: number; totalAmount: number };
+      }>('/billing/pending-orders');
+      return r.data;
     },
   });
 
-  const { data: imagingReqs } = useQuery({
-    queryKey: ['hospital', 'billing-order-list', 'imaging'],
-    queryFn: async () => {
-      const r = await apiGet<Array<{
-        id: string; createdAt: string; imagingType: string; bodyPart?: string;
-        patient?: { id: string; firstName: string; lastName: string; mrn?: string };
-      }>>('/imaging/requests', { params: { limit: 30 } });
-      return r.data ?? [];
-    },
-  });
+  const orders = data?.orders ?? [];
 
-  const merged = useMemo(() => {
-    const rows: Array<{
-      key: string; type: string; createdAt: string; description: string;
-      patient?: { id: string; firstName: string; lastName: string; mrn?: string };
-    }> = [];
-    for (const o of labOrders ?? []) {
-      rows.push({
-        key: `lab-${o.id}`,
-        type: 'Lab',
-        createdAt: o.createdAt,
-        description: o.labOrderItems?.map((i) => i.test?.testName).filter(Boolean).join(', ') || 'Lab order',
-        patient: o.patient,
-      });
-    }
-    for (const r of imagingReqs ?? []) {
-      rows.push({
-        key: `img-${r.id}`,
-        type: 'Imaging',
-        createdAt: r.createdAt,
-        description: `${r.imagingType}${r.bodyPart ? ` — ${r.bodyPart}` : ''}`,
-        patient: r.patient,
-      });
-    }
-    return rows.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [labOrders, imagingReqs]);
-
-  if (merged.length === 0) {
-    return <p className="py-6 text-center text-sm text-on-surface-variant">No pending orders.</p>;
+  if (isLoading) {
+    return (
+      <p className="py-6 text-center text-sm text-on-surface-variant">
+        <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" /> Loading...
+      </p>
+    );
+  }
+  if (orders.length === 0) {
+    return (
+      <p className="py-6 text-center text-sm text-on-surface-variant">
+        Nothing awaiting billing — every lab, imaging and surgery order is already on a bill.
+      </p>
+    );
   }
   return (
-    <div className="overflow-x-auto max-h-[40vh] overflow-y-auto">
-      <table className="w-full text-left">
-        <thead className="sticky top-0 bg-surface-container-lowest">
-          <tr className="text-on-surface-variant font-label text-[10px] uppercase tracking-widest border-b border-surface-container">
-            <th className="px-3 py-2">Type</th>
-            <th className="px-3 py-2">Description</th>
-            <th className="px-3 py-2">Patient</th>
-            <th className="px-3 py-2">Date</th>
-            <th className="px-3 py-2 text-right">Action</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-surface-container/40">
-          {merged.map((r) => (
-            <tr key={r.key} className="hover:bg-surface-container-low">
-              <td className="px-3 py-2">
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">{r.type}</span>
-              </td>
-              <td className="px-3 py-2 font-label text-sm">{r.description}</td>
-              <td className="px-3 py-2 font-label text-sm">
-                {r.patient ? `${r.patient.firstName} ${r.patient.lastName}` : '-'}
-                <span className="ml-2 text-[10px] text-on-surface-variant">MRN {r.patient?.mrn ?? '-'}</span>
-              </td>
-              <td className="px-3 py-2 font-label text-xs text-on-surface-variant">{formatDate(r.createdAt)}</td>
-              <td className="px-3 py-2 text-right">
-                <Button
-                  size="sm"
-                  className="text-xs"
-                  disabled={!r.patient}
-                  onClick={() => r.patient && onPickPatient({
-                    id: r.patient.id,
-                    firstName: r.patient.firstName,
-                    lastName: r.patient.lastName,
-                    mrn: r.patient.mrn ?? null,
-                  })}
-                >
-                  Bill Patient
-                </Button>
-              </td>
+    <div className="space-y-2">
+      <p className="font-label text-[11px] text-on-surface-variant">
+        {data?.summary.count} unbilled · {data?.summary.lab} lab · {data?.summary.imaging} imaging ·{' '}
+        {data?.summary.ot} surgery
+      </p>
+      <div className="overflow-x-auto max-h-[40vh] overflow-y-auto">
+        <table className="w-full text-left">
+          <thead className="sticky top-0 bg-surface-container-lowest">
+            <tr className="text-on-surface-variant font-label text-[10px] uppercase tracking-widest border-b border-surface-container">
+              <th className="px-3 py-2">Type</th>
+              <th className="px-3 py-2">Description</th>
+              <th className="px-3 py-2">Patient</th>
+              <th className="px-3 py-2 text-right">Amount</th>
+              <th className="px-3 py-2">Ordered</th>
+              <th className="px-3 py-2 text-right">Action</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-surface-container/40">
+            {orders.map((r) => (
+              <tr key={r.key} className="hover:bg-surface-container-low">
+                <td className="px-3 py-2">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                    {SOURCE_LABEL[r.source] ?? r.source}
+                  </span>
+                </td>
+                <td className="px-3 py-2 font-label text-sm">{r.description}</td>
+                <td className="px-3 py-2 font-label text-sm">
+                  {r.patient ? `${r.patient.firstName} ${r.patient.lastName ?? ''}`.trim() : '-'}
+                  <span className="ml-2 text-[10px] text-on-surface-variant">MRN {r.patient?.mrn ?? '-'}</span>
+                </td>
+                <td className="px-3 py-2 text-right font-label text-sm">
+                  {/* Imaging is priced from the radiology tariff at the moment
+                      it is pulled onto a bill, so there is no figure to show
+                      here yet. */}
+                  {r.amount > 0 ? `₹${r.amount.toLocaleString('en-IN')}` : '—'}
+                </td>
+                <td className="px-3 py-2 font-label text-xs text-on-surface-variant">{r.orderedAt}</td>
+                <td className="px-3 py-2 text-right">
+                  <Button
+                    size="sm"
+                    className="text-xs"
+                    disabled={!r.patient}
+                    onClick={() => r.patient && onPickPatient({
+                      id: r.patient.id,
+                      firstName: r.patient.firstName,
+                      lastName: r.patient.lastName ?? '',
+                      mrn: r.patient.mrn ?? null,
+                    })}
+                  >
+                    Bill Patient
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
