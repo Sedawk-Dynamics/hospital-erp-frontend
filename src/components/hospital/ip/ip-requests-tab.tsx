@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { useSeedOnChange } from '@/hooks/use-seed-on-change';
 import { Search, BedDouble, Check, X, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
@@ -331,25 +332,30 @@ function AcceptRequestDialog({
   // and accept-only don't — the bed is assigned later from the IP workspace.
   const needsBed = action === 'reserve';
 
-  // Reset on open
-  useMemo(() => {
-    if (open) {
-      setAction('reserve');
-      setWardId('');
-      setBedId('');
-      setReservedDate(toInputDateStr());
-      setExpectedAdmission(
-        request?.expectedAdmissionDate
-          ? new Date(request.expectedAdmissionDate).toISOString().slice(0, 10)
-          : '',
-      );
-      setAdmissionDate(toInputDateStr());
-      setExpectedDischargeDate('');
-      setDepositAmount(0);
-      setAdvanceAmount(0);
-      setNotes('');
-    }
-  }, [open, request?.expectedAdmissionDate]);
+  // Seed the form once per request being accepted.
+  //
+  // This was a useMemo whose body called nine setStates — setState during
+  // render, which React can re-run, and the memo's own dependencies change as a
+  // result. It read as "reset when the dialog opens" but meant "reset whenever
+  // React happens to re-evaluate this memo". useSeedOnChange keys on the record
+  // being edited, so it fills once for this request and never fights the user
+  // afterwards.
+  useSeedOnChange(request?.id ?? null, () => {
+    setAction('reserve');
+    setWardId('');
+    setBedId('');
+    setReservedDate(toInputDateStr());
+    setExpectedAdmission(
+      request?.expectedAdmissionDate
+        ? new Date(request.expectedAdmissionDate).toISOString().slice(0, 10)
+        : '',
+    );
+    setAdmissionDate(toInputDateStr());
+    setExpectedDischargeDate('');
+    setDepositAmount(0);
+    setAdvanceAmount(0);
+    setNotes('');
+  });
 
   const { data: wardsData } = useQuery({
     queryKey: ['infrastructure', 'wards'],
@@ -702,9 +708,9 @@ function RejectRequestDialog({
   const open = !!request;
   const reject = useRejectAdmissionRequest();
 
-  useMemo(() => {
-    if (open) setReason('');
-  }, [open]);
+  // Clear the box once per request, not during render — same reason as the
+  // accept dialog above.
+  useSeedOnChange(request?.id ?? null, () => setReason(''));
 
   const handleSubmit = async () => {
     if (!request) return;
