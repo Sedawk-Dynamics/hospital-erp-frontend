@@ -103,8 +103,12 @@ export const DEFER_REASONS = [
 export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   cash: 'Cash',
   upi: 'UPI',
+  // The counter has one Card button and records it as `debit_card`, so the row
+  // reads it back the same way — tapping "Card" and then seeing "Debit Card" on
+  // the worklist reads as the system having changed the answer. `credit_card`
+  // keeps its own label for rows that predate the merge.
+  debit_card: 'Card',
   credit_card: 'Credit Card',
-  debit_card: 'Debit Card',
   net_banking: 'Net Banking',
   cheque: 'Cheque',
   insurance: 'Insurance',
@@ -115,7 +119,12 @@ export function formatPaymentMethod(method: string) {
   return PAYMENT_METHOD_LABELS[method] ?? method.replace(/_/g, ' ');
 }
 
-/** Methods that are meaningless without a transaction reference. */
+/**
+ * Methods that are meaningless without a transaction reference — the counter
+ * cannot reconcile a card or UPI payment later without one. Cash is the only
+ * method with nothing to record, which is why its reference box is not shown at
+ * all rather than shown and left blank.
+ */
 export const REFERENCE_REQUIRED: DiagnosticPaymentMethod[] = [
   'credit_card',
   'debit_card',

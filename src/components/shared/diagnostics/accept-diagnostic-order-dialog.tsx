@@ -60,6 +60,14 @@ import {
   type DiagnosticPaymentMethod,
 } from './types';
 
+// What a hospital counter in India actually takes.
+//
+// Credit Card and Debit Card were two separate buttons, which is a distinction
+// the counter does not make — the POS terminal handles both the same way and
+// staff just tap Card. They are one button here, recorded as `debit_card`;
+// splitting them again is a one-line change if the finance side ever needs the
+// two reported apart. "Other" is gone: a payment nobody can name is not
+// something to make easy at a counter.
 const PAYMENT_METHODS: {
   value: DiagnosticPaymentMethod;
   label: string;
@@ -67,11 +75,9 @@ const PAYMENT_METHODS: {
 }[] = [
   { value: 'cash', label: 'Cash', icon: Wallet },
   { value: 'upi', label: 'UPI', icon: Smartphone },
-  { value: 'credit_card', label: 'Credit Card', icon: CreditCard },
-  { value: 'debit_card', label: 'Debit Card', icon: CreditCard },
+  { value: 'debit_card', label: 'Card', icon: CreditCard },
   { value: 'net_banking', label: 'Net Banking', icon: Landmark },
   { value: 'cheque', label: 'Cheque', icon: ScrollText },
-  { value: 'other', label: 'Other', icon: Coins },
 ];
 
 export interface AcceptDialogSubject {
@@ -129,7 +135,6 @@ export function AcceptDiagnosticOrderDialog({
   const [step, setStep] = useState<'payment' | 'assign'>('payment');
   const [collect, setCollect] = useState(true);
   const [method, setMethod] = useState<DiagnosticPaymentMethod>('cash');
-  const [amount, setAmount] = useState('');
   const [reference, setReference] = useState('');
   const [payNotes, setPayNotes] = useState('');
   const [deferReason, setDeferReason] = useState<string>(DEFER_REASONS[0].value);
@@ -142,7 +147,6 @@ export function AcceptDiagnosticOrderDialog({
     setStep('payment');
     setCollect(true);
     setMethod('cash');
-    setAmount('');
     setReference('');
     setPayNotes('');
     setDeferReason(DEFER_REASONS[0].value);
@@ -163,22 +167,16 @@ export function AcceptDiagnosticOrderDialog({
   // decision that is actually left.
   const effectiveStep = nothingToCollect ? 'assign' : step;
 
-  const amountNum = amount.trim() === '' ? due : Number(amount);
-  const isPartial = amountNum > 0 && amountNum < due;
+  // The counter takes the whole balance, the way the front desk does. There is
+  // no amount box: a part payment at a diagnostic counter is a billing-desk
+  // matter, not something to invite here with a free-text field that mostly
+  // gets mis-keyed. Omitting the amount tells the server "the whole balance".
   const refRequired = collect && REFERENCE_REQUIRED.includes(method);
 
   const handleContinue = () => {
     if (collect) {
-      if (!(amountNum > 0)) {
-        toast.error('Enter an amount to collect');
-        return;
-      }
-      if (amountNum > due) {
-        toast.error(`Amount cannot exceed ${money(due)}`);
-        return;
-      }
       if (refRequired && !reference.trim()) {
-        toast.error('Reference number is required for this payment method');
+        toast.error(`${methodLabel(method)} needs a reference number`);
         return;
       }
     } else if (!deferReason.trim()) {
@@ -199,12 +197,11 @@ export function AcceptDiagnosticOrderDialog({
           : collect
             ? {
                 payment: {
+                  // No `amount` — the server settles the whole balance.
                   paymentMethod: method,
-                  amount: amountNum,
                   referenceNumber: reference.trim() || undefined,
                   notes: payNotes.trim() || undefined,
                 },
-                ...(isPartial ? { deferReason: deferReason.trim() } : {}),
               }
             : { deferReason: deferReason.trim() }),
       });
@@ -293,7 +290,7 @@ export function AcceptDiagnosticOrderDialog({
               <>
                 <div className="space-y-1.5">
                   <Label>Payment Method *</Label>
-                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
                     {PAYMENT_METHODS.map((m) => {
                       const Icon = m.icon;
                       const active = method === m.value;
@@ -317,51 +314,39 @@ export function AcceptDiagnosticOrderDialog({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="dx-amount">Amount *</Label>
-                    <Input
-                      id="dx-amount"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max={due}
-                      placeholder={String(due)}
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                    />
-                    {isPartial && (
-                      <p className="text-[11px] text-secondary">
-                        Part payment — {money(due - amountNum)} stays due, and the{' '}
-                        {nounSingular} keeps an Unpaid badge.
-                      </p>
-                    )}
-                  </div>
+                {/* Only where there is something to reconcile against. Cash has
+                    no transaction id, so asking for one is a field to tab past. */}
+                {refRequired && (
                   <div className="space-y-1.5">
                     <Label htmlFor="dx-reference">
-                      Reference{refRequired ? ' *' : ' (optional)'}
+                      {method === 'cheque'
+                        ? 'Cheque number *'
+                        : method === 'upi'
+                          ? 'UPI transaction ID *'
+                          : 'Transaction reference *'}
                     </Label>
                     <Input
                       id="dx-reference"
+                      autoFocus
                       placeholder={
                         method === 'cheque'
-                          ? 'Cheque number'
+                          ? 'e.g. 004512'
                           : method === 'upi'
-                            ? 'UPI transaction ID'
-                            : 'Transaction reference'
+                            ? 'e.g. 418293746512'
+                            : 'Approval / reference number'
                       }
                       value={reference}
                       onChange={(e) => setReference(e.target.value)}
                     />
                   </div>
-                </div>
+                )}
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="dx-paynotes">Payment notes (optional)</Label>
+                  <Label htmlFor="dx-paynotes">Notes (optional)</Label>
                   <Textarea
                     id="dx-paynotes"
                     rows={2}
-                    placeholder="Any remark for this collection…"
+                    placeholder="Any remark for this payment…"
                     value={payNotes}
                     onChange={(e) => setPayNotes(e.target.value)}
                   />
@@ -436,7 +421,7 @@ export function AcceptDiagnosticOrderDialog({
                 <IndianRupee className="mt-0.5 size-4 shrink-0 text-primary" />
                 <div className="text-xs">
                   <p className="font-bold text-primary">
-                    {money(amountNum)} to be collected — {methodLabel(method)}
+                    {money(due)} to be collected — {methodLabel(method)}
                   </p>
                   <p className="mt-0.5 text-on-surface-variant">
                     Taken when you accept. A receipt is raised against the bill.
@@ -528,7 +513,7 @@ export function AcceptDiagnosticOrderDialog({
           )}
           {effectiveStep === 'payment' ? (
             <Button onClick={handleContinue} disabled={previewLoading}>
-              {collect ? `Collect ${money(amountNum)}` : 'Continue'}{' '}
+              {collect ? `Collect ${money(due)}` : 'Continue'}{' '}
               <ArrowRight className="size-3.5" />
             </Button>
           ) : (
