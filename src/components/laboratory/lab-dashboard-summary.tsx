@@ -4,9 +4,9 @@ import {
   Inbox,
   FlaskConical,
   Truck,
-  ClipboardCheck,
-  FileSignature,
-  Send,
+  Users,
+  PencilLine,
+  ShieldCheck,
   CheckCircle2,
   AlertTriangle,
   RefreshCw,
@@ -54,18 +54,24 @@ export function LabDashboardSummary({
     { label: 'Overdue', value: s?.overdueOrders ?? 0, icon: AlertTriangle, tone: 'red' },
   ];
 
-  // The supervisor: intake to triage, the three approval stages they own, and
-  // what actually went out today.
-  const supervisorCards = [
+  // The lab admin: intake to accept, work to hand out, the queue they decide on,
+  // and what actually went out today.
+  //
+  // This used to show three approval stages — Awaiting Verify / Sign / Publish —
+  // that no longer describe the flow. `reportsAwaitingSign` counted drafts as
+  // well as submissions so it never matched the Awaiting Approval tab, and
+  // `reportsAwaitingPublish` counted the legacy `approved` status, which the
+  // one-click approve path never sets: it read zero permanently.
+  const adminCards = [
     { label: 'To Accept', value: s?.incomingOrders ?? 0, icon: Inbox, tone: 'amber' },
-    { label: 'Awaiting Verify', value: s?.resultsAwaitingVerify ?? 0, icon: ClipboardCheck, tone: 'purple' },
-    { label: 'Awaiting Sign', value: s?.reportsAwaitingSign ?? 0, icon: FileSignature, tone: 'cyan' },
-    { label: 'Awaiting Publish', value: s?.reportsAwaitingPublish ?? 0, icon: Send, tone: 'teal' },
+    { label: 'Unassigned', value: s?.unassignedOrders ?? 0, icon: Users, tone: 'blue' },
+    { label: 'In Draft', value: s?.draftReports ?? 0, icon: PencilLine, tone: 'indigo' },
+    { label: 'Awaiting Approval', value: s?.awaitingApproval ?? 0, icon: ShieldCheck, tone: 'cyan' },
     { label: 'Published Today', value: s?.publishedToday ?? 0, icon: CheckCircle2, tone: 'green' },
     { label: 'Overdue', value: s?.overdueOrders ?? 0, icon: AlertTriangle, tone: 'red' },
   ];
 
-  const cards = isSupervisor ? supervisorCards : technicianCards;
+  const cards = isSupervisor ? adminCards : technicianCards;
 
   return (
     <div className="space-y-4">

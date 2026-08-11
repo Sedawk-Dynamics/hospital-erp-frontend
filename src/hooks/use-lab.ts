@@ -860,6 +860,26 @@ export function usePublishLabReport() {
   });
 }
 
+/**
+ * The other half of the approval decision — send a submitted report back to the
+ * bench with a reason. Approving existed; refusing did not, so a report that was
+ * wrong could only be published or left in the queue.
+ */
+export function useRejectLabReport() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason?: string }) => {
+      const response = await apiPatch<LabReport>(`/lab/reports/${id}/reject`, { reason });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: labKeys.reports.all });
+      queryClient.invalidateQueries({ queryKey: labKeys.orders.all });
+      queryClient.invalidateQueries({ queryKey: ['lab', 'dashboard'] });
+    },
+  });
+}
+
 // One-shot submit: generate (if needed) + sign + publish in a single call.
 // Backend route is gated by `lab_reports.create`, so technicians can call
 // this without supervisor sign-off — matches the auto-publish behaviour of
@@ -944,6 +964,12 @@ export function useLabReportAnalytics(params?: { fromDate?: string; toDate?: str
 
 export interface LabDashboardData {
   summary: {
+    /** Submitted and waiting on the lab admin's decision. */
+    awaitingApproval: number;
+    /** Still on the bench, including anything sent back for changes. */
+    draftReports: number;
+    /** Accepted but nobody owns it. */
+    unassignedOrders: number;
     incomingOrders: number;
     inProgressOrders: number;
     samplesCollected: number;

@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Send,
   Eye,
+  Undo2,
   X as XIcon
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -17,11 +18,13 @@ import {
   useUpdateSampleStatus,
   useSubmitLabReport,
   usePublishLabReport,
+  useRejectLabReport,
   useLabOrder,
   useCancelLabOrder,
   type LabOrder
 } from '@/hooks/use-lab';
-import { cn } from '@/lib/utils';
+import { SendBackDialog } from '@/components/shared/diagnostics/send-back-dialog';
+import { cn, getApiErrorMessage } from '@/lib/utils';
 import { formatDateTime } from '@/lib/date-utils';
 import { toast } from 'sonner';
 import {
@@ -85,8 +88,8 @@ export function OrderDetailDialog({
       await cancelOrder.mutateAsync({ id: liveOrder.id, reason: reason.trim() || undefined });
       toast.success('Order cancelled');
       onOpenChange(false);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Failed to cancel order');
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Failed to cancel order'));
     }
   };
 
@@ -97,8 +100,8 @@ export function OrderDetailDialog({
     try {
       await sampleStatus.mutateAsync({ id: sampleId, status });
       toast.success(`Sample marked ${status.replace('_', ' ')}`);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Failed to update sample');
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Failed to update sample'));
     }
   };
 
@@ -217,9 +220,17 @@ export function OrderReportPanel({
   const { canApprove } = useLabRole();
   const submit = useSubmitLabReport();
   const publish = usePublishLabReport();
+  const reject = useRejectLabReport();
   const [previewId, setPreviewId] = useState<string | null>(null);
+  const [sendBackOpen, setSendBackOpen] = useState(false);
 
   const report = order.labReport;
+  // A draft carrying correction notes is one the lab admin sent back. The
+  // technician needs to read WHY right where they are about to redo the work.
+  const sentBackNote =
+    report?.status === 'draft'
+      ? ((report as { correctionNotes?: string | null }).correctionNotes ?? null)
+      : null;
 
   const hasAnyResult = (order.labOrderItems ?? []).some(
     (it) => (it.labResults?.length ?? 0) > 0,
@@ -236,8 +247,8 @@ export function OrderReportPanel({
     try {
       await submit.mutateAsync({ orderId: order.id, notify: true });
       toast.success('Submitted for supervisor approval');
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Failed to submit report');
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Failed to submit report'));
     }
   };
 
@@ -246,8 +257,8 @@ export function OrderReportPanel({
     try {
       await publish.mutateAsync({ id: report.id, notify: true });
       toast.success('Report approved and published to patient');
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Failed to publish report');
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Failed to publish report'));
     }
   };
 
@@ -283,8 +294,13 @@ export function OrderReportPanel({
                 {isAwaitingApproval && (
                   <div className="text-[10px] text-amber-700 mt-1">
                     {canApprove
-                      ? 'Review the uploaded files / entered details below, then Approve & Publish.'
-                      : 'Submitted to lab supervisor. The patient will see this report only after approval.'}
+                      ? 'Read the uploaded files / entered details above, then approve to release it — or send it back with what needs fixing.'
+                      : 'Submitted to the lab admin. The patient will see this report only after approval.'}
+                  </div>
+                )}
+                {sentBackNote && (
+                  <div className="mt-1 rounded-lg bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-900">
+                    <span className="font-bold">Sent back:</span> {sentBackNote}
                   </div>
                 )}
               </>
@@ -330,18 +346,32 @@ export function OrderReportPanel({
                     : 'Submit for Approval'}
               </Button>
             )}
-            {/* Supervisor-only Approve & Publish. Only shown when the report
-                is in review (so technicians never see a publish button). */}
+            {/* The lab admin's two-sided decision. Only shown when the report is
+                in review, so technicians never see either button. Refusing used
+                to have no button at all: a report that was wrong could only be
+                published or left in the queue. */}
             {isAwaitingApproval && canApprove && report && (
-              <Button
-                size="sm"
-                onClick={onApprove}
-                disabled={publish.isPending}
-                className="gap-1 bg-emerald-600 hover:bg-emerald-700"
-              >
-                <CheckCircle2 className="size-3.5" />
-                {publish.isPending ? 'Publishing…' : 'Approve & Publish'}
-              </Button>
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setSendBackOpen(true)}
+                  disabled={reject.isPending}
+                  className="gap-1 border-amber-200 text-amber-800 hover:bg-amber-50"
+                >
+                  <Undo2 className="size-3.5" />
+                  Send back
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={onApprove}
+                  disabled={publish.isPending}
+                  className="gap-1 bg-emerald-600 hover:bg-emerald-700"
+                >
+                  <CheckCircle2 className="size-3.5" />
+                  {publish.isPending ? 'Publishing…' : 'Approve & Publish'}
+                </Button>
+              </>
             )}
           </div>
         </div>
@@ -351,6 +381,21 @@ export function OrderReportPanel({
         reportId={previewId}
         open={!!previewId}
         onOpenChange={(next) => !next && setPreviewId(null)}
+      />
+
+      <SendBackDialog
+        open={sendBackOpen}
+        onOpenChange={setSendBackOpen}
+        submitting={reject.isPending}
+        subject={{
+          title: `${order.patient.firstName} ${order.patient.lastName ?? ''}`.trim(),
+          sublabel: `Order ${order.id.slice(0, 8)} · ${order.labOrderItems?.length ?? 0} test(s)`,
+        }}
+        onConfirm={async (reason) => {
+          if (!report) return;
+          await reject.mutateAsync({ id: report.id, reason });
+          toast.success('Sent back to the bench — the technician has been told why');
+        }}
       />
     </section>
   );

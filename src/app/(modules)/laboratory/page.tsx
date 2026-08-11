@@ -47,8 +47,11 @@ export default function LaboratoryHomePage() {
     <div className="space-y-4 animate-fade-in-up">
       <div className="flex items-baseline justify-between">
         <h1 className="font-headline text-xl font-bold">Laboratory</h1>
+        {/* `lab_supervisor` IS the lab's admin — same job radiology_admin does,
+            different role name. The header says what they are, not what the
+            role slug happens to be called. */}
         <span className="font-label text-[11px] uppercase tracking-widest text-on-surface-variant">
-          {isSupervisor ? 'Supervisor' : 'Technician'}
+          {isSupervisor ? 'Lab Admin' : 'Technician'}
         </span>
       </div>
 

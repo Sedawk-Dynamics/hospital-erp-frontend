@@ -31,6 +31,7 @@ import {
   Th,
 } from '@/components/shared/diagnostics/table-bits';
 import { RadiologyReportPrintDialog } from '@/components/radiology/radiology-report-print-view';
+import { SendBackDialog } from '@/components/shared/diagnostics/send-back-dialog';
 import { EditResultDialog } from './edit-result-dialog';
 
 export function ResultsTab({
@@ -61,6 +62,7 @@ export function ResultsTab({
   const reopen = useReopenImagingResult();
   const [editFor, setEditFor] = useState<ImagingResult | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
+  const [sendBackFor, setSendBackFor] = useState<ImagingResult | null>(null);
 
   const isApprovalQueue = statusFilter === 'finalized';
 
@@ -73,13 +75,12 @@ export function ResultsTab({
     }
   };
 
-  const handleSendBack = async (r: ImagingResult) => {
-    try {
-      await reopen.mutateAsync({ id: r.id });
-      toast.success('Sent back to the radiologist as a draft');
-    } catch (err) {
-      toast.error(getApiErrorMessage(err, 'Failed to send back'));
-    }
+  // Sending back without saying why just returns the same report unchanged, so
+  // the reason is collected rather than sent blank — same dialog the lab uses.
+  const handleSendBack = async (reason: string) => {
+    if (!sendBackFor) return;
+    await reopen.mutateAsync({ id: sendBackFor.id, reason });
+    toast.success('Sent back to the radiologist — they have been told why');
   };
 
   return (
@@ -193,7 +194,7 @@ export function ResultsTab({
                           size="sm"
                           variant="outline"
                           className="border-amber-200 text-amber-800 hover:bg-amber-50"
-                          onClick={() => handleSendBack(r)}
+                          onClick={() => setSendBackFor(r)}
                           disabled={reopen.isPending}
                           title="Send back to the radiologist for changes"
                         >
@@ -247,6 +248,25 @@ export function ResultsTab({
         onOpenChange={(next) => !next && setPreviewId(null)}
       />
       <EditResultDialog result={editFor} onOpenChange={(open) => !open && setEditFor(null)} />
+
+      <SendBackDialog
+        open={!!sendBackFor}
+        onOpenChange={(open) => !open && setSendBackFor(null)}
+        submitting={reopen.isPending}
+        subject={
+          sendBackFor
+            ? {
+                title:
+                  `${(sendBackFor as { patient?: { firstName: string; lastName: string } }).patient?.firstName ?? ''} ${(sendBackFor as { patient?: { firstName: string; lastName: string } }).patient?.lastName ?? ''}`.trim() ||
+                  'Imaging report',
+                sublabel: sendBackFor.imagingRequest?.imagingType
+                  ? sendBackFor.imagingRequest.imagingType.replace(/_/g, ' ').toUpperCase()
+                  : null,
+              }
+            : null
+        }
+        onConfirm={handleSendBack}
+      />
 
       {(data?.meta?.totalPages ?? 1) > 1 && (
         <PaginationBar page={page} totalPages={data?.meta?.totalPages ?? 1} onPage={setPage} />
