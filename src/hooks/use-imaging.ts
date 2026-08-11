@@ -1,5 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiPatch, apiPut } from '@/lib/api';
+import type {
+  DiagnosticBillingPreview,
+  DiagnosticLinkedBill,
+  DiagnosticPaymentInput,
+} from '@/components/shared/diagnostics/types';
 
 // ============================================================
 // Types
@@ -65,12 +70,21 @@ export interface ImagingRequest {
   clinicalNotes?: string;
   reason?: string;
   notes?: string;
+  // Withheld from anyone outside radiology until the admin approves — the
+  // ordering doctor sees the row and `awaitingApproval`, not the draft.
   imagingResult?: { id: string; status: string } | null;
+  released?: boolean;
+  awaitingApproval?: boolean;
   // Payment-verify gate (2026-05-27 flow)
   paymentVerified?: boolean;
   paymentVerifiedBy?: string | null;
   paymentVerifiedAt?: string | null;
   paymentVerifier?: { id: string; firstName: string; lastName: string } | null;
+  // Accept gate — the admin's one act: charge, collect (or defer), admit, assign.
+  acceptedAt?: string | null;
+  acceptedBy?: string | null;
+  acceptedByUser?: { id: string; firstName: string; lastName: string } | null;
+  paymentDeferredReason?: string | null;
   // Admin closure (2026-06-01 flow)
   closureReason?: ImagingClosureReason | null;
   closureNote?: string | null;
@@ -79,20 +93,7 @@ export interface ImagingRequest {
   closer?: { id: string; firstName: string; lastName: string } | null;
   // Linked bill summary — decorated by the list endpoint so admin can see
   // payment status before clicking Verify Payment.
-  linkedBill?: {
-    id?: string;
-    billNumber?: string;
-    status?: string;
-    amountPaid?: number | string;
-    totalAmount?: number | string;
-    balanceDue?: number | string;
-    chargeAmount?: number | string;
-    payments?: Array<{
-      paymentMethod: string;
-      amount: number | string;
-      paymentDate?: string;
-    }>;
-  } | null;
+  linkedBill?: DiagnosticLinkedBill | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -172,6 +173,14 @@ interface ImagingRequestParams {
   excludeCompleted?: boolean;
   /** Closed / No-show tab: fetch terminal admin-closed requests (cancelled + no_show). */
   closed?: boolean;
+  /** Several statuses at once, comma separated — "everything still open". */
+  statuses?: string;
+  /** Admin intake queue: has radiology accepted this study yet? */
+  accepted?: boolean;
+  /** Accepted but nobody owns it. */
+  unassigned?: boolean;
+  /** Open >24h with nothing published — the SLA risk list. */
+  overdue?: boolean;
 }
 
 interface ImagingResultParams {
@@ -179,8 +188,10 @@ interface ImagingResultParams {
   limit?: number;
   search?: string;
   status?: string;
-  /** Admin "Awaiting Approval" queue: uploaded-but-unpublished results. */
+  /** Admin "Awaiting Approval" queue: results marked done by a radiologist. */
   pendingApproval?: boolean;
+  /** The radiologist's bench: uploaded but not yet marked done. */
+  draft?: boolean;
 }
 
 // ============================================================
@@ -193,6 +204,7 @@ export const imagingKeys = {
     all: ['imaging', 'requests'] as const,
     list: (params?: ImagingRequestParams) => ['imaging', 'requests', 'list', params] as const,
     detail: (id: string) => ['imaging', 'requests', 'detail', id] as const,
+    billingPreview: (id: string) => ['imaging', 'requests', 'billing-preview', id] as const,
   },
   results: {
     all: ['imaging', 'results'] as const,
@@ -258,6 +270,95 @@ export function useVerifyImagingPayment() {
     onSuccess: (_data, id) => {
       queryClient.invalidateQueries({ queryKey: imagingKeys.requests.all });
       queryClient.invalidateQueries({ queryKey: imagingKeys.requests.detail(id) });
+      queryClient.invalidateQueries({ queryKey: ['imaging', 'dashboard'] });
+    },
+  });
+}
+
+/**
+ * What accepting this study will cost and where it settles. Posts nothing.
+ * Mirrors useLabOrderBillingPreview.
+ */
+export function useImagingBillingPreview(requestId?: string | null, enabled = true) {
+  return useQuery({
+    queryKey: imagingKeys.requests.billingPreview(requestId ?? 'none'),
+    queryFn: async () =>
+      (await apiGet<DiagnosticBillingPreview>(`/imaging/requests/${requestId}/billing-preview`))
+        .data,
+    enabled: !!requestId && enabled,
+  });
+}
+
+/**
+ * The radiology admin's one act: charge the study, collect at their own counter
+ * (or record why not), admit it and hand it to a radiologist. Supersedes the
+ * bare Verify Payment flag.
+ */
+export function useAcceptImagingRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      assignedTechnicianId,
+      notes,
+      payment,
+      deferReason,
+    }: {
+      id: string;
+      assignedTechnicianId?: string;
+      notes?: string;
+      payment?: DiagnosticPaymentInput;
+      deferReason?: string;
+    }) => {
+      const response = await apiPatch<ImagingRequest>(`/imaging/requests/${id}/accept`, {
+        assignedTechnicianId,
+        notes,
+        payment,
+        deferReason,
+      });
+      return response.data;
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: imagingKeys.requests.all });
+      queryClient.invalidateQueries({ queryKey: imagingKeys.requests.detail(vars.id) });
+      queryClient.invalidateQueries({ queryKey: ['imaging', 'dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['billing'] });
+    },
+  });
+}
+
+/**
+ * Mark as Done — the radiologist hands their draft to the admin for approval.
+ * Until this fires the result stays editable by them.
+ */
+export function useSubmitImagingResult() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, impression }: { id: string; impression?: string }) => {
+      const response = await apiPatch<ImagingResult>(`/imaging/results/${id}/submit`, {
+        impression,
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: imagingKeys.results.all });
+      queryClient.invalidateQueries({ queryKey: imagingKeys.requests.all });
+      queryClient.invalidateQueries({ queryKey: ['imaging', 'dashboard'] });
+    },
+  });
+}
+
+/** Admin sends a submitted report back to the radiologist for changes. */
+export function useReopenImagingResult() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason?: string }) => {
+      const response = await apiPatch<ImagingResult>(`/imaging/results/${id}/reopen`, { reason });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: imagingKeys.results.all });
+      queryClient.invalidateQueries({ queryKey: imagingKeys.requests.all });
       queryClient.invalidateQueries({ queryKey: ['imaging', 'dashboard'] });
     },
   });
@@ -495,6 +596,14 @@ export interface ImagingDashboard {
     noShow: number;
     /** Requests the admin closed today (no-show + reasoned cancellations). */
     closedToday: number;
+    /** Raised by a doctor, not yet accepted by radiology. */
+    awaitingAccept: number;
+    /** On a radiologist's bench right now — uploaded, not yet marked done. */
+    draft: number;
+    /** Accepted but nobody owns it. */
+    unassigned: number;
+    /** Open >24h with nothing published. */
+    overdue: number;
   };
   recentRequests: Array<{
     id: string;

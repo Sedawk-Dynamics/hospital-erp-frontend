@@ -15,6 +15,9 @@ import { Badge } from '@/components/ui/badge';
 import { useLabDashboard } from '@/hooks/use-lab';
 import { formatDateTime } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
+// Shared with radiology so the two departments' summary strips are literally
+// the same component, not two copies that drift.
+import { SummaryCard } from '@/components/shared/diagnostics/summary-card';
 
 // Headline stats for the lab user's first paint. The numbers come from
 // /lab/dashboard which counts everything in one pass — kept off the order
@@ -92,56 +95,6 @@ export function LabDashboardSummary({
       )}
 
     </div>
-  );
-}
-
-const TONE_CLS: Record<string, { wrap: string; icon: string }> = {
-  amber: { wrap: 'bg-amber-50', icon: 'text-amber-600' },
-  indigo: { wrap: 'bg-indigo-50', icon: 'text-indigo-600' },
-  blue: { wrap: 'bg-blue-50', icon: 'text-blue-600' },
-  purple: { wrap: 'bg-purple-50', icon: 'text-purple-600' },
-  cyan: { wrap: 'bg-cyan-50', icon: 'text-cyan-600' },
-  teal: { wrap: 'bg-teal-50', icon: 'text-teal-600' },
-  green: { wrap: 'bg-green-50', icon: 'text-green-600' },
-  red: { wrap: 'bg-red-50', icon: 'text-red-600' },
-};
-
-function SummaryCard({
-  label,
-  value,
-  icon: Icon,
-  tone,
-  loading,
-  onClick,
-}: {
-  label: string;
-  value: number;
-  icon: React.ComponentType<{ className?: string }>;
-  tone: string;
-  loading: boolean;
-  onClick?: () => void;
-}) {
-  const cls = TONE_CLS[tone] ?? TONE_CLS.indigo;
-  // A count you can act on should be reachable from the number itself.
-  const Wrapper = onClick ? 'button' : 'div';
-  return (
-    <Wrapper
-      {...(onClick ? { type: 'button' as const, onClick } : {})}
-      className={cn(
-        'bg-surface-container-lowest rounded-xl shadow-sanctuary p-3 text-left w-full',
-        onClick && 'cursor-pointer transition-colors hover:bg-surface-container-low',
-      )}
-    >
-      <div className={cn('inline-flex rounded-lg p-1.5 mb-2', cls.wrap)}>
-        <Icon className={cn('h-3.5 w-3.5', cls.icon)} />
-      </div>
-      <p className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
-        {label}
-      </p>
-      <p className="font-headline text-xl font-bold mt-0.5">
-        {loading ? <span className="text-muted-foreground/40">—</span> : value}
-      </p>
-    </Wrapper>
   );
 }
 

@@ -1,5 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiPut, apiDelete, apiPatch } from '@/lib/api';
+import type {
+  DiagnosticBillingPreview,
+  DiagnosticLinkedBill,
+  DiagnosticPaymentInput,
+} from '@/components/shared/diagnostics/types';
 
 // ============================================================
 // Types
@@ -85,6 +90,14 @@ export interface LabOrder {
   assignedTo?: { id: string; firstName: string; lastName: string } | null;
   acceptedAt?: string | null;
   acceptedBy?: string | null;
+  // The money gate the lab admin settles at accept time. Mirrors radiology:
+  // verified = collected (or on the stay ledger, which settles at discharge);
+  // a deferred reason means it was deliberately admitted on credit.
+  paymentVerified?: boolean;
+  paymentVerifiedAt?: string | null;
+  paymentDeferredReason?: string | null;
+  /** The bill this order's tests were charged on, attached by the list API. */
+  linkedBill?: DiagnosticLinkedBill | null;
   visitId?: string;
   isThirdParty?: boolean;
   thirdPartyLabName?: string | null;
@@ -319,6 +332,7 @@ export const labKeys = {
     all: ['lab', 'orders'] as const,
     list: (params?: PaginatedParams & { status?: string; priority?: string }) => ['lab', 'orders', 'list', params] as const,
     detail: (id: string) => ['lab', 'orders', 'detail', id] as const,
+    billingPreview: (id: string) => ['lab', 'orders', 'billing-preview', id] as const,
   },
   samples: {
     all: ['lab', 'samples'] as const,
@@ -493,6 +507,8 @@ export type LabOrdersFilters = PaginatedParams & {
   outsourced?: boolean;
   isThirdParty?: boolean;
   accepted?: boolean;
+  /** Money side of intake: false = still to collect, true = cleared to run. */
+  paymentVerified?: boolean;
   /** Open >24h with no report signed or published — the SLA risk list. */
   overdue?: boolean;
   /** Nobody has picked it up yet — the supervisor's triage queue. */
@@ -516,6 +532,20 @@ export function useLabOrders(params?: LabOrdersFilters) {
   });
 }
 
+/**
+ * What accepting this order will cost and where it settles. Read by the accept
+ * dialog before it offers to collect; posts nothing, so opening and closing the
+ * dialog leaves no charge behind.
+ */
+export function useLabOrderBillingPreview(orderId?: string | null, enabled = true) {
+  return useQuery({
+    queryKey: labKeys.orders.billingPreview(orderId ?? 'none'),
+    queryFn: async () =>
+      (await apiGet<DiagnosticBillingPreview>(`/lab/orders/${orderId}/billing-preview`)).data,
+    enabled: !!orderId && enabled,
+  });
+}
+
 export function useAcceptLabOrder() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -523,19 +553,31 @@ export function useAcceptLabOrder() {
       id,
       assignedToId,
       notes,
+      payment,
+      deferReason,
     }: {
       id: string;
       assignedToId?: string;
       notes?: string;
+      /** Collect at the lab counter as part of accepting. */
+      payment?: DiagnosticPaymentInput;
+      /** Admit unpaid — TPA / credit / pay later. */
+      deferReason?: string;
     }) => {
       const response = await apiPatch<LabOrder>(`/lab/orders/${id}/accept`, {
         assignedToId,
         notes,
+        payment,
+        deferReason,
       });
       return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: labKeys.orders.all });
+      // Accepting takes money and raises a bill, so the counter/dashboard
+      // figures downstream of it are stale the moment this returns.
+      queryClient.invalidateQueries({ queryKey: ['lab', 'dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['billing'] });
     },
   });
 }

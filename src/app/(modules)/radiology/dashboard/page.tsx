@@ -6,9 +6,9 @@
 
 import Link from 'next/link';
 import {
-  Clock, Loader2, CheckCircle2, ShieldCheck, FileBarChart,
+  Clock, CheckCircle2, ShieldCheck, FileBarChart,
   AlertTriangle, XCircle, FileSignature, Stethoscope, RefreshCw, Wallet,
-  UserX, Ban,
+  UserX, Ban, Inbox, PencilLine,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/shared/page-header';
@@ -57,11 +57,23 @@ function DashboardInner() {
 
       {/* Top stat grid — admin's two primary queues come first */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        {/* Intake is the admin's first job. This used to read the payment flag,
+            which stopped being the same question once an order could be
+            deliberately accepted on credit — such an order is paid-pending but
+            very much not waiting to be accepted. */}
         <StatCard
-          label="Awaiting Payment"
+          label="To Accept"
+          value={counts?.awaitingAccept}
+          icon={Inbox}
+          accent="bg-amber-50 text-amber-700"
+          loading={isLoading}
+          href="/radiology"
+        />
+        <StatCard
+          label="Unpaid"
           value={counts?.awaitingPaymentVerify}
           icon={Wallet}
-          accent="bg-amber-50 text-amber-700"
+          accent="bg-red-50 text-red-700"
           loading={isLoading}
           href="/radiology"
         />
@@ -74,19 +86,20 @@ function DashboardInner() {
           href="/radiology"
         />
         <StatCard
-          label="Pending (paid)"
-          value={counts?.pending}
-          icon={Clock}
-          accent="bg-amber-50 text-amber-700"
+          label="In Draft"
+          value={counts?.draft}
+          icon={PencilLine}
+          accent="bg-indigo-50 text-indigo-700"
           loading={isLoading}
           href="/radiology"
         />
         <StatCard
-          label="In Progress"
-          value={counts?.inProgress}
-          icon={Loader2}
-          accent="bg-purple-50 text-purple-700"
+          label="Overdue"
+          value={counts?.overdue}
+          icon={Clock}
+          accent="bg-red-50 text-red-700"
           loading={isLoading}
+          href="/radiology"
         />
         <StatCard
           label="Published Today"

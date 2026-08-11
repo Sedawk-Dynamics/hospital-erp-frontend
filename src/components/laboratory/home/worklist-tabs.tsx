@@ -123,6 +123,8 @@ export function LabStatusTab({
         }
         onView={setActiveOrder}
         onCollect={setCollectFor}
+        showAssignee={isSupervisor}
+        showBill={isSupervisor}
       />
 
       <OrderDetailDialog

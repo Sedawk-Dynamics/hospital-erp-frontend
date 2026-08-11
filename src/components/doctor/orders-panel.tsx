@@ -22,7 +22,7 @@ import { LabOrderDetailDialog } from '@/components/shared/lab-order-detail-dialo
 import { ImagingOrderViewerDialog } from '@/components/shared/imaging-order-viewer-dialog';
 import { cn } from '@/lib/utils';
 import { resolveAttachmentUrl } from '@/hooks/use-lab-attachments';
-import { Paperclip, Eye } from 'lucide-react';
+import { Paperclip, Eye, Clock } from 'lucide-react';
 
 interface OrdersPanelProps {
   patientId: string;
@@ -410,6 +410,15 @@ export function OrdersPanel({ patientId, visitId }: OrdersPanelProps) {
                           >
                             <Eye className="h-3 w-3" />
                             View Report &amp; Files
+                          </span>
+                        ) : request.awaitingApproval ? (
+                          // The study is done but the radiology admin has not
+                          // approved it yet, so its files are withheld. Say so —
+                          // otherwise a finished scan just looks like a stalled
+                          // one and the doctor chases radiology for nothing.
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700">
+                            <Clock className="h-3 w-3" />
+                            Report awaiting approval
                           </span>
                         ) : null}
                         {doneByPatient && request.externalNotes && (

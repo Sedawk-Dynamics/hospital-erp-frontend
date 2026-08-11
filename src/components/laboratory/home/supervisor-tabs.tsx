@@ -149,7 +149,8 @@ export function IncomingOrderTab() {
   return (
     <div className="space-y-4">
       <div className="rounded-xl bg-amber-50 px-4 py-2 text-xs text-amber-900">
-        Orders shown here are awaiting acceptance from the lab. Assign a technician to start processing.
+        These orders are waiting on the lab. Accepting takes the payment at this counter (or posts
+        it to the patient&apos;s stay ledger) and hands the work to a technician.
       </div>
 
       <OrderTable
@@ -157,6 +158,7 @@ export function IncomingOrderTab() {
         loading={isLoading}
         emptyMsg="No incoming orders."
         onAccept={setAcceptFor}
+        showBill
       />
 
       <AcceptOrderDialog

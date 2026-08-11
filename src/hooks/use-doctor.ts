@@ -1290,12 +1290,21 @@ export interface ImagingRequest {
   externalReportUrl?: string | null;
   externalNotes?: string | null;
   // Radiology-signed report ("Imaging Report" link when present).
+  //
+  // Withheld until the radiology admin approves it: outside the department the
+  // API returns null here and sets `awaitingApproval` instead, so a doctor
+  // cannot open a study the radiologist is still working on. Same rule the lab
+  // has applied to unpublished reports since the supervisor gate went in.
   imagingResult?: {
     id: string;
     status: string;
     pdfReportUrl?: string | null;
     signedAt?: string | null;
   } | null;
+  /** True once the report is published and readable. */
+  released?: boolean;
+  /** A report exists but radiology has not signed it off yet. */
+  awaitingApproval?: boolean;
 }
 
 interface ImagingRequestParams {
