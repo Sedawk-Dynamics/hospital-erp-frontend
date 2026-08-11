@@ -399,7 +399,18 @@ function ComposeStep({
           category: c.category,
         })),
       });
-      toast.success(`${res?.added ?? items.length} item(s) added to bill`);
+      // Anything the server refused was already billed elsewhere — usually the
+      // lab or radiology counter charged it when they accepted the order. Say
+      // which, or the total is quietly short and the desk re-adds it by hand.
+      const skipped = res?.skipped ?? [];
+      if (skipped.length) {
+        toast.warning(
+          `${skipped.length} charge(s) are already on another bill and were not added: ${skipped.join(', ')}`,
+        );
+      }
+      if (res?.added || !skipped.length) {
+        toast.success(`${res?.added ?? items.length} item(s) added to bill`);
+      }
       setSelectedRefs({});
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Failed to pull charges');

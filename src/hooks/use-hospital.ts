@@ -1292,7 +1292,12 @@ export function usePullCharges() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ billId, charges }: { billId: string; charges: Array<Omit<ChargeRow, 'source' | 'occurredAt' | 'status' | 'alreadyBilled' | 'billItemId' | 'billId' | 'totalAmount'>> }) => {
-      const response = await apiPost<{ added: number; billId: string }>(
+      // `skipped` lists charges the server refused because they are already on
+      // another bill — the lab or radiology counter billed them at accept, or
+      // the front desk pulled them onto a different bill. The page may have
+      // been open since before that happened, so the caller has to say so
+      // rather than let the total come up short with no explanation.
+      const response = await apiPost<{ added: number; skipped?: string[]; billId: string }>(
         `/billing/${billId}/pull-charges`,
         { charges },
       );
