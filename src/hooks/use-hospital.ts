@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiPatch, apiPut, apiDelete } from '@/lib/api';
-import type { Appointment, Patient, DoctorProfile, QueueToken, Bill, Payment, CollectionSummary, CreditSettlement } from '@/types';
+import type { Appointment, Patient, DoctorProfile, Bill, Payment, CollectionSummary, CreditSettlement } from '@/types';
 
 // ============================================================
 // Query Keys
@@ -96,7 +96,7 @@ export function useAppointmentStats(date?: string) {
             params: { date, limit: 100, page: pg },
           });
           allAppointments = allAppointments.concat(resp.data);
-          const total = (resp.meta as any)?.total ?? 0;
+          const total = resp.meta?.total ?? 0;
           more = allAppointments.length < total;
           pg++;
         }
