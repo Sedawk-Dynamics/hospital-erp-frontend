@@ -23,7 +23,6 @@ export const ALL_MODULES: ModuleKey[] = [
   'inventory',
   'ot',
   'counsellor',
-  'ward',
   'doctor',
   'nurse',
   'nurse-admin',
@@ -40,7 +39,6 @@ export const ADMIN_MODULES: ModuleKey[] = [
   'inventory',
   'ot',
   'counsellor',
-  'ward',
   'insurance',
   'hr',
 ];
@@ -85,7 +83,7 @@ const ROLE_MODULE_MAP: Record<string, ModuleKey[]> = {
   nurse: ['nurse'],
 
   // Single nursing-management role: assignment, ward setup, rosters, handover
-  nurse_admin: ['nurse-admin', 'ward'],
+  nurse_admin: ['nurse-admin'],
 
   // Front desk → hospital (OP/IP, billing, appointments)
   front_desk: ['hospital'],

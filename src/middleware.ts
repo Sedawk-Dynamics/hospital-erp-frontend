@@ -18,7 +18,6 @@ const protectedPrefixes = [
   '/inventory',
   '/ot',
   '/counsellor',
-  '/ward',
   '/doctor',
   '/my-hospitals',
 ];
@@ -58,7 +57,6 @@ export const config = {
     '/inventory/:path*',
     '/ot/:path*',
     '/counsellor/:path*',
-    '/ward/:path*',
     '/doctor/:path*',
     '/my-hospitals',
     '/subscription-expired',

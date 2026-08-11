@@ -173,18 +173,6 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
     ],
   },
 
-  ward: {
-    key: 'ward',
-    label: 'Ward',
-    icon: BedDouble,
-    baseRoute: '/ward',
-    sidebarItems: [
-      { label: 'Home', href: '/ward', icon: Home },
-      { label: 'Reports', href: '/ward/reports', icon: BarChart3 },
-      { label: 'Settings', href: '/ward/settings', icon: Settings },
-    ],
-  },
-
   doctor: {
     key: 'doctor',
     label: 'Doctor',
