@@ -97,6 +97,14 @@ export interface AcceptDiagnosticOrderDialogProps {
   assignees: { id: string; name: string }[];
   assigneeLabel: string;
   assigneeHint: string;
+  assigneesLoading?: boolean;
+  /**
+   * Set when the staff list could not be fetched. An empty dropdown and a
+   * failed one look identical, and that is exactly how a missing `users:read`
+   * permission hid for as long as it did — the control just quietly offered
+   * nothing but "Leave unassigned".
+   */
+  assigneesError?: boolean;
   /** "lab order" / "imaging request" — used in the copy. */
   nounSingular: string;
   submitting?: boolean;
@@ -112,6 +120,8 @@ export function AcceptDiagnosticOrderDialog({
   assignees,
   assigneeLabel,
   assigneeHint,
+  assigneesLoading = false,
+  assigneesError = false,
   nounSingular,
   submitting = false,
   onAccept,
@@ -464,18 +474,34 @@ export function AcceptDiagnosticOrderDialog({
             <div>
               <Label>{assigneeLabel}</Label>
               <select
-                className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm disabled:opacity-60"
                 value={assigneeId}
+                disabled={assigneesLoading || assigneesError}
                 onChange={(e) => setAssigneeId(e.target.value)}
               >
-                <option value="">Leave unassigned</option>
+                <option value="">
+                  {assigneesLoading ? 'Loading staff…' : 'Leave unassigned'}
+                </option>
                 {assignees.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name}
                   </option>
                 ))}
               </select>
-              <p className="mt-1 text-[11px] text-muted-foreground">{assigneeHint}</p>
+              {assigneesError ? (
+                <p className="mt-1 rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+                  Could not load the staff list — you may not have permission to
+                  view users. Accept now and assign from the work queue once
+                  that is sorted.
+                </p>
+              ) : !assigneesLoading && assignees.length === 0 ? (
+                <p className="mt-1 rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+                  Nobody with the right role is set up yet. Accepting will leave
+                  this unassigned.
+                </p>
+              ) : (
+                <p className="mt-1 text-[11px] text-muted-foreground">{assigneeHint}</p>
+              )}
             </div>
 
             <div>

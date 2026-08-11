@@ -72,6 +72,8 @@ export function AcceptOrderDialog({
       assignees={labStaff}
       assigneeLabel="Assign to"
       assigneeHint="Unassigned orders show under the Unassigned filter on the work queue."
+      assigneesLoading={usersQ.isLoading}
+      assigneesError={usersQ.isError}
       submitting={accept.isPending}
       onAccept={async ({ assigneeId, notes, payment, deferReason }) => {
         if (!order) return;

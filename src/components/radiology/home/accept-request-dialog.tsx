@@ -69,6 +69,8 @@ export function AcceptRequestDialog({
       assignees={radiologists}
       assigneeLabel="Assign to radiologist"
       assigneeHint="Unassigned studies show under the Unassigned filter on the worklist."
+      assigneesLoading={usersQ.isLoading}
+      assigneesError={usersQ.isError}
       submitting={accept.isPending}
       onAccept={async ({ assigneeId, notes, payment, deferReason }) => {
         if (!request) return;
