@@ -987,6 +987,102 @@ export function useDayEnd(date?: string) {
   });
 }
 
+// ============================================================
+// Cash drawer close
+// ============================================================
+// Only CASH is reconciled — card, UPI and bank transfers settle to the bank and
+// never sit in a till, so counting them would guarantee a variance every day.
+
+export interface DrawerStatus {
+  date: string;
+  cashierId: string;
+  openingFloat: number;
+  cashIn: number;
+  cashOut: number;
+  expectedCash: number;
+  transactionCount: number;
+  closure: {
+    id: string;
+    openingFloat: number;
+    expectedCash: number;
+    countedCash: number;
+    variance: number;
+    denominations: Record<string, number> | null;
+    notes: string | null;
+    closedAt: string;
+    closedBy: string | null;
+  } | null;
+}
+
+export function useDrawerStatus(date?: string, openingFloat?: number) {
+  return useQuery({
+    queryKey: ['hospital', 'drawer-status', date, openingFloat],
+    queryFn: async () => {
+      const params: Record<string, unknown> = {};
+      if (date) params.date = date;
+      if (openingFloat != null) params.openingFloat = openingFloat;
+      const r = await apiGet<DrawerStatus>('/billing/drawer/status', { params });
+      return r.data ?? null;
+    },
+  });
+}
+
+export function useCloseDrawer() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      date?: string;
+      openingFloat?: number;
+      countedCash: number;
+      denominations?: Record<string, number>;
+      notes?: string;
+    }) => (await apiPost('/billing/drawer/close', data)).data ?? null,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'drawer-status'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'drawer-closures'] });
+    },
+  });
+}
+
+export interface DrawerClosureRow {
+  id: string;
+  cashierId: string;
+  cashierName: string;
+  openingFloat: number;
+  expectedCash: number;
+  countedCash: number;
+  variance: number;
+  notes: string | null;
+  closedAt: string;
+  closedBy: string;
+}
+
+export function useDrawerClosures(date?: string) {
+  return useQuery({
+    queryKey: ['hospital', 'drawer-closures', date],
+    queryFn: async () => {
+      const r = await apiGet<{
+        date: string;
+        closures: DrawerClosureRow[];
+        totals: { expectedCash: number; countedCash: number; variance: number };
+      }>('/billing/drawer/closures', { params: date ? { date } : {} });
+      return r.data ?? null;
+    },
+  });
+}
+
+export function useReopenDrawer() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (closureId: string) =>
+      (await apiDelete(`/billing/drawer/closures/${closureId}`)).data ?? null,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'drawer-status'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'drawer-closures'] });
+    },
+  });
+}
+
 /**
  * Open the patient's copy of an OP / counter bill.
  *

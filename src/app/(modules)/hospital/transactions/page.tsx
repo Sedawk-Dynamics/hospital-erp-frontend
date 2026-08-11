@@ -10,6 +10,8 @@ import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { downloadCsv } from '@/lib/csv';
+import { DrawerClose } from '@/components/hospital/billing/drawer-close';
 import {
   Banknote, CreditCard, Smartphone, FileText, Download, RotateCcw, Ban,
   Receipt as ReceiptIcon, Search, RefreshCw,
@@ -504,7 +506,33 @@ function DayEndTab() {
         <Button variant="outline" size="sm" onClick={() => queryClient.invalidateQueries({ queryKey: ['hospital', 'day-end'] })}>
           <RefreshCw className="h-3.5 w-3.5 mr-1" /> Refresh
         </Button>
-        <Button variant="outline" size="sm" className="ml-auto">
+        <Button
+          variant="outline"
+          size="sm"
+          className="ml-auto"
+          disabled={data.payments.length === 0}
+          onClick={() => {
+            // Exactly what the screen shows, in the order it shows it — a
+            // day-end sheet is reconciled line by line against the drawer, so
+            // the export has to agree with the page it was taken from.
+            downloadCsv(
+              `day-end-${data.date}.csv`,
+              data.payments.map((p) => ({
+                'Bill No': p.billNumber ?? '',
+                Patient: p.patientName ?? '',
+                Method: p.method.replace(/_/g, ' '),
+                Type: p.type,
+                // Refunds are money out; signing them keeps a spreadsheet SUM
+                // over this column equal to the net figure on screen.
+                Amount: p.type === 'refund' ? -p.amount : p.amount,
+                Cashier: p.cashier ?? '',
+                Time: formatTime24(p.paymentDate),
+                Status: p.status,
+                Reference: p.transactionId ?? '',
+              })),
+            );
+          }}
+        >
           <Download className="h-3.5 w-3.5 mr-1" /> Export CSV
         </Button>
       </div>
@@ -595,6 +623,10 @@ function DayEndTab() {
           )}
         </div>
       </div>
+
+      {/* The drawer close — everything above is the system talking to itself;
+          this is where it meets the cash actually in the till. */}
+      <DrawerClose date={date} />
 
       {/* Transaction list with row actions */}
       <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary overflow-hidden">
