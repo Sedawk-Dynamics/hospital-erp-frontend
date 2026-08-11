@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { downloadCsv } from '@/lib/csv';
 import { DrawerClose } from '@/components/hospital/billing/drawer-close';
 import { ReceivablesTab } from '@/components/hospital/billing/receivables-tab';
+import { DiscountApprovals } from '@/components/hospital/billing/discount-approvals';
 import {
   Banknote, CreditCard, Smartphone, FileText, Download, RotateCcw, Ban,
   Receipt as ReceiptIcon, Search, RefreshCw,
@@ -48,6 +49,7 @@ export default function BillingTransactionPage() {
             <TabsTrigger value="receipt">Receipts</TabsTrigger>
             <TabsTrigger value="refunds">Refunds</TabsTrigger>
             <TabsTrigger value="receivables">Receivables</TabsTrigger>
+            <TabsTrigger value="approvals">Approvals</TabsTrigger>
             <TabsTrigger value="dayend">Day End</TabsTrigger>
           </TabsList>
 
@@ -74,6 +76,9 @@ export default function BillingTransactionPage() {
           </TabsContent>
           <TabsContent value="receivables" className="pt-4">
             <ReceivablesTab />
+          </TabsContent>
+          <TabsContent value="approvals" className="pt-4">
+            <DiscountApprovals />
           </TabsContent>
           <TabsContent value="dayend" className="pt-4">
             <DayEndTab />

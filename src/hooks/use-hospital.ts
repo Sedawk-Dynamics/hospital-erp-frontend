@@ -978,6 +978,82 @@ export function useDayEnd(date?: string) {
 }
 
 // ============================================================
+// Discount approval gate
+// ============================================================
+// Off by default — a hospital that never turns it on grants concessions at the
+// counter exactly as it always did.
+
+export interface DiscountPolicy {
+  enabled: boolean;
+  maxAmountWithoutApproval: number;
+  maxPercentWithoutApproval: number;
+}
+
+export function useDiscountPolicy() {
+  return useQuery({
+    queryKey: ['hospital', 'discount-policy'],
+    queryFn: async () => (await apiGet<DiscountPolicy>('/billing/discount-policy')).data ?? null,
+  });
+}
+
+export function useUpdateDiscountPolicy() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (patch: Partial<DiscountPolicy>) =>
+      (await apiPut<DiscountPolicy>('/billing/discount-policy', patch)).data ?? null,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'discount-policy'] });
+    },
+  });
+}
+
+export interface PendingDiscountRow {
+  id: string;
+  billId: string;
+  billNumber: string | null;
+  patientName: string | null;
+  patientMrn: string | null;
+  billTotal: number;
+  discountType: string;
+  amount: number;
+  percentOfBill: number;
+  reason: string | null;
+  requestedBy: string | null;
+  requestedAt: string;
+}
+
+export function usePendingDiscounts() {
+  return useQuery({
+    queryKey: ['hospital', 'pending-discounts'],
+    queryFn: async () =>
+      (await apiGet<PendingDiscountRow[]>('/billing/discounts/pending')).data ?? [],
+  });
+}
+
+export function useDecideDiscount() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      approve,
+      reason,
+    }: {
+      id: string;
+      approve: boolean;
+      reason?: string;
+    }) =>
+      (await apiPatch(`/billing/discounts/${id}/${approve ? 'approve' : 'reject'}`, { reason }))
+        .data ?? null,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'pending-discounts'] });
+      // The decision moves money on or off the bill.
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bills'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bill'] });
+    },
+  });
+}
+
+// ============================================================
 // Cash drawer close
 // ============================================================
 // Only CASH is reconciled — card, UPI and bank transfers settle to the bank and
