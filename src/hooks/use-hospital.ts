@@ -454,20 +454,10 @@ export function useCollectionSummary(params?: CollectionSummaryParams) {
   });
 }
 
-interface CreditSettlementsParams {
-  type?: string;
-  status?: string;
-}
-
-export function useCreditSettlements(params?: CreditSettlementsParams) {
-  return useQuery({
-    queryKey: hospitalKeys.creditSettlements(params as Record<string, unknown>),
-    queryFn: async () => {
-      const response = await apiGet<CreditSettlement[]>('/billing/credit-settlements', { params });
-      return { data: response.data, meta: response.meta! };
-    },
-  });
-}
+// An older read of the same endpoint lived here, typed as a bare array and
+// dropping the stats block the endpoint actually returns.
+// useCreditSettlementList below is the one the Receivables tab uses; this
+// duplicate had no callers at all.
 
 // ============================================================
 // Appointment Mutations
