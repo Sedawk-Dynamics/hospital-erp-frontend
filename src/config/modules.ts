@@ -7,7 +7,6 @@ import {
   Database,
   Scissors,
   UserRound,
-  Sun,
   BedDouble,
   Home,
   Users,
@@ -171,18 +170,6 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Home', href: '/counsellor', icon: Home },
       { label: 'Reports', href: '/counsellor/reports', icon: BarChart3 },
       { label: 'Settings', href: '/counsellor/settings', icon: Settings },
-    ],
-  },
-
-  daycare: {
-    key: 'daycare',
-    label: 'Day Care',
-    icon: Sun,
-    baseRoute: '/daycare',
-    sidebarItems: [
-      { label: 'Home', href: '/daycare', icon: Home },
-      { label: 'Reports', href: '/daycare/reports', icon: BarChart3 },
-      { label: 'Settings', href: '/daycare/settings', icon: Settings },
     ],
   },
 

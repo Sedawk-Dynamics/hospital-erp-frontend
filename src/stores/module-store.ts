@@ -8,7 +8,6 @@ export type ModuleKey =
   | 'inventory'
   | 'ot'
   | 'counsellor'
-  | 'daycare'
   | 'ward'
   | 'doctor'
   | 'nurse'
