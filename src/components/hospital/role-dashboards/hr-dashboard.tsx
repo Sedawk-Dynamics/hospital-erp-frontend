@@ -6,8 +6,8 @@ import { formatDate, toInputDateStr } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
-  Users, UserCheck, CalendarOff, UserPlus, Clock,
-  CheckCircle2, XCircle, AlertTriangle, ClipboardList,
+  Users, UserCheck, CalendarOff, UserPlus, 
+  CheckCircle2, XCircle, ClipboardList,
   ShieldAlert, CalendarDays,
 } from 'lucide-react';
 import { toast } from 'sonner';

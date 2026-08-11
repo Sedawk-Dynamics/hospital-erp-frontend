@@ -137,7 +137,7 @@ export function PatientDetailDialog({
   open,
   onOpenChange,
   patientId,
-  appointmentId,
+  
 }: PatientDetailDialogProps) {
   const [isEditing, setIsEditing] = useState(false);
 

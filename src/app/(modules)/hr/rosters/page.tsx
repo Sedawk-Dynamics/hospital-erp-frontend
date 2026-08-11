@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRosters, usePublishRoster } from '@/hooks/use-hr';
-import { Calendar, CheckCircle2 } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
 
 function startOfWeek(d: Date) {
   const date = new Date(d);

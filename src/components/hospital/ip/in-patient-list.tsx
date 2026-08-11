@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { cn, getApiErrorMessage } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import { AdmissionTypeBadge, ADMISSION_TYPE_OPTIONS, type AdmissionType } from '@/components/shared/admission-type-badge';
 import { AdmissionDoctorControl } from '@/components/shared/admission-doctor-control';
 import {
@@ -23,7 +23,7 @@ import {
   PieChart,
   Wallet,
   Loader2,
-  BedDouble,
+  
   FileText,
   FileWarning,
 } from 'lucide-react';

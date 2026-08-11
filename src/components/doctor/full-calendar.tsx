@@ -325,7 +325,7 @@ function DayView(props: FullCalendarProps) {
 // ── Shared time-grid (Week + Day) ─────────────────────────────
 
 function TimeGrid({
-  days, schedules, leaves, overrides, appointments, showToday, onApplyLeaveForDate, onEditDate,
+  days, schedules, leaves, overrides, appointments, showToday, 
   selectedDate, onSelectDate,
 }: FullCalendarProps & {
   days: Date[];

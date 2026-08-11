@@ -10,7 +10,6 @@ import {
   Download,
   Split,
   X,
-  IndianRupee,
   Banknote,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -28,11 +27,6 @@ import {
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
 } from '@/components/ui/select';
 import { formatDate, formatDateTime } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';

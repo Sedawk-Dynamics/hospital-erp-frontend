@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeft, BedDouble, Stethoscope, MapPin, Activity, Pill, Scissors,
+  ArrowLeft, BedDouble, Activity, Pill, Scissors,
   Receipt, FileCheck, ClipboardList, HeartPulse,
 } from 'lucide-react';
 import { apiGet } from '@/lib/api';

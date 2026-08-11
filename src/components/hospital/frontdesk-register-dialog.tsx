@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { z } from 'zod/v4';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
@@ -10,7 +10,7 @@ import { toInputDateStr, formatDate, getCurrentISTTime, isToday } from '@/lib/da
 import {
   UserPlus, Search, Loader2, UserRound, Clock,
   CreditCard, Banknote, Smartphone, Building2,
-  ChevronLeft, CheckCircle2, ArrowRight, Info,
+  ChevronLeft, CheckCircle2, ArrowRight, 
 } from 'lucide-react';
 
 import {
@@ -19,12 +19,10 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,

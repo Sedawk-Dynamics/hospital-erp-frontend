@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Filter, Clock } from 'lucide-react';
+import { Plus, Filter } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDate } from '@/lib/date-utils';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,6 @@ import { DataTable, Column } from '@/components/shared/data-table';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { useDebounce } from '@/hooks/use-debounce';
 import apiClient from '@/lib/api-client';
-import { Badge } from '@/components/ui/badge';
 
 interface AttendanceRecord {
   id: string;

@@ -4,7 +4,6 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { HeartPulse, LogOut, CreditCard, User } from 'lucide-react';
 import { PlatformLogo } from '@/components/branding/platform-logo';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,

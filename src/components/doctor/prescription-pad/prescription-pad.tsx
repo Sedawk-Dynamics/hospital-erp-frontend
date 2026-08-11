@@ -11,7 +11,7 @@ import {
   GripVertical, FlaskConical, ClipboardList, StickyNote,
   UserCheck, CalendarDays, Eye,
   Printer, CheckCircle2, RotateCcw, ChevronDown,
-  Clock, Eye as ObservationIcon, Sparkles, Pin, Activity,
+  Clock, Eye as ObservationIcon, Pin, Activity,
 } from 'lucide-react';
 import { useFormularySearch, useAllergyCheck, usePatientVitals, usePatientDiagnoses, usePrescriptions, useProgressNotes, type FormularyDrug } from '@/hooks/use-doctor';
 import { useLatestVitals } from '@/hooks/use-nurse';
@@ -32,7 +32,6 @@ import {
   FREQUENCY_OPTIONS,
   TIMING_OPTIONS,
   DURATION_UNITS,
-  ROUTE_OPTIONS,
   FOLLOW_UP_PRESETS,
   CONSULTATION_PIN_SECTIONS,
   CONSULTATION_PIN_SECTION_LABELS,

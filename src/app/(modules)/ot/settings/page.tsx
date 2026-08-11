@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod/v4';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
-  Settings, Plus, Pencil, MapPin, Monitor, CheckCircle2, XCircle, Wrench, Trash2, Loader2,
+  Settings, Plus, Pencil, MapPin, Monitor, CheckCircle2, Wrench, Trash2, Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';

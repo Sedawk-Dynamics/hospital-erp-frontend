@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   DollarSign, TrendingUp, Clock, Search, FileCheck,
-  CreditCard, ReceiptText, Undo2, CheckCircle2,
+  CreditCard, ReceiptText, Undo2, 
 } from 'lucide-react';
 import { toast } from 'sonner';
 

@@ -68,7 +68,6 @@ import {
   CircleDot,
   Ban,
   RefreshCw,
-  Info,
   History,
   Edit3,
   CheckCircle2,

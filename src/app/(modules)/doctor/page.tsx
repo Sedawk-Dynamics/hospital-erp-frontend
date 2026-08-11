@@ -22,7 +22,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Eye, Edit, XCircle, MoreVertical, CheckCircle, LogIn, Stethoscope, UserCheck, ClipboardList } from 'lucide-react';
+import { Eye, MoreVertical, CheckCircle, Stethoscope, UserCheck, ClipboardList } from 'lucide-react';
 
 // Status filter mapping for doctor panel
 const statusFilterMap: Record<string, string | undefined> = {

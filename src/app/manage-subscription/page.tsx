@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   ArrowLeft, CreditCard, Calendar, Clock, Shield, AlertTriangle,
-  CheckCircle2, XCircle, Loader2, Zap, Receipt, Check, Crown, Building2, Rocket,
+  XCircle, Loader2, Zap, Receipt, Check, Crown, Building2, Rocket,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';

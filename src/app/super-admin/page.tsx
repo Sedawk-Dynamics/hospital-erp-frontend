@@ -1,8 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Building2, Users, CreditCard, LifeBuoy, Activity, TrendingUp, Package, Plus, Check, X, Pencil, ArrowRight } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { Building2, Users, LifeBuoy, Activity, TrendingUp, Package, Plus, Check, X, Pencil, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTenants, useSupportTickets, useAllPlans, useUpdatePlan, type SubscriptionPlanAdmin } from '@/hooks/use-super-admin';
 import { toast } from 'sonner';

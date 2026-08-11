@@ -14,8 +14,8 @@
 // No D3 — the plot is straight SVG. Keeps deps light and lets us inherit
 // the dark viewer shell without theme acrobatics.
 
-import { useEffect, useMemo, useState } from 'react';
-import { Loader2, AlertTriangle, FileText, Image as ImageIcon, FileWarning } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Loader2, Image as FileWarning } from 'lucide-react';
 import { ViewerShell } from './viewer-shell';
 import type { RadiologyFile, StudyMetadata, ViewerEvents } from './viewer-types';
 import type { ParsedEcg, ParsedEcgLead } from './ecg-parsers';

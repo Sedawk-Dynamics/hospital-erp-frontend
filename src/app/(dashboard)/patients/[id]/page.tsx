@@ -29,7 +29,6 @@ import {
   Contact,
   FileText,
   Stethoscope,
-  ShieldCheck,
 } from 'lucide-react';
 import { PatientPoliciesPanel } from '@/components/insurance/patient-policies-panel';
 import apiClient from '@/lib/api-client';

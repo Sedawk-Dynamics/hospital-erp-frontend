@@ -14,7 +14,6 @@ import {
   AlertTriangle,
   Eye,
   MoreVertical,
-  BedDouble,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -315,7 +314,7 @@ function AbnormalVitalsPanel({ rows }: { rows: AbnormalVitalRow[] }) {
 // ── Handover Status Card ──────────────────────────────────
 
 function HandoverStatusCard({
-  currentShift,
+  
   pendingIncoming,
   currentShiftHandover,
   shiftStyle,

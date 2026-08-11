@@ -8,8 +8,8 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
-  ShieldCheck, FileSearch, CheckCircle2, XCircle, Clock,
-  Search, Send, ClipboardCheck, FileText,
+  ShieldCheck, FileSearch, CheckCircle2, XCircle, 
+  Search, Send, ClipboardCheck, 
 } from 'lucide-react';
 
 interface InsuranceClaim {

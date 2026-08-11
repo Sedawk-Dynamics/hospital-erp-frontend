@@ -1,6 +1,6 @@
 'use client';
 
-import { Building2, Users, CreditCard, LifeBuoy } from 'lucide-react';
+import { Building2, Users, LifeBuoy } from 'lucide-react';
 import { useTenants, useSupportTickets } from '@/hooks/use-super-admin';
 
 export default function ReportsPage() {

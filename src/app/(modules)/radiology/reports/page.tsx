@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import {
-  Search, RefreshCw, BarChart3, Clock, Activity, Users, Scan,
+  Search, RefreshCw, BarChart3, Clock, Activity, Scan,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';

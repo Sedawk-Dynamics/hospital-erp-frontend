@@ -8,7 +8,6 @@ import { useAuthStore } from '@/stores/auth-store';
 import {
   Users,
   Calendar,
-  Receipt,
   BedDouble,
   DollarSign,
   FileWarning,

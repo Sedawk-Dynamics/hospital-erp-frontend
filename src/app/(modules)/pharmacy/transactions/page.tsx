@@ -2,7 +2,7 @@
 import { PharmacyAdminGuard } from '@/components/pharmacy/pharmacy-admin-guard';
 
 import { useState } from 'react';
-import { formatDate, formatDateTimeAmPm } from '@/lib/date-utils';
+import { formatDateTimeAmPm } from '@/lib/date-utils';
 import {
   Search,
   Receipt,

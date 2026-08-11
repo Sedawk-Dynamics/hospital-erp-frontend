@@ -8,7 +8,6 @@ import {
   Building2, Plus, MapPin, Mail, Phone, Calendar, ArrowRight,
   Check, Search, ArrowLeft,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { useClinicStore } from '@/stores/clinic-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { useHospitalLimit } from '@/hooks/use-hospitals';

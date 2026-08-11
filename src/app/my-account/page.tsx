@@ -3,8 +3,8 @@
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeft, User, Mail, Phone, Shield, Calendar, CreditCard,
-  Clock, Building2, CheckCircle2, XCircle, AlertTriangle, Receipt,
+  ArrowLeft, Mail, Phone, Shield, Calendar, CreditCard,
+  Clock, CheckCircle2, XCircle, AlertTriangle, Receipt,
   Loader2, ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { formatDateTimeAmPm, toInputDateStr } from '@/lib/date-utils';
 import {
-  Sun, Search, Plus, Calendar, Users, CheckCircle2, Clock, Loader2,
+  Search, Plus, Calendar, Users, CheckCircle2, Clock, Loader2,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';

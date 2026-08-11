@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import {
-  ChevronLeft, ChevronRight, CalendarDays, Layers, Info,
+  ChevronLeft, ChevronRight, Layers, Info,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatDate, toInputDateStr } from '@/lib/date-utils';

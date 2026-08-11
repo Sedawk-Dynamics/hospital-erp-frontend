@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { GripVertical, ChevronDown, User, Stethoscope, Calendar, Clock, Shield, Info } from 'lucide-react';
+import { GripVertical, ChevronDown, User, Stethoscope, Calendar, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
 import { useDoctorProfile } from '@/hooks/use-doctor';

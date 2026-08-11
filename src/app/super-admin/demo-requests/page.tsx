@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import {
   CalendarCheck, Clock, CheckCircle2, XCircle, AlertTriangle,
-  Building2, Mail, Phone, MapPin, Briefcase, Eye, MessageSquare,
+  Building2, Mail, Phone, MapPin, Eye, MessageSquare,
   Shield, Key, Calendar, Loader2, CreditCard, RotateCcw, User, Trash2,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';

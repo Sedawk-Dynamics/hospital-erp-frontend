@@ -1943,7 +1943,7 @@ function EntryStep(props: {
     suppliers, supplierId, setSupplierId, selectedSupplier, invoiceNumber, setInvoiceNumber,
     openPOs, poId, poNumber, poItems, poDetail, onSelectPO, onClearPO,
     invoiceDate, setInvoiceDate, invoiceDiscPct, setInvoiceDiscPct, invoiceDiscAmt, setInvoiceDiscAmt,
-    purchaseTotals, lines, updateLine, applyHsn, hsnRates, onResolveGtin, onResolveName, addLine, removeLine, showPaste, setShowPaste,
+    purchaseTotals, lines, updateLine, applyHsn, hsnRates, onResolveName, addLine, removeLine, showPaste, setShowPaste,
     pasteText, setPasteText, ingest, fileRef, onFile, xlsxRef, onXlsxFile,
     ocrRef, onOcrFile, ocrEnabled, ocrPending, onScan, lineIssues,
     matched, decisions, setDecision, onPickCatalog, onUndoCatalog, onLineIdentity, reviewing,

@@ -13,7 +13,6 @@ import {
   FREQUENCY_OPTIONS,
   TIMING_OPTIONS,
   DURATION_UNITS,
-  ROUTE_OPTIONS,
   getDosageFormBadge,
   getDoseUnitLabel,
   defaultMedicine,
@@ -32,7 +31,7 @@ interface StepPrescriptionProps {
 export function StepPrescription({ form, patientId }: StepPrescriptionProps) {
   const { control, watch, setValue } = form;
   const medicines = watch('medicines');
-  const { fields, append, remove, move } = useFieldArray({ control, name: 'medicines' });
+  const { fields, append, remove } = useFieldArray({ control, name: 'medicines' });
 
   // Drug search state
   const [drugSearch, setDrugSearch] = useState('');

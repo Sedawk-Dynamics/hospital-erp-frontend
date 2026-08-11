@@ -101,8 +101,6 @@ import {
   useRecallAffectedPatients,
   useRecallBatch,
   useUnrecallBatch,
-  useAdjustBatchStock,
-  useStockAdjustments,
   type CreateBatchInput,
   type UpdateBatchInput,
   type DrugBatch,

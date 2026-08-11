@@ -46,7 +46,6 @@ import {
   useAppointmentStats,
   useDoctorsList,
   usePatientSearch,
-  hospitalKeys,
 } from '@/hooks/use-hospital';
 import { apiPost, apiPatch } from '@/lib/api';
 import type { Patient, Appointment, DoctorProfile } from '@/types';

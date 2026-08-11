@@ -2,17 +2,15 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Filter, HeartPulse } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDateTime } from '@/lib/date-utils';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PageHeader } from '@/components/shared/page-header';
 import { DataTable, Column } from '@/components/shared/data-table';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { useDebounce } from '@/hooks/use-debounce';
 import apiClient from '@/lib/api-client';
-import { Badge } from '@/components/ui/badge';
 
 interface VitalRecord {
   id: string;

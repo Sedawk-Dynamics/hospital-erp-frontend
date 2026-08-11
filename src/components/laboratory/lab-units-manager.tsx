@@ -49,7 +49,6 @@ import {
   type LabUnitGroup,
   type LabUnit,
 } from '@/hooks/use-lab-units';
-import { cn } from '@/lib/utils';
 
 interface LabUnitsManagerProps {
   // When true the "Create global group" toggle appears (super_admin

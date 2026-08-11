@@ -6,8 +6,8 @@ import { formatDate } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
-  Droplets, Heart, AlertTriangle, Clock, Syringe,
-  RefreshCw, Users, CalendarClock,
+  Droplets, Heart, AlertTriangle, Syringe,
+  RefreshCw, CalendarClock,
 } from 'lucide-react';
 
 interface BloodGroupInventory {

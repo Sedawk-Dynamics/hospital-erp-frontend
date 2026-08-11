@@ -1,6 +1,6 @@
 'use client';
 
-import { Menu, HelpCircle, LogOut, Building2, Settings, ArrowLeftRight, Search, User, CreditCard, ArrowLeft } from 'lucide-react';
+import { Menu, HelpCircle, LogOut, Settings, ArrowLeftRight, Search, User, CreditCard, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { NotificationBell } from '@/components/layout/notification-bell';
 import {

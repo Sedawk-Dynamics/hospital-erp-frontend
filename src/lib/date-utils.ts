@@ -4,7 +4,7 @@
  *
  * Uses Intl.DateTimeFormat for accurate IST conversion regardless of system timezone.
  */
-import { format, formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
 
 const IST_TIMEZONE = 'Asia/Kolkata';
 
