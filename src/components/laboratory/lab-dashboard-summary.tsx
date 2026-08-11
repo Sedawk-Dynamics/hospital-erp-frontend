@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import {
   Inbox,
   FlaskConical,
@@ -20,6 +19,12 @@ import { cn } from '@/lib/utils';
 // Headline stats for the lab user's first paint. The numbers come from
 // /lab/dashboard which counts everything in one pass — kept off the order
 // list query so this stays a fast preflight check.
+//
+// The two detail panels that used to sit under these cards — Recent Orders and
+// Overdue — moved to the Lab Reports page. Between them and eight cards the
+// home page was a wall of readouts above the tabs anyone actually works from.
+// The Overdue COUNT stays here and is clickable, which is the better route to
+// that list anyway: it filters the work queue rather than showing ten of them.
 //
 // Which numbers appear depends on the role. Eight identical cards were shown to
 // everybody, over half of them about a stage the viewer has no part in: a bench
@@ -86,10 +91,6 @@ export function LabDashboardSummary({
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <RecentActivityPanel />
-        <OverdueOrdersPanel onShowAll={onShowOverdue} />
-      </div>
     </div>
   );
 }
@@ -144,7 +145,7 @@ function SummaryCard({
   );
 }
 
-function RecentActivityPanel() {
+export function RecentActivityPanel() {
   const { data, isLoading } = useLabDashboard();
   const orders = data?.recentOrders ?? [];
 
@@ -185,7 +186,7 @@ function RecentActivityPanel() {
   );
 }
 
-function OverdueOrdersPanel({ onShowAll }: { onShowAll?: () => void }) {
+export function OverdueOrdersPanel({ onShowAll }: { onShowAll?: () => void }) {
   const { data } = useLabDashboard();
   const overdue = data?.overdueOrders ?? [];
   const total = data?.summary?.overdueOrders ?? overdue.length;

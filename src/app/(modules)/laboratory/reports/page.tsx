@@ -20,6 +20,10 @@ import type { LabReport } from '@/hooks/use-lab';
 import { useUploadLabAttachment, formatFileSize } from '@/hooks/use-lab-attachments';
 import { SupervisorOnlyGuard } from '@/components/laboratory/supervisor-only-guard';
 import { LabReportPrintDialog } from '@/components/laboratory/lab-report-print-view';
+import {
+  RecentActivityPanel,
+  OverdueOrdersPanel,
+} from '@/components/laboratory/lab-dashboard-summary';
 
 // Reports are now produced by the per-test upload flow (Status tab → "Mark
 // Done"); the lab no longer generates a report manually. The states below
@@ -177,6 +181,22 @@ function LabReportsPageInner() {
           </div>
         </div>
       )}
+
+      {/* Moved off the lab home page, which was showing eight summary cards and
+          these two panels above the tabs people actually work from. This is the
+          supervisor's overview page, and an SLA breach list belongs next to the
+          turnaround analytics rather than over the bench's worklist. */}
+      <div>
+        <h2 className="font-label text-xs text-on-surface-variant uppercase tracking-widest mb-3">
+          Operations
+        </h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <RecentActivityPanel />
+          {/* No jump-to-worklist here: that lives on the home page, where the
+              Overdue card filters the queue directly. */}
+          <OverdueOrdersPanel />
+        </div>
+      </div>
 
       {/* Report Category Cards */}
       <div>
