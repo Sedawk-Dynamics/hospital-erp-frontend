@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
+  Inbox,
   Search,
   ClipboardCheck,
   FlaskConical,
@@ -40,6 +41,7 @@ import {
   useLabOrder,
   useCancelLabOrder,
   type LabOrder,
+  LAB_OPEN_STATUSES,
 } from '@/hooks/use-lab';
 import { useUsersList } from '@/hooks/use-users';
 import { cn, getApiErrorMessage } from '@/lib/utils';
@@ -68,52 +70,96 @@ import {
 } from '@/hooks/use-lab-attachments';
 import { useLabRole } from '@/hooks/use-lab-role';
 import { LabDashboardSummary } from '@/components/laboratory/lab-dashboard-summary';
+import {
+  LabOrderFilters,
+  EMPTY_LAB_FILTERS,
+  toLabQuery,
+  type LabFilters,
+} from '@/components/laboratory/lab-order-filters';
+import { useSeedOnChange } from '@/hooks/use-seed-on-change';
 import { LabReportPrintDialog } from '@/components/laboratory/lab-report-print-view';
 
 export default function LaboratoryHomePage() {
-  // Technicians get the worklist surface only: status, reports, order intake.
-  // Workload-by-tech and outsourced-orders dashboards are supervisor management views.
+  // Nine tabs were shown to everyone, in no particular order, and three of them
+  // were views of the same table. Each role now gets the surface it works from:
+  //
+  //   technician  — the bench: work queue, results to enter, what it finished
+  //   supervisor  — intake to accept, the approval queue, then the same bench
+  //                 views plus the two management ones
+  //
+  // Nothing was taken away from either role; the tabs a technician cannot act
+  // on (accept/approve) were already 403 on the server and merely looked
+  // available.
   const { isSupervisor } = useLabRole();
+  const [tab, setTab] = useState(isSupervisor ? 'intake' : 'worklist');
+  // Set by the Overdue card and the Overdue panel so the number and the list
+  // are one click apart rather than a page apart.
+  const [seedOverdue, setSeedOverdue] = useState(false);
+
+  const showOverdue = () => {
+    setSeedOverdue(true);
+    setTab('worklist');
+  };
+
   return (
     <div className="space-y-4 animate-fade-in-up">
-      <h1 className="font-headline text-xl font-bold">Laboratory Home</h1>
+      <div className="flex items-baseline justify-between">
+        <h1 className="font-headline text-xl font-bold">Laboratory</h1>
+        <span className="font-label text-[11px] uppercase tracking-widest text-on-surface-variant">
+          {isSupervisor ? 'Supervisor' : 'Technician'}
+        </span>
+      </div>
 
-      <LabDashboardSummary />
+      <LabDashboardSummary isSupervisor={isSupervisor} onShowOverdue={showOverdue} />
 
-      <Tabs defaultValue="pending">
-        <TabsList variant="line">
-          <TabsTrigger value="pending">Pending</TabsTrigger>
+      <Tabs value={tab} onValueChange={(v) => setTab(v ?? 'worklist')}>
+        <TabsList variant="line" className="flex-wrap">
+          {/* Intake is the supervisor's first job — accept and assign. */}
+          {isSupervisor && (
+            <TabsTrigger value="intake">
+              <Inbox className="mr-1.5 size-3.5" /> Intake
+            </TabsTrigger>
+          )}
+          <TabsTrigger value="worklist">Work Queue</TabsTrigger>
+          {isSupervisor && (
+            <TabsTrigger value="awaiting-approval">
+              <ShieldCheck className="mr-1.5 size-3.5" /> Awaiting Approval
+            </TabsTrigger>
+          )}
+          <TabsTrigger value="results">Published</TabsTrigger>
           <TabsTrigger value="completed">Completed</TabsTrigger>
-          <TabsTrigger value="awaiting-approval">
-            <ShieldCheck className="mr-1.5 size-3.5" /> Awaiting Approval
-          </TabsTrigger>
-          <TabsTrigger value="results">Results</TabsTrigger>
           <TabsTrigger value="closed">
-            <UserX className="mr-1.5 size-3.5" /> Closed / Cancelled
+            <UserX className="mr-1.5 size-3.5" /> Cancelled
           </TabsTrigger>
-          <TabsTrigger value="status">All Orders</TabsTrigger>
-          {isSupervisor && <TabsTrigger value="technicians">For Technicians</TabsTrigger>}
-          {isSupervisor && <TabsTrigger value="outsource">Outsource List</TabsTrigger>}
-          <TabsTrigger value="order">Order</TabsTrigger>
+          {isSupervisor && <TabsTrigger value="technicians">Workload</TabsTrigger>}
+          {isSupervisor && <TabsTrigger value="outsource">Outsourced</TabsTrigger>}
         </TabsList>
 
-        <TabsContent value="pending" className="pt-4">
-          <LabStatusTab variant="pending" />
+        {isSupervisor && (
+          <TabsContent value="intake" className="pt-4">
+            <IncomingOrderTab />
+          </TabsContent>
+        )}
+        <TabsContent value="worklist" className="pt-4">
+          <LabStatusTab
+            variant="pending"
+            seedOverdue={seedOverdue}
+            onSeedConsumed={() => setSeedOverdue(false)}
+          />
+        </TabsContent>
+        {isSupervisor && (
+          <TabsContent value="awaiting-approval" className="pt-4">
+            <TestReportTab lockedStatus="review" />
+          </TabsContent>
+        )}
+        <TabsContent value="results" className="pt-4">
+          <TestReportTab lockedStatus="published" />
         </TabsContent>
         <TabsContent value="completed" className="pt-4">
           <LabStatusTab variant="completed" />
         </TabsContent>
-        <TabsContent value="awaiting-approval" className="pt-4">
-          <TestReportTab lockedStatus="review" />
-        </TabsContent>
-        <TabsContent value="results" className="pt-4">
-          <TestReportTab lockedStatus="published" />
-        </TabsContent>
         <TabsContent value="closed" className="pt-4">
           <LabStatusTab variant="cancelled" />
-        </TabsContent>
-        <TabsContent value="status" className="pt-4">
-          <LabStatusTab />
         </TabsContent>
         {isSupervisor && (
           <TabsContent value="technicians" className="pt-4">
@@ -125,9 +171,6 @@ export default function LaboratoryHomePage() {
             <OutsourceTab />
           </TabsContent>
         )}
-        <TabsContent value="order" className="pt-4">
-          <IncomingOrderTab />
-        </TabsContent>
       </Tabs>
     </div>
   );
@@ -138,85 +181,88 @@ export default function LaboratoryHomePage() {
 // ============================================================
 function LabStatusTab({
   variant = 'worklist',
+  seedOverdue = false,
+  onSeedConsumed,
 }: {
-  // 'worklist' = full lifecycle with a status dropdown (default).
-  // 'pending'  = active queue only (excludes completed/cancelled), no dropdown.
-  // 'completed'/'cancelled' = locked to that server-side status, no dropdown.
+  // 'worklist' = the live queue (everything not finished or cancelled).
+  // 'completed'/'cancelled' = locked to that status.
   variant?: 'worklist' | 'pending' | 'completed' | 'cancelled';
+  /** Open already filtered to overdue — set when arriving from the card. */
+  seedOverdue?: boolean;
+  onSeedConsumed?: () => void;
 } = {}) {
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
-  const [date, setDate] = useState<string>('');
+  const { isSupervisor } = useLabRole();
+  const [filters, setFilters] = useState<LabFilters>({ ...EMPTY_LAB_FILTERS });
   const [page, setPage] = useState(1);
 
-  // Locked variants pin the server-side status; 'pending' fetches everything
-  // and filters client-side (the API status filter takes a single enum).
+  // Arriving from the Overdue card / panel. Keyed on the flag so it seeds once
+  // and then leaves the filter bar under the user's control.
+  useSeedOnChange(seedOverdue ? 'overdue' : null, () => {
+    setFilters({ ...EMPTY_LAB_FILTERS, overdue: true });
+    setPage(1);
+    onSeedConsumed?.();
+  });
+
+  // Supervisors can narrow by who holds the work; a technician has no business
+  // filtering their colleagues, so the control is simply not offered.
+  // Only the supervisor view offers an assignee filter, so only it needs the list.
+  const usersQ = useUsersList(isSupervisor ? { limit: 200 } : undefined);
+  const technicians = useMemo(
+    () =>
+      (usersQ.data?.data ?? [])
+        .filter((u) =>
+          u.userRoles?.some((ur) =>
+            ['lab_technician', 'lab_supervisor'].includes(ur.role.name),
+          ),
+        )
+        .map((u) => ({ id: u.id, name: `${u.firstName} ${u.lastName}` })),
+    [usersQ.data],
+  );
+
   const lockedStatus =
     variant === 'completed' ? 'completed' : variant === 'cancelled' ? 'cancelled' : undefined;
-  const effectiveStatus = lockedStatus ?? (variant === 'worklist' ? statusFilter : undefined);
 
   const { data, isLoading } = useLabOrders({
-    search: search || undefined,
-    status: effectiveStatus,
-    date: date || undefined,
+    ...toLabQuery(filters),
+    // A locked tab pins its own status and ignores the picker.
+    status: lockedStatus ?? toLabQuery(filters).status,
+    // The live queue asks the SERVER for every open status. It used to fetch a
+    // page unfiltered and drop the finished rows in the browser, so the table
+    // showed a handful of the twenty rows it had asked for while the pager
+    // still counted all twenty — the queue looked empty when it was not.
+    statuses:
+      !lockedStatus && !filters.status && variant !== 'worklist' ? LAB_OPEN_STATUSES : undefined,
     page,
     limit: 20,
   });
 
-  const orders = (data?.data ?? []).filter((o) =>
-    variant === 'pending' ? o.status !== 'completed' && o.status !== 'cancelled' : true,
-  );
+  const orders = data?.data ?? [];
 
   const [activeOrder, setActiveOrder] = useState<LabOrder | null>(null);
   const [collectFor, setCollectFor] = useState<LabOrder | null>(null);
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant/60" />
-          <Input
-            placeholder="Search patient, MRN..."
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            className="bg-surface-container-low border-none rounded-xl pl-12 pr-6 py-2.5 font-label text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-          />
-        </div>
-        {variant === 'worklist' && (
-          <select
-            value={statusFilter ?? ''}
-            onChange={(e) => { setStatusFilter(e.target.value || undefined); setPage(1); }}
-            className="rounded-lg border bg-background px-3 py-2 text-sm"
-          >
-            <option value="">All statuses</option>
-            <option value="ordered">Ordered</option>
-            <option value="sample_collected">Sample Collected</option>
-            <option value="in_transit">In Transit</option>
-            <option value="received">Received</option>
-            <option value="in_progress">In Progress</option>
-            <option value="completed">Completed</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-        )}
-        <Input
-          type="date"
-          value={date}
-          onChange={(e) => { setDate(e.target.value); setPage(1); }}
-          className="w-44"
-        />
-      </div>
+      <LabOrderFilters
+        value={filters}
+        onChange={(f) => { setFilters(f); setPage(1); }}
+        showStatus={!lockedStatus}
+        technicians={isSupervisor ? technicians : undefined}
+        showOverdue={variant !== 'completed' && variant !== 'cancelled'}
+        showUnassigned={isSupervisor && variant !== 'completed' && variant !== 'cancelled'}
+      />
 
       <OrderTable
         orders={orders}
         loading={isLoading}
         emptyMsg={
-          variant === 'pending'
-            ? 'No pending orders.'
-            : variant === 'completed'
-              ? 'No completed orders.'
-              : variant === 'cancelled'
-                ? 'No cancelled orders.'
-                : 'No lab orders found.'
+          variant === 'completed'
+            ? 'No completed orders match these filters.'
+            : variant === 'cancelled'
+              ? 'No cancelled orders match these filters.'
+              : filters.overdue
+                ? 'Nothing is past its 24-hour SLA. '
+                : 'Nothing in the queue matches these filters.'
         }
         onView={setActiveOrder}
         onCollect={setCollectFor}
@@ -609,6 +655,13 @@ function AcceptOrderDialog({
   const [techId, setTechId] = useState<string>('');
   const [notes, setNotes] = useState('');
 
+  // Clear between orders. The dialog kept the previous order's technician and
+  // note, so accepting several in a row silently reused the last choice.
+  useSeedOnChange(order?.id ?? null, () => {
+    setTechId('');
+    setNotes('');
+  });
+
   const labStaff = useMemo(
     () =>
       (usersQ.data?.data ?? []).filter((u) =>
@@ -616,6 +669,13 @@ function AcceptOrderDialog({
       ),
     [usersQ.data],
   );
+
+  // What is actually being admitted to the bench. Accepting used to show only
+  // the patient's name — no tests, no urgency — so a supervisor was assigning
+  // work without being shown what the work was.
+  const items = order?.labOrderItems ?? [];
+  const urgency = (order as { urgency?: string } | null)?.urgency;
+  const isUrgent = urgency === 'stat' || urgency === 'urgent';
 
   const handle = async () => {
     if (!order) return;
@@ -625,49 +685,92 @@ function AcceptOrderDialog({
         assignedToId: techId || undefined,
         notes: notes || undefined,
       });
-      toast.success('Lab order accepted');
-      setTechId(''); setNotes('');
+      toast.success(techId ? 'Order accepted and assigned' : 'Order accepted');
       onOpenChange(false);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Failed to accept order');
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Failed to accept order'));
     }
   };
 
   return (
     <Dialog open={!!order} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Accept Lab Order</DialogTitle>
           <DialogDescription>
-            Assign this order to a technician to start processing.
+            Admits the order to the bench. Assign a technician now, or leave it in
+            the unassigned queue for someone to pick up.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
-          <div>
-            <Label>Patient</Label>
-            <p className="text-sm">{order?.patient.firstName} {order?.patient.lastName}</p>
+          <div className="rounded-lg bg-surface-container-low px-3 py-2 text-sm">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium">
+                {order?.patient.firstName} {order?.patient.lastName ?? ''}
+              </span>
+              {isUrgent && (
+                <Badge className="bg-red-100 text-red-700 uppercase text-[10px]">
+                  {urgency}
+                </Badge>
+              )}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              {order?.patient.mrn}
+              {order?.orderNumber ? ` · ${order.orderNumber}` : ''}
+              {order?.orderer ? ` · Dr. ${order.orderer.firstName} ${order.orderer.lastName}` : ''}
+            </p>
           </div>
 
           <div>
-            <Label>Technician</Label>
+            <Label>
+              Tests ordered ({items.length})
+            </Label>
+            {items.length === 0 ? (
+              <p className="mt-1 text-xs italic text-muted-foreground">
+                No tests on this order.
+              </p>
+            ) : (
+              <ul className="mt-1 max-h-32 divide-y overflow-y-auto rounded-lg border">
+                {items.map((it) => (
+                  <li key={it.id} className="px-3 py-1.5 text-xs">
+                    {it.test?.testName ?? 'Test'}
+                    {it.test?.testCode && (
+                      <span className="ml-1.5 text-muted-foreground">{it.test.testCode}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div>
+            <Label>Assign to</Label>
             <select
               className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm"
               value={techId}
               onChange={(e) => setTechId(e.target.value)}
             >
-              <option value="">-- Select technician --</option>
+              <option value="">Leave unassigned</option>
               {labStaff.map((u) => (
                 <option key={u.id} value={u.id}>
-                  {u.firstName} {u.lastName} ({u.userRoles?.map((r) => r.role.name).join(', ')})
+                  {u.firstName} {u.lastName}
                 </option>
               ))}
             </select>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Unassigned orders show under the Unassigned filter on the work queue.
+            </p>
           </div>
 
           <div>
             <Label>Notes</Label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Optional intake note" />
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              placeholder="Optional intake note for the bench"
+            />
           </div>
         </div>
 
@@ -675,8 +778,11 @@ function AcceptOrderDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={acceptMutation.isPending}>
             Cancel
           </Button>
-          <Button onClick={handle} disabled={acceptMutation.isPending || !techId}>
-            {acceptMutation.isPending ? 'Accepting…' : 'Accept Order'}
+          {/* No longer requires a technician. Accepting and assigning are two
+              decisions, and forcing them together meant an order could not be
+              admitted at all until somebody was free to own it. */}
+          <Button onClick={handle} disabled={acceptMutation.isPending}>
+            {acceptMutation.isPending ? 'Accepting…' : techId ? 'Accept & Assign' : 'Accept'}
           </Button>
         </DialogFooter>
       </DialogContent>

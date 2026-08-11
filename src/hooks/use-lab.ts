@@ -480,17 +480,31 @@ export function useUpdateLabTestPrice() {
 
 export type LabOrdersFilters = PaginatedParams & {
   status?: string;
+  /**
+   * Several statuses at once, comma separated. `status` only ever took one, so
+   * a worklist wanting "everything still open" had to fetch a page and drop the
+   * finished rows in the browser — which filtered ONE page, leaving the table
+   * showing 6 of 20 rows while the pager still claimed 20 pages of them.
+   */
+  statuses?: string;
   priority?: string;
   urgency?: string;
   assignedTo?: string;
   outsourced?: boolean;
   isThirdParty?: boolean;
   accepted?: boolean;
+  /** Open >24h with no report signed or published — the SLA risk list. */
+  overdue?: boolean;
+  /** Nobody has picked it up yet — the supervisor's triage queue. */
+  unassigned?: boolean;
   date?: string;
   fromDate?: string;
   toDate?: string;
   patientId?: string;
 };
+
+/** Every status an order can be in while it is still live work. */
+export const LAB_OPEN_STATUSES = 'ordered,sample_collected,in_transit,received,in_progress';
 
 export function useLabOrders(params?: LabOrdersFilters) {
   return useQuery({

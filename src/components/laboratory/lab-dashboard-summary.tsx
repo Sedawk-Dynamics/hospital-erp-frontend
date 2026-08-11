@@ -20,15 +20,36 @@ import { cn } from '@/lib/utils';
 // Headline stats for the lab user's first paint. The numbers come from
 // /lab/dashboard which counts everything in one pass — kept off the order
 // list query so this stays a fast preflight check.
+//
+// Which numbers appear depends on the role. Eight identical cards were shown to
+// everybody, over half of them about a stage the viewer has no part in: a bench
+// technician cannot sign or publish anything, so "Awaiting Sign" and "Awaiting
+// Publish" were noise between them and the two numbers they act on.
 
-export function LabDashboardSummary() {
+export function LabDashboardSummary({
+  isSupervisor,
+  onShowOverdue,
+}: {
+  isSupervisor: boolean;
+  /** Jump the worklist to the overdue filter instead of leaving the page. */
+  onShowOverdue?: () => void;
+}) {
   const { data, isLoading } = useLabDashboard();
   const s = data?.summary;
 
-  const cards = [
-    { label: 'Incoming', value: s?.incomingOrders ?? 0, icon: Inbox, tone: 'amber' },
-    { label: 'In Progress', value: s?.inProgressOrders ?? 0, icon: FlaskConical, tone: 'indigo' },
+  // The bench: what is waiting to be collected, what is moving, what is on the
+  // analyser, and what has gone past its SLA.
+  const technicianCards = [
+    { label: 'To Collect', value: s?.incomingOrders ?? 0, icon: Inbox, tone: 'amber' },
     { label: 'In Transit', value: s?.samplesInTransit ?? 0, icon: Truck, tone: 'blue' },
+    { label: 'In Progress', value: s?.inProgressOrders ?? 0, icon: FlaskConical, tone: 'indigo' },
+    { label: 'Overdue', value: s?.overdueOrders ?? 0, icon: AlertTriangle, tone: 'red' },
+  ];
+
+  // The supervisor: intake to triage, the three approval stages they own, and
+  // what actually went out today.
+  const supervisorCards = [
+    { label: 'To Accept', value: s?.incomingOrders ?? 0, icon: Inbox, tone: 'amber' },
     { label: 'Awaiting Verify', value: s?.resultsAwaitingVerify ?? 0, icon: ClipboardCheck, tone: 'purple' },
     { label: 'Awaiting Sign', value: s?.reportsAwaitingSign ?? 0, icon: FileSignature, tone: 'cyan' },
     { label: 'Awaiting Publish', value: s?.reportsAwaitingPublish ?? 0, icon: Send, tone: 'teal' },
@@ -36,11 +57,23 @@ export function LabDashboardSummary() {
     { label: 'Overdue', value: s?.overdueOrders ?? 0, icon: AlertTriangle, tone: 'red' },
   ];
 
+  const cards = isSupervisor ? supervisorCards : technicianCards;
+
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
+      <div
+        className={cn(
+          'grid gap-2.5 grid-cols-2 sm:grid-cols-4',
+          isSupervisor ? 'lg:grid-cols-6' : 'lg:grid-cols-4',
+        )}
+      >
         {cards.map((c) => (
-          <SummaryCard key={c.label} {...c} loading={isLoading} />
+          <SummaryCard
+            key={c.label}
+            {...c}
+            loading={isLoading}
+            onClick={c.label === 'Overdue' && (s?.overdueOrders ?? 0) > 0 ? onShowOverdue : undefined}
+          />
         ))}
       </div>
 
@@ -55,7 +88,7 @@ export function LabDashboardSummary() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <RecentActivityPanel />
-        <OverdueOrdersPanel />
+        <OverdueOrdersPanel onShowAll={onShowOverdue} />
       </div>
     </div>
   );
@@ -78,16 +111,26 @@ function SummaryCard({
   icon: Icon,
   tone,
   loading,
+  onClick,
 }: {
   label: string;
   value: number;
   icon: React.ComponentType<{ className?: string }>;
   tone: string;
   loading: boolean;
+  onClick?: () => void;
 }) {
   const cls = TONE_CLS[tone] ?? TONE_CLS.indigo;
+  // A count you can act on should be reachable from the number itself.
+  const Wrapper = onClick ? 'button' : 'div';
   return (
-    <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-3">
+    <Wrapper
+      {...(onClick ? { type: 'button' as const, onClick } : {})}
+      className={cn(
+        'bg-surface-container-lowest rounded-xl shadow-sanctuary p-3 text-left w-full',
+        onClick && 'cursor-pointer transition-colors hover:bg-surface-container-low',
+      )}
+    >
       <div className={cn('inline-flex rounded-lg p-1.5 mb-2', cls.wrap)}>
         <Icon className={cn('h-3.5 w-3.5', cls.icon)} />
       </div>
@@ -97,7 +140,7 @@ function SummaryCard({
       <p className="font-headline text-xl font-bold mt-0.5">
         {loading ? <span className="text-muted-foreground/40">—</span> : value}
       </p>
-    </div>
+    </Wrapper>
   );
 }
 
@@ -142,23 +185,32 @@ function RecentActivityPanel() {
   );
 }
 
-function OverdueOrdersPanel() {
+function OverdueOrdersPanel({ onShowAll }: { onShowAll?: () => void }) {
   const { data } = useLabDashboard();
   const overdue = data?.overdueOrders ?? [];
+  const total = data?.summary?.overdueOrders ?? overdue.length;
 
   return (
     <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4">
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
           Overdue ({'>'}24h, no report)
+          {total > overdue.length && (
+            <span className="ml-1.5 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] text-red-700">
+              {total}
+            </span>
+          )}
         </h3>
-        {overdue.length > 0 && (
-          <Link
-            href="/laboratory/reports"
+        {/* This linked to /laboratory/reports, which is the analytics page and
+            has no overdue list on it. It now filters the worklist below. */}
+        {overdue.length > 0 && onShowAll && (
+          <button
+            type="button"
+            onClick={onShowAll}
             className="text-[10px] font-semibold uppercase tracking-wider text-primary hover:underline"
           >
-            View all →
-          </Link>
+            View all {total} →
+          </button>
         )}
       </div>
       {overdue.length === 0 ? (
