@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiPatch, apiPut } from '@/lib/api';
 import type {
   DiagnosticBillingPreview,
+  DiagnosticEncounter,
   DiagnosticLinkedBill,
   DiagnosticPaymentInput,
 } from '@/components/shared/diagnostics/types';
@@ -94,6 +95,8 @@ export interface ImagingRequest {
   // Linked bill summary — decorated by the list endpoint so admin can see
   // payment status before clicking Verify Payment.
   linkedBill?: DiagnosticLinkedBill | null;
+  /** Set when the patient is admitted — accepting posts to the stay ledger. */
+  encounter?: DiagnosticEncounter | null;
   createdAt: string;
   updatedAt: string;
 }

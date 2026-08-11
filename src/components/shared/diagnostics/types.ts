@@ -62,6 +62,17 @@ export interface DiagnosticAcceptPayload {
   deferReason?: string;
 }
 
+/**
+ * Where the patient is, attached to every worklist row by both list endpoints.
+ * Present = admitted, so accepting posts to the stay ledger instead of asking
+ * for money. Null = outpatient, who pays at this counter.
+ */
+export interface DiagnosticEncounter {
+  mode: 'ip';
+  admissionId: string;
+  admissionType: DiagnosticAdmissionType;
+}
+
 /** The bill decoration both list endpoints attach to a row. */
 export interface DiagnosticLinkedBill {
   id?: string;

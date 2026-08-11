@@ -543,7 +543,13 @@ function ComposeStep({
             onToggle={handleToggle}
             onPullAll={(rows) => {
               const next: Record<string, ChargeRow> = {};
-              for (const r of rows) next[`${r.referenceType}:${r.referenceId}`] = r;
+              // Select All means "everything this counter may bill" — it used
+              // to sweep in rows whose own checkbox is disabled, so the server
+              // then refused them and the count came up short.
+              for (const r of rows) {
+                if (r.alreadyBilled || r.pullable === false) continue;
+                next[`${r.referenceType}:${r.referenceId}`] = r;
+              }
               setSelectedRefs(next);
             }}
             onPullSelected={handlePull}
@@ -778,21 +784,24 @@ function ChargesPanel({
               {charges.map((row) => {
                 const key = `${row.referenceType}:${row.referenceId}`;
                 const checked = !!selectedRefs[key];
+                // The department owns this charge, not this counter.
+                const locked = row.pullable === false;
                 return (
                   <tr
                     key={key}
                     className={cn(
                       'hover:bg-surface-container-low transition-colors',
-                      row.alreadyBilled && 'opacity-50',
+                      (row.alreadyBilled || locked) && 'opacity-50',
                     )}
                   >
                     <td className="px-3 py-2">
                       <input
                         type="checkbox"
                         checked={checked}
-                        disabled={row.alreadyBilled}
+                        disabled={row.alreadyBilled || locked}
                         onChange={() => onToggle(row)}
                         className="h-4 w-4 rounded accent-primary"
+                        title={locked ? row.notPullableReason : undefined}
                       />
                     </td>
                     <td className="px-3 py-2">
@@ -800,6 +809,15 @@ function ChargesPanel({
                       <p className="font-label text-[10px] text-on-surface-variant">
                         {row.source} · {row.occurredAt}
                         {row.alreadyBilled && <span className="ml-2 text-secondary font-bold">already billed</span>}
+                        {/* Lab and radiology bill their own work — an OP patient
+                            pays at their counter, an admitted one has it posted
+                            to the stay ledger when they accept. Saying so beats
+                            a checkbox that silently refuses to tick. */}
+                        {locked && !row.alreadyBilled && (
+                          <span className="ml-2 font-bold text-teal-700">
+                            {row.notPullableReason}
+                          </span>
+                        )}
                       </p>
                     </td>
                     <td className="px-3 py-2 text-right font-label text-sm">{row.quantity}</td>

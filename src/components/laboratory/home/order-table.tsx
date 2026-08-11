@@ -15,6 +15,7 @@ import {
 import { EmptyRow, LoadingRow, PriorityBadge, SpecimensCell, StatusBadge, Th } from '@/components/laboratory/home/lab-table-bits';
 import { TableShell } from '@/components/shared/diagnostics/table-bits';
 import {
+  EncounterBadge,
   OrderBillCell,
   PaymentStatusBadge,
 } from '@/components/shared/diagnostics/order-bill-cell';
@@ -69,7 +70,12 @@ export function OrderTable({
           orders.map((o) => (
             <tr key={o.id} className="hover:bg-surface-container-low transition-colors">
               <td className="px-4 py-3 font-medium">
-                {o.patient.firstName} {o.patient.lastName}
+                <div className="flex items-center gap-1.5">
+                  <span>
+                    {o.patient.firstName} {o.patient.lastName}
+                  </span>
+                  <EncounterBadge encounter={o.encounter} />
+                </div>
               </td>
               <td className="px-4 py-3 text-muted-foreground">{o.patient.mrn}</td>
               <td className="px-4 py-3 font-mono text-xs">{o.orderNumber ?? o.id.slice(0, 8)}</td>

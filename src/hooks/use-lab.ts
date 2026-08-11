@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiPut, apiDelete, apiPatch } from '@/lib/api';
 import type {
   DiagnosticBillingPreview,
+  DiagnosticEncounter,
   DiagnosticLinkedBill,
   DiagnosticPaymentInput,
 } from '@/components/shared/diagnostics/types';
@@ -98,6 +99,8 @@ export interface LabOrder {
   paymentDeferredReason?: string | null;
   /** The bill this order's tests were charged on, attached by the list API. */
   linkedBill?: DiagnosticLinkedBill | null;
+  /** Set when the patient is admitted — accepting posts to the stay ledger. */
+  encounter?: DiagnosticEncounter | null;
   visitId?: string;
   isThirdParty?: boolean;
   thirdPartyLabName?: string | null;

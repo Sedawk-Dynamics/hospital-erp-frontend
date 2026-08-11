@@ -1258,6 +1258,16 @@ export interface ChargeRow {
   alreadyBilled: boolean;
   billItemId?: string;
   billId?: string;
+  /**
+   * False when this counter may not bill the line itself — lab and radiology
+   * charges belong to those departments. An OP patient pays at their counter;
+   * an admitted one has it posted to the stay ledger when the department
+   * accepts, and the front desk collects that ledger at discharge. The row is
+   * still shown, because the desk needs the running picture of what a patient
+   * has had; it just cannot be selected.
+   */
+  pullable?: boolean;
+  notPullableReason?: string;
 }
 
 export interface ChargesResponse {

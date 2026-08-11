@@ -8,7 +8,49 @@
 import { IndianRupee, Wallet, BedDouble, ShieldCheck, CircleAlert } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { formatPaymentMethod, money, type DiagnosticLinkedBill } from './types';
+import {
+  ADMISSION_TYPE_LABELS,
+  formatPaymentMethod,
+  money,
+  type DiagnosticEncounter,
+  type DiagnosticLinkedBill,
+} from './types';
+
+/**
+ * Where the patient is — shown on the worklist row, not just inside the accept
+ * dialog. It is the one fact that changes what accepting does: an admitted
+ * patient's charge goes to the stay ledger and nothing is collected here, so
+ * the admin needs to know before they open anything and reach for the cash box.
+ */
+export function EncounterBadge({
+  encounter,
+  className,
+}: {
+  encounter?: DiagnosticEncounter | null;
+  className?: string;
+}) {
+  if (!encounter) {
+    return (
+      <Badge
+        variant="outline"
+        className={cn('border-sky-300 bg-sky-50 text-[10px] text-sky-700', className)}
+        title="Outpatient — pays at this counter"
+      >
+        OP
+      </Badge>
+    );
+  }
+  return (
+    <Badge
+      variant="outline"
+      className={cn('border-teal-300 bg-teal-50 text-[10px] text-teal-700', className)}
+      title="Admitted — the charge goes to the stay ledger and settles at discharge. Nothing is collected here."
+    >
+      <BedDouble className="mr-1 size-3" />
+      {ADMISSION_TYPE_LABELS[encounter.admissionType]}
+    </Badge>
+  );
+}
 
 export function OrderBillCell({ bill }: { bill?: DiagnosticLinkedBill | null }) {
   if (!bill) return <span className="text-xs text-muted-foreground">Not billed yet</span>;
