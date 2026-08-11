@@ -27,7 +27,7 @@ import { BillPrintDialog } from '@/components/hospital/billing/bill-print-dialog
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
-import { cn } from '@/lib/utils';
+import { cn, getApiErrorMessage } from '@/lib/utils';
 
 import {
   usePatientSearch,
@@ -42,6 +42,7 @@ import {
   useSetBillDiscount,
   useFinalizeBill,
   useReopenBill,
+  openBillDocumentPdf,
   type ChargeRow,
   type ChargeSource,
 } from '@/hooks/use-hospital';
@@ -72,10 +73,11 @@ interface BillGeneratorDialogProps {
   /** Resume an existing draft bill. */
   initialBillId?: string | null;
   /**
-   * Set when this bill belongs to an IP / Emergency / Day Care stay. It enables
-   * Print Bill, which renders the branded stay document
-   * (/billing/admissions/:id/bill-document). OP bills have no such document —
-   * only payment receipts — so the button is hidden without it.
+   * Set when this bill belongs to an IP / Emergency / Day Care stay, which
+   * decides WHICH document Print Bill renders: the branded stay document
+   * (/billing/admissions/:id/bill-document) for a stay, or the counter bill
+   * (/billing/:id/document) for an OP bill. Both are printable — the OP one
+   * only became so once it stopped depending on a payment existing first.
    */
   admissionId?: string | null;
   onBillFinalized?: (billId: string) => void;
@@ -316,6 +318,7 @@ function ComposeStep({
   const [billId, setBillId] = useState<string | null>(initialBillId);
   const [selectedRefs, setSelectedRefs] = useState<Record<string, ChargeRow>>({});
   const [printOpen, setPrintOpen] = useState(false);
+  const [printingOp, setPrintingOp] = useState(false);
 
   // Reuse an existing draft for this patient if one is already there — keeps
   // the workflow idempotent (e.g. cashier re-opens the dialog).
@@ -592,14 +595,41 @@ function ComposeStep({
                 )}
               </Button>
             )}
-            {/* Print the branded stay document. Available at any point — an
-                interim bill while the patient is admitted, the final one after.
-                Only stays have such a document; an OP bill prints a receipt
-                from the transactions screen instead. */}
-            {admissionId && (
+            {/* Print the branded bill. A stay gets the admission document —
+                interim while the patient is admitted, final after. An OP bill
+                gets its own copy, which used to be impossible: the only
+                printable form was the receipt, and that exists per PAYMENT, so
+                a patient leaving with an unpaid bill had nothing to take. */}
+            {admissionId ? (
               <Button variant="outline" className="w-full gap-1.5" onClick={() => setPrintOpen(true)}>
                 <Printer className="h-4 w-4" /> Print Bill
               </Button>
+            ) : (
+              billTyped &&
+              billTyped.status !== 'draft' && (
+                <Button
+                  variant="outline"
+                  className="w-full gap-1.5"
+                  disabled={printingOp}
+                  onClick={async () => {
+                    setPrintingOp(true);
+                    try {
+                      await openBillDocumentPdf(billTyped.id);
+                    } catch (e) {
+                      toast.error(getApiErrorMessage(e, 'Could not open the bill'));
+                    } finally {
+                      setPrintingOp(false);
+                    }
+                  }}
+                >
+                  {printingOp ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Printer className="h-4 w-4" />
+                  )}
+                  Print Bill
+                </Button>
+              )
             )}
             <Button variant="outline" onClick={onClose}>
               {billTyped?.status === 'draft' ? 'Close (keep as draft)' : 'Close'}

@@ -987,6 +987,26 @@ export function useDayEnd(date?: string) {
   });
 }
 
+/**
+ * Open the patient's copy of an OP / counter bill.
+ *
+ * The PDF endpoint is auth-gated, so it cannot simply be window.open'd — fetch
+ * it with the auth header, blob it, then hand it to the browser's own viewer so
+ * the cashier can print or save from there.
+ *
+ * Unlike the receipt this needs no payment to exist: an unpaid or partly-paid
+ * bill can still be handed over.
+ */
+export async function openBillDocumentPdf(billId: string): Promise<void> {
+  const apiClientMod = await import('@/lib/api-client');
+  const res = await apiClientMod.default.get(`/billing/${billId}/document/pdf`, {
+    responseType: 'blob',
+  });
+  const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+  window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 // Razorpay is reachable from the patient portal (paying for an appointment or a
 // bill) and from the SaaS subscription checkout — the only two screens where the
 // person paying is the one at the keyboard. Hospital, pharmacy and lab staff
