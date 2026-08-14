@@ -138,6 +138,9 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Reports', href: '/pharmacy/reports', icon: BarChart3, restrictTo: ['pharmacy_admin'] },
       { label: 'Audit Trail', href: '/pharmacy/audit-trail', icon: History, restrictTo: ['pharmacy_admin'] },
       { label: 'Statutory Reports', href: '/pharmacy/statutory-reports', icon: FileText, restrictTo: ['pharmacy_admin'] },
+      // Every movement of a scheduled or narcotic medicine, in one ledger —
+      // the view a drug inspector reads during an audit.
+      { label: 'Controlled Register', href: '/pharmacy/controlled-register', icon: ShieldCheck, restrictTo: ['pharmacy_admin'] },
       { label: 'Ward Stock', href: '/pharmacy/ward-stock', icon: BedDouble, restrictTo: ['pharmacy_admin'] },
       // All medicines dispensed to IP patients (billed to the hospital IP bill).
       { label: 'IP Medicines', href: '/pharmacy/ip-medicines', icon: Pill },

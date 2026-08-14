@@ -2456,3 +2456,65 @@ export function useControlledDrugSettings() {
       (await apiGet<ControlledDrugSettings>('/hospital-settings/controlled-drugs')).data,
   });
 }
+
+// ============================================================
+// Controlled-Drug Register
+// ============================================================
+// Every movement of a scheduled or narcotic medicine, from every path it can
+// take, in one chronological ledger — the view a drug inspector reads.
+
+export interface RegisterRow {
+  occurredAt: string;
+  txnId: string;
+  txnType: string;
+  drugId: string;
+  itemName: string;
+  /** Active ingredient + strength — what an inspector cross-references. */
+  apiStrength: string | null;
+  batchNumber: string | null;
+  expiryDate: string | null;
+  qtyIn: number;
+  qtyOut: number;
+  transferQty: number;
+  opening: number;
+  closing: number;
+  patientOrDept: string | null;
+  prescriber: string | null;
+  verification: string | null;
+  schedule: DrugSchedule | null;
+  controlledClass: 'narcotic' | 'psychotropic' | null;
+}
+
+export interface ControlledRegister {
+  rows: RegisterRow[];
+  summary: {
+    openingStock: number;
+    inward: number;
+    outward: number;
+    internalTransfer: number;
+    closingBalance: number;
+  };
+  drugs: Array<{ id: string; drugName: string; schedule: DrugSchedule | null }>;
+  window: { from: string; to: string };
+}
+
+export interface ControlledRegisterParams {
+  fromDate?: string;
+  toDate?: string;
+  reportType?: 'all' | 'inward' | 'outward' | 'transfer';
+  scheduleType?: 'NDPS' | 'X' | 'H1' | 'H' | 'H2' | 'G';
+  /** Comma-separated formulary ids. */
+  drugIds?: string;
+  search?: string;
+  doctorRegNo?: string;
+  locationId?: string;
+}
+
+export function useControlledRegister(params?: ControlledRegisterParams, enabled = true) {
+  return useQuery({
+    queryKey: ['pharmacy', 'controlled-register', params],
+    queryFn: async () =>
+      (await apiGet<ControlledRegister>('/pharmacy/controlled-register', { params })).data,
+    enabled,
+  });
+}
