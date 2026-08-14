@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiPatch } from '@/lib/api';
+import type { PdfTemplate } from '@/hooks/use-hospital-branding';
 
 // Shared types + mutations for the unified IP billing section.
 
@@ -271,6 +272,13 @@ export interface AdmissionBillDocument {
    * a blank letterhead on the printed bill.
    */
   hospital: HospitalBrandingLike | null;
+  /**
+   * The `ip_bill` template from the PDF Builder, resolved server-side and
+   * carried with the document. The print view renders from this so the bill on
+   * screen and the bill from the PDF button are one definition, two renderers.
+   * `GET /hospital-branding/templates` is admin-only, hence riding along.
+   */
+  template: PdfTemplate | null;
   admissionId: string;
   admissionType: 'ip' | 'emergency' | 'daycare';
   admissionTypeLabel: string;

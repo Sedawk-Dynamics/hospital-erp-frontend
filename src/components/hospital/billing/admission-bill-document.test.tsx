@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import { AdmissionBillDocumentView } from './admission-bill-document';
 import type { AdmissionBillDocument } from '@/hooks/use-ip-billing';
+import type { PdfTemplate } from '@/hooks/use-hospital-branding';
+import { DEFAULT_PDF_TEMPLATE } from '@/lib/pdf-theme';
 
 // The printed IP / Emergency / Day Care bill. Everything asserted here was a
 // real defect at some point: a blank letterhead for non-admin users, an interim
@@ -35,9 +37,16 @@ const BRANDING = {
   },
 };
 
+/** A template override on top of the product defaults. */
+function withTemplate(over: Partial<PdfTemplate>): PdfTemplate {
+  return { ...DEFAULT_PDF_TEMPLATE, ...over };
+}
+
 function makeDoc(over: Partial<AdmissionBillDocument> = {}): AdmissionBillDocument {
   return {
     hospital: BRANDING,
+    // Served with the document, exactly as the API does it.
+    template: DEFAULT_PDF_TEMPLATE,
     admissionId: 'adm-1',
     admissionType: 'daycare',
     admissionTypeLabel: 'Day Care',
@@ -213,5 +222,134 @@ describe('AdmissionBillDocumentView', () => {
     const style = container.querySelector('style')!.textContent!;
     expect(style).toContain('@media print');
     expect(style).not.toMatch(/position:\s*absolute/);
+  });
+
+  // -- The PDF Builder template -------------------------------------------
+  // This view and /bill-document/pdf must be two renderings of ONE definition.
+  // Everything the PDF honours is honoured here, so a hospital that restyles
+  // the bill sees the change on screen and on paper.
+
+  it('takes the page size and margin from the template', () => {
+    const doc = makeDoc({
+      template: withTemplate({ page: { size: 'A5', orientation: 'landscape', margin: 20 } }),
+    });
+    const { container } = render(<AdmissionBillDocumentView doc={doc} />);
+    // Sizes are in pt so the on-screen document is the same physical size as
+    // the PDF; px would render it ~1.33x too large.
+    expect(container.querySelector<HTMLElement>('#ip-bill-print')!.style.padding).toBe('20pt');
+    expect(container.querySelector('style')!.textContent).toContain('@page { size: A5 landscape');
+  });
+
+  it('takes the typeface and body size from the template', () => {
+    const doc = makeDoc({
+      template: withTemplate({ typography: { fontFamily: 'Times', baseFontSize: 11, lineGap: 4 } }),
+    });
+    const { container } = render(<AdmissionBillDocumentView doc={doc} />);
+    const root = container.querySelector<HTMLElement>('#ip-bill-print')!;
+    expect(root.style.fontFamily).toContain('Times');
+    expect(root.style.fontSize).toBe('11pt');
+  });
+
+  it('lets the template override the document title', () => {
+    const doc = makeDoc({
+      template: withTemplate({
+        header: { ...DEFAULT_PDF_TEMPLATE.header, titleOverride: 'TAX INVOICE' },
+      }),
+    });
+    render(<AdmissionBillDocumentView doc={doc} />);
+    expect(screen.getByText('TAX INVOICE')).toBeInTheDocument();
+    expect(screen.queryByText(/Day Care · Final Bill/)).not.toBeInTheDocument();
+  });
+
+  it('drops the letterhead for pre-printed stationery', () => {
+    const doc = makeDoc({
+      template: withTemplate({
+        header: { ...DEFAULT_PDF_TEMPLATE.header, showLetterhead: false },
+      }),
+    });
+    render(<AdmissionBillDocumentView doc={doc} />);
+    // The title still prints — only the hospital's letterhead is left off.
+    expect(screen.queryByText('Green city Hospital')).not.toBeInTheDocument();
+    expect(screen.getByText(/Day Care · Final Bill/)).toBeInTheDocument();
+  });
+
+  it('stamps the watermark when the template turns it on', () => {
+    const doc = makeDoc({
+      template: withTemplate({
+        watermark: { enabled: true, text: 'DUPLICATE', opacity: 0.3, angle: -20, color: '#dc2626', fontSize: 70 },
+      }),
+    });
+    render(<AdmissionBillDocumentView doc={doc} />);
+    const mark = screen.getByText('DUPLICATE');
+    expect(mark).toBeInTheDocument();
+    expect(mark.style.opacity).toBe('0.3');
+    expect(mark.style.transform).toBe('rotate(-20deg)');
+  });
+
+  it('leaves the watermark off by default', () => {
+    render(<AdmissionBillDocumentView doc={makeDoc()} />);
+    expect(screen.queryByText('COPY')).not.toBeInTheDocument();
+  });
+
+  it('draws the signing lines the template asks for', () => {
+    const doc = makeDoc({
+      template: withTemplate({
+        signature: { enabled: true, labels: ['Billing Officer', 'Patient / Attendant'], height: 60 },
+      }),
+    });
+    render(<AdmissionBillDocumentView doc={doc} />);
+    expect(screen.getByText('Billing Officer')).toBeInTheDocument();
+    expect(screen.getByText('Patient / Attendant')).toBeInTheDocument();
+  });
+
+  it('prints custom blocks on the side of the body they belong to', () => {
+    const doc = makeDoc({
+      template: withTemplate({
+        blocks: [
+          { id: 'a', position: 'before_body', heading: 'Notice', text: 'Carry your policy card.' },
+          { id: 'b', position: 'after_body', heading: 'Terms', text: 'Bills once settled are not refundable.' },
+        ],
+      }),
+    });
+    const { container } = render(<AdmissionBillDocumentView doc={doc} />);
+    const text = container.textContent!;
+    expect(text).toContain('Carry your policy card.');
+    expect(text).toContain('Bills once settled are not refundable.');
+    // Order matters — a "before body" note that prints after the charges is
+    // not the block the hospital configured.
+    expect(text.indexOf('Carry your policy card.')).toBeLessThan(text.indexOf('Bill of Charges'));
+    expect(text.indexOf('Bills once settled are not refundable.')).toBeGreaterThan(
+      text.indexOf('Bill of Charges'),
+    );
+  });
+
+  it('prefers the template footer text over the hospital default', () => {
+    const doc = makeDoc({
+      template: withTemplate({
+        footer: { ...DEFAULT_PDF_TEMPLATE.footer, footerTextOverride: 'Subject to Pune jurisdiction.' },
+      }),
+    });
+    render(<AdmissionBillDocumentView doc={doc} />);
+    expect(screen.getByText('Subject to Pune jurisdiction.')).toBeInTheDocument();
+    expect(screen.queryByText('Computer-generated bill.')).not.toBeInTheDocument();
+  });
+
+  it('can drop the footer entirely', () => {
+    const doc = makeDoc({
+      template: withTemplate({
+        footer: { ...DEFAULT_PDF_TEMPLATE.footer, showFooter: false },
+      }),
+    });
+    render(<AdmissionBillDocumentView doc={doc} />);
+    expect(screen.queryByText('Computer-generated bill.')).not.toBeInTheDocument();
+  });
+
+  it('still prints at the product defaults when no template is served', () => {
+    // An older cached response, or any path that does not carry one, must not
+    // throw — it prints the way an uncustomised hospital's bill prints.
+    const doc = makeDoc({ template: null });
+    render(<AdmissionBillDocumentView doc={doc} />);
+    expect(screen.getByText(/Day Care · Final Bill/)).toBeInTheDocument();
+    expect(screen.getByText('Green city Hospital')).toBeInTheDocument();
   });
 });
