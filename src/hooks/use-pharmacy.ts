@@ -16,6 +16,17 @@ export type DosageForm =
   | 'inhaler'
   | 'other';
 
+/**
+ * Drug schedule under the Drugs & Cosmetics Rules 1945.
+ *   X   strictest — prescription in duplicate, one copy retained, separate licence
+ *   H1  prescription + a separate register kept for 3 years
+ *   H   prescription drug
+ *   H2  a named brand formulation carrying a QR/barcode obligation
+ *   G   caution-label only — NOT a prescription drug
+ *   OTC unscheduled
+ */
+export type DrugSchedule = 'X' | 'H1' | 'H' | 'H2' | 'G' | 'OTC';
+
 export interface FormularyItem {
   id: string;
   drugName: string;
@@ -48,6 +59,21 @@ export interface FormularyItem {
   isLifeSaving?: boolean;
   // NDPS narcotic — governed by the Form 3C/3E/3H accounting workflow.
   isNarcotic?: boolean;
+  // ── Drug schedule (Drugs & Cosmetics Rules 1945), resolved by the classifier.
+  // Two independent axes: `schedule` is what the counter must collect, while
+  // `controlledClass` is which statutory register the drug appears in. Tramadol
+  // is Schedule H1 AND a psychotropic — both are true at once.
+  schedule?: DrugSchedule | null;
+  // 'auto' classified from this drug's composition · 'inherited' from the
+  // platform catalog · 'manual' a pharmacy admin overrode it.
+  scheduleSource?: 'auto' | 'inherited' | 'manual' | null;
+  /** Why this schedule was chosen — shown as the badge tooltip. */
+  scheduleReason?: string | null;
+  controlledClass?: 'narcotic' | 'psychotropic' | null;
+  /** Requires physical safe custody + a witness co-sign. */
+  vaultControlled?: boolean;
+  /** Schedule H2 formulation — Rule 96(6)-(7) QR/barcode obligation. */
+  requiresQrScan?: boolean;
   // TPA/cashless reimbursability (false = patient pays out-of-pocket).
   isReimbursable?: boolean;
   // Linked national-catalogue entry (null = manually added, not from catalogue).
@@ -198,6 +224,10 @@ export interface FormularyQueryParams extends PaginatedParams {
   isActive?: boolean | string;
   isNarcotic?: boolean;
   stockStatus?: 'in' | 'out';
+  /** One schedule code. */
+  schedule?: DrugSchedule;
+  /** Drugs the NDPS list names, whatever their schedule. */
+  controlled?: boolean;
 }
 
 export interface BatchQueryParams extends PaginatedParams {

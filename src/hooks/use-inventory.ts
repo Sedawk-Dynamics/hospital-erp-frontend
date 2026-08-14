@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from '@/lib/api';
+import type { DrugSchedule } from './use-pharmacy';
 
 // ============================================================
 // Types — mirror the Prisma schema in inventory_items, suppliers,
@@ -1273,6 +1274,12 @@ export interface UnifiedStockRow {
   // this drug — shown under the name and searchable.
   composition: string | null;
   mappingNames: string | null;
+  // Drug schedule (Drugs & Cosmetics Rules 1945) + the NDPS overlay. Null for
+  // non-medicine stock. Advisory labelling — nothing gates a sale on it yet.
+  schedule: DrugSchedule | null;
+  controlledClass: 'narcotic' | 'psychotropic' | null;
+  vaultControlled: boolean;
+  scheduleReason: string | null;
 }
 
 export interface UnifiedStockParams extends PaginatedParams {

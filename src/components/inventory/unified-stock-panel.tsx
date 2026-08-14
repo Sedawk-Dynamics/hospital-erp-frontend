@@ -43,6 +43,7 @@ import { DrugFormDialog } from '@/components/pharmacy/drug-form-dialog';
 import { MergeDrugDialog } from '@/components/pharmacy/merge-drug-dialog';
 import { AlternativesDialog } from '@/components/pharmacy/alternatives-dialog';
 import { ImportFromCatalogDialog } from '@/components/pharmacy/import-from-catalog-dialog';
+import { ScheduleBadge, ControlledBadge } from '@/components/pharmacy/schedule-badge';
 
 // A row's Type is its CATEGORY, not which table it lives in. Every kind of stock
 // (medicine, consumable, surgical, equipment) is now stocked the same way — as a
@@ -414,8 +415,15 @@ function StockRow({
           )}
         </TableCell>
         <TableCell>
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <span className="font-medium">{row.name}</span>
+            {/* Advisory only — the schedule and the NDPS class are two separate
+                facts, so they get two chips rather than one merged label. */}
+            <ScheduleBadge schedule={row.schedule} reason={row.scheduleReason} />
+            <ControlledBadge
+              controlledClass={row.controlledClass}
+              vaultControlled={row.vaultControlled}
+            />
           </div>
           {row.composition && (
             <div className="text-xs text-muted-foreground italic">{row.composition}</div>
