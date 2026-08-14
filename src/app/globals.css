@@ -278,3 +278,135 @@
     -webkit-backdrop-filter: blur(16px);
   }
 }
+
+/* ============================================================
+   Printing a document that lives inside a dialog.
+
+   Our printable documents (the IP/Emergency/Day Care bill, and anything added
+   later) isolate themselves with the usual trick: hide everything on the page,
+   then un-hide the one document node. That works on a normal page. It does NOT
+   work inside a dialog, and the printed sheet comes out blank.
+
+   Three things in the dialog stack each break it on their own:
+
+     1. The popup is `position: fixed` with a `translate(-50%, -50%)`. A
+        transform makes the popup the containing block for any absolutely
+        positioned descendant, so a document that asks for `top: 0; left: 0`
+        lands at the middle of the popup instead of the top of the page — and
+        `fixed` is painted against the page box, once.
+     2. The popup is a scroll container (`max-height` + `overflow-y: auto`).
+        A scroll container clips to its own box when printing, so only the
+        slice that happens to be on screen can paint. Worse, taking the
+        document out of flow collapses the popup to ~30px, which clips
+        practically all of it — measured 1020px of an 1106px bill lost.
+     3. base-ui locks scrolling while a modal is open by writing
+        `overflow: hidden` straight onto <body>, which clips again.
+
+   So unwind all three at print time. Doing it here rather than in each
+   document means any dialog-hosted print gets it, and each document is left
+   to describe only itself.
+   ============================================================ */
+@media print {
+  /*
+   * Nothing animates on paper. This is not only tidiness: the popup carries
+   * `transition-property: all`, and a running transition sits ABOVE `!important`
+   * in the cascade — so the rules below were being held at their pre-print
+   * values by a 150ms transition they had themselves triggered.
+   */
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+
+  /* Undo the modal scroll lock (inline styles — hence !important). */
+  html {
+    scrollbar-gutter: auto !important;
+  }
+  body {
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  /* Screen scrim; never paper. */
+  [data-slot='dialog-overlay'],
+  [data-base-ui-inert] {
+    display: none !important;
+  }
+
+  /* Return the popup to being an ordinary block in the flow. */
+  [data-slot='dialog-content'] {
+    position: static !important;
+    transform: none !important;
+    display: block !important;
+    width: auto !important;
+    max-width: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+  }
+
+  /*
+   * Cancel the centring offset.
+   *
+   * Tailwind v4 compiles `-translate-x-1/2 -translate-y-1/2` to the INDEPENDENT
+   * `translate` property, which `transform: none` does not touch — so the popup
+   * stayed shifted by -50% of its own height and the top half of the bill fell
+   * above the first page.
+   *
+   * This has to be its own rule, with its own selector. Put `translate`
+   * next to `transform` in one block and Lightning CSS combines them into a
+   * single `transform: translate3d(…) rotate3d(…) scale3d(…)`, which silently
+   * drops the standalone `translate` reset and reintroduces the bug. The
+   * heavier selector also keeps the two rules from being merged back together.
+   */
+  div[data-slot='dialog-content'] {
+    translate: none !important;
+  }
+
+  /*
+   * With a dialog open, it owns the paper. The rest of the app is hidden
+   * rather than merely made invisible, because `visibility: hidden` keeps an
+   * element's height — and a full app shell's worth of height ahead of the
+   * document is a run of blank sheets before it.
+   *
+   * Kept separate from the rules above so that a browser without `:has()`
+   * still prints the document correctly, just with that leading whitespace.
+   */
+  body:has([data-slot='dialog-portal'] [data-slot='dialog-content'])
+    > *:not([data-slot='dialog-portal']) {
+    display: none !important;
+  }
+
+  /*
+   * Dialogs stack: "Generate Bill" opens the bill print dialog on top of
+   * itself, so two popups are mounted at once. Both would be unwound into the
+   * flow by the rules above, and the one WITHOUT the document would still take
+   * up its full height — invisible, but a sheet or two of nothing around the
+   * bill.
+   *
+   * So when a printable document is open in a dialog, that dialog is the only
+   * one that prints. A document marks itself with `.print-document`. Guarded by
+   * the outer `:has()` so a dialog that prints its own plain contents (with no
+   * marked document anywhere) is left alone.
+   *
+   * Written as hide-all-then-restore rather than the obvious
+   * `:not(:has(.print-document))`, because Lightning CSS drops a rule whose
+   * selector nests `:has()` inside `:not()` for our browser targets — silently,
+   * so the rule simply never reaches the page. The restore rule carries one
+   * extra `:has()` over the hide rule, so it wins on specificity.
+   */
+  body:has([data-slot='dialog-content'] .print-document) [data-slot='dialog-content'] {
+    display: none !important;
+  }
+
+  body:has([data-slot='dialog-content'] .print-document)
+    [data-slot='dialog-content']:has(.print-document) {
+    display: block !important;
+  }
+}

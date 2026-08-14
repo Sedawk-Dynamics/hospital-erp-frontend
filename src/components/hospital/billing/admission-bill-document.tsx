@@ -1,6 +1,6 @@
 'use client';
 
-import { forwardRef } from 'react';
+import { Fragment, forwardRef } from 'react';
 import { resolveLogoUrl } from '@/hooks/use-branding';
 import type { AdmissionBillDocument } from '@/hooks/use-ip-billing';
 import { cn } from '@/lib/utils';
@@ -77,13 +77,29 @@ export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: Admis
         id="ip-bill-print"
         ref={ref}
         style={{ ['--brand' as string]: accent }}
-        className="mx-auto max-w-[820px] bg-white p-8 text-[#1a2332] shadow-sm ring-1 ring-black/5 print:max-w-none print:p-0 print:shadow-none print:ring-0"
+        // `print-document` is the marker the print rules in globals.css look
+        // for: it tells them which dialog holds the thing being printed, so a
+        // dialog stacked underneath (Generate Bill → Print Bill) is left off
+        // the page instead of padding it out with blank sheets.
+        className="print-document mx-auto max-w-[820px] bg-white p-8 text-[#1a2332] shadow-sm ring-1 ring-black/5 print:max-w-none print:p-0 print:shadow-none print:ring-0"
       >
+        {/*
+          This document is only ever shown inside BillPrintDialog, and the
+          rules in globals.css have already returned the dialog popup to the
+          normal flow by the time this applies — so the document simply starts
+          at the top of the page and paginates from there.
+
+          It must NOT position itself absolutely to reach the page origin, the
+          way a page-hosted document does: its nearest positioned ancestor is
+          the transformed popup, so `top: 0` would mean the middle of the
+          dialog, and going out of flow collapses the popup and clips the bill
+          away to nothing. That was the blank sheet.
+        */}
         <style>{`
           @media print {
             body * { visibility: hidden !important; }
             #ip-bill-print, #ip-bill-print * { visibility: visible !important; }
-            #ip-bill-print { position: absolute; left: 0; top: 0; width: 100%; }
+            #ip-bill-print { width: 100% !important; max-width: none !important; }
             .no-print { display: none !important; }
             @page { size: A4; margin: 13mm; }
           }
@@ -153,8 +169,10 @@ export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: Admis
               </thead>
               <tbody>
                 {doc.groups.map((g) => (
-                  <>
-                    <tr key={`${g.category}-head`} className="bg-[#eef2f5]">
+                  // A keyed Fragment, not `<>`: the shorthand cannot take a key,
+                  // so React saw an unkeyed list of group blocks here.
+                  <Fragment key={g.category}>
+                    <tr className="bg-[#eef2f5]">
                       <td colSpan={4} className="border border-[#d3d8de] px-2 py-1 font-semibold">{g.label}</td>
                     </tr>
                     {g.lines.map((l, i) => (
@@ -172,7 +190,7 @@ export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: Admis
                         <td className="border border-[#d3d8de] px-2 py-1 text-right">{fmtMoney(l.totalAmount)}</td>
                       </tr>
                     ))}
-                    <tr key={`${g.category}-total`} className="bg-white">
+                    <tr className="bg-white">
                       <td colSpan={3} className="border border-[#d3d8de] px-2 py-1 text-right font-semibold">
                         {g.label} total
                       </td>
@@ -180,7 +198,7 @@ export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: Admis
                         {fmtMoney(g.total)}
                       </td>
                     </tr>
-                  </>
+                  </Fragment>
                 ))}
               </tbody>
             </table>

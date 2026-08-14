@@ -191,4 +191,27 @@ describe('AdmissionBillDocumentView', () => {
     expect(screen.getByText('2 day(s)')).toBeInTheDocument();
     expect(screen.getByText('General / G03')).toBeInTheDocument();
   });
+
+  // -- Printing ------------------------------------------------------------
+  // This document is only ever shown inside a dialog, and printing it produced
+  // a blank sheet. See tests/unit/lib/print-isolation.test.ts for the stylesheet
+  // half of the fix; these two pin what the document itself must do.
+
+  it('marks itself as the document being printed', () => {
+    // The print rules use this marker to tell which of several stacked dialogs
+    // holds the thing being printed.
+    const { container } = render(<AdmissionBillDocumentView doc={makeDoc()} />);
+    expect(container.querySelector('#ip-bill-print')).toHaveClass('print-document');
+  });
+
+  it('does not position itself absolutely to reach the page origin', () => {
+    // Its nearest positioned ancestor is the transformed dialog popup, so
+    // `top: 0` would mean the middle of the dialog — and going out of flow
+    // collapses the popup, which clips the bill away to nothing. That was the
+    // blank sheet. The popup is returned to the normal flow instead.
+    const { container } = render(<AdmissionBillDocumentView doc={makeDoc()} />);
+    const style = container.querySelector('style')!.textContent!;
+    expect(style).toContain('@media print');
+    expect(style).not.toMatch(/position:\s*absolute/);
+  });
 });
