@@ -47,6 +47,7 @@ import {
   type FormularyItem,
   type DrugBatch,
   type PrescriptionListItem,
+  type ExternalPrescription,
   type PharmacySale,
   type PharmacyPaymentMethod,
   type PharmacyTenderInput,
@@ -59,6 +60,7 @@ import { DrugSubstitutesDialog } from '@/components/pharmacy/drug-substitutes-di
 import { StockTypeBadge } from '@/components/shared/stock-type-badge';
 import { BillingSummaryDialog } from '@/components/pharmacy/billing-summary-dialog';
 import { PharmacyReceiptDialog } from '@/components/pharmacy/pharmacy-receipt-dialog';
+import { OutsidePrescriptionDialog } from '@/components/pharmacy/outside-prescription-dialog';
 import { RecallAlertBanner } from '@/components/pharmacy/recall-alert-banner';
 
 export default function PharmacyBillingPage() {
@@ -222,6 +224,10 @@ function PharmacyPOS() {
   // --- Prescription state ---
   const [activePrescriptionId, setActivePrescriptionId] = useState<string | null>(initialPrescriptionId);
   const [prescriptionPickerOpen, setPrescriptionPickerOpen] = useState(false);
+  // A paper prescription captured at the counter. Independent of
+  // activePrescriptionId — a sale is backed by one or the other.
+  const [outsideRxOpen, setOutsideRxOpen] = useState(false);
+  const [externalRx, setExternalRx] = useState<ExternalPrescription | null>(null);
   const prescriptionPickerRef = useRef<HTMLDivElement>(null);
 
   // --- Walk-in medicine search ---
@@ -721,6 +727,8 @@ function PharmacyPOS() {
         const comp = await checkCompliance.mutateAsync({
           items: withBatch.map((c) => ({ drugBatchId: c.batchId as string })),
           prescriptionId: activePrescriptionId || undefined,
+          // A paper Rx backs the sale just as an in-system one does.
+          externalPrescriptionId: externalRx?.id,
         });
         if (!comp.ok) {
           toast.error(comp.blockers.join(' '));
@@ -753,6 +761,7 @@ function PharmacyPOS() {
         // Omitted for walk-in — backend bills it to the tenant Walk-in customer.
         patientId: selectedPatient?.id,
         prescriptionId: activePrescriptionId || undefined,
+        externalPrescriptionId: externalRx?.id,
         items: cart.map((c) => ({
           drugBatchId: c.batchId as string,
           prescriptionItemId: c.prescriptionItemId || undefined,
@@ -774,6 +783,7 @@ function PharmacyPOS() {
       setSplitMode(false);
       setTenders([{ id: 'tender-1', method: 'Cash', amount: '' }]);
       setActivePrescriptionId(null);
+      setExternalRx(null);
       clearPatient();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to create bill';
@@ -911,6 +921,32 @@ function PharmacyPOS() {
               onClick={clearPrescription}
               className="ml-1 text-xs text-muted-foreground hover:text-destructive"
               aria-label="Clear prescription"
+            >
+              <X className="inline h-3 w-3" />
+            </button>
+          )}
+        </div>
+
+        {/* Outside (paper) prescription — the path for a walk-in holding an Rx
+            written elsewhere. Available with or without a patient selected,
+            because most people presenting one are not registered here. */}
+        <div className="flex items-center gap-1">
+          <Button
+            variant={externalRx ? 'secondary' : 'outline'}
+            size="sm"
+            onClick={() => setOutsideRxOpen(true)}
+          >
+            <FileText className="h-4 w-4 mr-1.5" />
+            {externalRx
+              ? `Outside Rx: ${externalRx.prescriberName}${externalRx.prescriberRegNo ? ` (${externalRx.prescriberRegNo})` : ''}`
+              : 'Outside Prescription'}
+          </Button>
+          {externalRx && (
+            <button
+              type="button"
+              onClick={() => setExternalRx(null)}
+              className="text-xs text-muted-foreground hover:text-destructive"
+              aria-label="Clear outside prescription"
             >
               <X className="inline h-3 w-3" />
             </button>
@@ -1792,6 +1828,17 @@ function PharmacyPOS() {
       </Dialog>
 
       <PharmacyReceiptDialog sale={receiptSale} open={receiptOpen} onOpenChange={setReceiptOpen} />
+
+      {/* Capture a paper prescription a walk-in presents at the counter. */}
+      <OutsidePrescriptionDialog
+        open={outsideRxOpen}
+        onOpenChange={setOutsideRxOpen}
+        patientId={selectedPatient?.id ?? null}
+        patientName={
+          selectedPatient ? `${selectedPatient.firstName} ${selectedPatient.lastName ?? ''}`.trim() : null
+        }
+        onCaptured={setExternalRx}
+      />
 
       {/* §4.1 Flow 2: consolidated IP billing / TPA submission summary */}
       <BillingSummaryDialog

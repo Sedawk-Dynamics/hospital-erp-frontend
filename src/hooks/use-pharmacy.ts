@@ -639,7 +639,11 @@ export interface ComplianceResult {
 
 export function useCheckSaleCompliance() {
   return useMutation({
-    mutationFn: async (payload: { items: { drugBatchId: string }[]; prescriptionId?: string }) =>
+    mutationFn: async (payload: {
+      items: { drugBatchId: string }[];
+      prescriptionId?: string;
+      externalPrescriptionId?: string;
+    }) =>
       (await apiPost<ComplianceResult>('/pharmacy/sales/compliance-check', payload)).data,
   });
 }
@@ -1255,6 +1259,9 @@ export interface PharmacyTenderInput {
 export interface CreatePharmacySaleInput {
   patientId?: string;
   prescriptionId?: string;
+  /** A paper prescription captured at the counter — the other way a sale can
+   *  be prescription-backed. */
+  externalPrescriptionId?: string;
   items: PharmacySaleItemInput[];
   // G2: bill-level discount, applied on top of per-item discounts.
   billDiscountPercent?: number;
@@ -2317,3 +2324,107 @@ export function useGstReport(params?: { fromDate?: string; toDate?: string; gstR
   });
 }
 
+
+// ============================================================
+// Outside (paper) prescriptions
+// ============================================================
+// A walk-in arrives holding a prescription written somewhere else, so there is
+// no in-system Prescription to point at. The counter captures the paper one:
+// prescriber, council registration number, date, and a photo of the slip.
+
+export interface ExternalPrescription {
+  id: string;
+  patientId: string | null;
+  patientNameRaw: string | null;
+  patientAge: number | null;
+  patientSex: string | null;
+  /** The Schedule H1 register requires the patient's address. */
+  patientAddress: string | null;
+  prescriberName: string;
+  prescriberRegNo: string | null;
+  prescriberQualification: string | null;
+  hospitalName: string | null;
+  prescribedDate: string | null;
+  /** Doubles as the retained copy a Schedule X sale requires. */
+  imageUrl: string | null;
+  notes: string | null;
+  retainUntil: string | null;
+  createdAt: string;
+  patient?: { id: string; mrn: string; firstName: string; lastName: string | null } | null;
+}
+
+/** What the OCR could make out. A draft for the operator to confirm. */
+export interface PrescriptionOcrResult {
+  model: string;
+  patientName: string | null;
+  patientAge: number | null;
+  patientSex: string | null;
+  patientAddress: string | null;
+  prescriberName: string | null;
+  prescriberRegNo: string | null;
+  prescriberQualification: string | null;
+  hospitalName: string | null;
+  prescribedDate: string | null;
+  medicines: string[];
+  warnings: string[];
+  imageUrl: string | null;
+}
+
+/**
+ * Read a photo of a paper prescription. This creates nothing — a mis-read
+ * registration number would make the statutory register wrong, so the operator
+ * confirms every field before the record is saved.
+ */
+export function useOcrPrescription() {
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const form = new FormData();
+      form.append('file', file);
+      // Clear the JSON default so the browser sets the multipart boundary —
+      // without it multer sees no file and the request 400s.
+      const response = await apiPost<PrescriptionOcrResult>('/pharmacy/external-prescriptions/ocr', form, {
+        headers: { 'Content-Type': undefined },
+      });
+      return response.data;
+    },
+  });
+}
+
+export interface CreateExternalPrescriptionInput {
+  patientId?: string | null;
+  patientNameRaw?: string | null;
+  patientAge?: number | null;
+  patientSex?: 'male' | 'female' | 'other' | null;
+  patientAddress?: string | null;
+  prescriberName: string;
+  prescriberRegNo?: string | null;
+  prescriberQualification?: string | null;
+  hospitalName?: string | null;
+  prescribedDate?: string | null;
+  imageUrl?: string | null;
+  ocrJson?: unknown;
+  notes?: string | null;
+  /** Schedules on the cart, so retention matches the strictest one. */
+  schedules?: DrugSchedule[];
+}
+
+export function useCreateExternalPrescription() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: CreateExternalPrescriptionInput) =>
+      (await apiPost<ExternalPrescription>('/pharmacy/external-prescriptions', payload)).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pharmacy', 'external-prescriptions'] });
+    },
+  });
+}
+
+export function useExternalPrescriptions(params?: { patientId?: string; search?: string; limit?: number }) {
+  return useQuery({
+    queryKey: ['pharmacy', 'external-prescriptions', params],
+    queryFn: async () => {
+      const response = await apiGet<ExternalPrescription[]>('/pharmacy/external-prescriptions', { params });
+      return { data: response.data, meta: response.meta as PaginationMeta | undefined };
+    },
+  });
+}
