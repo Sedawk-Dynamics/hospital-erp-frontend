@@ -112,8 +112,11 @@ export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: Admis
     if (p.address) info.push(['Address', p.address]);
     if (doc.bills.length) info.push(['Bill No.', doc.bills.map((b) => b.billNumber).join(', ')]);
 
+    // Same fallback chain and same wording as the shared PDF footer
+    // (`services/pdf-branding.drawBrandedFooters`), so a hospital that has set
+    // no footer text gets one sentence, not two different ones.
     const footerText =
-      tpl.footer.footerTextOverride || h?.footerText || 'This is a computer-generated bill.';
+      tpl.footer.footerTextOverride || h?.footerText || 'This is a computer-generated document.';
     const before = tpl.blocks.filter((b) => b.position === 'before_body');
     const after = tpl.blocks.filter((b) => b.position === 'after_body');
     const wm = tpl.watermark;
