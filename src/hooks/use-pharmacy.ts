@@ -1262,6 +1262,8 @@ export interface CreatePharmacySaleInput {
   /** A paper prescription captured at the counter — the other way a sale can
    *  be prescription-backed. */
   externalPrescriptionId?: string;
+  /** Second person co-signing a vault-narcotic hand-over. */
+  witnessedById?: string;
   items: PharmacySaleItemInput[];
   // G2: bill-level discount, applied on top of per-item discounts.
   billDiscountPercent?: number;
@@ -1668,6 +1670,11 @@ export interface PrescriptionListItem {
       price?: number | string | null;
       // Stock type, so the queue and the cart can badge non-medicines.
       category?: string | null;
+      // Control profile, so the cart can say what a line requires before the
+      // cashier tries to bill it.
+      schedule?: DrugSchedule | null;
+      controlledClass?: 'narcotic' | 'psychotropic' | null;
+      vaultControlled?: boolean;
     } | null;
   }>;
   // Progress notes a doctor linked to this prescription (visible to anyone who
@@ -2426,5 +2433,26 @@ export function useExternalPrescriptions(params?: { patientId?: string; search?:
       const response = await apiGet<ExternalPrescription[]>('/pharmacy/external-prescriptions', { params });
       return { data: response.data, meta: response.meta as PaginationMeta | undefined };
     },
+  });
+}
+
+// ============================================================
+// Controlled-drug dispensing policy
+// ============================================================
+// 'legacy_block' reproduces the behaviour that shipped for years: a vault
+// narcotic is refused at every ordinary counter. 'inline' lets the dispense
+// finish on the same screen once its requirements are met.
+
+export interface ControlledDrugSettings {
+  mode: 'legacy_block' | 'inline';
+  /** Roles a hospital allows to witness a controlled hand-over. */
+  witnessRoles: string[];
+}
+
+export function useControlledDrugSettings() {
+  return useQuery({
+    queryKey: ['hospital-settings', 'controlled-drugs'],
+    queryFn: async () =>
+      (await apiGet<ControlledDrugSettings>('/hospital-settings/controlled-drugs')).data,
   });
 }

@@ -40,6 +40,7 @@ import {
   useBatchesByDrug,
   useCreatePharmacySale,
   useDispenseIpPrescription,
+  useControlledDrugSettings,
   useResolveScan,
   useCheckSaleCompliance,
   usePrescriptionQueue,
@@ -48,6 +49,7 @@ import {
   type DrugBatch,
   type PrescriptionListItem,
   type ExternalPrescription,
+  type DrugSchedule,
   type PharmacySale,
   type PharmacyPaymentMethod,
   type PharmacyTenderInput,
@@ -61,6 +63,9 @@ import { StockTypeBadge } from '@/components/shared/stock-type-badge';
 import { BillingSummaryDialog } from '@/components/pharmacy/billing-summary-dialog';
 import { PharmacyReceiptDialog } from '@/components/pharmacy/pharmacy-receipt-dialog';
 import { OutsidePrescriptionDialog } from '@/components/pharmacy/outside-prescription-dialog';
+import { useUsersList } from '@/hooks/use-users';
+import { useAuthStore } from '@/stores/auth-store';
+import { ControlledDrugPanel, cartNeedsWitness } from '@/components/pharmacy/controlled-drug-panel';
 import { RecallAlertBanner } from '@/components/pharmacy/recall-alert-banner';
 
 export default function PharmacyBillingPage() {
@@ -110,6 +115,11 @@ interface CartItem {
   // otherwise the Type signal vanishes the moment a consumable joins the bill,
   // which is exactly when the cashier most needs to see it.
   category: string | null;
+  // Drug schedule + NDPS overlay, so the cart can say what this line requires
+  // before the cashier tries to bill it.
+  schedule: DrugSchedule | null;
+  controlledClass: 'narcotic' | 'psychotropic' | null;
+  vaultControlled: boolean;
   // Selected batch (null until the cashier picks one)
   batchId: string | null;
   batchNumber: string;
@@ -228,6 +238,8 @@ function PharmacyPOS() {
   // activePrescriptionId — a sale is backed by one or the other.
   const [outsideRxOpen, setOutsideRxOpen] = useState(false);
   const [externalRx, setExternalRx] = useState<ExternalPrescription | null>(null);
+  // Second person co-signing a vault-narcotic hand-over.
+  const [witnessId, setWitnessId] = useState<string | null>(null);
   const prescriptionPickerRef = useRef<HTMLDivElement>(null);
 
   // --- Walk-in medicine search ---
@@ -348,6 +360,9 @@ function PharmacyPOS() {
           drugName: it.drugName,
           genericName: null,
           category: it.drug?.category ?? null,
+          schedule: it.drug?.schedule ?? null,
+          controlledClass: it.drug?.controlledClass ?? null,
+          vaultControlled: Boolean(it.drug?.vaultControlled),
           batchId: null,
           batchNumber: '-',
           expiryDate: null,
@@ -512,6 +527,9 @@ function PharmacyPOS() {
           drugName: item.drugName,
           genericName: item.genericName,
           category: item.category ?? null,
+          schedule: item.schedule ?? null,
+          controlledClass: item.controlledClass ?? null,
+          vaultControlled: Boolean(item.vaultControlled),
           batchId: null,
           batchNumber: '-',
           expiryDate: null,
@@ -672,6 +690,28 @@ function PharmacyPOS() {
   const fmt = (n: number) =>
     n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+  const { data: controlledSettings } = useControlledDrugSettings();
+  const currentUserId = useAuthStore((st) => st.user?.id) ?? null;
+  // Only fetched when the cart actually holds a vault narcotic — the common
+  // sale should not pull the whole staff list.
+  const needsWitness = cartNeedsWitness(cart);
+  const { data: witnessUsers } = useUsersList(
+    needsWitness ? { isActive: 'true', limit: 200 } : undefined,
+  );
+  const witnessOptions = useMemo(
+    () =>
+      (witnessUsers?.data ?? [])
+        // A witness who is the person dispensing is not a witness, so the
+        // current user is never offered.
+        .filter((u) => u.id !== currentUserId)
+        .map((u) => ({
+          id: u.id,
+          name: `${u.firstName} ${u.lastName ?? ''}`.trim(),
+          role: u.userRoles?.[0]?.role?.name ?? null,
+        })),
+    [witnessUsers, currentUserId],
+  );
+
   const cartHasAllBatches = cart.length > 0 && cart.every((c) => c.batchId !== null);
   // A bill needs a cart with a batch per line. Patient AND prescription are
   // both OPTIONAL — a walk-in / OTC counter sale needs neither. For an IP Rx we
@@ -762,6 +802,7 @@ function PharmacyPOS() {
         patientId: selectedPatient?.id,
         prescriptionId: activePrescriptionId || undefined,
         externalPrescriptionId: externalRx?.id,
+        witnessedById: witnessId ?? undefined,
         items: cart.map((c) => ({
           drugBatchId: c.batchId as string,
           prescriptionItemId: c.prescriptionItemId || undefined,
@@ -784,6 +825,7 @@ function PharmacyPOS() {
       setTenders([{ id: 'tender-1', method: 'Cash', amount: '' }]);
       setActivePrescriptionId(null);
       setExternalRx(null);
+      setWitnessId(null);
       clearPatient();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to create bill';
@@ -1474,6 +1516,17 @@ function PharmacyPOS() {
               )}
             </div>
           )}
+
+          {/* What the controlled lines in this cart require. Renders nothing
+              when the cart holds none, which is the common case. */}
+          <ControlledDrugPanel
+            lines={cart}
+            hasRx={!!activePrescriptionId || !!externalRx}
+            witnessOptions={witnessOptions}
+            witnessId={witnessId}
+            onWitnessChange={setWitnessId}
+            enforced={controlledSettings?.mode === 'inline'}
+          />
 
           {/* Validation warnings */}
           {cart.length > 0 && !cartHasAllBatches && (
