@@ -26,6 +26,9 @@ import { toast } from 'sonner';
 import { usePharmacyRole } from '@/hooks/use-pharmacy-role';
 import { ReturnReceiptDialog } from '@/components/pharmacy/return-receipt-dialog';
 import { usePatientSearch } from '@/hooks/use-hospital';
+import { useUsersList } from '@/hooks/use-users';
+import { useAuthStore } from '@/stores/auth-store';
+import { WitnessCosignDialog } from '@/components/pharmacy/witness-cosign-dialog';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
 import {
   useReturns, useCreateReturn, useBatches, useReturnableDispenses,
@@ -36,6 +39,64 @@ import { useSuppliers } from '@/hooks/use-inventory';
 
 const inr = (n: number | string | null | undefined) =>
   n == null ? '—' : `₹${Number(n).toFixed(2)}`;
+
+
+/**
+ * Re-run a return once a witness has co-signed.
+ *
+ * Rather than duplicating the controlled-drug policy on the client, the server
+ * is asked first and its refusal is the trigger: if it says a witness is
+ * required, the co-sign dialog opens and the same request is retried with the
+ * witness attached. The client never has to know which drugs are vaulted.
+ */
+function needsWitnessCosign(err: unknown): boolean {
+  const m = err instanceof Error ? err.message : '';
+  return /witness/i.test(m);
+}
+
+
+type CosignRetry = (w?: { witnessedById: string; witnessPassword: string }) => Promise<unknown>;
+
+/**
+ * Holds a return that the server refused for want of a witness, so it can be
+ * retried unchanged once someone has co-signed.
+ */
+function useWitnessCosign(onDone: () => void) {
+  const [pending, setPending] = useState<CosignRetry | null>(null);
+  const [busy, setBusy] = useState(false);
+  const { data: users } = useUsersList(pending ? { isActive: 'true', limit: 200 } : undefined);
+  const currentUserId = useAuthStore((st) => st.user?.id) ?? null;
+
+  const options = useMemo(
+    () =>
+      (users?.data ?? [])
+        // A witness who is the person accepting the return is not a witness.
+        .filter((u) => u.id !== currentUserId)
+        .map((u) => ({
+          id: u.id,
+          name: `${u.firstName} ${u.lastName ?? ''}`.trim(),
+          role: u.userRoles?.[0]?.role?.name ?? null,
+        })),
+    [users, currentUserId],
+  );
+
+  const confirm = async (witnessedById: string, witnessPassword: string) => {
+    if (!pending) return;
+    setBusy(true);
+    try {
+      await pending({ witnessedById, witnessPassword });
+      setPending(null);
+      toast.success('Return recorded — the stock is held, not put back on the shelf.');
+      onDone();
+    } catch (err) {
+      toast.error((err as Error).message ?? 'Could not record the return');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return { pending, setPending, busy, options, confirm, close: () => setPending(null) };
+}
 
 type CreateMode = 'patient_return' | 'vendor_return' | 'counter_return';
 
@@ -229,6 +290,7 @@ function CounterReturnDialog({ onClose }: { onClose: () => void }) {
   const results = formularyData?.data ?? [];
 
   const createReturn = useCreateReturn();
+  const cosign = useWitnessCosign(onClose);
 
   // Only offer the loose-unit option when the medicine is sold in sub-units.
   const canSellLoose = !!drug?.packSize && drug.packSize > 1;
@@ -241,8 +303,8 @@ function CounterReturnDialog({ onClose }: { onClose: () => void }) {
     if (refundAmount != null && (isNaN(refundAmount) || refundAmount < 0)) {
       return toast.error('Enter a valid refund amount');
     }
-    try {
-      await createReturn.mutateAsync({
+    const submit = async (witness?: { witnessedById: string; witnessPassword: string }) =>
+      createReturn.mutateAsync({
         returnType: 'counter_return',
         drugId: drug.id,
         quantity,
@@ -251,7 +313,10 @@ function CounterReturnDialog({ onClose }: { onClose: () => void }) {
         expiryDate: expiryDate || undefined,
         reason: reason || undefined,
         refundAmount,
+        ...witness,
       });
+    try {
+      await submit();
       toast.success(
         refundAmount != null && refundAmount > 0
           ? `Counter return recorded — stock restored, ${inr(refundAmount)} refunded`
@@ -259,6 +324,10 @@ function CounterReturnDialog({ onClose }: { onClose: () => void }) {
       );
       onClose();
     } catch (err) {
+      if (needsWitnessCosign(err)) {
+        cosign.setPending(() => submit);
+        return;
+      }
       toast.error((err as Error).message ?? 'Failed to create return');
     }
   };
@@ -413,6 +482,18 @@ function CounterReturnDialog({ onClose }: { onClose: () => void }) {
             {createReturn.isPending ? 'Saving…' : 'Create Return'}
           </Button>
         </DialogFooter>
+
+      {/* The server asked for a co-sign; the witness confirms with their own
+          password and the same return is retried. */}
+      <WitnessCosignDialog
+        open={!!cosign.pending}
+        onOpenChange={(o) => !o && cosign.close()}
+        title="Controlled return — witness required"
+        description="This medicine is a controlled narcotic. A second authorised person must witness the return. It will be held for destruction rather than put back on the shelf."
+        witnessOptions={cosign.options}
+        busy={cosign.busy}
+        onConfirm={cosign.confirm}
+      />
       </DialogContent>
     </Dialog>
   );
@@ -448,6 +529,7 @@ function PatientReturnDialog({ onClose }: { onClose: () => void }) {
     : null;
   const showLines = (mode === 'patient' && !!patient) || (mode === 'bill' && !!submittedBill);
   const createReturn = useCreateReturn();
+  const cosign = useWitnessCosign(onClose);
 
   const maxQty = selectedLine?.remaining ?? 1;
   const refundPreview =
@@ -467,14 +549,17 @@ function PatientReturnDialog({ onClose }: { onClose: () => void }) {
     if (refundAmount != null && (isNaN(refundAmount) || refundAmount < 0)) {
       return toast.error('Enter a valid refund amount');
     }
-    try {
-      const created = await createReturn.mutateAsync({
+    const submit = async (witness?: { witnessedById: string; witnessPassword: string }) =>
+      createReturn.mutateAsync({
         returnType: 'patient_return',
         dispensingRecordId: selectedLine.id,
         quantity,
         reason: reason || undefined,
         refundAmount,
+        ...witness,
       });
+    try {
+      const created = await submit();
       const refunded = created?.refundAmount;
       toast.success(
         refunded != null && Number(refunded) > 0
@@ -483,6 +568,12 @@ function PatientReturnDialog({ onClose }: { onClose: () => void }) {
       );
       onClose();
     } catch (err) {
+      // The server decides whether this drug needs a co-sign; when it does, ask
+      // for one and retry the very same request.
+      if (needsWitnessCosign(err)) {
+        cosign.setPending(() => submit);
+        return;
+      }
       toast.error((err as Error).message ?? 'Failed to create return');
     }
   };
@@ -685,6 +776,18 @@ function PatientReturnDialog({ onClose }: { onClose: () => void }) {
             {createReturn.isPending ? 'Saving…' : 'Create Return'}
           </Button>
         </DialogFooter>
+
+      {/* The server asked for a co-sign; the witness confirms with their own
+          password and the same return is retried. */}
+      <WitnessCosignDialog
+        open={!!cosign.pending}
+        onOpenChange={(o) => !o && cosign.close()}
+        title="Controlled return — witness required"
+        description="This medicine is a controlled narcotic. A second authorised person must witness the return. It will be held for destruction rather than put back on the shelf."
+        witnessOptions={cosign.options}
+        busy={cosign.busy}
+        onConfirm={cosign.confirm}
+      />
       </DialogContent>
     </Dialog>
   );

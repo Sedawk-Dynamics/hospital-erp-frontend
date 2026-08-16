@@ -27,9 +27,8 @@ const MORPHINE = line({ drugName: 'Morphine', schedule: 'H1', controlledClass: '
 
 const base = {
   hasRx: false,
-  witnessOptions: [{ id: 'u2', name: 'Priya N', role: 'nurse' }],
-  witnessId: null,
-  onWitnessChange: vi.fn(),
+  witnessName: null,
+  onRequestWitness: vi.fn(),
   enforced: true,
 };
 
@@ -85,13 +84,20 @@ describe('ControlledDrugPanel', () => {
     expect(screen.getByText(/keeps the register complete/i)).toBeInTheDocument();
   });
 
-  it('offers a witness picker only for a vault narcotic', () => {
+  it('asks for a witness only on a vault narcotic', () => {
     const { rerender } = render(<ControlledDrugPanel {...base} lines={[TRAMADOL]} />);
-    expect(screen.queryByLabelText(/witness/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /witness/i })).not.toBeInTheDocument();
 
     rerender(<ControlledDrugPanel {...base} lines={[MORPHINE]} />);
-    expect(screen.getByLabelText(/witness/i)).toBeInTheDocument();
-    expect(screen.getByText(/someone other than you/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /add witness/i })).toBeInTheDocument();
+    // The password is what makes a co-sign real, so the panel says so.
+    expect(screen.getByText(/own password/i)).toBeInTheDocument();
+  });
+
+  it('confirms once someone has co-signed', () => {
+    render(<ControlledDrugPanel {...base} lines={[MORPHINE]} witnessName="Priya N" />);
+    expect(screen.getByText(/Witnessed by Priya N/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /change witness/i })).toBeInTheDocument();
   });
 
   it('marks a vault line as safe custody', () => {

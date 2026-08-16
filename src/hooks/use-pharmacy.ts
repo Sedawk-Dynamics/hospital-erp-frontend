@@ -1264,6 +1264,8 @@ export interface CreatePharmacySaleInput {
   externalPrescriptionId?: string;
   /** Second person co-signing a vault-narcotic hand-over. */
   witnessedById?: string;
+  /** That person's OWN password, proving they were present. Never stored. */
+  witnessPassword?: string;
   items: PharmacySaleItemInput[];
   // G2: bill-level discount, applied on top of per-item discounts.
   billDiscountPercent?: number;
@@ -1439,6 +1441,10 @@ export function useCreateReturn() {
   return useMutation({
     mutationFn: async (data: {
       returnType: 'patient_return' | 'vendor_return' | 'counter_return';
+      // A controlled return is witnessed when it is taken back — returns apply
+      // immediately, so there is no later approve step to witness at.
+      witnessedById?: string;
+      witnessPassword?: string;
       // Optional when dispensingRecordId is supplied — the batch is taken from
       // the original sale line.
       drugBatchId?: string;

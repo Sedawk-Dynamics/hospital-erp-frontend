@@ -1,14 +1,7 @@
 'use client';
 
 import { ShieldAlert, Lock, FileCheck2 } from 'lucide-react';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
 import type { DrugSchedule } from '@/hooks/use-pharmacy';
 
 /**
@@ -54,17 +47,17 @@ export function cartNeedsWitness(lines: ControlledLine[]): boolean {
 export function ControlledDrugPanel({
   lines,
   hasRx,
-  witnessOptions,
-  witnessId,
-  onWitnessChange,
+  witnessName,
+  onRequestWitness,
   enforced,
 }: {
   lines: ControlledLine[];
   /** True when either an in-system or an outside prescription is attached. */
   hasRx: boolean;
-  witnessOptions: WitnessOption[];
-  witnessId: string | null;
-  onWitnessChange: (id: string | null) => void;
+  /** Who has already co-signed, if anyone. */
+  witnessName: string | null;
+  /** Opens the co-sign dialog, where the witness enters their own password. */
+  onRequestWitness: () => void;
   /**
    * False while the hospital is still on the legacy block. The panel then
    * informs rather than demands — nothing is being enforced yet.
@@ -76,7 +69,7 @@ export function ControlledDrugPanel({
 
   const needsWitness = cartNeedsWitness(controlled);
   const rxMissing = enforced && !hasRx;
-  const witnessMissing = enforced && needsWitness && !witnessId;
+  const witnessMissing = enforced && needsWitness && !witnessName;
 
   return (
     <div className="rounded-xl border border-warning/40 bg-warning/5 overflow-hidden">
@@ -119,31 +112,17 @@ export function ControlledDrugPanel({
 
         {needsWitness && (
           <div className="space-y-1.5">
-            <Label htmlFor="controlled-witness" className="text-xs">
-              Witness {enforced ? '*' : '(recommended)'}
-            </Label>
-            <Select
-              value={witnessId ?? ''}
-              onValueChange={(v: string | null) => onWitnessChange(v || null)}
-            >
-              <SelectTrigger
-                id="controlled-witness"
-                className={witnessMissing ? 'border-error' : undefined}
-              >
-                <SelectValue placeholder="Select a second person to co-sign" />
-              </SelectTrigger>
-              <SelectContent>
-                {witnessOptions.map((w) => (
-                  <SelectItem key={w.id} value={w.id}>
-                    {w.name}
-                    {w.role ? ` · ${w.role}` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-[11px] text-muted-foreground">
-              Must be someone other than you — that is the point of a witness.
+            <p className={`text-xs ${witnessMissing ? 'font-semibold text-error' : 'text-muted-foreground'}`}>
+              {witnessName
+                ? `✓ Witnessed by ${witnessName}.`
+                : enforced
+                  ? 'A second authorised person must co-sign with their own password.'
+                  : 'A second person would normally co-sign this hand-over.'}
             </p>
+            <Button type="button" variant="outline" size="sm" onClick={onRequestWitness}>
+              <Lock className="mr-1.5 h-3.5 w-3.5" />
+              {witnessName ? 'Change witness' : 'Add witness'}
+            </Button>
           </div>
         )}
       </div>

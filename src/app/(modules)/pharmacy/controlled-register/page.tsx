@@ -80,8 +80,21 @@ export default function ControlledRegisterPage() {
           <Button variant="outline" size="sm" disabled={!rows.length} onClick={() => downloadCsv('controlled-drug-register', csvRows)}>
             <Download className="mr-1.5 h-4 w-4" /> Export
           </Button>
-          <Button variant="outline" size="sm" disabled={!rows.length} onClick={() => window.print()}>
-            <Printer className="mr-1.5 h-4 w-4" /> Print Register Format
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!rows.length}
+            onClick={() => {
+              // The statutory document: licence block, summary, ledger and a
+              // signature line. Opened rather than downloaded, because this is
+              // a record that gets printed and signed.
+              const qs = new URLSearchParams(
+                Object.entries(applied).filter(([, v]) => v != null && v !== '') as [string, string][],
+              );
+              window.open(`/api/v1/pharmacy/controlled-register/pdf?${qs}`, '_blank');
+            }}
+          >
+            <Printer className="mr-1.5 h-4 w-4" /> Register (PDF)
           </Button>
         </div>
 

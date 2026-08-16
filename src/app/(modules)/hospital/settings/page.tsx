@@ -58,6 +58,7 @@ const settingsGroups: SettingsGroup[] = [
     icon: ShieldCheck,
     items: [
       { label: 'Audit Logs', href: '/hospital/audit-logs' },
+      { label: 'Controlled Drugs', href: '/hospital/settings/controlled-drugs' },
     ],
   },
 ];

@@ -66,6 +66,7 @@ import { OutsidePrescriptionDialog } from '@/components/pharmacy/outside-prescri
 import { useUsersList } from '@/hooks/use-users';
 import { useAuthStore } from '@/stores/auth-store';
 import { ControlledDrugPanel, cartNeedsWitness } from '@/components/pharmacy/controlled-drug-panel';
+import { WitnessCosignDialog } from '@/components/pharmacy/witness-cosign-dialog';
 import { RecallAlertBanner } from '@/components/pharmacy/recall-alert-banner';
 
 export default function PharmacyBillingPage() {
@@ -238,8 +239,11 @@ function PharmacyPOS() {
   // activePrescriptionId — a sale is backed by one or the other.
   const [outsideRxOpen, setOutsideRxOpen] = useState(false);
   const [externalRx, setExternalRx] = useState<ExternalPrescription | null>(null);
-  // Second person co-signing a vault-narcotic hand-over.
+  // Second person co-signing a vault-narcotic hand-over. The password is held
+  // only until the sale is submitted — it authorises that one request.
   const [witnessId, setWitnessId] = useState<string | null>(null);
+  const [witnessPassword, setWitnessPassword] = useState<string | null>(null);
+  const [witnessDialogOpen, setWitnessDialogOpen] = useState(false);
   const prescriptionPickerRef = useRef<HTMLDivElement>(null);
 
   // --- Walk-in medicine search ---
@@ -803,6 +807,7 @@ function PharmacyPOS() {
         prescriptionId: activePrescriptionId || undefined,
         externalPrescriptionId: externalRx?.id,
         witnessedById: witnessId ?? undefined,
+        witnessPassword: witnessPassword ?? undefined,
         items: cart.map((c) => ({
           drugBatchId: c.batchId as string,
           prescriptionItemId: c.prescriptionItemId || undefined,
@@ -826,6 +831,7 @@ function PharmacyPOS() {
       setActivePrescriptionId(null);
       setExternalRx(null);
       setWitnessId(null);
+      setWitnessPassword(null);
       clearPatient();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to create bill';
@@ -1522,9 +1528,8 @@ function PharmacyPOS() {
           <ControlledDrugPanel
             lines={cart}
             hasRx={!!activePrescriptionId || !!externalRx}
-            witnessOptions={witnessOptions}
-            witnessId={witnessId}
-            onWitnessChange={setWitnessId}
+            witnessName={witnessOptions.find((w) => w.id === witnessId)?.name ?? null}
+            onRequestWitness={() => setWitnessDialogOpen(true)}
             enforced={controlledSettings?.mode === 'inline'}
           />
 
@@ -1881,6 +1886,20 @@ function PharmacyPOS() {
       </Dialog>
 
       <PharmacyReceiptDialog sale={receiptSale} open={receiptOpen} onOpenChange={setReceiptOpen} />
+
+      {/* A second authorised person co-signs a vault-narcotic hand-over with
+          their own password — a name picked from a list proves nothing. */}
+      <WitnessCosignDialog
+        open={witnessDialogOpen}
+        onOpenChange={setWitnessDialogOpen}
+        description="This sale includes a narcotic held in the safe. A second authorised person must co-sign the hand-over."
+        witnessOptions={witnessOptions}
+        onConfirm={(id, password) => {
+          setWitnessId(id);
+          setWitnessPassword(password);
+          setWitnessDialogOpen(false);
+        }}
+      />
 
       {/* Capture a paper prescription a walk-in presents at the counter. */}
       <OutsidePrescriptionDialog
