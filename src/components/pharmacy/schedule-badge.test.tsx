@@ -1,12 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { ScheduleBadge, ControlledBadge } from './schedule-badge';
+import { ScheduleBadge, ControlledBadge, QrBadge } from './schedule-badge';
 
 /**
- * The two chips carry a legal claim about a medicine, so what they say — and
+ * The three chips carry a legal claim about a medicine, so what they say — and
  * what they DON'T say — matters. In particular a Schedule H1 psychotropic like
  * tramadol must read as "needs a prescription and a register line", never as
- * "keep it in the safe".
+ * "keep it in the safe"; and the QR chip must never read as a prescription
+ * gate, because most of the H2 list is over-the-counter.
  */
 
 describe('ScheduleBadge', () => {
@@ -54,6 +55,30 @@ describe('ScheduleBadge', () => {
     render(<ScheduleBadge schedule="G" />);
     const title = screen.getByText('Schedule G').closest('[title]')?.getAttribute('title') ?? '';
     expect(title).toMatch(/not a prescription drug/i);
+  });
+});
+
+describe('QrBadge', () => {
+  it('shows a QR chip for a Schedule H2 formulation', () => {
+    render(<QrBadge requiresQrScan />);
+    expect(screen.getByText('QR tracked')).toBeInTheDocument();
+  });
+
+  it('stays hidden for everything else', () => {
+    const { container, rerender } = render(<QrBadge requiresQrScan={false} />);
+    expect(container).toBeEmptyDOMElement();
+    rerender(<QrBadge requiresQrScan={null} />);
+    expect(container).toBeEmptyDOMElement();
+    rerender(<QrBadge />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('never claims a prescription is needed', () => {
+    // Most of the H2 list is OTC — a pregnancy test kit and two multivitamins
+    // among them. Wording this as a prescription gate would be wrong.
+    render(<QrBadge requiresQrScan />);
+    const title = screen.getByText('QR tracked').closest('[title]')?.getAttribute('title') ?? '';
+    expect(title).toMatch(/not a prescription requirement/i);
   });
 });
 

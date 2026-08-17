@@ -20,7 +20,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ScheduleBadge, ControlledBadge } from '@/components/pharmacy/schedule-badge';
+import { ScheduleBadge, ControlledBadge, QrBadge } from '@/components/pharmacy/schedule-badge';
 import { Input } from '@/components/ui/input';
 import {
   Dialog,
@@ -102,9 +102,11 @@ export default function SuperAdminDrugMasterPage() {
     includeDiscontinued: true,
     ...(scheduleFilter === 'controlled'
       ? { controlled: true }
-      : scheduleFilter
-        ? { schedule: scheduleFilter as never }
-        : {}),
+      : scheduleFilter === 'qr'
+        ? { qrTracked: true }
+        : scheduleFilter
+          ? { schedule: scheduleFilter as never }
+          : {}),
   });
   const createDrug = useCreateDrugMaster();
   const updateDrug = useUpdateDrugMaster();
@@ -251,7 +253,7 @@ export default function SuperAdminDrugMasterPage() {
             <option value="X">Schedule X</option>
             <option value="H1">Schedule H1</option>
             <option value="H">Schedule H</option>
-            <option value="H2">Schedule H2</option>
+            <option value="qr">QR tracked (Schedule H2)</option>
             <option value="G">Schedule G</option>
             <option value="OTC">OTC</option>
           </select>
@@ -319,6 +321,7 @@ export default function SuperAdminDrugMasterPage() {
                           controlledClass={d.controlledClass}
                           vaultControlled={d.vaultControlled}
                         />
+                        <QrBadge requiresQrScan={d.requiresQrScan} />
                       </div>
                     </td>
                     <td className="py-2 px-2 text-right text-xs">
@@ -504,6 +507,7 @@ export default function SuperAdminDrugMasterPage() {
                       controlledClass={editing.controlledClass}
                       vaultControlled={editing.vaultControlled}
                     />
+                    <QrBadge requiresQrScan={editing.requiresQrScan} />
                     <span className="text-[11px] text-muted-foreground">
                       {editing.scheduleReason ?? 'Resolved from the composition.'}
                     </span>

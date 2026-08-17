@@ -235,6 +235,8 @@ export interface DrugMasterListParams {
   schedule?: DrugSchedule;
   /** Drugs the NDPS list names, whatever their schedule. */
   controlled?: boolean;
+  /** Schedule H2 formulations, whose packs must be QR-scanned at sale. */
+  qrTracked?: boolean;
 }
 
 export function useDrugMasterList(params?: DrugMasterListParams) {

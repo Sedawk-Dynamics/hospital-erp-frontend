@@ -6,13 +6,17 @@ import { cn } from '@/lib/utils';
 import type { DrugSchedule } from '@/hooks/use-pharmacy';
 
 /**
- * The drug's schedule under the Drugs & Cosmetics Rules 1945, and — separately —
- * whether the NDPS list names it.
+ * Three independent facts about a medicine, shown as three chips because
+ * collapsing any two of them misleads:
  *
- * These are two independent facts and the UI shows them as two chips, because
- * collapsing them misleads: tramadol is Schedule H1 (so the counter needs a
- * prescription and a register line) AND a psychotropic (so it belongs in the
- * controlled-drug register), while never needing safe custody.
+ *   ScheduleBadge    what the counter must collect (Drugs & Cosmetics Rules)
+ *   ControlledBadge  whether the NDPS list names it, and which register
+ *   QrBadge          whether the pack must be scanned (Schedule H2)
+ *
+ * Tramadol is Schedule H1 — prescription plus a register line — AND a
+ * psychotropic, so it belongs in the controlled register, yet never needs safe
+ * custody. Dolo 650 is on the H2 anti-counterfeiting list yet is plain OTC.
+ * One chip could not say either of those things.
  *
  * Advisory only for now — nothing here blocks a sale.
  */
@@ -35,10 +39,13 @@ const SCHEDULE_STYLE: Record<DrugSchedule, { label: string; className: string; t
     className: 'bg-info/15 text-info border-info/30',
     title: 'Schedule H — prescription drug. To be sold on the prescription of a registered medical practitioner.',
   },
+  // Kept only so a row overridden to H2 by hand before the classifier stopped
+  // treating it as a schedule still renders. Nothing produces this any more —
+  // the QR obligation is QrBadge.
   H2: {
     label: 'Schedule H2',
     className: 'bg-primary/15 text-primary border-primary/30',
-    title: 'Schedule H2 — a named formulation carrying a QR/barcode tracking obligation. Not a prescription gate.',
+    title: 'Schedule H2 — a QR/barcode tracking obligation, not a prescription gate.',
   },
   G: {
     label: 'Schedule G',
@@ -84,6 +91,34 @@ export function ScheduleBadge({
       {schedule === 'H2' ? <QrCode className="h-3 w-3 shrink-0" /> : null}
       {style.label}
       {source === 'manual' ? <span className="opacity-70">•</span> : null}
+    </Badge>
+  );
+}
+
+/**
+ * Schedule H2 — the ~300 formulations notified under Rule 96(6)-(7) whose packs
+ * carry a QR/barcode so they can be authenticated. It rides ALONGSIDE the
+ * schedule: a drug can be OTC and QR-tracked, or Schedule H and QR-tracked.
+ */
+export function QrBadge({
+  requiresQrScan,
+  className,
+}: {
+  requiresQrScan?: boolean | null;
+  className?: string;
+}) {
+  if (!requiresQrScan) return null;
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        'gap-1 text-[10px] font-semibold bg-primary/15 text-primary border-primary/30',
+        className,
+      )}
+      title="Schedule H2 formulation — the pack carries a QR/barcode to be scanned at sale so it can be authenticated. This is an anti-counterfeiting obligation, not a prescription requirement."
+    >
+      <QrCode className="h-3 w-3 shrink-0" />
+      QR tracked
     </Badge>
   );
 }
