@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { DrugSchedule } from './use-pharmacy';
 import { apiGet, apiPost, apiPut, apiDelete, apiClient } from '@/lib/api';
 import type { DosageForm } from './use-pharmacy';
 
@@ -19,7 +20,18 @@ export interface DrugMaster {
   packSizeLabel: string | null;
   mrp: number | string | null;
   isDiscontinued: boolean;
+  // The hand-typed legacy field. Left NULL platform-wide on purpose: the old
+  // counter compliance check reads it, so filling it would switch enforcement
+  // on as a side effect. Use scheduleResolved below for what the drug IS.
   schedule: string | null;
+  // ── Resolved by the schedule classifier from the composition ──
+  scheduleResolved?: DrugSchedule | null;
+  /** Why — e.g. "Schedule H1 — matched Tramadol." */
+  scheduleReason?: string | null;
+  /** NDPS overlay, independent of the schedule. */
+  controlledClass?: 'narcotic' | 'psychotropic' | null;
+  vaultControlled?: boolean;
+  requiresQrScan?: boolean;
   // Product Resolution Engine / compliance identity.
   gtin?: string | null;
   casePackGtin?: string | null;
@@ -219,6 +231,10 @@ export interface DrugMasterListParams {
   search?: string;
   isPublished?: boolean;
   includeDiscontinued?: boolean;
+  /** Filter on the classifier's answer, not the legacy column. */
+  schedule?: DrugSchedule;
+  /** Drugs the NDPS list names, whatever their schedule. */
+  controlled?: boolean;
 }
 
 export function useDrugMasterList(params?: DrugMasterListParams) {

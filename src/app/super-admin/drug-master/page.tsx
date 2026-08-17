@@ -20,6 +20,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ScheduleBadge, ControlledBadge } from '@/components/pharmacy/schedule-badge';
 import { Input } from '@/components/ui/input';
 import {
   Dialog,
@@ -80,6 +81,8 @@ const EMPTY: DrugMasterInput = {
 export default function SuperAdminDrugMasterPage() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
+  // '' | a schedule code | 'controlled' (cuts across schedules)
+  const [scheduleFilter, setScheduleFilter] = useState('');
   const [page, setPage] = useState(1);
   const limit = 25;
 
@@ -97,6 +100,11 @@ export default function SuperAdminDrugMasterPage() {
     limit,
     search: search || undefined,
     includeDiscontinued: true,
+    ...(scheduleFilter === 'controlled'
+      ? { controlled: true }
+      : scheduleFilter
+        ? { schedule: scheduleFilter as never }
+        : {}),
   });
   const createDrug = useCreateDrugMaster();
   const updateDrug = useUpdateDrugMaster();
@@ -230,6 +238,23 @@ export default function SuperAdminDrugMasterPage() {
               className="pl-8 h-8 text-xs"
             />
           </div>
+          {/* Filter on what the classifier resolved. "Controlled" cuts across
+              the schedules — tramadol is Schedule H1 AND a psychotropic. */}
+          <select
+            aria-label="Filter by schedule"
+            className="h-8 rounded-md border bg-background px-2 text-xs"
+            value={scheduleFilter}
+            onChange={(e) => { setScheduleFilter(e.target.value); setPage(1); }}
+          >
+            <option value="">All schedules</option>
+            <option value="controlled">Controlled (NDPS)</option>
+            <option value="X">Schedule X</option>
+            <option value="H1">Schedule H1</option>
+            <option value="H">Schedule H</option>
+            <option value="H2">Schedule H2</option>
+            <option value="G">Schedule G</option>
+            <option value="OTC">OTC</option>
+          </select>
           {isFetching && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
         </div>
 
@@ -252,6 +277,7 @@ export default function SuperAdminDrugMasterPage() {
                   <th className="text-left py-2 px-2">Generic / Composition</th>
                   <th className="text-left py-2 px-2">Manufacturer</th>
                   <th className="text-left py-2 px-2">Form</th>
+                  <th className="text-left py-2 px-2">Schedule</th>
                   <th className="text-right py-2 px-2">MRP ₹</th>
                   <th className="text-left py-2 px-2">Status</th>
                   <th className="w-10" />
@@ -274,6 +300,27 @@ export default function SuperAdminDrugMasterPage() {
                     </td>
                     <td className="py-2 px-2 text-xs text-muted-foreground">{d.manufacturer ?? '—'}</td>
                     <td className="py-2 px-2 text-xs capitalize">{d.dosageForm ?? '—'}</td>
+                    <td className="py-2 px-2">
+                      {/* What the classifier resolved from the composition.
+                          OTC is shown here (unlike the pharmacy list) because a
+                          blank cell in a catalog reads as "not yet classified",
+                          which is a different and important state. */}
+                      <div className="flex flex-wrap items-center gap-1">
+                        {d.scheduleResolved ? (
+                          <ScheduleBadge
+                            schedule={d.scheduleResolved}
+                            reason={d.scheduleReason}
+                            showOtc
+                          />
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground">not classified</span>
+                        )}
+                        <ControlledBadge
+                          controlledClass={d.controlledClass}
+                          vaultControlled={d.vaultControlled}
+                        />
+                      </div>
+                    </td>
                     <td className="py-2 px-2 text-right text-xs">
                       {d.mrp != null ? `₹ ${Number(d.mrp).toLocaleString('en-IN')}` : '—'}
                     </td>
@@ -438,12 +485,46 @@ export default function SuperAdminDrugMasterPage() {
                 }
               />
             </div>
-            <div>
-              <label className="text-xs font-medium">Schedule (H/H1/X)</label>
+            <div className="col-span-2 space-y-1.5">
+              <label className="text-xs font-medium">Schedule</label>
+              {/* Two different things share this name, and confusing them is
+                  how a drug ends up mis-labelled. The classifier's answer is
+                  derived from the composition and is what the pharmacy acts on;
+                  the box below is a legacy hand-typed field that the platform
+                  leaves empty on purpose. */}
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
+                {editing?.scheduleResolved ? (
+                  <>
+                    <ScheduleBadge
+                      schedule={editing.scheduleResolved}
+                      reason={editing.scheduleReason}
+                      showOtc
+                    />
+                    <ControlledBadge
+                      controlledClass={editing.controlledClass}
+                      vaultControlled={editing.vaultControlled}
+                    />
+                    <span className="text-[11px] text-muted-foreground">
+                      {editing.scheduleReason ?? 'Resolved from the composition.'}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-[11px] text-muted-foreground">
+                    Not classified yet — the classifier runs on every deploy.
+                  </span>
+                )}
+              </div>
               <Input
+                placeholder="Legacy override (normally left blank)"
                 value={form.schedule ?? ''}
                 onChange={(e) => setForm((p) => ({ ...p, schedule: e.target.value }))}
               />
+              <p className="text-[11px] text-muted-foreground">
+                The badge above is what the pharmacy uses. This box writes the old
+                <code className="mx-1">schedule</code> column, which the counter's compliance
+                check still reads — filling it switches enforcement on for this drug in every
+                hospital, so leave it empty unless that is what you intend.
+              </p>
             </div>
             <div>
               <label className="text-xs font-medium">Type</label>
