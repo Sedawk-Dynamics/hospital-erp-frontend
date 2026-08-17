@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { DrugSchedule } from './use-pharmacy';
-import { apiGet, apiPost, apiPut, apiDelete, apiClient } from '@/lib/api';
+import { apiGet, apiPost, apiPut, apiPatch, apiDelete, apiClient } from '@/lib/api';
 import type { DosageForm } from './use-pharmacy';
 
 // ============================================================
@@ -381,6 +381,88 @@ export function useStartRefresh() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['drug-master', 'refresh-status'] });
+      qc.invalidateQueries({ queryKey: drugMasterKeys.all });
+    },
+  });
+}
+
+// ── Salt review queue ──────────────────────────────────────────────────────
+// A molecule no published schedule names is stored UNDECIDED rather than
+// over-the-counter, so it appears here as work instead of quietly reading as
+// safe. Ranked by product count, because that is the order in which the
+// decisions matter.
+
+export interface Salt {
+  id: string;
+  name: string;
+  norm: string;
+  scheduleCode: DrugSchedule | null;
+  controlledClass: 'narcotic' | 'psychotropic' | null;
+  vaultControlled: boolean;
+  source: 'cdsco' | 'class' | 'ndps' | 'manual' | null;
+  scheduleNote: string | null;
+  reviewedAt: string | null;
+  productCount: number;
+  synonyms: string[];
+  classes: string[];
+}
+
+export interface SaltReviewSummary {
+  undecided: number;
+  decided: number;
+  manual: number;
+  /** Catalog products containing at least one undecided molecule. */
+  productsAffected: number;
+}
+
+export interface SaltListParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: 'undecided' | 'decided' | 'all';
+  schedule?: DrugSchedule;
+  controlled?: boolean;
+}
+
+export const saltKeys = {
+  all: ['salts'] as const,
+  list: (p?: Record<string, unknown>) => ['salts', 'list', p ?? {}] as const,
+  summary: () => ['salts', 'summary'] as const,
+};
+
+export function useSalts(params?: SaltListParams) {
+  return useQuery({
+    queryKey: saltKeys.list(params as Record<string, unknown> | undefined),
+    queryFn: async () => {
+      const response = await apiGet<Salt[]>('/drug-master/salts', { params });
+      return { data: response.data ?? [], meta: response.meta as PaginationMeta | undefined };
+    },
+  });
+}
+
+export function useSaltReviewSummary() {
+  return useQuery({
+    queryKey: saltKeys.summary(),
+    queryFn: async () => (await apiGet<SaltReviewSummary>('/drug-master/salts/summary')).data,
+  });
+}
+
+export interface SaltDecision {
+  scheduleCode: DrugSchedule | null;
+  controlledClass?: 'narcotic' | 'psychotropic' | null;
+  vaultControlled?: boolean;
+  note?: string | null;
+}
+
+export function useDecideSalt() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: SaltDecision }) =>
+      (await apiPatch<Salt>(`/drug-master/salts/${id}`, data)).data,
+    onSuccess: () => {
+      // The decision re-classifies every product containing the molecule, so
+      // the catalog list is stale too, not just the queue.
+      qc.invalidateQueries({ queryKey: saltKeys.all });
       qc.invalidateQueries({ queryKey: drugMasterKeys.all });
     },
   });
