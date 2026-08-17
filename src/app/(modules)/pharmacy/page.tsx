@@ -767,13 +767,38 @@ function PharmacyPOS() {
       // Automated compliance validation (spec Section 2): surface HSN/GST/Schedule
       // warnings and hard-block a Schedule-X-without-Rx sale before charging.
       const withBatch = cart.filter((c) => c.batchId);
+      // Schedule H2 pack codes, keyed by batch. Collected below when the
+      // compliance check asks for them, and carried into the sale so the
+      // pre-check and the gate see the same thing.
+      const packCodes: Record<string, string> = {};
       if (withBatch.length) {
-        const comp = await checkCompliance.mutateAsync({
-          items: withBatch.map((c) => ({ drugBatchId: c.batchId as string })),
-          prescriptionId: activePrescriptionId || undefined,
-          // A paper Rx backs the sale just as an in-system one does.
-          externalPrescriptionId: externalRx?.id,
-        });
+        const runCheck = () =>
+          checkCompliance.mutateAsync({
+            items: withBatch.map((c) => ({
+              drugBatchId: c.batchId as string,
+              scannedCode: packCodes[c.batchId as string] ?? undefined,
+            })),
+            prescriptionId: activePrescriptionId || undefined,
+            // A paper Rx backs the sale just as an in-system one does.
+            externalPrescriptionId: externalRx?.id,
+          });
+
+        let comp = await runCheck();
+
+        // Schedule H2 — the Rule 96(6)-(7) pack check. Ask for the code for
+        // exactly the packs the server named, then re-check. Without this,
+        // 'require' mode would make an H2 medicine unsellable with no way to
+        // satisfy it, which is worse than not enforcing it at all.
+        if (comp.needsScan?.length) {
+          for (const n of comp.needsScan) {
+            const code = window.prompt(
+              `${n.drugName} is a Schedule H2 formulation.\n\nScan or type the QR/barcode printed on the pack to confirm it is genuine.\nLeave blank to continue without it.`,
+            );
+            if (code && code.trim()) packCodes[n.drugBatchId] = code.trim();
+          }
+          if (Object.keys(packCodes).length) comp = await runCheck();
+        }
+
         if (!comp.ok) {
           toast.error(comp.blockers.join(' '));
           return;
@@ -810,6 +835,8 @@ function PharmacyPOS() {
         witnessPassword: witnessPassword ?? undefined,
         items: cart.map((c) => ({
           drugBatchId: c.batchId as string,
+          // The Schedule H2 pack code, when the counter read one.
+          scannedCode: packCodes[c.batchId as string] || undefined,
           prescriptionItemId: c.prescriptionItemId || undefined,
           quantity: c.quantity,
           saleUnit: c.saleUnit,

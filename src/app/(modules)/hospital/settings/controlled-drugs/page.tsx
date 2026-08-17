@@ -32,6 +32,7 @@ export default function ControlledDrugSettingsPage() {
   const saveLicence = useUpdateDrugLicence();
 
   const [mode, setMode] = useState<'legacy_block' | 'inline'>('legacy_block');
+  const [qrScanMode, setQrScanMode] = useState<'off' | 'warn' | 'require'>('warn');
   const [roles, setRoles] = useState<string[]>([]);
   const [lic, setLic] = useState<DrugLicenceSettings>({
     retailLicenceNumber: '', wholesaleLicenceNumber: '', ndpsLicenceNumber: '',
@@ -41,6 +42,7 @@ export default function ControlledDrugSettingsPage() {
   useSeedOnChange(policy ? 'controlled-drugs' : null, () => {
     if (!policy) return;
     setMode(policy.mode);
+    setQrScanMode(policy.qrScanMode ?? 'warn');
     setRoles(policy.witnessRoles);
   });
   useSeedOnChange(licence ? 'drug-licence' : null, () => {
@@ -58,7 +60,7 @@ export default function ControlledDrugSettingsPage() {
       return;
     }
     try {
-      await savePolicy.mutateAsync({ mode, witnessRoles: roles });
+      await savePolicy.mutateAsync({ mode, witnessRoles: roles, qrScanMode });
       toast.success('Controlled-drug policy saved.');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not save the policy');
@@ -111,6 +113,43 @@ export default function ControlledDrugSettingsPage() {
               title="Collect the requirements on the same screen"
               body="A controlled medicine is dispensed where the user already is, once its requirements are met: Schedule H1 and X need a prescription (an outside one counts), and a vault narcotic additionally needs a second authorised person to co-sign with their own password. Nothing is refused without saying what is missing."
               warning="Switching this on starts requiring a prescription for every Schedule H1 and X medicine at the counter. Check how many of your stocked drugs that covers before you flip it."
+            />
+          </div>
+        )}
+      </section>
+
+      {/* ── Schedule H2 pack check ── */}
+      <section className="space-y-3 rounded-xl border bg-card p-4">
+        <h2 className="text-sm font-bold">Schedule H2 — checking a pack is genuine</h2>
+        <p className="text-xs text-muted-foreground">
+          Schedule H2 is a list of 300 named formulations whose packs must carry a QR code or
+          barcode, so a counter can confirm the pack is not counterfeit. It is <strong>not</strong> a
+          prescription category, and it does not change a medicine&rsquo;s schedule &mdash; the same
+          list holds a pregnancy test and two multivitamins alongside meropenem. It is set here
+          separately for exactly that reason.
+        </p>
+        {isLoading ? (
+          <Skeleton className="h-28 w-full" />
+        ) : (
+          <div className="space-y-2">
+            <ModeOption
+              selected={qrScanMode === 'warn'}
+              onSelect={() => setQrScanMode('warn')}
+              title="Remind the counter to scan (recommended)"
+              body="Selling a Schedule H2 pack adds a line to the compliance dialog asking for the pack to be scanned. Nothing is blocked."
+            />
+            <ModeOption
+              selected={qrScanMode === 'require'}
+              onSelect={() => setQrScanMode('require')}
+              title="Require the scan before the sale completes"
+              body="A Schedule H2 line cannot be sold until a code has been read off the pack. The code is stored against the sale, so the check can be evidenced later."
+              warning="This covers over-the-counter products too — a multivitamin on the notified list becomes unsellable until someone scans it. Check your stocked H2 items first."
+            />
+            <ModeOption
+              selected={qrScanMode === 'off'}
+              onSelect={() => setQrScanMode('off')}
+              title="Say nothing"
+              body="Schedule H2 is still recorded against the drug and shown on its page, but the counter is never prompted."
             />
           </div>
         )}

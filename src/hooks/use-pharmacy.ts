@@ -635,12 +635,19 @@ export interface ComplianceResult {
   ok: boolean;
   blockers: string[];
   warnings: string[];
+  /**
+   * Batches whose pack still has to be scanned — Schedule H2, the Rule
+   * 96(6)-(7) anti-counterfeiting list. Returned structurally so the counter
+   * can prompt for exactly these; matching on the message text would break the
+   * first time the wording changed.
+   */
+  needsScan?: { drugBatchId: string; drugName: string }[];
 }
 
 export function useCheckSaleCompliance() {
   return useMutation({
     mutationFn: async (payload: {
-      items: { drugBatchId: string }[];
+      items: { drugBatchId: string; scannedCode?: string | null }[];
       prescriptionId?: string;
       externalPrescriptionId?: string;
     }) =>
@@ -1228,6 +1235,13 @@ export function useCreateDispense() {
 
 export interface PharmacySaleItemInput {
   drugBatchId: string;
+  /**
+   * The QR/barcode read off a Schedule H2 pack — the Rule 96(6)-(7)
+   * anti-counterfeiting check. Optional: most drugs are not on that list, and
+   * the obligation is advisory until a hospital sets qrScanMode to 'require'.
+   * Stored against the sale so the check can be evidenced afterwards.
+   */
+  scannedCode?: string;
   prescriptionItemId?: string;
   quantity: number;
   saleUnit?: 'pack' | 'loose';

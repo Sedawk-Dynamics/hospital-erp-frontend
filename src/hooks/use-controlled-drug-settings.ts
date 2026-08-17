@@ -19,6 +19,18 @@ export interface ControlledDrugSettings {
    */
   mode: 'legacy_block' | 'inline';
   witnessRoles: string[];
+  /**
+   * Schedule H2 — the Rule 96(6)-(7) list of 300 notified formulations whose
+   * packs carry a QR/barcode so they can be checked as genuine. Separate from
+   * `mode` because it is an anti-counterfeiting obligation, not a prescription
+   * control: the same list holds a pregnancy test and two multivitamins
+   * alongside meropenem.
+   *
+   * `off`     — say nothing
+   * `warn`    — tell the counter the pack should be scanned (the default)
+   * `require` — refuse the sale until a code has been read off the pack
+   */
+  qrScanMode: 'off' | 'warn' | 'require';
 }
 
 export interface DrugLicenceSettings {
