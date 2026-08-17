@@ -2488,6 +2488,8 @@ export interface RegisterRow {
   prescriber: string | null;
   verification: string | null;
   schedule: DrugSchedule | null;
+  /** Why this schedule — shown as the badge tooltip. */
+  scheduleReason: string | null;
   controlledClass: 'narcotic' | 'psychotropic' | null;
 }
 
