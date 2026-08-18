@@ -17,14 +17,22 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Heart, Users, AlertTriangle, Plus, Trash2, Save, Stethoscope, Loader2 } from 'lucide-react';
+import { Heart, Users, AlertTriangle, Plus, Trash2, Save, Stethoscope, Loader2, FileText } from 'lucide-react';
 import { apiGet, apiPut, apiPost, apiDelete } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatDate } from '@/lib/date-utils';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { DischargeSummaryDocument } from '@/components/doctor/discharge-summary-document';
+import type { DischargeDocument } from '@/hooks/use-doctor';
 
-type Tab = 'medical' | 'personal' | 'family' | 'allergies';
+type Tab = 'medical' | 'personal' | 'family' | 'allergies' | 'discharge';
 
 export interface PatientHistoryPanelProps {
   patientId: string;
@@ -53,6 +61,10 @@ export function PatientHistoryPanel({
             { key: 'personal', label: 'Personal', icon: Heart },
             { key: 'family', label: 'Family', icon: Users },
             { key: 'allergies', label: 'Allergies', icon: AlertTriangle },
+            // Often the single most useful document about a returning patient,
+            // and it was not reachable from the panel a doctor actually opens
+            // during a consultation.
+            { key: 'discharge', label: 'Discharge Summaries', icon: FileText },
           ] as { key: Tab; label: string; icon: any }[]
         ).map((t) => (
           <button
@@ -74,6 +86,7 @@ export function PatientHistoryPanel({
         {tab === 'personal' && <PersonalTab patientId={patientId} readOnly={readOnly} />}
         {tab === 'family' && <FamilyTab patientId={patientId} readOnly={readOnly} />}
         {tab === 'allergies' && <AllergiesTab patientId={patientId} readOnly={readOnly} />}
+        {tab === 'discharge' && <DischargeSummariesTab patientId={patientId} />}
       </div>
     </div>
   );
@@ -642,5 +655,143 @@ function AllergiesTab({ patientId, readOnly }: { patientId: string; readOnly: bo
         ))
       )}
     </div>
+  );
+}
+
+// ── Discharge Summaries ──────────────────────────────────────────────────
+//
+// Past admissions, newest first. A light list on purpose: enough to choose the
+// right stay, with the full document opened on demand. The patient FILE has
+// carried these all along — the panel the doctor opens mid-consultation did
+// not, which is what QA hit.
+
+interface DischargeSummaryRow {
+  id: string;
+  status: string;
+  admissionId: string | null;
+  admissionType: string | null;
+  admissionDate: string | null;
+  dischargeDate: string | null;
+  diagnosesSummary: string | null;
+  doctorName: string | null;
+  createdAt: string;
+}
+
+export const dischargeSummariesKey = (patientId: string) =>
+  ['patient-history', 'discharge-summaries', patientId] as const;
+
+function DischargeSummariesTab({ patientId }: { patientId: string }) {
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: dischargeSummariesKey(patientId),
+    queryFn: async () => {
+      const res = await apiGet<DischargeSummaryRow[]>(
+        `/mrd/discharge-summary/by-patient/${patientId}`,
+      );
+      return res.data ?? [];
+    },
+    ...LIVE,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-6">
+        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  const rows = data ?? [];
+  if (rows.length === 0) {
+    return (
+      <p className="py-4 text-center text-xs text-muted-foreground">
+        No discharge summaries on file for this patient.
+      </p>
+    );
+  }
+
+  return (
+    <>
+      <div className="space-y-2">
+        {rows.map((r) => {
+          // A summary still being written is worth seeing — a stay in progress
+          // is exactly when a doctor wants it — but it must read as unfinished.
+          const draft = r.status !== 'published';
+          return (
+            <button
+              key={r.id}
+              type="button"
+              onClick={() => setOpenId(r.id)}
+              className="w-full rounded-lg border bg-card px-3 py-2 text-left transition-colors hover:border-primary/40"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-medium">
+                  {r.dischargeDate ? formatDate(r.dischargeDate) : 'Not yet discharged'}
+                  {r.admissionDate && (
+                    <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">
+                      admitted {formatDate(r.admissionDate)}
+                    </span>
+                  )}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  {r.admissionType && (
+                    <Badge variant="outline" className="text-[10px] capitalize">
+                      {r.admissionType}
+                    </Badge>
+                  )}
+                  {draft && (
+                    <Badge className="bg-amber-100 text-[10px] capitalize text-amber-700">
+                      {r.status.replace(/_/g, ' ')}
+                    </Badge>
+                  )}
+                </span>
+              </div>
+              {r.diagnosesSummary && (
+                <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                  {r.diagnosesSummary}
+                </p>
+              )}
+              {r.doctorName && (
+                <p className="mt-0.5 text-[11px] text-muted-foreground">Under {r.doctorName}</p>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {openId && (
+        <DischargeSummaryViewer id={openId} onClose={() => setOpenId(null)} />
+      )}
+    </>
+  );
+}
+
+/** Read-only render of the chosen summary, using the same document the
+ *  discharge screen and the PDF are built from. */
+function DischargeSummaryViewer({ id, onClose }: { id: string; onClose: () => void }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['discharge-document', id],
+    queryFn: async () => {
+      const res = await apiGet<DischargeDocument>(`/mrd/discharge-summary/${id}/document`);
+      return res.data ?? null;
+    },
+  });
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-h-[90vh] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Discharge summary</DialogTitle>
+        </DialogHeader>
+        {isLoading || !data ? (
+          <div className="flex items-center justify-center py-10">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <DischargeSummaryDocument doc={data} />
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
