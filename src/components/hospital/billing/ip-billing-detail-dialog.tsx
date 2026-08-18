@@ -194,33 +194,59 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
         </div>
 
         {/* Deposit — cut from the bill as it builds; return the unused part */}
-        {n(ledger?.totals.deposit) > 0 && (
+        {/* Rendered whenever there is an admission, not only when money is on
+            file. Hiding it on zero meant a desk that had just taken ₹10,000 —
+            into the advance, which this panel could not see — got no deposit
+            section at all, no balance, and no way to return it. An empty state
+            that says "nothing held" is information; a missing panel is not. */}
+        {!!admissionId && (
           <div className="rounded-xl border border-teal-300 bg-teal-50/40 p-3">
             <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
               <PiggyBank className="h-4 w-4 text-teal-700" /> Deposit
               <span className="text-[11px] font-normal text-muted-foreground">— collected at admission, cut from the running bill</span>
             </h3>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <Stat label="On file" value={money(ledger?.totals.deposit)} className="text-teal-700" />
+              <Stat label="Held for patient" value={money(ledger?.totals.deposit)} className="text-teal-700" />
               <Stat label="Applied to bill" value={money(ledger?.totals.depositApplied)} />
               <Stat label="Balance after deposit" value={money(ledger?.totals.balanceAfterDeposit)} className="text-amber-700" />
               <Stat label="Refundable" value={money(ledger?.totals.refundable)} className="text-emerald-700" />
             </div>
+            {/* Money reaches a patient through two counters — a deposit taken
+                against the stay, and an advance taken at the front desk. The
+                desk uses the second one, so saying which is which stops the
+                figure looking wrong to whoever collected it. */}
+            {(n(ledger?.totals.depositOnFile) > 0 || n(ledger?.totals.advanceOnFile) > 0) && (
+              <p className="mt-1.5 text-[11px] text-muted-foreground">
+                {n(ledger?.totals.depositOnFile) > 0 && (
+                  <span>Stay deposit {money(ledger?.totals.depositOnFile)}</span>
+                )}
+                {n(ledger?.totals.depositOnFile) > 0 && n(ledger?.totals.advanceOnFile) > 0 && ' · '}
+                {n(ledger?.totals.advanceOnFile) > 0 && (
+                  <span>Front-desk advance {money(ledger?.totals.advanceOnFile)}</span>
+                )}
+              </p>
+            )}
+            {n(ledger?.totals.deposit) === 0 && (
+              <p className="mt-1.5 text-[11px] text-muted-foreground">
+                Nothing held for this patient yet — a deposit or advance collected at any
+                counter will show here.
+              </p>
+            )}
             {n(ledger?.totals.depositRefunded) > 0 && (
               <p className="mt-1.5 text-[11px] text-muted-foreground">Already returned: {money(ledger?.totals.depositRefunded)}</p>
             )}
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={doApplyDeposit}
                 disabled={applyDeposit.isPending || n(ledger?.totals.depositAvailable) <= 0}
-                title="Cut the deposit from the current bill balance">
+                title="Cut what the patient has already paid — deposit or advance — from the current bill balance">
                 {applyDeposit.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wallet className="h-3.5 w-3.5" />}
-                Apply deposit to bill
+                Apply to bill
               </Button>
               <Button size="sm" className="h-8 gap-1.5 bg-emerald-600 hover:bg-emerald-700" onClick={doRefundDeposit}
                 disabled={refundDeposit.isPending || n(ledger?.totals.refundable) <= 0}
-                title="Return the unused deposit to the patient (e.g. insurance covered the charges)">
+                title="Return what is left over to the patient (e.g. insurance covered the charges)">
                 {refundDeposit.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />}
-                Return deposit
+                Return to patient
               </Button>
               {n(ledger?.totals.refundable) > 0 && (
                 <span className="text-[11px] text-emerald-700">Insurance / payments cover the charges — {money(ledger?.totals.refundable)} can be returned.</span>

@@ -37,7 +37,11 @@ export interface AdmissionLedger {
     paid: number;
     cashPaid: number;
     insuranceCovered: number;
+    /** Everything held for this patient — stay deposit plus front-desk advance. */
     deposit: number;
+    /** The two pools separately, so the desk can see where the money sits. */
+    depositOnFile: number;
+    advanceOnFile: number;
     depositApplied: number;
     depositRefunded: number;
     depositAvailable: number;
