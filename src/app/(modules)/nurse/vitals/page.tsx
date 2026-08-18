@@ -38,6 +38,7 @@ import { PatientSafetyBanner } from '@/components/shared/patient-safety-banner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { useSetNurseChiefComplaint } from '@/hooks/use-clinical';
 import { TemperatureUnitToggle } from '@/components/shared/temperature-unit-toggle';
 import {
   temperaturePlaceholder,
@@ -432,6 +433,11 @@ export default function NurseVitalsPage() {
   // shared vitals dialog was written — nursing, which takes almost every
   // reading in the hospital, did not.
   const [tempUnit, setTempUnit] = useState<TempUnit>('C');
+  // What the patient actually said at the door. The doctor writes their own
+  // framing of the problem; this is the intake version, recorded by whoever
+  // took the vitals and attributed to them.
+  const [nurseComplaint, setNurseComplaint] = useState('');
+  const setNurseChiefComplaint = useSetNurseChiefComplaint();
 
   // ── Queries ──────────────────────────────────────────────
   const { data: myDoctorsData } = useMyAssignedDoctors();
@@ -568,7 +574,7 @@ export default function NurseVitalsPage() {
     setVitalsForm((prev) => ({ ...prev, [field]: value }));
   }
 
-  function handleSubmitVitals() {
+  async function handleSubmitVitals() {
     if (!selectedEncounter) {
       toast.error('Please select a patient first');
       return;
@@ -588,6 +594,21 @@ export default function NurseVitalsPage() {
     } else {
       toast.error('Cannot record vitals: this encounter has no visit, admission, or appointment id');
       return;
+    }
+
+    // Saved with the vitals rather than as its own action — it is recorded in
+    // the same breath at intake, and a separate Save button would be missed.
+    if (selectedEncounter.visitId && nurseComplaint.trim()) {
+      try {
+        await setNurseChiefComplaint.mutateAsync({
+          visitId: selectedEncounter.visitId,
+          text: nurseComplaint.trim(),
+        });
+      } catch {
+        // Never lose the vitals over the complaint text — the reading is the
+        // clinically urgent half.
+        toast.error('Vitals saved, but the chief complaint could not be recorded');
+      }
     }
 
     const payload = {
@@ -980,6 +1001,26 @@ export default function NurseVitalsPage() {
                     );
                   })}
                 </div>
+
+                {/* Only an OP/visit encounter has somewhere to hang this —
+                    an admission's complaint belongs to the admission note. */}
+                {selectedEncounter?.visitId && (
+                  <div className="mt-4">
+                    <label className="font-label mb-1 block text-[10px] uppercase tracking-widest text-on-surface-variant">
+                      Chief complaint (intake)
+                    </label>
+                    <Textarea
+                      value={nurseComplaint}
+                      onChange={(e) => setNurseComplaint(e.target.value)}
+                      placeholder="What the patient says brought them in, in their words..."
+                      rows={2}
+                    />
+                    <p className="mt-1 text-[10px] text-on-surface-variant">
+                      The doctor sees this alongside their own notes and can rewrite it —
+                      yours stays on record either way.
+                    </p>
+                  </div>
+                )}
 
                 <div className="mt-4">
                   <label className="font-label mb-1 block text-[10px] uppercase tracking-widest text-on-surface-variant">

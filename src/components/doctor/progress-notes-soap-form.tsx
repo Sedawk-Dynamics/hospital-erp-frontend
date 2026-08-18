@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useVisit } from '@/hooks/use-clinical';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -522,6 +523,9 @@ export function SoapNoteFormDialog({
   admissionId,
   onAmendmentsClick,
 }: SoapNoteFormDialogProps) {
+  // The nurse's intake complaint for this encounter, if one was recorded.
+  const { data: visit } = useVisit(open ? visitId : null);
+  const nurseComplaint = visit?.nurseChiefComplaint?.trim() || '';
   const isEditing = !!editingNote;
   const wasSigned = !!editingNote?.signedAt;
 
@@ -704,6 +708,36 @@ export function SoapNoteFormDialog({
 
           {/* S — Subjective */}
           <TabsContent value="s" className="space-y-4 pt-4">
+            {/* What the nurse was told at intake. Shown as its own statement
+                rather than pre-filling the doctor's box: the two are different
+                clinical records — the patient's words at the door, and the
+                clinician's framing of the problem — and overwriting one with
+                the other is what lost the nurse's version before. Copy it in
+                if it says what needs saying. */}
+            {nurseComplaint && (
+              <div className="rounded-xl border border-secondary/30 bg-secondary/5 px-3 py-2">
+                <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-label text-[10px] uppercase tracking-widest text-secondary">
+                    Nurse intake note
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setState((p) => ({
+                        ...p,
+                        chiefComplaints: p.chiefComplaints.trim()
+                          ? `${p.chiefComplaints.trim()}\n${nurseComplaint}`
+                          : nurseComplaint,
+                      }))
+                    }
+                    className="text-[11px] font-semibold text-primary hover:underline"
+                  >
+                    Copy into my note
+                  </button>
+                </div>
+                <p className="text-sm text-on-surface">{nurseComplaint}</p>
+              </div>
+            )}
             <FieldBlock
               label="Chief Complaints / Symptoms"
               hint="What the patient reports. Use short phrases separated by commas or new lines."

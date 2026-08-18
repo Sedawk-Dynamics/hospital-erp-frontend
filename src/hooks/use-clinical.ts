@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPost, apiPatch } from '@/lib/api';
+import { apiGet, apiPost, apiPatch, apiPut } from '@/lib/api';
 
 // ============================================================
 // Types
@@ -60,6 +60,10 @@ export interface Visit {
   visitDate: string;
   visitType?: string;
   chiefComplaint?: string;
+  /** The nurse's intake version, attributed separately from the doctor's. */
+  nurseChiefComplaint?: string | null;
+  nurseChiefComplaintById?: string | null;
+  nurseChiefComplaintAt?: string | null;
   status: string;
   notes?: string;
   createdAt: string;
@@ -191,6 +195,40 @@ export function useAdmissions(params?: AdmissionParams, options?: { enabled?: bo
     // Pickers that only search once the user has typed pass { enabled: … } so
     // the ward list is not fetched on every mount.
     enabled: options?.enabled ?? true,
+  });
+}
+
+/**
+ * Record the nurse's intake version of the chief complaint on a visit.
+ *
+ * Kept apart from the doctor's own `chiefComplaint`: one shared box meant
+ * whoever saved last replaced the other and nothing said who wrote it. The
+ * server stamps the attribution — the client cannot claim someone else said it.
+ */
+export function useVisit(id: string | null) {
+  return useQuery({
+    queryKey: clinicalKeys.visits.detail(id ?? ''),
+    queryFn: async () => {
+      const res = await apiGet<Visit>(`/clinical/visits/${id}`);
+      return res.data ?? null;
+    },
+    enabled: !!id,
+  });
+}
+
+export function useSetNurseChiefComplaint() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ visitId, text }: { visitId: string; text: string }) => {
+      const res = await apiPut<Visit>(`/clinical/visits/${visitId}`, {
+        nurseChiefComplaint: text,
+      });
+      return res.data;
+    },
+    onSuccess: (_d, v) => {
+      queryClient.invalidateQueries({ queryKey: clinicalKeys.visits.detail(v.visitId) });
+      queryClient.invalidateQueries({ queryKey: clinicalKeys.visits.all });
+    },
   });
 }
 
