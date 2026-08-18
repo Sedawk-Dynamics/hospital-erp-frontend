@@ -498,6 +498,8 @@ export interface FrontdeskBillCreation {
   amountPaid: number;
   balanceDue: number;
   status: string;
+  /** The lines behind the total, so the counter can see WHAT it is collecting. */
+  items?: { id: string; description: string; category: string; quantity: number; amount: number }[];
 }
 
 /**
@@ -505,12 +507,55 @@ export interface FrontdeskBillCreation {
  * pending front-desk Bill, so the cashier can collect on the spot. The
  * returned bill is then handed to the CollectFrontdeskPaymentDialog.
  */
+export interface AppointmentChargePreview {
+  consultationFee: number;
+  registration: {
+    /** The hospital charges a registration fee at all. */
+    configured: boolean;
+    /** It would go on this bill. */
+    applies: boolean;
+    label: string;
+    amount: number;
+    taxAmount: number;
+    totalAmount: number;
+    isFirstVisit: boolean;
+    alreadyCharged: boolean;
+    deskChoice: boolean | null;
+    /** Plain-language why, so a desk that expected a fee knows what happened. */
+    reason: string;
+  };
+  total: number;
+}
+
+/**
+ * What the counter is about to charge, itemised, before the bill exists.
+ * The registration fee is decided while the bill is assembled, so this is the
+ * only moment the desk can see it coming — or waive it.
+ */
+export function useAppointmentChargePreview(appointmentId: string | null) {
+  return useQuery({
+    queryKey: ['hospital', 'charge-preview', appointmentId],
+    queryFn: async () => {
+      const r = await apiGet<AppointmentChargePreview>(
+        `/appointments/${appointmentId}/charge-preview`,
+      );
+      return r.data ?? null;
+    },
+    enabled: !!appointmentId,
+  });
+}
+
 export function useInitiateFrontdeskPayment() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (appointmentId: string) => {
+    mutationFn: async (
+      input: string | { appointmentId: string; chargeRegistrationFee?: boolean },
+    ) => {
+      const { appointmentId, chargeRegistrationFee } =
+        typeof input === 'string' ? { appointmentId: input, chargeRegistrationFee: undefined } : input;
       const response = await apiPost<FrontdeskBillCreation>(
         `/appointments/${appointmentId}/frontdesk-payment`,
+        chargeRegistrationFee === undefined ? {} : { chargeRegistrationFee },
       );
       return response.data ?? null;
     },

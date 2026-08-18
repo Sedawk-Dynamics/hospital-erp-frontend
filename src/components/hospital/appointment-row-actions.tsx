@@ -24,12 +24,19 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import { useUpdateAppointmentStatus, useInitiateFrontdeskPayment } from '@/hooks/use-hospital';
+import {
+  useUpdateAppointmentStatus,
+  useInitiateFrontdeskPayment,
+  type AppointmentChargePreview,
+} from '@/hooks/use-hospital';
+import { useQueryClient } from '@tanstack/react-query';
+import { apiGet } from '@/lib/api';
 
 import { CancelAppointmentDialog } from './cancel-appointment-dialog';
 import { RescheduleAppointmentDialog } from './reschedule-appointment-dialog';
 import { PatientDetailDialog } from './patient-detail-dialog';
 import { CollectFrontdeskPaymentDialog } from './collect-frontdesk-payment-dialog';
+import { RegistrationFeePrompt } from './registration-fee-prompt';
 import type { Appointment } from '@/types';
 
 /**
@@ -92,9 +99,16 @@ export function AppointmentRowActions({
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [collectTarget, setCollectTarget] = useState<Appointment | null>(null);
+  // The registration fee is resolved WHILE the bill is assembled, so the only
+  // moment the desk can see it coming — or waive it — is before the bill is
+  // raised. QA went looking for a "collect registration charge" action and
+  // found none, because there was none: the fee was decided silently from the
+  // hospital setting plus whether this was the patient's first visit.
+  const [feePromptOpen, setFeePromptOpen] = useState(false);
 
   const updateStatus = useUpdateAppointmentStatus();
   const initiatePayment = useInitiateFrontdeskPayment();
+  const queryClient = useQueryClient();
 
   const status = apt.status;
   const patient = apt.patient ?? null;
@@ -143,9 +157,35 @@ export function AppointmentRowActions({
    * A `pending_payment` row has no bill yet — mint it server-side, then hand
    * the freshly created bill to the collect dialog.
    */
-  const handleStartPayment = async () => {
+  /**
+   * Entry point for every Collect action. Peeks at what is about to be charged
+   * and, when this hospital has a registration fee, lets the desk decide before
+   * the bill exists. Hospitals with no fee configured see no extra step.
+   */
+  const beginPayment = async () => {
     try {
-      const bill = await initiatePayment.mutateAsync(apt.id);
+      const preview = await queryClient.fetchQuery({
+        queryKey: ['hospital', 'charge-preview', apt.id],
+        queryFn: async () =>
+          (await apiGet<AppointmentChargePreview>(`/appointments/${apt.id}/charge-preview`)).data ?? null,
+      });
+      if (preview?.registration.configured) {
+        setFeePromptOpen(true);
+        return;
+      }
+    } catch {
+      // A preview that will not load must never block taking money — fall
+      // through and let the rule decide, exactly as it did before.
+    }
+    await handleStartPayment();
+  };
+
+  const handleStartPayment = async (chargeRegistrationFee?: boolean) => {
+    try {
+      const bill = await initiatePayment.mutateAsync({
+        appointmentId: apt.id,
+        chargeRegistrationFee,
+      });
       if (!bill) {
         toast.error('Failed to create front-desk bill');
         return;
@@ -192,7 +232,7 @@ export function AppointmentRowActions({
             size="sm"
             className="gap-1.5 bg-amber-600 text-xs text-white hover:bg-amber-700"
             disabled={paymentPending}
-            onClick={handleStartPayment}
+            onClick={beginPayment}
             title="Raise the consultation bill and collect cash/UPI now"
           >
             {paymentPending ? (
@@ -210,7 +250,7 @@ export function AppointmentRowActions({
             variant={canCollect ? 'default' : 'outline'}
             className={cn('gap-1.5 text-xs', canCollect && 'bg-amber-600 text-white hover:bg-amber-700')}
             disabled={updateStatus.isPending || paymentPending}
-            onClick={canCollect ? handleStartPayment : handleConfirm}
+            onClick={canCollect ? beginPayment : handleConfirm}
             title={canCollect ? 'Collect the consultation fee, then confirm' : undefined}
           >
             {paymentPending ? (
@@ -265,7 +305,7 @@ export function AppointmentRowActions({
             </DropdownMenuItem>
 
             {canCollect && (
-              <DropdownMenuItem onClick={handleStartPayment}>
+              <DropdownMenuItem onClick={beginPayment}>
                 <Banknote className="mr-2 h-4 w-4" />
                 Collect Payment
               </DropdownMenuItem>
@@ -358,6 +398,16 @@ export function AppointmentRowActions({
               }
             : null
         }
+      />
+
+      <RegistrationFeePrompt
+        appointmentId={feePromptOpen ? apt.id : null}
+        open={feePromptOpen}
+        onOpenChange={setFeePromptOpen}
+        onDecided={async (charge) => {
+          setFeePromptOpen(false);
+          await handleStartPayment(charge);
+        }}
       />
 
       <CollectFrontdeskPaymentDialog
