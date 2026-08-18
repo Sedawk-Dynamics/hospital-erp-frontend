@@ -38,6 +38,12 @@ import { PatientSafetyBanner } from '@/components/shared/patient-safety-banner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { TemperatureUnitToggle } from '@/components/shared/temperature-unit-toggle';
+import {
+  temperaturePlaceholder,
+  toCelsius,
+  type TempUnit,
+} from '@/lib/vitals-temperature';
 import { cn } from '@/lib/utils';
 import { formatDateTime, formatTime } from '@/lib/date-utils';
 import {
@@ -420,6 +426,12 @@ export default function NurseVitalsPage() {
   );
   const [patientSearch, setPatientSearch] = useState('');
   const [vitalsForm, setVitalsForm] = useState({ ...EMPTY_FORM });
+  // Most wards here read temperature in °F. The server only accepts Celsius,
+  // so 98.6 came back as a bare 400 with nothing to explain it. Record in
+  // either; the value stored is always °C. Doctors have had this since the
+  // shared vitals dialog was written — nursing, which takes almost every
+  // reading in the hospital, did not.
+  const [tempUnit, setTempUnit] = useState<TempUnit>('C');
 
   // ── Queries ──────────────────────────────────────────────
   const { data: myDoctorsData } = useMyAssignedDoctors();
@@ -583,7 +595,7 @@ export default function NurseVitalsPage() {
       ...linkage,
       bloodPressureSystolic: parseNum(vitalsForm.bloodPressureSystolic),
       bloodPressureDiastolic: parseNum(vitalsForm.bloodPressureDiastolic),
-      temperature: parseNum(vitalsForm.temperature),
+      temperature: toCelsius(parseNum(vitalsForm.temperature), tempUnit),
       pulseRate: parseNum(vitalsForm.pulseRate),
       respiratoryRate: parseNum(vitalsForm.respiratoryRate),
       oxygenSaturation: parseNum(vitalsForm.oxygenSaturation),
@@ -916,25 +928,38 @@ export default function NurseVitalsPage() {
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
                   {VITAL_FIELDS.map((field) => {
                     const val = vitalsForm[field.key as keyof typeof vitalsForm] ?? '';
+                    const isTemp = field.key === 'temperature';
                     const numVal = parseNum(val);
-                    const abnormal = isValueAbnormal(field.key, numVal);
+                    // Compare in Celsius whatever the nurse typed in, or a
+                    // perfectly normal 98.6 °F reads as a raging fever.
+                    const abnormal = isValueAbnormal(
+                      field.key,
+                      isTemp ? toCelsius(numVal, tempUnit) : numVal,
+                    );
                     const Icon = field.icon;
                     return (
                       <div key={field.key}>
                         <label className="font-label mb-1 flex items-center gap-1 text-[10px] uppercase tracking-widest text-on-surface-variant">
                           <Icon className="h-3 w-3" />
                           {field.label}
-                          <span className="text-[9px] font-normal normal-case">
-                            ({field.unit})
-                          </span>
+                          {!isTemp && (
+                            <span className="text-[9px] font-normal normal-case">
+                              ({field.unit})
+                            </span>
+                          )}
                         </label>
+                        {isTemp && (
+                          <div className="mb-1">
+                            <TemperatureUnitToggle value={tempUnit} onChange={setTempUnit} />
+                          </div>
+                        )}
                         <div className="relative">
                           <Input
                             type="number"
                             step="any"
                             value={val}
                             onChange={(e) => handleVitalChange(field.key, e.target.value)}
-                            placeholder={field.placeholder}
+                            placeholder={isTemp ? temperaturePlaceholder(tempUnit) : field.placeholder}
                             className={cn(
                               abnormal &&
                                 'border-red-500 ring-1 ring-red-300 focus-visible:ring-red-500',

@@ -17,6 +17,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { TemperatureUnitToggle } from '@/components/shared/temperature-unit-toggle';
+import {
+  isTemperatureOutOfRange,
+  temperatureRangeMessage,
+  toCelsius,
+  type TempUnit,
+} from '@/lib/vitals-temperature';
 import { useRecordVitals } from '@/hooks/use-nurse';
 import { getApiErrorMessage } from '@/lib/utils';
 
@@ -100,7 +107,6 @@ function cleanId(id?: string): string | undefined {
   return t ? t : undefined;
 }
 
-const F_TO_C = (f: number) => Math.round(((f - 32) * 5) / 9 * 10) / 10;
 
 export function RecordVitalsDialog({
   open,
@@ -116,7 +122,7 @@ export function RecordVitalsDialog({
   // Wards here record temperature in °F as often as °C, and the server only
   // accepts 25–50 (°C) — so 98.6 came back as a bare 400. Record in either and
   // convert on the way out; the stored value is always °C.
-  const [tempUnit, setTempUnit] = useState<'C' | 'F'>('C');
+  const [tempUnit, setTempUnit] = useState<TempUnit>('C');
   const fieldIdPrefix = useId();
   const recordVitals = useRecordVitals();
   const queryClient = useQueryClient();
@@ -151,19 +157,14 @@ export function RecordVitalsDialog({
       if (f.integer && !Number.isInteger(n)) return `${f.label} must be a whole number`;
       if (n < f.min || n > f.max) return `${f.label} must be between ${f.min} and ${f.max} ${f.unit}`;
     }
-    const t = temperatureCelsius();
-    if (t !== undefined && (t < 25 || t > 50)) {
-      return tempUnit === 'F'
-        ? 'Temperature must be between 77 and 122 °F'
-        : 'Temperature must be between 25 and 50 °C';
+    if (isTemperatureOutOfRange(temperatureCelsius())) {
+      return temperatureRangeMessage(tempUnit);
     }
     return null;
   };
 
   function temperatureCelsius(): number | undefined {
-    const n = parseNum(form.temperature);
-    if (n === undefined) return undefined;
-    return tempUnit === 'F' ? F_TO_C(n) : n;
+    return toCelsius(parseNum(form.temperature), tempUnit);
   }
 
   const handleSave = async () => {
@@ -241,23 +242,7 @@ export function RecordVitalsDialog({
                   {f.key !== 'temperature' && <span className="text-outline">({f.unit})</span>}
                 </Label>
                 {f.key === 'temperature' && (
-                  <span className="inline-flex overflow-hidden rounded border">
-                    {(['C', 'F'] as const).map((u) => (
-                      <button
-                        key={u}
-                        type="button"
-                        aria-pressed={tempUnit === u}
-                        onClick={() => setTempUnit(u)}
-                        className={
-                          tempUnit === u
-                            ? 'bg-primary px-1.5 text-[10px] font-semibold text-on-primary'
-                            : 'px-1.5 text-[10px] text-on-surface-variant hover:bg-surface-container'
-                        }
-                      >
-                        °{u}
-                      </button>
-                    ))}
-                  </span>
+                  <TemperatureUnitToggle value={tempUnit} onChange={setTempUnit} />
                 )}
               </div>
               <Input
