@@ -508,7 +508,15 @@ export interface FrontdeskBillCreation {
  * returned bill is then handed to the CollectFrontdeskPaymentDialog.
  */
 export interface AppointmentChargePreview {
+  /** Already net of a free follow-up — this is what will be billed. */
   consultationFee: number;
+  followUp: {
+    isFree: boolean;
+    /** What the doctor normally charges, for showing what was waived. */
+    listFee: number;
+    windowDays: number;
+    previousVisitDate: string | null;
+  };
   registration: {
     /** The hospital charges a registration fee at all. */
     configured: boolean;

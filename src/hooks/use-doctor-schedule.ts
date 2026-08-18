@@ -21,6 +21,11 @@ export interface DoctorProfileWithSchedules {
   specialization: string | null;
   qualifications: string | null;
   consultationFee: number | null;
+  /**
+   * Days after a paid consultation with this doctor in which a return visit
+   * carries no consultation fee. Null / 0 = every visit is charged.
+   */
+  freeFollowUpDays?: number | null;
   experienceYears: number | null;
   isAvailable: boolean;
   user: { firstName: string; lastName: string; email?: string; phone?: string };
@@ -60,6 +65,7 @@ export function useUpdateDoctorProfile(doctorId: string) {
   return useMutation({
     mutationFn: async (data: {
       consultationFee?: number;
+      freeFollowUpDays?: number | null;
       specialization?: string;
       qualifications?: string;
       experienceYears?: number;

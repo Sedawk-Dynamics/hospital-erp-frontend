@@ -65,8 +65,24 @@ export function RegistrationFeePrompt({
           <div className="space-y-3">
             <div className="rounded-xl border">
               <div className="flex items-center justify-between border-b px-3 py-2 text-sm">
-                <span>Consultation fee</span>
-                <span className="font-medium tabular-nums">{inr(consultation)}</span>
+                <span>
+                  Consultation fee
+                  {preview?.followUp.isFree && (
+                    <span className="ml-1.5 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                      Free follow-up
+                    </span>
+                  )}
+                </span>
+                <span className="font-medium tabular-nums">
+                  {/* Show what it would have been, struck through, so ₹0 against
+                      a doctor who charges ₹600 does not read as a fault. */}
+                  {preview?.followUp.isFree && preview.followUp.listFee > 0 && (
+                    <span className="mr-1.5 text-muted-foreground line-through">
+                      {inr(preview.followUp.listFee)}
+                    </span>
+                  )}
+                  {inr(consultation)}
+                </span>
               </div>
               <div className="flex items-center justify-between px-3 py-2 text-sm">
                 <span className={wouldCharge ? '' : 'text-muted-foreground line-through'}>
@@ -87,6 +103,13 @@ export function RegistrationFeePrompt({
                 </span>
               </div>
             </div>
+
+            {preview?.followUp.isFree && (
+              <p className="text-xs text-emerald-700">
+                Within this doctor&rsquo;s {preview.followUp.windowDays}-day follow-up window of a
+                paid consultation — no consultation fee.
+              </p>
+            )}
 
             {/* Say why it does or does not apply — a desk that expected a fee
                 and does not see one should not have to guess. */}
