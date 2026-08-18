@@ -811,6 +811,35 @@ function PharmacyPOS() {
         }
       }
 
+      // Dispensing less than the doctor prescribed was passing on a passive
+      // grey note beside the line. The pharmacist could bill 1 against a
+      // prescribed 2 without ever saying so — and the patient walks out short
+      // of a course of treatment. Name both numbers and make it an explicit
+      // acknowledgement.
+      const short = cart
+        .filter((c) => c.rxQuantity != null && baseQtyOf(c) < (c.rxQuantity ?? 0))
+        .map((c) => ({
+          name: c.drugName,
+          prescribed: c.rxQuantity as number,
+          dispensing: baseQtyOf(c),
+          dosageForm: c.dosageForm,
+          looseUnitLabel: c.looseUnitLabel,
+        }));
+      if (short.length) {
+        const lines = short.map(
+          (l) =>
+            `• ${l.name}: prescribed ${formatBaseQty(l.prescribed, l.dosageForm, l.looseUnitLabel)}, ` +
+            `dispensing ${formatBaseQty(l.dispensing, l.dosageForm, l.looseUnitLabel)} ` +
+            `(short by ${formatBaseQty(l.prescribed - l.dispensing, l.dosageForm, l.looseUnitLabel)})`,
+        );
+        const proceed = window.confirm(
+          `Dispensing LESS than prescribed:\n\n${lines.join('\n')}\n\n` +
+            `The patient will not have the full course. Tell them what is short and ` +
+            `whether to come back for the rest.\n\nDispense the reduced quantity anyway?`,
+        );
+        if (!proceed) return;
+      }
+
       // Build the tender line(s). Both modes go through payments[] so Insurance
       // (and any future mode) works uniformly; the backend trims change and
       // settles the bill. Split mode = one line per tender; single mode = one
@@ -1302,8 +1331,16 @@ function PharmacyPOS() {
                                   {formatBaseQty(item.rxQuantity, item.dosageForm, item.looseUnitLabel)}
                                 </span>
                                 {item.batchId && baseQtyOf(item) !== item.rxQuantity && (
-                                  <span className="ml-1 text-amber-600">
-                                    (billing {formatBaseQty(baseQtyOf(item), item.dosageForm, item.looseUnitLabel)})
+                                  <span
+                                    className={
+                                      baseQtyOf(item) < (item.rxQuantity ?? 0)
+                                        ? 'ml-1 font-semibold text-error'
+                                        : 'ml-1 text-amber-600'
+                                    }
+                                  >
+                                    {baseQtyOf(item) < (item.rxQuantity ?? 0)
+                                      ? `— SHORT by ${formatBaseQty((item.rxQuantity ?? 0) - baseQtyOf(item), item.dosageForm, item.looseUnitLabel)}`
+                                      : `(billing ${formatBaseQty(baseQtyOf(item), item.dosageForm, item.looseUnitLabel)})`}
                                   </span>
                                 )}
                               </p>
