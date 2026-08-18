@@ -100,6 +100,7 @@ import { AssignBedDialog } from '@/components/hospital/ip/assign-bed-dialog';
 import { AdmissionTypeBadge } from '@/components/shared/admission-type-badge';
 import { AdmissionDoctorControl } from '@/components/shared/admission-doctor-control';
 import { AdmissionTypeConvertButton } from '@/components/shared/admission-type-control';
+import { isValueAbnormal } from '@/lib/vitals-ranges';
 import { PatientHistoryPanel } from '@/components/shared/patient-history-panel';
 import { PatientFormsPanel } from '@/components/shared/patient-forms-panel';
 
@@ -142,13 +143,16 @@ function calcAge(dob?: string | null): string | null {
   }
 }
 
+// A fourth copy of the ranges lived here and disagreed with the others again
+// (fever at 38.5 not 38, SpO2 at 95 not 94). All of them now come from
+// lib/vitals-ranges, so a reading cannot be abnormal on one screen and normal
+// on the next.
 function bpAbnormal(s?: number, d?: number) {
-  return (s != null && (s > 140 || s < 90)) || (d != null && (d > 90 || d < 60));
+  return (
+    isValueAbnormal('bloodPressureSystolic', s) ||
+    isValueAbnormal('bloodPressureDiastolic', d)
+  );
 }
-function tempAbnormal(t?: number) { return t != null && (t > 38.5 || t < 35.5); }
-function spo2Abnormal(v?: number) { return v != null && v < 95; }
-function pulseAbnormal(v?: number) { return v != null && (v > 100 || v < 60); }
-function rrAbnormal(v?: number) { return v != null && (v > 20 || v < 12); }
 
 function defaultBackHref(role: WorkspaceRole): string {
   if (role === 'doctor') return '/doctor/ip';
@@ -330,10 +334,10 @@ function LatestVitalsStrip({ patientId, role, admissionId }: { patientId: string
 
   const cards = [
     { label: 'BP', value: latest?.bloodPressureSystolic ? `${latest.bloodPressureSystolic}/${latest.bloodPressureDiastolic ?? '-'}` : null, unit: 'mmHg', icon: Activity, abnormal: bpAbnormal(latest?.bloodPressureSystolic, latest?.bloodPressureDiastolic) },
-    { label: 'Temp', value: latest?.temperature ?? null, unit: '°C', icon: Thermometer, abnormal: tempAbnormal(latest?.temperature) },
-    { label: 'Pulse', value: latest?.pulseRate ?? latest?.heartRate ?? null, unit: 'bpm', icon: Heart, abnormal: pulseAbnormal(latest?.pulseRate ?? latest?.heartRate) },
-    { label: 'RR', value: latest?.respiratoryRate ?? null, unit: '/min', icon: Wind, abnormal: rrAbnormal(latest?.respiratoryRate) },
-    { label: 'SpO₂', value: latest?.oxygenSaturation ?? null, unit: '%', icon: Droplets, abnormal: spo2Abnormal(latest?.oxygenSaturation) },
+    { label: 'Temp', value: latest?.temperature ?? null, unit: '°C', icon: Thermometer, abnormal: isValueAbnormal('temperature', latest?.temperature) },
+    { label: 'Pulse', value: latest?.pulseRate ?? latest?.heartRate ?? null, unit: 'bpm', icon: Heart, abnormal: isValueAbnormal('pulseRate', latest?.pulseRate ?? latest?.heartRate) },
+    { label: 'RR', value: latest?.respiratoryRate ?? null, unit: '/min', icon: Wind, abnormal: isValueAbnormal('respiratoryRate', latest?.respiratoryRate) },
+    { label: 'SpO₂', value: latest?.oxygenSaturation ?? null, unit: '%', icon: Droplets, abnormal: isValueAbnormal('oxygenSaturation', latest?.oxygenSaturation) },
     { label: 'Weight', value: latest?.weightKg ?? latest?.weight ?? null, unit: 'kg', icon: HeartPulse, abnormal: false },
   ];
 

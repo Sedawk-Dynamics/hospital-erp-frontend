@@ -73,6 +73,7 @@ import { ConsultationSummaryPanel } from '@/components/doctor/consultation-summa
 import { PatientAiAssistant } from '@/components/doctor/patient-ai-assistant';
 import { useAiStatus } from '@/hooks/use-ai';
 import { Sparkles, Plus, PencilLine } from 'lucide-react';
+import { isValueAbnormal, vitalRangeText } from '@/lib/vitals-ranges';
 import { VitalsCorrectionDialog } from '@/components/nurse-hierarchy/vitals-correction-dialog';
 import { VitalsHistoryDrawer } from '@/components/nurse-hierarchy/vitals-history-drawer';
 import type { Vital } from '@/hooks/use-vital-history';
@@ -397,6 +398,21 @@ function VitalsSidebar({
     );
   }
 
+  // Nursing takes almost every reading in the hospital, and every nurse screen
+  // flags an out-of-range value — this strip did not, so the doctor saw the
+  // numbers with nothing marking the abnormal ones. Same shared ranges the
+  // nurse screens use, so a reading cannot be abnormal on one screen and normal
+  // on another.
+  const num = (x: unknown): number | null => {
+    if (x === null || x === undefined || x === '') return null;
+    const n = Number(x);
+    return Number.isFinite(n) ? n : null;
+  };
+  // BP is one row but two readings — abnormal if either half is.
+  const bpAbnormal =
+    isValueAbnormal('bloodPressureSystolic', num(v.bloodPressureSystolic)) ||
+    isValueAbnormal('bloodPressureDiastolic', num(v.bloodPressureDiastolic));
+
   const rows = [
     {
       label: 'BP',
@@ -406,14 +422,49 @@ function VitalsSidebar({
           : null,
       unit: 'mmHg',
       accent: 'text-error',
+      abnormal: bpAbnormal,
+      range: `${vitalRangeText('bloodPressureSystolic')} / ${vitalRangeText('bloodPressureDiastolic')}`,
     },
-    { label: 'Pulse', value: v.pulseRate ?? v.heartRate ?? null, unit: 'bpm', accent: 'text-tertiary' },
-    { label: 'Temp', value: v.temperature ?? null, unit: '°C', accent: 'text-secondary' },
-    { label: 'SpO₂', value: v.oxygenSaturation ?? null, unit: '%', accent: 'text-primary' },
-    { label: 'RR', value: v.respiratoryRate ?? null, unit: '/min', accent: 'text-primary' },
-    { label: 'Weight', value: v.weightKg ?? v.weight ?? null, unit: 'kg', accent: 'text-secondary' },
-    { label: 'BGL', value: v.bloodSugar ?? null, unit: 'mg/dL', accent: 'text-error' },
+    {
+      label: 'Pulse',
+      value: v.pulseRate ?? v.heartRate ?? null,
+      unit: 'bpm',
+      accent: 'text-tertiary',
+      abnormal: isValueAbnormal('pulseRate', num(v.pulseRate ?? v.heartRate)),
+      range: vitalRangeText('pulseRate'),
+    },
+    {
+      label: 'Temp',
+      value: v.temperature ?? null,
+      unit: '°C',
+      accent: 'text-secondary',
+      abnormal: isValueAbnormal('temperature', num(v.temperature)),
+      range: vitalRangeText('temperature'),
+    },
+    {
+      label: 'SpO₂',
+      value: v.oxygenSaturation ?? null,
+      unit: '%',
+      accent: 'text-primary',
+      abnormal: isValueAbnormal('oxygenSaturation', num(v.oxygenSaturation)),
+      range: vitalRangeText('oxygenSaturation'),
+    },
+    {
+      label: 'RR',
+      value: v.respiratoryRate ?? null,
+      unit: '/min',
+      accent: 'text-primary',
+      abnormal: isValueAbnormal('respiratoryRate', num(v.respiratoryRate)),
+      range: vitalRangeText('respiratoryRate'),
+    },
+    // Weight and blood sugar have no single adult normal range worth asserting
+    // here — a fasting and a post-meal glucose are judged differently — so they
+    // are shown without a flag rather than flagged wrongly.
+    { label: 'Weight', value: v.weightKg ?? v.weight ?? null, unit: 'kg', accent: 'text-secondary', abnormal: false, range: null },
+    { label: 'BGL', value: v.bloodSugar ?? null, unit: 'mg/dL', accent: 'text-error', abnormal: false, range: null },
   ].filter((t) => t.value !== null && t.value !== undefined && t.value !== '');
+
+  const abnormalCount = rows.filter((r) => r.abnormal).length;
 
   return (
     <SidebarCard
@@ -421,6 +472,11 @@ function VitalsSidebar({
       icon={Activity}
       trailing={
         <span className="flex items-center gap-1.5">
+          {abnormalCount > 0 && (
+            <span className="rounded-full bg-error/10 px-1.5 py-0.5 text-[9px] font-bold normal-case tracking-normal text-error">
+              {abnormalCount} abnormal
+            </span>
+          )}
           {v.recordedAt && (
             <span className="text-[9px] text-muted-foreground font-normal normal-case tracking-normal">
               {formatDateTimeAmPm(v.recordedAt)}
@@ -476,11 +532,17 @@ function VitalsSidebar({
         <ul className="divide-y divide-outline-variant/30">
           {rows.map((t, i) => (
             <li key={i} className="flex items-baseline justify-between py-1">
-              <span className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
+              <span className="font-label flex items-center gap-1 text-[10px] uppercase tracking-widest text-on-surface-variant">
                 {t.label}
+                {t.abnormal && <AlertTriangle className="h-3 w-3 text-error" />}
               </span>
               <span className="flex items-baseline gap-1">
-                <span className={cn('text-xs font-bold', t.accent)}>{String(t.value)}</span>
+                <span
+                  className={cn('text-xs font-bold', t.abnormal ? 'text-error' : t.accent)}
+                  title={t.abnormal && t.range ? `Outside normal (${t.range})` : undefined}
+                >
+                  {String(t.value)}
+                </span>
                 <span className="text-[9px] text-muted-foreground">{t.unit}</span>
               </span>
             </li>

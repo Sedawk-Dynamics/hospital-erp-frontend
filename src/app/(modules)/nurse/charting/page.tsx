@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { isValueAbnormal, vitalRangeText } from '@/lib/vitals-ranges';
 import { TemperatureUnitToggle } from '@/components/shared/temperature-unit-toggle';
 import {
   temperaturePlaceholder,
@@ -69,57 +70,10 @@ const vitalTime = (v: Vital): string | undefined => v.recordedAt ?? v.createdAt;
 const recorderName = (v: Vital): string =>
   v.recorder ? `${v.recorder.firstName} ${v.recorder.lastName ?? ''}`.trim() : '—';
 
-// ── Abnormal-value helpers ─────────────────────────────────
-
-function isBpSystolicAbnormal(v?: number) {
-  return v != null && v > 140;
-}
-function isBpDiastolicAbnormal(v?: number) {
-  return v != null && v > 90;
-}
-function isTempAbnormal(v?: number) {
-  return v != null && v > 38.5;
-}
-function isSpO2Abnormal(v?: number) {
-  return v != null && v < 95;
-}
-function isPulseAbnormal(v?: number) {
-  return v != null && (v > 100 || v < 60);
-}
-function isRRAbnormal(v?: number) {
-  return v != null && v > 20;
-}
-
-function isValueAbnormal(key: string, value?: number): boolean {
-  if (value == null) return false;
-  switch (key) {
-    case 'bloodPressureSystolic':
-      return isBpSystolicAbnormal(value);
-    case 'bloodPressureDiastolic':
-      return isBpDiastolicAbnormal(value);
-    case 'temperature':
-      return isTempAbnormal(value);
-    case 'oxygenSaturation':
-      return isSpO2Abnormal(value);
-    case 'pulseRate':
-      return isPulseAbnormal(value);
-    case 'respiratoryRate':
-      return isRRAbnormal(value);
-    default:
-      return false;
-  }
-}
 
 // ── Normal range labels ────────────────────────────────────
 
-const NORMAL_RANGES: Record<string, string> = {
-  bloodPressureSystolic: '90-140 mmHg',
-  bloodPressureDiastolic: '60-90 mmHg',
-  temperature: '36.1-38.5 \u00b0C',
-  pulseRate: '60-100 bpm',
-  respiratoryRate: '12-20 /min',
-  oxygenSaturation: '95-100 %',
-};
+
 
 // ── Note tab config ────────────────────────────────────────
 
@@ -305,15 +259,15 @@ export default function ClinicalChartingPage() {
 
     // Detect abnormal values in the current submission
     const abnormalSummary: string[] = [];
-    if (isBpSystolicAbnormal(payload.bloodPressureSystolic) || isBpDiastolicAbnormal(payload.bloodPressureDiastolic)) {
+    if (isValueAbnormal('bloodPressureSystolic', payload.bloodPressureSystolic) || isValueAbnormal('bloodPressureDiastolic', payload.bloodPressureDiastolic)) {
       abnormalSummary.push(
         `BP ${payload.bloodPressureSystolic ?? '?'}/${payload.bloodPressureDiastolic ?? '?'} mmHg`,
       );
     }
-    if (isTempAbnormal(payload.temperature)) abnormalSummary.push(`Temp ${payload.temperature}°C`);
-    if (isPulseAbnormal(payload.pulseRate)) abnormalSummary.push(`Pulse ${payload.pulseRate} bpm`);
-    if (isSpO2Abnormal(payload.oxygenSaturation)) abnormalSummary.push(`SpO₂ ${payload.oxygenSaturation}%`);
-    if (isRRAbnormal(payload.respiratoryRate)) abnormalSummary.push(`RR ${payload.respiratoryRate}/min`);
+    if (isValueAbnormal('temperature', payload.temperature)) abnormalSummary.push(`Temp ${payload.temperature}°C`);
+    if (isValueAbnormal('pulseRate', payload.pulseRate)) abnormalSummary.push(`Pulse ${payload.pulseRate} bpm`);
+    if (isValueAbnormal('oxygenSaturation', payload.oxygenSaturation)) abnormalSummary.push(`SpO₂ ${payload.oxygenSaturation}%`);
+    if (isValueAbnormal('respiratoryRate', payload.respiratoryRate)) abnormalSummary.push(`RR ${payload.respiratoryRate}/min`);
 
     recordVitals.mutate(payload, {
       onSuccess: () => {
@@ -645,10 +599,10 @@ export default function ClinicalChartingPage() {
                         ? `${latestVitals.bloodPressureSystolic}/${latestVitals.bloodPressureDiastolic ?? '-'}`
                         : '-',
                     abnormal:
-                      isBpSystolicAbnormal(
+                      isValueAbnormal('bloodPressureSystolic', 
                         latestVitals.bloodPressureSystolic,
                       ) ||
-                      isBpDiastolicAbnormal(
+                      isValueAbnormal('bloodPressureDiastolic', 
                         latestVitals.bloodPressureDiastolic,
                       ),
                     unit: 'mmHg',
@@ -656,25 +610,25 @@ export default function ClinicalChartingPage() {
                   {
                     label: 'Temp',
                     value: latestVitals.temperature ?? '-',
-                    abnormal: isTempAbnormal(latestVitals.temperature),
+                    abnormal: isValueAbnormal('temperature', latestVitals.temperature),
                     unit: '\u00b0C',
                   },
                   {
                     label: 'Pulse',
                     value: latestVitals.pulseRate ?? '-',
-                    abnormal: isPulseAbnormal(latestVitals.pulseRate),
+                    abnormal: isValueAbnormal('pulseRate', latestVitals.pulseRate),
                     unit: 'bpm',
                   },
                   {
                     label: 'SpO2',
                     value: latestVitals.oxygenSaturation ?? '-',
-                    abnormal: isSpO2Abnormal(latestVitals.oxygenSaturation),
+                    abnormal: isValueAbnormal('oxygenSaturation', latestVitals.oxygenSaturation),
                     unit: '%',
                   },
                   {
                     label: 'RR',
                     value: latestVitals.respiratoryRate ?? '-',
-                    abnormal: isRRAbnormal(latestVitals.respiratoryRate),
+                    abnormal: isValueAbnormal('respiratoryRate', latestVitals.respiratoryRate),
                     unit: '/min',
                   },
                   {
@@ -775,7 +729,7 @@ export default function ClinicalChartingPage() {
                     </div>
                     {abnormal && (
                       <p className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-600 mt-1 inline-block">
-                        Abnormal — Normal: {NORMAL_RANGES[field.key]}
+                        Abnormal — Normal: {vitalRangeText(field.key)}
                       </p>
                     )}
                   </div>
@@ -919,10 +873,10 @@ export default function ClinicalChartingPage() {
                           {v.bloodPressureSystolic != null ? (
                             <span
                               className={cn(
-                                isBpSystolicAbnormal(
+                                isValueAbnormal('bloodPressureSystolic', 
                                   v.bloodPressureSystolic,
                                 ) ||
-                                  isBpDiastolicAbnormal(
+                                  isValueAbnormal('bloodPressureDiastolic', 
                                     v.bloodPressureDiastolic,
                                   )
                                   ? 'text-red-600 font-semibold'
@@ -942,7 +896,7 @@ export default function ClinicalChartingPage() {
                           {v.temperature != null ? (
                             <span
                               className={cn(
-                                isTempAbnormal(v.temperature)
+                                isValueAbnormal('temperature', v.temperature)
                                   ? 'text-red-600 font-semibold'
                                   : 'text-on-surface',
                               )}
@@ -959,7 +913,7 @@ export default function ClinicalChartingPage() {
                           {v.pulseRate != null ? (
                             <span
                               className={cn(
-                                isPulseAbnormal(v.pulseRate)
+                                isValueAbnormal('pulseRate', v.pulseRate)
                                   ? 'text-red-600 font-semibold'
                                   : 'text-on-surface',
                               )}
@@ -976,7 +930,7 @@ export default function ClinicalChartingPage() {
                           {v.respiratoryRate != null ? (
                             <span
                               className={cn(
-                                isRRAbnormal(v.respiratoryRate)
+                                isValueAbnormal('respiratoryRate', v.respiratoryRate)
                                   ? 'text-red-600 font-semibold'
                                   : 'text-on-surface',
                               )}
@@ -993,7 +947,7 @@ export default function ClinicalChartingPage() {
                           {v.oxygenSaturation != null ? (
                             <span
                               className={cn(
-                                isSpO2Abnormal(v.oxygenSaturation)
+                                isValueAbnormal('oxygenSaturation', v.oxygenSaturation)
                                   ? 'text-red-600 font-semibold'
                                   : 'text-on-surface',
                               )}

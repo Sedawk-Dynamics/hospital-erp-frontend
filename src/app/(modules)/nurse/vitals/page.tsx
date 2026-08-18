@@ -39,6 +39,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useSetNurseChiefComplaint } from '@/hooks/use-clinical';
+import { isValueAbnormal, vitalRangeText } from '@/lib/vitals-ranges';
 import { TemperatureUnitToggle } from '@/components/shared/temperature-unit-toggle';
 import {
   temperaturePlaceholder,
@@ -64,55 +65,8 @@ import {
 } from '@/hooks/use-nurse-doctor-assignments';
 import { VitalTrendChart } from '@/components/nurse/vital-trend-chart';
 
-// ── Abnormal-value helpers ─────────────────────────────────
 
-function isBpSystolicAbnormal(v?: number) {
-  return v != null && (v > 140 || v < 90);
-}
-function isBpDiastolicAbnormal(v?: number) {
-  return v != null && (v > 90 || v < 60);
-}
-function isTempAbnormal(v?: number) {
-  return v != null && (v > 38 || v < 35);
-}
-function isSpO2Abnormal(v?: number) {
-  return v != null && v < 94;
-}
-function isPulseAbnormal(v?: number) {
-  return v != null && (v > 100 || v < 60);
-}
-function isRRAbnormal(v?: number) {
-  return v != null && (v > 20 || v < 12);
-}
 
-function isValueAbnormal(key: string, value?: number): boolean {
-  if (value == null) return false;
-  switch (key) {
-    case 'bloodPressureSystolic':
-      return isBpSystolicAbnormal(value);
-    case 'bloodPressureDiastolic':
-      return isBpDiastolicAbnormal(value);
-    case 'temperature':
-      return isTempAbnormal(value);
-    case 'oxygenSaturation':
-      return isSpO2Abnormal(value);
-    case 'pulseRate':
-      return isPulseAbnormal(value);
-    case 'respiratoryRate':
-      return isRRAbnormal(value);
-    default:
-      return false;
-  }
-}
-
-const NORMAL_RANGES: Record<string, string> = {
-  bloodPressureSystolic: '90–140 mmHg',
-  bloodPressureDiastolic: '60–90 mmHg',
-  temperature: '35–38 °C',
-  pulseRate: '60–100 bpm',
-  respiratoryRate: '12–20 /min',
-  oxygenSaturation: '94–100 %',
-};
 
 const VITAL_FIELDS = [
   { key: 'bloodPressureSystolic', label: 'BP Systolic', unit: 'mmHg', icon: Activity, placeholder: '120' },
@@ -335,32 +289,32 @@ function LatestVitalsCard({ vitals }: { vitals: Vital | undefined }) {
           ? `${vitals.bloodPressureSystolic}/${vitals.bloodPressureDiastolic ?? '-'}`
           : '-',
       abnormal:
-        isBpSystolicAbnormal(vitals.bloodPressureSystolic) ||
-        isBpDiastolicAbnormal(vitals.bloodPressureDiastolic),
+        isValueAbnormal('bloodPressureSystolic', vitals.bloodPressureSystolic) ||
+        isValueAbnormal('bloodPressureDiastolic', vitals.bloodPressureDiastolic),
       unit: 'mmHg',
     },
     {
       label: 'Temp',
       value: vitals.temperature ?? '-',
-      abnormal: isTempAbnormal(vitals.temperature),
+      abnormal: isValueAbnormal('temperature', vitals.temperature),
       unit: '°C',
     },
     {
       label: 'Pulse',
       value: vitals.pulseRate ?? vitals.heartRate ?? '-',
-      abnormal: isPulseAbnormal(vitals.pulseRate ?? vitals.heartRate),
+      abnormal: isValueAbnormal('pulseRate', vitals.pulseRate ?? vitals.heartRate),
       unit: 'bpm',
     },
     {
       label: 'SpO2',
       value: vitals.oxygenSaturation ?? '-',
-      abnormal: isSpO2Abnormal(vitals.oxygenSaturation),
+      abnormal: isValueAbnormal('oxygenSaturation', vitals.oxygenSaturation),
       unit: '%',
     },
     {
       label: 'RR',
       value: vitals.respiratoryRate ?? '-',
-      abnormal: isRRAbnormal(vitals.respiratoryRate),
+      abnormal: isValueAbnormal('respiratoryRate', vitals.respiratoryRate),
       unit: '/min',
     },
     {
@@ -645,17 +599,17 @@ export default function NurseVitalsPage() {
 
     const abnormal: string[] = [];
     if (
-      isBpSystolicAbnormal(payload.bloodPressureSystolic) ||
-      isBpDiastolicAbnormal(payload.bloodPressureDiastolic)
+      isValueAbnormal('bloodPressureSystolic', payload.bloodPressureSystolic) ||
+      isValueAbnormal('bloodPressureDiastolic', payload.bloodPressureDiastolic)
     ) {
       abnormal.push(
         `BP ${payload.bloodPressureSystolic ?? '?'}/${payload.bloodPressureDiastolic ?? '?'} mmHg`,
       );
     }
-    if (isTempAbnormal(payload.temperature)) abnormal.push(`Temp ${payload.temperature}°C`);
-    if (isPulseAbnormal(payload.pulseRate)) abnormal.push(`Pulse ${payload.pulseRate} bpm`);
-    if (isSpO2Abnormal(payload.oxygenSaturation)) abnormal.push(`SpO₂ ${payload.oxygenSaturation}%`);
-    if (isRRAbnormal(payload.respiratoryRate)) abnormal.push(`RR ${payload.respiratoryRate}/min`);
+    if (isValueAbnormal('temperature', payload.temperature)) abnormal.push(`Temp ${payload.temperature}°C`);
+    if (isValueAbnormal('pulseRate', payload.pulseRate)) abnormal.push(`Pulse ${payload.pulseRate} bpm`);
+    if (isValueAbnormal('oxygenSaturation', payload.oxygenSaturation)) abnormal.push(`SpO₂ ${payload.oxygenSaturation}%`);
+    if (isValueAbnormal('respiratoryRate', payload.respiratoryRate)) abnormal.push(`RR ${payload.respiratoryRate}/min`);
 
     recordVitals.mutate(payload, {
       onSuccess: () => {
@@ -992,9 +946,9 @@ export default function NurseVitalsPage() {
                             </span>
                           )}
                         </div>
-                        {abnormal && NORMAL_RANGES[field.key] && (
+                        {abnormal && vitalRangeText(field.key) && (
                           <p className="mt-1 inline-block rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-600">
-                            Abnormal — Normal: {NORMAL_RANGES[field.key]}
+                            Abnormal — Normal: {vitalRangeText(field.key)}
                           </p>
                         )}
                       </div>
@@ -1156,12 +1110,12 @@ export default function NurseVitalsPage() {
                       <tbody>
                         {vitals.map((v) => {
                           const bpAbn =
-                            isBpSystolicAbnormal(v.bloodPressureSystolic) ||
-                            isBpDiastolicAbnormal(v.bloodPressureDiastolic);
-                          const tempAbn = isTempAbnormal(v.temperature);
-                          const pulseAbn = isPulseAbnormal(v.pulseRate ?? v.heartRate);
-                          const rrAbn = isRRAbnormal(v.respiratoryRate);
-                          const spo2Abn = isSpO2Abnormal(v.oxygenSaturation);
+                            isValueAbnormal('bloodPressureSystolic', v.bloodPressureSystolic) ||
+                            isValueAbnormal('bloodPressureDiastolic', v.bloodPressureDiastolic);
+                          const tempAbn = isValueAbnormal('temperature', v.temperature);
+                          const pulseAbn = isValueAbnormal('pulseRate', v.pulseRate ?? v.heartRate);
+                          const rrAbn = isValueAbnormal('respiratoryRate', v.respiratoryRate);
+                          const spo2Abn = isValueAbnormal('oxygenSaturation', v.oxygenSaturation);
                           return (
                             <tr
                               key={v.id}
