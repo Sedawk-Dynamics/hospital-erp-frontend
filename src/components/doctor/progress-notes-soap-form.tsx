@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useFormDraft, useUnsavedChangesWarning } from '@/hooks/use-form-draft';
 import { useVisit } from '@/hooks/use-clinical';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,6 +37,7 @@ import {
   BadgeCheck,
   Sparkles,
   History,
+  RotateCcw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -589,6 +591,25 @@ export function SoapNoteFormDialog({
     setAmendmentReason('');
   }, [open, editingNote]);
 
+  // Draft recovery. A note lived in React state until Save, and the access
+  // token is 15 minutes — any refresh failure, tab crash or stray reload
+  // mid-consultation took the whole thing. Keyed by note or by patient +
+  // encounter so one patient's draft can never surface on another's chart.
+  const draftKey = editingNote
+    ? `soap:note:${editingNote.id}`
+    : patient && (visitId || admissionId)
+      ? `soap:new:${patient.id}:${visitId ?? admissionId}`
+      : null;
+
+  const draft = useFormDraft<FormState>(draftKey, state, open, {
+    // An untouched form is not a draft; writing it would overwrite a real one
+    // before the doctor has answered the restore prompt.
+    isEmpty: (v) => buildContentSummary(v).trim().length === 0,
+  });
+
+  // Nag on reload/close only while there is something unsaved to lose.
+  useUnsavedChangesWarning(open && buildContentSummary(state).trim().length > 0);
+
   const canSave = useMemo(() => {
     if (!isEditing && (!patient || !visitId)) return false;
     const content = buildContentSummary(state).trim();
@@ -640,6 +661,8 @@ export function SoapNoteFormDialog({
         toast.success('Note created');
       }
 
+      // The note is on the server now — the local copy has done its job.
+      draft.clear();
       onOpenChange(false);
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'Failed to save note');
@@ -692,6 +715,42 @@ export function SoapNoteFormDialog({
             ) : null}
           </DialogDescription>
         </DialogHeader>
+
+        {/* An unsaved note found from a previous session. Offered rather than
+            applied silently: the doctor has to be able to see what is about to
+            replace what is on screen, and a note is not something to overwrite
+            on a guess. */}
+        {draft.pending && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-amber-300 bg-amber-50/60 px-3 py-2">
+            <RotateCcw className="h-4 w-4 shrink-0 text-amber-700" />
+            <p className="flex-1 text-xs text-amber-900">
+              An unsaved note from {formatDateTime(new Date(draft.pending.savedAt).toISOString())}{' '}
+              was recovered for this patient.
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              onClick={() => {
+                const data = draft.restore();
+                if (data) {
+                  setState(data);
+                  toast.success('Draft restored');
+                }
+              }}
+            >
+              Restore it
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs"
+              onClick={() => draft.discard()}
+            >
+              Discard
+            </Button>
+          </div>
+        )}
 
         <Tabs value={active} onValueChange={setActive} className="mt-2">
           <TabsList variant="line" className="w-full overflow-x-auto">
