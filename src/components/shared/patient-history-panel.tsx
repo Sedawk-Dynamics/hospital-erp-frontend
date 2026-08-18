@@ -29,6 +29,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { IcdCodeCombobox } from '@/components/clinical/icd-code-combobox';
 import { DischargeSummaryDocument } from '@/components/doctor/discharge-summary-document';
 import type { DischargeDocument } from '@/hooks/use-doctor';
 
@@ -196,6 +197,62 @@ function MedicalSurgicalTab({ patientId, readOnly }: { patientId: string; readOn
     );
   };
 
+  /**
+   * Same narrative box, with an ICD-10 picker above it.
+   *
+   * Known disorders were free text only, so the same condition arrived as
+   * "HTN", "hypertension" and "high BP" and nothing downstream could count or
+   * match them. The ICD catalog and its search endpoint already back the
+   * diagnosis field; this puts them in front of the disorder field too.
+   *
+   * The free text stays, and stays primary: plenty of real disorders are not in
+   * ICD, and a picker that refused them would push clinicians to write the
+   * condition in the wrong box. Picking a code APPENDS a line rather than
+   * replacing what is there.
+   */
+  const codedNarrativeField = (
+    label: string,
+    key: keyof MedicalSurgical & string,
+    placeholder: string,
+  ) => {
+    if (readOnly) return narrativeField(label, key, placeholder);
+    const value = draft[key] ?? (data?.[key] as string | null) ?? '';
+    return (
+      <div>
+        <label className="mb-0.5 block text-[10px] font-medium text-foreground/60">{label}</label>
+        <div className="mb-1">
+          <IcdCodeCombobox
+            value={null}
+            triggerSize="sm"
+            clearable={false}
+            placeholder="Search the ICD-10 list to add a disorder…"
+            onSelect={(icd) => {
+              if (!icd) return;
+              const line = `${icd.code} — ${icd.title}`;
+              // Do not add the same code twice; a clinician clicking around the
+              // picker should not end up with a list of repeats.
+              if (value.includes(icd.code)) return;
+              setDraft((d) => ({
+                ...d,
+                [key]: value.trim() ? `${value.trim()}\n${line}` : line,
+              }));
+            }}
+          />
+        </div>
+        <textarea
+          value={value}
+          onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
+          rows={3}
+          placeholder={placeholder}
+          className="w-full rounded-md border bg-background px-2 py-1 text-xs"
+        />
+        <p className="mt-0.5 text-[10px] text-muted-foreground">
+          Pick from the list where it fits, or just type — anything not in ICD still belongs here.
+        </p>
+      </div>
+    );
+  };
+
   if (isLoading) {
     return (
       <p className="flex items-center gap-1.5 py-4 text-xs text-muted-foreground">
@@ -220,7 +277,7 @@ function MedicalSurgicalTab({ patientId, readOnly }: { patientId: string; readOn
           'pastSurgicalHistory',
           'Past procedures with dates — appendicectomy 2018, LSCS 2021…',
         )}
-        {narrativeField('Known Disorders', 'disorders', 'Chronic / ongoing disorders')}
+        {codedNarrativeField('Known Disorders', 'disorders', 'Chronic / ongoing disorders')}
         {!readOnly && (
           <div className="flex justify-end">
             <Button
