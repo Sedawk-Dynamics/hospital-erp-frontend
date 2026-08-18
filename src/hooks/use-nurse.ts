@@ -645,6 +645,27 @@ export function useAdministrationRecords(params?: {
   });
 }
 
+/**
+ * Every vital recorded on a given day, tenant-wide.
+ *
+ * The OPD queue needs one thing per row — has this patient had vitals taken
+ * today? — and asking per row would be a request per patient on screen. One
+ * dated fetch answers the whole list.
+ */
+export function useVitalsToday(date: string) {
+  return useQuery({
+    queryKey: ['nurse', 'vitals-on', date],
+    queryFn: async () => {
+      const res = await apiGet<{ id: string; patientId: string; recordedAt: string }[]>(
+        '/clinical/vitals',
+        { params: { fromDate: date, toDate: date, limit: 500 } },
+      );
+      return res.data ?? [];
+    },
+    enabled: !!date,
+  });
+}
+
 export function useOverdueAdministrations(params?: {
   patientId?: string;
   fromDate?: string;

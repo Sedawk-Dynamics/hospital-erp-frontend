@@ -209,6 +209,10 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Dashboard', href: '/nurse', icon: Home },
       { label: 'IP Patients', href: '/nurse/ip', icon: BedDouble },
       { label: 'My Schedule', href: '/nurse/schedule', icon: CalendarClock },
+      // Answering "who has arrived, who still needs vitals" used to mean
+      // opening Patient Vitals, switching to the OPD tab and picking patients
+      // one at a time. The data was there; the list was not.
+      { label: 'OPD Queue', href: '/nurse/opd', icon: ClipboardList },
       { label: 'Patient Vitals', href: '/nurse/vitals', icon: HeartPulse },
       { label: 'Clinical Charting', href: '/nurse/charting', icon: ClipboardList },
       { label: 'eMAR', href: '/nurse/emar', icon: PillBottle },
