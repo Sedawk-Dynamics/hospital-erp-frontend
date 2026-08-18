@@ -72,7 +72,10 @@ import { NursingFormsPanel } from '@/components/doctor/nursing-forms-panel';
 import { ConsultationSummaryPanel } from '@/components/doctor/consultation-summary-panel';
 import { PatientAiAssistant } from '@/components/doctor/patient-ai-assistant';
 import { useAiStatus } from '@/hooks/use-ai';
-import { Sparkles, Plus } from 'lucide-react';
+import { Sparkles, Plus, PencilLine } from 'lucide-react';
+import { VitalsCorrectionDialog } from '@/components/nurse-hierarchy/vitals-correction-dialog';
+import { VitalsHistoryDrawer } from '@/components/nurse-hierarchy/vitals-history-drawer';
+import type { Vital } from '@/hooks/use-vital-history';
 import { RecordVitalsDialog } from '@/components/shared/record-vitals-dialog';
 import type { Patient, Appointment } from '@/types';
 
@@ -320,6 +323,14 @@ function VitalsSidebar({
   const { data: latestResp, isLoading } = useLatestVitalsNurse(patientId);
   const v = (latestResp as any)?.data ?? null;
   const [recordOpen, setRecordOpen] = useState(false);
+  // Editing a nurse's reading must AMEND it, not quietly replace it. The
+  // append-only correction chain (supersedesVitalId / correctionReason /
+  // correctedById) and POST /clinical/vitals/:id/correct have existed all
+  // along; nothing rendered the dialog, so the only way a doctor could change
+  // a reading was to record a fresh one — which then displaced the nurse's
+  // value everywhere with no note that it had been amended or by whom.
+  const [amendOpen, setAmendOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   // The treating doctor examines the patient and may record their own reading
   // (nursing still owns routine rounds). Needs an encounter to hang the vital
   // off, so require an appointment or active visit.
@@ -335,15 +346,34 @@ function VitalsSidebar({
     </button>
   ) : null;
 
-  const dialog = canRecord ? (
-    <RecordVitalsDialog
-      open={recordOpen}
-      onOpenChange={setRecordOpen}
-      patientId={patientId}
-      appointmentId={appointmentId ?? undefined}
-      visitId={visitId ?? undefined}
-    />
-  ) : null;
+  const dialog = (
+    <>
+      {canRecord && (
+        <RecordVitalsDialog
+          open={recordOpen}
+          onOpenChange={setRecordOpen}
+          patientId={patientId}
+          appointmentId={appointmentId ?? undefined}
+          visitId={visitId ?? undefined}
+        />
+      )}
+      {v?.id && (
+        <>
+          <VitalsCorrectionDialog
+            open={amendOpen}
+            onOpenChange={setAmendOpen}
+            vital={v as Vital}
+            isDoctor
+          />
+          <VitalsHistoryDrawer
+            open={historyOpen}
+            onOpenChange={setHistoryOpen}
+            vitalId={v.id as string}
+          />
+        </>
+      )}
+    </>
+  );
 
   if (isLoading) {
     return (
@@ -396,10 +426,50 @@ function VitalsSidebar({
               {formatDateTimeAmPm(v.recordedAt)}
             </span>
           )}
+          {v.id && (
+            <button
+              type="button"
+              onClick={() => setAmendOpen(true)}
+              className="inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-secondary hover:bg-secondary/10"
+              title="Correct this reading — the original is kept and the change is attributed to you"
+            >
+              <PencilLine className="h-3 w-3" /> Amend
+            </button>
+          )}
           {recordButton}
         </span>
       }
     >
+      {/* Who took the reading, and whether what is shown is an amendment. A
+          corrected value that looks identical to an original is exactly what
+          QA flagged — the doctor's number silently standing in for the
+          nurse's. */}
+      <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground">
+        {v.recorder && (
+          <span>
+            Recorded by {v.recorder.firstName} {v.recorder.lastName ?? ''}
+          </span>
+        )}
+        {v.isCorrection && (
+          <span className="rounded-full bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-700">
+            Amended{v.corrector ? ` by ${v.corrector.firstName} ${v.corrector.lastName ?? ''}` : ''}
+          </span>
+        )}
+        {v.id && (
+          <button
+            type="button"
+            onClick={() => setHistoryOpen(true)}
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            History
+          </button>
+        )}
+      </div>
+      {v.isCorrection && v.correctionReason && (
+        <p className="mb-1 text-[10px] italic text-muted-foreground">
+          Reason: {v.correctionReason}
+        </p>
+      )}
       {rows.length === 0 ? (
         <p className="text-[11px] text-muted-foreground italic">No numeric vitals on record.</p>
       ) : (
