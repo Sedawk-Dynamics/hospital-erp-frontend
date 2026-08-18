@@ -6,7 +6,8 @@
 
 import {
   ClipboardCheck,
-  FlaskConical
+  FlaskConical,
+  Lock,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -114,6 +115,18 @@ export function OrderTable({
               )}
               <td className="px-4 py-3 text-right">
                 <div className="flex justify-end gap-1">
+                  {/* An order Intake has not accepted is not workable: no
+                      payment taken, no assignment, no clock started. The server
+                      refuses result entry and file upload on it, so saying so
+                      here beats letting the bench try and get a 400. */}
+                  {!o.acceptedAt && !onAccept && (
+                    <span
+                      className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-1 text-[11px] font-medium text-amber-800"
+                      title="Accept this order from the Intake tab first — that is where payment is taken and it enters the lab workflow."
+                    >
+                      <Lock className="size-3" /> Awaiting intake
+                    </span>
+                  )}
                   {onView && (
                     <Button size="sm" variant="outline" onClick={() => onView(o)}>
                       View
