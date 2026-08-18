@@ -77,6 +77,35 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
     try { await consolidate.mutateAsync(admissionId); toast.success('All charges pulled onto the bill.'); }
     catch (e) { toast.error((e as Error).message || 'Could not generate the bill.'); }
   };
+  const [preparing, setPreparing] = useState(false);
+
+  /**
+   * Consolidate and finalize before opening the counter.
+   *
+   * The running IP bill stays a DRAFT for the whole stay so charges can keep
+   * landing on it, but it still carries a populated balanceDue — so the collect
+   * dialog showed a real ₹1,600 balance on a bill every payment path refuses,
+   * and "From advance" returned a flat 400 every time. Pending auto-charges
+   * were not pulled on either, which is how a ₹400 lab line survived a
+   * settlement that looked complete.
+   *
+   * Doing it here means the desk never has to know that "Generate / refresh
+   * bill" was a prerequisite.
+   */
+  const openCollect = async () => {
+    setPreparing(true);
+    try {
+      await consolidate.mutateAsync(admissionId);
+      await qc.invalidateQueries({ queryKey: ['hospital', 'ip-bills'] });
+      await qc.invalidateQueries({ queryKey: ['ip-ledger', admissionId] });
+      setCollectOpen(true);
+    } catch (e) {
+      toast.error((e as Error).message || 'Could not prepare the bill for payment.');
+    } finally {
+      setPreparing(false);
+    }
+  };
+
   const doApplyDeposit = async () => {
     try { await applyDeposit.mutateAsync({ admissionId }); toast.success('Deposit applied — cut from the bill balance.'); }
     catch (e) { toast.error((e as Error).message || 'Could not apply the deposit.'); }
@@ -187,9 +216,21 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
                 ))}
               </div>
             )}
-            <Button size="sm" variant="outline" className="mt-2 w-full" onClick={() => setCollectOpen(true)} disabled={n(bill.balanceDue) <= 0}>
-              Collect part payment
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-2 w-full"
+              onClick={openCollect}
+              disabled={preparing || consolidate.isPending}
+            >
+              {preparing ? 'Preparing bill…' : 'Collect payment'}
             </Button>
+            {n(ledger?.totals.pending) > 0 && (
+              <p className="mt-1 text-[11px] text-amber-700">
+                {money(ledger?.totals.pending)} of charges are not on the bill yet — they will be
+                pulled on before payment.
+              </p>
+            )}
           </div>
         </div>
 
