@@ -563,6 +563,10 @@ export function SoapNoteFormDialog({
         certainty: state.diagnosisCertainty,
         medications: state.medications || undefined,
         advice: state.advice || undefined,
+        // The server resolves this patient's published labs from here. Sending
+        // the id rather than the values keeps the browser out of deciding
+        // which results reach a clinical prompt.
+        patientId: patient?.id ?? editingNote?.patient?.id,
       });
       setSuggestions(res?.suggestions ?? []);
       if (!res?.suggestions || res.suggestions.length === 0) {

@@ -637,6 +637,12 @@ export interface SmartSuggestionsInput {
   certainty?: 'provisional' | 'confirmed';
   medications?: string;
   advice?: string;
+  /**
+   * Lets the server pull this patient's published lab results into the prompt.
+   * Without it the model only sees what the doctor typed, which is why
+   * suggestions never referred to the report on the same screen.
+   */
+  patientId?: string;
   patientAge?: number | null;
   patientSex?: string | null;
   knownAllergies?: string[];
