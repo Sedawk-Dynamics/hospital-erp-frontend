@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useForm, type UseFormReturn } from 'react-hook-form';
 import { z } from 'zod/v4';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -180,6 +180,13 @@ function buildBedNumbers(prefix: string, start: number, count: number, padding: 
 // ─── Page ───────────────────────────────────────────────
 export default function FloorsWardsSettingsPage() {
   const router = useRouter();
+  // Nurse Admin owns ward and bed setup too (it holds full wards/floors/beds
+  // permissions), so this screen is mounted under that module as well. The back
+  // button has to follow whichever module the user actually came in through —
+  // sending a nurse admin to /hospital/settings drops them somewhere they
+  // cannot go.
+  const pathname = usePathname();
+  const backHref = pathname?.startsWith('/nurse-admin') ? '/nurse-admin' : '/hospital/settings';
   const queryClient = useQueryClient();
   const { data: floors, isLoading: floorsLoading } = useFloors();
   const { data: wards, isLoading: wardsLoading } = useWards();
@@ -562,7 +569,7 @@ export default function FloorsWardsSettingsPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => router.push('/hospital/settings')}
+            onClick={() => router.push(backHref)}
             className="flex items-center justify-center h-8 w-8 rounded-xl bg-surface-container-low hover:bg-surface-container transition-all"
           >
             <ArrowLeft className="h-4 w-4" />

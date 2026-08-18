@@ -160,6 +160,9 @@ export interface DispenseRecord {
 }
 
 export interface PharmacyReturn {
+  /** Groups the lines of one multi-medicine vendor return (VR-YYYYMMDD-NNNN). */
+  returnNumber?: string | null;
+  returnGroupId?: string | null;
   id: string;
   returnType: 'patient_return' | 'vendor_return' | 'counter_return';
   drugBatchId: string | null;
@@ -235,6 +238,8 @@ export interface BatchQueryParams extends PaginatedParams {
   isExpired?: boolean | string;
   isRecalled?: boolean | string;
   availableOnly?: boolean | string;
+  /** Batches expiring on or before N days from now (already-expired included). */
+  expiringInDays?: number;
 }
 
 // ============================================================
@@ -1488,6 +1493,50 @@ export function useCreateReturn() {
       queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
       queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
       queryClient.invalidateQueries({ queryKey: ['pharmacy', 'returnable'] });
+    },
+  });
+}
+
+export interface VendorReturnLineInput {
+  drugBatchId: string;
+  quantity: number;
+  creditAmount?: number;
+  reason?: string;
+}
+
+export interface VendorReturnBatchResult {
+  returnGroupId: string;
+  returnNumber: string;
+  supplier: { id: string; name: string };
+  creditNoteNumber: string | null;
+  creditAmount: number;
+  lineCount: number;
+  totalQuantity: number;
+}
+
+/**
+ * Vendor return covering several medicines at once — one supplier, one credit
+ * note, many batches. The single-line `useCreateReturn` stays for patient and
+ * counter returns, which are genuinely one medicine at a time.
+ */
+export function useCreateVendorReturnBatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      supplierId: string;
+      creditNoteNumber?: string;
+      creditAmount?: number;
+      reason?: string;
+      lines: VendorReturnLineInput[];
+    }) => {
+      const response = await apiPost<VendorReturnBatchResult>('/pharmacy/vendor-returns/batch', data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.returns.all });
+      queryClient.invalidateQueries({ queryKey: pharmacyKeys.batches.all });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
     },
   });
 }

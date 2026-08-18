@@ -555,7 +555,9 @@ function PendingTasksSection({
         patient: 'Multiple patients',
         time: 'Overdue',
         priority: 'high',
-        href: '/nurse/emar',
+        // Straight to those doses across every patient. Linking to the bare
+        // eMAR board left the nurse to guess which admission held them.
+        href: '/nurse/emar?focus=overdue',
       });
     }
 
@@ -568,7 +570,7 @@ function PendingTasksSection({
         patient: 'Scheduled eMAR rounds',
         time: 'Today',
         priority: 'normal',
-        href: '/nurse/emar',
+        href: '/nurse/emar?focus=due',
       });
     }
 

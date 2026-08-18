@@ -190,6 +190,10 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Registry', href: '/doctor/registry', icon: FileBarChart },
       { label: 'MRD', href: '/doctor/mrd', icon: FolderArchive },
       { label: 'OT List', href: '/doctor/ot-list', icon: HeartPulse },
+      // The request endpoint was always open to doctors, but the only way in
+      // was a row icon inside an OT-case dialog — so QA reported the action as
+      // missing. This is its entry point.
+      { label: 'OT Kits', href: '/doctor/ot-kits', icon: Package },
       { label: 'CDSS Alerts', href: '/doctor/cdss', icon: Activity },
       { label: 'AI Assistant', href: '/doctor/ai-assistant', icon: Sparkles },
       { label: 'Settings', href: '/doctor/settings', icon: Settings },
@@ -211,6 +215,10 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Patient Forms', href: '/nurse/forms', icon: FileText },
       { label: 'Shift Handover', href: '/nurse/handover', icon: ArrowRightLeft },
       { label: 'Orders & Ward', href: '/nurse/orders', icon: ClipboardCheck },
+      // The ward's own medicine shelf. The only ward-stock screen used to sit
+      // inside the Pharmacy module behind a pharmacy-admin guard, so the nurses
+      // who actually work the shelf could never open it.
+      { label: 'Ward Inventory', href: '/nurse/ward-stock', icon: PillBottle },
       // The ward nurse usually raises the pre-op kit for the surgeon. The
       // request endpoint was always open to them; the OT module that hosted the
       // only screen for it is not (admin / inventory_manager), so they had no
@@ -292,6 +300,10 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Patient Assignments', href: '/nurse-admin/assignments', icon: ClipboardCheck },
       { label: 'Shift Handover', href: '/nurse-admin/handover', icon: ArrowRightLeft },
       { label: 'Ward Orders', href: '/nurse-admin/orders', icon: ClipboardPlus },
+      // nurse_admin holds full floors/wards/beds permissions; the manager for
+      // them only existed under the Hospital module, which this role cannot
+      // enter.
+      { label: 'Floors & Wards', href: '/nurse-admin/wards', icon: BedDouble },
       { label: 'Roster Planning', href: '/nurse-admin/roster', icon: CalendarClock },
       { label: 'Staffing', href: '/nurse-admin/staffing', icon: Users },
       { label: 'eMAR Settings', href: '/nurse/emar/settings', icon: PillBottle },

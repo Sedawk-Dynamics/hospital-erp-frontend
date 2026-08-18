@@ -6,6 +6,7 @@ import {
   ShoppingCart, Plus, PackageCheck, X, Ban, Truck, Phone, Search, Printer,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -517,11 +518,17 @@ function CreatePoDialog({ onClose, initialItems }: { onClose: (createdId?: strin
                           </div>
                           {it.subText && <p className="truncate text-xs text-muted-foreground">{it.subText}</p>}
                         </div>
-                        <Input
-                          type="number"
+                        {/* Clamping on every keystroke made the box impossible
+                            to edit: clearing it snapped straight back to 1, so
+                            changing a 1 to a 5 meant typing "15" then deleting
+                            the 1. NumberInput keeps the typed text while the
+                            field has focus and only clamps on blur. */}
+                        <NumberInput
                           min={1}
+                          emptyValue={1}
+                          integer
                           value={it.quantityOrdered}
-                          onChange={(e) => patchLine(idx, { quantityOrdered: Math.max(1, Number(e.target.value) || 1) })}
+                          onValueChange={(v) => patchLine(idx, { quantityOrdered: v })}
                           className="h-8 w-full px-1 text-center text-sm"
                         />
                         <Input

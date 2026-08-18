@@ -137,14 +137,26 @@ export function useEmarSchedules(params: {
   includePrn?: boolean;
   limit?: number;
   page?: number;
+  /**
+   * Query ACROSS patients instead of within one.
+   *
+   * The hook normally refuses to run unscoped, which is right for the eMAR
+   * board — it is a per-patient chart. But "12 doses overdue" on the nurse
+   * dashboard is a ward-wide fact, and answering "which patients?" by making
+   * the nurse pick admissions one at a time is exactly the round trip that
+   * question exists to avoid. The API has always allowed a tenant-wide read;
+   * this is the opt-in. Never sent to the server.
+   */
+  allPatients?: boolean;
 }) {
+  const { allPatients, ...queryParams } = params;
   return useQuery({
     queryKey: keys.schedules(params),
     queryFn: async () => {
-      const res = await apiGet<EmarSchedule[]>('/emar/doses', { params });
+      const res = await apiGet<EmarSchedule[]>('/emar/doses', { params: queryParams });
       return res;
     },
-    enabled: !!(params.patientId || params.admissionId || params.wardId),
+    enabled: !!(params.patientId || params.admissionId || params.wardId || allPatients),
   });
 }
 

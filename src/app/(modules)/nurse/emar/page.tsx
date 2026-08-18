@@ -114,6 +114,14 @@ function buildIso(dateStr: string, timeStr: string): string {
 export default function EmarPage() {
   const searchParams = useSearchParams();
   const admissionIdParam = searchParams.get('admissionId') ?? '';
+  // `?focus=overdue|due` arrives from the nurse dashboard's medication tiles.
+  // Those counts are ward-wide, so landing on the per-patient board and asking
+  // the nurse to guess which admission to open is the extra step QA reported.
+  // With a focus set, the page leads with exactly those doses across every
+  // patient, each row opening that patient's own chart.
+  const focusParam = searchParams.get('focus');
+  const focus: 'overdue' | 'due' | null =
+    focusParam === 'overdue' || focusParam === 'due' ? focusParam : null;
 
   // Initialise from the URL but treat as plain local state thereafter so the
   // user can change selection via the Select dropdown without a route change.
@@ -158,6 +166,20 @@ export default function EmarPage() {
 
   // Interaction detail
   const [interactionDialog, setInteractionDialog] = useState<{ drugName: string; pairs: InteractionPair[] } | null>(null);
+
+  // Every dose in the focused state, across all patients on the ward.
+  const { data: focusDosesRaw, isLoading: focusLoading } = useEmarSchedules({
+    allPatients: !!focus,
+    // "Overdue" is its own status; "due" is what is live right now and has not
+    // been actioned, which includes doses that have just tipped over.
+    status: focus === 'overdue' ? 'overdue' : focus === 'due' ? ['due', 'overdue'] : undefined,
+    includePrn: false,
+    limit: 200,
+  });
+  const focusDoses = useMemo(
+    () => (Array.isArray(focusDosesRaw) ? focusDosesRaw : ((focusDosesRaw as any)?.data ?? [])) as EmarSchedule[],
+    [focusDosesRaw],
+  );
 
   // ── Data ────────────────────────────────────────────────
   const { data: admissionsRaw, isLoading: admissionsLoading } = useNurseAdmissions({
@@ -486,6 +508,76 @@ export default function EmarPage() {
   // ── Render ──────────────────────────────────────────────
   return (
     <div className="space-y-4 animate-fade-in-up">
+      {/* Arrived from a dashboard medication tile. Show exactly the doses that
+          count referred to, across every patient, so the answer to "which
+          patients?" is on screen instead of behind an admission picker. */}
+      {focus && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50/50 p-3">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-headline text-sm font-bold text-amber-900">
+              {focus === 'overdue' ? 'Overdue doses' : 'Doses due now'}
+              {focusDoses.length > 0 && (
+                <span className="ml-1.5 font-normal text-amber-700">({focusDoses.length})</span>
+              )}
+            </h2>
+            <Link
+              href="/nurse/emar"
+              className="text-[11px] font-medium text-amber-800 underline underline-offset-2"
+            >
+              Show the full chart instead
+            </Link>
+          </div>
+
+          {focusLoading ? (
+            <p className="py-2 text-xs text-amber-800">Loading…</p>
+          ) : focusDoses.length === 0 ? (
+            <p className="py-2 text-xs text-amber-800">
+              Nothing {focus === 'overdue' ? 'overdue' : 'due'} right now — the round is clear.
+            </p>
+          ) : (
+            <div className="max-h-72 space-y-1.5 overflow-y-auto">
+              {focusDoses.map((d) => {
+                const name = d.patient
+                  ? `${d.patient.firstName} ${d.patient.lastName ?? ''}`.trim()
+                  : 'Patient';
+                return (
+                  <button
+                    key={d.id}
+                    type="button"
+                    // Selecting the admission here is the whole point — one
+                    // click from the count to that patient's chart.
+                    onClick={() => {
+                      if (d.admissionId) setSelectedAdmissionId(d.admissionId);
+                      setSelectedDate(toInputDateStr(new Date(d.scheduledAt)));
+                    }}
+                    className="flex w-full flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-surface-container-lowest px-3 py-2 text-left transition-colors hover:border-amber-400"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium">
+                        {d.drugName}
+                        <span className="ml-1.5 font-normal text-on-surface-variant">
+                          {d.dosage} · {d.route}
+                        </span>
+                      </div>
+                      <div className="truncate text-[11px] text-on-surface-variant">
+                        {name}
+                        {d.patient?.mrn ? ` · ${d.patient.mrn}` : ''}
+                      </div>
+                    </div>
+                    <span className="shrink-0 font-mono text-[11px] text-amber-800">
+                      {new Date(d.scheduledAt).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-headline text-xl font-bold">eMAR — Medication Administration Record</h1>

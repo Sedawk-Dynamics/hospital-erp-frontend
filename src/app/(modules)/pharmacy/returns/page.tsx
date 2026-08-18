@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import {
-  RotateCcw, Search, Building2, User, ShoppingCart, Receipt,
+  RotateCcw, Search, Building2, User, ShoppingCart, Receipt, X,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
@@ -15,7 +15,7 @@ import {
   Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
 } from '@/components/ui/table';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -31,7 +31,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { WitnessCosignDialog } from '@/components/pharmacy/witness-cosign-dialog';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
 import {
-  useReturns, useCreateReturn, useBatches, useReturnableDispenses,
+  useReturns, useCreateReturn, useCreateVendorReturnBatch, useBatches, useReturnableDispenses,
   useFormulary,
   type PharmacyReturn, type ReturnableDispense, type FormularyItem,
 } from '@/hooks/use-pharmacy';
@@ -195,9 +195,17 @@ function ReturnRow({ record }: { record: PharmacyReturn }) {
         <ShoppingCart className="mr-1 h-3 w-3" /> Counter
       </Badge>
     ) : (
-      <Badge className="bg-purple-500/10 text-purple-700 border-purple-500/20">
-        <Building2 className="mr-1 h-3 w-3" /> Vendor
-      </Badge>
+      <div className="flex flex-col items-start gap-0.5">
+        <Badge className="bg-purple-500/10 text-purple-700 border-purple-500/20">
+          <Building2 className="mr-1 h-3 w-3" /> Vendor
+        </Badge>
+        {/* A multi-medicine return is several rows sharing one return number.
+            Showing it is what makes them read as the one transaction they are,
+            and it is the reference the vendor's credit note quotes. */}
+        {record.returnNumber && (
+          <span className="font-mono text-[10px] text-muted-foreground">{record.returnNumber}</span>
+        )}
+      </div>
     );
 
   const drugName =
@@ -794,64 +802,145 @@ function PatientReturnDialog({ onClose }: { onClose: () => void }) {
 }
 
 // Vendor return: damaged/unsold stock back to the supplier (no refund).
+//
+// One return covers MANY medicines. Sending expired stock back is a stock-take
+// job — the pharmacist pulls a crate of short-dated packs off the shelf and the
+// distributor issues ONE credit note for the lot. Doing that one medicine at a
+// time produced one return, one stock movement and one credit-note row per
+// pack, none of which matched the document the vendor actually sent.
+//
+// One supplier per return, because that is what a credit note is raised
+// against. Batches from a second vendor are a second return.
+
+/** How far ahead the picker looks when filtering for stock worth returning. */
+const EXPIRY_WINDOWS = [
+  { value: '0', label: 'Expired only' },
+  { value: '30', label: 'Expiring ≤ 30 days' },
+  { value: '90', label: 'Expiring ≤ 90 days' },
+  { value: 'all', label: 'All stock' },
+] as const;
+type ExpiryWindow = (typeof EXPIRY_WINDOWS)[number]['value'];
+
+interface ReturnLine {
+  batchId: string;
+  drugName: string;
+  batchNumber: string;
+  expiryDate: string | null;
+  inStock: number;
+  purchasePrice: number | null;
+  quantity: number;
+}
+
+/** Days until expiry; negative when already past. Null when no date on file. */
+function daysToExpiry(expiryDate: string | null | undefined): number | null {
+  if (!expiryDate) return null;
+  const d = new Date(expiryDate);
+  if (Number.isNaN(d.getTime())) return null;
+  return Math.ceil((d.getTime() - Date.now()) / 86_400_000);
+}
+
+function ExpiryBadge({ expiryDate }: { expiryDate: string | null | undefined }) {
+  const days = daysToExpiry(expiryDate);
+  if (days === null) return <span className="text-[11px] text-muted-foreground">No expiry on file</span>;
+  if (days < 0) {
+    return (
+      <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">
+        Expired {Math.abs(days)}d ago
+      </span>
+    );
+  }
+  if (days <= 90) {
+    return (
+      <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+        {days}d left
+      </span>
+    );
+  }
+  return <span className="text-[11px] text-muted-foreground">{days}d left</span>;
+}
+
 function VendorReturnDialog({ onClose }: { onClose: () => void }) {
   const [batchSearch, setBatchSearch] = useState('');
-  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
-  const [quantity, setQuantity] = useState<number>(0);
+  // Expiry is the usual reason for a vendor return, so the picker leads with
+  // the stock that needs sending back rather than the whole shelf.
+  const [expiryWindow, setExpiryWindow] = useState<ExpiryWindow>('90');
+  const [lines, setLines] = useState<ReturnLine[]>([]);
   const [reason, setReason] = useState('');
-  // null = "whatever vendor supplied this batch". Picking from the dropdown
-  // sets an explicit override; choosing a different batch clears it (done in
-  // the batch button's handler, so no effect is needed to keep them in step).
-  const [supplierOverride, setSupplierOverride] = useState<string | null>(null);
+  const [supplierId, setSupplierId] = useState<string>('');
   const [creditNoteNumber, setCreditNoteNumber] = useState('');
   const [creditAmount, setCreditAmount] = useState('');
 
-  const { data: batchesResp } = useBatches({ search: batchSearch || undefined, limit: 25 });
+  const { data: batchesResp } = useBatches({
+    search: batchSearch || undefined,
+    limit: 25,
+    // "expired" is expiringInDays: 0 — a real date comparison rather than the
+    // stored isExpired flag, which only flips when the nightly job runs.
+    ...(expiryWindow === 'all' ? {} : { expiringInDays: Number(expiryWindow) }),
+  });
   const batches = batchesResp?.data ?? [];
 
-  // The vendor a return is booked against. The server requires it (you cannot
-  // send stock back to nobody) and validates it as a UUID, so it has to be
-  // PICKED — the old free-text "Supplier ID" box meant typing a vendor's name
-  // produced a 400, and batches received without a vendor had nothing to fall
-  // back to.
+  // The server requires a real vendor id (you cannot send stock back to
+  // nobody), so it has to be PICKED, not typed.
   const { data: suppliersResp } = useSuppliers({ isActive: true, limit: 200 });
   const suppliers = suppliersResp?.data ?? [];
 
-  const selectedBatch = useMemo(
-    () => batches.find((b) => b.id === selectedBatchId),
-    [batches, selectedBatchId],
+  const createBatch = useCreateVendorReturnBatch();
+
+  const inBasket = useMemo(() => new Set(lines.map((l) => l.batchId)), [lines]);
+
+  // Default the vendor to whoever supplied the first batch added, so the common
+  // case (a crate from one distributor) needs no extra click.
+  function addLine(b: (typeof batches)[number]) {
+    if (inBasket.has(b.id)) return;
+    setLines((prev) => [
+      ...prev,
+      {
+        batchId: b.id,
+        drugName: b.drug?.drugName ?? 'Medicine',
+        batchNumber: b.batchNumber,
+        expiryDate: b.expiryDate ?? null,
+        inStock: Number(b.quantityInStock ?? 0),
+        purchasePrice: b.purchasePrice != null ? Number(b.purchasePrice) : null,
+        quantity: Number(b.quantityInStock ?? 0),
+      },
+    ]);
+    if (!supplierId && b.supplier?.id) setSupplierId(b.supplier.id);
+  }
+
+  function patchLine(batchId: string, patch: Partial<ReturnLine>) {
+    setLines((prev) => prev.map((l) => (l.batchId === batchId ? { ...l, ...patch } : l)));
+  }
+
+  function removeLine(batchId: string) {
+    setLines((prev) => prev.filter((l) => l.batchId !== batchId));
+  }
+
+  // Credit defaults to what the distributor should give back: qty x purchase
+  // price across every line. Overridable, because the credit note is theirs.
+  const autoCredit = useMemo(
+    () => lines.reduce((sum, l) => sum + (l.purchasePrice ?? 0) * l.quantity, 0),
+    [lines],
   );
-
-  // Defaults to the vendor that supplied this batch — null for batches entered
-  // manually, in which case the pharmacist picks one.
-  const supplierId = supplierOverride ?? selectedBatch?.supplier?.id ?? '';
-  const inStock = Number(selectedBatch?.quantityInStock ?? 0);
-
-  // G5: default credit = returned qty × purchase price (what the distributor
-  // should credit back). The user can override.
-  const autoCredit =
-    selectedBatch?.purchasePrice != null ? Number(selectedBatch.purchasePrice) * quantity : null;
-
-  const createReturn = useCreateReturn();
-
-  const canSubmit = !!selectedBatchId && quantity > 0 && quantity <= inStock && !!supplierId;
+  const overQty = lines.filter((l) => l.quantity > l.inStock || l.quantity <= 0);
+  const canSubmit = lines.length > 0 && overQty.length === 0 && !!supplierId;
 
   const handleSubmit = async () => {
-    if (!selectedBatchId) return toast.error('Pick a batch');
-    if (quantity <= 0) return toast.error('Enter a quantity');
-    if (quantity > inStock) return toast.error(`Only ${inStock} in stock for this batch`);
+    if (lines.length === 0) return toast.error('Add at least one medicine');
+    if (overQty.length > 0) {
+      return toast.error(`Check the quantity on ${overQty[0].drugName} — it exceeds what the batch holds`);
+    }
     if (!supplierId) return toast.error('Pick the supplier this stock goes back to');
     try {
-      await createReturn.mutateAsync({
-        returnType: 'vendor_return',
-        drugBatchId: selectedBatchId,
+      const result = await createBatch.mutateAsync({
         supplierId,
-        quantity,
         reason: reason || undefined,
         creditNoteNumber: creditNoteNumber.trim() || undefined,
         creditAmount: creditAmount ? Number(creditAmount) : undefined,
+        lines: lines.map((l) => ({ drugBatchId: l.batchId, quantity: l.quantity })),
       });
-      toast.success('Vendor return recorded — stock reduced');
+      toast.success(
+        `Vendor return ${result?.returnNumber ?? ''} recorded — ${lines.length} medicine(s), stock reduced`,
+      );
       onClose();
     } catch (err) {
       // The server says exactly what is wrong (missing supplier, quantity above
@@ -866,79 +955,161 @@ function VendorReturnDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>New Vendor Return</DialogTitle>
+          <DialogDescription>
+            Add every medicine going back to this vendor. They are recorded as one return
+            against one credit note.
+          </DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs font-medium">Search batch</label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Drug name or batch number"
-                value={batchSearch}
-                onChange={(e) => setBatchSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-          </div>
 
-          {batches.length > 0 && (
-            <div className="max-h-44 overflow-y-auto rounded-md border">
-              {batches.map((b) => (
-                <button
-                  key={b.id}
-                  onClick={() => {
-                    setSelectedBatchId(b.id);
-                    // Fall back to the new batch's own vendor rather than
-                    // carrying the previous pick onto a different batch.
-                    setSupplierOverride(null);
-                  }}
-                  className={`w-full px-3 py-2 text-left text-sm hover:bg-muted ${
-                    selectedBatchId === b.id ? 'bg-primary/10' : ''
-                  }`}
-                >
-                  <div className="flex justify-between">
-                    <span className="font-medium">{b.drug?.drugName}</span>
-                    <span className="text-xs text-muted-foreground">Stock: {b.quantityInStock}</span>
-                  </div>
-                  <div className="text-xs text-muted-foreground font-mono">Batch {b.batchNumber}</div>
-                </button>
-              ))}
+        <div className="space-y-4">
+          {/* ── picker ─────────────────────────────────────────────── */}
+          <div className="space-y-2 rounded-lg border p-3">
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search drug name or batch number"
+                  value={batchSearch}
+                  onChange={(e) => setBatchSearch(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              <Select
+                value={expiryWindow}
+                onValueChange={(v) => setExpiryWindow((v as ExpiryWindow) ?? '90')}
+              >
+                <SelectTrigger className="sm:w-52">
+                  <SelectValue>
+                    {(val) =>
+                      EXPIRY_WINDOWS.find((w) => w.value === val)?.label ?? 'Expiring ≤ 90 days'
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {EXPIRY_WINDOWS.map((w) => (
+                    <SelectItem key={w.value} value={w.value}>
+                      {w.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          )}
 
-          {selectedBatch && (
-            <div className="bg-muted/40 rounded-md p-2 text-xs">
-              Selected: <b>{selectedBatch.drug?.drugName}</b> · batch{' '}
-              <span className="font-mono">{selectedBatch.batchNumber}</span> · in stock{' '}
-              <b>{inStock}</b>
-            </div>
-          )}
-
-          <div>
-            <label className="text-xs font-medium">Quantity</label>
-            {/* Capped at what the batch holds — the server rejects more, since
-                sending back stock you do not have would credit money for units
-                that never left the shelf. */}
-            <NumberInput
-              min={0}
-              max={inStock}
-              integer
-              value={quantity}
-              onValueChange={setQuantity}
-            />
-            {quantity > inStock && (
-              <p className="mt-1 text-[11px] text-error">
-                Only {inStock} in stock for this batch.
+            {batches.length === 0 ? (
+              <p className="py-3 text-center text-xs text-muted-foreground">
+                No batches match. Widen the expiry filter or search by name.
               </p>
+            ) : (
+              <div className="max-h-52 overflow-y-auto rounded-md border">
+                {batches.map((b) => {
+                  const added = inBasket.has(b.id);
+                  return (
+                    <button
+                      key={b.id}
+                      type="button"
+                      disabled={added}
+                      onClick={() => addLine(b)}
+                      className={`w-full px-3 py-2 text-left text-sm hover:bg-muted disabled:opacity-50 ${
+                        added ? 'bg-primary/5' : ''
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium">{b.drug?.drugName}</span>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          Stock: {b.quantityInStock}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs text-muted-foreground">
+                          Batch {b.batchNumber}
+                        </span>
+                        <ExpiryBadge expiryDate={b.expiryDate} />
+                        {added && <span className="text-[10px] text-primary">Added</span>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             )}
           </div>
 
+          {/* ── basket ─────────────────────────────────────────────── */}
+          <div>
+            <div className="mb-1.5 flex items-center justify-between">
+              <label className="text-xs font-medium">
+                Medicines in this return {lines.length > 0 && `(${lines.length})`}
+              </label>
+              {lines.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setLines([])}
+                  className="text-[11px] text-muted-foreground hover:text-foreground"
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+            {lines.length === 0 ? (
+              <p className="rounded-md border border-dashed px-3 py-4 text-center text-xs text-muted-foreground">
+                Pick medicines above to build the return.
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {lines.map((l) => (
+                  <div
+                    key={l.batchId}
+                    className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium">{l.drugName}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-[11px] text-muted-foreground">
+                          {l.batchNumber}
+                        </span>
+                        <ExpiryBadge expiryDate={l.expiryDate} />
+                        <span className="text-[11px] text-muted-foreground">
+                          in stock {l.inStock}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="w-24">
+                      <NumberInput
+                        min={0}
+                        max={l.inStock}
+                        integer
+                        value={l.quantity}
+                        onValueChange={(v) => patchLine(l.batchId, { quantity: v })}
+                      />
+                    </div>
+                    <span className="w-20 text-right text-xs text-muted-foreground">
+                      {l.purchasePrice != null ? inr(l.purchasePrice * l.quantity) : '—'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeLine(l.batchId)}
+                      className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      aria-label={`Remove ${l.drugName}`}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                    {l.quantity > l.inStock && (
+                      <p className="w-full text-[11px] text-error">
+                        Only {l.inStock} in stock for this batch.
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ── vendor + credit note ───────────────────────────────── */}
           <div>
             <label className="text-xs font-medium">Supplier *</label>
-            <Select value={supplierId || null} onValueChange={(v) => setSupplierOverride(v ?? '')}>
+            <Select value={supplierId || null} onValueChange={(v) => setSupplierId(v ?? '')}>
               <SelectTrigger>
                 <SelectValue placeholder="Select the vendor this stock goes back to">
                   {(value) =>
@@ -962,14 +1133,11 @@ function VendorReturnDialog({ onClose }: { onClose: () => void }) {
                 )}
               </SelectContent>
             </Select>
-            {selectedBatch && !selectedBatch.supplier?.id && (
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                This batch has no vendor on record — pick who it goes back to.
-              </p>
-            )}
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              One vendor per return — a credit note is raised against a single supplier.
+            </p>
           </div>
 
-          {/* G5: supplier credit note for the returned (expired/damaged) stock */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium">Credit note no.</label>
@@ -984,15 +1152,16 @@ function VendorReturnDialog({ onClose }: { onClose: () => void }) {
               <Input
                 type="number"
                 step="0.01"
-                placeholder={autoCredit != null ? autoCredit.toFixed(2) : '0.00'}
+                placeholder={autoCredit > 0 ? autoCredit.toFixed(2) : '0.00'}
                 value={creditAmount}
                 onChange={(e) => setCreditAmount(e.target.value)}
               />
             </div>
           </div>
-          {autoCredit != null && !creditAmount && (
+          {autoCredit > 0 && !creditAmount && (
             <p className="text-[11px] text-muted-foreground">
-              Defaults to {inr(autoCredit)} (qty × purchase price) if left blank.
+              Defaults to {inr(autoCredit)} across {lines.length} line(s) — quantity × purchase
+              price — if left blank.
             </p>
           )}
 
@@ -1006,10 +1175,13 @@ function VendorReturnDialog({ onClose }: { onClose: () => void }) {
             />
           </div>
         </div>
+
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={!canSubmit || createReturn.isPending}>
-            {createReturn.isPending ? 'Saving…' : 'Create Return'}
+          <Button onClick={handleSubmit} disabled={!canSubmit || createBatch.isPending}>
+            {createBatch.isPending
+              ? 'Saving…'
+              : `Create Return${lines.length > 0 ? ` (${lines.length})` : ''}`}
           </Button>
         </DialogFooter>
       </DialogContent>

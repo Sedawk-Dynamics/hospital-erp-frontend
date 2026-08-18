@@ -34,7 +34,7 @@ export interface NumberInputProps
 
 export const NumberInput = forwardRef<HTMLInputElement, NumberInputProps>(
   function NumberInput(
-    { value, onValueChange, emptyValue = 0, min, max, integer, onBlur, ...rest },
+    { value, onValueChange, emptyValue = 0, min, max, integer, step, onBlur, ...rest },
     ref,
   ) {
     const parse = (raw: string): number => {
@@ -62,6 +62,10 @@ export const NumberInput = forwardRef<HTMLInputElement, NumberInputProps>(
         ref={ref}
         type="number"
         inputMode={integer ? 'numeric' : 'decimal'}
+        // A whole-number field steps by 1; anything else must accept decimals.
+        // Left unset the browser assumes 1, which marks 10.5 invalid and makes
+        // the arrow keys jump in whole units on a dose or weight field.
+        step={step ?? (integer ? 1 : 'any')}
         min={min}
         max={max}
         value={text}

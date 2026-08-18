@@ -64,6 +64,36 @@ function renderValue(field: FormField, raw: unknown): React.ReactNode {
       );
     case 'textarea':
       return <p className="whitespace-pre-wrap">{String(raw)}</p>;
+    case 'time':
+      // Stored as literal "HH:mm" — no date to format against, so print as-is.
+      return <span>{String(raw)}</span>;
+    case 'yesno':
+      return <span>{raw === true ? (field.yesLabel ?? 'Yes') : (field.noLabel ?? 'No')}</span>;
+    case 'text_duration': {
+      const v = raw as { text?: string | null; duration?: number | null; unit?: string };
+      const parts = [v.text ?? null, v.duration != null ? `for ${v.duration} ${v.unit ?? ''}`.trim() : null]
+        .filter(Boolean);
+      if (parts.length === 0) return <span className="text-muted-foreground italic">—</span>;
+      return <span>{parts.join(' · ')}</span>;
+    }
+    case 'number_date': {
+      const v = raw as { value?: number | null; date?: string | null };
+      if (v.value == null && !v.date) {
+        return <span className="text-muted-foreground italic">—</span>;
+      }
+      const d = v.date ? new Date(v.date) : null;
+      return (
+        <span>
+          {v.value != null ? String(v.value) : '—'}
+          {field.unit && <span className="ml-1 text-[11px] text-muted-foreground">{field.unit}</span>}
+          {d && !Number.isNaN(d.getTime()) && (
+            <span className="ml-1.5 text-[11px] text-muted-foreground">
+              {field.dateLabel ?? 'on'} {d.toLocaleDateString()}
+            </span>
+          )}
+        </span>
+      );
+    }
     default:
       return <span>{String(raw)}</span>;
   }

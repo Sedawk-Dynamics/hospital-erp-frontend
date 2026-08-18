@@ -15,9 +15,11 @@ import {
   ArrowUp,
   Calendar,
   CalendarClock,
+  CalendarRange,
   CheckSquare,
   ChevronsDown,
   Circle,
+  Clock,
   Copy,
   Eye,
   Hash,
@@ -27,6 +29,8 @@ import {
   Plus,
   Save,
   TextCursorInput,
+  Timer,
+  ToggleLeft,
   Trash2,
   Type,
 } from 'lucide-react';
@@ -44,7 +48,17 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
-import { FORM_CATEGORIES, type FormCategory, type FormField, type FormFieldType, type FormSchema } from '@/hooks/use-forms';
+import {
+  DURATION_UNITS,
+  FORM_CATEGORIES,
+  PATIENT_AUTOFILL_FIELDS,
+  type DurationUnit,
+  type FormCategory,
+  type FormField,
+  type FormFieldType,
+  type FormSchema,
+  type PatientAutofillKey,
+} from '@/hooks/use-forms';
 import { FormRenderer } from './form-renderer';
 
 // ─── helpers ───────────────────────────────────────────────────
@@ -71,10 +85,14 @@ const FIELD_PALETTE: { type: FormFieldType; label: string; Icon: React.Component
   { type: 'number', label: 'Number', Icon: Hash },
   { type: 'date', label: 'Date', Icon: Calendar },
   { type: 'datetime', label: 'Date & time', Icon: CalendarClock },
+  { type: 'time', label: 'Time only', Icon: Clock },
   { type: 'select', label: 'Dropdown', Icon: ChevronsDown },
   { type: 'multiselect', label: 'Multi-select', Icon: ListChecks },
   { type: 'radio', label: 'Radio', Icon: Circle },
   { type: 'checkbox', label: 'Checkbox', Icon: CheckSquare },
+  { type: 'yesno', label: 'Yes / No', Icon: ToggleLeft },
+  { type: 'text_duration', label: 'Text + duration', Icon: Timer },
+  { type: 'number_date', label: 'Number + date', Icon: CalendarRange },
   { type: 'section', label: 'Section', Icon: Layers },
   { type: 'divider', label: 'Divider', Icon: Minus },
 ];
@@ -102,6 +120,12 @@ function defaultFieldFor(type: FormFieldType, existingKeys: Set<string>): FormFi
       return { ...base, type, options: [{ value: 'option_1', label: 'Option 1' }] };
     case 'number':
       return { ...base, type, step: 1 };
+    case 'number_date':
+      return { ...base, type, step: 1, dateLabel: 'on' };
+    case 'yesno':
+      return { ...base, type, yesLabel: 'Yes', noLabel: 'No' };
+    case 'text_duration':
+      return { ...base, type, defaultDurationUnit: 'days' as const };
     case 'textarea':
       return { ...base, type, rows: 3 };
     default:
@@ -522,7 +546,7 @@ function PropertyEditor({
         </>
       )}
 
-      {(field.type === 'text' || field.type === 'textarea' || field.type === 'select' || field.type === 'number') && (
+      {(field.type === 'text' || field.type === 'textarea' || field.type === 'select' || field.type === 'number' || field.type === 'text_duration' || field.type === 'number_date') && (
         <div>
           <Label className="text-xs font-medium">Placeholder</Label>
           <Input
@@ -533,7 +557,7 @@ function PropertyEditor({
         </div>
       )}
 
-      {field.type === 'number' && (
+      {(field.type === 'number' || field.type === 'number_date') && (
         <div className="grid grid-cols-3 gap-2">
           <div>
             <Label className="text-[10px] font-medium">Min</Label>
@@ -575,6 +599,113 @@ function PropertyEditor({
             value={field.rows ?? 3}
             onValueChange={(v) => onChange({ rows: v })}
           />
+        </div>
+      )}
+
+      {/* The unit shown beside the label — "Weight (kg)". The schema and the
+          renderer have always supported this; there was simply no way to set
+          it, so every numeric field came out unitless. */}
+      {(field.type === 'number' || field.type === 'number_date') && (
+        <div>
+          <Label className="text-xs font-medium">Unit</Label>
+          <Input
+            className="mt-1"
+            placeholder="kg, mmHg, mL…"
+            maxLength={20}
+            value={field.unit ?? ''}
+            onChange={(e) => onChange({ unit: e.target.value || null })}
+          />
+        </div>
+      )}
+
+      {field.type === 'number_date' && (
+        <div>
+          <Label className="text-xs font-medium">Date label</Label>
+          <Input
+            className="mt-1"
+            placeholder="on, taken on, last dose…"
+            maxLength={60}
+            value={field.dateLabel ?? ''}
+            onChange={(e) => onChange({ dateLabel: e.target.value || null })}
+          />
+        </div>
+      )}
+
+      {field.type === 'yesno' && (
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label className="text-[10px] font-medium">Yes label</Label>
+            <Input
+              className="mt-1"
+              maxLength={30}
+              value={field.yesLabel ?? 'Yes'}
+              onChange={(e) => onChange({ yesLabel: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label className="text-[10px] font-medium">No label</Label>
+            <Input
+              className="mt-1"
+              maxLength={30}
+              value={field.noLabel ?? 'No'}
+              onChange={(e) => onChange({ noLabel: e.target.value })}
+            />
+          </div>
+        </div>
+      )}
+
+      {field.type === 'text_duration' && (
+        <div>
+          <Label className="text-xs font-medium">Default duration unit</Label>
+          <Select
+            value={field.defaultDurationUnit ?? 'days'}
+            onValueChange={(v) => onChange({ defaultDurationUnit: (v as DurationUnit) ?? 'days' })}
+          >
+            <SelectTrigger className="mt-1 w-full">
+              <SelectValue>{(val) => (val ? String(val) : 'days')}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {DURATION_UNITS.map((u) => (
+                <SelectItem key={u} value={u}>
+                  {u}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {/* Prefill from the patient the form is opened under. Layout-only types
+          have nothing to prefill, so the picker is hidden for them. */}
+      {field.type !== 'section' && field.type !== 'divider' && (
+        <div>
+          <Label className="text-xs font-medium">Prefill from patient</Label>
+          <Select
+            value={field.autofill ?? null}
+            onValueChange={(v) => onChange({ autofill: (v as PatientAutofillKey) ?? null })}
+          >
+            <SelectTrigger className="mt-1 w-full">
+              <SelectValue placeholder="Do not prefill">
+                {(val) =>
+                  val
+                    ? (PATIENT_AUTOFILL_FIELDS.find((f) => f.key === val)?.label ?? String(val))
+                    : 'Do not prefill'
+                }
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {PATIENT_AUTOFILL_FIELDS.map((f) => (
+                <SelectItem key={f.key} value={f.key}>
+                  {f.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {field.autofill && (
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              Filled in when the form opens; the nurse can still change it.
+            </p>
+          )}
         </div>
       )}
 

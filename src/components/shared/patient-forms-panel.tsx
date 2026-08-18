@@ -49,7 +49,10 @@ import {
   type FormCategory,
   type HospitalForm,
   type FormSubmission,
+  type PatientAutofillContext,
 } from '@/hooks/use-forms';
+import { usePatient } from '@/hooks/use-hospital';
+import { useAdmission } from '@/hooks/use-clinical';
 import { FormRenderer } from '@/components/forms/form-renderer';
 import { FormSubmissionView } from '@/components/forms/form-submission-view';
 import { FormPreviewDialog } from '@/components/forms/form-preview-dialog';
@@ -659,6 +662,55 @@ export function FormsEmptyState({ title, hint }: { title: string; hint?: string 
   );
 }
 
+/**
+ * Whatever is known about the patient this form is being filled under, in the
+ * shape the renderer's `autofill` bindings expect. Everything is optional: a
+ * temporary patient may have almost nothing on file, and a field whose source
+ * is blank is simply left for the nurse rather than filled with a placeholder.
+ *
+ * Ward, bed, admission date and consultant only exist for an IP encounter, so
+ * the admission is only fetched when the form was opened under one.
+ */
+function useAutofillContext(
+  patientId: string,
+  admissionId?: string,
+): PatientAutofillContext | undefined {
+  const { data: patient } = usePatient(patientId);
+  const { data: admission } = useAdmission(admissionId ?? '');
+
+  return useMemo(() => {
+    if (!patient) return undefined;
+    const dob = patient.dateOfBirth ? new Date(patient.dateOfBirth) : null;
+    let age: number | null = null;
+    if (dob && !Number.isNaN(dob.getTime())) {
+      const now = new Date();
+      age = now.getFullYear() - dob.getFullYear();
+      const beforeBirthday =
+        now.getMonth() < dob.getMonth() ||
+        (now.getMonth() === dob.getMonth() && now.getDate() < dob.getDate());
+      if (beforeBirthday) age -= 1;
+      if (age < 0) age = null;
+    }
+    const consultant = admission?.doctor?.user
+      ? `${admission.doctor.user.firstName} ${admission.doctor.user.lastName ?? ''}`.trim()
+      : null;
+
+    return {
+      patient_name: `${patient.firstName} ${patient.lastName ?? ''}`.trim() || null,
+      mrn: patient.mrn ?? null,
+      age,
+      gender: patient.gender ?? null,
+      date_of_birth: patient.dateOfBirth ?? null,
+      blood_group: patient.bloodGroup ?? null,
+      phone: patient.phone ?? null,
+      ward: admission?.ward?.name ?? null,
+      bed: admission?.bed?.bedNumber ?? null,
+      admission_date: admission?.admissionDate ?? null,
+      consultant: consultant || null,
+    };
+  }, [patient, admission]);
+}
+
 function FillFormDialog({
   form,
   patientId,
@@ -671,6 +723,7 @@ function FillFormDialog({
   onClose: () => void;
 }) {
   const create = useCreateSubmission(form.id);
+  const patientContext = useAutofillContext(patientId, ctx.admissionId);
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
@@ -680,6 +733,7 @@ function FillFormDialog({
         </DialogHeader>
         <FormRenderer
           schema={form.schema}
+          patientContext={patientContext}
           isSubmitting={create.isPending}
           submitLabel="Save submission"
           onCancel={onClose}

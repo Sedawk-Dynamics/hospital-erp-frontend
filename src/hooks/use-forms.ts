@@ -13,12 +13,73 @@ export type FormFieldType =
   | 'number'
   | 'date'
   | 'datetime'
+  | 'time'
   | 'select'
   | 'multiselect'
   | 'radio'
   | 'checkbox'
+  | 'yesno'
+  | 'text_duration'
+  | 'number_date'
   | 'section'
   | 'divider';
+
+/**
+ * Patient attributes a form field can be prefilled from when the form is
+ * launched under a patient. Kept as one list so the builder's picker, the
+ * renderer's resolver and the API's whitelist cannot drift apart.
+ */
+export const PATIENT_AUTOFILL_FIELDS = [
+  { key: 'patient_name', label: 'Patient name' },
+  { key: 'mrn', label: 'MRN / UHID' },
+  { key: 'age', label: 'Age (years)' },
+  { key: 'gender', label: 'Sex' },
+  { key: 'date_of_birth', label: 'Date of birth' },
+  { key: 'blood_group', label: 'Blood group' },
+  { key: 'phone', label: 'Phone' },
+  { key: 'ward', label: 'Ward' },
+  { key: 'bed', label: 'Bed' },
+  { key: 'admission_date', label: 'Admission date' },
+  { key: 'consultant', label: 'Consultant' },
+] as const;
+
+export type PatientAutofillKey = (typeof PATIENT_AUTOFILL_FIELDS)[number]['key'];
+
+/**
+ * The patient context a form is filled under. Every value is optional — a
+ * temporary patient may have almost nothing on file, and a field whose source
+ * is unknown is simply left blank rather than filled with a placeholder.
+ */
+export interface PatientAutofillContext {
+  patient_name?: string | null;
+  mrn?: string | null;
+  age?: number | null;
+  gender?: string | null;
+  date_of_birth?: string | null;
+  blood_group?: string | null;
+  phone?: string | null;
+  ward?: string | null;
+  bed?: string | null;
+  admission_date?: string | null;
+  consultant?: string | null;
+}
+
+/** Units a `text_duration` field can express. Mirrors DURATION_UNITS on the API. */
+export const DURATION_UNITS = ['minutes', 'hours', 'days', 'weeks', 'months', 'years'] as const;
+export type DurationUnit = (typeof DURATION_UNITS)[number];
+
+/** Stored shape of a `text_duration` answer. */
+export interface TextDurationValue {
+  text: string | null;
+  duration: number | null;
+  unit: DurationUnit | string;
+}
+
+/** Stored shape of a `number_date` answer. */
+export interface NumberDateValue {
+  value: number | null;
+  date: string | null;
+}
 
 export type FormCategory =
   | 'assessment'
@@ -63,6 +124,20 @@ export interface FormFieldBase {
   step?: number | null;
   unit?: string | null;
   maxLength?: number | null;
+  // yesno
+  yesLabel?: string;
+  noLabel?: string;
+  // text_duration
+  durationUnits?: DurationUnit[] | null;
+  defaultDurationUnit?: DurationUnit;
+  // number_date
+  dateLabel?: string | null;
+  /**
+   * Prefill this field from the patient the form was launched under. The
+   * renderer resolves it against the patient context; the value is still
+   * stored on the submission like any other answer.
+   */
+  autofill?: PatientAutofillKey | null;
 }
 
 export type FormField = FormFieldBase;
