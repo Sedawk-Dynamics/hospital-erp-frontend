@@ -414,7 +414,7 @@ function AddRosterDialog({ users }: { users: UserListItem[] }) {
         <Plus className="mr-1.5 h-4 w-4" />
         Add shift
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Add nursing shift</DialogTitle>
         </DialogHeader>
@@ -647,7 +647,7 @@ function EditShiftDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => (!v ? onClose() : undefined)}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Edit shift · {staffName}</DialogTitle>
         </DialogHeader>
