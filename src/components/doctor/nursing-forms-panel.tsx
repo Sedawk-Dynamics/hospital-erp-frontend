@@ -90,7 +90,7 @@ export function NursingFormsPanel({ patientId, limit = 8 }: NursingFormsPanelPro
       )}
 
       <Dialog open={!!open} onOpenChange={(o) => !o && setOpen(null)}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{open?.form?.name ?? 'Submission'}</DialogTitle>
             <DialogDescription>
