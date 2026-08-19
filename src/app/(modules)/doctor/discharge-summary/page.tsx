@@ -17,6 +17,7 @@ import { useAiStatus, useGenerateDischargeNarrative } from '@/hooks/use-ai';
 import { useSeedOnChange } from '@/hooks/use-seed-on-change';
 import { formatDate, toInputDateStr } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
+import { FOLLOW_UP_PRESETS, dateAfterPreset } from '@/lib/follow-up';
 import { AdmissionStatusBadge } from '@/components/shared/admission-status-badge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -511,9 +512,46 @@ export default function DischargeSummaryPage() {
             <CardTitle className="text-sm font-semibold">Follow-up</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <Label className="text-xs text-muted-foreground mb-1">Follow-up Date</Label>
+            <div>
+              <Label className="text-xs text-muted-foreground mb-1">Follow-up Date</Label>
+              {/* The same one-tap intervals the prescription pad offers.
+                  Signing a discharge, the doctor thinks "review in two weeks" —
+                  not "the 2nd of September". Making them convert that in their
+                  head, at the point the patient is leaving, is where the wrong
+                  date gets typed. */}
+              {!isReadOnly && (
+                <div className="mb-2 flex flex-wrap gap-1.5">
+                  {FOLLOW_UP_PRESETS.map((preset) => {
+                    const resolved = dateAfterPreset(preset);
+                    const isActive = !!followUpDate && followUpDate === resolved;
+                    return (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => setFollowUpDate(resolved)}
+                        className={cn(
+                          'rounded-full border px-3 py-1.5 text-xs font-medium transition-all',
+                          isActive
+                            ? 'border-secondary/30 bg-secondary/10 text-secondary ring-1 ring-secondary/30'
+                            : 'border-transparent bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground',
+                        )}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                  {followUpDate && (
+                    <button
+                      type="button"
+                      onClick={() => setFollowUpDate('')}
+                      className="rounded-full px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="relative">
                   <Calendar className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -525,6 +563,19 @@ export default function DischargeSummaryPage() {
                   />
                 </div>
               </div>
+              {/* A preset only sets a date — it is not stored as "after 3
+                  months". Spelling the resolved day out loud is what lets the
+                  doctor catch a preset that landed on a Sunday or a holiday. */}
+              {followUpDate && (
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  {new Date(followUpDate).toLocaleDateString('en-IN', {
+                    weekday: 'long',
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric',
+                  })}
+                </p>
+              )}
             </div>
             <div>
               <Label className="text-xs text-muted-foreground mb-1">Follow-up Instructions</Label>
