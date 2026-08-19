@@ -1514,7 +1514,7 @@ function AffectedPatientsDialog({ batchId, onClose }: { batchId: string; onClose
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Affected Patients</DialogTitle>
           {data && (
