@@ -283,7 +283,7 @@ function DiscountPolicyInner() {
 
       {/* Add / edit dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{editingId ? 'Edit band' : 'Add band'}</DialogTitle>
             <DialogDescription>
@@ -333,7 +333,7 @@ function DiscountPolicyInner() {
 
       {/* Delete confirm */}
       <Dialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Remove band?</DialogTitle>
             <DialogDescription>This margin band will no longer cap discounts at the counter.</DialogDescription>
