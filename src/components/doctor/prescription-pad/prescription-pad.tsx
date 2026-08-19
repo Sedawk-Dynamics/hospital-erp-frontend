@@ -1204,6 +1204,30 @@ function MedicationsSection({ form, patientId }: { form: any; patientId: string 
   const isAlreadyAdded = (d: FormularyDrug) =>
     d.id != null && medicines.some((m: MedicineFormData) => m.drugId === d.id);
 
+  // Two lines of the same medicine are legitimate when the frequencies differ —
+  // a STAT dose alongside the regular course. Two lines at the SAME frequency
+  // are a double dose, which is the thing that made hiding the drug feel safe
+  // in the first place. Now that the search allows it, name it explicitly.
+  //
+  // Matched on the formulary id where there is one, and on the trimmed name
+  // otherwise, so free-text lines are covered too.
+  const duplicateDoseNames = useMemo(() => {
+    const seen = new Map<string, number>();
+    const dupes = new Set<string>();
+    for (const m of (medicines ?? []) as MedicineFormData[]) {
+      const name = (m.drugName ?? '').trim();
+      if (!name) continue;
+      // A blank frequency is still being filled in — warning then would fire at
+      // every doctor mid-edit, which is how a warning gets ignored.
+      const freq = (m.frequency ?? '').trim().toLowerCase();
+      if (!freq) continue;
+      const key = `${m.drugId ?? name.toLowerCase()}|${freq}`;
+      seen.set(key, (seen.get(key) ?? 0) + 1);
+      if ((seen.get(key) ?? 0) > 1) dupes.add(name);
+    }
+    return Array.from(dupes);
+  }, [medicines]);
+
   const handleSelectDrug = useCallback((drug: FormularyDrug) => {
     append({
       ...defaultMedicine,
@@ -1268,6 +1292,24 @@ function MedicationsSection({ form, patientId }: { form: any; patientId: string 
                 onRemove={() => remove(index)}
               />
             ))}
+          </div>
+        )}
+
+        {/* Warned, not blocked. There are real reasons to repeat a line — a
+            dose change written as two entries, a split course — and a doctor
+            who means it should not have to fight the form. But it must never
+            happen silently. */}
+        {duplicateDoseNames.length > 0 && (
+          <div className="mt-2 flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50/60 px-3 py-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+            <p className="text-xs text-amber-900">
+              <span className="font-semibold">
+                {duplicateDoseNames.join(', ')}
+              </span>{' '}
+              {duplicateDoseNames.length === 1 ? 'appears' : 'appear'} twice at the same frequency —
+              that is a double dose. Change one frequency (e.g. STAT vs the regular course), or
+              remove the extra line.
+            </p>
           </div>
         )}
 
