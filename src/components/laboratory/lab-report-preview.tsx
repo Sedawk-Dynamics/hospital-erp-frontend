@@ -132,7 +132,7 @@ export function LabReportPreviewDialog({ open, onOpenChange, source }: LabReport
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-4xl max-h-[92vh] overflow-hidden p-0 sm:rounded-2xl"
+        className="sm:max-w-4xl max-h-[92vh] overflow-hidden p-0 sm:rounded-2xl"
         showCloseButton={false}
       >
         <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b bg-surface-container-low">
