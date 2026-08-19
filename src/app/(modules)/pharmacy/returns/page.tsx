@@ -955,7 +955,7 @@ function VendorReturnDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
+      <DialogContent className="max-h-[92vh] sm:max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>New Vendor Return</DialogTitle>
           <DialogDescription>
