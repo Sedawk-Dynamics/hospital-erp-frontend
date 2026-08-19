@@ -123,6 +123,50 @@ function unwrapOne<T>(value: unknown): T | undefined {
 
 export type WorkspaceRole = 'doctor' | 'nurse' | 'admin';
 
+// ── Which tabs a counter role has any business in ──────────────────────────
+//
+// The workspace is mounted per module, and the Hospital module passes
+// role="admin" for EVERYONE in it — hospital admin, billing admin, cashier and
+// front desk alike. So the front desk got the full clinical record: eMAR,
+// prescriptions, nursing charting, progress notes and clinical orders, none of
+// which they act on.
+//
+// The module prop cannot answer this, because it describes the module rather
+// than the person. The gate below reads the signed-in user's ACTUAL role.
+//
+// Front desk and cashier keep everything their job needs — who is in the bed,
+// the money, the paperwork, the audit trail — and lose the clinical record they
+// only ever browsed.
+//
+// OFF-SWITCH: delete a role from COUNTER_ROLES and it goes back to seeing
+// every tab. Roles affected: front_desk, cashier. Nobody else changes.
+const COUNTER_ROLES = new Set(['front_desk', 'cashier']);
+
+/** Tabs a counter role keeps. Everything absent from this list is clinical. */
+const COUNTER_TABS = new Set([
+  'overview',
+  'history',
+  'forms',
+  'ledger',
+  'activity',
+  'patient',
+]);
+
+/**
+ * Decide the visible tab set for the signed-in user.
+ *
+ * Returns null when every tab is allowed, so the common case costs nothing and
+ * the caller can skip filtering entirely.
+ */
+export function visibleWorkspaceTabs(roles: string[]): Set<string> | null {
+  // A user who is ALSO an admin or a doctor keeps the full view — the
+  // restriction is about the counter job, not about punishing a second role.
+  if (roles.some((r) => r === 'admin' || r === 'super_admin' || r === 'doctor')) return null;
+  if (!roles.some((r) => COUNTER_ROLES.has(r))) return null;
+  return COUNTER_TABS;
+}
+
+
 interface IPPatientWorkspaceProps {
   admissionId: string;
   role: WorkspaceRole;
