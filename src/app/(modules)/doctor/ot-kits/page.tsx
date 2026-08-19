@@ -49,7 +49,7 @@ const STATUS: Record<string, { label: string; tone: string }> = {
 function KitDetailDialog({ issue, onClose }: { issue: OtKitIssue; onClose: () => void }) {
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <PackageOpen className="h-4 w-4 text-primary" />
