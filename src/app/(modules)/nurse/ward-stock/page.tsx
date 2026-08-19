@@ -128,7 +128,7 @@ function DispenseDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Give from ward stock</DialogTitle>
           <DialogDescription>
@@ -238,7 +238,7 @@ function ReturnDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Return to pharmacy</DialogTitle>
           <DialogDescription>
