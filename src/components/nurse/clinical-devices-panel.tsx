@@ -253,7 +253,7 @@ export function ClinicalDevicesPanel({
         </div>
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger render={<Button size="sm" className="gap-1.5"><Plus className="h-3.5 w-3.5" />Add Device</Button>} />
-          <DialogContent className="max-w-lg">
+          <DialogContent className="sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>Insert Device / Line</DialogTitle>
             </DialogHeader>
@@ -475,7 +475,7 @@ export function ClinicalDevicesPanel({
 
       {/* Check dialog */}
       <Dialog open={!!checkOpen} onOpenChange={(o) => !o && setCheckOpen(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Record Device Check</DialogTitle>
           </DialogHeader>
