@@ -1477,7 +1477,7 @@ function RecallBatchDialog({ batch, onClose }: { batch: DrugBatch; onClose: () =
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Recall Batch</DialogTitle>
           <DialogDescription>
