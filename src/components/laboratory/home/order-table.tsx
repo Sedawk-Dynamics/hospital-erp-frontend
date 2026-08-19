@@ -4,11 +4,14 @@
 // 2,056 lines holding the shell, seven tabs, four dialogs and the shared
 // table primitives in one file. No behaviour changed in the move.
 
+import { Fragment, useState } from 'react';
 import {
+  ChevronRight,
   ClipboardCheck,
   FlaskConical,
   Lock,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
   type LabOrder
@@ -45,11 +48,25 @@ export function OrderTable({
   /** Supervisor-only money column — the same one radiology's table carries. */
   showBill?: boolean;
 }) {
-  const colCount = 8 + (showAssignee ? 1 : 0) + (showBill ? 1 : 0);
+  const colCount = 9 + (showAssignee ? 1 : 0) + (showBill ? 1 : 0);
+  // Which orders are showing their full test list. Multiple can be open at
+  // once — the lab compares orders against each other while deciding what to
+  // pick up next, so opening one must not close another.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggle = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
   return (
     <TableShell>
       <thead>
         <tr className="border-b border-surface-container">
+          {/* Expander column — no label; the control explains itself. */}
+          <Th> </Th>
           <Th>Patient</Th>
           <Th>MRN</Th>
           <Th>Order #</Th>
@@ -68,8 +85,27 @@ export function OrderTable({
         ) : orders.length === 0 ? (
           <EmptyRow span={colCount} message={emptyMsg} />
         ) : (
-          orders.map((o) => (
-            <tr key={o.id} className="hover:bg-surface-container-low transition-colors">
+          orders.map((o) => {
+            const items = o.labOrderItems ?? [];
+            const isOpen = expanded.has(o.id);
+            return (
+            <Fragment key={o.id}>
+            <tr className="hover:bg-surface-container-low transition-colors">
+              <td className="py-3 pl-3 pr-0 align-top">
+                {items.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => toggle(o.id)}
+                    aria-expanded={isOpen}
+                    aria-label={isOpen ? 'Hide tests' : `Show all ${items.length} tests`}
+                    className="rounded-md p-0.5 text-muted-foreground hover:bg-surface-container hover:text-foreground"
+                  >
+                    <ChevronRight
+                      className={cn('size-4 transition-transform', isOpen && 'rotate-90')}
+                    />
+                  </button>
+                )}
+              </td>
               <td className="px-4 py-3 font-medium">
                 <div className="flex items-center gap-1.5">
                   <span>
@@ -147,7 +183,35 @@ export function OrderTable({
                 </div>
               </td>
             </tr>
-          ))
+
+            {/* The expanded view the queue was missing: every test on the
+                order, with the state each one is in, without opening the order
+                or crossing to another tab. */}
+            {isOpen && (
+              <tr className="bg-surface-container-low/60">
+                <td />
+                <td colSpan={colCount - 1} className="px-4 pb-3 pt-0">
+                  <ul className="flex flex-wrap gap-x-4 gap-y-1">
+                    {items.map((it) => (
+                      <li key={it.id} className="flex items-center gap-1.5 text-xs">
+                        <span className="font-medium">{it.test?.testName ?? 'Test'}</span>
+                        {it.test?.testCode && (
+                          <span className="font-mono text-[10px] text-muted-foreground">
+                            {it.test.testCode}
+                          </span>
+                        )}
+                        <span className="rounded-full bg-surface-container px-1.5 py-0.5 text-[10px] capitalize text-muted-foreground">
+                          {it.status.replace(/_/g, ' ')}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </td>
+              </tr>
+            )}
+            </Fragment>
+            );
+          })
         )}
       </tbody>
     </TableShell>
