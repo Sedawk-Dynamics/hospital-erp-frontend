@@ -436,7 +436,7 @@ export function PrescriptionPad({
         open={!!cdssOverrideBlockers}
         onOpenChange={(open) => { if (!open) setCdssOverrideBlockers(null); }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ShieldAlert className="h-4 w-4 text-error" />
