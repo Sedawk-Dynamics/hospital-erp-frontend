@@ -322,7 +322,7 @@ export function ItemDialog({ item, onClose }: { item: InventoryItem | null; onCl
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Edit Item' : 'New Item'}</DialogTitle>
         </DialogHeader>
@@ -465,7 +465,7 @@ export function StockInDialog({ initialItem, onClose }: { initialItem: Inventory
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Record Stock In</DialogTitle>
         </DialogHeader>
