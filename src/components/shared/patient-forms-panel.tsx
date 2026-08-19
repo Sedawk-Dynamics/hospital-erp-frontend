@@ -54,6 +54,22 @@ import {
 import { usePatient } from '@/hooks/use-hospital';
 import { useAdmission } from '@/hooks/use-clinical';
 import { FormRenderer } from '@/components/forms/form-renderer';
+
+/**
+ * Width for the dialogs that render a generated form.
+ *
+ * DialogContent's base is `max-w-[calc(100%-2rem)] ... sm:max-w-lg`. A bare
+ * `max-w-2xl` on the caller does NOT beat that: it is an unprefixed utility
+ * against a `sm:` one, so from 640px up the base wins and the dialog sits at
+ * 512px. Both `max-w-none` and `sm:max-w-none` are needed to clear it before
+ * an explicit width applies — the same idiom FormPreviewDialog already uses,
+ * and the reason the builder's preview looked right while the form a nurse
+ * actually opened did not.
+ *
+ * 56rem matches that preview, so what the form is designed against is what
+ * gets filled in.
+ */
+const FORM_DIALOG_WIDTH = 'w-[min(calc(100vw-2rem),56rem)] max-w-none sm:max-w-none';
 import { FormSubmissionView } from '@/components/forms/form-submission-view';
 import { FormPreviewDialog } from '@/components/forms/form-preview-dialog';
 
@@ -449,7 +465,7 @@ function FormCatalogueView({
 
       {/* View submission dialog */}
       <Dialog open={!!openView} onOpenChange={(open) => !open && setOpenView(null)}>
-        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+        <DialogContent className={cn('max-h-[85vh] overflow-y-auto', FORM_DIALOG_WIDTH)}>
           <DialogHeader>
             <DialogTitle>{openView?.form?.name ?? 'Submission'}</DialogTitle>
             <DialogDescription>
@@ -632,7 +648,7 @@ function SubmittedFormsView({ patientId, ctx, scopeSubmissionsToContext = false 
 
       {/* Read the submission exactly as the nurse saw it (formSnapshot). */}
       <Dialog open={!!openView} onOpenChange={(open) => !open && setOpenView(null)}>
-        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+        <DialogContent className={cn('max-h-[85vh] overflow-y-auto', FORM_DIALOG_WIDTH)}>
           <DialogHeader>
             <DialogTitle>{openView?.form?.name ?? 'Submission'}</DialogTitle>
             <DialogDescription>
@@ -726,7 +742,7 @@ function FillFormDialog({
   const patientContext = useAutofillContext(patientId, ctx.admissionId);
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+      <DialogContent className={cn('max-h-[90vh] overflow-y-auto', FORM_DIALOG_WIDTH)}>
         <DialogHeader>
           <DialogTitle>{form.name}</DialogTitle>
           {form.description && <DialogDescription>{form.description}</DialogDescription>}
