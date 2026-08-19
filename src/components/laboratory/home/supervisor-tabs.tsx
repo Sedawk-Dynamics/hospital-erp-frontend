@@ -4,7 +4,10 @@
 // 2,056 lines holding the shell, seven tabs, four dialogs and the shared
 // table primitives in one file. No behaviour changed in the move.
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Search } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { useDebounce } from '@/hooks/use-debounce';
 import {
   useLabOrders,
   type LabOrder
@@ -141,7 +144,26 @@ export function OutsourceTab() {
 // ============================================================
 export function IncomingOrderTab() {
   const [page, setPage] = useState(1);
-  const { data, isLoading } = useLabOrders({ accepted: false, status: 'ordered', page, limit: 20 });
+  // Search covers patient, MRN, order number AND test name/code — the API has
+  // always filtered on all four, but this tab never offered a box, so a busy
+  // intake queue could only be read a page at a time. Debounced so typing a
+  // test name does not fire a request per keystroke.
+  const [searchInput, setSearchInput] = useState('');
+  const search = useDebounce(searchInput, 300);
+
+  // A new search has to start at page 1, or filtering while on page 3 shows an
+  // empty table and looks like no matches.
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
+  const { data, isLoading } = useLabOrders({
+    accepted: false,
+    status: 'ordered',
+    page,
+    limit: 20,
+    search: search.trim() || undefined,
+  });
   const orders = data?.data ?? [];
 
   const [acceptFor, setAcceptFor] = useState<LabOrder | null>(null);
@@ -151,6 +173,16 @@ export function IncomingOrderTab() {
       <div className="rounded-xl bg-amber-50 px-4 py-2 text-xs text-amber-900">
         These orders are waiting on the lab. Accepting takes the payment at this counter (or posts
         it to the patient&apos;s stay ledger) and hands the work to a technician.
+      </div>
+
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="Search patient, MRN, order no. or test"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          className="pl-9"
+        />
       </div>
 
       <OrderTable
