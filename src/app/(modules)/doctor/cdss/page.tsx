@@ -325,7 +325,7 @@ export default function CdssDashboardPage() {
       </Tabs>
 
       <Dialog open={!!overrideTarget} onOpenChange={(open) => { if (!open) setOverrideTarget(null); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Override CDSS alert</DialogTitle>
           </DialogHeader>
