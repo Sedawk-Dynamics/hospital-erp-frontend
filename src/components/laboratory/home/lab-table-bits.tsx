@@ -45,6 +45,38 @@ export function SpecimensCell({ samples }: { samples?: LabOrder['labSamples'] })
   );
 }
 
+/**
+ * The tests on an order, by name.
+ *
+ * This column rendered `labOrderItems.length` — a bare "4". The API has always
+ * returned every test's name and code on the list payload, so the one thing the
+ * lab needs in order to triage a queue (what was actually ordered) was fetched
+ * and then thrown away. Reading it meant opening the order, or crossing to a
+ * different tab that did show names.
+ *
+ * Two names inline, the rest behind a count, with the full list on hover — a
+ * queue row has to stay one line high to remain scannable.
+ */
+export function TestsCell({ items }: { items?: LabOrder['labOrderItems'] }) {
+  const names = (items ?? [])
+    .map((i) => i.test?.testName)
+    .filter((n): n is string => !!n);
+
+  if (names.length === 0) {
+    return <span className="text-xs text-muted-foreground">-</span>;
+  }
+
+  const shown = names.slice(0, 2);
+  const rest = names.length - shown.length;
+
+  return (
+    <span className="text-xs" title={names.join(', ')}>
+      <span className="font-medium">{shown.join(', ')}</span>
+      {rest > 0 && <span className="ml-1 text-muted-foreground">+{rest} more</span>}
+    </span>
+  );
+}
+
 export function StatusBadge({ status, reportStatus }: { status?: string; reportStatus?: string }) {
   // Once the report is published (or corrected), the order reads "Published"
   // even though LabOrder.status stays 'completed' (no 'published' order status).

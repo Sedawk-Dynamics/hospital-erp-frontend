@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import {
   type LabOrder
 } from '@/hooks/use-lab';
-import { EmptyRow, LoadingRow, PriorityBadge, SpecimensCell, StatusBadge, Th } from '@/components/laboratory/home/lab-table-bits';
+import { EmptyRow, LoadingRow, PriorityBadge, SpecimensCell, StatusBadge, TestsCell, Th } from '@/components/laboratory/home/lab-table-bits';
 import { TableShell } from '@/components/shared/diagnostics/table-bits';
 import {
   EncounterBadge,
@@ -80,7 +80,9 @@ export function OrderTable({
               </td>
               <td className="px-4 py-3 text-muted-foreground">{o.patient.mrn}</td>
               <td className="px-4 py-3 font-mono text-xs">{o.orderNumber ?? o.id.slice(0, 8)}</td>
-              <td className="px-4 py-3">{o.labOrderItems?.length ?? 0}</td>
+              <td className="px-4 py-3">
+                <TestsCell items={o.labOrderItems} />
+              </td>
               <td className="px-4 py-3">
                 <SpecimensCell samples={o.labSamples} />
               </td>
