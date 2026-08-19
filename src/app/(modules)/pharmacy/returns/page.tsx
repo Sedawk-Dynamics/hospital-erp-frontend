@@ -342,7 +342,7 @@ function CounterReturnDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>New Counter Return</DialogTitle>
         </DialogHeader>
@@ -588,7 +588,7 @@ function PatientReturnDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>New Patient Return</DialogTitle>
         </DialogHeader>
