@@ -549,6 +549,19 @@ function VitalsSidebar({
           ))}
         </ul>
       )}
+      {/* What the nurse wrote when they took the reading.
+          `Vital.notes` is the box on the nurse vitals screen — the one QA used
+          when the script says "nurse entered vitals and notes" — and it was
+          stored, returned by the API, and rendered nowhere. The doctor saw the
+          numbers and none of the observation that came with them. */}
+      {v.notes && (
+        <div className="mt-2 rounded-lg bg-surface-container-low px-2 py-1.5">
+          <p className="font-label text-[9px] uppercase tracking-widest text-on-surface-variant">
+            Nurse&rsquo;s note
+          </p>
+          <p className="mt-0.5 whitespace-pre-wrap text-[11px] text-on-surface">{v.notes}</p>
+        </div>
+      )}
       {dialog}
     </SidebarCard>
   );
