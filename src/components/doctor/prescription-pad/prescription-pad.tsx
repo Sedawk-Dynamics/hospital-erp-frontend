@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
+import { FOLLOW_UP_PRESETS, dateAfterInterval, type FollowUpUnit } from '@/lib/follow-up';
 import { cn } from '@/lib/utils';
 import { ShieldAlert } from 'lucide-react';
 import {
@@ -32,7 +33,7 @@ import {
   FREQUENCY_OPTIONS,
   TIMING_OPTIONS,
   DURATION_UNITS,
-  FOLLOW_UP_PRESETS,
+
   CONSULTATION_PIN_SECTIONS,
   CONSULTATION_PIN_SECTION_LABELS,
   getDosageFormBadge,
@@ -1516,16 +1517,11 @@ function FollowUpSection({ form, pinSlot }: { form: any; pinSlot?: React.ReactNo
     (dur: string, unit: string) => {
       setValue('followUpDuration', dur, { shouldDirty: true });
       setValue('followUpDurationUnit', unit, { shouldDirty: true });
-      const n = parseInt(dur, 10);
-      if (!n || n <= 0) return;
-      const date = new Date();
-      if (unit === 'days') date.setDate(date.getDate() + n);
-      else if (unit === 'weeks') date.setDate(date.getDate() + n * 7);
-      else if (unit === 'months') date.setMonth(date.getMonth() + n);
-      const yyyy = date.getFullYear();
-      const mm = String(date.getMonth() + 1).padStart(2, '0');
-      const dd = String(date.getDate()).padStart(2, '0');
-      setValue('followUpDate', `${yyyy}-${mm}-${dd}`, { shouldDirty: true });
+      // Shared with the discharge summary, which asks the same question and
+      // used to have no answer for it. Same maths, one definition.
+      const resolved = dateAfterInterval(dur, unit as FollowUpUnit);
+      if (!resolved) return;
+      setValue('followUpDate', resolved, { shouldDirty: true });
     },
     [setValue],
   );

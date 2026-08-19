@@ -37,16 +37,9 @@ export const TIMING_OPTIONS = [
   'At Bedtime',
 ] as const;
 
-/** Quick-select presets for follow-up duration */
-export const FOLLOW_UP_PRESETS = [
-  { label: '3 Days', value: 3, unit: 'days' },
-  { label: '5 Days', value: 5, unit: 'days' },
-  { label: '1 Week', value: 1, unit: 'weeks' },
-  { label: '2 Weeks', value: 2, unit: 'weeks' },
-  { label: '1 Month', value: 1, unit: 'months' },
-  { label: '3 Months', value: 3, unit: 'months' },
-  { label: '6 Months', value: 6, unit: 'months' },
-] as const;
+// FOLLOW_UP_PRESETS moved to `@/lib/follow-up`, alongside the interval-to-date
+// arithmetic it is always used with. Two screens ask for a follow-up interval
+// and they must offer the same choices.
 
 // Legacy exports kept for backward-compat with MedicineCard display
 export const TIMING_SLOTS = ['Morning', 'Afternoon', 'Evening', 'Night'] as const;
