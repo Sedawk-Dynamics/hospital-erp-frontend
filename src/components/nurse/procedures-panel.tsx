@@ -182,7 +182,7 @@ export function ProceduresPanel({
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger render={<Button size="sm" className="gap-1.5"><Plus className="h-3.5 w-3.5" />Log Procedure</Button>} />
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Log Procedure</DialogTitle>
             </DialogHeader>
