@@ -288,9 +288,14 @@ export function FrontDeskRegisterDialog({
 
   // Phone → account-holder lookup. Strip formatting so the number matches
   // however it was typed, then look up whoever owns it (debounced while typing).
-  // Skipped for temporary patients and the walk-in "existing patient" path.
+  //
+  // Runs for temporary patients too. The number on an emergency form is usually
+  // the attender's — the relative who brought the patient in — and skipping the
+  // lookup here is why registering under an existing attender posted no linkage
+  // to their account. Skipped only for the walk-in "existing patient" path,
+  // where the patient has already been chosen.
   useEffect(() => {
-    if (isTemporary || mode !== 'new') {
+    if (mode !== 'new') {
       setMatchedUser(null);
       return;
     }
@@ -319,7 +324,7 @@ export function FrontDeskRegisterDialog({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [phoneValue, isTemporary, mode]);
+  }, [phoneValue, mode]);
 
   // When a number resolves to an existing account holder, default the
   // relationship to "child" (the common case — a dependent registered under an
@@ -438,10 +443,19 @@ export function FrontDeskRegisterDialog({
         city: v.city?.trim() || undefined,
         state: v.state?.trim() || undefined,
         zipCode: v.zipCode?.trim() || undefined,
+        // The attender this record belongs under. Sent only when the number
+        // resolved to a real account — the server never mints one for a
+        // temporary patient.
+        userId: matchedUser?.id ?? undefined,
+        relationship: matchedUser ? (v.relationship || 'other') : undefined,
       });
       queryClient.invalidateQueries({ queryKey: ['hospital'] });
       queryClient.invalidateQueries({ queryKey: ['patients'] });
-      toast.success(`Temporary patient created (${resp.data?.mrn ?? 'TEMP'})`);
+      toast.success(
+        matchedUser
+          ? `Temporary patient created (${resp.data?.mrn ?? 'TEMP'}) under ${matchedUser.firstName}'s account`
+          : `Temporary patient created (${resp.data?.mrn ?? 'TEMP'})`,
+      );
       onOpenChange(false);
       onSuccess?.();
     } catch (e: any) {
@@ -784,7 +798,7 @@ export function FrontDeskRegisterDialog({
                   {/* Phone-driven account resolution. The number is the account
                       key: if it already belongs to someone the patient is added
                       under that account; otherwise a new account is created. */}
-                  {!isTemporary && phoneValue.replace(/\D/g, '').length >= 7 && (
+                  {phoneValue.replace(/\D/g, '').length >= 7 && (
                     <div className="pt-1">
                       {phoneLookupLoading ? (
                         <div className="flex items-center gap-2 rounded-lg bg-surface-container/60 px-3 py-2.5 text-xs text-on-surface-variant">
@@ -858,7 +872,13 @@ export function FrontDeskRegisterDialog({
                           <UserPlus className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
                           <p className="text-[11px] text-on-surface-variant">
                             <span className="font-semibold text-on-surface">New number.</span>{' '}
-                            A new patient account will be created for this person automatically.
+                            {isTemporary
+                              // No account is minted for someone nobody has
+                              // identified yet — saying one will be would be a
+                              // lie, and an unidentified patient must not get a
+                              // login in their name off a relative's number.
+                              ? 'No account is created for a temporary record. Connect it to a patient later from the Patients page.'
+                              : 'A new patient account will be created for this person automatically.'}
                           </p>
                         </div>
                       )}
