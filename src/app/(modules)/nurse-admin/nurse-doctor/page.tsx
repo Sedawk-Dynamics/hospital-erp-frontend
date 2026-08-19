@@ -374,7 +374,7 @@ function AssignDialog() {
         <Plus className="mr-1.5 h-4 w-4" />
         Assign nurse
       </DialogTrigger>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Assign nurse to doctor(s)</DialogTitle>
         </DialogHeader>
