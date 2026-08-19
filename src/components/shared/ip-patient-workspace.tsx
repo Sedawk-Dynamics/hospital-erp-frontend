@@ -1493,30 +1493,62 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
           <TabsTrigger value="patient">Patient Info</TabsTrigger>
         </TabsList>
 
+        {/* Overview embeds the same clinical panels the tabs above expose.
+            Hiding the tabs while leaving these here would have achieved
+            nothing — the counter would still land on the medication round and
+            the progress notes the moment the page opened. */}
         <TabsContent value="overview" className="space-y-4 pt-4">
-          <EmarTodayPanel admissionId={admissionId} role={role} />
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {canSee('emar') && <EmarTodayPanel admissionId={admissionId} role={role} />}
+          {(canSee('prescriptions') || canSee('progress')) && (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {canSee('prescriptions') && (
+                <PrescriptionsPanel admissionId={admissionId} patientId={patientId} role={role} onNewRx={onNewRx} />
+              )}
+              {canSee('progress') && (
+                <ProgressNotesPanel admissionId={admissionId} visitId={admission.visitId} patientId={patientId} role={role} admissionDate={admission.admissionDate} />
+              )}
+            </div>
+          )}
+          {/* Without the clinical panels the counter's Overview would be blank,
+              so point it at the two things it actually came for. */}
+          {allowedTabs && (
+            <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">
+              This patient&rsquo;s clinical record is with the ward. Use{' '}
+              <span className="font-medium text-foreground">Billing / Ledger</span> for charges and
+              deposits, and <span className="font-medium text-foreground">Patient Info</span> for
+              their details.
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Panes are gated as well as triggers. A hidden trigger still leaves
+            a reachable tab value, and the clinical record should not be one
+            crafted URL away. */}
+        {canSee('emar') && (
+          <TabsContent value="emar" className="pt-4">
+            <EmarTodayPanel admissionId={admissionId} role={role} />
+          </TabsContent>
+        )}
+
+        {canSee('prescriptions') && (
+          <TabsContent value="prescriptions" className="pt-4">
             <PrescriptionsPanel admissionId={admissionId} patientId={patientId} role={role} onNewRx={onNewRx} />
-            <ProgressNotesPanel admissionId={admissionId} visitId={admission.visitId} patientId={patientId} role={role} admissionDate={admission.admissionDate} />
-          </div>
-        </TabsContent>
+          </TabsContent>
+        )}
 
-        <TabsContent value="emar" className="pt-4">
-          <EmarTodayPanel admissionId={admissionId} role={role} />
-        </TabsContent>
+        {canSee('vitals') && (
+          <TabsContent value="vitals" className="pt-4">
+            <VitalsHistoryPanel patientId={patientId} admissionId={admissionId} />
+          </TabsContent>
+        )}
 
-        <TabsContent value="prescriptions" className="pt-4">
-          <PrescriptionsPanel admissionId={admissionId} patientId={patientId} role={role} onNewRx={onNewRx} />
-        </TabsContent>
+        {canSee('charting') && (
+          <TabsContent value="charting" className="pt-4">
+            <NursingNotesPanel patientId={patientId} admissionId={admissionId} />
+          </TabsContent>
+        )}
 
-        <TabsContent value="vitals" className="pt-4">
-          <VitalsHistoryPanel patientId={patientId} admissionId={admissionId} />
-        </TabsContent>
-
-        <TabsContent value="charting" className="pt-4">
-          <NursingNotesPanel patientId={patientId} admissionId={admissionId} />
-        </TabsContent>
-
+        {canSee('progress') && (
         <TabsContent value="progress" className="pt-4 space-y-4">
           <ProgressNotesPanel admissionId={admissionId} visitId={admission.visitId} patientId={patientId} role={role} />
           {/* Referral letters, outside scans and old reports the patient
@@ -1529,10 +1561,13 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
             <PatientDocumentsPanel patientId={patientId} />
           </div>
         </TabsContent>
+        )}
 
-        <TabsContent value="orders" className="pt-4">
-          <OrdersPanel admissionId={admissionId} patientId={patientId} role={role} />
-        </TabsContent>
+        {canSee('orders') && (
+          <TabsContent value="orders" className="pt-4">
+            <OrdersPanel admissionId={admissionId} patientId={patientId} role={role} />
+          </TabsContent>
+        )}
 
         {/* Dynamic patient forms, bound to this admission — the same catalogue
             the nurse fills for an OP appointment, now reachable for IP /
