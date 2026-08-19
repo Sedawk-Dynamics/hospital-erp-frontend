@@ -71,6 +71,7 @@ export interface NursingNote {
   patientId: string;
   patient?: Pick<Patient, 'id' | 'mrn' | 'firstName' | 'lastName'>;
   admissionId?: string;
+  visitId?: string;
   noteType: 'observation' | 'wound_care' | 'iv_line' | 'intake_output' | 'general';
   content: string;
   metadata?: Record<string, unknown>;
@@ -537,16 +538,25 @@ export function useRecordVitals() {
 export function useNursingNotes(params?: {
   patientId?: string;
   admissionId?: string;
+  /**
+   * Scope to one OP encounter. NursingNote.visitId has always been nullable and
+   * filterable, but nothing passed it — so an OPD nursing note could be written
+   * and never read back for that visit.
+   */
+  visitId?: string;
   noteType?: string;
   page?: number;
   limit?: number;
+  enabled?: boolean;
 }) {
+  const { enabled = true, ...query } = params ?? {};
   return useQuery({
-    queryKey: nurseKeys.nursingNotes.list(params as Record<string, unknown>),
+    queryKey: nurseKeys.nursingNotes.list(query as Record<string, unknown>),
     queryFn: async () => {
-      const res = await apiGet<NursingNote[]>('/progress-notes/nursing', { params });
+      const res = await apiGet<NursingNote[]>('/progress-notes/nursing', { params: query });
       return res;
     },
+    enabled,
   });
 }
 

@@ -72,8 +72,9 @@ import { NursingFormsPanel } from '@/components/doctor/nursing-forms-panel';
 import { ConsultationSummaryPanel } from '@/components/doctor/consultation-summary-panel';
 import { PatientAiAssistant } from '@/components/doctor/patient-ai-assistant';
 import { useAiStatus } from '@/hooks/use-ai';
-import { Sparkles, Plus, PencilLine } from 'lucide-react';
+import { Sparkles, Plus, PencilLine, ClipboardList } from 'lucide-react';
 import { isValueAbnormal, vitalRangeText } from '@/lib/vitals-ranges';
+import { useNursingNotes, type NursingNote } from '@/hooks/use-nurse';
 import { VitalsCorrectionDialog } from '@/components/nurse-hierarchy/vitals-correction-dialog';
 import { VitalsHistoryDrawer } from '@/components/nurse-hierarchy/vitals-history-drawer';
 import type { Vital } from '@/hooks/use-vital-history';
@@ -563,6 +564,59 @@ function VitalsSidebar({
         </div>
       )}
       {dialog}
+    </SidebarCard>
+  );
+}
+
+// ── Sidebar: Nursing notes for this encounter ─────────────────────────
+//
+// Nursing notes were only ever rendered in the IP workspace and the
+// /nursing-notes dashboard route. In an OPD consultation — the flow QA ran —
+// the doctor had no way to read anything nursing had written, even though
+// NursingNote.visitId has always existed and been filterable.
+
+function NursingNotesSidebar({ patientId, visitId }: { patientId: string; visitId: string | null }) {
+  // Scoped to THIS encounter. The patient's whole nursing history belongs in
+  // the record, not in a consultation sidebar where it would bury today's note.
+  const { data, isLoading } = useNursingNotes({
+    patientId,
+    visitId: visitId ?? undefined,
+    limit: 20,
+    enabled: !!visitId,
+  });
+
+  const notes = useMemo(() => {
+    const raw = data as unknown;
+    if (Array.isArray(raw)) return raw as NursingNote[];
+    return ((raw as { data?: NursingNote[] })?.data ?? []) as NursingNote[];
+  }, [data]);
+
+  // Nothing written is the normal case for most consultations — a card saying
+  // so would be noise in a sidebar the doctor scans.
+  if (!visitId || isLoading || notes.length === 0) return null;
+
+  return (
+    <SidebarCard title="Nursing Notes" icon={ClipboardList}>
+      <ul className="space-y-2">
+        {notes.map((n) => (
+          <li key={n.id} className="border-b border-outline-variant/30 pb-1.5 last:border-0 last:pb-0">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="font-label text-[9px] uppercase tracking-widest text-on-surface-variant">
+                {n.noteType.replace(/_/g, ' ')}
+              </span>
+              <span className="text-[9px] text-muted-foreground">
+                {formatDateTimeAmPm(n.createdAt)}
+              </span>
+            </div>
+            <p className="mt-0.5 whitespace-pre-wrap text-[11px] text-on-surface">{n.content}</p>
+            {n.createdBy && (
+              <p className="mt-0.5 text-[9px] text-muted-foreground">
+                {n.createdBy.firstName} {n.createdBy.lastName ?? ''}
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
     </SidebarCard>
   );
 }
@@ -1190,6 +1244,7 @@ export default function PatientConsultationPage({
                 appointmentId={appointmentId}
                 visitId={activeVisitId}
               />
+              <NursingNotesSidebar patientId={patient.id} visitId={activeVisitId ?? null} />
               <FamilyHistorySidebar patientId={patient.id} />
               <AllergiesSidebar patient={patient} />
             </div>
