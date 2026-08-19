@@ -1415,6 +1415,11 @@ function PatientPanel({ patientId }: { patientId: string }) {
 export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPatientWorkspaceProps) {
   const back = backHref ?? defaultBackHref(role);
   const { user } = useAuthStore();
+  // The signed-in user's real role, not the module the workspace was mounted
+  // under. `role` above is the module; this is the person.
+  const userRoles = user?.roles ?? (user?.role?.name ? [user.role.name] : []);
+  const allowedTabs = useMemo(() => visibleWorkspaceTabs(userRoles), [userRoles]);
+  const canSee = (tab: string) => !allowedTabs || allowedTabs.has(tab);
   const [rxOpen, setRxOpen] = useState(false);
   const { data: admissionResp, isLoading, error } = useAdmissionDetail(admissionId);
 
@@ -1469,14 +1474,20 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
       <Tabs defaultValue="overview" className="w-full">
         <TabsList variant="line" className="w-full justify-start overflow-x-auto">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="emar">eMAR</TabsTrigger>
-          <TabsTrigger value="prescriptions">Prescriptions</TabsTrigger>
-          <TabsTrigger value="vitals">Vitals</TabsTrigger>
-          <TabsTrigger value="charting">Nursing Charting</TabsTrigger>
-          <TabsTrigger value="progress">Progress Notes</TabsTrigger>
-          <TabsTrigger value="orders">Orders</TabsTrigger>
-          <TabsTrigger value="forms">Forms</TabsTrigger>
-          <TabsTrigger value="history">History</TabsTrigger>
+          {canSee('emar') && <TabsTrigger value="emar">eMAR</TabsTrigger>}
+          {canSee('prescriptions') && (
+            <TabsTrigger value="prescriptions">Prescriptions</TabsTrigger>
+          )}
+          {canSee('vitals') && <TabsTrigger value="vitals">Vitals</TabsTrigger>}
+          {canSee('charting') && (
+            <TabsTrigger value="charting">Nursing Charting</TabsTrigger>
+          )}
+          {canSee('progress') && (
+            <TabsTrigger value="progress">Progress Notes</TabsTrigger>
+          )}
+          {canSee('orders') && <TabsTrigger value="orders">Orders</TabsTrigger>}
+          {canSee('forms') && <TabsTrigger value="forms">Forms</TabsTrigger>}
+          {canSee('history') && <TabsTrigger value="history">History</TabsTrigger>}
           <TabsTrigger value="ledger">Billing / Ledger</TabsTrigger>
           <TabsTrigger value="activity">Activity Log</TabsTrigger>
           <TabsTrigger value="patient">Patient Info</TabsTrigger>
