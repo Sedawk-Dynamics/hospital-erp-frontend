@@ -1187,11 +1187,22 @@ function MedicationsSection({ form, patientId }: { form: any; patientId: string 
   const debouncedSearch = useDebounce(drugSearch, 300);
   const { data: formularyResults } = useFormularySearch(debouncedSearch);
 
-  const filteredResults = (formularyResults ?? []).filter(
-    // Master-catalog matches have a null id — never dedupe those by id (they
-    // share the same null), only dedupe already-stocked formulary rows.
-    (d: FormularyDrug) => d.id == null || !medicines.some((m: MedicineFormData) => m.drugId === d.id),
-  );
+  // A drug already on the prescription used to be filtered OUT of the search
+  // results, so the doctor could not add it a second time — and worse, could
+  // not find it at all, which reads as "this drug does not exist" rather than
+  // "you already have it".
+  //
+  // The same medicine legitimately appears twice with different frequencies: a
+  // STAT dose now plus the regular course from tonight. Nothing downstream
+  // objected — PrescriptionItem has no uniqueness constraint, and eMAR
+  // generates schedules per ITEM, so two lines produce two independent
+  // schedules. The block was only ever in this filter.
+  //
+  // Results are no longer filtered; they are marked instead, so adding a second
+  // line is a deliberate act rather than an accident.
+  const filteredResults = formularyResults ?? [];
+  const isAlreadyAdded = (d: FormularyDrug) =>
+    d.id != null && medicines.some((m: MedicineFormData) => m.drugId === d.id);
 
   const handleSelectDrug = useCallback((drug: FormularyDrug) => {
     append({
@@ -1281,6 +1292,7 @@ function MedicationsSection({ form, patientId }: { form: any; patientId: string 
             <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-48 overflow-y-auto rounded-lg border bg-popover shadow-lg">
               {filteredResults.map((drug) => {
                 const badge = getDosageFormBadge(drug.dosageForm ?? undefined);
+                const already = isAlreadyAdded(drug);
                 return (
                   <button
                     key={drug.id ?? drug.drugMasterId ?? drug.drugName}
@@ -1302,6 +1314,18 @@ function MedicationsSection({ form, patientId }: { form: any; patientId: string 
                         <span className="truncate">{drug.drugName}</span>
                         {/* Non-medicine stock the hospital carries. */}
                         <StockTypeBadge category={drug.category} />
+                        {/* Already on this prescription. Said out loud so a
+                            second line is chosen, not stumbled into — the
+                            legitimate reason is a different frequency (a STAT
+                            dose alongside the regular course). */}
+                        {already && (
+                          <Badge
+                            variant="outline"
+                            className="shrink-0 border-secondary/40 bg-secondary/10 px-1.5 py-0 text-[9px] text-secondary"
+                          >
+                            already added
+                          </Badge>
+                        )}
                       </p>
                       <p className="text-[10px] text-muted-foreground uppercase">
                         {[drug.genericName, drug.strength && `(${drug.strength})`].filter(Boolean).join(' ')}
