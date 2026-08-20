@@ -26,6 +26,7 @@ import {
   
   FileText,
   FileWarning,
+  BedDouble,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -1893,9 +1894,25 @@ export function InPatientList() {
                         />
                       </td>
                       <td className="px-4 py-3">
-                        <p className="font-label text-sm">
-                          {adm.ward?.name || '-'} / {adm.bed?.bedNumber || '-'}
-                        </p>
+                        {/* A stay with no bed rendered as "- / -", which is what
+                            every other empty cell looks like — so an admitted
+                            patient with no location anywhere in the hospital was
+                            indistinguishable from a column nobody had filled in.
+                            Say it plainly instead; the bed is still assigned
+                            from the workspace exactly as before. */}
+                        {adm.status === 'admitted' && !adm.bed?.bedNumber ? (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800"
+                            title="Admitted, but no bed has been assigned yet. Assign one from the patient's IP workspace."
+                          >
+                            <BedDouble className="h-3 w-3" />
+                            Awaiting bed
+                          </span>
+                        ) : (
+                          <p className="font-label text-sm">
+                            {adm.ward?.name || '-'} / {adm.bed?.bedNumber || '-'}
+                          </p>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right font-label text-sm font-bold">
                         ₹{Number(adm.depositAmount ?? 0).toLocaleString('en-IN')}

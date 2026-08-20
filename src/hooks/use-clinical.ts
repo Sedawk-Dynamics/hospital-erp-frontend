@@ -126,6 +126,8 @@ interface AdmissionParams {
   status?: string;
   patientId?: string;
   wardId?: string;
+  /** Only stays that have no bed yet — admitted, but nowhere in particular. */
+  unassignedBed?: boolean;
   date?: string;
   sortOrder?: 'asc' | 'desc';
 }
