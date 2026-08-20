@@ -289,6 +289,9 @@ export const doctorKeys = {
   progressNotes: {
     all: ['doctor', 'progress-notes'] as const,
     list: (params?: Record<string, unknown>) => ['doctor', 'progress-notes', 'list', params] as const,
+    // Nested under `all` on purpose: signing a note invalidates
+    // progressNotes.all, which clears this list too.
+    awaitingSignature: () => ['doctor', 'progress-notes', 'awaiting-signature'] as const,
   },
   prescriptions: {
     all: ['doctor', 'prescriptions'] as const,
@@ -547,6 +550,39 @@ export function useProgressNotes(params?: ProgressNotesParams) {
       const response = await apiGet<ProgressNote[]>('/progress-notes', { params });
       return { data: response.data, meta: response.meta as PaginationMeta };
     },
+  });
+}
+
+export interface AwaitingSignatureNote {
+  id: string;
+  status: string;
+  createdAt: string;
+  patient?: { id: string; firstName: string; lastName: string | null; mrn: string } | null;
+  visit?: {
+    id: string;
+    visitDate: string;
+    chiefComplaint: string | null;
+    /** Needed to deep-link the consultation page, which keys off the appointment. */
+    appointmentId: string | null;
+  } | null;
+  _count?: { pins: number };
+}
+
+/**
+ * The caller's own OP consultations that carry pins but were never signed.
+ *
+ * A pinned section is meant for the patient, and pins only reach the portal
+ * once the note is signed — so anything in this list is finished work the
+ * patient cannot see.
+ */
+export function useConsultationsAwaitingSignature(enabled = true) {
+  return useQuery({
+    queryKey: doctorKeys.progressNotes.awaitingSignature(),
+    queryFn: async () => {
+      const response = await apiGet<AwaitingSignatureNote[]>('/progress-notes/awaiting-signature');
+      return response.data ?? [];
+    },
+    enabled,
   });
 }
 

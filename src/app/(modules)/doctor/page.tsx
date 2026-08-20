@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Eye, MoreVertical, CheckCircle, Stethoscope, UserCheck, ClipboardList } from 'lucide-react';
+import { AwaitingSignatureBanner } from '@/components/doctor/awaiting-signature-banner';
 
 // Status filter mapping for doctor panel
 const statusFilterMap: Record<string, string | undefined> = {
@@ -267,6 +268,11 @@ export default function DoctorHomePage() {
           <QuickStatCard icon={<BedDouble className="h-5 w-5" />} label="IP Referrals" value={doctorStats?.ipAppointments ?? 0} accent="border-tertiary" iconBg="bg-tertiary/10" iconColor="text-tertiary" />
         </div>
       )}
+
+      {/* Consultations pinned for the patient but never signed — they stay
+          invisible on the portal until the doctor signs, and nothing else
+          surfaces that. */}
+      <AwaitingSignatureBanner />
 
       {/* Alerts Panel */}
       <AlertsPanel pendingOTCount={pendingOTCount} />
