@@ -19,6 +19,25 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Heart, Users, AlertTriangle, Plus, Trash2, Save, Stethoscope, Loader2, FileText } from 'lucide-react';
 import { apiGet, apiPut, apiPost, apiDelete } from '@/lib/api';
+import { toast } from 'sonner';
+
+/**
+ * Report a save that did not happen.
+ *
+ * Every mutation in this panel had an onSuccess and no onError, so a rejected
+ * save — an expired session being the usual one — did nothing at all: no
+ * message, and the typed text stayed on screen because the draft is only
+ * cleared on success. It looked saved. The history was then simply absent next
+ * time the panel was opened, which is exactly the "entered earlier, not
+ * visible when checked again" report.
+ */
+function reportFailure(what: string) {
+  return (err: unknown) => {
+    const fromServer = (err as { response?: { data?: { message?: string } } })?.response?.data
+      ?.message;
+    toast.error(fromServer || `Could not save ${what}. Nothing was saved — please try again.`);
+  };
+}
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -164,6 +183,7 @@ function MedicalSurgicalTab({ patientId, readOnly }: { patientId: string; readOn
       // overwrite it.
       await apiPut(`/medical-history/${patientId}/personal`, draft);
     },
+    onError: reportFailure('the medical & surgical history'),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: medicalKey(patientId) });
       qc.invalidateQueries({ queryKey: personalKey(patientId) });
@@ -403,6 +423,7 @@ function PersonalTab({ patientId, readOnly }: { patientId: string; readOnly: boo
     mutationFn: async (payload: any) => {
       await apiPut(`/medical-history/${patientId}/personal`, payload);
     },
+    onError: reportFailure('the personal history'),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: personalKey(patientId) });
       qc.invalidateQueries({ queryKey: medicalKey(patientId) });
@@ -536,6 +557,7 @@ function FamilyTab({ patientId, readOnly }: { patientId: string; readOnly: boole
         ...(draft.relationship.trim() ? { relationship: draft.relationship.trim() } : {}),
       });
     },
+    onError: reportFailure('the family history entry'),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: familyKey(patientId) });
       setDraft({ conditionName: '', relationSide: 'maternal', relationship: '' });
@@ -545,6 +567,7 @@ function FamilyTab({ patientId, readOnly }: { patientId: string; readOnly: boole
     mutationFn: async (id: string) => {
       await apiDelete(`/medical-history/${patientId}/family/${id}`);
     },
+    onError: reportFailure('the family history change'),
     onSuccess: () => qc.invalidateQueries({ queryKey: familyKey(patientId) }),
   });
 
@@ -633,6 +656,7 @@ function AllergiesTab({ patientId, readOnly }: { patientId: string; readOnly: bo
     mutationFn: async (p: any) => {
       await apiPost(`/medical-history/${patientId}/allergies`, p);
     },
+    onError: reportFailure('the allergy'),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: allergiesKey(patientId) });
       setDraft({ allergyType: 'drug', severity: 'mild' });
@@ -642,6 +666,7 @@ function AllergiesTab({ patientId, readOnly }: { patientId: string; readOnly: bo
     mutationFn: async (id: string) => {
       await apiDelete(`/medical-history/${patientId}/allergies/${id}`);
     },
+    onError: reportFailure('the allergy change'),
     onSuccess: () => qc.invalidateQueries({ queryKey: allergiesKey(patientId) }),
   });
 
