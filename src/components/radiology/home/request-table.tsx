@@ -21,6 +21,7 @@ import {
 } from '@/components/shared/diagnostics/table-bits';
 import {
   EncounterBadge,
+  ConsultationBadge,
   OrderBillCell,
   PaymentStatusBadge,
 } from '@/components/shared/diagnostics/order-bill-cell';
@@ -86,6 +87,7 @@ export function RequestTable({
                       {r.patient?.firstName} {r.patient?.lastName}
                     </span>
                     <EncounterBadge encounter={r.encounter} />
+                  <ConsultationBadge consultation={r.consultation} />
                   </div>
                 </td>
                 <td className="px-4 py-3 font-mono text-xs text-muted-foreground">

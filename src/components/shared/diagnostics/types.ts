@@ -135,3 +135,16 @@ export const REFERENCE_REQUIRED: DiagnosticPaymentMethod[] = [
 
 export const money = (n: number | string | null | undefined) =>
   `₹${(Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+
+/**
+ * Where the patient is in their consultation, as resolved by the backend's
+ * shared/consultation-state helper for a page of orders.
+ */
+export type ConsultationState = 'awaiting' | 'in_consultation' | 'done' | 'none';
+
+export interface DiagnosticConsultation {
+  state: ConsultationState;
+  /** 'op' | 'ip' | … — an inpatient has rounds, not a consultation. */
+  visitType: string;
+  doctorName: string | null;
+}

@@ -20,6 +20,7 @@ import { EmptyRow, LoadingRow, PriorityBadge, SpecimensCell, StatusBadge, TestsC
 import { TableShell } from '@/components/shared/diagnostics/table-bits';
 import {
   EncounterBadge,
+  ConsultationBadge,
   OrderBillCell,
   PaymentStatusBadge,
 } from '@/components/shared/diagnostics/order-bill-cell';
@@ -112,6 +113,7 @@ export function OrderTable({
                     {o.patient.firstName} {o.patient.lastName}
                   </span>
                   <EncounterBadge encounter={o.encounter} />
+                  <ConsultationBadge consultation={o.consultation} />
                 </div>
               </td>
               <td className="px-4 py-3 text-muted-foreground">{o.patient.mrn}</td>

@@ -5,13 +5,23 @@
 // payment-verify gate; the lab had no money column at all, which is why an
 // unpaid order looked identical to a settled one.
 
-import { IndianRupee, Wallet, BedDouble, ShieldCheck, CircleAlert } from 'lucide-react';
+import {
+  IndianRupee,
+  Wallet,
+  BedDouble,
+  ShieldCheck,
+  CircleAlert,
+  Stethoscope,
+  CircleCheck,
+  Clock3,
+} from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import {
   ADMISSION_TYPE_LABELS,
   formatPaymentMethod,
   money,
+  type DiagnosticConsultation,
   type DiagnosticEncounter,
   type DiagnosticLinkedBill,
 } from './types';
@@ -174,3 +184,81 @@ export function PaymentStatusBadge({
 }
 
 export { money };
+
+/**
+ * Whether the doctor has actually seen this patient yet.
+ *
+ * A test follows the consultation: the doctor sends the patient down, the test
+ * runs, the patient goes back with the result. But the queue row alone cannot
+ * tell that apart from a patient who is still in the waiting room, so the
+ * department had no way to judge whether it was reasonable to start — or to
+ * start writing a report.
+ *
+ * Nothing is rendered for an inpatient: a ward patient has rounds, not a
+ * consultation, and the encounter badge beside this already says they are
+ * admitted.
+ */
+export function ConsultationBadge({
+  consultation,
+  className,
+}: {
+  consultation?: DiagnosticConsultation | null;
+  className?: string;
+}) {
+  if (!consultation || consultation.visitType !== 'op') return null;
+
+  const by = consultation.doctorName ? ` · Dr. ${consultation.doctorName}` : '';
+
+  if (consultation.state === 'done') {
+    return (
+      <Badge
+        variant="outline"
+        className={cn('border-emerald-300 bg-emerald-50 text-[10px] text-emerald-700', className)}
+        title={`The doctor has seen this patient${by}. The order can be worked and reported.`}
+      >
+        <CircleCheck className="mr-1 size-3" />
+        Consultation done
+      </Badge>
+    );
+  }
+
+  if (consultation.state === 'in_consultation') {
+    return (
+      <Badge
+        variant="outline"
+        className={cn('border-amber-300 bg-amber-50 text-[10px] text-amber-800', className)}
+        title={`The doctor has this patient now${by} — the order was raised during the consultation.`}
+      >
+        <Stethoscope className="mr-1 size-3" />
+        In consultation
+      </Badge>
+    );
+  }
+
+  if (consultation.state === 'awaiting') {
+    return (
+      <Badge
+        variant="outline"
+        className={cn('border-slate-300 bg-slate-50 text-[10px] text-slate-600', className)}
+        title="The patient has not been seen by the doctor yet. A test is meant to follow the consultation."
+        data-testid="consultation-awaiting"
+      >
+        <Clock3 className="mr-1 size-3" />
+        Consultation pending
+      </Badge>
+    );
+  }
+
+  // 'none' — no appointment behind this order, or one that was cancelled or
+  // not attended. Worth saying plainly rather than leaving the row blank.
+  return (
+    <Badge
+      variant="outline"
+      className={cn('border-slate-300 bg-slate-50 text-[10px] text-slate-600', className)}
+      title="No consultation stands behind this order — there is no appointment, or it was cancelled or not attended."
+    >
+      <Clock3 className="mr-1 size-3" />
+      No consultation
+    </Badge>
+  );
+}
