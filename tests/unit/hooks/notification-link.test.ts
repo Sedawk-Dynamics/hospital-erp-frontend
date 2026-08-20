@@ -159,3 +159,46 @@ describe('notificationLink — radiology results', () => {
     );
   });
 });
+
+describe('notificationLink — every type the system actually sends', () => {
+  // Found while fixing C8: imaging_result was not the only reference with no
+  // destination. These were all live in the dev database, each showing in the
+  // bell and doing nothing when clicked.
+  const FRONT_DESK = ['front_desk'];
+
+  it('opens an admission request on the tab it is actioned from', () => {
+    // Sent to front desk / admin / billing when a doctor raises an IP request.
+    // The page opens on the ward list, so landing there loses the request.
+    expect(notificationLink(n('admission_request'), FRONT_DESK)).toBe(
+      '/hospital/ip?tab=ip-requests',
+    );
+  });
+
+  it('opens the specific expiring insurance claim, not the list', () => {
+    expect(notificationLink(n('insurance_claim', 'claim-1'), ADMIN)).toBe(
+      '/insurance/claims/claim-1',
+    );
+    // Without an id there is nowhere specific to go, so the list is right.
+    expect(notificationLink(n('insurance_claim'), ADMIN)).toBe('/insurance/claims');
+  });
+
+  it('takes the patient to their appointments for a reminder', () => {
+    expect(notificationLink(n('appointment_reminder'), PATIENT)).toBe(
+      '/patient-portal/appointments',
+    );
+  });
+
+  it('still opens the legacy admission-typed discharge notice', () => {
+    // Older "Patient ready for discharge" notices predate discharge_ready but
+    // carry the same admissionId.
+    expect(notificationLink(n('admission', 'adm-1'), FRONT_DESK)).toBe(
+      '/hospital/billing?tab=ip&admissionId=adm-1',
+    );
+  });
+
+  it('still returns null for a genuinely unknown type', () => {
+    // The fallback must stay: marking read in place beats navigating somewhere
+    // arbitrary.
+    expect(notificationLink(n('something_new_entirely'), ADMIN)).toBeNull();
+  });
+});

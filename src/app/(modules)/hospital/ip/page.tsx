@@ -8,18 +8,39 @@ import { EstimationTab } from '@/components/hospital/ip/estimation-tab';
 import { OccupancyTab } from '@/components/hospital/ip/occupancy-tab';
 import { IpRequestsTab } from '@/components/hospital/ip/ip-requests-tab';
 import { useAdmissionRequests } from '@/hooks/use-doctor';
+import { useSearchParams } from 'next/navigation';
+import { useState } from 'react';
+
+const TAB_VALUES = [
+  'in-patient',
+  'ip-requests',
+  'reservation',
+  'bed-availability',
+  'estimation',
+  'occupancy',
+] as const;
 
 export default function IPHomePage() {
   // Pending-count badge so front desk sees the queue at a glance.
   const { data } = useAdmissionRequests({ status: 'pending', limit: 1 });
   const pendingCount = data?.meta?.total ?? 0;
 
+  // An admission-request notification points here, and it is about a request —
+  // so it has to be able to open on that tab rather than the ward list. Read
+  // once as the initial value: after that the tab is the user's to move, and
+  // re-reading the URL would drag them back on every render.
+  const searchParams = useSearchParams();
+  const requested = searchParams.get('tab');
+  const [tab, setTab] = useState<string>(
+    requested && (TAB_VALUES as readonly string[]).includes(requested) ? requested : 'in-patient',
+  );
+
   return (
     <div className="space-y-4 animate-fade-in-up">
       <h1 className="font-headline text-xl font-bold">Patient Home</h1>
 
       <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-6">
-        <Tabs defaultValue="in-patient">
+        <Tabs value={tab} onValueChange={(v) => v && setTab(v)}>
           <TabsList variant="line">
             <TabsTrigger value="in-patient">Patients</TabsTrigger>
             <TabsTrigger value="ip-requests">

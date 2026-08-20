@@ -179,12 +179,36 @@ export function notificationLink(n: AppNotification, roles?: string[]): string |
     // The counter has to clear the bill before the patient can leave; land on
     // that stay's bill with it already open.
     case 'discharge_ready':
+    // Legacy alias: older "Patient ready for discharge" notices were filed
+    // under 'admission' before discharge_ready existed. Same recipient, same
+    // admissionId — nothing emits it now, but the ones on file should still
+    // open rather than dead-end.
+    case 'admission':
       return ref ? `/hospital/billing?tab=ip&admissionId=${ref}` : '/hospital/billing?tab=ip';
     // Goes to the PATIENT — their copy is on the portal.
     case 'discharge_summary':
       return isPatient || !roles?.length
         ? '/patient-portal/discharge-summaries'
         : '/doctor/discharge-summary';
+
+    // ── Admission requests ─────────────────────────────────────────────
+    // Goes to front desk / admin / billing — they hold the bed. The IP
+    // Requests tab is where it is actioned, so land on it rather than the
+    // ward list the page opens on by default.
+    case 'admission_request':
+      return '/hospital/ip?tab=ip-requests';
+
+    // ── Insurance ──────────────────────────────────────────────────────
+    // Claim-expiry warnings from the nightly job. referenceId is the claim,
+    // and chasing a TPA starts on that claim, not a list of all of them.
+    case 'insurance_claim':
+      return ref ? `/insurance/claims/${ref}` : '/insurance/claims';
+
+    // ── Appointments ───────────────────────────────────────────────────
+    // Written for the PATIENT by the reminder job.
+    case 'appointment_reminder':
+      if (isPatient || !roles?.length) return '/patient-portal/appointments';
+      return isDoctor ? '/doctor' : '/hospital';
 
     // ── Lab & imaging ──────────────────────────────────────────────────
     // A critical value must not be a dead end — the doctor needs the record,
