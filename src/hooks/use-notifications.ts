@@ -194,7 +194,14 @@ export function notificationLink(n: AppNotification, roles?: string[]): string |
     case 'lab_report':
       if (isPatient) return '/patient-portal/lab-reports';
       return isDoctor ? '/doctor/registry' : '/laboratory';
+    // 'imaging_request' is the order moving (payment verified, accepted);
+    // 'imaging_result' is the report itself being published. The second is the
+    // one the doctor is waiting on, and it was the only diagnostic reference
+    // with no destination — so "Radiology report ready" arrived in the bell and
+    // went nowhere when clicked, while its lab twin opened the record. That
+    // reads as the radiology notification not working at all.
     case 'imaging_request':
+    case 'imaging_result':
       if (isPatient) return '/patient-portal/imaging-reports';
       return isDoctor ? '/doctor/registry' : '/radiology';
 

@@ -120,3 +120,42 @@ describe('notificationLink — safety', () => {
     expect(notificationLink(n('ot_response'))).toBe('/ot');
   });
 });
+
+describe('notificationLink — radiology results', () => {
+  // Test Report 3 / C8: "Doctor receives Lab notifications but not the
+  // corresponding Radiology notification."
+  //
+  // The notification was always sent — the dev database holds 11 of them. What
+  // was missing was a destination: 'imaging_result' was the only diagnostic
+  // reference absent from the map, so the bell showed "Radiology report ready"
+  // and clicking it did nothing, while its lab twin opened the record.
+  it('takes a doctor to the record for a published radiology report', () => {
+    expect(notificationLink(n('imaging_result'), DOCTOR)).toBe('/doctor/registry');
+  });
+
+  it('takes the patient to their own imaging reports', () => {
+    expect(notificationLink(n('imaging_result'), PATIENT)).toBe('/patient-portal/imaging-reports');
+  });
+
+  it('takes the department to the radiology worklist', () => {
+    expect(notificationLink(n('imaging_result'), ADMIN)).toBe('/radiology');
+  });
+
+  // The published report and the order moving are different events, and both
+  // have to land somewhere.
+  it('routes a result exactly like a request, per role', () => {
+    for (const roles of [DOCTOR, PATIENT, ADMIN]) {
+      expect(notificationLink(n('imaging_result'), roles)).toBe(
+        notificationLink(n('imaging_request'), roles),
+      );
+    }
+  });
+
+  it('matches how the lab equivalent behaves for the same role', () => {
+    // Lab sends the doctor to the record rather than the worklist; radiology
+    // must not be the one modality that dead-ends.
+    expect(notificationLink(n('imaging_result'), DOCTOR)).toBe(
+      notificationLink(n('lab_report'), DOCTOR),
+    );
+  });
+});
