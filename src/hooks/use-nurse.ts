@@ -1058,14 +1058,35 @@ export function useRequestTransfer() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (data: {
+      /** Kept for the caller's own bookkeeping; the API keys off patient+visit. */
       admissionId: string;
-      fromWardId: string;
+      patientId: string;
+      visitId: string;
+      fromWardId?: string;
       toWardId: string;
       toBedId?: string;
       reason: string;
       notes?: string;
     }) => {
-      const res = await apiPost('/clinical/transfers', data);
+      // The API takes patientId + visitId + transferType. This used to post
+      // admissionId with no transferType at all, which the schema requires —
+      // so every nurse transfer request failed validation before it could even
+      // reach the permission check.
+      const res = await apiPost('/clinical/transfers', {
+        patientId: data.patientId,
+        visitId: data.visitId,
+        // Nursing moves patients, never consultants; the server refuses
+        // doctor_to_doctor from a placement-only role anyway.
+        transferType: data.toBedId && !data.toWardId ? 'bed_to_bed' : 'ward_to_ward',
+        fromWardId: data.fromWardId || undefined,
+        toWardId: data.toWardId,
+        toBedId: data.toBedId,
+        reason: data.reason,
+        // Applied immediately, as the front desk's own moves are. Nursing holds
+        // both create and approve, so routing a nurse's move into an approval
+        // queue only they could clear would be a loop with no second party.
+        autoApprove: true,
+      });
       return res;
     },
     onSuccess: () => {

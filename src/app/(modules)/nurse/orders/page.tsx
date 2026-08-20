@@ -912,6 +912,10 @@ function PatientTransferTab() {
   const admissions = (admissionsData?.data ?? admissionsData ?? []) as {
     id: string;
     ipNumber?: string;
+    // A transfer is recorded against the patient and the visit, not the
+    // admission — both come back on the admission row.
+    patientId?: string;
+    visitId?: string;
     patient?: { firstName: string; lastName: string; mrn?: string };
     ward?: { id: string; name: string };
     bed?: { bedNumber: string };
@@ -943,9 +947,16 @@ function PatientTransferTab() {
       return;
     }
 
+    if (!selectedAdm?.patientId || !selectedAdm?.visitId) {
+      toast.error('Could not identify this admission — reload and try again.');
+      return;
+    }
+
     requestTransfer.mutate(
       {
         admissionId: selectedAdmission,
+        patientId: selectedAdm.patientId,
+        visitId: selectedAdm.visitId,
         fromWardId,
         toWardId,
         toBedId: toBedId || undefined,
