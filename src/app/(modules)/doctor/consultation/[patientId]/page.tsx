@@ -14,7 +14,7 @@
 //   [ └───────────────────────────────┘ └─────────────────────┘         ]
 // ───────────────────────────────────────────────────────────────────────
 
-import { use, useState, useEffect, useMemo } from 'react';
+import { use, useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -843,6 +843,10 @@ export default function PatientConsultationPage({
 }) {
   const { patientId } = use(params);
   const router = useRouter();
+  // Set when this session just finished a consultation, so the page can bring
+  // the summary into view rather than leaving the doctor to find it.
+  const [justCompleted, setJustCompleted] = useState(false);
+  const summaryRef = useRef<HTMLDivElement | null>(null);
   const searchParams = useSearchParams();
   const appointmentId = searchParams.get('appointmentId');
 
@@ -963,6 +967,14 @@ export default function PatientConsultationPage({
     activeVisitId ? { visitId: activeVisitId, limit: 1 } : { patientId, limit: 1 },
   );
   const latestNote = recentNotes?.data?.[0] ?? null;
+
+  // The panel only mounts once the refetched appointment reads `completed`.
+  // Wait for that, then scroll — signing is the last step of the consultation,
+  // not something to go hunting for.
+  useEffect(() => {
+    if (!justCompleted || !summaryRef.current) return;
+    summaryRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [justCompleted, isCompleted, latestNote?.id]);
 
   const showForm = isInConsultation || isEditing;
 
@@ -1199,7 +1211,19 @@ export default function PatientConsultationPage({
                       appointmentId={appointmentId || ''}
                       doctorProfileId={appointment?.doctorId || ''}
                       doctorUserId={appointment?.doctor?.userId || ''}
-                      onComplete={() => (isEditing ? cancelEdit() : router.back())}
+                      onComplete={() => {
+                        if (isEditing) {
+                          cancelEdit();
+                          return;
+                        }
+                        // Completing used to send the doctor straight back to
+                        // the queue. The Consultation Summary and its Sign
+                        // step only render once the appointment reads
+                        // `completed` — i.e. from this point on — so bouncing
+                        // away here meant nobody ever saw it and nothing was
+                        // ever published to the patient.
+                        setJustCompleted(true);
+                      }}
                       hideHeader
                       initialValues={isEditing && prefill ? prefill : undefined}
                       editMode={
@@ -1221,7 +1245,9 @@ export default function PatientConsultationPage({
                 lets the doctor sign the note (which finalizes it and opens
                 it up to the patient via the portal). */}
             {isCompleted && !isEditing && latestNote ? (
-              <ConsultationSummaryPanel note={latestNote} canSign />
+              <div ref={summaryRef}>
+                <ConsultationSummaryPanel note={latestNote} canSign />
+              </div>
             ) : null}
 
             <section className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4">
