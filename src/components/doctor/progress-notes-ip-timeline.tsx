@@ -16,6 +16,16 @@ import { cn } from '@/lib/utils';
 import { formatDate, formatDateTime } from '@/lib/date-utils';
 import type { ProgressNote } from '@/hooks/use-doctor';
 
+// Same colours the round composer uses for its picker, so a condition reads
+// identically whether it is being chosen or looked back at.
+const CONDITION_TONE: Record<string, string> = {
+  improving: 'bg-emerald-100 text-emerald-700',
+  stable: 'bg-sky-100 text-sky-700',
+  unchanged: 'bg-slate-100 text-slate-700',
+  deteriorating: 'bg-amber-100 text-amber-800',
+  critical: 'bg-red-100 text-red-700',
+};
+
 function getPatientName(note: ProgressNote): string {
   if (!note.patient) return 'Unknown';
   return `${note.patient.firstName || ''} ${note.patient.lastName || ''}`.trim() || 'Unknown';
@@ -143,6 +153,18 @@ function TimelineEntry({
             </Button>
           )}
         </div>
+
+        {(note as { generalCondition?: string | null }).generalCondition && (
+          <span
+            className={cn(
+              'mb-1 inline-flex w-fit rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider',
+              CONDITION_TONE[(note as { generalCondition?: string }).generalCondition!] ??
+                'bg-slate-100 text-slate-700',
+            )}
+          >
+            {(note as { generalCondition?: string }).generalCondition}
+          </span>
+        )}
 
         {note.content && (
           <p className="text-[11px] text-on-surface-variant whitespace-pre-line line-clamp-6">

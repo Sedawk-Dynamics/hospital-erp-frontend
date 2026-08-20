@@ -16,7 +16,9 @@ import { apiGet, apiPost } from '@/lib/api';
 import { MedicineTable } from '@/components/doctor/prescription-pad/medicine-table';
 import { buildPrescriptionItems } from '@/lib/prescription-items';
 import type { MedicineFormData } from '@/components/doctor/consultation-completion/consultation-completion-schema';
-import { useCreateProgressNote, type SoapSectionPayload } from '@/hooks/use-doctor';
+import { useCreateProgressNote, type SoapSectionPayload,
+  type GeneralCondition,
+} from '@/hooks/use-doctor';
 import { useRecordDoctorVisit } from '@/hooks/use-ip-ledger';
 import { DoctorMentionPicker } from '@/components/doctor/doctor-mention-picker';
 import { useAuthStore } from '@/stores/auth-store';
@@ -58,7 +60,7 @@ export function IpProgressNoteComposer({
   const currentUserId = useAuthStore((s) => s.user?.id);
 
   const [mentions, setMentions] = useState<string[]>([]);
-  const [condition, setCondition] = useState<string>('stable');
+  const [condition, setCondition] = useState<GeneralCondition>('stable');
   const [subjective, setSubjective] = useState('');
   const [objective, setObjective] = useState('');
   const [assessment, setAssessment] = useState('');
@@ -96,6 +98,16 @@ export function IpProgressNoteComposer({
 
   const anyFilled = [subjective, objective, assessment, plan].some((s) => s.trim());
 
+  // A ward round where nothing changed is a real round: the doctor sees the
+  // patient, writes the drugs, and records how they are. Requiring prose for
+  // that produced either invented text or no note at all.
+  //
+  // A condition alone is deliberately NOT enough — it defaults to Stable, so
+  // accepting it on its own would let an empty note be saved by pressing the
+  // button. There has to be a prescription behind it, or something written.
+  const hasPrescription = writeRx && medicines.length > 0;
+  const canSubmit = anyFilled || hasPrescription;
+
   const buildContent = () => {
     const condLabel = CONDITIONS.find((c) => c.value === condition)?.label ?? condition;
     const parts = [`[Progress: ${condLabel}]`];
@@ -107,7 +119,8 @@ export function IpProgressNoteComposer({
   };
 
   const submit = async () => {
-    if (!anyFilled) return toast.error('Write at least one section of the round note.');
+    if (!canSubmit)
+      return toast.error('Add a prescription, or write at least one section of the round note.');
     if (!visitId) return toast.error('No active IP visit found for this patient.');
 
     const rxItems = writeRx ? buildPrescriptionItems(medicines) : [];
@@ -150,6 +163,9 @@ export function IpProgressNoteComposer({
         prescriptionId: newPrescriptionId,
         noteType: 'general',
         content: buildContent(),
+        // Also sent structured, not just baked into the content line, so the
+        // timeline and discharge summary can read a trend rather than parse prose.
+        generalCondition: condition,
         subjective: free(subjective),
         objective: free(objective),
         assessment: free(assessment),
@@ -313,7 +329,7 @@ export function IpProgressNoteComposer({
         <DialogFooter className="mx-0 mb-0 shrink-0 gap-2 border-t px-5 py-3">
           <Badge variant="outline" className="mr-auto self-center text-[10px]">Running IP log</Badge>
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={busy}>Cancel</Button>
-          <Button size="sm" onClick={submit} disabled={busy || !anyFilled} className="gap-1.5">
+          <Button size="sm" onClick={submit} disabled={busy || !canSubmit} className="gap-1.5">
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <NotebookPen className="h-3.5 w-3.5" />}
             {busy ? 'Saving…' : 'Save Visit Note'}
           </Button>

@@ -586,7 +586,16 @@ export function useConsultationsAwaitingSignature(enabled = true) {
   });
 }
 
+export type GeneralCondition =
+  | 'improving'
+  | 'stable'
+  | 'unchanged'
+  | 'deteriorating'
+  | 'critical';
+
 export interface CreateProgressNoteInput {
+  /** How the patient is doing on this round — the same words nursing uses. */
+  generalCondition?: GeneralCondition | null;
   patientId: string;
   visitId: string;
   admissionId?: string | null;
