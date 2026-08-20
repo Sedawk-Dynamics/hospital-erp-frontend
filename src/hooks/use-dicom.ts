@@ -95,6 +95,36 @@ export interface PacsConfig {
 // Hooks
 // ============================================================
 
+export type PacsHealthStatus = 'off' | 'misconfigured' | 'unreachable' | 'ok';
+
+export interface PacsHealth {
+  status: PacsHealthStatus;
+  provider: string;
+  latencyMs: number | null;
+  checkedAt: string;
+}
+
+/**
+ * Whether the imaging archive is actually answering.
+ *
+ * Distinct from useDicomConfig, which only reports how DICOM is *meant* to be
+ * archived — that stays true of an archive that is switched off. This is what
+ * separates "not deployed" from "broken" when a study will not open.
+ *
+ * The server caches the probe, so a short staleTime here costs nothing.
+ */
+export function usePacsHealth(enabled = true) {
+  return useQuery({
+    queryKey: ['dicom', 'pacs-health'],
+    queryFn: async () => {
+      const res = await apiGet<PacsHealth>('/pacs/health');
+      return res.data;
+    },
+    staleTime: 15 * 1000,
+    enabled,
+  });
+}
+
 /** How DICOM is archived + viewed for this deployment (Orthanc / PostDICOM / in-house). */
 export function useDicomConfig() {
   return useQuery({

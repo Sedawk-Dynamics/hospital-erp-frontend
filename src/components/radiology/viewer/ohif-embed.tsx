@@ -6,8 +6,8 @@
 // authorized. In direct mode it just renders the iframe.
 
 import { useEffect, useState } from 'react';
-import { Loader2, ExternalLink } from 'lucide-react';
-import { useDicomConfig, useCreatePacsSession } from '@/hooks/use-dicom';
+import { Loader2, ExternalLink, ServerCrash } from 'lucide-react';
+import { useDicomConfig, useCreatePacsSession, usePacsHealth } from '@/hooks/use-dicom';
 
 interface OhifEmbedProps {
   viewerUrl: string;
@@ -18,6 +18,9 @@ interface OhifEmbedProps {
 
 export function OhifEmbed({ viewerUrl, title, className, style }: OhifEmbedProps) {
   const { data: pacs } = useDicomConfig();
+  // Asked before embedding: an unreachable archive otherwise fails inside the
+  // iframe, where the reason is invisible and reads as "there is no viewer".
+  const { data: health } = usePacsHealth();
   const mint = useCreatePacsSession();
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -42,6 +45,31 @@ export function OhifEmbed({ viewerUrl, title, className, style }: OhifEmbedProps
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pacs, needsSession, viewerUrl]);
+
+  // An archive that is off or not answering is not a viewer problem, and
+  // saying "couldn't start the session" would send someone chasing the wrong
+  // thing. Name it, so it reaches whoever can restart it.
+  if (health && health.status !== 'ok') {
+    const message =
+      health.status === 'unreachable'
+        ? 'The imaging archive is not responding.'
+        : health.status === 'misconfigured'
+          ? 'The imaging archive is not fully configured.'
+          : 'PACS integration is switched off for this deployment.';
+    return (
+      <div
+        className={`flex h-full flex-col items-center justify-center gap-2 bg-black px-6 text-center text-zinc-300 ${className ?? ''}`}
+        style={style}
+      >
+        <ServerCrash className="size-6 text-zinc-500" />
+        <p className="text-sm">{message}</p>
+        <p className="max-w-sm text-xs text-zinc-500">
+          The study itself is safe — it cannot be displayed until the archive is back. Contact IT
+          if this persists.
+        </p>
+      </div>
+    );
+  }
 
   if (failed) {
     return (
