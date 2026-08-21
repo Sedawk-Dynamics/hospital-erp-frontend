@@ -1263,7 +1263,19 @@ export default function PatientConsultationPage({
           </div>
 
           {/* ── Right aside (20%) ─────────────────────────────────── */}
-          <aside className="lg:col-span-1 lg:sticky lg:top-14 lg:self-start lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto print:hidden">
+          {/* Flows with the page rather than scrolling inside itself.
+              It used to be sticky and capped at the viewport height with its
+              own overflow-y. Vitals alone runs to seven readings plus the
+              nurse's note, so the column was routinely taller than the cap —
+              which put allergies and family history behind a second scrollbar
+              the doctor had to find, inside a 20% column. Worse, a sticky
+              element taller than the viewport cannot be scrolled to the
+              bottom at all: it pins at top-14 while the page moves past it,
+              so the last card was unreachable rather than merely hidden.
+
+              Nothing is clipped now; the whole aside is reached with the
+              ordinary page scroll. */}
+          <aside className="lg:col-span-1 print:hidden">
             <div className="space-y-3">
               <VitalsSidebar
                 patientId={patient.id}
