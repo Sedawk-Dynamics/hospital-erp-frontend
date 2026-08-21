@@ -17,7 +17,7 @@ import { useAiStatus, useGenerateDischargeNarrative } from '@/hooks/use-ai';
 import { useSeedOnChange } from '@/hooks/use-seed-on-change';
 import { formatDate, toInputDateStr } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
-import { FOLLOW_UP_PRESETS, dateAfterPreset } from '@/lib/follow-up';
+import { FOLLOW_UP_PRESETS, dateAfterInterval } from '@/lib/follow-up';
 import { AdmissionStatusBadge } from '@/components/shared/admission-status-badge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -91,6 +91,10 @@ export default function DischargeSummaryPage() {
   const [medicationReconciliation, setMedicationReconciliation] = useState('');
   const [dischargeInstructions, setDischargeInstructions] = useState('');
   const [followUpDate, setFollowUpDate] = useState('');
+  // "After 3 months", with no fixed day. Mutually exclusive with the date —
+  // recording both would be two different promises to the same patient.
+  const [followUpAfterValue, setFollowUpAfterValue] = useState<string>('');
+  const [followUpAfterUnit, setFollowUpAfterUnit] = useState<'days' | 'weeks' | 'months'>('months');
   const [followUpInstructions, setFollowUpInstructions] = useState('');
 
   // -- Queries --
@@ -152,6 +156,15 @@ export default function DischargeSummaryPage() {
     setMedicationReconciliation(generatedSummary.medicationReconciliation ?? '');
     setDischargeInstructions(generatedSummary.dischargeInstructions ?? '');
     setFollowUpDate(generatedSummary.followUpDate ? toInputDateStr(generatedSummary.followUpDate) : '');
+    setFollowUpAfterValue(
+      (generatedSummary as { followUpAfterValue?: number | null }).followUpAfterValue?.toString() ?? '',
+    );
+    setFollowUpAfterUnit(
+      ((generatedSummary as { followUpAfterUnit?: string | null }).followUpAfterUnit as
+        | 'days'
+        | 'weeks'
+        | 'months') ?? 'months',
+    );
     setFollowUpInstructions(generatedSummary.followUpInstructions ?? '');
   });
 
@@ -178,6 +191,10 @@ export default function DischargeSummaryPage() {
         medicationReconciliation,
         dischargeInstructions,
         followUpDate: followUpDate || undefined,
+        // Sent as null rather than omitted, so clearing an interval actually
+        // clears it instead of leaving the previous one on the record.
+        followUpAfterValue: followUpAfterValue ? Number(followUpAfterValue) : null,
+        followUpAfterUnit: followUpAfterValue ? followUpAfterUnit : null,
         followUpInstructions,
       });
       if (updated) setSummaryData(updated);
@@ -188,7 +205,7 @@ export default function DischargeSummaryPage() {
   }, [
     summaryData, updateMutation, diagnosesSummary, proceduresSummary,
     labResultsSummary, medicationReconciliation, dischargeInstructions,
-    followUpDate, followUpInstructions,
+    followUpDate, followUpAfterValue, followUpAfterUnit, followUpInstructions,
   ]);
 
   // E-sign popup state
@@ -513,7 +530,9 @@ export default function DischargeSummaryPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div>
-              <Label className="text-xs text-muted-foreground mb-1">Follow-up Date</Label>
+              <Label className="text-xs text-muted-foreground mb-1">
+                Next review — an interval, or a specific date
+              </Label>
               {/* The same one-tap intervals the prescription pad offers.
                   Signing a discharge, the doctor thinks "review in two weeks" —
                   not "the 2nd of September". Making them convert that in their
@@ -522,13 +541,21 @@ export default function DischargeSummaryPage() {
               {!isReadOnly && (
                 <div className="mb-2 flex flex-wrap gap-1.5">
                   {FOLLOW_UP_PRESETS.map((preset) => {
-                    const resolved = dateAfterPreset(preset);
-                    const isActive = !!followUpDate && followUpDate === resolved;
+                    const isActive =
+                      followUpAfterValue === String(preset.value) &&
+                      followUpAfterUnit === preset.unit;
                     return (
                       <button
                         key={preset.label}
                         type="button"
-                        onClick={() => setFollowUpDate(resolved)}
+                        onClick={() => {
+                          // Records the interval itself. Resolving it to a day
+                          // here is what turned "review in three months" into a
+                          // date the patient reads as an appointment.
+                          setFollowUpAfterValue(String(preset.value));
+                          setFollowUpAfterUnit(preset.unit);
+                          setFollowUpDate('');
+                        }}
                         className={cn(
                           'rounded-full border px-3 py-1.5 text-xs font-medium transition-all',
                           isActive
@@ -540,10 +567,13 @@ export default function DischargeSummaryPage() {
                       </button>
                     );
                   })}
-                  {followUpDate && (
+                  {(followUpDate || followUpAfterValue) && (
                     <button
                       type="button"
-                      onClick={() => setFollowUpDate('')}
+                      onClick={() => {
+                        setFollowUpDate('');
+                        setFollowUpAfterValue('');
+                      }}
                       className="rounded-full px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
                     >
                       Clear
@@ -557,15 +587,25 @@ export default function DischargeSummaryPage() {
                   <Input
                     type="date"
                     value={followUpDate}
-                    onChange={(e) => setFollowUpDate(e.target.value)}
+                    onChange={(e) => {
+                      setFollowUpDate(e.target.value);
+                      // A named day and "after 3 months" are two different
+                      // promises; only one can be on the summary.
+                      if (e.target.value) setFollowUpAfterValue('');
+                    }}
                     disabled={isReadOnly}
                     className="pl-8"
                   />
                 </div>
               </div>
-              {/* A preset only sets a date — it is not stored as "after 3
-                  months". Spelling the resolved day out loud is what lets the
-                  doctor catch a preset that landed on a Sunday or a holiday. */}
+              {followUpAfterValue && (
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Reviewed after {followUpAfterValue} {followUpAfterUnit} — no fixed date.
+                  {' '}Roughly {new Date(dateAfterInterval(followUpAfterValue, followUpAfterUnit)).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}.
+                </p>
+              )}
+              {/* When a real day is named, spell it out — that is what lets the
+                  doctor catch one that landed on a Sunday or a holiday. */}
               {followUpDate && (
                 <p className="mt-1 text-[11px] text-muted-foreground">
                   {new Date(followUpDate).toLocaleDateString('en-IN', {

@@ -1424,6 +1424,9 @@ export interface DischargeSummary {
   medicationReconciliation?: string;
   dischargeInstructions?: string;
   followUpDate?: string;
+  /** "After 3 months" — an interval instead of a fixed calendar day. */
+  followUpAfterValue?: number | null;
+  followUpAfterUnit?: 'days' | 'weeks' | 'months' | null;
   followUpInstructions?: string;
   status: 'draft' | 'finalized' | 'published';
   signedBy?: string;
@@ -1537,6 +1540,9 @@ export function useUpdateDischargeSummary() {
       medicationReconciliation?: string;
       dischargeInstructions?: string;
       followUpDate?: string;
+      /** "After 3 months" — an interval instead of a fixed calendar day. */
+      followUpAfterValue?: number | null;
+      followUpAfterUnit?: 'days' | 'weeks' | 'months' | null;
       followUpInstructions?: string;
     }) => {
       const response = await apiPatch<DischargeSummary>(`/mrd/discharge-summary/${id}`, data);
