@@ -2,18 +2,21 @@
 
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { FileSignature, Stethoscope } from 'lucide-react';
+import { Clock3, FileSignature, Stethoscope } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 
-/** What the portal list endpoint returns — a signed consultation plus enough
- *  visit context to say what it was about. */
+/** What the portal list endpoint returns — a consultation plus enough visit
+ *  context to say what it was about. `signedAt` is null while the doctor has
+ *  not signed it yet; the card says so rather than hiding the consultation. */
 interface ConsultationListItem {
   id: string;
   signedAt?: string | null;
+  createdAt?: string | null;
   doctor?: { user?: { firstName: string; lastName?: string | null } } | null;
   patient?: { tenant?: { name?: string } | null } | null;
   visit?: {
+    visitDate?: string | null;
     chiefComplaint?: string | null;
     diagnoses?: { id: string; diagnosisName: string }[];
   } | null;
@@ -57,7 +60,7 @@ export default function ConsultationSummariesListPage() {
             No consultation summaries yet
           </p>
           <p className="font-label text-xs text-on-surface-variant mt-1">
-            Summaries appear here once your doctor signs and finalizes them.
+            Summaries appear here after a consultation.
           </p>
         </div>
       ) : (
@@ -66,13 +69,18 @@ export default function ConsultationSummariesListPage() {
             const doctorName = s.doctor?.user
               ? `Dr. ${s.doctor.user.firstName} ${s.doctor.user.lastName ?? ''}`.trim()
               : 'Doctor';
-            const signedAt = s.signedAt
-              ? new Date(s.signedAt).toLocaleDateString('en-IN', {
+            // An unsigned consultation has no signedAt, so the visit date is
+            // what dates the card. Falling back to '—' left the patient with a
+            // list of consultations that all read "Consultation: —".
+            const shownDate = s.signedAt ?? s.visit?.visitDate ?? s.createdAt ?? null;
+            const signedAt = shownDate
+              ? new Date(shownDate).toLocaleDateString('en-IN', {
                   day: 'numeric',
                   month: 'short',
                   year: 'numeric',
                 })
               : '—';
+            const awaitingSignOff = !s.signedAt;
             const tenantName = s.patient?.tenant?.name;
             // What the visit was actually for reads better than a count of
             // pinned sections, which meant nothing to a patient.
@@ -98,6 +106,12 @@ export default function ConsultationSummariesListPage() {
                   </p>
                   {subtitle && (
                     <p className="mt-0.5 truncate font-label text-xs text-primary">{subtitle}</p>
+                  )}
+                  {awaitingSignOff && (
+                    <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                      <Clock3 className="h-3 w-3" />
+                      Awaiting doctor sign-off
+                    </span>
                   )}
                 </div>
                 <Link href={`/patient-portal/consultation-summaries/${s.id}`}>

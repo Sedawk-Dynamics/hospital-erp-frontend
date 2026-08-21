@@ -1,6 +1,6 @@
 'use client';
 
-import { Pill, Stethoscope, Activity, ClipboardList, Pin, CalendarClock } from 'lucide-react';
+import { Pill, Stethoscope, Activity, ClipboardList, Pin, CalendarClock, Clock3 } from 'lucide-react';
 import { formatDate, formatDateTimeAmPm } from '@/lib/date-utils';
 
 /**
@@ -162,7 +162,7 @@ export function FullConsultationSummary({ note }: { note: FullConsultation }) {
           {note.patient?.tenant?.name ? ` · ${note.patient.tenant.name}` : ''}
           {note.patient?.mrn ? ` · MRN ${note.patient.mrn}` : ''}
         </p>
-        {note.signedAt && (
+        {note.signedAt ? (
           <p className="mt-1 font-label text-[11px] text-primary">
             Signed by{' '}
             {note.signer
@@ -170,6 +170,19 @@ export function FullConsultationSummary({ note }: { note: FullConsultation }) {
               : doctorName}{' '}
             on {formatDateTimeAmPm(note.signedAt)}
           </p>
+        ) : (
+          // Shown at the top, before any of the content it qualifies. A patient
+          // reading their diagnosis and medicines needs to know the doctor has
+          // not signed this off yet — underneath, it would be read afterwards
+          // or not at all.
+          <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+            <Clock3 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-700" />
+            <p className="font-label text-[11px] leading-relaxed text-amber-900">
+              <span className="font-bold">Awaiting doctor sign-off.</span> This is what was
+              recorded at your consultation, shared with you now so you are not left waiting.
+              {' '}{doctorName} may still add to it or correct it before signing.
+            </p>
+          </div>
         )}
       </div>
 
