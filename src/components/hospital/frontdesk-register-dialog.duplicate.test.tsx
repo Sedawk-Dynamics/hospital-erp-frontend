@@ -86,7 +86,7 @@ describe('FrontDeskRegisterDialog — duplicate confirmation', () => {
   // relative — three attempts, three MRNs for one patient. The desk is now
   // shown the record it matched and decides what to do with it.
   it('shows the matched patient instead of an error toast', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     apiPost.mockRejectedValue(duplicateError());
     renderDialog();
 
@@ -101,7 +101,7 @@ describe('FrontDeskRegisterDialog — duplicate confirmation', () => {
   });
 
   it('retries with the override when the desk registers anyway', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     apiPost.mockRejectedValue(duplicateError());
     renderDialog();
     await fillAndSubmit(user);
@@ -119,7 +119,7 @@ describe('FrontDeskRegisterDialog — duplicate confirmation', () => {
   });
 
   it('does not register again when the desk uses the existing patient', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     apiPost.mockRejectedValue(duplicateError());
     renderDialog();
     await fillAndSubmit(user);
@@ -136,7 +136,7 @@ describe('FrontDeskRegisterDialog — duplicate confirmation', () => {
   });
 
   it('leaves ordinary failures as a toast', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     apiPost.mockRejectedValue({ response: { data: { message: 'Something broke' } } });
     renderDialog();
 
