@@ -36,7 +36,12 @@ export default function PatientPortalHome() {
       const res = await apiGet<Array<{
         id: string; appointmentDate: string; status: string;
         doctor?: { user?: { firstName: string; lastName: string }; specialization?: string };
-      }>>('/patient-portal/appointments', { params: { limit: 5, sortOrder: 'asc', ...profileParam } });
+        // `upcoming` matters as much as the sort: without it this asked for the
+        // five OLDEST appointments on record, so a patient with any history saw
+        // visits from months ago here and a just-booked one not at all.
+      }>>('/patient-portal/appointments', {
+        params: { limit: 5, sortOrder: 'asc', upcoming: true, ...profileParam },
+      });
       return res.data ?? [];
     },
   });
