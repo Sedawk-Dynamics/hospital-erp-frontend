@@ -166,6 +166,16 @@ export function ProfileSelector() {
                           {p.mrn ? ` · ${p.mrn}` : ''}
                           {p.tenant?.name ? ` · ${p.tenant.name}` : ''}
                         </p>
+                        {/* One entry stands for the PERSON, so it has to be
+                            able to say they are on file at more than one
+                            hospital — otherwise the row looks like it belongs
+                            to a single one. Guarded because a response from
+                            before this existed omits the field entirely. */}
+                        {(p.alsoAt?.length ?? 0) > 0 && (
+                          <p className="truncate text-[10px] text-muted-foreground/80">
+                            also at {p.alsoAt!.map((t) => t.name).join(', ')}
+                          </p>
+                        )}
                       </div>
                       {active && <Check className="h-4 w-4 text-primary shrink-0" />}
                     </button>

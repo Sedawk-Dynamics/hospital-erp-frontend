@@ -14,6 +14,14 @@ export interface PatientProfile {
   isSelf?: boolean;
   tenantId: string;
   tenant?: { id: string; name: string; slug: string; logoUrl?: string | null } | null;
+  /**
+   * Other hospitals holding a record for this same person.
+   *
+   * One profile now stands for the person rather than for a single hospital's
+   * row, so this is how the entry can still say they are known elsewhere.
+   * Optional: a response from before this existed simply omits it.
+   */
+  alsoAt?: Array<{ id: string; name: string }> | null;
 }
 
 const STORAGE_KEY = 'selectedPatientProfileId';
