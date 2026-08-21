@@ -1,5 +1,6 @@
 "use client"
 
+import { isValidElement } from "react"
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
 
@@ -40,16 +41,42 @@ const buttonVariants = cva(
   }
 )
 
+
+/**
+ * Whether the element being rendered is a real <button>.
+ *
+ * Base UI warns when a button-like component renders something else, because
+ * doing so silently drops native button semantics — form submission, Enter/Space
+ * activation, the implicit ARIA role. The fix it asks for is `nativeButton=
+ * {false}`, which every call site then has to remember.
+ *
+ * A navigation button written as `render={<Link/>}` is an ordinary thing to
+ * want, so infer it here instead: only when `render` is an element, and only
+ * when the caller has not answered for themselves. Returning undefined leaves
+ * Base UI's own default in place.
+ */
+export function inferNativeButton(
+  render: unknown,
+  explicit: boolean | undefined,
+): boolean | undefined {
+  if (explicit !== undefined) return explicit;
+  // A render FUNCTION cannot be inspected — leave the default alone.
+  if (!isValidElement(render)) return undefined;
+  return render.type === 'button';
+}
+
 function Button({
   className,
   variant = "default",
   size = "default",
+  nativeButton,
   ...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
   return (
     <ButtonPrimitive
       data-slot="button"
       className={cn(buttonVariants({ variant, size, className }))}
+      nativeButton={inferNativeButton(props.render, nativeButton)}
       {...props}
     />
   )

@@ -4,6 +4,7 @@ import * as React from "react"
 import { Menu as MenuPrimitive } from "@base-ui/react/menu"
 
 import { cn } from "@/lib/utils"
+import { inferNativeButton } from "@/components/ui/button"
 import { ChevronRightIcon, CheckIcon } from "lucide-react"
 
 function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
@@ -73,10 +74,16 @@ function DropdownMenuLabel({
   )
 }
 
+/**
+ * A menu item is button-like too, so it carries the same trap: `render={<Link/>}`
+ * for a navigate-on-click item warns unless nativeButton is answered. Shares
+ * button.tsx's inference so both behave the same way.
+ */
 function DropdownMenuItem({
   className,
   inset,
   variant = "default",
+  nativeButton,
   ...props
 }: MenuPrimitive.Item.Props & {
   inset?: boolean
@@ -85,6 +92,7 @@ function DropdownMenuItem({
   return (
     <MenuPrimitive.Item
       data-slot="dropdown-menu-item"
+      nativeButton={inferNativeButton(props.render, nativeButton)}
       data-inset={inset}
       data-variant={variant}
       className={cn(
