@@ -1357,8 +1357,16 @@ export default function PatientConsultationPage({
             );
           })()}
           <div className="border-t border-outline-variant/30 bg-surface-container-low px-6 py-3 flex items-center justify-between shrink-0">
+            {/* This footer sits under EVERY panel, but only four of the five
+                are read-only. Medical History is editable — Personal has a
+                Save, Family and Allergies add and remove, and disorders come
+                off the ICD-10 picker. Telling a doctor their entries do not
+                count here is worse than saying nothing: they read it and go
+                looking for somewhere else to record an allergy. */}
             <p className="font-label text-[11px] text-on-surface-variant">
-              Data is read-only here. Record new findings in the consultation form.
+              {activeClinical === 'history'
+                ? 'Changes here are saved to the patient record.'
+                : 'Data is read-only here. Record new findings in the consultation form.'}
             </p>
             <Button
               size="sm"
