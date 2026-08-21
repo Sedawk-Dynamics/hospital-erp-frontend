@@ -10,9 +10,11 @@
 // an interval the same way, and so a third screen that needs it does not invent
 // a third version.
 //
-// NOTE: this resolves an interval TO a date. Storing the interval itself —
-// "after 3 months" with no fixed day — is a separate change; the schema keeps a
-// date only.
+// NOTE: this resolves an interval TO a date, which is what the prescription pad
+// wants. The DISCHARGE SUMMARY now stores the interval itself instead
+// (followUpAfterValue / followUpAfterUnit), because "after 3 months" resolved
+// to a particular day reads to a patient as an appointment. Use dateAfterInterval
+// there only to show roughly when that falls — never as the stored value.
 
 /** The intervals offered as one-tap choices. */
 export const FOLLOW_UP_PRESETS = [
