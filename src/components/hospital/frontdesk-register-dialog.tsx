@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod/v4';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -148,6 +148,17 @@ const QUICK_DATES = [
 // Props
 // ============================================================
 
+/** The record a duplicate-registration conflict matched, as the API returns it. */
+interface DuplicateMatch {
+  id: string;
+  mrn: string;
+  firstName: string | null;
+  lastName: string | null;
+  dateOfBirth: string | null;
+  gender: string | null;
+  phone: string | null;
+}
+
 interface FrontDeskRegisterDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -204,6 +215,54 @@ export function FrontDeskRegisterDialog({
 
   // Submission
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Registration matched somebody already on file. Rather than handing the desk
+  // an MRN inside a toast and leaving them to go and search for it, the matched
+  // record is shown and they choose: use that patient, or register a second
+  // person who genuinely does share a name and date of birth.
+  const [duplicate, setDuplicate] = useState<DuplicateMatch | null>(null);
+  // Read synchronously on retry, so "Register anyway" does not depend on a
+  // state update having landed first.
+  const allowDuplicateRef = useRef(false);
+  // Re-runs whichever submit raised the conflict — registering on its own and
+  // registering as part of a booking are different calls.
+  const retryRef = useRef<(() => void) | null>(null);
+
+  /** Shows the match and returns true; false if this was an ordinary error. */
+  const captureDuplicate = (err: any, retry: () => void): boolean => {
+    const body = err?.response?.data;
+    const match = body?.code === 'DUPLICATE_PATIENT' ? body?.details?.patient : null;
+    if (!match?.id) return false;
+    retryRef.current = retry;
+    setDuplicate(match as DuplicateMatch);
+    return true;
+  };
+
+  /** Carry on with the record that already exists. */
+  const useExistingPatient = () => {
+    if (!duplicate) return;
+    setSelectedPatient({
+      id: duplicate.id,
+      mrn: duplicate.mrn,
+      firstName: duplicate.firstName ?? '',
+      lastName: duplicate.lastName ?? '',
+      phone: duplicate.phone ?? '',
+      gender: duplicate.gender ?? '',
+      dateOfBirth: duplicate.dateOfBirth ?? '',
+    } as unknown as Patient);
+    // The booking flow reads selectedPatient before it creates anything, so the
+    // next submit books for this person instead of registering another.
+    setMode('existing');
+    setDuplicate(null);
+    toast.success(`Using ${[duplicate.firstName, duplicate.lastName].filter(Boolean).join(' ')} (${duplicate.mrn})`);
+  };
+
+  /** Two people really do share a name and a date of birth. */
+  const registerAnyway = () => {
+    allowDuplicateRef.current = true;
+    setDuplicate(null);
+    retryRef.current?.();
+  };
 
   // Queries
   const { data: patients, isLoading: patientsLoading } = usePatientSearch(patientQuery);
@@ -266,6 +325,9 @@ export function FrontDeskRegisterDialog({
     if (!open) {
       setStep(0);
       setMode(initialMode);
+      setDuplicate(null);
+      allowDuplicateRef.current = false;
+      retryRef.current = null;
       setPatientQuery('');
       setSelectedPatient(null);
       setShowPatientDropdown(false);
@@ -407,6 +469,7 @@ export function FrontDeskRegisterDialog({
         payload.userId = matchedUser.id;
         payload.relationship = data.relationship ?? 'other';
       }
+      if (allowDuplicateRef.current) payload.allowDuplicate = true;
       await apiPost<Patient>('/patients', payload);
       queryClient.invalidateQueries({ queryKey: ['hospital'] });
       queryClient.invalidateQueries({ queryKey: ['patients'] });
@@ -415,10 +478,14 @@ export function FrontDeskRegisterDialog({
           ? `Patient registered under ${[matchedUser.firstName, matchedUser.lastName].filter(Boolean).join(' ')}'s account`
           : 'Patient registered successfully',
       );
+      allowDuplicateRef.current = false;
       onOpenChange(false);
       onSuccess?.();
     } catch (e: any) {
-      toast.error(e?.response?.data?.message ?? 'Failed to register patient');
+      // A duplicate is a question for the desk, not an error to dismiss.
+      if (!captureDuplicate(e, () => void handleRegisterNewPatient(data))) {
+        toast.error(e?.response?.data?.message ?? 'Failed to register patient');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -507,6 +574,7 @@ export function FrontDeskRegisterDialog({
           payload.userId = matchedUser.id;
           payload.relationship = patientData.relationship ?? 'other';
         }
+        if (allowDuplicateRef.current) payload.allowDuplicate = true;
 
         const patientResp = await apiPost<Patient>('/patients', payload);
         patientId = patientResp.data?.id;
@@ -600,9 +668,11 @@ export function FrontDeskRegisterDialog({
       onOpenChange(false);
       onSuccess?.();
     } catch (err: any) {
-      toast.error(
-        err?.response?.data?.message || err?.message || 'Failed to complete registration'
-      );
+      if (!captureDuplicate(err, () => void handleFinalSubmit())) {
+        toast.error(
+          err?.response?.data?.message || err?.message || 'Failed to complete registration'
+        );
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -634,6 +704,54 @@ export function FrontDeskRegisterDialog({
                 : 'Select payment mode for the consultation'}
           </DialogDescription>
         </DialogHeader>
+
+        {/* Someone with this name and date of birth is already registered here.
+            Shown on whichever step raised it — registering on its own happens on
+            step 0, registering as part of a booking on step 2. */}
+        {duplicate && (
+          <div className="space-y-2.5 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-3">
+            <div className="flex items-start gap-2.5">
+              <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-on-surface">Did you mean this patient?</p>
+                <p className="mt-0.5 text-[11px] text-on-surface-variant">
+                  Someone with the same name and date of birth is already registered at this
+                  hospital. Registering again would give one person a second file.
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-md bg-surface-container px-2.5 py-2 text-[11px]">
+              <p className="font-medium text-on-surface">
+                {[duplicate.firstName, duplicate.lastName].filter(Boolean).join(' ')}
+              </p>
+              <p className="text-on-surface-variant">
+                {duplicate.mrn}
+                {duplicate.dateOfBirth ? ` · ${formatDate(duplicate.dateOfBirth)}` : ''}
+                {duplicate.phone ? ` · ${duplicate.phone}` : ''}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setDuplicate(null)}>
+                Back to form
+              </Button>
+              {/* Twins, or a father and son sharing a birthday, do exist. */}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={registerAnyway}
+                disabled={isSubmitting}
+              >
+                Register anyway
+              </Button>
+              <Button type="button" size="sm" onClick={useExistingPatient}>
+                Use this patient
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* ════════════════════════════════════════════════ */}
         {/* STEP 0: Patient */}
