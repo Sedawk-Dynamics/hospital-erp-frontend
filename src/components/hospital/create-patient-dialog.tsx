@@ -166,7 +166,9 @@ export function CreatePatientDialog({
   // Cross-hospital lookup: a patient is one person across the whole ERP. When
   // the desk enters a phone/ABHA that already exists at ANY hospital, we pull
   // their details in and just mint a new MRN here — no re-registration.
-  const [globalHit, setGlobalHit] = useState<{ hospitals: { name: string }[]; count: number } | null>(null);
+  const [globalHit, setGlobalHit] = useState<
+    { hospitals: { name: string }[]; count: number; people: number } | null
+  >(null);
   const checkGlobalPatient = async () => {
     const phone = watch('phone')?.trim();
     const abha = watch('abhaNumber')?.trim();
@@ -174,23 +176,36 @@ export function CreatePatientDialog({
     try {
       const res = await apiGet<{
         found: boolean;
+        // Null when the number belongs to more than one person — a household.
         patient: Record<string, string | null> | null;
+        people?: { firstName?: string | null; lastName?: string | null }[];
         hospitals: { name: string }[];
         count: number;
       }>('/patients/global-lookup', { params: { phone: phone || undefined, abha: abha || undefined } });
       const d = res.data;
-      if (!d?.found || !d.patient) { setGlobalHit(null); return; }
+      if (!d?.found) { setGlobalHit(null); return; }
+      setGlobalHit({
+        hospitals: d.hospitals ?? [],
+        count: d.count ?? 0,
+        people: d.people?.length ?? (d.patient ? 1 : 0),
+      });
+      // Nothing is filled in for a household: the number is shared by a family
+      // and there is no way to tell from it which of them is at the desk.
       const p = d.patient;
-      setGlobalHit({ hospitals: d.hospitals ?? [], count: d.count ?? 0 });
-      // Adopt the person's identity; fill the rest only where the desk left blank.
-      const fill = (name: keyof CreatePatientFormData, val?: string | null, force = false) => {
-        if (val && (force || !watch(name))) setValue(name, val as never, { shouldValidate: true });
+      if (!p) return;
+      // Never overwrite what the desk has already typed — they are looking at
+      // the patient and the record is only a suggestion. Filling a blank saves
+      // re-entry; replacing an entry silently registers the wrong person.
+      const fill = (name: keyof CreatePatientFormData, val?: string | null) => {
+        if (val && !watch(name)) setValue(name, val as never, { shouldValidate: true });
       };
-      fill('firstName', p.firstName, true);
-      fill('lastName', p.lastName, true);
+      fill('firstName', p.firstName);
+      fill('lastName', p.lastName);
       const g = (p.gender ?? '').toLowerCase();
-      if (g === 'male' || g === 'female' || g === 'other') setValue('gender', g);
-      if (p.dateOfBirth) setValue('dateOfBirth', String(p.dateOfBirth).slice(0, 10));
+      if (!watch('gender') && (g === 'male' || g === 'female' || g === 'other')) setValue('gender', g);
+      if (p.dateOfBirth && !watch('dateOfBirth')) {
+        setValue('dateOfBirth', String(p.dateOfBirth).slice(0, 10));
+      }
       fill('email', p.email); fill('address', p.address); fill('city', p.city);
       fill('state', p.state); fill('zipCode', p.zipCode); fill('country', p.country);
       fill('bloodGroup', p.bloodGroup); fill('maritalStatus', p.maritalStatus);
@@ -332,13 +347,21 @@ export function CreatePatientDialog({
           {/* Cross-hospital match — this person already exists on the ERP. */}
           {globalHit && (
             <div className="rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 text-xs">
-              <p className="font-semibold text-primary">Existing patient found on the ERP</p>
+              <p className="font-semibold text-primary">
+                {globalHit.people > 1
+                  ? `${globalHit.people} people are registered on this number`
+                  : 'Existing patient found on the ERP'}
+              </p>
               <p className="mt-0.5 text-muted-foreground">
                 Already registered at{' '}
                 <span className="font-medium text-foreground">
                   {globalHit.hospitals.map((h) => h.name).join(', ') || 'another hospital'}
                 </span>
-                . Details pre-filled — a new MRN will be created for this hospital, no need to re-register.
+                {globalHit.people > 1
+                  // A shared number cannot say which of them is at the desk, so
+                  // nothing is filled in and the desk enters who they can see.
+                  ? '. Enter the details of the person in front of you — a new MRN will be created for this hospital.'
+                  : '. Blank fields pre-filled — a new MRN will be created for this hospital, no need to re-register.'}
               </p>
             </div>
           )}
