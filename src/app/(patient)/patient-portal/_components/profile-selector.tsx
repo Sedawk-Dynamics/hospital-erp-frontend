@@ -266,6 +266,11 @@ export function AddProfileDialog({ open, onOpenChange, onCreated }: AddProfileDi
       return;
     }
     setSubmitting(true);
+    // Single use: they authorised THIS add, not every later one in the same
+    // dialog. Consumed on read, so a retry that fails for some other reason
+    // cannot leave the duplicate guard disarmed.
+    const allowDuplicate = allowDuplicateRef.current;
+    allowDuplicateRef.current = false;
     try {
       await apiPost('/patient-portal/profiles', {
         firstName: firstName.trim(),
@@ -275,9 +280,8 @@ export function AddProfileDialog({ open, onOpenChange, onCreated }: AddProfileDi
         gender,
         phone: phone.trim() || undefined,
         email: email.trim() || undefined,
-        ...(allowDuplicateRef.current ? { allowDuplicate: true } : {}),
+        ...(allowDuplicate ? { allowDuplicate: true } : {}),
       });
-      allowDuplicateRef.current = false;
       await onCreated();
       onOpenChange(false);
     } catch (err: any) {

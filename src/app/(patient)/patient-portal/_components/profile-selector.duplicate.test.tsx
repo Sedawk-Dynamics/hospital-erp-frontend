@@ -154,6 +154,28 @@ describe('AddProfileDialog — duplicate confirmation', () => {
     });
   });
 
+  // The override authorises ONE add. If the retry fails for some unrelated
+  // reason it used to stay armed for the rest of the dialog, so the next add —
+  // after editing the form to a different person — skipped the check entirely.
+  it('does not stay armed when the retry fails for another reason', async () => {
+    const user = userEvent.setup({ delay: null });
+    apiPost.mockRejectedValue(duplicateError());
+    renderDialog();
+    await fillAndAdd(user);
+    await screen.findByText(/did you mean this profile\?/i);
+
+    apiPost.mockRejectedValueOnce({ response: { data: { message: 'Network down' } } });
+    await user.click(screen.getByRole('button', { name: /add anyway/i }));
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('Network down'));
+
+    apiPost.mockResolvedValueOnce({ data: { id: 'new-1' } });
+    await user.click(screen.getByRole('button', { name: /add profile/i }));
+
+    await waitFor(() => {
+      expect(apiPost.mock.calls.at(-1)?.[1]).not.toHaveProperty('allowDuplicate');
+    });
+  });
+
   it('leaves ordinary failures as a toast', async () => {
     const user = userEvent.setup({ delay: null });
     apiPost.mockRejectedValue({ response: { data: { message: 'Something broke' } } });

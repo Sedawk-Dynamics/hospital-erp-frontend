@@ -469,7 +469,13 @@ export function FrontDeskRegisterDialog({
         payload.userId = matchedUser.id;
         payload.relationship = data.relationship ?? 'other';
       }
-      if (allowDuplicateRef.current) payload.allowDuplicate = true;
+      // Single use: the desk authorised THIS registration, not every later
+      // one in the same dialog. Consumed on read, so a retry that fails for
+      // some other reason cannot leave the duplicate guard disarmed.
+      if (allowDuplicateRef.current) {
+        allowDuplicateRef.current = false;
+        payload.allowDuplicate = true;
+      }
       await apiPost<Patient>('/patients', payload);
       queryClient.invalidateQueries({ queryKey: ['hospital'] });
       queryClient.invalidateQueries({ queryKey: ['patients'] });
@@ -478,7 +484,6 @@ export function FrontDeskRegisterDialog({
           ? `Patient registered under ${[matchedUser.firstName, matchedUser.lastName].filter(Boolean).join(' ')}'s account`
           : 'Patient registered successfully',
       );
-      allowDuplicateRef.current = false;
       onOpenChange(false);
       onSuccess?.();
     } catch (e: any) {
@@ -574,7 +579,13 @@ export function FrontDeskRegisterDialog({
           payload.userId = matchedUser.id;
           payload.relationship = patientData.relationship ?? 'other';
         }
-        if (allowDuplicateRef.current) payload.allowDuplicate = true;
+        // Single use: the desk authorised THIS registration, not every later
+        // one in the same dialog. Consumed on read, so a retry that fails for
+        // some other reason cannot leave the duplicate guard disarmed.
+        if (allowDuplicateRef.current) {
+          allowDuplicateRef.current = false;
+          payload.allowDuplicate = true;
+        }
 
         const patientResp = await apiPost<Patient>('/patients', payload);
         patientId = patientResp.data?.id;

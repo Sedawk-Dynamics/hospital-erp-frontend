@@ -135,6 +135,31 @@ describe('FrontDeskRegisterDialog — duplicate confirmation', () => {
     expect(toastSuccess).toHaveBeenCalledWith(expect.stringContaining('MRN-20260821-0003'));
   });
 
+  // The override is meant to authorise ONE registration. If the retry fails for
+  // some unrelated reason it used to stay armed for the rest of the dialog, so
+  // the next submit — after editing the form to a different person — skipped
+  // the duplicate check entirely.
+  it('does not stay armed when the retry fails for another reason', async () => {
+    const user = userEvent.setup({ delay: null });
+    apiPost.mockRejectedValue(duplicateError());
+    renderDialog();
+    await fillAndSubmit(user);
+    await screen.findByText(/did you mean this patient\?/i);
+
+    // Register anyway, and this attempt fails on something else entirely.
+    apiPost.mockRejectedValueOnce({ response: { data: { message: 'Network down' } } });
+    await user.click(screen.getByRole('button', { name: /register anyway/i }));
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('Network down'));
+
+    // An ordinary submit after that must be checked against duplicates again.
+    apiPost.mockResolvedValueOnce({ data: { id: 'new-1', mrn: 'MRN-NEW' } });
+    await user.click(screen.getByRole('button', { name: /register patient/i }));
+
+    await waitFor(() => {
+      expect(apiPost.mock.calls.at(-1)?.[1]).not.toHaveProperty('allowDuplicate');
+    });
+  });
+
   it('leaves ordinary failures as a toast', async () => {
     const user = userEvent.setup({ delay: null });
     apiPost.mockRejectedValue({ response: { data: { message: 'Something broke' } } });
