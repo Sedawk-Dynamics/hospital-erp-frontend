@@ -91,3 +91,24 @@ describe('VitalValue', () => {
     expect(screen.getByText('91').className).not.toContain('text-error');
   });
 });
+
+describe('the flag is not colour alone', () => {
+  it('marks a high value with an up arrow', () => {
+    const { container } = render(<VitalValue vitalKey="pulseRate" value={132} />);
+    // The convention a lab report already uses — H / L beside the value. A red
+    // number is easy to skim past in a dense table, and invisible to a
+    // colour-blind reader.
+    expect(container.textContent).toContain('↑');
+  });
+
+  it('marks a low value with a down arrow, because high and low differ', () => {
+    const { container } = render(<VitalValue vitalKey="oxygenSaturation" value={88} />);
+    expect(container.textContent).toContain('↓');
+  });
+
+  it('puts no arrow on a normal reading', () => {
+    const { container } = render(<VitalValue vitalKey="pulseRate" value={72} />);
+    expect(container.textContent).not.toContain('↑');
+    expect(container.textContent).not.toContain('↓');
+  });
+});

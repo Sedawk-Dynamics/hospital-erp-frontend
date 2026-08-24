@@ -94,6 +94,19 @@ export function VitalValue({
         {isTemp && shown !== null ? shown.toFixed(1) : shown}
       </span>
       {showUnit && unit && <span className="text-[10px] text-muted-foreground">{unit}</span>}
+      {/* A direction flag, not just a colour. This is the convention every lab
+          report already uses (H / L beside the value), it survives a dense
+          table where a red number is easy to skim past, it works for a
+          colour-blind reader, and it says MORE than a warning icon would —
+          high and low are different clinical problems. */}
+      {abnormal && direction && (
+        <span
+          className="shrink-0 self-center text-[10px] font-bold leading-none text-error"
+          aria-hidden
+        >
+          {direction === 'high' ? '↑' : '↓'}
+        </span>
+      )}
       {abnormal && showIcon && (
         <AlertTriangle className="h-3 w-3 shrink-0 self-center text-error" aria-hidden />
       )}
