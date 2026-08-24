@@ -53,6 +53,22 @@ const urgencyOptions: { value: Urgency; label: string; color: string; activeBg: 
   { value: 'stat', label: 'STAT', color: 'text-error', activeBg: 'bg-error text-white' },
 ];
 
+/**
+ * How many studies to pull at once. A radiology catalog is a short list — this
+ * holds it whole, which is what lets the list below be browsed rather than only
+ * searched. The server caps its own page, so this asks for that cap.
+ */
+const CATALOG_PAGE_SIZE = 100;
+
+/** 0 exact, 1 starts-with, 2 anything else. */
+function rankStudy(item: { serviceName: string; serviceCode?: string | null }, q: string): number {
+  const name = item.serviceName.toLowerCase();
+  const code = (item.serviceCode ?? '').toLowerCase();
+  if (name === q || code === q) return 0;
+  if (name.startsWith(q) || code.startsWith(q)) return 1;
+  return 2;
+}
+
 export function ImagingRequestDialog({ open, onOpenChange, patientId, visitId }: ImagingRequestDialogProps) {
   // Catalog-pick path (preferred) — the admin-maintained imaging catalog.
   const [catalogSearch, setCatalogSearch] = useState('');
@@ -65,20 +81,31 @@ export function ImagingRequestDialog({ open, onOpenChange, patientId, visitId }:
   const [urgency, setUrgency] = useState<Urgency>('routine');
   const [notes, setNotes] = useState('');
 
-  // Fetch the whole catalog once while the dialog is open; search filters it
-  // client-side so quick-pick buttons always resolve to their tariff (and
-  // there's no long default list to scroll).
-  const catalogQ = useImagingCatalog(open && !selected ? { limit: 100 } : undefined);
+  // The whole catalog while the dialog is open. Kept as one fetch so the
+  // quick-pick buttons can still resolve their tariff from it, and so the list
+  // below can be shown WITHOUT a search term — there was no way to see what
+  // this hospital offers unless you already knew a study's name.
+  const catalogQ = useImagingCatalog(open && !selected ? { limit: CATALOG_PAGE_SIZE } : undefined);
   const catalogItems = catalogQ.data ?? [];
 
   const search = catalogSearch.trim().toLowerCase();
-  const searchResults = search
+  // Matching stays client-side: the whole catalog is already here, and the
+  // server's own search does not look at the modality label, so "ultrasound"
+  // would miss a study whose name only says "USG".
+  const matches = search
     ? catalogItems.filter(
         (i) =>
           i.serviceName.toLowerCase().includes(search) ||
+          (i.serviceCode ? i.serviceCode.toLowerCase().includes(search) : false) ||
           (i.modality ? (MODALITY_LABELS[i.modality] ?? i.modality).toLowerCase().includes(search) : false),
       )
-    : [];
+    : catalogItems;
+
+  // Exact, then starts-with, then the rest — otherwise an alphabetical list
+  // buries the study whose name the doctor actually typed.
+  const searchResults = search
+    ? [...matches].sort((a, b) => rankStudy(a, search) - rankStudy(b, search) || a.serviceName.localeCompare(b.serviceName))
+    : matches;
 
   const createImagingRequest = useCreateImagingRequest();
 
@@ -265,15 +292,19 @@ export function ImagingRequestDialog({ open, onOpenChange, patientId, visitId }:
               <div className="relative mt-3">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  placeholder="Search other studies…"
+                  placeholder="Search studies, or browse the list below…"
                   value={catalogSearch}
                   onChange={(e) => setCatalogSearch(e.target.value)}
                   className="pl-9 text-sm"
                 />
               </div>
 
-              {/* Results — only while searching, so there's no long default list to scroll */}
-              {search.length >= 1 && (
+              {/* The catalog: everything when the box is empty, matches when not.
+                  It used to render only while something was typed, so a doctor
+                  who did not already know a study's name saw nothing at all —
+                  and a hospital with no radiology tariffs configured looked
+                  identical to a broken search. */}
+              {(
                 <div className="mt-2 max-h-52 overflow-y-auto rounded-lg border border-surface-container divide-y">
                   {catalogQ.isLoading ? (
                     <div className="p-3 text-center text-xs text-muted-foreground">
@@ -296,9 +327,17 @@ export function ImagingRequestDialog({ open, onOpenChange, patientId, visitId }:
                         </div>
                       </button>
                     ))
-                  ) : (
+                  ) : search ? (
                     <div className="p-3 text-center text-xs text-muted-foreground">
-                      No modality matches your search.
+                      No study matches “{catalogSearch.trim()}”.
+                    </div>
+                  ) : (
+                    // Nothing typed and nothing to list: the catalog itself is
+                    // empty. That is a setup problem with a known fix, and
+                    // saying so beats an empty box.
+                    <div className="p-3 text-center text-xs text-muted-foreground">
+                      No imaging studies are configured for this hospital yet — an admin adds them
+                      under Radiology settings.
                     </div>
                   )}
                 </div>
