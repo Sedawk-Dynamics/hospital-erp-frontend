@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { useVitalHistory, type Vital } from '@/hooks/use-vital-history';
+import { VitalValue } from '@/components/shared/vital-value';
 import { formatTemperature, temperatureIn, temperatureUnitLabel, temperatureValue } from '@/lib/vitals-temperature';
 import { useTemperatureUnit } from '@/stores/temperature-unit-store';
 
@@ -105,10 +106,13 @@ function HistoryRow({ vital, isLatest }: { vital: Vital; isLatest: boolean }) {
 
       <div className={`grid grid-cols-3 gap-2 text-xs ${!isLatest ? 'opacity-70' : ''}`}>
         <Cell label="BP" value={bp(vital)} />
-        <Cell label="Pulse" value={vital.pulseRate ?? '—'} />
-        <Cell label={`Temp (${temperatureUnitLabel(tempUnit)})`} value={temperatureValue(vital.temperature, tempUnit)} />
-        <Cell label="RR" value={vital.respiratoryRate ?? '—'} />
-        <Cell label="SpO2 (%)" value={vital.oxygenSaturation ?? '—'} />
+        <Cell label="Pulse" value={<VitalValue vitalKey="pulseRate" value={vital.pulseRate} />} />
+        <Cell
+          label={`Temp (${temperatureUnitLabel(tempUnit)})`}
+          value={<VitalValue vitalKey="temperature" value={vital.temperature} />}
+        />
+        <Cell label="RR" value={<VitalValue vitalKey="respiratoryRate" value={vital.respiratoryRate} />} />
+        <Cell label="SpO2 (%)" value={<VitalValue vitalKey="oxygenSaturation" value={vital.oxygenSaturation} />} />
         <Cell label="Blood sugar" value={vital.bloodSugar ?? '—'} />
         <Cell label="Weight" value={vital.weightKg ?? '—'} />
         <Cell label="Height" value={vital.heightCm ?? '—'} />
@@ -127,7 +131,7 @@ function bp(v: Vital) {
   return `${sys}/${dia}`;
 }
 
-function Cell({ label, value }: { label: string; value: string | number }) {
+function Cell({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
       <div className="text-[10px] font-medium uppercase text-muted-foreground">{label}</div>

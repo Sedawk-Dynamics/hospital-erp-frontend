@@ -103,6 +103,7 @@ import { AdmissionTypeConvertButton } from '@/components/shared/admission-type-c
 import { isValueAbnormal } from '@/lib/vitals-ranges';
 import { PatientHistoryPanel } from '@/components/shared/patient-history-panel';
 import { PatientFormsPanel } from '@/components/shared/patient-forms-panel';
+import { VitalValue } from '@/components/shared/vital-value';
 import { formatTemperature, temperatureIn, temperatureUnitLabel, temperatureValue } from '@/lib/vitals-temperature';
 import { useTemperatureUnit } from '@/stores/temperature-unit-store';
 
@@ -1345,12 +1346,20 @@ function VitalsHistoryPanel({ patientId, admissionId }: { patientId: string; adm
                 <tr key={v.id} className="text-foreground">
                   <td className="py-1.5 pr-2 whitespace-nowrap">{formatDateTime(v.createdAt)}</td>
                   <td className="py-1.5 pr-2">
-                    {v.bloodPressureSystolic != null ? `${v.bloodPressureSystolic}/${v.bloodPressureDiastolic ?? '-'}` : '–'}
+                    {v.bloodPressureSystolic != null ? (
+                      <span className="inline-flex items-baseline gap-0.5">
+                        <VitalValue vitalKey="bloodPressureSystolic" value={v.bloodPressureSystolic} fallback="–" />
+                        <span className="text-muted-foreground">/</span>
+                        <VitalValue vitalKey="bloodPressureDiastolic" value={v.bloodPressureDiastolic} fallback="-" />
+                      </span>
+                    ) : (
+                      '–'
+                    )}
                   </td>
-                  <td className="py-1.5 pr-2">{temperatureValue(v.temperature, tempUnit, '–')}</td>
-                  <td className="py-1.5 pr-2">{v.pulseRate ?? v.heartRate ?? '–'}</td>
-                  <td className="py-1.5 pr-2">{v.respiratoryRate ?? '–'}</td>
-                  <td className="py-1.5 pr-2">{v.oxygenSaturation ?? '–'}</td>
+                  <td className="py-1.5 pr-2"><VitalValue vitalKey="temperature" value={v.temperature} fallback="–" /></td>
+                  <td className="py-1.5 pr-2"><VitalValue vitalKey="pulseRate" value={v.pulseRate ?? v.heartRate} fallback="–" /></td>
+                  <td className="py-1.5 pr-2"><VitalValue vitalKey="respiratoryRate" value={v.respiratoryRate} fallback="–" /></td>
+                  <td className="py-1.5 pr-2"><VitalValue vitalKey="oxygenSaturation" value={v.oxygenSaturation} fallback="–" /></td>
                   <td className="py-1.5 pr-2 max-w-[200px] truncate text-muted-foreground">{v.notes || '–'}</td>
                 </tr>
               ))}
