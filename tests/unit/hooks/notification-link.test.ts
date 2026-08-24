@@ -202,3 +202,41 @@ describe('notificationLink — every type the system actually sends', () => {
     expect(notificationLink(n('something_new_entirely'), ADMIN)).toBeNull();
   });
 });
+
+describe('notificationLink — the notifications that were never sent before', () => {
+  const FRONT_DESK = ['front_desk'];
+
+  // Nursing takes almost every reading in the hospital and an abnormal one
+  // reached the treating doctor nowhere. referenceId is the PATIENT: what the
+  // doctor wants from that bell is the patient, not a worklist.
+  it('opens the patient a doctor was alerted about', () => {
+    expect(notificationLink(n('vital_abnormal', 'pat-1'), DOCTOR)).toBe(
+      '/doctor/consultation/pat-1',
+    );
+  });
+
+  it('falls back to the doctor home when the alert names no patient', () => {
+    expect(notificationLink(n('vital_abnormal'), DOCTOR)).toBe('/doctor');
+  });
+
+  // A portal booking or cancellation used to reach the hospital silently. It
+  // goes to the doctor whose list changed and to the desk that takes payment.
+  it('sends a portal booking to the right side of the hospital', () => {
+    expect(notificationLink(n('appointment_booked', 'appt-1'), DOCTOR)).toBe('/doctor');
+    expect(notificationLink(n('appointment_booked', 'appt-1'), FRONT_DESK)).toBe('/hospital');
+  });
+
+  it('sends a portal cancellation the same way', () => {
+    expect(notificationLink(n('appointment_cancelled', 'appt-1'), DOCTOR)).toBe('/doctor');
+    expect(notificationLink(n('appointment_cancelled', 'appt-1'), FRONT_DESK)).toBe('/hospital');
+  });
+
+  // Adding a notification is only half the job: an unmapped referenceType
+  // returns null and the bell just marks it read in place, which is
+  // indistinguishable from the notification never arriving.
+  it('leaves none of the three unmapped', () => {
+    for (const t of ['vital_abnormal', 'appointment_booked', 'appointment_cancelled']) {
+      expect(notificationLink(n(t, 'x'), DOCTOR)).not.toBeNull();
+    }
+  });
+});

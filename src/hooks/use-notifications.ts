@@ -205,10 +205,25 @@ export function notificationLink(n: AppNotification, roles?: string[]): string |
       return ref ? `/insurance/claims/${ref}` : '/insurance/claims';
 
     // ── Appointments ───────────────────────────────────────────────────
+    // A patient booked or cancelled in the portal. Goes to the doctor whose
+    // list changed and to the desk that takes the payment and checks them in —
+    // neither had any way of knowing before, since the portal booked silently.
+    case 'appointment_booked':
+    case 'appointment_cancelled':
+      return isDoctor ? '/doctor' : '/hospital';
+
     // Written for the PATIENT by the reminder job.
     case 'appointment_reminder':
       if (isPatient || !roles?.length) return '/patient-portal/appointments';
       return isDoctor ? '/doctor' : '/hospital';
+
+    // ── Vitals ─────────────────────────────────────────────────────────
+    // Nursing takes almost every reading in the hospital and an out-of-range
+    // one reached the treating doctor nowhere — they found it by opening the
+    // chart. referenceId is the PATIENT: the doctor needs that patient, not a
+    // worklist of everybody's vitals.
+    case 'vital_abnormal':
+      return ref ? `/doctor/consultation/${ref}` : '/doctor';
 
     // ── Lab & imaging ──────────────────────────────────────────────────
     // A critical value must not be a dead end — the doctor needs the record,
