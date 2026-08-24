@@ -64,6 +64,7 @@ import {
 import { useActiveRoster } from '@/hooks/use-duty-rosters';
 import { useAuthStore } from '@/stores/auth-store';
 import { formatTemperature } from '@/lib/vitals-temperature';
+import { abnormalDirection, isValueAbnormal } from '@/lib/vitals-ranges';
 import { useTemperatureUnitStore } from '@/stores/temperature-unit-store';
 
 // ── Shift Detection ───────────────────────────────────────
@@ -115,27 +116,37 @@ interface VitalAlert {
 }
 
 function detectAbnormalities(v: Vital): VitalAlert[] {
+  // Thresholds come from the shared table, not from numbers written out again
+  // here. These had drifted: this screen used `>= 140` systolic, `>= 90`
+  // diastolic and `>= 38` temperature while everywhere else tests strictly
+  // greater — so a systolic of exactly 140 raised an alert on the nurse
+  // dashboard and read as perfectly normal on the doctor's screen, for the
+  // same reading.
   const alerts: VitalAlert[] = [];
   const sys = v.bloodPressureSystolic;
   const dia = v.bloodPressureDiastolic;
-  if ((sys != null && sys >= 140) || (dia != null && dia >= 90)) {
+  const sysDir = abnormalDirection('bloodPressureSystolic', sys);
+  const diaDir = abnormalDirection('bloodPressureDiastolic', dia);
+  if (sysDir === 'high' || diaDir === 'high') {
     alerts.push({ kind: 'bp_high', label: `BP ${sys ?? '?'}/${dia ?? '?'}` });
-  } else if ((sys != null && sys < 90) || (dia != null && dia < 60)) {
+  } else if (sysDir === 'low' || diaDir === 'low') {
     alerts.push({ kind: 'bp_low', label: `BP ${sys ?? '?'}/${dia ?? '?'}` });
   }
-  if (v.oxygenSaturation != null && v.oxygenSaturation < 94) {
+  if (isValueAbnormal('oxygenSaturation', v.oxygenSaturation)) {
     alerts.push({ kind: 'spo2_low', label: `SpO₂ ${v.oxygenSaturation}%` });
   }
   const hr = v.heartRate ?? v.pulseRate;
-  if (hr != null && hr > 100) alerts.push({ kind: 'hr_high', label: `HR ${hr}` });
-  else if (hr != null && hr < 60) alerts.push({ kind: 'hr_low', label: `HR ${hr}` });
+  const hrDir = abnormalDirection('pulseRate', hr);
+  if (hrDir === 'high') alerts.push({ kind: 'hr_high', label: `HR ${hr}` });
+  else if (hrDir === 'low') alerts.push({ kind: 'hr_low', label: `HR ${hr}` });
   // Thresholds stay Celsius (that is what is stored); only the label is shown
   // in the reader's unit. Read straight off the store because this is a plain
   // helper, not a component — no hook to call.
   const tempUnit = useTemperatureUnitStore.getState().unit;
-  if (v.temperature != null && v.temperature >= 38) {
+  const tempDir = abnormalDirection('temperature', v.temperature);
+  if (tempDir === 'high') {
     alerts.push({ kind: 'temp_high', label: `Temp ${formatTemperature(v.temperature, tempUnit)}` });
-  } else if (v.temperature != null && v.temperature < 35) {
+  } else if (tempDir === 'low') {
     alerts.push({ kind: 'temp_low', label: `Temp ${formatTemperature(v.temperature, tempUnit)}` });
   }
   if (v.respiratoryRate != null && (v.respiratoryRate > 20 || v.respiratoryRate < 12)) {
