@@ -23,6 +23,8 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { HospitalFilter } from '../_components/hospital-filter';
 import { parseFrequencyToSchedule } from '@/components/doctor/consultation-completion';
+import { formatTemperature } from '@/lib/vitals-temperature';
+import { useTemperatureUnit } from '@/stores/temperature-unit-store';
 
 interface PrescriptionItem {
   drugName?: string;
@@ -448,8 +450,13 @@ function MedicineScheduleCard({ item, index }: { item: PrescriptionItem; index: 
 // ── Compact Vitals Display ────────────────────────────────────
 
 function VitalsCompact({ vitals }: { vitals: VitalRecord }) {
+  const [tempUnit] = useTemperatureUnit();
   const items: { label: string; value: string }[] = [];
-  if (vitals.temperature) items.push({ label: 'Temp', value: `${vitals.temperature}°F` });
+  // Stored Celsius was printed with an °F suffix, so a patient read their own
+  // 37.2 as "37.2°F".
+  if (vitals.temperature != null) {
+    items.push({ label: 'Temp', value: formatTemperature(vitals.temperature, tempUnit) });
+  }
   if (vitals.bloodPressureSystolic || vitals.bloodPressureDiastolic) {
     items.push({
       label: 'BP',

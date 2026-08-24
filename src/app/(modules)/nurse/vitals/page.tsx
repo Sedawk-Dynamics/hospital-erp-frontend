@@ -46,6 +46,8 @@ import {
   toCelsius,
   type TempUnit,
 } from '@/lib/vitals-temperature';
+import { useTemperatureUnit } from '@/stores/temperature-unit-store';
+import { formatTemperature, temperatureUnitLabel, temperatureValue } from '@/lib/vitals-temperature';
 import { cn } from '@/lib/utils';
 import { formatDateTime, formatTime } from '@/lib/date-utils';
 import {
@@ -271,6 +273,7 @@ const STATUS_SHORT: Record<string, string> = {
 // ── Latest vitals card ─────────────────────────────────────
 
 function LatestVitalsCard({ vitals }: { vitals: Vital | undefined }) {
+  const [tempUnit] = useTemperatureUnit();
   if (!vitals) {
     return (
       <div className="rounded-xl bg-surface-container-lowest p-4 shadow-sanctuary">
@@ -295,9 +298,9 @@ function LatestVitalsCard({ vitals }: { vitals: Vital | undefined }) {
     },
     {
       label: 'Temp',
-      value: vitals.temperature ?? '-',
+      value: temperatureValue(vitals.temperature, tempUnit, '-'),
       abnormal: isValueAbnormal('temperature', vitals.temperature),
-      unit: '°C',
+      unit: temperatureUnitLabel(tempUnit),
     },
     {
       label: 'Pulse',
@@ -386,7 +389,9 @@ export default function NurseVitalsPage() {
   // either; the value stored is always °C. Doctors have had this since the
   // shared vitals dialog was written — nursing, which takes almost every
   // reading in the hospital, did not.
-  const [tempUnit, setTempUnit] = useState<TempUnit>('C');
+  // The reader/recorder's own preference, remembered across screens and
+  // sessions — a ward that works in Fahrenheit set it once, not per dialog.
+  const [tempUnit, setTempUnit] = useTemperatureUnit();
   // What the patient actually said at the door. The doctor writes their own
   // framing of the problem; this is the intake version, recorded by whoever
   // took the vitals and attributed to them.
@@ -606,7 +611,9 @@ export default function NurseVitalsPage() {
         `BP ${payload.bloodPressureSystolic ?? '?'}/${payload.bloodPressureDiastolic ?? '?'} mmHg`,
       );
     }
-    if (isValueAbnormal('temperature', payload.temperature)) abnormal.push(`Temp ${payload.temperature}°C`);
+    // payload.temperature is Celsius whatever was typed; report it back in
+    // the unit the nurse is actually working in.
+    if (isValueAbnormal('temperature', payload.temperature)) abnormal.push(`Temp ${formatTemperature(payload.temperature, tempUnit)}`);
     if (isValueAbnormal('pulseRate', payload.pulseRate)) abnormal.push(`Pulse ${payload.pulseRate} bpm`);
     if (isValueAbnormal('oxygenSaturation', payload.oxygenSaturation)) abnormal.push(`SpO₂ ${payload.oxygenSaturation}%`);
     if (isValueAbnormal('respiratoryRate', payload.respiratoryRate)) abnormal.push(`RR ${payload.respiratoryRate}/min`);
@@ -1140,7 +1147,7 @@ export default function NurseVitalsPage() {
                                   tempAbn ? 'font-semibold text-red-600' : 'text-foreground',
                                 )}
                               >
-                                {v.temperature ?? '-'}
+                                {temperatureValue(v.temperature, tempUnit, '-')}
                               </td>
                               <td
                                 className={cn(

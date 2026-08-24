@@ -24,6 +24,7 @@ import {
   toCelsius,
   type TempUnit,
 } from '@/lib/vitals-temperature';
+import { useTemperatureUnit } from '@/stores/temperature-unit-store';
 import { useRecordVitals } from '@/hooks/use-nurse';
 import { getApiErrorMessage } from '@/lib/utils';
 
@@ -122,7 +123,9 @@ export function RecordVitalsDialog({
   // Wards here record temperature in °F as often as °C, and the server only
   // accepts 25–50 (°C) — so 98.6 came back as a bare 400. Record in either and
   // convert on the way out; the stored value is always °C.
-  const [tempUnit, setTempUnit] = useState<TempUnit>('C');
+  // The reader/recorder's own preference, remembered across screens and
+  // sessions — a ward that works in Fahrenheit set it once, not per dialog.
+  const [tempUnit, setTempUnit] = useTemperatureUnit();
   const fieldIdPrefix = useId();
   const recordVitals = useRecordVitals();
   const queryClient = useQueryClient();

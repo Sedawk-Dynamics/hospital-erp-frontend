@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useTemperatureUnitStore } from '@/stores/temperature-unit-store';
 
 // ─── Mock apiClient (apiPost in @/lib/api delegates to it) ───
 const mockPost = vi.fn();
@@ -59,6 +60,12 @@ describe('RecordVitalsDialog', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockPost.mockResolvedValue({ data: { data: { id: 'vital-1' } } });
+    // The °C/°F choice is a REMEMBERED preference now (localStorage, shared by
+    // every screen) rather than dialog-local state — that is the point: a ward
+    // working in Fahrenheit sets it once instead of re-flipping it on every
+    // recording. Which means the test that flips to °F leaks into the ones
+    // after it, so each test starts from a known unit.
+    useTemperatureUnitStore.setState({ unit: 'C' });
   });
 
   // The consultation surfaces pass `appointmentId={appointmentId || ''}` down

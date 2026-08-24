@@ -56,6 +56,8 @@ import { useLatestVitals } from '@/hooks/use-nurse';
 import { formatDateTime } from '@/lib/date-utils';
 import { toast } from 'sonner';
 import { VoiceInputButton } from '@/components/doctor/voice-input-button';
+import { formatTemperature } from '@/lib/vitals-temperature';
+import { useTemperatureUnitStore } from '@/stores/temperature-unit-store';
 
 // Format a Vital record into a single clinical one-liner suitable for
 // pasting into the Objective → Vitals Summary field.
@@ -66,7 +68,7 @@ function formatVitalSnapshot(v: any): string {
     parts.push(`BP ${v.bloodPressureSystolic}/${v.bloodPressureDiastolic}`);
   }
   if (v.pulseRate ?? v.heartRate) parts.push(`HR ${v.pulseRate ?? v.heartRate}`);
-  if (v.temperature) parts.push(`T ${v.temperature}°C`);
+  if (v.temperature) parts.push(`T ${formatTemperature(v.temperature, useTemperatureUnitStore.getState().unit)}`);
   if (v.respiratoryRate) parts.push(`RR ${v.respiratoryRate}`);
   if (v.oxygenSaturation) parts.push(`SpO2 ${v.oxygenSaturation}%`);
   if (v.weightKg ?? v.weight) parts.push(`Wt ${v.weightKg ?? v.weight}kg`);

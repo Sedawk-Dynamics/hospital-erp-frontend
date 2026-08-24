@@ -2,6 +2,8 @@
 
 import { Pill, Stethoscope, Activity, ClipboardList, Pin, CalendarClock, Clock3 } from 'lucide-react';
 import { formatDate, formatDateTimeAmPm } from '@/lib/date-utils';
+import { temperatureUnitLabel, temperatureValue } from '@/lib/vitals-temperature';
+import { useTemperatureUnit } from '@/stores/temperature-unit-store';
 
 /**
  * The patient's own record of a consultation, in full.
@@ -148,6 +150,7 @@ export function FullConsultationSummary({ note }: { note: FullConsultation }) {
     .filter(Boolean)
     .join('\n\n');
 
+  const [tempUnit] = useTemperatureUnit();
   const shownVitals = vitals
     ? VITAL_ROWS.filter((r) => vitals[r.key] !== null && vitals[r.key] !== undefined)
     : [];
@@ -226,9 +229,13 @@ export function FullConsultationSummary({ note }: { note: FullConsultation }) {
                   {r.label}
                 </p>
                 <p className="font-display text-sm font-bold">
-                  {String(vitals?.[r.key])}{' '}
+                  {/* Temperature is stored in Celsius; show it in the unit the
+                      reader has chosen rather than always °C. */}
+                  {r.key === 'temperature'
+                    ? temperatureValue(vitals?.[r.key] as number, tempUnit)
+                    : String(vitals?.[r.key])}{' '}
                   <span className="font-label text-[10px] font-normal text-on-surface-variant">
-                    {r.unit}
+                    {r.key === 'temperature' ? temperatureUnitLabel(tempUnit) : r.unit}
                   </span>
                 </p>
               </div>

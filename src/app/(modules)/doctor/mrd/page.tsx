@@ -34,6 +34,8 @@ import {
   useProgressNotes,
   useLabOrders,
 } from '@/hooks/use-doctor';
+import { formatTemperature, temperatureIn, temperatureUnitLabel, temperatureValue } from '@/lib/vitals-temperature';
+import { useTemperatureUnit } from '@/stores/temperature-unit-store';
 
 export default function DoctorMRDPage() {
   const { user } = useAuthStore();
@@ -395,6 +397,7 @@ function MedicalRecordDialog({
 }) {
   const { data: patient, isLoading } = usePatientDetail(patientId);
   const { data: vitals } = usePatientVitals(patientId);
+  const [tempUnit] = useTemperatureUnit();
   const { data: diagnoses } = usePatientDiagnoses(patientId);
   const { data: prescriptionsData } = usePrescriptions({ patientId, limit: 20 });
   const { data: notesData } = useProgressNotes({ patientId, limit: 20 });
@@ -485,7 +488,7 @@ function MedicalRecordDialog({
                           {vitals.map((v) => (
                             <tr key={v.id} className="border-b">
                               <td className="px-3 py-2">{formatDateTime(v.createdAt)}</td>
-                              <td className="px-3 py-2">{v.temperature || '-'}</td>
+                              <td className="px-3 py-2">{formatTemperature(v.temperature, tempUnit, '-')}</td>
                               <td className="px-3 py-2">{v.bloodPressureSystolic ? `${v.bloodPressureSystolic}/${v.bloodPressureDiastolic}` : '-'}</td>
                               <td className="px-3 py-2">{v.heartRate || '-'}</td>
                               <td className="px-3 py-2">{v.oxygenSaturation ? `${v.oxygenSaturation}%` : '-'}</td>

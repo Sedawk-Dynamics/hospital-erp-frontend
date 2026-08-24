@@ -103,6 +103,8 @@ import { AdmissionTypeConvertButton } from '@/components/shared/admission-type-c
 import { isValueAbnormal } from '@/lib/vitals-ranges';
 import { PatientHistoryPanel } from '@/components/shared/patient-history-panel';
 import { PatientFormsPanel } from '@/components/shared/patient-forms-panel';
+import { formatTemperature, temperatureIn, temperatureUnitLabel, temperatureValue } from '@/lib/vitals-temperature';
+import { useTemperatureUnit } from '@/stores/temperature-unit-store';
 
 // Hooks here return raw `ApiResponse<T>` — pull out the inner payload safely.
 function unwrapList<T>(value: unknown): T[] {
@@ -372,13 +374,15 @@ function HeaderStrip({
 // ── Latest vitals strip ────────────────────────────────────────────────────
 
 function LatestVitalsStrip({ patientId, role, admissionId }: { patientId: string; role: WorkspaceRole; admissionId: string }) {
+  const [tempUnit] = useTemperatureUnit();
   const { data, isLoading } = useLatestVitals(patientId);
   const latest = useMemo(() => unwrapOne<Vital>(data), [data]);
   const [recordOpen, setRecordOpen] = useState(false);
 
   const cards = [
     { label: 'BP', value: latest?.bloodPressureSystolic ? `${latest.bloodPressureSystolic}/${latest.bloodPressureDiastolic ?? '-'}` : null, unit: 'mmHg', icon: Activity, abnormal: bpAbnormal(latest?.bloodPressureSystolic, latest?.bloodPressureDiastolic) },
-    { label: 'Temp', value: latest?.temperature ?? null, unit: '°C', icon: Thermometer, abnormal: isValueAbnormal('temperature', latest?.temperature) },
+    // Stored Celsius, read in the clinician's own unit. The abnormal test stays on the Celsius value.
+    { label: 'Temp', value: temperatureIn(latest?.temperature, tempUnit), unit: temperatureUnitLabel(tempUnit), icon: Thermometer, abnormal: isValueAbnormal('temperature', latest?.temperature) },
     { label: 'Pulse', value: latest?.pulseRate ?? latest?.heartRate ?? null, unit: 'bpm', icon: Heart, abnormal: isValueAbnormal('pulseRate', latest?.pulseRate ?? latest?.heartRate) },
     { label: 'RR', value: latest?.respiratoryRate ?? null, unit: '/min', icon: Wind, abnormal: isValueAbnormal('respiratoryRate', latest?.respiratoryRate) },
     { label: 'SpO₂', value: latest?.oxygenSaturation ?? null, unit: '%', icon: Droplets, abnormal: isValueAbnormal('oxygenSaturation', latest?.oxygenSaturation) },
@@ -1302,6 +1306,7 @@ function OrdersPanel({ admissionId, patientId, role }: { admissionId: string; pa
 // ── Vitals trend / history (mini) ──────────────────────────────────────────
 
 function VitalsHistoryPanel({ patientId, admissionId }: { patientId: string; admissionId: string }) {
+  const [tempUnit] = useTemperatureUnit();
   const { data, isLoading } = usePatientVitals(patientId, { limit: 10 });
   const vitals = useMemo(() => unwrapList<Vital>(data), [data]);
 
@@ -1342,7 +1347,7 @@ function VitalsHistoryPanel({ patientId, admissionId }: { patientId: string; adm
                   <td className="py-1.5 pr-2">
                     {v.bloodPressureSystolic != null ? `${v.bloodPressureSystolic}/${v.bloodPressureDiastolic ?? '-'}` : '–'}
                   </td>
-                  <td className="py-1.5 pr-2">{v.temperature ?? '–'}</td>
+                  <td className="py-1.5 pr-2">{temperatureValue(v.temperature, tempUnit, '–')}</td>
                   <td className="py-1.5 pr-2">{v.pulseRate ?? v.heartRate ?? '–'}</td>
                   <td className="py-1.5 pr-2">{v.respiratoryRate ?? '–'}</td>
                   <td className="py-1.5 pr-2">{v.oxygenSaturation ?? '–'}</td>

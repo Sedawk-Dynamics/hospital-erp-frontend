@@ -11,14 +11,16 @@ import { DataTable, Column } from '@/components/shared/data-table';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { useDebounce } from '@/hooks/use-debounce';
 import apiClient from '@/lib/api-client';
+import { formatTemperature } from '@/lib/vitals-temperature';
+import { useTemperatureUnit } from '@/stores/temperature-unit-store';
 
 interface VitalRecord {
   id: string;
   patientId: string;
   patient: { id: string; mrn: string; firstName: string; lastName: string };
   visitId?: string;
+  /** Always Celsius — the display unit is the reader's preference. */
   temperature?: number;
-  temperatureUnit?: string;
   bloodPressureSystolic?: number;
   bloodPressureDiastolic?: number;
   heartRate?: number;
@@ -37,6 +39,7 @@ interface VitalRecord {
 }
 
 export default function VitalsPage() {
+  const [tempUnit] = useTemperatureUnit();
   const router = useRouter();
   const [vitals, setVitals] = useState<VitalRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -107,9 +110,10 @@ export default function VitalsPage() {
     {
       key: 'temperature',
       label: 'Temp',
-      render: (vital) => vital.temperature
-        ? `${vital.temperature}${vital.temperatureUnit === 'celsius' ? '°C' : '°F'}`
-        : '-',
+      // There is no `temperatureUnit` column on the record — the stored value
+      // is always Celsius — so the old branch never matched and every reading
+      // was labelled °F. Converted to whichever unit the reader prefers.
+      render: (vital) => formatTemperature(vital.temperature, tempUnit, '-'),
     },
     {
       key: 'bloodPressure',

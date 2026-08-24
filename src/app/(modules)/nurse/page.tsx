@@ -63,6 +63,8 @@ import {
 } from '@/hooks/use-nurse-assignments';
 import { useActiveRoster } from '@/hooks/use-duty-rosters';
 import { useAuthStore } from '@/stores/auth-store';
+import { formatTemperature } from '@/lib/vitals-temperature';
+import { useTemperatureUnitStore } from '@/stores/temperature-unit-store';
 
 // ── Shift Detection ───────────────────────────────────────
 //
@@ -127,8 +129,15 @@ function detectAbnormalities(v: Vital): VitalAlert[] {
   const hr = v.heartRate ?? v.pulseRate;
   if (hr != null && hr > 100) alerts.push({ kind: 'hr_high', label: `HR ${hr}` });
   else if (hr != null && hr < 60) alerts.push({ kind: 'hr_low', label: `HR ${hr}` });
-  if (v.temperature != null && v.temperature >= 38) alerts.push({ kind: 'temp_high', label: `Temp ${v.temperature}°C` });
-  else if (v.temperature != null && v.temperature < 35) alerts.push({ kind: 'temp_low', label: `Temp ${v.temperature}°C` });
+  // Thresholds stay Celsius (that is what is stored); only the label is shown
+  // in the reader's unit. Read straight off the store because this is a plain
+  // helper, not a component — no hook to call.
+  const tempUnit = useTemperatureUnitStore.getState().unit;
+  if (v.temperature != null && v.temperature >= 38) {
+    alerts.push({ kind: 'temp_high', label: `Temp ${formatTemperature(v.temperature, tempUnit)}` });
+  } else if (v.temperature != null && v.temperature < 35) {
+    alerts.push({ kind: 'temp_low', label: `Temp ${formatTemperature(v.temperature, tempUnit)}` });
+  }
   if (v.respiratoryRate != null && (v.respiratoryRate > 20 || v.respiratoryRate < 12)) {
     alerts.push({ kind: 'rr_abnormal', label: `RR ${v.respiratoryRate}` });
   }

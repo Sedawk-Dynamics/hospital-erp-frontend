@@ -11,6 +11,8 @@ import {
 } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { useVitalHistory, type Vital } from '@/hooks/use-vital-history';
+import { formatTemperature, temperatureIn, temperatureUnitLabel, temperatureValue } from '@/lib/vitals-temperature';
+import { useTemperatureUnit } from '@/stores/temperature-unit-store';
 
 interface Props {
   open: boolean;
@@ -55,6 +57,7 @@ export function VitalsHistoryDrawer({ open, onOpenChange, vitalId }: Props) {
 }
 
 function HistoryRow({ vital, isLatest }: { vital: Vital; isLatest: boolean }) {
+  const [tempUnit] = useTemperatureUnit();
   const when = format(parseISO(vital.recordedAt), 'dd/MM/yyyy HH:mm');
   const who = vital.recorder
     ? `${vital.recorder.firstName} ${vital.recorder.lastName ?? ''}`
@@ -103,7 +106,7 @@ function HistoryRow({ vital, isLatest }: { vital: Vital; isLatest: boolean }) {
       <div className={`grid grid-cols-3 gap-2 text-xs ${!isLatest ? 'opacity-70' : ''}`}>
         <Cell label="BP" value={bp(vital)} />
         <Cell label="Pulse" value={vital.pulseRate ?? '—'} />
-        <Cell label="Temp (°C)" value={vital.temperature ?? '—'} />
+        <Cell label={`Temp (${temperatureUnitLabel(tempUnit)})`} value={temperatureValue(vital.temperature, tempUnit)} />
         <Cell label="RR" value={vital.respiratoryRate ?? '—'} />
         <Cell label="SpO2 (%)" value={vital.oxygenSaturation ?? '—'} />
         <Cell label="Blood sugar" value={vital.bloodSugar ?? '—'} />

@@ -23,6 +23,8 @@ import {
   usePrescriptions,
   useProgressNotes,
 } from '@/hooks/use-doctor';
+import { formatTemperature } from '@/lib/vitals-temperature';
+import { useTemperatureUnit } from '@/stores/temperature-unit-store';
 
 const registryTabs = [
   'Demographics',
@@ -271,6 +273,7 @@ function PatientProfileDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const { data: patient, isLoading: patientLoading } = usePatientDetail(patientId);
+  const [tempUnit] = useTemperatureUnit();
   const { data: vitals } = usePatientVitals(patientId);
   const { data: diagnoses } = usePatientDiagnoses(patientId);
   const { data: prescriptionsData } = usePrescriptions({ patientId, limit: 10 });
@@ -338,7 +341,7 @@ function PatientProfileDialog({
                             </span>
                           </div>
                           <div className="grid grid-cols-3 gap-2 text-xs">
-                            {v.temperature && <span>Temp: {v.temperature} F</span>}
+                            {v.temperature != null && <span>Temp: {formatTemperature(v.temperature, tempUnit)}</span>}
                             {v.bloodPressureSystolic && <span>BP: {v.bloodPressureSystolic}/{v.bloodPressureDiastolic}</span>}
                             {v.heartRate && <span>HR: {v.heartRate} bpm</span>}
                             {v.respiratoryRate && <span>RR: {v.respiratoryRate}/min</span>}

@@ -20,6 +20,8 @@ import {
   toCelsius,
   type TempUnit,
 } from '@/lib/vitals-temperature';
+import { useTemperatureUnit } from '@/stores/temperature-unit-store';
+import { formatTemperature, temperatureUnitLabel, temperatureValue } from '@/lib/vitals-temperature';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
@@ -115,7 +117,9 @@ export default function ClinicalChartingPage() {
   });
   // Same as the vitals screen: wards read temperature in °F as often as °C and
   // the server only accepts Celsius. Record in either; °C is what is stored.
-  const [tempUnit, setTempUnit] = useState<TempUnit>('C');
+  // The reader/recorder's own preference, remembered across screens and
+  // sessions — a ward that works in Fahrenheit set it once, not per dialog.
+  const [tempUnit, setTempUnit] = useTemperatureUnit();
 
   // Nursing notes tab
   const [activeNoteTab, setActiveNoteTab] = useState<NoteTabKey>('observation');
@@ -264,7 +268,9 @@ export default function ClinicalChartingPage() {
         `BP ${payload.bloodPressureSystolic ?? '?'}/${payload.bloodPressureDiastolic ?? '?'} mmHg`,
       );
     }
-    if (isValueAbnormal('temperature', payload.temperature)) abnormalSummary.push(`Temp ${payload.temperature}°C`);
+    // payload.temperature is Celsius whatever was typed; report it back in
+    // the unit the nurse is actually working in.
+    if (isValueAbnormal('temperature', payload.temperature)) abnormalSummary.push(`Temp ${formatTemperature(payload.temperature, tempUnit)}`);
     if (isValueAbnormal('pulseRate', payload.pulseRate)) abnormalSummary.push(`Pulse ${payload.pulseRate} bpm`);
     if (isValueAbnormal('oxygenSaturation', payload.oxygenSaturation)) abnormalSummary.push(`SpO₂ ${payload.oxygenSaturation}%`);
     if (isValueAbnormal('respiratoryRate', payload.respiratoryRate)) abnormalSummary.push(`RR ${payload.respiratoryRate}/min`);
@@ -609,9 +615,9 @@ export default function ClinicalChartingPage() {
                   },
                   {
                     label: 'Temp',
-                    value: latestVitals.temperature ?? '-',
+                    value: temperatureValue(latestVitals.temperature, tempUnit, '-'),
                     abnormal: isValueAbnormal('temperature', latestVitals.temperature),
-                    unit: '\u00b0C',
+                    unit: temperatureUnitLabel(tempUnit),
                   },
                   {
                     label: 'Pulse',
@@ -901,7 +907,7 @@ export default function ClinicalChartingPage() {
                                   : 'text-on-surface',
                               )}
                             >
-                              {v.temperature}
+                              {temperatureValue(v.temperature, tempUnit)}
                             </span>
                           ) : (
                             <span className="text-on-surface-variant/40">
