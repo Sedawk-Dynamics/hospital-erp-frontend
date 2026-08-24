@@ -55,6 +55,7 @@ import { StockTypeBadge } from '@/components/shared/stock-type-badge';
 import { formatTemperature, temperatureIn, temperatureUnitLabel, temperatureValue } from '@/lib/vitals-temperature';
 import { useTemperatureUnit } from '@/stores/temperature-unit-store';
 import { NurseIntakeComplaint } from '@/components/doctor/nurse-intake-complaint';
+import { VitalValue } from '@/components/shared/vital-value';
 
 /** Build the localStorage key where the consultation draft is stored. */
 export function getConsultationDraftKey(appointmentId: string, visitId?: string): string {
@@ -558,25 +559,50 @@ export function PrescriptionPad({
             >
               <div className="flex flex-wrap items-center gap-2">
                 {latestVital ? (
+                  // Chips rather than one joined string, so an out-of-range
+                  // reading can be marked. These are the numbers the doctor
+                  // reads while consulting; they were plain text.
                   [
-                    latestVital.bloodPressureSystolic && latestVital.bloodPressureDiastolic
-                      ? `BP ${latestVital.bloodPressureSystolic}/${latestVital.bloodPressureDiastolic}`
-                      : null,
-                    (latestVital.pulseRate ?? latestVital.heartRate)
-                      ? `Pulse ${latestVital.pulseRate ?? latestVital.heartRate}`
-                      : null,
-                    latestVital.temperature ? `Temp ${formatTemperature(latestVital.temperature, tempUnit)}` : null,
-                    latestVital.respiratoryRate ? `RR ${latestVital.respiratoryRate}` : null,
-                    latestVital.oxygenSaturation ? `SpO₂ ${latestVital.oxygenSaturation}%` : null,
-                    latestVital.bloodSugar ? `BGL ${latestVital.bloodSugar}` : null,
+                    latestVital.bloodPressureSystolic && latestVital.bloodPressureDiastolic ? (
+                      <span key="bp" className="inline-flex items-baseline gap-0.5">
+                        BP&nbsp;
+                        <VitalValue vitalKey="bloodPressureSystolic" value={latestVital.bloodPressureSystolic} />
+                        <span className="text-muted-foreground">/</span>
+                        <VitalValue vitalKey="bloodPressureDiastolic" value={latestVital.bloodPressureDiastolic} />
+                      </span>
+                    ) : null,
+                    (latestVital.pulseRate ?? latestVital.heartRate) ? (
+                      <span key="pulse">
+                        Pulse <VitalValue vitalKey="pulseRate" value={latestVital.pulseRate ?? latestVital.heartRate} />
+                      </span>
+                    ) : null,
+                    latestVital.temperature ? (
+                      <span key="temp">
+                        Temp <VitalValue vitalKey="temperature" value={latestVital.temperature} showUnit />
+                      </span>
+                    ) : null,
+                    latestVital.respiratoryRate ? (
+                      <span key="rr">
+                        RR <VitalValue vitalKey="respiratoryRate" value={latestVital.respiratoryRate} />
+                      </span>
+                    ) : null,
+                    latestVital.oxygenSaturation ? (
+                      <span key="spo2">
+                        SpO₂ <VitalValue vitalKey="oxygenSaturation" value={latestVital.oxygenSaturation} showUnit />
+                      </span>
+                    ) : null,
+                    // Blood sugar has no single adult normal worth asserting —
+                    // fasting and post-meal are judged differently — so it is
+                    // shown without a flag rather than flagged wrongly.
+                    latestVital.bloodSugar ? <span key="bgl">BGL {latestVital.bloodSugar}</span> : null,
                   ]
                     .filter(Boolean)
-                    .map((t) => (
+                    .map((chip, i) => (
                       <span
-                        key={t as string}
+                        key={i}
                         className="rounded-md bg-muted px-2 py-1 font-label text-xs font-semibold"
                       >
-                        {t}
+                        {chip}
                       </span>
                     ))
                 ) : (
