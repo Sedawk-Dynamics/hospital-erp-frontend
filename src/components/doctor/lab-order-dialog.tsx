@@ -290,8 +290,12 @@ export function LabOrderDialog({ open, onOpenChange, patientId, visitId }: LabOr
                   setShowDropdown(true);
                 }}
                 // Opens the list on focus even with an empty box — browsing the
-                // catalog is the point, not a fallback.
+                // catalog is the point, not a fallback. Also on CLICK, because
+                // adding a test closes the list while leaving the input
+                // focused: clicking it again then fires no focus event, and the
+                // list would never come back without clicking away first.
                 onFocus={() => setShowDropdown(true)}
+                onClick={() => setShowDropdown(true)}
                 onKeyDown={handleSearchKeyDown}
                 className="pl-8 text-sm"
               />
@@ -300,13 +304,34 @@ export function LabOrderDialog({ open, onOpenChange, patientId, visitId }: LabOr
               )}
             </div>
 
-            {/* The catalog: everything when the box is empty, matches when not. */}
-            {showDropdown && (visibleResults.length > 0 || (!isSearching && searchQuery.trim())) && (
+            {/* The catalog: everything when the box is empty, matches when not.
+                Opening this ALWAYS shows something once focused. It used to
+                render nothing at all when there was nothing to show, so a
+                doctor whose hospital had no catalog clicked the field, watched
+                nothing happen, and reported the search as broken — which is
+                indistinguishable from it being broken. */}
+            {showDropdown && (
               <div className="absolute z-50 mt-1 w-full rounded-lg border bg-popover shadow-lg max-h-64 overflow-y-auto">
-                {visibleResults.length === 0 && (
+                {isSearching && visibleResults.length === 0 && (
+                  <p className="flex items-center gap-2 px-3 py-3 text-sm text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Loading your hospital’s tests…
+                  </p>
+                )}
+                {!isSearching && visibleResults.length === 0 && searchQuery.trim() && (
                   <p className="px-3 py-3 text-sm text-muted-foreground">
                     No test matches “{searchQuery.trim()}”. It may not be in your hospital’s lab
                     catalog yet — an admin can add it under Laboratory settings.
+                  </p>
+                )}
+                {/* Nothing typed and nothing to list: the catalog itself is
+                    empty. That is a provisioning problem with a known fix, and
+                    saying so beats leaving the doctor to guess. */}
+                {!isSearching && visibleResults.length === 0 && !searchQuery.trim() && (
+                  <p className="px-3 py-3 text-sm text-muted-foreground">
+                    {selectedTests.length > 0
+                      ? 'Every test in your catalog is already on this order.'
+                      : 'Your hospital’s lab catalog is empty — an admin can add tests, or clone the standard set, under Laboratory settings.'}
                   </p>
                 )}
                 {visibleResults.map((test) => (

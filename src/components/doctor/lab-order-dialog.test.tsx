@@ -146,3 +146,49 @@ describe('the lab test picker', () => {
     });
   });
 });
+
+describe('when there is nothing to show', () => {
+  it('says the catalog is empty rather than rendering nothing', async () => {
+    // The failure this replaces: focusing the field with an unprovisioned
+    // catalog showed absolutely nothing, which reads as the search being
+    // broken. An empty catalog is a provisioning problem with a known fix.
+    mockGet.mockResolvedValue(reply([], 0));
+    renderDialog();
+
+    await userEvent.click(screen.getByPlaceholderText(/browse the catalog/i));
+
+    expect(await screen.findByText(/lab catalog is empty/i)).toBeInTheDocument();
+    expect(screen.getByText(/Laboratory settings/i)).toBeInTheDocument();
+  });
+
+  it('distinguishes an empty catalog from everything already added', async () => {
+    renderDialog();
+    const box = screen.getByPlaceholderText(/browse the catalog/i);
+
+    // Add every test in the catalog. Picked off the "+ Add" rows rather than by
+    // name, since a selected test also appears on screen as a chip.
+    for (let i = 0; i < CATALOG.length; i++) {
+      await userEvent.click(box);
+      const row = (await screen.findAllByRole('button')).find((b) =>
+        (b.textContent ?? '').includes('+ Add'),
+      );
+      if (!row) break;
+      await userEvent.click(row);
+    }
+
+    await userEvent.click(box);
+    expect(await screen.findByText(/already on this order/i)).toBeInTheDocument();
+  });
+
+  it('shows a loading state instead of a blank box while fetching', async () => {
+    let release: (v: unknown) => void = () => {};
+    mockGet.mockReturnValue(new Promise((r) => { release = r; }));
+    renderDialog();
+
+    await userEvent.click(screen.getByPlaceholderText(/browse the catalog/i));
+    expect(await screen.findByText(/Loading your hospital/i)).toBeInTheDocument();
+
+    release(reply(CATALOG));
+    expect(await screen.findByText('Liver Function Test')).toBeInTheDocument();
+  });
+});
