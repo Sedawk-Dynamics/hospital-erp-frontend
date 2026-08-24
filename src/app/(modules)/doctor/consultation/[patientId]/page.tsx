@@ -76,6 +76,7 @@ import { Sparkles, Plus, PencilLine, ClipboardList } from 'lucide-react';
 import { isValueAbnormal, vitalRangeText } from '@/lib/vitals-ranges';
 import { temperatureIn, temperatureUnitLabel, temperatureRangeText } from '@/lib/vitals-temperature';
 import { TemperatureUnitToggle } from '@/components/shared/temperature-unit-toggle';
+import { VitalValue } from '@/components/shared/vital-value';
 import { useTemperatureUnit } from '@/stores/temperature-unit-store';
 import { useNursingNotes, type NursingNote } from '@/hooks/use-nurse';
 import { VitalsCorrectionDialog } from '@/components/nurse-hierarchy/vitals-correction-dialog';
@@ -432,6 +433,10 @@ function VitalsSidebar({
   const rows = [
     {
       label: 'BP',
+      // BP is two readings in one row, so it keeps its own rendering — the
+      // shared cell prints a single value.
+      vitalKey: null as string | null,
+      raw: null as unknown,
       value:
         v.bloodPressureSystolic && v.bloodPressureDiastolic
           ? `${v.bloodPressureSystolic}/${v.bloodPressureDiastolic}`
@@ -443,6 +448,8 @@ function VitalsSidebar({
     },
     {
       label: 'Pulse',
+      vitalKey: 'pulseRate',
+      raw: v.pulseRate ?? v.heartRate ?? null,
       value: v.pulseRate ?? v.heartRate ?? null,
       unit: 'bpm',
       accent: 'text-tertiary',
@@ -454,6 +461,8 @@ function VitalsSidebar({
       // Stored Celsius, shown in the doctor's own unit. The abnormal test and
       // the range text stay keyed to Celsius thresholds, so a Fahrenheit
       // reader still gets the same flag and a range they can compare against.
+      vitalKey: 'temperature',
+      raw: v.temperature ?? null,
       value: temperatureIn(num(v.temperature) ?? null, tempUnit),
       unit: temperatureUnitLabel(tempUnit),
       accent: 'text-secondary',
@@ -462,6 +471,8 @@ function VitalsSidebar({
     },
     {
       label: 'SpO₂',
+      vitalKey: 'oxygenSaturation',
+      raw: v.oxygenSaturation ?? null,
       value: v.oxygenSaturation ?? null,
       unit: '%',
       accent: 'text-primary',
@@ -470,6 +481,8 @@ function VitalsSidebar({
     },
     {
       label: 'RR',
+      vitalKey: 'respiratoryRate',
+      raw: v.respiratoryRate ?? null,
       value: v.respiratoryRate ?? null,
       unit: '/min',
       accent: 'text-primary',
@@ -479,8 +492,8 @@ function VitalsSidebar({
     // Weight and blood sugar have no single adult normal range worth asserting
     // here — a fasting and a post-meal glucose are judged differently — so they
     // are shown without a flag rather than flagged wrongly.
-    { label: 'Weight', value: v.weightKg ?? v.weight ?? null, unit: 'kg', accent: 'text-secondary', abnormal: false, range: null },
-    { label: 'BGL', value: v.bloodSugar ?? null, unit: 'mg/dL', accent: 'text-error', abnormal: false, range: null },
+    { label: 'Weight', vitalKey: null, raw: null, value: v.weightKg ?? v.weight ?? null, unit: 'kg', accent: 'text-secondary', abnormal: false, range: null },
+    { label: 'BGL', vitalKey: null, raw: null, value: v.bloodSugar ?? null, unit: 'mg/dL', accent: 'text-error', abnormal: false, range: null },
   ].filter((t) => t.value !== null && t.value !== undefined && t.value !== '');
 
   const abnormalCount = rows.filter((r) => r.abnormal).length;
@@ -556,12 +569,19 @@ function VitalsSidebar({
                 {t.abnormal && <AlertTriangle className="h-3 w-3 text-error" />}
               </span>
               <span className="flex items-baseline gap-1">
-                <span
-                  className={cn('text-xs font-bold', t.abnormal ? 'text-error' : t.accent)}
-                  title={t.abnormal && t.range ? `Outside normal (${t.range})` : undefined}
-                >
-                  {String(t.value)}
-                </span>
+                {/* Through the shared cell so this reads identically to the MRD
+                    table, the trend table and the history drawer the doctor
+                    opens from here — including the direction flag. The accent
+                    colour is kept for a normal value; abnormal takes over. */}
+                {t.vitalKey ? (
+                  <VitalValue
+                    vitalKey={t.vitalKey}
+                    value={t.raw}
+                    className={cn('text-xs font-bold', !t.abnormal && t.accent)}
+                  />
+                ) : (
+                  <span className={cn('text-xs font-bold', t.accent)}>{String(t.value)}</span>
+                )}
                 <span className="text-[9px] text-muted-foreground">{t.unit}</span>
               </span>
             </li>
