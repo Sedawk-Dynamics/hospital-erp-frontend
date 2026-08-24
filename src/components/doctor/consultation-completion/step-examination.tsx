@@ -9,8 +9,11 @@ import { Plus, Trash2, Activity, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { useLatestVitals } from '@/hooks/use-nurse';
 import { RecordVitalsDialog } from '@/components/shared/record-vitals-dialog';
+import { NurseIntakeComplaint } from '@/components/doctor/nurse-intake-complaint';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
 import type { ConsultationFormData } from './consultation-completion-schema';
+import { temperatureIn, temperatureUnitLabel } from '@/lib/vitals-temperature';
+import { useTemperatureUnit } from '@/stores/temperature-unit-store';
 
 interface StepExaminationProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -22,7 +25,7 @@ interface StepExaminationProps {
 }
 
 export function StepExamination({ form, patientId, appointmentId, visitId }: StepExaminationProps) {
-  const { register, formState: { errors }, control } = form;
+  const { register, formState: { errors }, control, watch, setValue } = form;
 
   const { fields, append, remove } = useFieldArray({
     control,
@@ -46,6 +49,14 @@ export function StepExamination({ form, patientId, appointmentId, visitId }: Ste
         {errors.chiefComplaint && (
           <p className="text-xs text-error">{errors.chiefComplaint.message}</p>
         )}
+        {/* What nursing was told at the door. Read-only here — pressing "Use
+            this" copies it into the box above, which the doctor then rewrites
+            in their own words; the nurse's record is left as recorded. */}
+        <NurseIntakeComplaint
+          visitId={visitId}
+          currentValue={watch('chiefComplaint') ?? ''}
+          onUse={(text) => setValue('chiefComplaint', text, { shouldDirty: true })}
+        />
       </div>
 
       {/* ── Examination Notes ── */}
@@ -187,13 +198,15 @@ function VitalsPanel({
   // A reading needs an encounter to hang off; without one the backend can't
   // resolve a Visit, so hide the action rather than fail on submit.
   const canRecord = Boolean(patientId && (appointmentId || visitId));
+  const [tempUnit] = useTemperatureUnit();
 
   const tiles = v
     ? [
         {
           label: 'Temp',
-          value: v.temperature ?? null,
-          unit: '°C',
+          // Stored Celsius, shown in the clinician's chosen unit.
+          value: temperatureIn(v.temperature, tempUnit),
+          unit: temperatureUnitLabel(tempUnit),
         },
         {
           label: 'BP',

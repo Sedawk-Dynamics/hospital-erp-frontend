@@ -74,6 +74,9 @@ import { PatientAiAssistant } from '@/components/doctor/patient-ai-assistant';
 import { useAiStatus } from '@/hooks/use-ai';
 import { Sparkles, Plus, PencilLine, ClipboardList } from 'lucide-react';
 import { isValueAbnormal, vitalRangeText } from '@/lib/vitals-ranges';
+import { temperatureIn, temperatureUnitLabel, temperatureRangeText } from '@/lib/vitals-temperature';
+import { TemperatureUnitToggle } from '@/components/shared/temperature-unit-toggle';
+import { useTemperatureUnit } from '@/stores/temperature-unit-store';
 import { useNursingNotes, type NursingNote } from '@/hooks/use-nurse';
 import { VitalsCorrectionDialog } from '@/components/nurse-hierarchy/vitals-correction-dialog';
 import { VitalsHistoryDrawer } from '@/components/nurse-hierarchy/vitals-history-drawer';
@@ -323,6 +326,7 @@ function VitalsSidebar({
   visitId?: string | null;
 }) {
   const { data: latestResp, isLoading } = useLatestVitalsNurse(patientId);
+  const [tempUnit, setTempUnit] = useTemperatureUnit();
   const v = (latestResp as any)?.data ?? null;
   const [recordOpen, setRecordOpen] = useState(false);
   // Editing a nurse's reading must AMEND it, not quietly replace it. The
@@ -338,15 +342,26 @@ function VitalsSidebar({
   // off, so require an appointment or active visit.
   const canRecord = Boolean(patientId && (appointmentId || visitId));
 
-  const recordButton = canRecord ? (
-    <button
-      type="button"
-      onClick={() => setRecordOpen(true)}
-      className="inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-primary hover:bg-primary/10"
-    >
-      <Plus className="h-3 w-3" /> Record
-    </button>
-  ) : null;
+  // The unit switch sits where the temperature is READ, not only where it is
+  // entered. Wards here work in Fahrenheit and the doctor had no way to see
+  // one: the toggle existed on the nurse's entry form and nowhere else, so
+  // every reading reached the doctor as Celsius. The choice is remembered, so
+  // it is set once rather than on every patient.
+  const cardActions = (
+    <span className="inline-flex items-center gap-1.5">
+      <TemperatureUnitToggle value={tempUnit} onChange={setTempUnit} />
+      {canRecord && (
+        <button
+          type="button"
+          onClick={() => setRecordOpen(true)}
+          className="inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-primary hover:bg-primary/10"
+        >
+          <Plus className="h-3 w-3" /> Record
+        </button>
+      )}
+    </span>
+  );
+  const recordButton = cardActions;
 
   const dialog = (
     <>
@@ -436,11 +451,14 @@ function VitalsSidebar({
     },
     {
       label: 'Temp',
-      value: v.temperature ?? null,
-      unit: '°C',
+      // Stored Celsius, shown in the doctor's own unit. The abnormal test and
+      // the range text stay keyed to Celsius thresholds, so a Fahrenheit
+      // reader still gets the same flag and a range they can compare against.
+      value: temperatureIn(num(v.temperature) ?? null, tempUnit),
+      unit: temperatureUnitLabel(tempUnit),
       accent: 'text-secondary',
       abnormal: isValueAbnormal('temperature', num(v.temperature)),
-      range: vitalRangeText('temperature'),
+      range: temperatureRangeText(35, 38, tempUnit),
     },
     {
       label: 'SpO₂',
@@ -1209,6 +1227,7 @@ export default function PatientConsultationPage({
                       patientGender={patient.gender}
                       patientPhone={patient.phone}
                       appointmentId={appointmentId || ''}
+                      visitId={activeVisitId}
                       doctorProfileId={appointment?.doctorId || ''}
                       doctorUserId={appointment?.doctor?.userId || ''}
                       onComplete={() => {

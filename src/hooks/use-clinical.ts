@@ -64,6 +64,8 @@ export interface Visit {
   nurseChiefComplaint?: string | null;
   nurseChiefComplaintById?: string | null;
   nurseChiefComplaintAt?: string | null;
+  /** Resolved by the API — `nurseChiefComplaintById` is a bare FK with no relation. */
+  nurseChiefComplaintBy?: { id: string; firstName: string; lastName: string | null } | null;
   status: string;
   notes?: string;
   createdAt: string;

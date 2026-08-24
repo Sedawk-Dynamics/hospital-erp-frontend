@@ -52,6 +52,9 @@ import { PhysicalObservationsPicker } from '../physical-observations-picker';
 import { SmartSuggestionsCard } from '../smart-suggestions-card';
 import { QtyCell } from '../prescription-qty-cell';
 import { StockTypeBadge } from '@/components/shared/stock-type-badge';
+import { formatTemperature, temperatureIn, temperatureUnitLabel, temperatureValue } from '@/lib/vitals-temperature';
+import { useTemperatureUnit } from '@/stores/temperature-unit-store';
+import { NurseIntakeComplaint } from '@/components/doctor/nurse-intake-complaint';
 
 /** Build the localStorage key where the consultation draft is stored. */
 export function getConsultationDraftKey(appointmentId: string, visitId?: string): string {
@@ -75,6 +78,8 @@ interface PrescriptionPadProps {
   patientGender?: string;
   patientPhone?: string;
   appointmentId: string;
+  /** This encounter's visit, when one is open — carries the nurse's intake complaint. */
+  visitId?: string | null;
   doctorProfileId: string;
   doctorUserId: string;
   onComplete?: () => void;
@@ -98,6 +103,7 @@ export function PrescriptionPad({
   patientGender,
   patientPhone,
   appointmentId,
+  visitId,
   doctorProfileId,
   doctorUserId,
   onComplete,
@@ -106,6 +112,7 @@ export function PrescriptionPad({
   initialValues,
   editMode,
 }: PrescriptionPadProps) {
+  const [tempUnit] = useTemperatureUnit();
   // Draft key — persists in-progress form state across navigation so the
   // doctor doesn't lose work when they hit Back or accidentally unmount.
   const draftKey = useMemo(
@@ -510,6 +517,15 @@ export function PrescriptionPad({
                 </div>
               }
             >
+              {/* What the nurse was told at intake. Sits ABOVE the box so the
+                  doctor reads it before writing their own framing. "Use this"
+                  copies it in to be rewritten; the nurse's record is untouched. */}
+              <NurseIntakeComplaint
+                visitId={visitId ?? editMode?.visitId}
+                currentValue={watch('chiefComplaint') ?? ''}
+                onUse={(text) => setValue('chiefComplaint', text, { shouldDirty: true })}
+                className="mb-2"
+              />
               <textarea
                 {...register('chiefComplaint')}
                 placeholder="e.g. Fever × 3 days, dry cough, fatigue · chronology, severity, related history…"
@@ -549,7 +565,7 @@ export function PrescriptionPad({
                     (latestVital.pulseRate ?? latestVital.heartRate)
                       ? `Pulse ${latestVital.pulseRate ?? latestVital.heartRate}`
                       : null,
-                    latestVital.temperature ? `Temp ${latestVital.temperature}°C` : null,
+                    latestVital.temperature ? `Temp ${formatTemperature(latestVital.temperature, tempUnit)}` : null,
                     latestVital.respiratoryRate ? `RR ${latestVital.respiratoryRate}` : null,
                     latestVital.oxygenSaturation ? `SpO₂ ${latestVital.oxygenSaturation}%` : null,
                     latestVital.bloodSugar ? `BGL ${latestVital.bloodSugar}` : null,
@@ -779,7 +795,7 @@ export function PrescriptionPad({
                       parts.push(`BP ${v.bloodPressureSystolic}/${v.bloodPressureDiastolic}`);
                     const hr = v.pulseRate ?? v.heartRate;
                     if (hr) parts.push(`HR ${hr}`);
-                    if (v.temperature) parts.push(`T ${v.temperature}`);
+                    if (v.temperature) parts.push(`T ${formatTemperature(v.temperature, tempUnit)}`);
                     if (v.respiratoryRate) parts.push(`RR ${v.respiratoryRate}`);
                     if (v.oxygenSaturation) parts.push(`SpO2 ${v.oxygenSaturation}%`);
                     return parts.join(' · ') || undefined;
