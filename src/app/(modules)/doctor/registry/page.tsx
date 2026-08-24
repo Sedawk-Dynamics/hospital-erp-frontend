@@ -25,6 +25,7 @@ import {
 } from '@/hooks/use-doctor';
 import { formatTemperature } from '@/lib/vitals-temperature';
 import { useTemperatureUnit } from '@/stores/temperature-unit-store';
+import { VitalValue } from '@/components/shared/vital-value';
 
 const registryTabs = [
   'Demographics',
@@ -341,11 +342,26 @@ function PatientProfileDialog({
                             </span>
                           </div>
                           <div className="grid grid-cols-3 gap-2 text-xs">
-                            {v.temperature != null && <span>Temp: {formatTemperature(v.temperature, tempUnit)}</span>}
-                            {v.bloodPressureSystolic && <span>BP: {v.bloodPressureSystolic}/{v.bloodPressureDiastolic}</span>}
-                            {v.heartRate && <span>HR: {v.heartRate} bpm</span>}
-                            {v.respiratoryRate && <span>RR: {v.respiratoryRate}/min</span>}
-                            {v.oxygenSaturation && <span>SpO2: {v.oxygenSaturation}%</span>}
+                            {v.temperature != null && (
+                              <span>Temp: <VitalValue vitalKey="temperature" value={v.temperature} showUnit /></span>
+                            )}
+                            {v.bloodPressureSystolic && (
+                              <span className="inline-flex items-baseline gap-0.5">
+                                BP:&nbsp;
+                                <VitalValue vitalKey="bloodPressureSystolic" value={v.bloodPressureSystolic} />
+                                <span className="text-muted-foreground">/</span>
+                                <VitalValue vitalKey="bloodPressureDiastolic" value={v.bloodPressureDiastolic} />
+                              </span>
+                            )}
+                            {v.heartRate && (
+                              <span>HR: <VitalValue vitalKey="pulseRate" value={v.heartRate} showUnit /></span>
+                            )}
+                            {v.respiratoryRate && (
+                              <span>RR: <VitalValue vitalKey="respiratoryRate" value={v.respiratoryRate} showUnit /></span>
+                            )}
+                            {v.oxygenSaturation && (
+                              <span>SpO2: <VitalValue vitalKey="oxygenSaturation" value={v.oxygenSaturation} showUnit /></span>
+                            )}
                             {v.weight && <span>Wt: {v.weight} kg</span>}
                           </div>
                         </div>

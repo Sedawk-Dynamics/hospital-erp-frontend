@@ -13,6 +13,7 @@ import { useDebounce } from '@/hooks/use-debounce';
 import apiClient from '@/lib/api-client';
 import { formatTemperature } from '@/lib/vitals-temperature';
 import { useTemperatureUnit } from '@/stores/temperature-unit-store';
+import { VitalValue } from '@/components/shared/vital-value';
 
 interface VitalRecord {
   id: string;
@@ -113,7 +114,7 @@ export default function VitalsPage() {
       // There is no `temperatureUnit` column on the record — the stored value
       // is always Celsius — so the old branch never matched and every reading
       // was labelled °F. Converted to whichever unit the reader prefers.
-      render: (vital) => formatTemperature(vital.temperature, tempUnit, '-'),
+      render: (vital) => <VitalValue vitalKey="temperature" value={vital.temperature} fallback="-" showUnit />,
     },
     {
       key: 'bloodPressure',

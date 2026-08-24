@@ -36,6 +36,7 @@ import {
 } from '@/hooks/use-doctor';
 import { formatTemperature, temperatureIn, temperatureUnitLabel, temperatureValue } from '@/lib/vitals-temperature';
 import { useTemperatureUnit } from '@/stores/temperature-unit-store';
+import { VitalValue } from '@/components/shared/vital-value';
 
 export default function DoctorMRDPage() {
   const { user } = useAuthStore();
@@ -488,10 +489,26 @@ function MedicalRecordDialog({
                           {vitals.map((v) => (
                             <tr key={v.id} className="border-b">
                               <td className="px-3 py-2">{formatDateTime(v.createdAt)}</td>
-                              <td className="px-3 py-2">{formatTemperature(v.temperature, tempUnit, '-')}</td>
-                              <td className="px-3 py-2">{v.bloodPressureSystolic ? `${v.bloodPressureSystolic}/${v.bloodPressureDiastolic}` : '-'}</td>
-                              <td className="px-3 py-2">{v.heartRate || '-'}</td>
-                              <td className="px-3 py-2">{v.oxygenSaturation ? `${v.oxygenSaturation}%` : '-'}</td>
+                              <td className="px-3 py-2">
+                                <VitalValue vitalKey="temperature" value={v.temperature} fallback="-" showUnit />
+                              </td>
+                              <td className="px-3 py-2">
+                                {v.bloodPressureSystolic ? (
+                                  <span className="inline-flex items-baseline gap-0.5">
+                                    <VitalValue vitalKey="bloodPressureSystolic" value={v.bloodPressureSystolic} fallback="-" />
+                                    <span className="text-muted-foreground">/</span>
+                                    <VitalValue vitalKey="bloodPressureDiastolic" value={v.bloodPressureDiastolic} fallback="-" />
+                                  </span>
+                                ) : (
+                                  '-'
+                                )}
+                              </td>
+                              <td className="px-3 py-2">
+                                <VitalValue vitalKey="pulseRate" value={v.heartRate} fallback="-" />
+                              </td>
+                              <td className="px-3 py-2">
+                                <VitalValue vitalKey="oxygenSaturation" value={v.oxygenSaturation} fallback="-" showUnit />
+                              </td>
                               <td className="px-3 py-2">{v.weight ? `${v.weight} kg` : '-'}</td>
                             </tr>
                           ))}
