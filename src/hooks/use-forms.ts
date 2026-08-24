@@ -11,6 +11,7 @@ export type FormFieldType =
   | 'text'
   | 'textarea'
   | 'number'
+  | 'number_unit'
   | 'date'
   | 'datetime'
   | 'time'
@@ -74,6 +75,20 @@ export interface TextDurationValue {
   duration: number | null;
   unit: DurationUnit | string;
 }
+
+/**
+ * Units offered by the `number_unit` picker. A short, curated clinical list —
+ * not the lab catalogue, which is built for assay results (µmol/L, 10^3/µL)
+ * and carries none of kg / cm / bpm. The picker is a suggestion, not a
+ * restriction: anything else can still be typed, which is what keeps an
+ * unusual unit possible while stopping kg / Kg / kgs drifting across forms.
+ */
+export const COMMON_FIELD_UNITS: { group: string; units: string[] }[] = [
+  { group: 'Body', units: ['kg', 'g', 'lb', 'cm', 'm', 'in', 'kg/m²'] },
+  { group: 'Vitals', units: ['°C', '°F', 'bpm', 'mmHg', '/min', 'breaths/min', '%'] },
+  { group: 'Fluids & dose', units: ['mL', 'L', 'mL/hr', 'mL/kg/hr', 'mg', 'mcg', 'g', 'units', 'drops/min'] },
+  { group: 'Other', units: ['score', 'episodes', 'days', 'hours', 'mmol/L', 'mg/dL'] },
+];
 
 /** Stored shape of a `number_date` answer. */
 export interface NumberDateValue {

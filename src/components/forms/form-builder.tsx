@@ -24,6 +24,7 @@ import {
   Eye,
   Hash,
   Layers,
+  Ruler,
   ListChecks,
   Minus,
   Plus,
@@ -49,6 +50,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import {
+  COMMON_FIELD_UNITS,
   DURATION_UNITS,
   FORM_CATEGORIES,
   PATIENT_AUTOFILL_FIELDS,
@@ -83,6 +85,11 @@ const FIELD_PALETTE: { type: FormFieldType; label: string; Icon: React.Component
   { type: 'text', label: 'Text', Icon: Type },
   { type: 'textarea', label: 'Textarea', Icon: AlignLeft },
   { type: 'number', label: 'Number', Icon: Hash },
+  // The measurement counterpart of Number. It exists as its own palette entry
+  // because the unit was previously only a property of Number — invisible
+  // unless you already knew to look for it, so every field built by hand came
+  // out unitless while the seeded templates were full of mL and mmHg.
+  { type: 'number_unit', label: 'Numeric + unit', Icon: Ruler },
   { type: 'date', label: 'Date', Icon: Calendar },
   { type: 'datetime', label: 'Date & time', Icon: CalendarClock },
   { type: 'time', label: 'Time only', Icon: Clock },
@@ -96,6 +103,9 @@ const FIELD_PALETTE: { type: FormFieldType; label: string; Icon: React.Component
   { type: 'section', label: 'Section', Icon: Layers },
   { type: 'divider', label: 'Divider', Icon: Minus },
 ];
+
+/** One datalist shared by every unit input in the builder. */
+const UNIT_DATALIST_ID = 'form-builder-common-units';
 
 function defaultFieldFor(type: FormFieldType, existingKeys: Set<string>): FormField {
   const baseKey = type === 'section' ? 'section' : type === 'divider' ? 'divider' : type;
@@ -120,6 +130,11 @@ function defaultFieldFor(type: FormFieldType, existingKeys: Set<string>): FormFi
       return { ...base, type, options: [{ value: 'option_1', label: 'Option 1' }] };
     case 'number':
       return { ...base, type, step: 1 };
+    // Seeded with the commonest clinical unit rather than blank: the unit is
+    // required, so an empty one is a save error waiting to happen, and a
+    // wrong-but-present default is one click to correct.
+    case 'number_unit':
+      return { ...base, type, step: 1, unit: 'kg' };
     case 'number_date':
       return { ...base, type, step: 1, dateLabel: 'on' };
     case 'yesno':
@@ -546,7 +561,7 @@ function PropertyEditor({
         </>
       )}
 
-      {(field.type === 'text' || field.type === 'textarea' || field.type === 'select' || field.type === 'number' || field.type === 'text_duration' || field.type === 'number_date') && (
+      {(field.type === 'text' || field.type === 'textarea' || field.type === 'select' || field.type === 'number' || field.type === 'number_unit' || field.type === 'text_duration' || field.type === 'number_date') && (
         <div>
           <Label className="text-xs font-medium">Placeholder</Label>
           <Input
@@ -557,7 +572,7 @@ function PropertyEditor({
         </div>
       )}
 
-      {(field.type === 'number' || field.type === 'number_date') && (
+      {(field.type === 'number' || field.type === 'number_unit' || field.type === 'number_date') && (
         <div className="grid grid-cols-3 gap-2">
           <div>
             <Label className="text-[10px] font-medium">Min</Label>
@@ -602,19 +617,37 @@ function PropertyEditor({
         </div>
       )}
 
-      {/* The unit shown beside the label — "Weight (kg)". The schema and the
-          renderer have always supported this; there was simply no way to set
-          it, so every numeric field came out unitless. */}
-      {(field.type === 'number' || field.type === 'number_date') && (
+      {/* The unit shown beside the label — "Weight (kg)". Required on a
+          `number_unit` field (a measurement with no unit is an authoring
+          mistake) and optional on the other two, where the templates already
+          on file rely on it. The datalist suggests the common clinical units
+          without restricting to them: an unusual unit still has to be
+          typeable, but suggesting them is what stops kg / Kg / kgs drifting
+          apart across forms. */}
+      {(field.type === 'number' || field.type === 'number_unit' || field.type === 'number_date') && (
         <div>
-          <Label className="text-xs font-medium">Unit</Label>
+          <Label className="text-xs font-medium">
+            Unit
+            {field.type === 'number_unit' && <span className="ml-0.5 text-destructive">*</span>}
+          </Label>
           <Input
             className="mt-1"
+            list={UNIT_DATALIST_ID}
             placeholder="kg, mmHg, mL…"
             maxLength={20}
             value={field.unit ?? ''}
             onChange={(e) => onChange({ unit: e.target.value || null })}
           />
+          <datalist id={UNIT_DATALIST_ID}>
+            {COMMON_FIELD_UNITS.flatMap((g) =>
+              g.units.map((u) => <option key={`${g.group}-${u}`} value={u} label={g.group} />),
+            )}
+          </datalist>
+          {field.type === 'number_unit' && !field.unit?.trim() && (
+            <p className="text-[10px] text-destructive mt-1">
+              Pick or type a unit — a measurement field cannot be saved without one.
+            </p>
+          )}
         </div>
       )}
 

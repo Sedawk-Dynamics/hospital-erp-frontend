@@ -56,6 +56,7 @@ function renderValue(field: FormField, raw: unknown): React.ReactNode {
       return Number.isNaN(d.getTime()) ? String(raw) : d.toLocaleString();
     }
     case 'number':
+    case 'number_unit':
       return (
         <span>
           {String(raw)}

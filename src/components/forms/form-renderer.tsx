@@ -221,7 +221,7 @@ export function FormRenderer({
         e[f.key] = `${f.label} is required`;
         continue;
       }
-      if (f.type === 'number' && v !== null && v !== '') {
+      if ((f.type === 'number' || f.type === 'number_unit') && v !== null && v !== '') {
         const n = typeof v === 'number' ? v : Number(v);
         if (!Number.isFinite(n)) {
           e[f.key] = 'Must be a number';
@@ -301,7 +301,11 @@ export function FormRenderer({
                 />
               );
               break;
+            // A measurement renders exactly as a number — the unit is already
+            // shown beside the label by `labelEl`, which reads field.unit for
+            // every numeric type.
             case 'number':
+            case 'number_unit':
               control = (
                 <Input
                   type="number"
