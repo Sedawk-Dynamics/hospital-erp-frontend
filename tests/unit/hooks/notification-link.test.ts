@@ -240,3 +240,25 @@ describe('notificationLink — the notifications that were never sent before', (
     }
   });
 });
+
+describe('notificationLink — the nightly insurance job', () => {
+  const INSURANCE = ['insurance_staff'];
+
+  // The job emits three types; only the claim one was mapped, so policy and
+  // pre-auth expiry notices arrived in the bell and went nowhere when clicked.
+  it('opens the policies list for an expiring policy', () => {
+    expect(notificationLink(n('insurance_policy', 'pol-1'), INSURANCE)).toBe('/insurance/policies');
+  });
+
+  it('opens the pre-auth list for an expiring pre-authorisation', () => {
+    expect(notificationLink(n('pre_authorization_request', 'pa-1'), INSURANCE)).toBe(
+      '/insurance/pre-auth',
+    );
+  });
+
+  it('leaves nothing the job emits unmapped', () => {
+    for (const t of ['insurance_claim', 'insurance_policy', 'pre_authorization_request']) {
+      expect(notificationLink(n(t, 'x'), INSURANCE)).not.toBeNull();
+    }
+  });
+});

@@ -203,6 +203,16 @@ export function notificationLink(n: AppNotification, roles?: string[]): string |
     // and chasing a TPA starts on that claim, not a list of all of them.
     case 'insurance_claim':
       return ref ? `/insurance/claims/${ref}` : '/insurance/claims';
+    // The same nightly job also warns on policies and pre-authorisations
+    // approaching their validity date. Both were emitted and neither was
+    // mapped, so those notices arrived in the bell and went nowhere when
+    // clicked — the exact failure that made the radiology report notice look
+    // like it had never been sent. Neither has an :id route, so they land on
+    // the list, the way lab reports already do.
+    case 'insurance_policy':
+      return '/insurance/policies';
+    case 'pre_authorization_request':
+      return '/insurance/pre-auth';
 
     // ── Appointments ───────────────────────────────────────────────────
     // A patient booked or cancelled in the portal. Goes to the doctor whose
