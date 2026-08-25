@@ -6,6 +6,8 @@ import { Folder, Upload, Trash2, FileText, Download } from 'lucide-react';
 import { apiGet, apiDelete } from '@/lib/api';
 import apiClient from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
+import { getApiErrorMessage } from '@/lib/utils';
 
 interface DocumentEntry {
   id: string;
@@ -68,6 +70,10 @@ export default function MyDocumentsPage() {
       await apiDelete(`/patient-portal/documents/${id}`);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['patient', 'documents'] }),
+    // Upload already reports failure inline (`uploadErrorMsg`); delete said
+    // nothing at all, so a refused delete left the document on screen looking
+    // like the click had missed.
+    onError: (err) => toast.error(getApiErrorMessage(err) || 'Could not delete that document'),
   });
 
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {

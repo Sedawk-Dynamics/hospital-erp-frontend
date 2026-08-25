@@ -6,6 +6,8 @@ import { Heart, Users, AlertTriangle, Plus, Trash2, Save } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
+import { getApiErrorMessage } from '@/lib/utils';
 
 // The doctor and nurse write these same rows from the hospital side, so the
 // app-wide 60s staleTime / no-refetch-on-focus defaults would leave a patient
@@ -192,6 +194,10 @@ function PersonalTab() {
       qc.invalidateQueries({ queryKey: ['patient', 'personal-history'] });
       setForm({});
     },
+    // Without this the failure was invisible AND the typed values stayed on
+    // screen — `setForm({})` only runs on success and the fields render
+    // `{...data, ...form}`, so a rejected save looked exactly like a saved one.
+    onError: (err) => toast.error(getApiErrorMessage(err) || 'Could not save your history'),
   });
 
   const valueOf = (field: keyof PersonalHistory) =>
@@ -272,6 +278,7 @@ function FamilyTab() {
       qc.invalidateQueries({ queryKey: ['patient', 'family-history'] });
       setDraft({ relationSide: 'maternal' });
     },
+    onError: (err) => toast.error(getApiErrorMessage(err) || 'Could not add that family history'),
   });
 
   const remove = useMutation({
@@ -279,6 +286,7 @@ function FamilyTab() {
       await apiDelete(`/patient-portal/medical-history/family/${id}`);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['patient', 'family-history'] }),
+    onError: (err) => toast.error(getApiErrorMessage(err) || 'Could not remove that entry'),
   });
 
   const entries = data ?? [];
@@ -419,6 +427,9 @@ function AllergiesTab() {
       qc.invalidateQueries({ queryKey: ['patient', 'allergies'] });
       setDraft({ allergyType: 'drug', severity: 'mild' });
     },
+    // An allergy the patient believes is recorded but is not is the worst of
+    // these to lose quietly — it feeds the prescribing safety check.
+    onError: (err) => toast.error(getApiErrorMessage(err) || 'Could not record that allergy'),
   });
 
   const remove = useMutation({
@@ -426,6 +437,7 @@ function AllergiesTab() {
       await apiDelete(`/patient-portal/medical-history/allergies/${id}`);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['patient', 'allergies'] }),
+    onError: (err) => toast.error(getApiErrorMessage(err) || 'Could not remove that allergy'),
   });
 
   const entries = data ?? [];

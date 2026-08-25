@@ -8,6 +8,8 @@ import { usePatientProfileStore } from '@/stores/patient-profile-store';
 import { cn } from '@/lib/utils';
 import { formatDate, formatTime24, getCurrentISTDate, toInputDateStr } from '@/lib/date-utils';
 import Link from 'next/link';
+import { toast } from 'sonner';
+import { getApiErrorMessage } from '@/lib/utils';
 
 interface PatientAppointment {
   id: string;
@@ -94,7 +96,12 @@ export default function PatientAppointmentsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['patient', 'appointments'] });
+      toast.success('Appointment cancelled');
     },
+    // A cancellation that silently fails is the worst of these: the patient
+    // believes they have cancelled and does not turn up, while the slot stays
+    // booked and the desk is still expecting them.
+    onError: (err) => toast.error(getApiErrorMessage(err) || 'Could not cancel that appointment'),
   });
 
   const appointments = useMemo(() => {
