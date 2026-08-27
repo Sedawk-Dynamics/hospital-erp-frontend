@@ -2563,6 +2563,14 @@ export interface ControlledRegister {
     inward: number;
     outward: number;
     internalTransfer: number;
+    /**
+     * The part of internalTransfer that actually left the pharmacy's
+     * dispensable stock. A stock-transfer dispatch decrements the batch, so it
+     * counts; a historical NDPS challan only moved between NDPS locations, so
+     * it does not. Without the distinction the opening balance came out
+     * negative.
+     */
+    transferredOut?: number;
     closingBalance: number;
   };
   drugs: Array<{ id: string; drugName: string; schedule: DrugSchedule | null }>;

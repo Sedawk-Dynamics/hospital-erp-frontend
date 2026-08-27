@@ -434,13 +434,16 @@ export default function ControlledRegisterPage() {
         {s && (
           <p className="text-xs text-muted-foreground">
             <span className="font-medium text-foreground tabular-nums">
-              {s.openingStock} + {s.inward} − {s.outward} = {s.closingBalance}
+              {s.openingStock} + {s.inward} − {s.outward}
+              {(s.transferredOut ?? 0) > 0 ? ` − ${s.transferredOut}` : ''} = {s.closingBalance}
             </span>
             {s.internalTransfer > 0 && (
               <>
-                {' '}· internal transfers ({s.internalTransfer}) move stock between the vault and its
-                sub-stores, so they are shown for custody but not counted — hospital-wide they net
-                to zero.
+                {' '}· of {s.internalTransfer} transferred,{' '}
+                {(s.transferredOut ?? 0) > 0
+                  ? `${s.transferredOut} left the pharmacy's own stock for a ward or department and is subtracted above`
+                  : 'none left the pharmacy — these moved between NDPS locations, so they are shown for custody and net to zero'}
+                .
               </>
             )}
           </p>
