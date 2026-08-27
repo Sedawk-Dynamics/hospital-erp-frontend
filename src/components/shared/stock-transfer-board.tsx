@@ -8,7 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { formatDate } from '@/lib/date-utils';
 import {
   ArrowLeftRight, Search, Plus, ArrowRight, Clock, CheckCircle2, XCircle, Truck,
-  Send, Inbox, Loader2, ChevronLeft, ChevronRight, Ban,
+  Send, Inbox, Loader2, ChevronLeft, ChevronRight, Ban, ShieldAlert,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
@@ -30,7 +30,9 @@ import {
   useRejectStockTransfer, useDispatchStockTransfer, useReceiveStockTransfer,
   useCancelStockTransfer,
   type StockTransferStatus,
+  type StockTransfer,
 } from '@/hooks/use-inventory';
+import { useUsersList } from '@/hooks/use-users';
 
 const STATUS_LABEL: Record<StockTransferStatus, string> = {
   pending: 'Pending', approved: 'Approved', dispatched: 'Dispatched',
@@ -117,6 +119,7 @@ export function StockTransferBoard({
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [handingOver, setHandingOver] = useState<StockTransfer | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
   const params = {
@@ -278,10 +281,20 @@ export function StockTransferBoard({
                               size="sm"
                               variant="ghost"
                               className="text-purple-700 hover:bg-purple-50 h-8"
-                              onClick={() => dispatch.mutate({ id: t.id }, {
-                                onSuccess: () => toast.success('Transfer dispatched'),
-                                onError: (e: any) => toast.error(e?.message ?? 'Dispatch failed'),
-                              })}
+                              onClick={() => {
+                                // A vault narcotic is handed over, not just
+                                // sent: the server refuses it without a named
+                                // second person, so ask here rather than let
+                                // the counter hit a refusal it cannot satisfy.
+                                if (t.drugBatch?.drug?.vaultControlled) {
+                                  setHandingOver(t);
+                                  return;
+                                }
+                                dispatch.mutate({ id: t.id }, {
+                                  onSuccess: () => toast.success('Transfer dispatched'),
+                                  onError: (e: any) => toast.error(e?.message ?? 'Dispatch failed'),
+                                });
+                              }}
                               disabled={dispatch.isPending}
                             >
                               <Send className="h-3.5 w-3.5 mr-1" /> Dispatch
@@ -346,6 +359,25 @@ export function StockTransferBoard({
         fromPharmacyOnly={fromPharmacyOnly}
       />
 
+      <HandoverDialog
+        transfer={handingOver}
+        onClose={() => setHandingOver(null)}
+        pending={dispatch.isPending}
+        onConfirm={(custodianId) => {
+          if (!handingOver) return;
+          dispatch.mutate(
+            { id: handingOver.id, custodianId },
+            {
+              onSuccess: () => {
+                toast.success('Custody handed over and stock dispatched');
+                setHandingOver(null);
+              },
+              onError: (e: any) => toast.error(e?.message ?? 'Dispatch failed'),
+            },
+          );
+        }}
+      />
+
       <Dialog open={rejectingId !== null} onOpenChange={(o) => { if (!o) { setRejectingId(null); setRejectReason(''); } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -378,6 +410,93 @@ export function StockTransferBoard({
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/**
+ * Handing a vault narcotic over.
+ *
+ * Moving one is a transfer of CUSTODY between two people, not one person
+ * pressing Dispatch — the rule the NDPS challan screen has always enforced and
+ * which now applies here, since this board is the only place stock moves. The
+ * server refuses the dispatch without a named custodian and refuses one who is
+ * the dispatcher, so the choice is collected here rather than letting the
+ * counter hit a refusal it has no way to satisfy.
+ */
+function HandoverDialog({
+  transfer,
+  onClose,
+  onConfirm,
+  pending,
+}: {
+  transfer: StockTransfer | null;
+  onClose: () => void;
+  onConfirm: (custodianId: string) => void;
+  pending: boolean;
+}) {
+  const [custodianId, setCustodianId] = useState('');
+  const { data } = useUsersList({ limit: 200 });
+  const users = (data?.data ?? []) as Array<{ id: string; firstName: string; lastName?: string }>;
+
+  // A fresh choice per hand-over — carrying the last one over is how the wrong
+  // person ends up named on a narcotic record.
+  const [seededFor, setSeededFor] = useState<string | null>(null);
+  if (transfer && seededFor !== transfer.id) {
+    setSeededFor(transfer.id);
+    setCustodianId('');
+  }
+
+  if (!transfer) return null;
+  const drugName = transfer.drugBatch?.drug?.drugName ?? 'This medicine';
+
+  return (
+    <Dialog open={Boolean(transfer)} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Hand over {drugName}</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <p className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs">
+            <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
+            <span>
+              {drugName} is held in the narcotic safe. Moving it is a hand-over: name the person
+              receiving custody, and it cannot be you. Both names are recorded on the
+              controlled-drug register.
+            </span>
+          </p>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="custodian">Receiving custodian</Label>
+            <Select value={custodianId || null} onValueChange={(v) => setCustodianId(v ?? '')}>
+              <SelectTrigger id="custodian" className="w-full">
+                <SelectValue placeholder="Choose who is taking custody" />
+              </SelectTrigger>
+              <SelectContent>
+                {users.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {`${u.firstName} ${u.lastName ?? ''}`.trim()}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Transfer {transfer.transferNumber} &middot; {transfer.quantityRequested} unit
+            {transfer.quantityRequested === 1 ? '' : 's'}
+            {transfer.drugBatch?.batchNumber ? ` · batch ${transfer.drugBatch.batchNumber}` : ''}
+          </p>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={pending}>Cancel</Button>
+          <Button onClick={() => onConfirm(custodianId)} disabled={pending || !custodianId}>
+            {pending ? 'Dispatching…' : 'Confirm hand-over'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

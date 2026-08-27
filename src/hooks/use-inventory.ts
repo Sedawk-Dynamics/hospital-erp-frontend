@@ -1005,9 +1005,23 @@ export interface StockTransfer {
   drugBatch?: {
     id: string;
     batchNumber: string;
+    expiryDate?: string | null;
     quantityInStock?: number;
-    drug?: { drugName: string } | null;
+    drug?: {
+      drugName: string;
+      /**
+       * The controlled facts, carried on the row so the board knows BEFORE
+       * anyone presses Dispatch that this move is a custody hand-over needing a
+       * second person — not after the server refuses it.
+       */
+      controlledClass?: 'narcotic' | 'psychotropic' | null;
+      vaultControlled?: boolean | null;
+      schedule?: string | null;
+    } | null;
   } | null;
+  /** Who took custody of a vault narcotic, and when. */
+  custodianId?: string | null;
+  custodyAt?: string | null;
   fromDepartment?: { id: string; name: string } | null;
   toDepartment?: { id: string; name: string } | null;
   requester?: { id: string; firstName: string; lastName: string };
@@ -1102,9 +1116,25 @@ export function useRejectStockTransfer() {
 export function useDispatchStockTransfer() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, quantityDispatched }: { id: string; quantityDispatched?: number }) => {
+    mutationFn: async ({
+      id,
+      quantityDispatched,
+      custodianId,
+    }: {
+      id: string;
+      quantityDispatched?: number;
+      /**
+       * The person taking custody of a vault narcotic. Compulsory for those and
+       * ignored for everything else — the server refuses a narcotic hand-over
+       * with nobody named, and refuses one where the custodian is the
+       * dispatcher, because the point of a second person is that it is
+       * somebody else.
+       */
+      custodianId?: string | null;
+    }) => {
       const response = await apiPatch<StockTransfer>(`/inventory/transfers/${id}/dispatch`, {
         quantityDispatched,
+        custodianId: custodianId ?? undefined,
       });
       return response.data;
     },
