@@ -38,7 +38,7 @@ import { useUsersList } from '@/hooks/use-users';
 import { usePatientSearch } from '@/hooks/use-hospital';
 import {
   useNdpsLocations, useNdpsStockByLocation, useNdpsRegister, useNdpsDailyBalances,
-  useNdpsReceiveConsignment, useNdpsTransfer, useNdpsConsumption, useNdpsDisposal,
+  useNdpsReceiveConsignment, useNdpsConsumption, useNdpsDisposal,
   useNdpsRunDailyClose, useNdpsVerifyDaily, useNdpsUploadEvidence, useNdpsCreateLocation,
 } from '@/hooks/use-ndps';
 

@@ -116,15 +116,9 @@ export function useNdpsReceiveConsignment() {
   });
 }
 
-export function useNdpsTransfer() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (body: {
-      drugFormularyId: string; fromLocationId: string; toLocationId: string; quantity: number; counterpartyId: string; notes?: string;
-    }) => (await apiPost('/ndps/transfers', body)).data,
-    onSuccess: () => invalidateAll(qc),
-  });
-}
+// useNdpsTransfer is gone with its endpoint. Moving a narcotic is a stock
+// transfer like any other and goes through the stock-transfer board, which
+// applies the same dual-custody rule — see useDispatchStockTransfer.
 
 export function useNdpsConsumption() {
   const qc = useQueryClient();
