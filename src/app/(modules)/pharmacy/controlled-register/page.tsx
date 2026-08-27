@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import {
   Search, Printer, Download, SlidersHorizontal, ShieldCheck,
   ArrowDownToLine, ArrowUpFromLine, ArrowLeftRight, Boxes, Layers, FileCheck2, X,
+  PackagePlus, Syringe, Trash2,
 } from 'lucide-react';
 import { PharmacyAdminGuard } from '@/components/pharmacy/pharmacy-admin-guard';
 import { Button } from '@/components/ui/button';
@@ -24,6 +25,10 @@ import {
   type ControlledRegisterParams, type RegisterRow,
 } from '@/hooks/use-pharmacy';
 import { useNdpsLocations } from '@/hooks/use-ndps';
+import {
+  LocationDialog, ReceiveDialog, ConsumptionDialog, DisposalDialog, StockTab, DailyTab,
+} from '@/components/pharmacy/ndps-statutory';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { toInputDateStr, formatDate, formatDateTime } from '@/lib/date-utils';
 import { downloadCsv } from '@/lib/csv';
 import { cn } from '@/lib/utils';
@@ -108,6 +113,8 @@ export default function ControlledRegisterPage() {
   const { data: drugOptions = [] } = useControlledDrugOptions();
   const { data: locations = [] } = useNdpsLocations();
   const selectedDrugIds = (draft.drugIds ?? '').split(',').filter(Boolean);
+  // The statutory actions that used to sit on their own NDPS page.
+  const [dialog, setDialog] = useState<null | 'receive' | 'consume' | 'dispose' | 'location'>(null);
   const rows = data?.rows ?? [];
   const s = data?.summary;
 
@@ -205,6 +212,35 @@ export default function ControlledRegisterPage() {
             </Button>
           </div>
         </div>
+
+        {/* ── The statutory actions that used to live on /inventory/ndps ──
+            Receiving, administering and destroying a narcotic are records, not
+            stock movements, so they belong with the register an inspector
+            reads. Moving stock is the transfer board's job, for every medicine
+            alike. */}
+        <div className="flex flex-wrap gap-2 print:hidden">
+          <Button size="sm" variant="outline" onClick={() => setDialog('receive')}>
+            <PackagePlus className="mr-1.5 h-4 w-4" /> Receive (Form 3C)
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setDialog('consume')}>
+            <Syringe className="mr-1.5 h-4 w-4" /> Administer (Form 3E)
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setDialog('dispose')}>
+            <Trash2 className="mr-1.5 h-4 w-4" /> Disposal
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setDialog('location')}>
+            <Boxes className="mr-1.5 h-4 w-4" /> New sub-store
+          </Button>
+        </div>
+
+        <Tabs defaultValue="ledger">
+          <TabsList variant="line">
+            <TabsTrigger value="ledger">Ledger</TabsTrigger>
+            <TabsTrigger value="stock">Stock by location</TabsTrigger>
+            <TabsTrigger value="daily">Daily account (3H)</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="ledger" className="space-y-4">
 
         {/* ── Filters ── */}
         <div className="space-y-3 rounded-xl bg-surface-container-lowest p-4 shadow-sanctuary print:hidden">
@@ -455,6 +491,16 @@ export default function ControlledRegisterPage() {
             </div>
           )}
         </div>
+          </TabsContent>
+
+          <TabsContent value="stock"><StockTab /></TabsContent>
+          <TabsContent value="daily"><DailyTab /></TabsContent>
+        </Tabs>
+
+        <ReceiveDialog open={dialog === 'receive'} onOpenChange={(o) => setDialog(o ? 'receive' : null)} />
+        <ConsumptionDialog open={dialog === 'consume'} onOpenChange={(o) => setDialog(o ? 'consume' : null)} />
+        <DisposalDialog open={dialog === 'dispose'} onOpenChange={(o) => setDialog(o ? 'dispose' : null)} />
+        <LocationDialog open={dialog === 'location'} onOpenChange={(o) => setDialog(o ? 'location' : null)} />
       </div>
     </PharmacyAdminGuard>
   );

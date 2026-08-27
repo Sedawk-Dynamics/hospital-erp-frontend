@@ -1,3 +1,16 @@
+/**
+ * The statutory NDPS surfaces: Form 3C receipt, Form 3E consumption, disposal,
+ * sub-store custody points, stock by location and the Form 3H daily account.
+ *
+ * These used to live on their own page at /inventory/ndps, beside a transfer
+ * dialog. That page is gone: transfers belong on the stock-transfer board with
+ * every other medicine — one place to move stock, whatever its schedule — and
+ * these six are not transfers at all. They are the records a drug inspector
+ * asks for, so they live with the register, which is the inspector's view.
+ *
+ * Nothing here changed in the move except where it is mounted.
+ */
+
 'use client';
 
 import { NdpsGuard } from '@/components/pharmacy/ndps-guard';
@@ -159,7 +172,7 @@ function LocationBalanceHint({ drugFormularyId, locationId, requestedQty }: { dr
 // Sub-stores (ICU/OT carts) are where vault stock is transferred to and then
 // dispensed from (Form 3E). Without one, the Transfer "To" and the Consume
 // "Sub-store" dropdowns are empty — so this lets the pharmacy admin create them.
-function LocationDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+export function LocationDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const create = useNdpsCreateLocation();
   const [f, setF] = useState({ name: '', type: 'sub_store' });
   const submit = async () => {
@@ -192,7 +205,7 @@ function LocationDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
 }
 
 // ── Form 3C inward dialog ───────────────────────────────────
-function ReceiveDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+export function ReceiveDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const recv = useNdpsReceiveConsignment();
   const [f, setF] = useState({ drugFormularyId: '', quantity: '', ndpsLicenseNumber: '', form3cNumber: '', transportDetails: '', grossWeight: '', batchNumber: '', expiryDate: '' });
   const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }));
@@ -231,49 +244,8 @@ function ReceiveDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
   );
 }
 
-// ── Transfer (dual-auth challan) dialog ─────────────────────
-function TransferDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const users = useUserOpts();
-  const { data: locations } = useNdpsLocations();
-  const locOpts = (locations ?? []).map((l) => ({ id: l.id, label: `${l.name} (${l.type === 'main_vault' ? 'Vault' : 'Sub-store'})` }));
-  const transfer = useNdpsTransfer();
-  const [f, setF] = useState({ drugFormularyId: '', fromLocationId: '', toLocationId: '', quantity: '', counterpartyId: '' });
-  const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }));
-  const submit = async () => {
-    if (!f.drugFormularyId || !f.fromLocationId || !f.toLocationId || !f.quantity || !f.counterpartyId) return toast.error('All fields including the receiving custodian are required');
-    try {
-      await transfer.mutateAsync({ ...f, quantity: parseInt(f.quantity, 10) });
-      toast.success('Stock transferred (dual-auth challan)');
-      onOpenChange(false);
-      setF({ drugFormularyId: '', fromLocationId: '', toLocationId: '', quantity: '', counterpartyId: '' });
-    } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed'); }
-  };
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Internal NDPS delivery challan</DialogTitle>
-          <DialogDescription>Move stock between locations. A second custodian must co-sign (dual-authentication).</DialogDescription>
-        </DialogHeader>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2 space-y-1"><Label>Narcotic drug *</Label><NarcoticDrugPicker value={f.drugFormularyId} onChange={(v) => set('drugFormularyId', v)} /></div>
-          <div className="space-y-1"><Label>From *</Label><Select value={f.fromLocationId} onChange={(v) => set('fromLocationId', v)} options={locOpts} placeholder="Source" /></div>
-          <div className="space-y-1"><Label>To *</Label><Select value={f.toLocationId} onChange={(v) => set('toLocationId', v)} options={locOpts} placeholder="Destination" /></div>
-          <div className="space-y-1"><Label>Quantity *</Label><Input type="number" min={1} value={f.quantity} onChange={(e) => set('quantity', e.target.value)} /></div>
-          {f.drugFormularyId && f.fromLocationId && <LocationBalanceHint drugFormularyId={f.drugFormularyId} locationId={f.fromLocationId} requestedQty={parseInt(f.quantity, 10) || undefined} />}
-          <div className="space-y-1"><Label>Receiving custodian *</Label><Select value={f.counterpartyId} onChange={(v) => set('counterpartyId', v)} options={users} placeholder="Co-signing person" /></div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={submit} disabled={transfer.isPending}>Transfer</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 // ── Form 3E consumption dialog ──────────────────────────────
-function ConsumptionDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+export function ConsumptionDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { data: locations } = useNdpsLocations();
   const subStores = (locations ?? []).filter((l) => l.type === 'sub_store').map((l) => ({ id: l.id, label: l.name }));
   const consume = useNdpsConsumption();
@@ -349,7 +321,7 @@ function ConsumptionDialog({ open, onOpenChange }: { open: boolean; onOpenChange
 }
 
 // ── Disposal dialog ─────────────────────────────────────────
-function DisposalDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+export function DisposalDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const users = useUserOpts();
   const { data: locations } = useNdpsLocations();
   const locOpts = (locations ?? []).map((l) => ({ id: l.id, label: l.name }));
@@ -421,7 +393,7 @@ function DisposalDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
 }
 
 // ── Inspector: stock by location ────────────────────────────
-function StockTab() {
+export function StockTab() {
   const { data, isLoading } = useNdpsStockByLocation();
   const items = data?.items ?? [];
   return (
@@ -452,81 +424,8 @@ function StockTab() {
   );
 }
 
-// ── Inspector: statutory register ───────────────────────────
-function RegisterTab() {
-  const [formType, setFormType] = useState('3C');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const { data, isLoading } = useNdpsRegister({ formType, fromDate: from || undefined, toDate: to || undefined });
-  const rows = data?.items ?? [];
-  const exportRows = rows.map((r) => ({
-    date: formatDateTime(r.occurredAt), drug: r.drugName, qty: r.quantity, from: r.from ?? '', to: r.to ?? '',
-    recordedBy: r.recordedBy ?? '', counterparty: r.counterparty ?? '', coSign: r.coSignBy ?? '',
-    form3c: r.form3cNumber ?? '', ndpsLicence: r.ndpsLicenseNumber ?? '', patientMrn: r.patient?.mrn ?? '',
-    doctorRegNo: r.doctorRegNo ?? '', bed: r.bedNumber ?? '', diagnosis: r.diagnosis ?? '', reason: r.reasonCode ?? '', reference: r.referenceNumber ?? '',
-  }));
-  return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-2">
-          <Select value={formType} onChange={setFormType} options={[{ id: '3C', label: 'Form 3C — Inward' }, { id: '3E', label: 'Form 3E — Consumption' }, { id: 'transfer', label: 'Transfers' }, { id: 'disposal', label: 'Disposals' }, { id: 'all', label: 'All entries' }]} placeholder="Form" />
-          <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-40" />
-          <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" disabled={rows.length === 0} onClick={() => downloadCsv(`ndps-register-${formType}.csv`, exportRows)}>
-            <Download className="mr-1.5 h-4 w-4" /> Export CSV
-          </Button>
-          <Button variant="outline" size="sm" disabled={rows.length === 0} onClick={async () => {
-            try { await downloadPdf('/ndps/register/pdf', { formType, fromDate: from || undefined, toDate: to || undefined }, `ndps-form-${formType}.pdf`); }
-            catch (e) { toast.error(e instanceof Error ? e.message : 'PDF export failed'); }
-          }}>
-            <FileText className="mr-1.5 h-4 w-4" /> Export PDF
-          </Button>
-        </div>
-      </div>
-      {isLoading ? <Skeleton className="h-40 w-full" /> : rows.length === 0 ? (
-        <EmptyState icon={ShieldCheck} title="No entries" description="Nothing recorded for this form in the selected range." />
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Drug</TableHead>
-              <TableHead className="text-right">Qty</TableHead>
-              <TableHead>Details</TableHead>
-              <TableHead>Custody</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((r) => (
-              <TableRow key={r.id}>
-                <TableCell className="text-xs whitespace-nowrap text-muted-foreground">{formatDateTime(r.occurredAt)}</TableCell>
-                <TableCell className="font-medium">{r.drugName}</TableCell>
-                <TableCell className="text-right">{r.quantity}</TableCell>
-                <TableCell className="text-xs">
-                  {r.form3cNumber && <div>3C: {r.form3cNumber} · {r.ndpsLicenseNumber}</div>}
-                  {r.patient && <div>{r.patient.name} ({r.patient.mrn}) · Bed {r.bedNumber}</div>}
-                  {r.doctorRegNo && <div className="text-muted-foreground">Dr {r.doctorRegNo} · {r.diagnosis}</div>}
-                  {r.reasonCode && <div>{r.reasonCode} · ref {r.referenceNumber}</div>}
-                  {(r.from || r.to) && <div className="text-muted-foreground">{r.from ?? '—'} → {r.to ?? '—'}</div>}
-                </TableCell>
-                <TableCell className="text-xs">
-                  <div>{r.recordedBy}</div>
-                  {r.counterparty && <div className="text-muted-foreground">↔ {r.counterparty}</div>}
-                  {r.coSignBy && <div className="text-muted-foreground">✓ {r.coSignBy}</div>}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
-    </div>
-  );
-}
-
 // ── Form 3H daily accounts ──────────────────────────────────
-function DailyTab() {
+export function DailyTab() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const { data, isLoading } = useNdpsDailyBalances({ fromDate: from || undefined, toDate: to || undefined });
@@ -602,51 +501,5 @@ function DailyTab() {
         </Table>
       )}
     </div>
-  );
-}
-
-function NdpsInner() {
-  const [dialog, setDialog] = useState<null | 'receive' | 'transfer' | 'consume' | 'dispose' | 'location'>(null);
-  return (
-    <div className="space-y-4 animate-fade-in-up">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="font-headline text-xl font-bold flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-primary" /> Narcotics (NDPS)</h1>
-          <p className="text-xs text-muted-foreground">Form 3C / 3E / 3H statutory accounting with vault-to-bedside chain of custody.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" onClick={() => setDialog('location')}><PackagePlus className="mr-1.5 h-4 w-4 rotate-45" /> New Sub-store</Button>
-          <Button size="sm" onClick={() => setDialog('receive')}><PackagePlus className="mr-1.5 h-4 w-4" /> Receive (3C)</Button>
-          <Button size="sm" variant="outline" onClick={() => setDialog('transfer')}><ArrowLeftRight className="mr-1.5 h-4 w-4" /> Transfer</Button>
-          <Button size="sm" variant="outline" onClick={() => setDialog('consume')}><Syringe className="mr-1.5 h-4 w-4" /> Consume (3E)</Button>
-          <Button size="sm" variant="outline" onClick={() => setDialog('dispose')}><Trash2 className="mr-1.5 h-4 w-4" /> Disposal</Button>
-        </div>
-      </div>
-
-      <Tabs defaultValue="stock">
-        <TabsList variant="line">
-          <TabsTrigger value="stock">Inspector — Stock</TabsTrigger>
-          <TabsTrigger value="register">Register (3C/3E)</TabsTrigger>
-          <TabsTrigger value="daily">Daily Accounts (3H)</TabsTrigger>
-        </TabsList>
-        <TabsContent value="stock"><StockTab /></TabsContent>
-        <TabsContent value="register"><RegisterTab /></TabsContent>
-        <TabsContent value="daily"><DailyTab /></TabsContent>
-      </Tabs>
-
-      <LocationDialog open={dialog === 'location'} onOpenChange={(o) => setDialog(o ? 'location' : null)} />
-      <ReceiveDialog open={dialog === 'receive'} onOpenChange={(o) => setDialog(o ? 'receive' : null)} />
-      <TransferDialog open={dialog === 'transfer'} onOpenChange={(o) => setDialog(o ? 'transfer' : null)} />
-      <ConsumptionDialog open={dialog === 'consume'} onOpenChange={(o) => setDialog(o ? 'consume' : null)} />
-      <DisposalDialog open={dialog === 'dispose'} onOpenChange={(o) => setDialog(o ? 'dispose' : null)} />
-    </div>
-  );
-}
-
-export default function NdpsPage() {
-  return (
-    <NdpsGuard>
-      <NdpsInner />
-    </NdpsGuard>
   );
 }

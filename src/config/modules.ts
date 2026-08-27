@@ -250,7 +250,10 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       // Drug Formulary is merged into "Storage" (/inventory) — drugs live in the
       // one list there with all their operations, so it's no longer a nav item.
       // Batches are also part of "Storage" (each medicine expands to its batches).
-      { label: 'Narcotics (NDPS)', href: '/inventory/ndps', icon: ShieldCheck },
+      // Narcotics no longer has a page of its own. Moving narcotic stock is a
+      // stock transfer like any other — one board for every schedule — and the
+      // statutory records (Form 3C / 3E / 3H, disposal, sub-stores) live with
+      // the Controlled-Drug Register, which is the inspector's view.
       { label: 'Drug Orders', href: '/inventory/drug-purchase-orders', icon: ShoppingCart },
       { label: 'Drug GST', href: '/inventory/drug-gst', icon: FileText },
       { label: 'Reports', href: '/inventory/reports', icon: BarChart3 },
