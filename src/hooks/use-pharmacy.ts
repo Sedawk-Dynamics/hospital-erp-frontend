@@ -2581,6 +2581,27 @@ export interface ControlledRegisterParams {
   locationId?: string;
 }
 
+/** The item picker's options — every controlled drug the hospital stocks. */
+export interface ControlledDrugOption {
+  id: string;
+  drugName: string;
+  schedule: string | null;
+  controlledClass: 'narcotic' | 'psychotropic' | null;
+  apiStrength: string | null;
+}
+
+export function useControlledDrugOptions(enabled = true) {
+  return useQuery({
+    queryKey: ['pharmacy', 'controlled-register', 'drugs'],
+    queryFn: async () =>
+      (await apiGet<ControlledDrugOption[]>('/pharmacy/controlled-register/drugs')).data ?? [],
+    // Reference-ish data: the controlled list changes only when a drug is added
+    // or reclassified, so it need not be refetched on every filter change.
+    staleTime: 5 * 60 * 1000,
+    enabled,
+  });
+}
+
 export function useControlledRegister(params?: ControlledRegisterParams, enabled = true) {
   return useQuery({
     queryKey: ['pharmacy', 'controlled-register', params],

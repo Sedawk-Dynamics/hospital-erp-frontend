@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import {
   Search, Printer, Download, SlidersHorizontal, ShieldCheck,
-  ArrowDownToLine, ArrowUpFromLine, ArrowLeftRight, Boxes, Layers,
+  ArrowDownToLine, ArrowUpFromLine, ArrowLeftRight, Boxes, Layers, FileCheck2, X,
 } from 'lucide-react';
 import { PharmacyAdminGuard } from '@/components/pharmacy/pharmacy-admin-guard';
 import { Button } from '@/components/ui/button';
@@ -19,7 +19,11 @@ import {
   Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
 } from '@/components/ui/table';
 import { ScheduleBadge } from '@/components/pharmacy/schedule-badge';
-import { useControlledRegister, type ControlledRegisterParams, type RegisterRow } from '@/hooks/use-pharmacy';
+import {
+  useControlledRegister, useControlledDrugOptions,
+  type ControlledRegisterParams, type RegisterRow,
+} from '@/hooks/use-pharmacy';
+import { useNdpsLocations } from '@/hooks/use-ndps';
 import { toInputDateStr, formatDate, formatDateTime } from '@/lib/date-utils';
 import { downloadCsv } from '@/lib/csv';
 import { cn } from '@/lib/utils';
@@ -101,6 +105,9 @@ export default function ControlledRegisterPage() {
   const [moreOpen, setMoreOpen] = useState(false);
 
   const { data, isLoading, isFetching } = useControlledRegister(applied);
+  const { data: drugOptions = [] } = useControlledDrugOptions();
+  const { data: locations = [] } = useNdpsLocations();
+  const selectedDrugIds = (draft.drugIds ?? '').split(',').filter(Boolean);
   const rows = data?.rows ?? [];
   const s = data?.summary;
 
@@ -121,8 +128,18 @@ export default function ControlledRegisterPage() {
     if (applied.reportType && applied.reportType !== 'all') out.push(TYPE_LABEL[applied.reportType]);
     if (applied.search) out.push(`matching “${applied.search}”`);
     if (applied.doctorRegNo) out.push(`prescriber ${applied.doctorRegNo}`);
+    // Name the items and the safe: "3 items" on a statutory report tells the
+    // reader nothing about what they are looking at.
+    const ids = (applied.drugIds ?? '').split(',').filter(Boolean);
+    if (ids.length) {
+      const names = ids.map((id) => drugOptions.find((d) => d.id === id)?.drugName ?? 'item');
+      out.push(names.length <= 3 ? names.join(', ') : `${names.length} items`);
+    }
+    if (applied.locationId) {
+      out.push(locations.find((l) => l.id === applied.locationId)?.name ?? 'one sub-store');
+    }
     return out;
-  }, [applied]);
+  }, [applied, drugOptions, locations]);
 
   const csvRows = useMemo(
     () =>
@@ -146,10 +163,13 @@ export default function ControlledRegisterPage() {
     [rows],
   );
 
-  const openPdf = () => {
+  // Two documents from the same report: the house register, and the Form 35
+  // Inspection Book sheet an inspector signs.
+  const openPdf = (format?: 'form35') => {
     const qs = new URLSearchParams(
       Object.entries(applied).filter(([, v]) => v != null && v !== '') as [string, string][],
     );
+    if (format) qs.set('format', format);
     window.open(`/api/v1/pharmacy/controlled-register/pdf?${qs}`, '_blank');
   };
 
@@ -177,8 +197,11 @@ export default function ControlledRegisterPage() {
               onClick={() => downloadCsv('controlled-drug-register', csvRows)}>
               <Download className="mr-1.5 h-4 w-4" /> Export
             </Button>
-            <Button variant="outline" size="sm" disabled={!rows.length} onClick={openPdf}>
+            <Button variant="outline" size="sm" disabled={!rows.length} onClick={() => openPdf()}>
               <Printer className="mr-1.5 h-4 w-4" /> Register (PDF)
+            </Button>
+            <Button size="sm" disabled={!rows.length} onClick={() => openPdf('form35')}>
+              <FileCheck2 className="mr-1.5 h-4 w-4" /> Print Form 35
             </Button>
           </div>
         </div>
@@ -235,6 +258,42 @@ export default function ControlledRegisterPage() {
                 </SelectContent>
               </Select>
             </div>
+            {/* The spec's item drill-down: an entire class, one molecule, or
+                several named items at once. Empty means every controlled drug,
+                which is what a register is for. */}
+            <div className="space-y-1.5">
+              <Label htmlFor="reg-item" className="text-xs">Item</Label>
+              <Select
+                value={null}
+                onValueChange={(v: string | null) => {
+                  if (!v) return;
+                  const next = selectedDrugIds.includes(v)
+                    ? selectedDrugIds
+                    : [...selectedDrugIds, v];
+                  set('drugIds', next.join(',') as never);
+                }}
+              >
+                <SelectTrigger id="reg-item" className="w-full">
+                  <SelectValue
+                    placeholder={
+                      selectedDrugIds.length
+                        ? `${selectedDrugIds.length} item${selectedDrugIds.length === 1 ? '' : 's'}`
+                        : 'All items'
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {drugOptions
+                    .filter((d) => !selectedDrugIds.includes(d.id))
+                    .map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.drugName}
+                        {d.schedule ? ` · ${d.schedule}` : ''}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-1.5">
               <Label htmlFor="reg-search" className="text-xs">Batch / MRN / invoice</Label>
               <Input id="reg-search" placeholder="Find one entry"
@@ -244,12 +303,63 @@ export default function ControlledRegisterPage() {
             </div>
           </div>
 
+          {selectedDrugIds.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {selectedDrugIds.map((id) => {
+                const d = drugOptions.find((o) => o.id === id);
+                return (
+                  <Badge key={id} variant="outline" className="gap-1 pr-1 text-xs">
+                    {d?.drugName ?? id.slice(0, 8)}
+                    <button
+                      type="button"
+                      aria-label={`Remove ${d?.drugName ?? 'item'}`}
+                      className="rounded-sm p-0.5 hover:bg-muted"
+                      onClick={() =>
+                        set(
+                          'drugIds',
+                          (selectedDrugIds.filter((x) => x !== id).join(',') || undefined) as never,
+                        )
+                      }
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                );
+              })}
+              <Button variant="ghost" size="sm" className="h-6 text-xs"
+                onClick={() => set('drugIds', undefined as never)}>
+                Clear items
+              </Button>
+            </div>
+          )}
+
           {moreOpen && (
             <div className="grid gap-3 border-t pt-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="reg-doc" className="text-xs">Prescribing doctor / reg. no.</Label>
                 <Input id="reg-doc" value={draft.doctorRegNo ?? ''}
                   onChange={(e) => set('doctorRegNo', e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="reg-loc" className="text-xs">Sub-store / safe</Label>
+                <Select
+                  value={draft.locationId ?? 'all'}
+                  onValueChange={(v: string | null) =>
+                    set('locationId', (v === 'all' ? undefined : v) as never)}
+                >
+                  <SelectTrigger id="reg-loc" className="w-full">
+                    <SelectValue placeholder="Everywhere" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Everywhere</SelectItem>
+                    {locations.map((l) => (
+                      <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Narrowing to one safe also re-bases the running balance to that location.
+                </p>
               </div>
             </div>
           )}
