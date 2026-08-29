@@ -2576,6 +2576,10 @@ export interface ControlledRegister {
      * negative.
      */
     transferredOut?: number;
+    /** The part of `outward` that spent stock the pharmacy had already issued
+     *  to a ward. Genuinely outward, but its balance was lost at issue time —
+     *  so the printed sum adds it back rather than subtracting it twice. */
+    outwardAlreadyIssued?: number;
     closingBalance: number;
   };
   drugs: Array<{ id: string; drugName: string; schedule: DrugSchedule | null }>;

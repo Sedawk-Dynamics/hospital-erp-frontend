@@ -414,8 +414,16 @@ export default function ControlledRegisterPage() {
           <p className="text-xs text-muted-foreground">
             <span className="font-medium text-foreground tabular-nums">
               {s.openingStock} + {s.inward} − {s.outward}
-              {(s.transferredOut ?? 0) > 0 ? ` − ${s.transferredOut}` : ''} = {s.closingBalance}
+              {(s.transferredOut ?? 0) > 0 ? ` − ${s.transferredOut}` : ''}
+              {(s.outwardAlreadyIssued ?? 0) > 0 ? ` + ${s.outwardAlreadyIssued}` : ''} = {s.closingBalance}
             </span>
+            {(s.outwardAlreadyIssued ?? 0) > 0 && (
+              <>
+                {' '}· {s.outwardAlreadyIssued} of the {s.outward} given out came from a ward
+                shelf, which the pharmacy&rsquo;s balance had already parted with when the stock
+                was issued — so it is added back rather than counted twice.
+              </>
+            )}
             {s.internalTransfer > 0 && (
               <>
                 {' '}· of {s.internalTransfer} transferred,{' '}
