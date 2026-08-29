@@ -14,6 +14,10 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  CompositionEditor, compositionPreview, parseCompositionText, emptySaltRow,
+  type SaltRowInput,
+} from './composition-editor';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -226,6 +230,12 @@ function DrugForm({
   const [formData, setFormData] = useState<FormState>(() =>
     drug ? formStateFromItem(drug) : EMPTY_FORM,
   );
+  // Seeded from the stored composition text, so editing an existing drug opens
+  // with its molecules already in rows rather than a string to re-type.
+  const [saltRows, setSaltRows] = useState<SaltRowInput[]>(() => {
+    const parsed = parseCompositionText(drug?.composition ?? '');
+    return parsed.length ? parsed : [emptySaltRow()];
+  });
   const [duplicate, setDuplicate] = useState<{ matches: FormularyMatch[] } | null>(null);
 
   const createItem = useCreateFormularyItem();
@@ -390,16 +400,16 @@ function DrugForm({
         </div>
 
         {/* Composition — the salt composition, separate from the generic name(s).
-            Sometimes identical, sometimes different. */}
-        <div className="space-y-1.5">
-          <Label htmlFor="composition">Composition</Label>
-          <Input
-            id="composition"
-            value={formData.composition}
-            onChange={(e) => updateField('composition', e.target.value)}
-            placeholder="e.g. Paracetamol (500mg) + Caffeine (65mg)"
-          />
-        </div>
+            Entered as data (molecule / quantity / unit) rather than as a
+            sentence, because that is how it is stored and how the schedule is
+            decided. The text form is rendered from the rows. */}
+        <CompositionEditor
+          rows={saltRows}
+          onChange={(rows) => {
+            setSaltRows(rows);
+            updateField('composition', compositionPreview(rows));
+          }}
+        />
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
             <Label>Type</Label>
