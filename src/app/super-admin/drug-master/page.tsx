@@ -21,6 +21,10 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScheduleBadge, ControlledBadge, QrBadge } from '@/components/pharmacy/schedule-badge';
+import {
+  CompositionEditor, compositionPreview, parseCompositionText, emptySaltRow,
+  type SaltRowInput,
+} from '@/components/pharmacy/composition-editor';
 import { Input } from '@/components/ui/input';
 import {
   Dialog,
@@ -119,16 +123,22 @@ export default function SuperAdminDrugMasterPage() {
   const [editing, setEditing] = useState<DrugMaster | null>(null);
   const [openForm, setOpenForm] = useState(false);
   const [form, setForm] = useState<DrugMasterInput>(EMPTY);
+  const [saltRows, setSaltRows] = useState<SaltRowInput[]>([emptySaltRow()]);
   const [confirmDelete, setConfirmDelete] = useState<DrugMaster | null>(null);
 
   function openCreate() {
     setEditing(null);
     setForm(EMPTY);
+    setSaltRows([emptySaltRow()]);
     setOpenForm(true);
   }
 
   function openEdit(d: DrugMaster) {
     setEditing(d);
+    // Open with the molecules already in rows, so changing one strength does
+    // not mean re-typing the whole composition.
+    const parsed = parseCompositionText(d.saltComposition ?? '');
+    setSaltRows(parsed.length ? parsed : [emptySaltRow()]);
     setForm({
       name: d.name,
       genericName: d.genericName ?? '',
@@ -162,6 +172,16 @@ export default function SuperAdminDrugMasterPage() {
       name: form.name.trim(),
       genericName: form.genericName?.toString().trim() || null,
       saltComposition: form.saltComposition?.toString().trim() || null,
+      // The structured composition. The server treats this as authoritative and
+      // renders the text from it, so the molecules are stored as data rather
+      // than re-parsed out of a sentence.
+      salts: saltRows
+        .filter((r) => r.name.trim())
+        .map((r) => ({
+          name: r.name.trim(),
+          strengthValue: r.strengthValue.trim() ? Number(r.strengthValue) : null,
+          strengthUnit: r.strengthValue.trim() ? r.strengthUnit : null,
+        })),
       manufacturer: form.manufacturer?.toString().trim() || null,
       type: form.type?.toString().trim() || null,
       strength: form.strength?.toString().trim() || null,
@@ -433,11 +453,15 @@ export default function SuperAdminDrugMasterPage() {
               />
             </div>
             <div className="col-span-2">
-              <label className="text-xs font-medium">Composition</label>
-              <Input
-                value={form.saltComposition ?? ''}
-                onChange={(e) => setForm((p) => ({ ...p, saltComposition: e.target.value }))}
-                placeholder="e.g. Paracetamol (500mg) + Caffeine (65mg)"
+              {/* Entered as data. The rows are what the API stores as salts;
+                  the text form is rendered from them so every screen that
+                  reads the string keeps working. */}
+              <CompositionEditor
+                rows={saltRows}
+                onChange={(rows) => {
+                  setSaltRows(rows);
+                  setForm((p) => ({ ...p, saltComposition: compositionPreview(rows) }));
+                }}
               />
             </div>
             <div>

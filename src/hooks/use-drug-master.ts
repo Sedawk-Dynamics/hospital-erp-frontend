@@ -249,10 +249,25 @@ export function useDrugMasterList(params?: DrugMasterListParams) {
   });
 }
 
+/** One molecule of a structured composition. */
+export interface SaltInput {
+  name: string;
+  strengthValue?: number | null;
+  strengthUnit?: string | null;
+  perVolumeValue?: number | null;
+  perVolumeUnit?: string | null;
+}
+
 export interface DrugMasterInput {
   name: string;
   genericName?: string | null;
   saltComposition?: string | null;
+  /**
+   * The composition as DATA. Authoritative when sent: the server writes the
+   * salt links from it with no parsing, and renders saltComposition from it.
+   * Omit to keep the old text-only behaviour.
+   */
+  salts?: SaltInput[];
   manufacturer?: string | null;
   type?: string | null;
   dosageForm?: DosageForm | null;
