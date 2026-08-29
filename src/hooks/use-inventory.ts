@@ -1034,6 +1034,12 @@ export interface CreateStockTransferInput {
   drugBatchId?: string;
   fromDepartmentId?: string;
   toDepartmentId?: string;
+  /**
+   * Where a DRUG transfer lands. Wards hold drug stock; departments do not, so
+   * a drug sent to a department was decremented from the pharmacy and credited
+   * nowhere. Naming the ward is what puts it on that ward's shelf on receive.
+   */
+  toWardId?: string;
   fromLocation?: string;
   toLocation?: string;
   quantityRequested: number;

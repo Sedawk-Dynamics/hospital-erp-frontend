@@ -62,6 +62,8 @@ const createSchema = z.object({
   drugBatchId: z.string().optional(),
   fromDepartmentId: z.string().optional(),
   toDepartmentId: z.string().optional(),
+  /** Set when the destination is a ward — what lets receive credit its shelf. */
+  toWardId: z.string().optional(),
   fromLocation: z.string().optional(),
   toLocation: z.string().optional(),
   // Keep quantity as a string in form state so z's coerce->unknown typing
@@ -83,8 +85,13 @@ const createSchema = z.object({
 type CreateForm = z.infer<typeof createSchema>;
 
 // A transfer endpoint (source/destination) can be a department, a ward, or a
-// free-typed location. Departments use the FK; wards + custom locations are
-// stored in the location text field (the model has no wardId).
+// free-typed location. Departments and WARDS use their FK; a custom location is
+// free text.
+//
+// A ward used to be stored as its NAME in the location text field, which is why
+// a drug transfer could never land anywhere: the destination was a string, and
+// ward stock is keyed by ward id. The name is still written for display; the id
+// is what makes the stock arrive.
 type EndpointType = 'department' | 'ward' | 'location';
 
 interface Dept { id: string; name: string }
@@ -569,6 +576,7 @@ function CreateTransferDialog({
       drugBatchId: '',
       fromDepartmentId: defaultFromDepartmentId ?? '',
       toDepartmentId: defaultToDepartmentId ?? '',
+      toWardId: '',
       fromLocation: '',
       toLocation: '',
       quantityRequested: '1',
@@ -649,6 +657,7 @@ function CreateTransferDialog({
         drugBatchId: values.drugBatchId || undefined,
         fromDepartmentId: values.fromDepartmentId || undefined,
         toDepartmentId: values.toDepartmentId || undefined,
+        toWardId: values.toWardId || undefined,
         fromLocation: values.fromLocation || undefined,
         toLocation: values.toLocation || undefined,
         quantityRequested: Number(values.quantityRequested),
@@ -784,9 +793,21 @@ function CreateTransferDialog({
               type={toType}
               onTypeChange={changeToType}
               deptId={watch('toDepartmentId') ?? ''}
-              onDeptChange={(v) => { setValue('toDepartmentId', v); setValue('toLocation', ''); }}
+              onDeptChange={(v) => {
+                setValue('toDepartmentId', v);
+                setValue('toLocation', '');
+                setValue('toWardId', '');
+              }}
               location={watch('toLocation') ?? ''}
-              onLocationChange={(v) => { setValue('toLocation', v); setValue('toDepartmentId', ''); }}
+              onLocationChange={(v) => {
+                setValue('toLocation', v);
+                setValue('toDepartmentId', '');
+                // A free-typed location is not a ward, so drop any ward id the
+                // picker set before — otherwise the stock would land on a shelf
+                // the user has since navigated away from.
+                setValue('toWardId', '');
+              }}
+              onWardIdChange={(v) => setValue('toWardId', v)}
               departments={departments}
               wards={wards}
               error={errors.toDepartmentId?.message}
@@ -841,7 +862,7 @@ function CreateTransferDialog({
 // location. Wards + custom locations are written to the location text field.
 function EndpointPicker({
   label, type, onTypeChange, deptId, onDeptChange, location, onLocationChange,
-  departments, wards, error,
+  onWardIdChange, departments, wards, error,
 }: {
   label: string;
   type: EndpointType;
@@ -850,6 +871,8 @@ function EndpointPicker({
   onDeptChange: (v: string) => void;
   location: string;
   onLocationChange: (v: string) => void;
+  /** Destination only: reports the chosen ward's id, not just its name. */
+  onWardIdChange?: (v: string) => void;
   departments: Dept[];
   wards: Dept[];
   error?: string;
@@ -884,7 +907,13 @@ function EndpointPicker({
       {type === 'ward' && (
         <Select
           value={location || 'none'}
-          onValueChange={(v) => onLocationChange(v === 'none' ? '' : (v ?? ''))}
+          onValueChange={(v) => {
+            const ward = wards.find((w) => w.name === v);
+            onLocationChange(v === 'none' ? '' : (v ?? ''));
+            // The id is the part that matters — without it the stock has
+            // nowhere to land on receive.
+            onWardIdChange?.(v === 'none' ? '' : (ward?.id ?? ''));
+          }}
         >
           <SelectTrigger className="mt-2"><SelectValue placeholder="Pick ward" /></SelectTrigger>
           <SelectContent>
