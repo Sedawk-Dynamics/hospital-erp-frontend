@@ -482,3 +482,30 @@ export function useDecideSalt() {
     },
   });
 }
+
+// ── Molecule type-ahead, for the composition editor ────────────────────────
+
+export interface SaltSuggestion {
+  id: string;
+  name: string;
+  norm: string;
+  scheduleCode: string | null;
+  controlledClass: 'narcotic' | 'psychotropic' | null;
+  vaultControlled: boolean;
+}
+
+/**
+ * Suggestions for the molecule box. Reference data shared by every hospital, so
+ * it is cached for the session rather than refetched per keystroke — the query
+ * is debounced by the caller and keyed by term.
+ */
+export function useSaltSearch(term: string) {
+  const q = term.trim();
+  return useQuery({
+    queryKey: ['drug-master', 'salts', 'search', q],
+    queryFn: async () =>
+      (await apiGet<SaltSuggestion[]>('/drug-master/salts/search', { params: { q } })).data ?? [],
+    enabled: q.length >= 2,
+    staleTime: 5 * 60 * 1000,
+  });
+}

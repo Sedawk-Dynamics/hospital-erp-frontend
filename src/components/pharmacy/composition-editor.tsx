@@ -16,7 +16,7 @@
  * it cannot.
  */
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Plus, X, ClipboardPaste } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +25,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { useSaltSearch, type SaltSuggestion } from '@/hooks/use-drug-master';
 
 /** The units a strength may be expressed in — mirrors the server's enum. */
 export const STRENGTH_UNITS = ['mg', 'mcg', 'g', 'ml', 'iu', '%'] as const;
@@ -71,6 +72,108 @@ export function compositionPreview(rows: SaltRowInput[]): string {
         : r.name.trim(),
     )
     .join(' + ');
+}
+
+/**
+ * The molecule box: a list of what the system already knows, but still a plain
+ * text field underneath.
+ *
+ * Picking from the list is the common case and avoids the typos that would
+ * otherwise create junk molecules in the review queue. Typing something not on
+ * the list is the OTHER case and must keep working — a genuinely new molecule
+ * is exactly what the queue exists to catch, so the box suggests rather than
+ * restricts.
+ *
+ * Each suggestion shows its schedule, because that is what the person is
+ * really choosing.
+ */
+function MoleculeBox({
+  index,
+  value,
+  onChange,
+}: {
+  index: number;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [term, setTerm] = useState('');
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  // Debounced so a fast typist does not fire a request per keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setTerm(value), 200);
+    return () => clearTimeout(t);
+  }, [value]);
+
+  const { data: suggestions = [] } = useSaltSearch(open ? term : '');
+
+  // Clicking away closes the list; without this it hangs over the next field.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!boxRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  const pick = (s: SaltSuggestion) => {
+    onChange(s.name);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={boxRef} className="relative flex-1">
+      <Input
+        aria-label={`Molecule ${index + 1}`}
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') setOpen(false);
+          if (e.key === 'Enter' && suggestions.length === 1) {
+            e.preventDefault();
+            pick(suggestions[0]);
+          }
+        }}
+        placeholder="Molecule, e.g. Paracetamol"
+        autoComplete="off"
+      />
+      {open && suggestions.length > 0 && (
+        <ul
+          role="listbox"
+          aria-label={`Molecule ${index + 1} suggestions`}
+          className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-lg border bg-popover p-1 shadow-lg"
+        >
+          {suggestions.map((s) => (
+            <li key={s.id}>
+              <button
+                type="button"
+                className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
+                onClick={() => pick(s)}
+              >
+                <span className="truncate">{s.name}</span>
+                <span
+                  className={cn(
+                    'shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold',
+                    s.scheduleCode
+                      ? 'bg-muted text-muted-foreground'
+                      : 'bg-warning/15 text-warning',
+                  )}
+                >
+                  {s.scheduleCode ?? 'undecided'}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 export function CompositionEditor({
@@ -133,12 +236,10 @@ export function CompositionEditor({
       <div className="space-y-1.5">
         {list.map((r, i) => (
           <div key={i} className="flex items-center gap-1.5">
-            <Input
-              aria-label={`Molecule ${i + 1}`}
+            <MoleculeBox
+              index={i}
               value={r.name}
-              onChange={(e) => set(i, { name: e.target.value })}
-              placeholder="Molecule, e.g. Paracetamol"
-              className="flex-1"
+              onChange={(name) => set(i, { name })}
             />
             <Input
               aria-label={`Strength ${i + 1}`}
