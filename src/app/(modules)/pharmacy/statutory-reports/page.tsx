@@ -18,6 +18,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { toInputDateStr, formatDate, formatDateTime } from '@/lib/date-utils';
+import { cn } from '@/lib/utils';
 import { downloadCsv } from '@/lib/csv';
 import { useSuppliers } from '@/hooks/use-inventory';
 import { useUsersList } from '@/hooks/use-users';
@@ -451,6 +452,7 @@ function NarcoticTab() {
     patient: r.patient ?? '',
     mrn: r.patientMrn ?? '',
     dispensedBy: r.dispensedBy ?? '',
+    status: r.cancelled ? 'VOIDED' : 'Dispensed',
   }));
   return (
     <div className="space-y-3">
@@ -487,12 +489,21 @@ function NarcoticTab() {
             </TableHeader>
             <TableBody>
               {(data?.items ?? []).map((r: any) => (
-                <TableRow key={r.id}>
+                // A voided sale stays on the register — it is a statutory
+                // record, corrected by a further entry rather than erased — so
+                // it has to READ as voided. An unmarked row here would say the
+                // drug went to a patient when it went back on the shelf.
+                <TableRow key={r.id} className={cn(r.cancelled && 'text-muted-foreground')}>
                   <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{formatDateTime(r.date)}</TableCell>
-                  <TableCell className="font-medium">{r.drugName}</TableCell>
+                  <TableCell className="font-medium">
+                    <span className={cn(r.cancelled && 'line-through')}>{r.drugName}</span>
+                    {r.cancelled && (
+                      <Badge variant="outline" className="ml-1.5 h-5 px-1.5 text-[10px]">Voided</Badge>
+                    )}
+                  </TableCell>
                   <TableCell className="text-center"><Badge variant="outline">{r.schedule ?? '—'}</Badge></TableCell>
                   <TableCell className="font-mono text-xs">{r.batchNumber ?? '—'}</TableCell>
-                  <TableCell className="text-right">{r.quantity}</TableCell>
+                  <TableCell className={cn('text-right', r.cancelled && 'line-through')}>{r.quantity}</TableCell>
                   <TableCell className="text-sm">{r.patient ?? '—'}{r.patientMrn ? ` (${r.patientMrn})` : ''}</TableCell>
                   <TableCell className="text-sm">{r.dispensedBy ?? '—'}</TableCell>
                 </TableRow>
