@@ -1908,6 +1908,11 @@ export interface WardStockItem {
   expiryDate: string | null;
   sellingPrice: number | null;
   quantityInStock: number;
+  /** Stock can go bad while it sits on the shelf — the dispense call refuses
+   *  both of these, and the shelf says so first. */
+  isExpired: boolean;
+  isRecalled: boolean;
+  recallReason: string | null;
 }
 
 export function useWardStock(wardId: string | null) {

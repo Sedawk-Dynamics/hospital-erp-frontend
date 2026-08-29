@@ -15,7 +15,7 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Search, BedDouble, ShieldAlert, ShieldCheck, RotateCcw, SlidersHorizontal } from 'lucide-react';
+import { Search, BedDouble, ShieldAlert, ShieldCheck, RotateCcw, SlidersHorizontal, AlertTriangle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -248,13 +248,32 @@ export function WardStockPanel({ wardId }: { wardId: string }) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {stock.map((s) => (
-                    <TableRow key={s.id}>
+                  {stock.map((s) => {
+                    // Unusable stock is still ON the shelf and still has to be
+                    // sent back, so it stays on the list — marked, not hidden.
+                    const bad = s.isExpired || s.isRecalled;
+                    return (
+                    <TableRow key={s.id} className={cn(bad && 'bg-destructive/5')}>
                       <TableCell>
-                        <div className="font-medium">{s.drugName}</div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-medium">{s.drugName}</span>
+                          {s.isRecalled && (
+                            <Badge variant="destructive" className="h-5 gap-1 px-1.5 text-[10px]" title={s.recallReason ?? 'Recalled'}>
+                              <AlertTriangle className="h-3 w-3" /> Recalled
+                            </Badge>
+                          )}
+                          {s.isExpired && !s.isRecalled && (
+                            <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">Expired</Badge>
+                          )}
+                        </div>
                         <div className="text-xs font-mono text-muted-foreground">{s.batchNumber}</div>
+                        {s.isRecalled && s.recallReason && (
+                          <div className="mt-0.5 text-[11px] text-destructive">{s.recallReason}</div>
+                        )}
                       </TableCell>
-                      <TableCell className="text-sm">{s.expiryDate ? formatDate(s.expiryDate) : '—'}</TableCell>
+                      <TableCell className={cn('text-sm', s.isExpired && 'font-medium text-destructive')}>
+                        {s.expiryDate ? formatDate(s.expiryDate) : '—'}
+                      </TableCell>
                       <TableCell className="text-right"><Badge variant="outline">{s.quantityInStock}</Badge></TableCell>
                       <TableCell className="text-right font-mono">{inr(s.sellingPrice)}</TableCell>
                       <TableCell className="text-right">
@@ -276,7 +295,8 @@ export function WardStockPanel({ wardId }: { wardId: string }) {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             )}
