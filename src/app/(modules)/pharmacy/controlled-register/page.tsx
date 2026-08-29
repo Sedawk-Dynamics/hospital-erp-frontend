@@ -1,10 +1,11 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
   Search, Printer, Download, SlidersHorizontal, ShieldCheck,
   ArrowDownToLine, ArrowUpFromLine, ArrowLeftRight, Boxes, Layers, FileCheck2, X,
-  PackagePlus, Syringe, Trash2,
+  PackagePlus, Syringe, Trash2, ShieldAlert,
 } from 'lucide-react';
 import { PharmacyAdminGuard } from '@/components/pharmacy/pharmacy-admin-guard';
 import { Button } from '@/components/ui/button';
@@ -213,24 +214,42 @@ export default function ControlledRegisterPage() {
           </div>
         </div>
 
-        {/* ── The statutory actions that used to live on /inventory/ndps ──
-            Receiving, administering and destroying a narcotic are records, not
-            stock movements, so they belong with the register an inspector
-            reads. Moving stock is the transfer board's job, for every medicine
-            alike. */}
-        <div className="flex flex-wrap gap-2 print:hidden">
-          <Button size="sm" variant="outline" onClick={() => setDialog('receive')}>
-            <PackagePlus className="mr-1.5 h-4 w-4" /> Receive (Form 3C)
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setDialog('consume')}>
-            <Syringe className="mr-1.5 h-4 w-4" /> Administer (Form 3E)
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setDialog('dispose')}>
-            <Trash2 className="mr-1.5 h-4 w-4" /> Disposal
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setDialog('location')}>
-            <Boxes className="mr-1.5 h-4 w-4" /> New sub-store
-          </Button>
+        {/* ── Statutory NDPS records ──
+            These are narcotic-only BY LAW, not by oversight: each captures
+            fields no ordinary movement has — a Form 3C consignment number, the
+            prescriber's registration, a destruction reference. They refuse any
+            drug not on the NDPS list, which is correct here and was confusing
+            when they sat among general stock actions.
+            Ordinary stock — receiving, issuing, dispensing, correcting, for
+            every medicine including narcotics — is Inventory → Stock Transfer. */}
+        <div className="space-y-2 rounded-xl border border-warning/30 bg-warning/5 p-3 print:hidden">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="h-4 w-4 shrink-0 text-warning" />
+            <p className="text-xs">
+              <span className="font-semibold">Narcotics only.</span>{' '}
+              These record what the NDPS Act requires and will refuse any drug not on the
+              narcotic list. For ordinary stock movement — any medicine, including these —
+              use{' '}
+              <Link href="/inventory/stock-transfer" className="font-medium underline underline-offset-2">
+                Inventory → Stock Transfer
+              </Link>
+              .
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={() => setDialog('receive')}>
+              <PackagePlus className="mr-1.5 h-4 w-4" /> Receive (Form 3C)
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setDialog('consume')}>
+              <Syringe className="mr-1.5 h-4 w-4" /> Administer (Form 3E)
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setDialog('dispose')}>
+              <Trash2 className="mr-1.5 h-4 w-4" /> Disposal
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setDialog('location')}>
+              <Boxes className="mr-1.5 h-4 w-4" /> New sub-store
+            </Button>
+          </div>
         </div>
 
         <Tabs defaultValue="ledger">

@@ -141,7 +141,9 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       // Every movement of a scheduled or narcotic medicine, in one ledger —
       // the view a drug inspector reads during an audit.
       { label: 'Controlled Register', href: '/pharmacy/controlled-register', icon: ShieldCheck, restrictTo: ['pharmacy_admin'] },
-      { label: 'Ward Stock', href: '/pharmacy/ward-stock', icon: BedDouble, restrictTo: ['pharmacy_admin'] },
+      // Ward stock is a tab on Inventory → Stock Transfer now, beside the
+      // transfers that fill the shelf. The old route redirects there.
+
       // All medicines dispensed to IP patients (billed to the hospital IP bill).
       { label: 'IP Medicines', href: '/pharmacy/ip-medicines', icon: Pill },
       { label: 'OT Kits', href: '/pharmacy/ot-kits', icon: Package },
