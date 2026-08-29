@@ -348,7 +348,18 @@ export function WardLedgerPanel({ wardId }: { wardId: string }) {
                         <div className="text-sm">{l.drugName}</div>
                         <div className="text-xs font-mono text-muted-foreground">{l.batchNumber}</div>
                       </TableCell>
-                      <TableCell className="text-right">{l.quantity}</TableCell>
+                      <TableCell
+                        className={cn(
+                          'text-right tabular-nums',
+                          l.quantity < 0 && 'text-destructive',
+                        )}
+                        title={l.reason ?? undefined}
+                      >
+                        {/* An adjustment can go either way, so it carries its
+                            sign. The other three read their direction off the
+                            movement type and would look odd with a plus. */}
+                        {l.movementType === 'adjusted' && l.quantity > 0 ? `+${l.quantity}` : l.quantity}
+                      </TableCell>
                       <TableCell className="text-sm">{l.patient ?? '—'}{l.patientMrn ? ` (${l.patientMrn})` : ''}</TableCell>
                     </TableRow>
                   ))}
