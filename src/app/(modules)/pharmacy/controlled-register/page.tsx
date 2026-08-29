@@ -1,11 +1,9 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import Link from 'next/link';
 import {
   Search, Printer, Download, SlidersHorizontal, ShieldCheck,
   ArrowDownToLine, ArrowUpFromLine, ArrowLeftRight, Boxes, Layers, FileCheck2, X,
-  PackagePlus, Syringe, Trash2, ShieldAlert,
 } from 'lucide-react';
 import { PharmacyAdminGuard } from '@/components/pharmacy/pharmacy-admin-guard';
 import { Button } from '@/components/ui/button';
@@ -26,9 +24,7 @@ import {
   type ControlledRegisterParams, type RegisterRow,
 } from '@/hooks/use-pharmacy';
 import { useNdpsLocations } from '@/hooks/use-ndps';
-import {
-  LocationDialog, ReceiveDialog, ConsumptionDialog, DisposalDialog, StockTab, DailyTab,
-} from '@/components/pharmacy/ndps-statutory';
+import { StockTab, DailyTab } from '@/components/pharmacy/ndps-statutory';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { toInputDateStr, formatDate, formatDateTime } from '@/lib/date-utils';
 import { downloadCsv } from '@/lib/csv';
@@ -114,8 +110,6 @@ export default function ControlledRegisterPage() {
   const { data: drugOptions = [] } = useControlledDrugOptions();
   const { data: locations = [] } = useNdpsLocations();
   const selectedDrugIds = (draft.drugIds ?? '').split(',').filter(Boolean);
-  // The statutory actions that used to sit on their own NDPS page.
-  const [dialog, setDialog] = useState<null | 'receive' | 'consume' | 'dispose' | 'location'>(null);
   const rows = data?.rows ?? [];
   const s = data?.summary;
 
@@ -214,43 +208,9 @@ export default function ControlledRegisterPage() {
           </div>
         </div>
 
-        {/* ── Statutory NDPS records ──
-            These are narcotic-only BY LAW, not by oversight: each captures
-            fields no ordinary movement has — a Form 3C consignment number, the
-            prescriber's registration, a destruction reference. They refuse any
-            drug not on the NDPS list, which is correct here and was confusing
-            when they sat among general stock actions.
-            Ordinary stock — receiving, issuing, dispensing, correcting, for
-            every medicine including narcotics — is Inventory → Stock Transfer. */}
-        <div className="space-y-2 rounded-xl border border-warning/30 bg-warning/5 p-3 print:hidden">
-          <div className="flex items-center gap-2">
-            <ShieldAlert className="h-4 w-4 shrink-0 text-warning" />
-            <p className="text-xs">
-              <span className="font-semibold">Narcotics only.</span>{' '}
-              These record what the NDPS Act requires and will refuse any drug not on the
-              narcotic list. For ordinary stock movement — any medicine, including these —
-              use{' '}
-              <Link href="/inventory/stock-transfer" className="font-medium underline underline-offset-2">
-                Inventory → Stock Transfer
-              </Link>
-              .
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" onClick={() => setDialog('receive')}>
-              <PackagePlus className="mr-1.5 h-4 w-4" /> Receive (Form 3C)
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => setDialog('consume')}>
-              <Syringe className="mr-1.5 h-4 w-4" /> Administer (Form 3E)
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => setDialog('dispose')}>
-              <Trash2 className="mr-1.5 h-4 w-4" /> Disposal
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setDialog('location')}>
-              <Boxes className="mr-1.5 h-4 w-4" /> New sub-store
-            </Button>
-          </div>
-        </div>
+        {/* The statutory NDPS actions moved to Inventory → Stock Transfer, so
+            every stock action lives on one page. This stays the inspector's
+            READ view: the ledger, the balances, and the documents. */}
 
         <Tabs defaultValue="ledger">
           <TabsList variant="line">
@@ -519,10 +479,6 @@ export default function ControlledRegisterPage() {
           <TabsContent value="daily"><DailyTab /></TabsContent>
         </Tabs>
 
-        <ReceiveDialog open={dialog === 'receive'} onOpenChange={(o) => setDialog(o ? 'receive' : null)} />
-        <ConsumptionDialog open={dialog === 'consume'} onOpenChange={(o) => setDialog(o ? 'consume' : null)} />
-        <DisposalDialog open={dialog === 'dispose'} onOpenChange={(o) => setDialog(o ? 'dispose' : null)} />
-        <LocationDialog open={dialog === 'location'} onOpenChange={(o) => setDialog(o ? 'location' : null)} />
       </div>
     </PharmacyAdminGuard>
   );

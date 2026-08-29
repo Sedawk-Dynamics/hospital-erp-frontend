@@ -2,13 +2,13 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 /**
- * The Controlled-Drug Register is now the only home for the statutory NDPS
- * records. /inventory/ndps was deleted: moving stock is the transfer board's
- * job for every schedule alike, and Form 3C / 3E / disposal / sub-stores are
- * records rather than movements, so they came here — the inspector's view.
+ * The Controlled-Drug Register is the inspector's READ view: the ledger, the
+ * balances and the documents.
  *
- * This pins that they actually arrived. A merge that loses Form 3C loses the
- * document an inspector asks for first.
+ * Everything that MOVES stock — including the statutory NDPS actions — is on
+ * Inventory → Stock Transfer, so there is one page for doing and one for
+ * reading. These tests pin both halves of that: the reading is here, and the
+ * doing is not.
  */
 
 vi.mock('@/components/pharmacy/pharmacy-admin-guard', () => ({
@@ -48,12 +48,14 @@ vi.mock('@/hooks/use-hospital', async (importOriginal) => ({
 import ControlledRegisterPage from './page';
 
 describe('Controlled-Drug Register — the statutory home', () => {
-  it('carries the actions that used to live on the NDPS page', () => {
+  it('is a READ view — the statutory actions live on Stock Transfer now', () => {
+    // They moved so that every stock action is on one page. Asserting their
+    // ABSENCE matters: a stray copy here is how two screens start disagreeing
+    // about the same narcotic.
     render(<ControlledRegisterPage />);
-    expect(screen.getByRole('button', { name: /Receive \(Form 3C\)/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Administer \(Form 3E\)/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Disposal/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /New sub-store/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Receive \(Form 3C\)/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Administer \(Form 3E\)/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /New sub-store/i })).not.toBeInTheDocument();
   });
 
   it('offers the inspector views as tabs beside the ledger', () => {

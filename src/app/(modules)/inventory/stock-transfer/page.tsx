@@ -21,17 +21,25 @@
  */
 
 import { useState } from 'react';
-import { ArrowLeftRight, BedDouble, ScrollText } from 'lucide-react';
+import {
+  ArrowLeftRight, BedDouble, ScrollText, ShieldAlert,
+  PackagePlus, Syringe, Trash2, Boxes,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { EmptyState } from '@/components/shared/empty-state';
 import { StockTransferBoard } from '@/components/shared/stock-transfer-board';
 import {
   WardStockPanel, WardLedgerPanel, useWardOptions,
 } from '@/components/pharmacy/ward-stock-board';
+import {
+  LocationDialog, ReceiveDialog, ConsumptionDialog, DisposalDialog,
+} from '@/components/pharmacy/ndps-statutory';
 
 export default function InventoryStockTransferPage() {
   const wards = useWardOptions();
   const [wardId, setWardId] = useState('');
+  const [dialog, setDialog] = useState<null | 'receive' | 'consume' | 'dispose' | 'location'>(null);
 
   return (
     <div className="space-y-4 animate-fade-in-up">
@@ -45,6 +53,9 @@ export default function InventoryStockTransferPage() {
           </TabsTrigger>
           <TabsTrigger value="ledger">
             <ScrollText className="mr-1.5 h-4 w-4" /> Ledger
+          </TabsTrigger>
+          <TabsTrigger value="ndps">
+            <ShieldAlert className="mr-1.5 h-4 w-4" /> NDPS records
           </TabsTrigger>
         </TabsList>
 
@@ -83,7 +94,49 @@ export default function InventoryStockTransferPage() {
             />
           )}
         </TabsContent>
+        {/* ── The statutory NDPS records ──
+            Here so that every stock action is on one page, but in a tab of
+            their own because they are not ordinary movements: each captures
+            what the NDPS Act requires — a Form 3C consignment number, the
+            prescriber's registration, a destruction reference — and each
+            refuses any drug not on the narcotic list. That refusal is correct;
+            it was only confusing when the buttons sat among general actions. */}
+        <TabsContent value="ndps" className="space-y-3">
+          <div className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/5 p-3">
+            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+            <p className="text-xs">
+              <span className="font-semibold">Narcotics only.</span> These record what the NDPS Act
+              requires and will refuse any drug not on the narcotic list. Ordinary stock movement —
+              any medicine, these included — is the other tabs on this page.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={() => setDialog('receive')}>
+              <PackagePlus className="mr-1.5 h-4 w-4" /> Receive (Form 3C)
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setDialog('consume')}>
+              <Syringe className="mr-1.5 h-4 w-4" /> Administer (Form 3E)
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setDialog('dispose')}>
+              <Trash2 className="mr-1.5 h-4 w-4" /> Disposal
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setDialog('location')}>
+              <Boxes className="mr-1.5 h-4 w-4" /> New sub-store
+            </Button>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            What these produce — the register, the running balances and Form 35 — is read on the
+            Controlled-Drug Register.
+          </p>
+        </TabsContent>
       </Tabs>
+
+      <ReceiveDialog open={dialog === 'receive'} onOpenChange={(o) => setDialog(o ? 'receive' : null)} />
+      <ConsumptionDialog open={dialog === 'consume'} onOpenChange={(o) => setDialog(o ? 'consume' : null)} />
+      <DisposalDialog open={dialog === 'dispose'} onOpenChange={(o) => setDialog(o ? 'dispose' : null)} />
+      <LocationDialog open={dialog === 'location'} onOpenChange={(o) => setDialog(o ? 'location' : null)} />
     </div>
   );
 }
