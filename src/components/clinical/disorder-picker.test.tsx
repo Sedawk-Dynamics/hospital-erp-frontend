@@ -1,0 +1,136 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+
+/**
+ * "Existing disorders" — one search bar and a chip per condition.
+ *
+ * It was free text, so the same condition arrived as "sugar", "diabetes" and
+ * "DM" and nothing downstream could count or match them. The chips are still
+ * that same text column, one line each: no migration, and the patient file, the
+ * safety banner and the doctor's file view all keep reading it untouched.
+ */
+
+const results = { current: [] as unknown[] };
+const fetching = { current: false };
+vi.mock('@/hooks/use-disorders', () => ({
+  useDisorderSearch: () => ({ data: results.current, isFetching: fetching.current }),
+}));
+
+import { DisorderPicker, parseDisorders } from './disorder-picker';
+
+const ASTHMA = { id: '1', name: 'Asthma, unspecified', icdCode: 'J45.9', category: 'Chronic lower respiratory diseases', isCustom: false };
+const DM = { id: '2', name: 'Type 2 diabetes mellitus, without complications', icdCode: 'E11.9', category: 'Diabetes mellitus', isCustom: false };
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  results.current = [ASTHMA, DM];
+  fetching.current = false;
+});
+
+const search = () => screen.getByPlaceholderText(/Search conditions/i);
+
+async function pick(name: string) {
+  await userEvent.type(search(), 'asth');
+  await waitFor(() => expect(screen.getByText(name)).toBeInTheDocument());
+  await userEvent.click(screen.getByText(name));
+}
+
+describe('reading what is already stored', () => {
+  it('parses a coded line into its code and name', () => {
+    expect(parseDisorders('J45.9 — Asthma, unspecified')).toEqual([
+      { code: 'J45.9', label: 'Asthma, unspecified', raw: 'J45.9 — Asthma, unspecified' },
+    ]);
+  });
+
+  it('keeps free text written before the picker existed', () => {
+    // Years of typed history live in this column. It must not be thrown away
+    // just because it does not look like a code.
+    expect(parseDisorders('sugar since 2019')).toEqual([
+      { code: null, label: 'sugar since 2019', raw: 'sugar since 2019' },
+    ]);
+  });
+
+  it('shows every stored line as its own chip', () => {
+    render(<DisorderPicker value={'J45.9 — Asthma, unspecified\nsugar since 2019'} onChange={vi.fn()} />);
+    expect(screen.getByText('J45.9')).toBeInTheDocument();
+    expect(screen.getByText('Asthma, unspecified')).toBeInTheDocument();
+    expect(screen.getByText('sugar since 2019')).toBeInTheDocument();
+  });
+});
+
+describe('adding a disorder', () => {
+  it('stores it as "CODE — Name"', async () => {
+    // The clinician panel and the portal write the same row, so the format has
+    // to be the one both sides read back.
+    const onChange = vi.fn();
+    render(<DisorderPicker value="" onChange={onChange} />);
+    await pick('Asthma, unspecified');
+    expect(onChange).toHaveBeenCalledWith('J45.9 — Asthma, unspecified');
+  });
+
+  it('appends rather than replacing what is there', async () => {
+    const onChange = vi.fn();
+    render(<DisorderPicker value="sugar since 2019" onChange={onChange} />);
+    await pick('Asthma, unspecified');
+    expect(onChange).toHaveBeenCalledWith('sugar since 2019\nJ45.9 — Asthma, unspecified');
+  });
+
+  it('marks one already on the list instead of hiding it', async () => {
+    // Hiding it reads as a broken search; saying "added" answers the question.
+    render(<DisorderPicker value="J45.9 — Asthma, unspecified" onChange={vi.fn()} />);
+    await userEvent.type(search(), 'asth');
+    await waitFor(() => expect(screen.getByText('added')).toBeInTheDocument());
+  });
+
+  it('will not add the same disorder twice', async () => {
+    const onChange = vi.fn();
+    render(<DisorderPicker value="J45.9 — Asthma, unspecified" onChange={onChange} />);
+    await pick('Asthma, unspecified');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('adds the first match on Enter, and never submits the form', async () => {
+    const onSubmit = vi.fn((e: React.FormEvent) => e.preventDefault());
+    const onChange = vi.fn();
+    render(
+      <form onSubmit={onSubmit}>
+        <DisorderPicker value="" onChange={onChange} />
+      </form>,
+    );
+    await userEvent.type(search(), 'asth');
+    await waitFor(() => expect(screen.getByText('Asthma, unspecified')).toBeInTheDocument());
+    await userEvent.type(search(), '{Enter}');
+
+    expect(onChange).toHaveBeenCalledWith('J45.9 — Asthma, unspecified');
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('says so when nothing matches, and where to get it added', async () => {
+    results.current = [];
+    render(<DisorderPicker value="" onChange={vi.fn()} />);
+    await userEvent.type(search(), 'zzzz');
+    await waitFor(() => expect(screen.getByText(/No condition matching/i)).toBeInTheDocument());
+  });
+});
+
+describe('removing a disorder', () => {
+  it('takes out only that line', async () => {
+    const onChange = vi.fn();
+    render(
+      <DisorderPicker
+        value={'J45.9 — Asthma, unspecified\nE11.9 — Type 2 diabetes mellitus, without complications'}
+        onChange={onChange}
+      />,
+    );
+    await userEvent.click(screen.getByLabelText('Remove Asthma, unspecified'));
+    expect(onChange).toHaveBeenCalledWith('E11.9 — Type 2 diabetes mellitus, without complications');
+  });
+
+  it('can remove free text too, so old entries are not stuck', async () => {
+    const onChange = vi.fn();
+    render(<DisorderPicker value={'sugar since 2019\nJ45.9 — Asthma, unspecified'} onChange={onChange} />);
+    await userEvent.click(screen.getByLabelText('Remove sugar since 2019'));
+    expect(onChange).toHaveBeenCalledWith('J45.9 — Asthma, unspecified');
+  });
+});
