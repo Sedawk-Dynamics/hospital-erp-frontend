@@ -1,7 +1,6 @@
 'use client';
 
 import { useFieldArray, type UseFormReturn } from 'react-hook-form';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -11,6 +10,7 @@ import { useLatestVitals } from '@/hooks/use-nurse';
 import { RecordVitalsDialog } from '@/components/shared/record-vitals-dialog';
 import { NurseIntakeComplaint } from '@/components/doctor/nurse-intake-complaint';
 import { DiagnosisNameField } from '@/components/clinical/diagnosis-name-field';
+import { IcdCodeCombobox } from '@/components/clinical/icd-code-combobox';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
 import type { ConsultationFormData } from './consultation-completion-schema';
 import { temperatureIn, temperatureUnitLabel } from '@/lib/vitals-temperature';
@@ -120,12 +120,22 @@ export function StepExamination({ form, patientId, appointmentId, visitId }: Ste
         <div className="space-y-2">
           {fields.map((field, index) => (
             <div key={field.id} className="flex items-start gap-2 rounded-lg border bg-muted/30 p-3">
-              <div className="grid flex-1 grid-cols-1 sm:grid-cols-[100px_1fr_140px] gap-2">
+              <div className="grid flex-1 grid-cols-1 sm:grid-cols-[140px_1fr_140px] gap-2">
                 <div>
-                  <Input
-                    placeholder="ICD Code"
-                    className="h-8 text-xs"
-                    {...register(`diagnoses.${index}.icdCode`)}
+                  {/* Search by CODE, the same picker the prescription pad uses.
+                      This was a bare text box, so the code had to be known and
+                      typed by hand — which in practice left it blank. */}
+                  <IcdCodeCombobox
+                    triggerSize="sm"
+                    className="w-full"
+                    value={watch(`diagnoses.${index}.icdCode`) || null}
+                    onSelect={(icd) => {
+                      setValue(`diagnoses.${index}.icdCode`, icd?.code ?? '', { shouldDirty: true });
+                      if (icd) {
+                        setValue(`diagnoses.${index}.diagnosisName`, icd.title, { shouldDirty: true });
+                      }
+                    }}
+                    placeholder="ICD code"
                   />
                 </div>
                 <div>
