@@ -63,6 +63,7 @@ import { useAdmissions } from '@/hooks/use-clinical';
 import { AdmissionTypeBadge } from '@/components/shared/admission-type-badge';
 import { RequestKitDialog } from '@/components/ot-kit/request-kit-dialog';
 import { useOtKitIssues, type OtKitIssue } from '@/hooks/use-ot-kit';
+import { fullName } from '@/lib/person-name';
 
 const AWAITING_DOCTOR = 'awaiting_doctor';
 
@@ -376,7 +377,7 @@ export default function DoctorOTListPage() {
                 otRequests.map((req) => {
                   const patient = req.patient;
                   const patientName = patient
-                    ? `${patient.firstName} ${patient.lastName}`.toUpperCase()
+                    ? fullName(patient).toUpperCase()
                     : 'Unknown';
                   const awaiting =
                     req.scheduleState === AWAITING_DOCTOR && req.status !== 'cancelled';

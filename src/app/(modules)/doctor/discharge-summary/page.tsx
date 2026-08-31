@@ -44,6 +44,7 @@ import {
 import apiClient from '@/lib/api-client';
 import { apiPost } from '@/lib/api';
 import { DischargeProgressNotesPanel } from '@/components/doctor/discharge-progress-notes-panel';
+import { fullName } from '@/lib/person-name';
 
 // ---------------------------------------------------------------------------
 // Status badge helper
@@ -404,7 +405,7 @@ export default function DischargeSummaryPage() {
                 </Avatar>
                 <div>
                   <p className="font-semibold text-foreground">
-                    {patient ? `${patient.firstName} ${patient.lastName}`.toUpperCase() : 'Unknown'}
+                    {fullName(patient, 'Unknown').toUpperCase()}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     MRN: {patient?.mrn ?? '-'} | {patient?.gender ?? '-'} | DOB: {patient?.dateOfBirth ? formatDate(patient.dateOfBirth) : '-'}
@@ -842,7 +843,7 @@ export default function DischargeSummaryPage() {
                 admissions.map((admission) => {
                   const patient = admission.patient;
                   const patientName = patient
-                    ? `${patient.firstName} ${patient.lastName}`.toUpperCase()
+                    ? fullName(patient).toUpperCase()
                     : 'Unknown';
                   const initials = patient
                     ? `${patient.firstName?.[0] || ''}${patient.lastName?.[0] || ''}`.toUpperCase()

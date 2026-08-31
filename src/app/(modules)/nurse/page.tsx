@@ -66,6 +66,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { formatTemperature } from '@/lib/vitals-temperature';
 import { abnormalDirection, isValueAbnormal } from '@/lib/vitals-ranges';
 import { useTemperatureUnitStore } from '@/stores/temperature-unit-store';
+import { fullName, initials } from '@/lib/person-name';
 
 // ── Shift Detection ───────────────────────────────────────
 //
@@ -506,12 +507,8 @@ function RosterCard({
       ) : (
         <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
           {currentShiftRoster.map((r) => {
-            const name = r.staff?.user
-              ? `${r.staff.user.firstName} ${r.staff.user.lastName}`
-              : 'Unknown';
-            const initials = r.staff?.user
-              ? `${r.staff.user.firstName[0] ?? ''}${r.staff.user.lastName[0] ?? ''}`.toUpperCase()
-              : '?';
+            const name = fullName(r.staff?.user, 'Unknown');
+            const staffInitials = initials(r.staff?.user);
             return (
               <div
                 key={r.id}
@@ -519,7 +516,7 @@ function RosterCard({
               >
                 <Avatar className="h-6 w-6">
                   <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
-                    {initials}
+                    {staffInitials}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0">
@@ -757,8 +754,8 @@ function OpdConfirmedList({
       ) : (
         <ul className="divide-y">
           {records.map((r) => {
-            const initials = `${r.patient.firstName?.[0] ?? ''}${r.patient.lastName?.[0] ?? ''}`.toUpperCase();
-            const fullName = `${r.patient.firstName} ${r.patient.lastName ?? ''}`.trim();
+            const rowInitials = initials(r.patient);
+            const rowName = fullName(r.patient, 'Patient');
             const statusCfg = APPT_STATUS_LABELS[r.status] ?? {
               label: r.status,
               bg: 'bg-gray-100',
@@ -775,12 +772,12 @@ function OpdConfirmedList({
                 >
                   <Avatar className="h-9 w-9">
                     <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                      {initials || '?'}
+                      {rowInitials}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-foreground truncate">
-                      {fullName}
+                      {rowName}
                     </p>
                     <p className="text-[11px] text-muted-foreground truncate">
                       {[
@@ -882,12 +879,8 @@ function PatientListTable({
           <tbody>
             {admissions.map((adm) => {
               const patient = adm.patient;
-              const initials = patient
-                ? `${patient.firstName?.[0] || ''}${patient.lastName?.[0] || ''}`.toUpperCase()
-                : '?';
-              const fullName = patient
-                ? `${patient.firstName} ${patient.lastName}`.toUpperCase()
-                : 'UNKNOWN';
+              const patientInitials = initials(patient);
+              const patientName = fullName(patient, 'Unknown').toUpperCase();
               const st = admissionStatusLabels[adm.status] ?? admissionStatusLabels.admitted;
               const doctorName = adm.doctor?.user
                 ? `Dr. ${adm.doctor.user.firstName} ${adm.doctor.user.lastName}`
@@ -902,12 +895,12 @@ function PatientListTable({
                     <div className="flex items-center gap-3">
                       <Avatar className="h-9 w-9">
                         <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                          {initials}
+                          {patientInitials}
                         </AvatarFallback>
                       </Avatar>
                       <div>
                         <p className="font-semibold text-foreground truncate max-w-[200px]">
-                          {fullName}{' '}
+                          {patientName}{' '}
                           <span className="font-normal text-muted-foreground">
                             {patient?.gender === 'female'
                               ? 'F'

@@ -14,6 +14,7 @@ import {
 import { Printer, Edit, Plus, Clock, UtensilsCrossed, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePatientSearch } from '@/hooks/use-doctor';
+import { fullName } from '@/lib/person-name';
 
 interface MealItem {
   name: string;
@@ -63,7 +64,7 @@ export default function DoctorNutritionChartPage() {
   const handleSelectPatient = useCallback((patient: { id: string; firstName: string; lastName: string; mrn: string }) => {
     setSelectedPatient({
       id: patient.id,
-      name: `${patient.firstName} ${patient.lastName}`,
+      name: fullName(patient, 'Patient'),
       mrn: patient.mrn,
     });
     setPatientSearch('');

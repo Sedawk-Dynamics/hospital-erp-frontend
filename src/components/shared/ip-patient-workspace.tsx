@@ -106,6 +106,7 @@ import { PatientFormsPanel } from '@/components/shared/patient-forms-panel';
 import { VitalValue } from '@/components/shared/vital-value';
 import { formatTemperature, temperatureIn, temperatureUnitLabel, temperatureValue } from '@/lib/vitals-temperature';
 import { useTemperatureUnit } from '@/stores/temperature-unit-store';
+import { fullName } from '@/lib/person-name';
 
 // Hooks here return raw `ApiResponse<T>` — pull out the inner payload safely.
 function unwrapList<T>(value: unknown): T[] {
@@ -1400,7 +1401,7 @@ function PatientPanel({ patientId }: { patientId: string }) {
         Patient Information
       </h2>
       <Separator className="mb-2" />
-      <PatientRow label="Full name" value={`${patient.firstName} ${patient.lastName}`} />
+      <PatientRow label="Full name" value={fullName(patient, '—')} />
       <PatientRow label="MRN" value={patient.mrn} />
       <PatientRow label="Date of birth" value={patient.dateOfBirth ? formatDate(patient.dateOfBirth) : '–'} />
       <PatientRow label="Gender" value={patient.gender} />

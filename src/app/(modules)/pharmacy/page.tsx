@@ -68,6 +68,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { ControlledDrugPanel, cartNeedsWitness } from '@/components/pharmacy/controlled-drug-panel';
 import { WitnessCosignDialog } from '@/components/pharmacy/witness-cosign-dialog';
 import { RecallAlertBanner } from '@/components/pharmacy/recall-alert-banner';
+import { fullName } from '@/lib/person-name';
 
 export default function PharmacyBillingPage() {
   return (
@@ -418,7 +419,7 @@ function PharmacyPOS() {
   // --- Patient handlers ---
   const selectPatient = useCallback((patient: PatientResult) => {
     setSelectedPatient(patient);
-    setPatientSearch(`${patient.firstName} ${patient.lastName}`);
+    setPatientSearch(fullName(patient));
     setShowPatientDropdown(false);
   }, []);
 

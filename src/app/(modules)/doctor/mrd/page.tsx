@@ -37,6 +37,7 @@ import {
 import { formatTemperature, temperatureIn, temperatureUnitLabel, temperatureValue } from '@/lib/vitals-temperature';
 import { useTemperatureUnit } from '@/stores/temperature-unit-store';
 import { VitalValue } from '@/components/shared/vital-value';
+import { fullName } from '@/lib/person-name';
 
 export default function DoctorMRDPage() {
   const { user } = useAuthStore();
@@ -72,7 +73,7 @@ export default function DoctorMRDPage() {
   const handleSelectPatient = useCallback((patient: { id: string; firstName: string; lastName: string; mrn: string; phone: string }) => {
     setSelectedPatientForRequest({
       id: patient.id,
-      name: `${patient.firstName} ${patient.lastName}`,
+      name: fullName(patient, 'Patient'),
       mrn: patient.mrn,
       phone: patient.phone,
     });

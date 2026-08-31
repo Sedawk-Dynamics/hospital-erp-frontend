@@ -49,6 +49,7 @@ import {
 } from '@/hooks/use-hospital';
 import { apiPost, apiPatch } from '@/lib/api';
 import type { Patient, Appointment, DoctorProfile } from '@/types';
+import { fullName } from '@/lib/person-name';
 
 // ============================================================
 // Helper: format HH:MM from a Date
@@ -132,7 +133,7 @@ function WalkInDialog({ open, onOpenChange, doctors, doctorsLoading }: WalkInDia
 
   const handleSelectPatient = useCallback((patient: Patient) => {
     setSelectedPatient(patient);
-    setPatientQuery(`${patient.firstName} ${patient.lastName} (${patient.mrn})`);
+    setPatientQuery(`${fullName(patient)} (${patient.mrn})`);
     setShowPatientDropdown(false);
   }, []);
 

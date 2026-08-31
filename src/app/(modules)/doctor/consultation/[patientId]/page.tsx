@@ -84,6 +84,7 @@ import { VitalsHistoryDrawer } from '@/components/nurse-hierarchy/vitals-history
 import type { Vital } from '@/hooks/use-vital-history';
 import { RecordVitalsDialog } from '@/components/shared/record-vitals-dialog';
 import type { Patient, Appointment } from '@/types';
+import { fullName } from '@/lib/person-name';
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -1242,7 +1243,7 @@ export default function PatientConsultationPage({
                     <PrescriptionPad
                       key={isEditing ? `edit-${prefill?.visitId}` : 'new'}
                       patientId={patient.id}
-                      patientName={`${patient.firstName} ${patient.lastName}`}
+                      patientName={fullName(patient, 'Patient')}
                       patientAge={patient.dateOfBirth ? calculateAge(patient.dateOfBirth) : undefined}
                       patientGender={patient.gender}
                       patientPhone={patient.phone}
@@ -1440,7 +1441,7 @@ export default function PatientConsultationPage({
         open={admissionRequestOpen}
         onOpenChange={setAdmissionRequestOpen}
         patientId={patient.id}
-        patientName={`${patient.firstName} ${patient.lastName}`}
+        patientName={fullName(patient, 'Patient')}
         visitId={activeVisitId || undefined}
       />
 

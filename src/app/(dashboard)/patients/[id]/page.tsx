@@ -33,6 +33,7 @@ import {
 import { PatientPoliciesPanel } from '@/components/insurance/patient-policies-panel';
 import apiClient from '@/lib/api-client';
 import type { Patient } from '@/types';
+import { fullName } from '@/lib/person-name';
 
 export default function PatientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -61,7 +62,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
   return (
     <div className="space-y-6">
       <PageHeader
-        title={`${patient.firstName} ${patient.lastName}`}
+        title={fullName(patient, 'Unknown')}
         description={`MRN: ${patient.mrn}`}
         action={
           <div className="flex gap-2">
