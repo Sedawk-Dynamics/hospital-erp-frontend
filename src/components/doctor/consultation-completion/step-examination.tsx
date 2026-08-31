@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { useLatestVitals } from '@/hooks/use-nurse';
 import { RecordVitalsDialog } from '@/components/shared/record-vitals-dialog';
 import { NurseIntakeComplaint } from '@/components/doctor/nurse-intake-complaint';
+import { DiagnosisNameField } from '@/components/clinical/diagnosis-name-field';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
 import type { ConsultationFormData } from './consultation-completion-schema';
 import { temperatureIn, temperatureUnitLabel } from '@/lib/vitals-temperature';
@@ -128,10 +129,14 @@ export function StepExamination({ form, patientId, appointmentId, visitId }: Ste
                   />
                 </div>
                 <div>
-                  <Input
+                  {/* Type the diagnosis; picking a suggestion fills the ICD
+                      code box beside it. The code was hand-typed before, which
+                      in practice meant it was left blank. */}
+                  <DiagnosisNameField
+                    form={form}
+                    index={index}
+                    inputClassName="h-8 text-xs"
                     placeholder="Diagnosis name"
-                    className="h-8 text-xs"
-                    {...register(`diagnoses.${index}.diagnosisName`)}
                   />
                   {errors.diagnoses?.[index]?.diagnosisName && (
                     <p className="text-[10px] text-error mt-0.5">
