@@ -20,6 +20,7 @@ import {
 import { usePlatformUsers, useHardDeleteUser, useToggleUserActive, type PlatformUser } from '@/hooks/use-super-admin';
 import { useDebounce } from '@/hooks/use-debounce';
 import { formatDate, formatDateTime } from '@/lib/date-utils';
+import { fullName } from '@/lib/person-name';
 
 // Role color map for visual distinction
 const ROLE_COLORS: Record<string, string> = {
@@ -114,7 +115,7 @@ export default function UsersPage() {
     const newState = !user.isActive;
     try {
       await toggleUserActive.mutateAsync({ id: user.id, isActive: newState });
-      toast.success(`${user.firstName} ${user.lastName} ${newState ? 'activated' : 'deactivated'}`);
+      toast.success(`${fullName(user)} ${newState ? 'activated' : 'deactivated'}`);
     } catch {
       toast.error(`Failed to ${newState ? 'activate' : 'deactivate'} user`);
     }
@@ -543,14 +544,14 @@ export default function UsersPage() {
         open={!!deleteTarget}
         onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
         title="Permanently Delete User"
-        description={`This will permanently delete "${deleteTarget ? `${deleteTarget.firstName} ${deleteTarget.lastName}` : ''}" and all their associated data. This action cannot be undone.`}
+        description={`This will permanently delete "${deleteTarget ? fullName(deleteTarget) : ''}" and all their associated data. This action cannot be undone.`}
         confirmLabel="Delete User"
         isLoading={hardDeleteUser.isPending}
         onConfirm={async () => {
           if (!deleteTarget) return;
           try {
             await hardDeleteUser.mutateAsync(deleteTarget.id);
-            toast.success(`${deleteTarget.firstName} ${deleteTarget.lastName} has been deleted`);
+            toast.success(`${fullName(deleteTarget)} has been deleted`);
             setDeleteTarget(null);
           } catch {
             toast.error('Failed to delete user');

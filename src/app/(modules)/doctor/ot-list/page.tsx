@@ -442,7 +442,7 @@ export default function DoctorOTListPage() {
 
                       <td className="px-4 py-3 text-sm text-foreground">
                         {req.surgeon?.user
-                          ? `Dr ${req.surgeon.user.firstName} ${req.surgeon.user.lastName}`
+                          ? `Dr ${fullName(req.surgeon.user)}`
                           : '-'}
                       </td>
                       <td className="px-4 py-3">

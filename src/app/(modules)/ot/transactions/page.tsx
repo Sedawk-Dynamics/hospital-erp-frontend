@@ -18,6 +18,7 @@ import { PageHeader } from '@/components/shared/page-header';
 import { EmptyState } from '@/components/shared/empty-state';
 import { useOTRequests, useUpdateOTRequest, useBillOtRequest, type OTRequest } from '@/hooks/use-ot';
 import { useAuthStore } from '@/stores/auth-store';
+import { fullName } from '@/lib/person-name';
 
 // Pushing an OT charge to the hospital bill creates/finalizes a bill and can
 // record payment — a billing action, so it's limited to hospital admins
@@ -41,7 +42,7 @@ function rupees(n: number | null | undefined) {
 }
 
 function formatPatientName(req: OTRequest): string {
-  if (req.patient) return `${req.patient.firstName} ${req.patient.lastName}`.trim();
+  if (req.patient) return fullName(req.patient);
   return req.patientId;
 }
 
@@ -165,9 +166,9 @@ export default function OTTransactionsPage() {
                     </td>
                     <td className="px-4 py-2 text-xs">
                       {r.surgeon?.user
-                        ? `Dr. ${r.surgeon.user.firstName} ${r.surgeon.user.lastName}`
+                        ? `Dr. ${fullName(r.surgeon.user)}`
                         : r.doctor?.user
-                          ? `Dr. ${r.doctor.user.firstName} ${r.doctor.user.lastName}`
+                          ? `Dr. ${fullName(r.doctor.user)}`
                           : '-'}
                     </td>
                     <td className="px-4 py-2 text-muted-foreground text-xs">

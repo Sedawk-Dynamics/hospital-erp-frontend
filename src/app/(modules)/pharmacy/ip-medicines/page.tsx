@@ -10,6 +10,7 @@ import { formatDateTimeAmPm } from '@/lib/date-utils';
 import { formatBaseQty } from '@/lib/pharmacy-units';
 import { cn } from '@/lib/utils';
 import { AdmissionTypeBadge } from '@/components/shared/admission-type-badge';
+import { fullName } from '@/lib/person-name';
 
 const ADMISSION_TYPE_FILTERS = [
   { value: 'all', label: 'All' },
@@ -68,7 +69,7 @@ export default function IpMedicinesPage() {
     if (!q) return all;
     return all.filter((r) =>
       r.drugName.toLowerCase().includes(q) ||
-      `${r.patient.firstName} ${r.patient.lastName}`.toLowerCase().includes(q) ||
+      fullName(r.patient).toLowerCase().includes(q) ||
       (r.patient.mrn ?? '').toLowerCase().includes(q) ||
       (r.ward ?? '').toLowerCase().includes(q),
     );

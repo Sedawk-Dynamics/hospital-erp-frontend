@@ -24,6 +24,7 @@ import {
   OrderBillCell,
   PaymentStatusBadge,
 } from '@/components/shared/diagnostics/order-bill-cell';
+import { fullName } from '@/lib/person-name';
 
 
 // ============================================================
@@ -142,7 +143,7 @@ export function OrderTable({
               {showAssignee && (
                 <td className="px-4 py-3 text-xs">
                   {o.assignedTo
-                    ? `${o.assignedTo.firstName} ${o.assignedTo.lastName}`
+                    ? fullName(o.assignedTo)
                     : o.acceptedAt
                       ? <span className="text-amber-700">Unassigned</span>
                       : '-'}

@@ -32,6 +32,7 @@ import {
   useDayEnd,
   type ReceiptRow,
 } from '@/hooks/use-hospital';
+import { fullName } from '@/lib/person-name';
 
 export default function BillingTransactionPage() {
   return (
@@ -199,7 +200,7 @@ function BillListTab({ status, credit }: { status: string | undefined; credit?: 
                   return (
                     <tr key={bill.id} className="group hover:bg-surface-container-low transition-colors">
                       <td className="px-4 py-3 font-label text-sm font-bold">{bill.billNumber}</td>
-                      <td className="px-4 py-3 font-label text-sm">{bill.patient ? `${bill.patient.firstName} ${bill.patient.lastName}` : '-'}</td>
+                      <td className="px-4 py-3 font-label text-sm">{bill.patient ? fullName(bill.patient) : '-'}</td>
                       <td className="px-4 py-3 font-label text-[10px] text-on-surface-variant">{formatDate(bill.createdAt)}</td>
                       <td className="px-4 py-3 text-right font-label text-sm font-bold">₹{total.toLocaleString('en-IN')}</td>
                       <td className="px-4 py-3 text-right text-primary font-label text-sm">₹{paid.toLocaleString('en-IN')}</td>
@@ -320,7 +321,7 @@ function ReceiptsTab() {
                     <td className="px-4 py-3 font-label text-sm">{r.payment?.bill?.billNumber ?? '-'}</td>
                     <td className="px-4 py-3 font-label text-sm">
                       {r.payment?.patient
-                        ? `${r.payment.patient.firstName} ${r.payment.patient.lastName}`
+                        ? fullName(r.payment.patient)
                         : '-'}
                     </td>
                     <td className="px-4 py-3">
@@ -416,7 +417,7 @@ function RefundsTab() {
                 refunds.map((r) => (
                   <tr key={r.id} className="group hover:bg-surface-container-low transition-colors">
                     <td className="px-4 py-3 font-label text-sm font-bold">{r.bill?.billNumber ?? '-'}</td>
-                    <td className="px-4 py-3 font-label text-sm">{r.patient ? `${r.patient.firstName} ${r.patient.lastName}` : '-'}</td>
+                    <td className="px-4 py-3 font-label text-sm">{r.patient ? fullName(r.patient) : '-'}</td>
                     <td className="px-4 py-3 text-right font-label text-sm font-bold">₹{Number(r.amount).toLocaleString('en-IN')}</td>
                     <td className="px-4 py-3 font-label text-xs text-on-surface-variant max-w-[220px] truncate" title={r.reason}>{r.reason}</td>
                     <td className="px-4 py-3">

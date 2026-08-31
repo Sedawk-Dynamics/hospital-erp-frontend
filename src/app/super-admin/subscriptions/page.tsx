@@ -33,6 +33,7 @@ import {
   type PlanAssignment,
 } from '@/hooks/use-super-admin';
 import { useDebounce } from '@/hooks/use-debounce';
+import { fullName } from '@/lib/person-name';
 
 // ============================================================
 // All Subscriptions Tab
@@ -759,7 +760,7 @@ function AssignPlanTab() {
                         className="w-full text-left px-3 py-2 hover:bg-surface-container-low transition-colors text-sm"
                         onClick={() => {
                           setUserId(u.id);
-                          setSearch(`${u.firstName} ${u.lastName}`);
+                          setSearch(fullName(u));
                         }}
                       >
                         <span className="font-bold">{u.firstName} {u.lastName}</span>

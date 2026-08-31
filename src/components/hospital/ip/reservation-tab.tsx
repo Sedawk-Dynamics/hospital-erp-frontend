@@ -29,6 +29,7 @@ import { apiGet, apiPost } from '@/lib/api';
 import { formatDate } from '@/lib/date-utils';
 import { toast } from 'sonner';
 import { useAdmitReservation } from '@/hooks/use-doctor';
+import { fullName } from '@/lib/person-name';
 
 interface Reservation {
   id: string;
@@ -178,7 +179,7 @@ export function ReservationTab() {
                       <td className="px-4 py-3 font-label text-xs text-on-surface-variant">{formatDate(res.reservedDate)}</td>
                       <td className="px-4 py-3 font-label text-sm">{res.diagnosis || '-'}</td>
                       <td className="px-4 py-3 font-label text-sm">
-                        {res.doctor ? `Dr. ${res.doctor.user?.firstName} ${res.doctor.user?.lastName}` : '-'}
+                        {res.doctor ? `Dr. ${fullName(res.doctor.user)}` : '-'}
                       </td>
                       <td className="px-4 py-3 font-label text-sm">
                         {res.ward?.name || '-'}{res.bed ? ` / ${res.bed.bedNumber}` : ''}

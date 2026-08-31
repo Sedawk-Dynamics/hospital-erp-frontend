@@ -33,6 +33,7 @@ import {
   type ShiftType,
 } from '@/hooks/use-nurse-assignments';
 import { NursePicker } from '@/components/nurse-admin/nurse-picker';
+import { fullName } from '@/lib/person-name';
 
 const SHIFTS: Array<{ value: ShiftType; label: string; hours: string }> = [
   { value: 'morning', label: 'Morning', hours: '07:00 – 15:00' },
@@ -339,7 +340,7 @@ function AssignmentRow({
   const patient = admission.patient;
   const patientName = `${patient?.firstName ?? ''} ${patient?.lastName ?? ''}`.trim() || 'Unnamed';
   const doctor = admission.doctor?.user
-    ? `Dr. ${admission.doctor.user.firstName} ${admission.doctor.user.lastName}`
+    ? `Dr. ${fullName(admission.doctor.user)}`
     : '—';
 
   return (

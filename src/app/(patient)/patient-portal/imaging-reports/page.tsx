@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { HospitalFilter } from '../_components/hospital-filter';
 import { usePatientProfileStore } from '@/stores/patient-profile-store';
 import { resolveAttachmentUrl, formatFileSize, isImageMime } from '@/hooks/use-lab-attachments';
+import { fullName } from '@/lib/person-name';
 
 // ── Types reflecting backend payload (patient-portal.service.ts) ─────────
 
@@ -136,7 +137,7 @@ export default function PatientImagingReportsPage() {
               reports.map((r) => {
                 const fileCount = r.imagingRequest?.attachments?.length ?? 0;
                 const radiologist = r.radiologist
-                  ? `${r.radiologist.firstName} ${r.radiologist.lastName}`
+                  ? fullName(r.radiologist)
                   : '-';
                 const firstFile = r.imagingRequest?.attachments?.[0];
                 return (

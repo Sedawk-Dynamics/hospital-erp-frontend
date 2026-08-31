@@ -294,7 +294,7 @@ export default function DoctorMRDPage() {
                           </Avatar>
                           <div>
                             <p className="font-semibold text-foreground">
-                              {doc.patient ? `${doc.patient.firstName} ${doc.patient.lastName}` : 'Unknown'}
+                              {doc.patient ? fullName(doc.patient) : 'Unknown'}
                             </p>
                             <div className="text-xs text-muted-foreground">
                               {doc.patient?.mrn || '-'} | {doc.patient?.phone || '-'}

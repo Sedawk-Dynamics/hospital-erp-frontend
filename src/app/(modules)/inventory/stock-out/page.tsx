@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
 import { useStockTransactions } from '@/hooks/use-inventory';
+import { fullName } from '@/lib/person-name';
 
 export default function StockOutPage() {
   // History of all "out" type transactions (stock_out + expired_removal).
@@ -78,7 +79,7 @@ export default function StockOutPage() {
                     {t.referenceType ?? '-'}
                   </TableCell>
                   <TableCell className="text-sm">
-                    {t.performer ? `${t.performer.firstName} ${t.performer.lastName}` : '-'}
+                    {t.performer ? fullName(t.performer) : '-'}
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     {formatDateTimeAmPm(t.createdAt)}

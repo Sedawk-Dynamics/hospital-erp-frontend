@@ -75,6 +75,7 @@ import { AssignBedDialog } from '@/components/hospital/ip/assign-bed-dialog';
 import { usePermissions } from '@/hooks/use-permissions';
 import { useGlobalPatientSearch, useProvisionLocalPatient } from '@/hooks/use-hospital';
 import { useAuthStore } from '@/stores/auth-store';
+import { fullName } from '@/lib/person-name';
 
 // Generating a bill or collecting advance are billing actions. Gate on the
 // real billing:create permission so the billing / cash counter (front desk,
@@ -826,7 +827,7 @@ function AdmissionDialog({
                 <span className="text-muted-foreground">Patient:</span>{' '}
                 <strong>
                   {patientMode === 'new'
-                    ? `${newPatient.firstName} ${newPatient.lastName}`.trim()
+                    ? fullName(newPatient)
                     : `${selectedPatient?.firstName ?? ''} ${selectedPatient?.lastName ?? ''}`.trim()}
                 </strong>{' '}
                 {patientMode === 'new' ? (
@@ -961,7 +962,7 @@ function AdmissionSlipDialog({
     const w = window.open('', '_blank', 'width=800,height=900');
     if (!w) return;
     w.document.write(`<!DOCTYPE html>
-<html><head><title>Admission Slip — ${admission?.patient?.firstName} ${admission?.patient?.lastName}</title>
+<html><head><title>Admission Slip — ${fullName(admission?.patient)}</title>
 <style>
   body{font-family:system-ui,sans-serif;color:#111;margin:24px;font-size:13px;line-height:1.5}
   h1{font-size:18px;margin:0 0 4px}

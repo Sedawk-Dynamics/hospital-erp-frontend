@@ -32,6 +32,7 @@ import {
 import { apiPut } from '@/lib/api';
 import { formatDate } from '@/lib/date-utils';
 import { useQueryClient } from '@tanstack/react-query';
+import { fullName } from '@/lib/person-name';
 
 interface HospitalUsersTabProps {
   tenantId: string;
@@ -375,7 +376,7 @@ export function HospitalUsersTab({ tenantId }: HospitalUsersTabProps) {
         open={confirmDialog.open}
         onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
         title={`${confirmDialog.action === 'activate' ? 'Activate' : 'Deactivate'} User`}
-        description={`Are you sure you want to ${confirmDialog.action} ${confirmDialog.user?.firstName} ${confirmDialog.user?.lastName}?`}
+        description={`Are you sure you want to ${confirmDialog.action} ${fullName(confirmDialog.user)}?`}
         confirmLabel={confirmDialog.action === 'activate' ? 'Activate' : 'Deactivate'}
         variant={confirmDialog.action === 'deactivate' ? 'destructive' : 'default'}
         isLoading={isSubmitting}

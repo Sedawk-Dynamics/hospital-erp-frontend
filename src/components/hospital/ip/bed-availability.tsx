@@ -23,6 +23,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { formatDate } from '@/lib/date-utils';
 import { BedDouble } from 'lucide-react';
 import type { Admission, BedWithStatus } from '@/types';
+import { fullName } from '@/lib/person-name';
 
 interface Ward {
   id: string;
@@ -196,7 +197,7 @@ export function BedAvailability() {
                       onClick={() => clickable && setSelectedBed(bed)}
                       title={`Bed ${bed.bedNumber} · ${meta.label}${
                         bed.currentPatient
-                          ? ` · ${bed.currentPatient.firstName} ${bed.currentPatient.lastName}`
+                          ? ` · ${fullName(bed.currentPatient)}`
                           : ''
                       }`}
                       className={cn(

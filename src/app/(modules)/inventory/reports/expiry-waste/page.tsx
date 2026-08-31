@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/shared/page-header';
 import { EmptyState } from '@/components/shared/empty-state';
 import { useExpiryWasteReport } from '@/hooks/use-inventory';
+import { fullName } from '@/lib/person-name';
 
 function fmt(n: number) {
   return n.toLocaleString('en-IN');
@@ -186,7 +187,7 @@ export default function ExpiryWasteReportPage() {
                     <td className="px-4 py-2 text-right">{fmt(tx.quantity)}</td>
                     <td className="px-4 py-2 text-muted-foreground">{formatDate(tx.createdAt)}</td>
                     <td className="px-4 py-2 text-xs">
-                      {tx.performer ? `${tx.performer.firstName} ${tx.performer.lastName}` : '-'}
+                      {tx.performer ? fullName(tx.performer) : '-'}
                     </td>
                   </tr>
                 ))}

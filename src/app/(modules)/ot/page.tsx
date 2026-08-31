@@ -51,6 +51,7 @@ import {
 import { useDoctorsList } from '@/hooks/use-hospital';
 import { useAdmissions } from '@/hooks/use-clinical';
 import { AdmissionTypeBadge } from '@/components/shared/admission-type-badge';
+import { fullName } from '@/lib/person-name';
 
 // ============================================================
 // Constants
@@ -141,14 +142,14 @@ type ScheduleFormValues = z.infer<typeof scheduleSchema>;
 
 function formatPatientName(req: OTRequest): string {
   if (req.patient) {
-    return `${req.patient.firstName} ${req.patient.lastName}`.trim();
+    return fullName(req.patient);
   }
   return req.patientId;
 }
 
 function formatDoctorName(doctor?: { user?: { firstName: string; lastName: string } } | null): string {
   if (!doctor?.user) return '-';
-  return `Dr. ${doctor.user.firstName} ${doctor.user.lastName}`.trim();
+  return `Dr. ${fullName(doctor.user)}`.trim();
 }
 
 function formatDate(dateStr?: string): string {

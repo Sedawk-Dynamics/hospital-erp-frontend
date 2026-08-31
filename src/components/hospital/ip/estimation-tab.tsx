@@ -24,6 +24,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost } from '@/lib/api';
 import { formatDate } from '@/lib/date-utils';
 import { toast } from 'sonner';
+import { fullName } from '@/lib/person-name';
 
 interface Estimation {
   id: string;
@@ -127,7 +128,7 @@ export function EstimationTab() {
                         {formatDate(est.createdAt)}
                       </td>
                       <td className="px-4 py-3 font-label text-sm">
-                        {est.doctor ? `Dr. ${est.doctor.user?.firstName} ${est.doctor.user?.lastName}` : '-'}
+                        {est.doctor ? `Dr. ${fullName(est.doctor.user)}` : '-'}
                       </td>
                       <td className="px-4 py-3 font-label text-sm truncate max-w-[200px]">{est.complaints || '-'}</td>
                       <td className="px-4 py-3 font-label text-sm">{est.estimationPeriodDays} days</td>

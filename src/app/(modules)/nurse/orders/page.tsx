@@ -55,6 +55,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { fullName } from '@/lib/person-name';
 
 // ============================================================
 // Types
@@ -361,7 +362,7 @@ function DoctorOrdersTab() {
                     <td className="px-4 py-3">
                       <div>
                         <p className="font-medium">
-                          {order.patient ? `${order.patient.firstName} ${order.patient.lastName}` : '-'}
+                          {order.patient ? fullName(order.patient) : '-'}
                         </p>
                         {order.patient?.mrn && (
                           <p className="text-xs text-on-surface-variant">{order.patient.mrn}</p>
@@ -370,7 +371,7 @@ function DoctorOrdersTab() {
                     </td>
                     <td className="px-4 py-3 text-xs">
                       {order.doctor?.user
-                        ? `Dr. ${order.doctor.user.firstName} ${order.doctor.user.lastName}`
+                        ? `Dr. ${fullName(order.doctor.user)}`
                         : '-'}
                     </td>
                     <td className="px-4 py-3">
@@ -1015,7 +1016,7 @@ function PatientTransferTab() {
             <SelectContent>
               {admissions.map((adm) => (
                 <SelectItem key={adm.id} value={adm.id}>
-                  {adm.patient ? `${adm.patient.firstName} ${adm.patient.lastName}` : adm.ipNumber || adm.id.slice(0, 8)}
+                  {adm.patient ? fullName(adm.patient) : adm.ipNumber || adm.id.slice(0, 8)}
                   {adm.ipNumber ? ` (${adm.ipNumber})` : ''}
                 </SelectItem>
               ))}
@@ -1652,7 +1653,7 @@ function SupplyRequestTab() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs">
-                      {req.requestedBy ? `${req.requestedBy.firstName} ${req.requestedBy.lastName}` : '-'}
+                      {req.requestedBy ? fullName(req.requestedBy) : '-'}
                     </td>
                     <td className="px-4 py-3 text-xs text-on-surface-variant">
                       {formatDateTime(req.createdAt)}

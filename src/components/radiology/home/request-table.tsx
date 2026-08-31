@@ -26,6 +26,7 @@ import {
   PaymentStatusBadge,
 } from '@/components/shared/diagnostics/order-bill-cell';
 import { ImagingStatusBadge } from './imaging-status-badge';
+import { fullName } from '@/lib/person-name';
 
 export function RequestTable({
   requests,
@@ -117,7 +118,7 @@ export function RequestTable({
                 {showAssignee && (
                   <td className="px-4 py-3 text-xs">
                     {r.assignedTechnician
-                      ? `${r.assignedTechnician.firstName} ${r.assignedTechnician.lastName}`
+                      ? fullName(r.assignedTechnician)
                       : r.acceptedAt
                         ? <span className="text-amber-700">Unassigned</span>
                         : '-'}

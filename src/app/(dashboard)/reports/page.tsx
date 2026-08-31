@@ -12,6 +12,7 @@ import { DataTable, Column } from '@/components/shared/data-table';
 import { Badge } from '@/components/ui/badge';
 import { useDebounce } from '@/hooks/use-debounce';
 import apiClient from '@/lib/api-client';
+import { fullName } from '@/lib/person-name';
 
 interface SavedReport {
   id: string;
@@ -165,7 +166,7 @@ export default function ReportsPage() {
       label: 'Created By',
       render: (report) =>
         report.createdBy
-          ? `${report.createdBy.firstName} ${report.createdBy.lastName}`
+          ? fullName(report.createdBy)
           : '-',
     },
     {

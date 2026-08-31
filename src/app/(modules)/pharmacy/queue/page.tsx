@@ -48,6 +48,7 @@ import {
   type PharmacyOrderStatus,
 } from '@/hooks/use-pharmacy';
 import { RecallAlertBanner } from '@/components/pharmacy/recall-alert-banner';
+import { fullName } from '@/lib/person-name';
 
 const statusBadge: Record<PrescriptionListItem['status'], string> = {
   active: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
@@ -211,7 +212,7 @@ export default function PrescriptionQueuePage() {
               <TableBody>
                 {records.map((rx) => {
                   const doctorName = rx.doctor?.user
-                    ? `Dr. ${rx.doctor.user.firstName} ${rx.doctor.user.lastName}`
+                    ? `Dr. ${fullName(rx.doctor.user)}`
                     : '-';
                   const items = rx.prescriptionItems;
                   const shown = items.slice(0, 3);

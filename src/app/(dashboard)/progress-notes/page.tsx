@@ -12,6 +12,7 @@ import { StatusBadge } from '@/components/shared/status-badge';
 import { useDebounce } from '@/hooks/use-debounce';
 import apiClient from '@/lib/api-client';
 import { Badge } from '@/components/ui/badge';
+import { fullName } from '@/lib/person-name';
 
 interface ProgressNote {
   id: string;
@@ -100,7 +101,7 @@ export default function ProgressNotesPage() {
       label: 'Author',
       render: (note) =>
         note.author
-          ? `Dr. ${note.author.firstName} ${note.author.lastName}`
+          ? `Dr. ${fullName(note.author)}`
           : '-',
     },
     {

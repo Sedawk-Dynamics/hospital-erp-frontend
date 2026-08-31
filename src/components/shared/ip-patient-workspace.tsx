@@ -689,7 +689,7 @@ function PrescriptionsPanel({ admissionId, patientId, role, onNewRx }: { admissi
 // ── Progress notes panel ───────────────────────────────────────────────────
 
 const drLabel = (n: ProgressNote): string =>
-  n.doctor?.user ? `Dr. ${n.doctor.user.firstName} ${n.doctor.user.lastName}`.trim() : 'Doctor';
+  n.doctor?.user ? `Dr. ${fullName(n.doctor.user)}`.trim() : 'Doctor';
 
 // Local yyyy-mm-dd key for date comparisons (IST/local).
 const dayKey = (iso: string): string => {

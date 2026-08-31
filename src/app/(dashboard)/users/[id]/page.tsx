@@ -15,6 +15,7 @@ import { ArrowLeft, Edit, Mail, Phone, Shield, Calendar } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { formatRoleName } from '@/lib/utils';
 import type { User } from '@/types';
+import { fullName } from '@/lib/person-name';
 
 export default function UserDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -43,7 +44,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
   return (
     <div className="space-y-6">
       <PageHeader
-        title={`${user.firstName} ${user.lastName}`}
+        title={fullName(user)}
         description={user.role?.name ? formatRoleName(user.role.name) : 'User'}
         action={
           <div className="flex gap-2">

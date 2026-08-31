@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
 import { useDoctorProfile } from '@/hooks/use-doctor';
 import { DoctorScheduleManager } from '@/components/shared/doctor-schedule-manager';
+import { fullName } from '@/lib/person-name';
 
 type SettingsTab = 'profile' | 'schedule' | 'layout' | 'notes';
 
@@ -227,7 +228,7 @@ export default function DoctorSettingsPage() {
           {doctorProfile?.id ? (
             <DoctorScheduleManager
               doctorId={doctorProfile.id}
-              doctorName={`Dr. ${user?.firstName} ${user?.lastName}`}
+              doctorName={`Dr. ${fullName(user)}`}
               readOnly
             />
           ) : profileLoading ? (

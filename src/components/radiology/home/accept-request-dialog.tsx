@@ -14,6 +14,7 @@ import {
 import { useUsersList } from '@/hooks/use-users';
 import { AcceptDiagnosticOrderDialog } from '@/components/shared/diagnostics/accept-diagnostic-order-dialog';
 import { money } from '@/components/shared/diagnostics/types';
+import { fullName } from '@/lib/person-name';
 
 export function AcceptRequestDialog({
   request,
@@ -32,7 +33,7 @@ export function AcceptRequestDialog({
         .filter((u) =>
           u.userRoles?.some((ur) => ['radiologist', 'radiology_admin'].includes(ur.role.name)),
         )
-        .map((u) => ({ id: u.id, name: `${u.firstName} ${u.lastName}` })),
+        .map((u) => ({ id: u.id, name: fullName(u) })),
     [usersQ.data],
   );
 
@@ -51,7 +52,7 @@ export function AcceptRequestDialog({
               mrn: request.patient?.mrn,
               reference: `${request.imagingType.replace(/_/g, ' ').toUpperCase()}${request.bodyPart ? ` — ${request.bodyPart}` : ''}`,
               orderedBy: request.orderer
-                ? `Dr. ${request.orderer.firstName} ${request.orderer.lastName}`
+                ? `Dr. ${fullName(request.orderer)}`
                 : null,
               urgency: request.urgency ?? request.priority ?? null,
               items: [

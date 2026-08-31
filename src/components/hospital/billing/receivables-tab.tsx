@@ -35,6 +35,7 @@ import {
   useSettleCredit,
   type CreditSettlementRow,
 } from '@/hooks/use-hospital';
+import { fullName } from '@/lib/person-name';
 
 const fmt = (n: number) => `₹${(Number(n) || 0).toLocaleString('en-IN')}`;
 
@@ -278,7 +279,7 @@ function PayerBillsDialog({
                   <tr key={b.id} className="border-b last:border-b-0">
                     <td className="px-3 py-2 font-mono text-xs">{b.billNumber}</td>
                     <td className="px-3 py-2">
-                      {b.patient ? `${b.patient.firstName} ${b.patient.lastName}` : '—'}
+                      {b.patient ? fullName(b.patient) : '—'}
                       {b.patient?.mrn && (
                         <span className="ml-1.5 text-[10px] text-muted-foreground">
                           {b.patient.mrn}

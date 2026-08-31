@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { useDebounce } from '@/hooks/use-debounce';
 import apiClient from '@/lib/api-client';
 import type { LabOrder } from '@/types';
+import { fullName } from '@/lib/person-name';
 
 const labStatusVariant: Record<string, 'warning' | 'info' | 'success' | 'danger'> = {
   pending: 'warning',
@@ -98,7 +99,7 @@ export default function LabOrdersPage() {
       label: 'Ordered By',
       render: (order) =>
         order.doctor?.user
-          ? `Dr. ${order.doctor.user.firstName} ${order.doctor.user.lastName}`
+          ? `Dr. ${fullName(order.doctor.user)}`
           : '-',
     },
     {

@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/shared/page-header';
 import { EmptyState } from '@/components/shared/empty-state';
 import { useOTAnalytics } from '@/hooks/use-ot';
+import { fullName } from '@/lib/person-name';
 
 // Minimal CSV serialiser + browser download (no dependency).
 function toCsv(rows: Record<string, unknown>[]): string {
@@ -79,7 +80,7 @@ export default function OTReportsPage() {
     downloadCsv(
       `ot-report-${fromDate}_to_${toDate}.csv`,
       surgeryList.map((s) => ({
-        Patient: `${s.patient.firstName} ${s.patient.lastName}`.trim(),
+        Patient: fullName(s.patient),
         MRN: s.patient.mrn ?? '',
         Procedure: s.procedureName,
         Type: s.surgeryType ?? '',

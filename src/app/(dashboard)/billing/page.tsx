@@ -11,6 +11,7 @@ import { StatusBadge } from '@/components/shared/status-badge';
 import { useDebounce } from '@/hooks/use-debounce';
 import apiClient from '@/lib/api-client';
 import type { Bill } from '@/types';
+import { fullName } from '@/lib/person-name';
 
 export default function BillingPage() {
   const router = useRouter();
@@ -61,7 +62,7 @@ export default function BillingPage() {
       label: 'Patient',
       render: (bill) =>
         bill.patient
-          ? `${bill.patient.firstName} ${bill.patient.lastName}`
+          ? fullName(bill.patient)
           : '-',
     },
     {

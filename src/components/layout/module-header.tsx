@@ -19,6 +19,7 @@ import { usePermissions } from '@/hooks/use-permissions';
 import { MODULE_REGISTRY, getModuleFromPathname } from '@/config/modules';
 import { getRolePortalLabel } from '@/config/role-modules';
 import { useRouter, usePathname } from 'next/navigation';
+import { fullName } from '@/lib/person-name';
 
 export function ModuleHeader() {
   const { toggle } = useSidebarStore();
@@ -144,7 +145,7 @@ export function ModuleHeader() {
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
                   <p className="text-sm font-headline font-semibold leading-none">
-                    {user ? `${user.firstName} ${user.lastName}` : 'User'}
+                    {user ? fullName(user) : 'User'}
                   </p>
                   <p className="text-xs font-label leading-none text-on-surface-variant">
                     {user?.email || ''}

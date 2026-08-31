@@ -74,6 +74,7 @@ import {
   AlertCircle,
   Settings as SettingsIcon,
 } from 'lucide-react';
+import { fullName } from '@/lib/person-name';
 
 // ── Status presentation ──────────────────────────────────────
 
@@ -631,7 +632,7 @@ export default function EmarPage() {
                 {admissions.map((adm) => (
                   <SelectItem key={adm.id} value={adm.id}>
                     {adm.patient
-                      ? `${adm.patient.firstName} ${adm.patient.lastName} (${adm.patient.uhid ?? adm.patient.mrn})`
+                      ? `${fullName(adm.patient)} (${adm.patient.uhid ?? adm.patient.mrn})`
                       : adm.ipNumber ?? adm.id}
                     {adm.ward ? ` — ${adm.ward.name}` : ''}
                     {adm.bed ? ` / Bed ${adm.bed.bedNumber}` : ''}

@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 // Shared with radiology so the two departments' summary strips are literally
 // the same component, not two copies that drift.
 import { SummaryCard } from '@/components/shared/diagnostics/summary-card';
+import { fullName } from '@/lib/person-name';
 
 // Headline stats for the lab user's first paint. The numbers come from
 // /lab/dashboard which counts everything in one pass — kept off the order
@@ -128,7 +129,7 @@ export function RecentActivityPanel() {
                 </p>
                 <p className="text-[11px] text-muted-foreground truncate">
                   {o.patient.mrn} · {o.labOrderItems?.length ?? 0} test(s)
-                  {o.orderer && ` · Dr. ${o.orderer.firstName} ${o.orderer.lastName}`}
+                  {o.orderer && ` · Dr. ${fullName(o.orderer)}`}
                 </p>
               </div>
               <div className="text-right shrink-0">

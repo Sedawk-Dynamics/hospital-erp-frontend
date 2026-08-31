@@ -40,6 +40,7 @@ import { RequestTable } from './request-table';
 import { AcceptRequestDialog } from './accept-request-dialog';
 import { UploadResultDialog } from './upload-result-dialog';
 import { CloseRequestDialog } from './close-request-dialog';
+import { fullName } from '@/lib/person-name';
 
 /** Every status a study can be in while it is still live work. */
 export const IMAGING_OPEN_STATUSES = 'requested,scheduled,in_progress';
@@ -80,7 +81,7 @@ export function ImagingWorklistTab({
         .filter((u) =>
           u.userRoles?.some((ur) => ['radiologist', 'radiology_admin'].includes(ur.role.name)),
         )
-        .map((u) => ({ id: u.id, name: `${u.firstName} ${u.lastName}` })),
+        .map((u) => ({ id: u.id, name: fullName(u) })),
     [usersQ.data],
   );
 
@@ -287,7 +288,7 @@ function ClosedList({
                   )}
                 </td>
                 <td className="px-4 py-3 text-xs">
-                  {r.closer ? `${r.closer.firstName} ${r.closer.lastName}` : '-'}
+                  {r.closer ? fullName(r.closer) : '-'}
                 </td>
                 <td className="px-4 py-3 text-xs">
                   {r.closedAt ? formatDateTime(r.closedAt) : '-'}

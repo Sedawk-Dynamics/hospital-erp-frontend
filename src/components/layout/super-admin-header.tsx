@@ -15,6 +15,7 @@ import {
 import { useAuthStore } from '@/stores/auth-store';
 import { getRolePortalLabel } from '@/config/role-modules';
 import { useRouter, usePathname } from 'next/navigation';
+import { fullName } from '@/lib/person-name';
 
 export function SuperAdminHeader() {
   const { user, logout } = useAuthStore();
@@ -102,7 +103,7 @@ export function SuperAdminHeader() {
           <DropdownMenuTrigger className="flex items-center gap-3 focus:outline-none">
             <div className="text-right hidden sm:block">
               <p className="font-label text-xs font-semibold text-on-surface">
-                {user ? `${user.firstName} ${user.lastName}` : 'Super Admin'}
+                {user ? fullName(user) : 'Super Admin'}
               </p>
               <p className="font-label text-[10px] text-on-surface-variant">
                 Platform Administrator
@@ -117,7 +118,7 @@ export function SuperAdminHeader() {
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
                   <p className="text-sm font-headline font-semibold leading-none">
-                    {user ? `${user.firstName} ${user.lastName}` : 'Super Admin'}
+                    {user ? fullName(user) : 'Super Admin'}
                   </p>
                   <p className="text-xs font-label leading-none text-on-surface-variant">
                     {user?.email || ''}

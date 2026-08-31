@@ -14,6 +14,7 @@ import {
 } from '@/hooks/use-doctor-leaves';
 import { Check, X, Stethoscope } from 'lucide-react';
 import { toast } from 'sonner';
+import { fullName } from '@/lib/person-name';
 
 const STATUS_TONE: Record<LeaveStatus, string> = {
   pending: 'bg-amber-100 text-amber-700 border-amber-200',
@@ -259,7 +260,7 @@ function DoctorLeavesCard() {
                     </td>
                     <td className="px-3 py-2">
                       {r.doctor?.user
-                        ? `Dr. ${r.doctor.user.firstName} ${r.doctor.user.lastName}`
+                        ? `Dr. ${fullName(r.doctor.user)}`
                         : '—'}
                     </td>
                     <td className="px-3 py-2 text-xs">{r.doctor?.department?.name ?? '—'}</td>

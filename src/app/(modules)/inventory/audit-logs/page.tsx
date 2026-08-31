@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/shared/page-header';
 import { EmptyState } from '@/components/shared/empty-state';
 import { useInventoryAuditLogs } from '@/hooks/use-inventory';
+import { fullName } from '@/lib/person-name';
 
 const ENTITY_TYPES = [
   { value: 'inventory_item', label: 'Inventory Item' },
@@ -145,7 +146,7 @@ export default function InventoryAuditLogsPage() {
                     </td>
                     <td className="px-4 py-2 text-xs">
                       {log.user
-                        ? `${log.user.firstName} ${log.user.lastName}`
+                        ? fullName(log.user)
                         : <span className="text-muted-foreground">system</span>}
                     </td>
                     <td className="px-4 py-2">

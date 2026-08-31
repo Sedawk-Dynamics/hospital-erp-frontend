@@ -26,6 +26,7 @@ function visibleSidebarItems(items: NavItem[], roleSlug?: string): NavItem[] {
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ChevronDown, HeartPulse, PanelLeftClose, PanelLeft } from 'lucide-react';
 import type { ModuleKey } from '@/stores/module-store';
+import { fullName } from '@/lib/person-name';
 
 function SidebarContent({
   collapsed = false,
@@ -271,7 +272,7 @@ function SidebarContent({
             labelVisibility
           )}>
             <p className="text-xs font-bold text-on-surface font-label">
-              {user ? `${user.firstName} ${user.lastName}` : 'User'}
+              {user ? fullName(user) : 'User'}
             </p>
             <p className="text-[10px] text-slate-400 font-label capitalize">
               {user?.role?.name?.replace(/_/g, ' ') || ''}

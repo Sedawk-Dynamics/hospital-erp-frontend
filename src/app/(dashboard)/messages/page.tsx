@@ -10,6 +10,7 @@ import { PageHeader } from '@/components/shared/page-header';
 import { DataTable, Column } from '@/components/shared/data-table';
 import { useDebounce } from '@/hooks/use-debounce';
 import apiClient from '@/lib/api-client';
+import { fullName } from '@/lib/person-name';
 
 interface Message {
   id: string;
@@ -140,7 +141,7 @@ export default function MessagesPage() {
               }
             }
             toast.info(
-              `Message from ${msg.sender?.firstName} ${msg.sender?.lastName}: ${msg.content?.slice(0, 120) || '(empty)'}`,
+              `Message from ${fullName(msg.sender)}: ${msg.content?.slice(0, 120) || '(empty)'}`,
             );
           }}
         >

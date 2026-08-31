@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { ArrowLeft, Download } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { fullName } from '@/lib/person-name';
 
 interface Summary {
   id: string;
@@ -85,7 +86,7 @@ export default function DischargeSummaryDetailPage() {
         </h1>
         <p className="font-label text-sm text-on-surface-variant mt-1.5">
           {data.doctor?.user
-            ? `Signed by Dr. ${data.doctor.user.firstName} ${data.doctor.user.lastName}`
+            ? `Signed by Dr. ${fullName(data.doctor.user)}`
             : 'Full discharge record from your care team'}
         </p>
       </div>

@@ -44,6 +44,7 @@ import { EmptyRow, LoadingRow, PaginationBar, Th } from '@/components/laboratory
 import { OrderDetailDialog } from '@/components/laboratory/home/order-detail-dialog';
 import { OrderTable } from '@/components/laboratory/home/order-table';
 import { SampleCollectionDialog } from '@/components/laboratory/home/sample-collection-dialog';
+import { fullName } from '@/lib/person-name';
 
 
 // ============================================================
@@ -85,7 +86,7 @@ export function LabStatusTab({
             ['lab_technician', 'lab_supervisor'].includes(ur.role.name),
           ),
         )
-        .map((u) => ({ id: u.id, name: `${u.firstName} ${u.lastName}` })),
+        .map((u) => ({ id: u.id, name: fullName(u) })),
     [usersQ.data],
   );
 

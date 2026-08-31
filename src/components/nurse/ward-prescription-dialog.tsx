@@ -27,6 +27,7 @@ import { useFormularySearch, useCreatePrescription } from '@/hooks/use-doctor';
 import type { NurseAdmission } from '@/hooks/use-nurse';
 import { StockTypeBadge } from '@/components/shared/stock-type-badge';
 import { DrugStockLabel } from '@/components/shared/drug-stock-label';
+import { fullName } from '@/lib/person-name';
 
 /**
  * §4.2 ward→pharmacy flow: the ward nurse enters the doctor's key-sheet
@@ -153,7 +154,7 @@ export function WardPrescriptionDialog({
             {admission?.ward?.name ? ` · ${admission.ward.name}` : ''}
             {admission?.bed?.bedNumber ? ` / Bed ${admission.bed.bedNumber}` : ''}
             {admission?.doctor?.user
-              ? ` · Dr. ${admission.doctor.user.firstName} ${admission.doctor.user.lastName}`
+              ? ` · Dr. ${fullName(admission.doctor.user)}`
               : ''}
           </DialogDescription>
         </DialogHeader>

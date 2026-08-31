@@ -23,6 +23,7 @@ import { apiGet } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/lib/date-utils';
 import Link from 'next/link';
+import { fullName } from '@/lib/person-name';
 
 export default function PatientPortalHome() {
   const { user } = useAuthStore();
@@ -114,7 +115,7 @@ export default function PatientPortalHome() {
       const entry = {
         date: d,
         diffDays: diff,
-        doctorName: fu.doctor?.user ? `Dr. ${fu.doctor.user.firstName} ${fu.doctor.user.lastName}` : undefined,
+        doctorName: fu.doctor?.user ? `Dr. ${fullName(fu.doctor.user)}` : undefined,
         prescriptionDate: fu.prescriptionDate,
       };
       if (!best || Math.abs(diff) < Math.abs(best.diffDays)) best = entry;

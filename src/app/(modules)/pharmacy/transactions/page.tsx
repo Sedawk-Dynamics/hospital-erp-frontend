@@ -58,6 +58,7 @@ import {
   type PharmacySaleStatus,
 } from '@/hooks/use-pharmacy';
 import { PharmacyReceiptDialog } from '@/components/pharmacy/pharmacy-receipt-dialog';
+import { fullName } from '@/lib/person-name';
 
 const money = (n: number | string | null | undefined) =>
   `₹${Number(n ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -433,7 +434,7 @@ function DispensingRecordsTab() {
                   <TableRow key={record.id}>
                     <TableCell className="font-medium">
                       {record.patient
-                        ? `${record.patient.firstName} ${record.patient.lastName}`
+                        ? fullName(record.patient)
                         : '-'}
                     </TableCell>
                     <TableCell>{record.drugBatch?.drug?.drugName ?? '-'}</TableCell>
@@ -443,7 +444,7 @@ function DispensingRecordsTab() {
                     <TableCell className="text-right">{record.quantityDispensed}</TableCell>
                     <TableCell className="text-muted-foreground">
                       {record.dispenser
-                        ? `${record.dispenser.firstName} ${record.dispenser.lastName}`
+                        ? fullName(record.dispenser)
                         : '-'}
                     </TableCell>
                     <TableCell className="text-muted-foreground">

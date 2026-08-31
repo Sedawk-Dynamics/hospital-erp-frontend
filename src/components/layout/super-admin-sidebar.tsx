@@ -32,6 +32,7 @@ import {
   HeartPulse,
 } from 'lucide-react';
 import { PlatformLogo } from '@/components/branding/platform-logo';
+import { fullName } from '@/lib/person-name';
 
 const NAV_ITEMS = [
   { href: '/super-admin', label: 'Dashboard', icon: LayoutDashboard },
@@ -163,7 +164,7 @@ export function SuperAdminSidebar() {
             )}
           >
             <p className="text-xs font-bold text-on-surface">
-              {user ? `${user.firstName} ${user.lastName}` : 'Super Admin'}
+              {user ? fullName(user) : 'Super Admin'}
             </p>
             <p className="text-[10px] text-slate-400">Platform Admin</p>
           </div>

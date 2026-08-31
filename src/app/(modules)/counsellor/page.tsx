@@ -11,6 +11,7 @@ import { StatusBadge } from '@/components/shared/status-badge';
 import { DataTable, type Column } from '@/components/shared/data-table';
 import { PageHeader } from '@/components/shared/page-header';
 import { useVisits, type Visit } from '@/hooks/use-clinical';
+import { fullName } from '@/lib/person-name';
 
 const statCards = [
   { label: 'Total Sessions', icon: Users, color: 'text-blue-600', bgColor: 'bg-blue-50', key: 'total' },
@@ -26,7 +27,7 @@ const columns: Column<Visit & Record<string, unknown>>[] = [
     render: (item) => (
       <div>
         <p className="font-medium text-foreground">
-          {item.patient ? `${item.patient.firstName} ${item.patient.lastName}` : '-'}
+          {item.patient ? fullName(item.patient) : '-'}
         </p>
         {item.patient?.uhid && (
           <p className="text-xs text-muted-foreground">{item.patient.uhid}</p>
@@ -48,7 +49,7 @@ const columns: Column<Visit & Record<string, unknown>>[] = [
     label: 'Counsellor',
     render: (item) =>
       item.doctor?.user
-        ? `${item.doctor.user.firstName} ${item.doctor.user.lastName}`
+        ? fullName(item.doctor.user)
         : '-',
   },
   {

@@ -64,6 +64,7 @@ import {
   Stethoscope,
   ListChecks,
 } from 'lucide-react';
+import { fullName } from '@/lib/person-name';
 
 // ── Vital display helpers ──────────────────────────────────
 // The Vital model stores the timestamp as `recordedAt` (there is no createdAt),
@@ -294,7 +295,7 @@ export default function ClinicalChartingPage() {
         const doctorUserId = selectedAdmission?.doctor?.userId;
         if (abnormalSummary.length > 0 && doctorUserId) {
           const patientName = selectedAdmission?.patient
-            ? `${selectedAdmission.patient.firstName} ${selectedAdmission.patient.lastName}`
+            ? fullName(selectedAdmission.patient)
             : 'Patient';
           createNotification.mutate(
             {

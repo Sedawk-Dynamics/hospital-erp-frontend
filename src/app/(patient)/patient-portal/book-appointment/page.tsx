@@ -16,6 +16,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
 import { toInputDateStr, formatTime24, getCurrentISTTime, isToday } from '@/lib/date-utils';
+import { fullName } from '@/lib/person-name';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -223,7 +224,7 @@ export default function BookAppointmentPage() {
         amount: order.amount,
         currency: order.currency,
         name: selectedHospital?.name || 'Hospital',
-        description: `Consultation Fee – Dr. ${selectedDoctor?.firstName} ${selectedDoctor?.lastName}`,
+        description: `Consultation Fee – Dr. ${fullName(selectedDoctor)}`,
         order_id: order.orderId,
         handler: async (response: RazorpayResponse) => {
           try {
@@ -241,7 +242,7 @@ export default function BookAppointmentPage() {
           }
         },
         prefill: {
-          name: user ? `${user.firstName} ${user.lastName}` : '',
+          name: user ? fullName(user) : '',
           email: user?.email ?? '',
           contact: user?.phone ?? '',
         },
@@ -365,7 +366,7 @@ export default function BookAppointmentPage() {
           <p className="font-label text-sm text-on-surface-variant mt-1.5">
             {step === 'hospital' && 'Select a hospital to book your appointment'}
             {step === 'doctor' && `Booking at ${selectedHospital?.name}`}
-            {step === 'datetime' && `Dr. ${selectedDoctor?.firstName} ${selectedDoctor?.lastName}`}
+            {step === 'datetime' && `Dr. ${fullName(selectedDoctor)}`}
             {step === 'confirm' && 'Review and confirm your appointment'}
             {step === 'payment' && 'Complete your payment'}
           </p>

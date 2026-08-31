@@ -17,6 +17,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useClinicStore } from '@/stores/clinic-store';
 import { usePermissions } from '@/hooks/use-permissions';
 import { formatRoleName } from '@/lib/utils';
+import { fullName } from '@/lib/person-name';
 
 export default function SelectionLayout({
   children,
@@ -81,7 +82,7 @@ export default function SelectionLayout({
         <div className="flex items-center gap-4">
           <div className="h-8 w-[1px] bg-outline-variant/30 hidden sm:block" />
           <div className="text-right text-sm hidden sm:block">
-            <p className="font-label text-xs font-semibold text-on-surface">{user ? `${user.firstName} ${user.lastName}` : 'User'}</p>
+            <p className="font-label text-xs font-semibold text-on-surface">{user ? fullName(user) : 'User'}</p>
             <p className="font-label text-[10px] text-on-surface-variant capitalize">{user?.role?.name ? formatRoleName(user.role.name) : ''}</p>
           </div>
           <DropdownMenu>
@@ -95,7 +96,7 @@ export default function SelectionLayout({
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
                     <p className="text-sm font-headline font-semibold leading-none">
-                      {user ? `${user.firstName} ${user.lastName}` : 'User'}
+                      {user ? fullName(user) : 'User'}
                     </p>
                     <p className="text-xs font-label leading-none text-on-surface-variant">
                       {user?.email || ''}

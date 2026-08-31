@@ -32,6 +32,7 @@ import {
   useUpdateUser,
   type UserListItem,
 } from '@/hooks/use-users';
+import { fullName } from '@/lib/person-name';
 
 export default function UserAccessConfigPage() {
   const router = useRouter();
@@ -376,7 +377,7 @@ export default function UserAccessConfigPage() {
           setConfirmDialog((prev) => ({ ...prev, open }))
         }
         title={`${confirmDialog.action === 'activate' ? 'Activate' : 'Deactivate'} User`}
-        description={`Are you sure you want to ${confirmDialog.action} ${confirmDialog.user?.firstName} ${confirmDialog.user?.lastName}? ${
+        description={`Are you sure you want to ${confirmDialog.action} ${fullName(confirmDialog.user)}? ${
           confirmDialog.action === 'deactivate'
             ? 'They will no longer be able to log in.'
             : 'They will be able to log in again.'

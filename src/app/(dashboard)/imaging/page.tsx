@@ -13,6 +13,7 @@ import { DataTable, Column } from '@/components/shared/data-table';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { useDebounce } from '@/hooks/use-debounce';
 import apiClient from '@/lib/api-client';
+import { fullName } from '@/lib/person-name';
 
 interface ImagingRequest {
   id: string;
@@ -121,7 +122,7 @@ export default function ImagingPage() {
       label: 'Ordered By',
       render: (req) =>
         req.doctor?.user
-          ? `Dr. ${req.doctor.user.firstName} ${req.doctor.user.lastName}`
+          ? `Dr. ${fullName(req.doctor.user)}`
           : '-',
     },
     {

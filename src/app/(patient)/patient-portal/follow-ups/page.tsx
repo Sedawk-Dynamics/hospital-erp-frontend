@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { HospitalFilter } from '../_components/hospital-filter';
 import { usePatientProfileStore } from '@/stores/patient-profile-store';
+import { fullName } from '@/lib/person-name';
 
 interface FollowUp {
   id: string;
@@ -230,7 +231,7 @@ function FollowUpCard({
   else statusLabel = `in ${fu.diffDays} day${fu.diffDays !== 1 ? 's' : ''}`;
 
   const doctorName = fu.doctor?.user
-    ? `Dr. ${fu.doctor.user.firstName} ${fu.doctor.user.lastName}`
+    ? `Dr. ${fullName(fu.doctor.user)}`
     : 'Doctor';
 
   const accent = isOverdue

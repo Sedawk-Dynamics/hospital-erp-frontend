@@ -36,6 +36,7 @@ import {
   type PharmacyReturn, type ReturnableDispense, type FormularyItem,
 } from '@/hooks/use-pharmacy';
 import { useSuppliers } from '@/hooks/use-inventory';
+import { fullName } from '@/lib/person-name';
 
 const inr = (n: number | string | null | undefined) =>
   n == null ? '—' : `₹${Number(n).toFixed(2)}`;
@@ -223,7 +224,7 @@ function ReturnRow({ record }: { record: PharmacyReturn }) {
       </TableCell>
       <TableCell className="text-sm">
         {record.returnType === 'patient_return'
-          ? record.patient ? `${record.patient.firstName} ${record.patient.lastName}` : '-'
+          ? record.patient ? fullName(record.patient) : '-'
           : record.returnType === 'counter_return'
           ? <span className="text-muted-foreground">Walk-in / counter</span>
           : record.supplier?.name ?? '-'}

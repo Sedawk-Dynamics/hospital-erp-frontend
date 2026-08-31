@@ -16,6 +16,7 @@ import {
 import { useSidebarStore } from '@/stores/sidebar-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { useRouter } from 'next/navigation';
+import { fullName } from '@/lib/person-name';
 
 export function Header() {
   const { toggle, isCollapsed, toggleCollapse } = useSidebarStore();
@@ -85,7 +86,7 @@ export function Header() {
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
                   <p className="text-sm font-medium leading-none">
-                    {user ? `${user.firstName} ${user.lastName}` : 'User'}
+                    {user ? fullName(user) : 'User'}
                   </p>
                   <p className="text-xs leading-none text-muted-foreground">
                     {user?.email || ''}

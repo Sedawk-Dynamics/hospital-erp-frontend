@@ -23,6 +23,7 @@ import {
 } from '@/hooks/use-subscriptions';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { formatDate } from '@/lib/date-utils';
+import { fullName } from '@/lib/person-name';
 
 const STATUS_COLORS: Record<string, string> = {
   active: 'bg-primary/10 text-primary',
@@ -109,7 +110,7 @@ export default function ManageSubscriptionPage() {
           }
         },
         prefill: {
-          name: user ? `${user.firstName} ${user.lastName}` : undefined,
+          name: user ? fullName(user) : undefined,
           email: user?.email,
         },
         theme: { color: '#0a685a' },

@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { useDebounce } from '@/hooks/use-debounce';
 import apiClient from '@/lib/api-client';
 import type { Visit } from '@/types';
+import { fullName } from '@/lib/person-name';
 
 const visitTypeLabels: Record<string, string> = {
   op: 'Outpatient',
@@ -97,7 +98,7 @@ export default function VisitsPage() {
       label: 'Doctor',
       render: (visit) =>
         visit.doctor?.user
-          ? `Dr. ${visit.doctor.user.firstName} ${visit.doctor.user.lastName}`
+          ? `Dr. ${fullName(visit.doctor.user)}`
           : '-',
     },
     {

@@ -10,6 +10,7 @@ import {
   Activity, ClipboardList, Pill, ArrowRightLeft, Users,
   CheckCircle2, Clock, AlertTriangle, Stethoscope,
 } from 'lucide-react';
+import { fullName } from '@/lib/person-name';
 
 interface AssignedPatient {
   id: string;
@@ -172,7 +173,7 @@ export function NurseDashboard() {
                     </td>
                     <td className="px-4 py-3 font-label text-sm">
                       {admission.doctor?.user
-                        ? `Dr. ${admission.doctor.user.firstName} ${admission.doctor.user.lastName}`
+                        ? `Dr. ${fullName(admission.doctor.user)}`
                         : '-'}
                     </td>
                     <td className="px-4 py-3">

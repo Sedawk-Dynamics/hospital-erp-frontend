@@ -29,6 +29,7 @@ import { Input } from '@/components/ui/input';
 import { useNurseAdmissions, type NurseAdmission } from '@/hooks/use-nurse';
 import { formatDate } from '@/lib/date-utils';
 import { AdmissionTypeBadge, ADMISSION_TYPE_OPTIONS } from '@/components/shared/admission-type-badge';
+import { fullName } from '@/lib/person-name';
 
 export default function NurseIPListPage() {
   const router = useRouter();
@@ -192,7 +193,7 @@ export default function NurseIPListPage() {
                     </td>
                     <td className="px-4 py-3 text-xs">
                       {a.doctor?.user
-                        ? `Dr. ${a.doctor.user.firstName} ${a.doctor.user.lastName}`
+                        ? `Dr. ${fullName(a.doctor.user)}`
                         : '–'}
                     </td>
                     <td className="px-4 py-3 text-xs">{formatDate(a.admissionDate)}</td>

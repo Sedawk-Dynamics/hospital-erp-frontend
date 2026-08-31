@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { FileCheck, Download } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { fullName } from '@/lib/person-name';
 
 interface Summary {
   id: string;
@@ -81,7 +82,7 @@ export default function DischargeSummariesListPage() {
         <div className="space-y-3">
           {summaries.map((s) => {
             const doctorName = s.doctor?.user
-              ? `Dr. ${s.doctor.user.firstName} ${s.doctor.user.lastName}`
+              ? `Dr. ${fullName(s.doctor.user)}`
               : 'Doctor';
             const dischargeDate = s.dischargeDate
               ? new Date(s.dischargeDate).toLocaleDateString('en-IN', {

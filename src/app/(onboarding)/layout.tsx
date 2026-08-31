@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useAuthStore } from '@/stores/auth-store';
+import { fullName } from '@/lib/person-name';
 
 export default function OnboardingLayout({
   children,
@@ -91,7 +92,7 @@ export default function OnboardingLayout({
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
                     <p className="text-sm font-medium leading-none">
-                      {user ? `${user.firstName} ${user.lastName}` : 'User'}
+                      {user ? fullName(user) : 'User'}
                     </p>
                     <p className="text-xs leading-none text-muted-foreground">
                       {user?.email || ''}

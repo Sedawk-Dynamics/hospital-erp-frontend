@@ -23,6 +23,7 @@ import { StatusBadge } from '@/components/shared/status-badge';
 import { useDebounce } from '@/hooks/use-debounce';
 import apiClient from '@/lib/api-client';
 import type { Admission } from '@/types';
+import { fullName } from '@/lib/person-name';
 
 export default function AdmissionsPage() {
   const router = useRouter();
@@ -131,7 +132,7 @@ export default function AdmissionsPage() {
       label: 'Doctor',
       render: (admission) =>
         admission.doctor?.user
-          ? `Dr. ${admission.doctor.user.firstName} ${admission.doctor.user.lastName}`
+          ? `Dr. ${fullName(admission.doctor.user)}`
           : '-',
     },
     {

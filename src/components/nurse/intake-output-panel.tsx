@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/select';
 import { Loader2, Plus, Clock, ArrowUpCircle, ArrowDownCircle, Droplets } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { fullName } from '@/lib/person-name';
 
 const INTAKE_CATEGORIES: IOCategory[] = ['oral', 'iv_fluid', 'blood_product', 'tube_feed', 'other'];
 const OUTPUT_CATEGORIES: IOCategory[] = ['urine', 'drain', 'vomit', 'stool', 'blood_loss', 'other'];
@@ -195,7 +196,7 @@ export function IntakeOutputPanel({
                     {r.notes && <div className="text-[10px] opacity-70">{r.notes}</div>}
                   </td>
                   <td className="py-2 px-2 text-xs text-on-surface-variant">
-                    {r.nurse ? `${r.nurse.firstName} ${r.nurse.lastName}` : '-'}
+                    {r.nurse ? fullName(r.nurse) : '-'}
                   </td>
                 </tr>
               ))}

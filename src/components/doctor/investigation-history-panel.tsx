@@ -7,6 +7,7 @@ import { apiGet } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { resolveAttachmentUrl, formatFileSize, isImageMime } from '@/hooks/use-lab-attachments';
+import { fullName } from '@/lib/person-name';
 
 interface LabResult {
   id: string;
@@ -186,7 +187,7 @@ function OrderCard({
           <p className="font-semibold truncate">{tests}</p>
           <p className="text-[10px] text-muted-foreground">
             {date}
-            {order.orderer && ` · Dr. ${order.orderer.firstName} ${order.orderer.lastName}`}
+            {order.orderer && ` · Dr. ${fullName(order.orderer)}`}
           </p>
         </div>
         <Badge className={cn('text-[9px] px-1 py-0', reportPublished ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>

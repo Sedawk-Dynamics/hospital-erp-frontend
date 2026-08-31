@@ -883,7 +883,7 @@ function PatientListTable({
               const patientName = fullName(patient, 'Unknown').toUpperCase();
               const st = admissionStatusLabels[adm.status] ?? admissionStatusLabels.admitted;
               const doctorName = adm.doctor?.user
-                ? `Dr. ${adm.doctor.user.firstName} ${adm.doctor.user.lastName}`
+                ? `Dr. ${fullName(adm.doctor.user)}`
                 : '-';
 
               return (
@@ -1206,7 +1206,7 @@ export default function NurseDashboardPage() {
       const alerts = detectAbnormalities(v);
       if (alerts.length === 0) return;
       const name = v.patient
-        ? `${v.patient.firstName} ${v.patient.lastName}`
+        ? fullName(v.patient)
         : 'Unknown';
       rows.push({
         patientId: v.patientId,
@@ -1240,7 +1240,7 @@ export default function NurseDashboardPage() {
       .map((adm) => ({
         id: adm.patientId,
         name: adm.patient
-          ? `${adm.patient.firstName} ${adm.patient.lastName}`
+          ? fullName(adm.patient)
           : 'Unknown',
       }));
   }, [vitalsData, admissions]);

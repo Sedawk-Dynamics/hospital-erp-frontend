@@ -10,6 +10,7 @@ import { DataTable, Column } from '@/components/shared/data-table';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { useDebounce } from '@/hooks/use-debounce';
 import apiClient from '@/lib/api-client';
+import { fullName } from '@/lib/person-name';
 
 interface DepartmentHeadUser {
   id: string;
@@ -88,7 +89,7 @@ export default function DepartmentsPage() {
       label: 'Head',
       render: (dept) =>
         dept.headUser
-          ? `${dept.headUser.firstName} ${dept.headUser.lastName}`
+          ? fullName(dept.headUser)
           : '-',
     },
     {

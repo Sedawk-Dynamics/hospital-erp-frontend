@@ -19,6 +19,7 @@ import {
 import { useUsersList } from '@/hooks/use-users';
 import { AcceptDiagnosticOrderDialog } from '@/components/shared/diagnostics/accept-diagnostic-order-dialog';
 import { money } from '@/components/shared/diagnostics/types';
+import { fullName } from '@/lib/person-name';
 
 export function AcceptOrderDialog({
   order,
@@ -37,7 +38,7 @@ export function AcceptOrderDialog({
         .filter((u) =>
           u.userRoles?.some((ur) => ['lab_technician', 'lab_supervisor'].includes(ur.role.name)),
         )
-        .map((u) => ({ id: u.id, name: `${u.firstName} ${u.lastName}` })),
+        .map((u) => ({ id: u.id, name: fullName(u) })),
     [usersQ.data],
   );
 
@@ -56,7 +57,7 @@ export function AcceptOrderDialog({
               mrn: order.patient.mrn,
               reference: order.orderNumber ?? null,
               orderedBy: order.orderer
-                ? `Dr. ${order.orderer.firstName} ${order.orderer.lastName}`
+                ? `Dr. ${fullName(order.orderer)}`
                 : null,
               urgency: order.urgency ?? order.priority ?? null,
               items: (order.labOrderItems ?? []).map((it) => ({

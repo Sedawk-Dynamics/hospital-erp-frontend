@@ -12,6 +12,7 @@ import { StatusBadge } from '@/components/shared/status-badge';
 import { useDebounce } from '@/hooks/use-debounce';
 import apiClient from '@/lib/api-client';
 import { Badge } from '@/components/ui/badge';
+import { fullName } from '@/lib/person-name';
 
 interface NursingNote {
   id: string;
@@ -92,7 +93,7 @@ export default function NursingNotesPage() {
       key: 'nurse',
       label: 'Nurse',
       render: (note) =>
-        note.nurse ? `${note.nurse.firstName} ${note.nurse.lastName}` : '-',
+        note.nurse ? fullName(note.nurse) : '-',
     },
     {
       key: 'noteType',

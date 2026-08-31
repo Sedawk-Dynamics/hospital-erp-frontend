@@ -12,6 +12,7 @@ import { DataTable, Column } from '@/components/shared/data-table';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { useDebounce } from '@/hooks/use-debounce';
 import apiClient from '@/lib/api-client';
+import { fullName } from '@/lib/person-name';
 
 interface Prescription {
   id: string;
@@ -81,7 +82,7 @@ export default function PrescriptionsPage() {
       label: 'Prescribed By',
       render: (rx) =>
         rx.doctor?.user
-          ? `Dr. ${rx.doctor.user.firstName} ${rx.doctor.user.lastName}`
+          ? `Dr. ${fullName(rx.doctor.user)}`
           : '-',
     },
     {

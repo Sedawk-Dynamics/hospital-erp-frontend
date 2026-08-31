@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { HospitalFilter } from '../_components/hospital-filter';
 import { usePatientProfileStore } from '@/stores/patient-profile-store';
 import { useAuthStore } from '@/stores/auth-store';
+import { fullName } from '@/lib/person-name';
 
 export default function PatientBillingPage() {
   const [hospitalFilter, setHospitalFilter] = useState('');
@@ -220,7 +221,7 @@ function PayNowButton({
           }
         },
         prefill: {
-          name: user ? `${user.firstName} ${user.lastName}` : '',
+          name: user ? fullName(user) : '',
           email: user?.email ?? '',
           contact: user?.phone ?? '',
         },

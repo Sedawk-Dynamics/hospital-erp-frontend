@@ -33,6 +33,7 @@ import {
 import { RadiologyReportPrintDialog } from '@/components/radiology/radiology-report-print-view';
 import { SendBackDialog } from '@/components/shared/diagnostics/send-back-dialog';
 import { EditResultDialog } from './edit-result-dialog';
+import { fullName } from '@/lib/person-name';
 
 export function ResultsTab({
   lockedStatus,
@@ -159,7 +160,7 @@ export function ResultsTab({
                   </Badge>
                 </td>
                 <td className="px-4 py-3 text-xs">
-                  {r.radiologist ? `${r.radiologist.firstName} ${r.radiologist.lastName}` : '-'}
+                  {r.radiologist ? fullName(r.radiologist) : '-'}
                 </td>
                 <td className="px-4 py-3 text-xs">
                   {formatDateTime(

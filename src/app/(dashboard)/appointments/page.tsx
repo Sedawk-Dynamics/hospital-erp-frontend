@@ -13,6 +13,7 @@ import { StatusBadge } from '@/components/shared/status-badge';
 import { useDebounce } from '@/hooks/use-debounce';
 import apiClient from '@/lib/api-client';
 import type { Appointment } from '@/types';
+import { fullName } from '@/lib/person-name';
 
 export default function AppointmentsPage() {
   const router = useRouter();
@@ -85,7 +86,7 @@ export default function AppointmentsPage() {
       label: 'Doctor',
       render: (appt) =>
         appt.doctor?.user
-          ? `Dr. ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
+          ? `Dr. ${fullName(appt.doctor.user)}`
           : '-',
     },
     {

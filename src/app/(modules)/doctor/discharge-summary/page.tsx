@@ -418,7 +418,7 @@ export default function DischargeSummaryPage() {
               </div>
               <div className="text-sm space-y-1">
                 <p><span className="text-muted-foreground">Ward:</span> <span className="font-medium">{admission?.ward?.name ?? '-'}</span> | <span className="text-muted-foreground">Bed:</span> <span className="font-medium">{admission?.bed?.bedNumber ?? '-'}</span></p>
-                <p><span className="text-muted-foreground">Doctor:</span> <span className="font-medium">{doctor?.user ? `Dr. ${doctor.user.firstName} ${doctor.user.lastName}` : '-'}</span></p>
+                <p><span className="text-muted-foreground">Doctor:</span> <span className="font-medium">{doctor?.user ? `Dr. ${fullName(doctor.user)}` : '-'}</span></p>
               </div>
             </div>
           </CardContent>

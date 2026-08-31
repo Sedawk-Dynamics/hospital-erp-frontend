@@ -346,7 +346,7 @@ function PharmacyPOS() {
         lastName: activePrescription.patient.lastName,
         mrn: activePrescription.patient.mrn,
       });
-      setPatientSearch(`${activePrescription.patient.firstName} ${activePrescription.patient.lastName}`);
+      setPatientSearch(fullName(activePrescription.patient));
     }
     // Replace the cart with the prescription's items (only those with a
     // formulary link — free-text rows can be searched and added manually).
@@ -1088,7 +1088,7 @@ function PharmacyPOS() {
                         <p className="text-xs text-muted-foreground">
                           <Stethoscope className="inline h-3 w-3 mr-1" />
                           {rx.doctor?.user
-                            ? `Dr. ${rx.doctor.user.firstName} ${rx.doctor.user.lastName}`
+                            ? `Dr. ${fullName(rx.doctor.user)}`
                             : 'Doctor'}
                         </p>
                         <p className="text-xs text-foreground line-clamp-2">
@@ -1565,7 +1565,7 @@ function PharmacyPOS() {
               </p>
               <p className="text-xs text-emerald-700">
                 {activePrescription.doctor?.user
-                  ? `Dr. ${activePrescription.doctor.user.firstName} ${activePrescription.doctor.user.lastName}`
+                  ? `Dr. ${fullName(activePrescription.doctor.user)}`
                   : 'Doctor'}
               </p>
               {/* Progress notes the doctor connected to this prescription. */}
@@ -1578,7 +1578,7 @@ function PharmacyPOS() {
                     <div key={n.id} className="rounded bg-white/70 px-2 py-1 text-[11px] text-emerald-900">
                       <p className="whitespace-pre-wrap">{n.content}</p>
                       <p className="mt-0.5 text-[10px] text-emerald-600">
-                        {n.doctor?.user ? `Dr. ${n.doctor.user.firstName} ${n.doctor.user.lastName}` : 'Doctor'}
+                        {n.doctor?.user ? `Dr. ${fullName(n.doctor.user)}` : 'Doctor'}
                         {' · '}{formatDate(n.createdAt)}
                       </p>
                     </div>
@@ -2168,7 +2168,7 @@ function PharmacyCashCounterTab() {
                 return (
                   <tr key={r.id} className="group hover:bg-surface-container-low transition-colors">
                     <td className="px-4 py-3 font-medium">{r.drugBatch?.drug?.drugName ?? '-'}</td>
-                    <td className="px-4 py-3">{r.patient ? `${r.patient.firstName} ${r.patient.lastName}` : '-'}</td>
+                    <td className="px-4 py-3">{r.patient ? fullName(r.patient) : '-'}</td>
                     <td className="px-4 py-3 text-muted-foreground">{r.drugBatch?.batchNumber ?? '-'}</td>
                     <td className="px-4 py-3 text-right">{r.quantityDispensed}</td>
                     <td className="px-4 py-3 text-right font-medium">{lineAmount > 0 ? fmt(lineAmount) : '-'}</td>

@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { CollectBillPaymentDialog } from '@/components/hospital/billing/collect-bill-payment-dialog';
 import { BillGeneratorDialog } from '@/components/hospital/billing/bill-generator-dialog';
 import { IpBillingTab } from '@/components/hospital/billing/ip-billing-tab';
+import { fullName } from '@/lib/person-name';
 
 type TopAction = 'op-list' | 'draft' | 'order-list' | null;
 
@@ -221,7 +222,7 @@ function BillingTab({
                     >
                       <td className="px-4 py-4 font-label text-sm font-bold">{bill.billNumber}</td>
                       <td className="px-4 py-4 font-label text-sm">
-                        {bill.patient ? `${bill.patient.firstName} ${bill.patient.lastName}` : '-'}
+                        {bill.patient ? fullName(bill.patient) : '-'}
                       </td>
                       <td className="px-4 py-4 font-label text-sm text-on-surface-variant">
                         {formatDate(bill.createdAt)}
@@ -425,7 +426,7 @@ function CashCounterTab() {
                 (payments ?? []).map((p) => (
                   <tr key={p.id} className="group hover:bg-surface-container-low transition-colors">
                     <td className="px-4 py-4 font-label text-sm font-bold">{p.bill?.billNumber ?? '-'}</td>
-                    <td className="px-4 py-4 font-label text-sm">{p.bill?.patient ? `${p.bill.patient.firstName} ${p.bill.patient.lastName}` : '-'}</td>
+                    <td className="px-4 py-4 font-label text-sm">{p.bill?.patient ? fullName(p.bill.patient) : '-'}</td>
                     <td className="px-4 py-4">
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant capitalize">{p.paymentMethod?.replace('_', ' ')}</span>
                     </td>
@@ -436,7 +437,7 @@ function CashCounterTab() {
                       {p.paymentType === 'refund' ? '−' : ''}{fmt(Number(p.amount))}
                     </td>
                     <td className="px-4 py-4 font-label text-sm text-on-surface-variant">
-                      {p.processor ? `${p.processor.firstName} ${p.processor.lastName}` : '—'}
+                      {p.processor ? fullName(p.processor) : '—'}
                     </td>
                     <td className="px-4 py-4 font-label text-sm text-on-surface-variant">{p.transactionId || '-'}</td>
                     <td className="px-4 py-4 font-label text-sm text-on-surface-variant">{formatTime24(p.paymentDate)}</td>
@@ -574,7 +575,7 @@ function PendingListTab() {
                   return (
                     <tr key={bill.id} className="group hover:bg-surface-container-low transition-colors">
                       <td className="px-4 py-4 font-label text-sm font-bold">{bill.billNumber}</td>
-                      <td className="px-4 py-4 font-label text-sm">{bill.patient ? `${bill.patient.firstName} ${bill.patient.lastName}` : '-'}</td>
+                      <td className="px-4 py-4 font-label text-sm">{bill.patient ? fullName(bill.patient) : '-'}</td>
                       <td className="px-4 py-4 font-label text-xs">
                         <span className={cn(
                           'rounded-full px-2 py-0.5',
@@ -620,7 +621,7 @@ function PendingListTab() {
                     (collectTarget as { balanceDue?: number | string }).balanceDue ?? collectTarget.balanceAmount ?? 0,
                   ),
                   patientName: collectTarget.patient
-                    ? `${collectTarget.patient.firstName} ${collectTarget.patient.lastName}`
+                    ? fullName(collectTarget.patient)
                     : undefined,
                   // Lets the desk settle an OP bill from a deposit the patient
                   // has already paid, instead of collecting the money twice.
@@ -711,11 +712,11 @@ function OPListPanel({
             <tr key={a.id} className="hover:bg-surface-container-low">
               <td className="px-3 py-2 font-label text-sm">{formatTime24(a.startTime)}</td>
               <td className="px-3 py-2 font-label text-sm">
-                {a.patient ? `${a.patient.firstName} ${a.patient.lastName}` : '-'}
+                {a.patient ? fullName(a.patient) : '-'}
                 <span className="ml-2 text-[10px] text-on-surface-variant">MRN {a.patient?.mrn ?? '-'}</span>
               </td>
               <td className="px-3 py-2 font-label text-sm">
-                {a.doctor?.user ? `Dr. ${a.doctor.user.firstName} ${a.doctor.user.lastName}` : '-'}
+                {a.doctor?.user ? `Dr. ${fullName(a.doctor.user)}` : '-'}
               </td>
               <td className="px-3 py-2">
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant capitalize">
@@ -783,7 +784,7 @@ function DraftListPanel({ onPickBill }: { onPickBill: (b: Bill) => void }) {
               <tr key={b.id} className="hover:bg-surface-container-low">
                 <td className="px-3 py-2 font-label text-sm font-bold">{b.billNumber}</td>
                 <td className="px-3 py-2 font-label text-sm">
-                  {b.patient ? `${b.patient.firstName} ${b.patient.lastName}` : '-'}
+                  {b.patient ? fullName(b.patient) : '-'}
                 </td>
                 <td className="px-3 py-2 font-label text-xs text-on-surface-variant">{formatDate(b.createdAt)}</td>
                 <td className="px-3 py-2 text-right font-label text-sm">{itemCount}</td>

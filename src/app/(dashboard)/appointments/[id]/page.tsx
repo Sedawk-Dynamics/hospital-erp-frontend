@@ -14,6 +14,7 @@ import { PageLoading } from '@/components/shared/loading';
 import { ArrowLeft, Calendar, Clock, User, Stethoscope, CheckCircle2, XCircle, PlayCircle } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import type { Appointment } from '@/types';
+import { fullName } from '@/lib/person-name';
 
 export default function AppointmentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -113,7 +114,7 @@ export default function AppointmentDetailPage({ params }: { params: Promise<{ id
                   <p className="text-xs text-muted-foreground">Doctor</p>
                   <p className="text-sm font-medium">
                     {appointment.doctor?.user
-                      ? `Dr. ${appointment.doctor.user.firstName} ${appointment.doctor.user.lastName}`
+                      ? `Dr. ${fullName(appointment.doctor.user)}`
                       : 'Not assigned'}
                   </p>
                 </div>
