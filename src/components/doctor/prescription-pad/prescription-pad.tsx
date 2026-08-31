@@ -1169,7 +1169,11 @@ function DiagnosisSection({ form, pinSlot }: { form: any; pinSlot?: React.ReactN
   const { fields, append, remove } = useFieldArray({ control, name: 'diagnoses' });
 
   return (
-    <div className="rounded-xl border bg-card overflow-hidden">
+    // No `overflow-hidden` here — it would clip the ICD-10 suggestions that
+    // render absolutely below each diagnosis name field, the same way it would
+    // clip the drug search on the Medications card. A z-index cannot escape an
+    // ancestor's overflow, so the clip has to go rather than the stacking.
+    <div className="rounded-xl border bg-card">
       <div className="flex items-center gap-2 px-4 py-3">
         <ClipboardList className="h-4 w-4 text-error shrink-0" />
         <h3 className="text-sm font-bold flex-1">Diagnosis</h3>

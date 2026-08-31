@@ -22,13 +22,17 @@ import { DiagnosisNameField } from './prescription-pad';
 const R509 = { id: '1', code: 'R50.9', title: 'Fever, unspecified', category: 'General symptoms and signs' };
 const R50 = { id: '2', code: 'R50', title: 'Fever of other and unknown origin', category: 'General symptoms and signs' };
 
-let formRef: ReturnType<typeof useForm> | null = null;
+// The component takes `form: any` (the whole pad does), so the harness holds
+// it loosely too rather than fighting RHF's generics in a test.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let formRef: any = null;
 function Harness() {
   const form = useForm({ defaultValues: { diagnoses: [{ icdCode: '', diagnosisName: '', diagnosisType: 'primary' }] } });
   formRef = form;
   return <DiagnosisNameField form={form} index={0} />;
 }
-const values = () => (formRef!.getValues() as { diagnoses: { icdCode: string; diagnosisName: string }[] }).diagnoses[0];
+const values = () =>
+  (formRef.getValues() as { diagnoses: { icdCode: string; diagnosisName: string }[] }).diagnoses[0];
 
 beforeEach(() => {
   vi.clearAllMocks();
