@@ -28,6 +28,8 @@ import { StockTab, DailyTab } from '@/components/pharmacy/ndps-statutory';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { toInputDateStr, formatDate, formatDateTime } from '@/lib/date-utils';
 import { downloadCsv } from '@/lib/csv';
+import apiClient from '@/lib/api-client';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 /**
@@ -167,12 +169,47 @@ export default function ControlledRegisterPage() {
 
   // Two documents from the same report: the house register, and the Form 35
   // Inspection Book sheet an inspector signs.
-  const openPdf = (format?: 'form35') => {
-    const qs = new URLSearchParams(
-      Object.entries(applied).filter(([, v]) => v != null && v !== '') as [string, string][],
-    );
-    if (format) qs.set('format', format);
-    window.open(`/api/v1/pharmacy/controlled-register/pdf?${qs}`, '_blank');
+  //
+  // This used to be `window.open('/api/v1/...')`, which could not work three
+  // times over. The path is relative, so it went to the Next server on :5173
+  // rather than the API on :4000 and returned that app's 404; and a raw browser
+  // navigation carries neither the `Authorization: Bearer` header nor the
+  // `X-Tenant-Id` that `api-client` attaches, so even aimed at the API it was a
+  // 401. Fetching through the client and opening the blob is the same thing the
+  // prescription print does.
+  const [pdfBusy, setPdfBusy] = useState<'register' | 'form35' | null>(null);
+  const openPdf = async (format?: 'form35') => {
+    setPdfBusy(format ?? 'register');
+    try {
+      const params = Object.fromEntries(
+        Object.entries(applied).filter(([, v]) => v != null && v !== ''),
+      );
+      if (format) params.format = format;
+      const res = await apiClient.get('/pharmacy/controlled-register/pdf', {
+        params,
+        responseType: 'blob',
+      });
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const w = window.open(url, '_blank');
+      if (!w) {
+        // Popup blocked — fall back to an anchor click.
+        const a = document.createElement('a');
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.click();
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      // It failed silently before, which is why it read as "nothing happens".
+      toast.error(
+        format === 'form35'
+          ? 'Could not generate Form 35. Please try again.'
+          : 'Could not generate the register PDF. Please try again.',
+      );
+    } finally {
+      setPdfBusy(null);
+    }
   };
 
   const period =
@@ -199,11 +236,22 @@ export default function ControlledRegisterPage() {
               onClick={() => downloadCsv('controlled-drug-register', csvRows)}>
               <Download className="mr-1.5 h-4 w-4" /> Export
             </Button>
-            <Button variant="outline" size="sm" disabled={!rows.length} onClick={() => openPdf()}>
-              <Printer className="mr-1.5 h-4 w-4" /> Register (PDF)
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!rows.length || pdfBusy !== null}
+              onClick={() => openPdf()}
+            >
+              <Printer className="mr-1.5 h-4 w-4" />
+              {pdfBusy === 'register' ? 'Preparing…' : 'Register (PDF)'}
             </Button>
-            <Button size="sm" disabled={!rows.length} onClick={() => openPdf('form35')}>
-              <FileCheck2 className="mr-1.5 h-4 w-4" /> Print Form 35
+            <Button
+              size="sm"
+              disabled={!rows.length || pdfBusy !== null}
+              onClick={() => openPdf('form35')}
+            >
+              <FileCheck2 className="mr-1.5 h-4 w-4" />
+              {pdfBusy === 'form35' ? 'Preparing…' : 'Print Form 35'}
             </Button>
           </div>
         </div>
