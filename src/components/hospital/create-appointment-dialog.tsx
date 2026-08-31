@@ -622,20 +622,20 @@ export function PatientVisitPanel({
     <div className="mt-2 overflow-hidden rounded-lg border-2 border-primary/30 bg-primary/5">
       {/* Who this patient is to this hospital. The desk reads this before it
           decides anything, so it is a banner rather than a caption. */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-primary/20 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-primary/20 px-3.5 py-2.5">
         {data.isFirstVisit ? (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-red-600 px-2.5 py-1 text-xs font-bold text-white">
-            <UserRound className="h-3.5 w-3.5" />
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-red-600 px-3 py-1.5 text-sm font-bold text-white">
+            <UserRound className="h-4 w-4" />
             First visit to this hospital
           </span>
         ) : (
           <>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-600 px-2.5 py-1 text-xs font-bold text-white">
-              <UserRound className="h-3.5 w-3.5" />
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-600 px-3 py-1.5 text-sm font-bold text-white">
+              <UserRound className="h-4 w-4" />
               Existing patient
             </span>
             {data.lastVisitAt && (
-              <span className="text-[13px] text-on-surface-variant">
+              <span className="text-sm text-on-surface-variant">
                 Last {lastVisitKindLabel}{' '}
                 <b className="font-semibold text-foreground">{formatDate(data.lastVisitAt)}</b>
                 {data.priorEncounters > 0 && (
@@ -678,7 +678,7 @@ export function PatientVisitPanel({
                 ₹{feeTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </span>
             </span>
-            <span className="mt-0.5 block text-xs leading-snug text-on-surface-variant">
+            <span className="mt-1 block text-[13px] leading-snug text-on-surface-variant">
               {fee.oncePerPatient && data.registrationFeeCharged
                 ? `Already charged${data.registrationFeeChargedAt ? ` on ${formatDate(data.registrationFeeChargedAt)}` : ''} — it cannot be taken twice.`
                 : data.isFirstVisit
