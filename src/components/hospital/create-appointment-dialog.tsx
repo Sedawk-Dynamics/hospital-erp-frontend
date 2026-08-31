@@ -581,7 +581,7 @@ function SectionHeading({
 // portal, or who is a regular at another hospital on this platform, is still
 // opening a new file here.
 
-function PatientVisitPanel({
+export function PatientVisitPanel({
   patientId,
   chargeRegistration,
   onChangeCharge,
@@ -611,22 +611,40 @@ function PatientVisitPanel({
   const fee = data.settings;
   const feeTotal = fee.amount + Math.round(fee.amount * (fee.gstRatePercent / 100) * 100) / 100;
 
+  const lastVisitKindLabel =
+    data.lastVisitKind === 'admission'
+      ? 'admitted'
+      : data.lastVisitKind === 'appointment'
+        ? 'appointment'
+        : 'visit';
+
   return (
-    <div className="mt-1 space-y-1.5">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="mt-2 overflow-hidden rounded-lg border-2 border-primary/30 bg-primary/5">
+      {/* Who this patient is to this hospital. The desk reads this before it
+          decides anything, so it is a banner rather than a caption. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-primary/20 px-3 py-2">
         {data.isFirstVisit ? (
-          <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-red-600 px-2.5 py-1 text-xs font-bold text-white">
+            <UserRound className="h-3.5 w-3.5" />
             First visit to this hospital
           </span>
         ) : (
           <>
-            <span className="inline-flex rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-bold text-purple-700">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-600 px-2.5 py-1 text-xs font-bold text-white">
+              <UserRound className="h-3.5 w-3.5" />
               Existing patient
             </span>
             {data.lastVisitAt && (
-              <span className="text-[11px] text-muted-foreground">
-                Last visit {formatDate(data.lastVisitAt)}
-                {data.priorEncounters > 0 && ` · ${data.priorEncounters} visit${data.priorEncounters === 1 ? '' : 's'}`}
+              <span className="text-[13px] text-on-surface-variant">
+                Last {lastVisitKindLabel}{' '}
+                <b className="font-semibold text-foreground">{formatDate(data.lastVisitAt)}</b>
+                {data.priorEncounters > 0 && (
+                  <>
+                    {' · '}
+                    <b className="font-semibold text-foreground">{data.priorEncounters}</b>
+                    {` visit${data.priorEncounters === 1 ? '' : 's'} here`}
+                  </>
+                )}
               </span>
             )}
           </>
@@ -635,19 +653,32 @@ function PatientVisitPanel({
 
       {/* Only shown when the hospital actually charges one. */}
       {fee.enabled && fee.amount > 0 && (
-        <label className="flex items-start gap-2 rounded-md border bg-muted/30 px-2.5 py-1.5">
+        <label
+          className={`flex cursor-pointer items-start gap-2.5 px-3 py-2.5 transition-colors ${
+            chargeRegistration === true ? 'bg-amber-100/70' : 'bg-surface-container-lowest'
+          } ${
+            fee.oncePerPatient && data.registrationFeeCharged
+              ? 'cursor-not-allowed opacity-70'
+              : 'hover:bg-amber-50'
+          }`}
+        >
           <input
             type="checkbox"
             checked={chargeRegistration === true}
             disabled={fee.oncePerPatient && data.registrationFeeCharged}
             onChange={(e) => onChangeCharge(e.target.checked)}
-            className="mt-0.5 h-3.5 w-3.5 accent-primary"
+            className="mt-0.5 h-4 w-4 accent-primary"
           />
           <span className="min-w-0">
-            <span className="text-xs font-medium">
-              Add {fee.label} — ₹{feeTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            {/* The amount is money going onto this bill, so it is the loudest
+                thing in the block after the patient's status. */}
+            <span className="block text-sm font-semibold">
+              Add {fee.label} —{' '}
+              <span className="text-base font-bold text-amber-800">
+                ₹{feeTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </span>
             </span>
-            <span className="block text-[10px] leading-tight text-muted-foreground">
+            <span className="mt-0.5 block text-xs leading-snug text-on-surface-variant">
               {fee.oncePerPatient && data.registrationFeeCharged
                 ? `Already charged${data.registrationFeeChargedAt ? ` on ${formatDate(data.registrationFeeChargedAt)}` : ''} — it cannot be taken twice.`
                 : data.isFirstVisit
