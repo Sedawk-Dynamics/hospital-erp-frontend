@@ -8,7 +8,6 @@ import { useSidebarStore } from '@/stores/sidebar-store';
 import { PlatformLogo } from '@/components/branding/platform-logo';
 import {
   BedDouble,
-  Bell,
   Building2,
   Calendar,
   CalendarDays,
@@ -34,6 +33,7 @@ import {
   Heart,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { NotificationBell } from '@/components/layout/notification-bell';
 import { cn } from '@/lib/utils';
 import { ProfileSelector } from './patient-portal/_components/profile-selector';
 
@@ -306,10 +306,12 @@ export default function PatientPortalLayout({ children }: { children: React.Reac
 
           <div className="flex items-center gap-4 sm:gap-6">
             <ProfileSelector />
-            <button className="relative p-2 text-on-surface-variant hover:bg-surface-container-high rounded-lg transition-colors">
-              <Bell className="h-5 w-5" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-error rounded-full ring-2 ring-background" />
-            </button>
+            {/* The real bell. This was a plain <button> with no onClick and a
+                hardcoded red dot that was always lit — so a patient saw a
+                permanent "you have something" marker that opened nothing, while
+                their actual notifications (appointment reminders, "your lab
+                report is ready") sat unread in the database. */}
+            <NotificationBell variant="module" />
             <button
               onClick={() => router.push('/help')}
               title="User Guide"
