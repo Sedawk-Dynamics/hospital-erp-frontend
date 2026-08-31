@@ -6,9 +6,10 @@ import { useForm } from 'react-hook-form';
 /**
  * A doctor types "fever", not "R50.9".
  *
- * Only the narrow box beside this field searched ICD-10, and it searched by
- * CODE — so typing the diagnosis by name left the code empty and the entry
- * went in as free text, with nothing to bill, report or drive the CDSS off.
+ * Neither the prescription pad nor the examination step searched ICD-10 by
+ * NAME — one had a code picker beside the field, the other a bare text box —
+ * so typing the diagnosis left the code empty and the entry went in as free
+ * text, with nothing to bill from, report on or drive the CDSS off.
  */
 
 const results = { current: [] as unknown[] };
@@ -17,7 +18,7 @@ vi.mock('@/hooks/use-icd', () => ({
   useIcdSearch: () => ({ data: results.current, isFetching: fetching.current }),
 }));
 
-import { DiagnosisNameField } from './prescription-pad';
+import { DiagnosisNameField } from './diagnosis-name-field';
 
 const R509 = { id: '1', code: 'R50.9', title: 'Fever, unspecified', category: 'General symptoms and signs' };
 const R50 = { id: '2', code: 'R50', title: 'Fever of other and unknown origin', category: 'General symptoms and signs' };
@@ -114,5 +115,46 @@ describe('typing a diagnosis by name', () => {
 
     await waitFor(() => expect(screen.queryByText('R50.9')).not.toBeInTheDocument());
     expect(values()).toMatchObject({ diagnosisName: 'fever', icdCode: '' });
+  });
+
+  describe('escaping the cards it sits in', () => {
+    // Both hosts clip an in-flow dropdown, in two different ways no z-index can
+    // escape: the prescription pad's card and the consultation card both use
+    // `overflow-hidden`, and the consultation DIALOG scrolls its body with
+    // `overflow-y-auto`. Measured against the real markup before this: the
+    // second suggestion was cut in half and the third never appeared.
+    it('renders the list outside the clipping container, on the body', async () => {
+      const { container } = render(
+        <div className="overflow-hidden" data-testid="clipper">
+          <Harness />
+        </div>,
+      );
+      await userEvent.type(screen.getByPlaceholderText(/Start typing Diagnosis/i), 'fever');
+      await waitFor(() => expect(screen.getByText('R50.9')).toBeInTheDocument());
+
+      // Found by a screen query (which searches the whole document) but NOT
+      // inside the container that would clip it.
+      expect(container.querySelector('[data-testid="clipper"]')).not.toContainElement(
+        screen.getByText('R50.9'),
+      );
+      expect(document.body).toContainElement(screen.getByText('R50.9'));
+    });
+
+    it('pins the list to the input it belongs to', async () => {
+      // jsdom reports zeroes, so the rect is stubbed — what is asserted is that
+      // the measured position is USED, not the numbers themselves.
+      const rect = { bottom: 220, left: 64, width: 320, top: 190, right: 384, height: 30, x: 64, y: 190, toJSON: () => ({}) };
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(rect as DOMRect);
+      render(<Harness />);
+      await userEvent.type(screen.getByPlaceholderText(/Start typing Diagnosis/i), 'fever');
+      await waitFor(() => expect(screen.getByText('R50.9')).toBeInTheDocument());
+
+      const list = screen.getByText('R50.9').closest('div.fixed') as HTMLElement;
+      expect(list).toBeTruthy();
+      expect(list.style.left).toBe('64px');
+      expect(list.style.width).toBe('320px');
+      expect(list.style.top).toBe('224px'); // just under the input
+      vi.restoreAllMocks();
+    });
   });
 });
