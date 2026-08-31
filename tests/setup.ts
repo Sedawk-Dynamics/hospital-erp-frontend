@@ -70,3 +70,16 @@ Object.defineProperty(window, 'matchMedia', {
     dispatchEvent: vi.fn(),
   })),
 });
+
+// ─── ResizeObserver mock ───
+// jsdom does not implement it, and `cmdk` — the list inside every Command /
+// combobox popover — constructs one as soon as it opens. Without this, any test
+// that opens a picker dies with "ResizeObserver is not defined" from inside a
+// React effect, which reads as a render crash rather than a missing browser API.
+class ResizeObserverMock {
+  observe = vi.fn();
+  unobserve = vi.fn();
+  disconnect = vi.fn();
+}
+Object.defineProperty(window, 'ResizeObserver', { writable: true, value: ResizeObserverMock });
+globalThis.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver;
