@@ -48,6 +48,7 @@ import {
 } from '../consultation-completion/use-consultation-completion';
 import { VoiceInputButton } from '../voice-input-button';
 import { IcdCodeCombobox } from '@/components/clinical/icd-code-combobox';
+import { useIcdSearch } from '@/hooks/use-icd';
 import { PhysicalObservationsPicker } from '../physical-observations-picker';
 import { SmartSuggestionsCard } from '../smart-suggestions-card';
 import { QtyCell } from '../prescription-qty-cell';
@@ -1064,6 +1065,104 @@ function PadSection({
 // Diagnosis Section (with ICD-10 badge)
 // ═══════════════════════════════════════════════════════════
 
+/**
+ * The diagnosis name, typed — and searched against ICD-10 as it is typed.
+ *
+ * Only the narrow box beside it searched the catalogue before, and it searched
+ * by CODE. A doctor types "fever", not "R50.9", so the code stayed empty and
+ * the diagnosis went in as free text with nothing to bill, report or drive the
+ * CDSS off. Picking a suggestion here fills the name AND the code.
+ *
+ * Free text is still the fallback and always available: anything not chosen
+ * from the list is kept exactly as typed, with no code. That matters — a
+ * working diagnosis is often not codeable yet, and the form must not force one.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function DiagnosisNameField({ form, index }: { form: any; index: number }) {
+  const [open, setOpen] = useState(false);
+  const field = form.register(`diagnoses.${index}.diagnosisName`);
+  const typed: string = form.watch(`diagnoses.${index}.diagnosisName`) ?? '';
+  const debounced = useDebounce(typed, 250);
+  const term = debounced.trim();
+  const { data: results, isFetching } = useIcdSearch(term, open && term.length >= 2);
+  const matches = results ?? [];
+
+  const choose = (icd: { code: string; title: string }) => {
+    form.setValue(`diagnoses.${index}.diagnosisName`, icd.title, { shouldDirty: true });
+    form.setValue(`diagnoses.${index}.icdCode`, icd.code, { shouldDirty: true });
+    setOpen(false);
+  };
+
+  return (
+    <div className="relative flex-1">
+      <Input
+        placeholder="Start typing Diagnosis..."
+        className="h-8 text-sm w-full"
+        autoComplete="off"
+        {...field}
+        onChange={(e) => {
+          field.onChange(e);
+          setOpen(true);
+        }}
+        onFocus={() => typed.trim().length >= 2 && setOpen(true)}
+        // Delayed so a click on a suggestion lands before the list closes.
+        onBlur={(e) => {
+          field.onBlur(e);
+          setTimeout(() => setOpen(false), 200);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') return setOpen(false);
+          if (e.key !== 'Enter') return;
+          // Always swallowed: Enter in a diagnosis line must never submit the
+          // whole prescription. With a list open it takes the first match;
+          // otherwise it just leaves the free text alone.
+          e.preventDefault();
+          if (open && matches.length) choose(matches[0]);
+        }}
+      />
+      {open && term.length >= 2 && (
+        <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-56 overflow-y-auto rounded-lg border bg-popover shadow-lg">
+          {matches.map((icd) => (
+            <button
+              key={icd.id}
+              type="button"
+              className="flex w-full items-start gap-2 border-b px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-accent"
+              // onMouseDown, not onClick: blur fires first and would close the
+              // list before a click could land.
+              onMouseDown={(e) => {
+                e.preventDefault();
+                choose(icd);
+              }}
+            >
+              <Badge
+                variant="outline"
+                className="mt-0.5 shrink-0 border-error/30 bg-error/10 px-1.5 py-0 text-[10px] font-bold text-error"
+              >
+                {icd.code}
+              </Badge>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm">{icd.title}</span>
+                {icd.category && (
+                  <span className="block truncate text-[10px] uppercase text-muted-foreground">
+                    {icd.category}
+                  </span>
+                )}
+              </span>
+            </button>
+          ))}
+          {!matches.length && (
+            <p className="px-3 py-2 text-xs text-muted-foreground">
+              {isFetching
+                ? 'Searching ICD-10…'
+                : `No ICD-10 match for “${term}”. It will be saved as free text.`}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function DiagnosisSection({ form, pinSlot }: { form: any; pinSlot?: React.ReactNode }) {
   const { register, control, formState: { errors } } = form;
@@ -1092,8 +1191,8 @@ function DiagnosisSection({ form, pinSlot }: { form: any; pinSlot?: React.ReactN
         )}
         {fields.map((field, index) => (
           <div key={field.id} className="flex items-center gap-2">
-            {/* ICD-10 autocomplete — picking a code fills the name; free text
-                stays possible by editing the name field directly. */}
+            {/* Search by CODE. Searching by NAME is the field beside it, which
+                is what a doctor actually reaches for. */}
             <IcdCodeCombobox
               triggerSize="sm"
               className="w-40 shrink-0"
@@ -1104,11 +1203,7 @@ function DiagnosisSection({ form, pinSlot }: { form: any; pinSlot?: React.ReactN
               }}
               placeholder="ICD code"
             />
-            <Input
-              placeholder="Start typing Diagnosis..."
-              className="h-8 text-sm flex-1"
-              {...register(`diagnoses.${index}.diagnosisName`)}
-            />
+            <DiagnosisNameField form={form} index={index} />
             <select
               className="flex h-8 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30 w-28 shrink-0"
               {...register(`diagnoses.${index}.diagnosisType`)}
