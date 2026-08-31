@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { getApiErrorMessage } from '@/lib/utils';
+import { IcdCodeCombobox } from '@/components/clinical/icd-code-combobox';
 
 // The doctor and nurse write these same rows from the hospital side, so the
 // app-wide 60s staleTime / no-refetch-on-focus defaults would leave a patient
@@ -103,11 +104,20 @@ function TextField({
   value,
   onChange,
   textarea,
+  placeholder,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   textarea?: boolean;
+  /**
+   * An example of what belongs here. These fields were blank boxes under
+   * one-word labels — "Appetite", "Diet" — and a patient filling their own
+   * history has no way to know whether that means "good" or "three meals a
+   * day". An example in the box answers it without adding a paragraph of help
+   * text nobody reads.
+   */
+  placeholder?: string;
 }) {
   // The label was a bare sibling of the control, so nothing tied the two
   // together — a screen reader read an unlabelled box, and clicking the label
@@ -124,6 +134,7 @@ function TextField({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           rows={3}
+          placeholder={placeholder}
           className={FIELD_CLASS}
         />
       ) : (
@@ -131,6 +142,7 @@ function TextField({
           id={id}
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
           className={FIELD_CLASS}
         />
       )}
@@ -161,13 +173,70 @@ function SelectField({
         onChange={(e) => onChange(e.target.value)}
         className={FIELD_CLASS}
       >
-        <option value="">—</option>
+        <option value="">— Select —</option>
         {options.map((o) => (
+          // Stored lowercase (it is an enum); shown capitalised, because this
+          // is a form a patient fills in about themselves.
           <option key={o} value={o}>
-            {o}
+            {o.charAt(0).toUpperCase() + o.slice(1)}
           </option>
         ))}
       </select>
+    </div>
+  );
+}
+
+/**
+ * Known disorders — the same ICD-10-backed field the clinician side uses.
+ *
+ * This was free text only, so one person's "sugar" was another's "diabetes"
+ * and a third's "DM", and nothing downstream could count or match them. The
+ * catalogue and its search already back the diagnosis fields; this puts them in
+ * front of the patient's own list too.
+ *
+ * The free text stays, and stays primary — the clinician panel made the same
+ * call on the same row, and for the same reason: plenty of real conditions are
+ * not in ICD, and a picker that refused them would push people to write the
+ * condition somewhere it does not belong. Picking APPENDS a line rather than
+ * replacing what is already written.
+ *
+ * Lines are formatted `CODE — Title`, byte-identical to the clinician panel,
+ * because it is literally the same stored row: medical history is one record
+ * per person and both sides read and write it.
+ */
+export function DisordersField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const id = useId();
+  return (
+    <div>
+      <label htmlFor={id} className={LABEL_CLASS}>
+        Existing Disorders
+      </label>
+      <div className="mb-1.5">
+        <IcdCodeCombobox
+          value={null}
+          clearable={false}
+          className="w-full"
+          placeholder="Search conditions — e.g. asthma, diabetes, high blood pressure…"
+          onSelect={(icd) => {
+            if (!icd) return;
+            // Clicking around the list must not leave a column of repeats.
+            if (value.includes(icd.code)) return;
+            const line = `${icd.code} — ${icd.title}`;
+            onChange(value.trim() ? `${value.trim()}\n${line}` : line);
+          }}
+        />
+      </div>
+      <textarea
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={3}
+        placeholder="e.g. Asthma since childhood, uses an inhaler in winter"
+        className={FIELD_CLASS}
+      />
+      <p className="mt-1 text-[11px] text-on-surface-variant">
+        Pick from the list where it fits, or just type — anything not on the list still belongs here.
+      </p>
     </div>
   );
 }
@@ -214,10 +283,30 @@ function PersonalTab() {
   return (
     <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-6 space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <TextField label="Appetite" value={valueOf('appetite')} onChange={setText('appetite')} />
-        <TextField label="Diet" value={valueOf('diet')} onChange={setText('diet')} />
-        <TextField label="Sleep Pattern" value={valueOf('sleepPattern')} onChange={setText('sleepPattern')} />
-        <TextField label="Exercise Habits" value={valueOf('exerciseHabits')} onChange={setText('exerciseHabits')} />
+        <TextField
+          label="Appetite"
+          value={valueOf('appetite')}
+          onChange={setText('appetite')}
+          placeholder="e.g. Good — three meals a day"
+        />
+        <TextField
+          label="Diet"
+          value={valueOf('diet')}
+          onChange={setText('diet')}
+          placeholder="e.g. Vegetarian, low salt"
+        />
+        <TextField
+          label="Sleep Pattern"
+          value={valueOf('sleepPattern')}
+          onChange={setText('sleepPattern')}
+          placeholder="e.g. 6–7 hours, wakes once at night"
+        />
+        <TextField
+          label="Exercise Habits"
+          value={valueOf('exerciseHabits')}
+          onChange={setText('exerciseHabits')}
+          placeholder="e.g. 30-minute walk most days"
+        />
         <SelectField
           label="Smoking"
           value={valueOf('smokingStatus')}
@@ -231,8 +320,14 @@ function PersonalTab() {
           options={['none', 'occasional', 'moderate', 'heavy']}
         />
       </div>
-      <TextField label="Disorders" value={valueOf('disorders')} onChange={setText('disorders')} textarea />
-      <TextField label="Notes" value={valueOf('notes')} onChange={setText('notes')} textarea />
+      <DisordersField value={valueOf('disorders')} onChange={setText('disorders')} />
+      <TextField
+        label="Notes"
+        value={valueOf('notes')}
+        onChange={setText('notes')}
+        textarea
+        placeholder="Anything else your doctor should know — e.g. allergic to dust, fainted twice last year"
+      />
 
       <div className="flex justify-end">
         <Button
