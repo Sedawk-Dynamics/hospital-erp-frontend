@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import { fullName, initials } from '@/lib/person-name';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
 import { useDoctorAdmissions, useCreateProgressNote } from '@/hooks/use-doctor';
@@ -311,12 +312,11 @@ export default function DoctorIPHomePage() {
               ) : (
                 admissions.map((admission) => {
                   const patient = admission.patient;
-                  const patientName = patient
-                    ? `${patient.firstName} ${patient.lastName}`.toUpperCase()
-                    : 'Unknown';
-                  const initials = patient
-                    ? `${patient.firstName?.[0] || ''}${patient.lastName?.[0] || ''}`.toUpperCase()
-                    : '?';
+                  // A temporary patient has only a first name by design, and a
+                  // template literal turns the missing surname into the word
+                  // "null" — uppercased here, so the row read "TEMPORARY 5 NULL".
+                  const patientName = fullName(patient, 'Unknown').toUpperCase();
+                  const patientInitials = initials(patient);
 
                   return (
                     <tr key={admission.id} className="group hover:bg-surface-container-low transition-colors">
@@ -324,7 +324,7 @@ export default function DoctorIPHomePage() {
                         <div className="flex items-center gap-3">
                           <Avatar className="h-9 w-9">
                             <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                              {initials}
+                              {patientInitials}
                             </AvatarFallback>
                           </Avatar>
                           <div>
@@ -387,7 +387,7 @@ export default function DoctorIPHomePage() {
                           </p>
                           <p className="text-xs text-muted-foreground">
                             {admission.doctor?.user
-                              ? `Dr ${admission.doctor.user.firstName} ${admission.doctor.user.lastName}`
+                              ? `Dr ${fullName(admission.doctor.user)}`
                               : 'No consultant assigned'}
                           </p>
                         </div>
@@ -445,7 +445,7 @@ export default function DoctorIPHomePage() {
                                 onClick={() =>
                                   setRxTarget({
                                     patientId: admission.patientId,
-                                    name: patient ? `${patient.firstName} ${patient.lastName}`.trim() : 'Patient',
+                                    name: fullName(patient, 'Patient'),
                                     mrn: patient?.mrn,
                                   })
                                 }
