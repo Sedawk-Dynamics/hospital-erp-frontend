@@ -48,7 +48,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { IcdCodeCombobox } from '@/components/clinical/icd-code-combobox';
+import { DisorderPicker } from '@/components/clinical/disorder-picker';
 import { DischargeSummaryDocument } from '@/components/doctor/discharge-summary-document';
 import type { DischargeDocument } from '@/hooks/use-doctor';
 
@@ -218,57 +218,29 @@ function MedicalSurgicalTab({ patientId, readOnly }: { patientId: string; readOn
   };
 
   /**
-   * Same narrative box, with an ICD-10 picker above it.
+   * Known disorders — one search bar and a chip per condition.
    *
-   * Known disorders were free text only, so the same condition arrived as
-   * "HTN", "hypertension" and "high BP" and nothing downstream could count or
-   * match them. The ICD catalog and its search endpoint already back the
-   * diagnosis field; this puts them in front of the disorder field too.
+   * This was free text, so the same condition arrived as "HTN", "hypertension"
+   * and "high BP" and nothing downstream could count or match them; then
+   * briefly a code picker sitting ABOVE a textarea, which left the reader to
+   * work out which of two fields was the real one.
    *
-   * The free text stays, and stays primary: plenty of real disorders are not in
-   * ICD, and a picker that refused them would push clinicians to write the
-   * condition in the wrong box. Picking a code APPENDS a line rather than
-   * replacing what is there.
+   * It is now the shared picker, backed by the disorder master list a super
+   * admin owns — the same control the patient sees on their own portal, writing
+   * the same row, because medical history is one record per person.
    */
-  const codedNarrativeField = (
-    label: string,
-    key: keyof MedicalSurgical & string,
-    placeholder: string,
-  ) => {
-    if (readOnly) return narrativeField(label, key, placeholder);
-    const value = draft[key] ?? (data?.[key] as string | null) ?? '';
+  const disordersField = () => {
+    const value = draft.disorders ?? (data?.disorders as string | null) ?? '';
     return (
       <div>
-        <label className="mb-0.5 block text-[10px] font-medium text-foreground/60">{label}</label>
-        <div className="mb-1">
-          <IcdCodeCombobox
-            value={null}
-            triggerSize="sm"
-            clearable={false}
-            placeholder="Search the ICD-10 list to add a disorder…"
-            onSelect={(icd) => {
-              if (!icd) return;
-              const line = `${icd.code} — ${icd.title}`;
-              // Do not add the same code twice; a clinician clicking around the
-              // picker should not end up with a list of repeats.
-              if (value.includes(icd.code)) return;
-              setDraft((d) => ({
-                ...d,
-                [key]: value.trim() ? `${value.trim()}\n${line}` : line,
-              }));
-            }}
-          />
-        </div>
-        <textarea
+        <label className="mb-0.5 block text-[10px] font-medium text-foreground/60">
+          Known Disorders
+        </label>
+        <DisorderPicker
           value={value}
-          onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
-          rows={3}
-          placeholder={placeholder}
-          className="w-full rounded-md border bg-background px-2 py-1 text-xs"
+          disabled={readOnly}
+          onChange={(v) => setDraft((d) => ({ ...d, disorders: v }))}
         />
-        <p className="mt-0.5 text-[10px] text-muted-foreground">
-          Pick from the list where it fits, or just type — anything not in ICD still belongs here.
-        </p>
       </div>
     );
   };
@@ -297,7 +269,7 @@ function MedicalSurgicalTab({ patientId, readOnly }: { patientId: string; readOn
           'pastSurgicalHistory',
           'Past procedures with dates — appendicectomy 2018, LSCS 2021…',
         )}
-        {codedNarrativeField('Known Disorders', 'disorders', 'Chronic / ongoing disorders')}
+        {disordersField()}
         {!readOnly && (
           <div className="flex justify-end">
             <Button

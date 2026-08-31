@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { getApiErrorMessage } from '@/lib/utils';
-import { IcdCodeCombobox } from '@/components/clinical/icd-code-combobox';
+import { DisorderPicker } from '@/components/clinical/disorder-picker';
 
 // The doctor and nurse write these same rows from the hospital side, so the
 // app-wide 60s staleTime / no-refetch-on-focus defaults would leave a patient
@@ -187,56 +187,21 @@ function SelectField({
 }
 
 /**
- * Known disorders — the same ICD-10-backed field the clinician side uses.
+ * Known disorders — one search bar, one chip per condition.
  *
- * This was free text only, so one person's "sugar" was another's "diabetes"
- * and a third's "DM", and nothing downstream could count or match them. The
- * catalogue and its search already back the diagnosis fields; this puts them in
- * front of the patient's own list too.
+ * This was a free-text box, so the same condition arrived as "sugar",
+ * "diabetes" and "DM" and nothing downstream could count or match them. It is
+ * now the shared picker, backed by the disorder master list a super admin owns.
  *
- * The free text stays, and stays primary — the clinician panel made the same
- * call on the same row, and for the same reason: plenty of real conditions are
- * not in ICD, and a picker that refused them would push people to write the
- * condition somewhere it does not belong. Picking APPENDS a line rather than
- * replacing what is already written.
- *
- * Lines are formatted `CODE — Title`, byte-identical to the clinician panel,
- * because it is literally the same stored row: medical history is one record
- * per person and both sides read and write it.
+ * The chips ARE the same `disorders` text column, one per line — which is why
+ * anything typed here before still shows up, and why the clinician panel writing
+ * the same row sees the same list.
  */
-export function DisordersField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const id = useId();
+function DisordersField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <div>
-      <label htmlFor={id} className={LABEL_CLASS}>
-        Existing Disorders
-      </label>
-      <div className="mb-1.5">
-        <IcdCodeCombobox
-          value={null}
-          clearable={false}
-          className="w-full"
-          placeholder="Search conditions — e.g. asthma, diabetes, high blood pressure…"
-          onSelect={(icd) => {
-            if (!icd) return;
-            // Clicking around the list must not leave a column of repeats.
-            if (value.includes(icd.code)) return;
-            const line = `${icd.code} — ${icd.title}`;
-            onChange(value.trim() ? `${value.trim()}\n${line}` : line);
-          }}
-        />
-      </div>
-      <textarea
-        id={id}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        rows={3}
-        placeholder="e.g. Asthma since childhood, uses an inhaler in winter"
-        className={FIELD_CLASS}
-      />
-      <p className="mt-1 text-[11px] text-on-surface-variant">
-        Pick from the list where it fits, or just type — anything not on the list still belongs here.
-      </p>
+      <span className={LABEL_CLASS}>Existing Disorders</span>
+      <DisorderPicker value={value} onChange={onChange} />
     </div>
   );
 }
