@@ -22,29 +22,33 @@ import { useDisorderSearch } from '@/hooks/use-disorders';
  *
  * Anything already in that column — years of free text — parses straight into
  * chips and can be read and removed. Nothing typed before this is lost.
+ *
+ * NO ICD CODES ON SCREEN. This is a list of conditions, and "J45.9" means
+ * nothing to a patient reading their own history or to a clinician scanning
+ * it. An entry is stored as the plain name. Lines already written as
+ * "CODE — Name" — the format the clinician panel used before this — are still
+ * understood and shown by their name, so nothing on record is lost, and
+ * re-picking one is still recognised as already added rather than duplicated.
  */
 
-/** A stored line. `code` is null for free text written before the picker. */
+/** A stored line, reduced to what is shown. */
 export interface DisorderChip {
-  code: string | null;
   label: string;
   /** The exact stored line, so removing one edits nothing else. */
   raw: string;
 }
 
-/** `"J45.9 — Asthma, unspecified"` → its parts. Free text keeps `code: null`. */
+/** Splits stored lines, dropping the leading code the older format wrote. */
 export function parseDisorders(value: string): DisorderChip[] {
   return value
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean)
     .map((raw) => {
-      const m = raw.match(/^([A-Z][0-9]{2}(?:\.[0-9A-Z]+)?)\s+—\s+(.+)$/);
-      return m ? { code: m[1], label: m[2], raw } : { code: null, label: raw, raw };
+      const m = raw.match(/^[A-Z][0-9]{2}(?:\.[0-9A-Z]+)?\s+—\s+(.+)$/);
+      return { label: m ? m[1] : raw, raw };
     });
 }
-
-const line = (code: string | null, name: string) => (code ? `${code} — ${name}` : name);
 
 export function DisorderPicker({
   value,
@@ -65,13 +69,13 @@ export function DisorderPicker({
   const chips = parseDisorders(value);
   // Already-added ones are shown as such rather than hidden, so a clinician
   // searching for a condition can see it is on the list instead of concluding
-  // the search is broken.
-  const added = new Set(chips.map((c) => c.raw));
+  // the search is broken. Keyed on the NAME, so a line stored in the older
+  // "CODE — Name" format still counts as already added.
+  const added = new Set(chips.map((c) => c.label));
   const matches = data ?? [];
 
-  const add = (d: { icdCode: string | null; name: string }) => {
-    const next = line(d.icdCode, d.name);
-    if (!added.has(next)) onChange(chips.length ? `${value.trim()}\n${next}` : next);
+  const add = (d: { name: string }) => {
+    if (!added.has(d.name)) onChange(chips.length ? `${value.trim()}\n${d.name}` : d.name);
     setTerm('');
     setOpen(false);
   };
@@ -143,7 +147,7 @@ export function DisorderPicker({
             style={{ top: rect.top, left: rect.left, width: rect.width }}
           >
             {matches.map((d) => {
-              const already = added.has(line(d.icdCode, d.name));
+              const already = added.has(d.name);
               return (
                 <button
                   key={d.id}
@@ -156,11 +160,6 @@ export function DisorderPicker({
                     if (!already) add(d);
                   }}
                 >
-                  {d.icdCode && (
-                    <span className="mt-0.5 shrink-0 rounded border border-error/30 bg-error/10 px-1.5 text-[10px] font-bold text-error">
-                      {d.icdCode}
-                    </span>
-                  )}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm">{d.name}</span>
                     {d.category && (
@@ -191,7 +190,6 @@ export function DisorderPicker({
               key={c.raw}
               className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 py-1 pl-2.5 pr-1.5 text-xs text-on-surface"
             >
-              {c.code && <span className="font-bold text-primary">{c.code}</span>}
               <span>{c.label}</span>
               {!disabled && (
                 <button
