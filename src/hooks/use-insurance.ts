@@ -48,6 +48,34 @@ export interface TpaProvider {
   createdAt: string;
 }
 
+export type CommunicationType = 'email' | 'phone' | 'portal' | 'letter';
+export type CommunicationDirection = 'inbound' | 'outbound';
+
+/**
+ * One recorded interaction with a TPA or insurer.
+ *
+ * `tpa` is null when the policy behind the claim names no TPA — the common
+ * case, where the hospital deals with the insurer directly. `isSystem` marks
+ * the entries the claim and pre-auth lifecycles write themselves, as opposed
+ * to the ones staff type after a call.
+ */
+export interface TpaCommunicationLog {
+  id: string;
+  claimId?: string | null;
+  preAuthId?: string | null;
+  tpaId?: string | null;
+  communicationType?: CommunicationType | null;
+  direction?: CommunicationDirection | null;
+  subject?: string | null;
+  content?: string | null;
+  isSystem: boolean;
+  createdAt: string;
+  claim?: { id: string; claimNumber?: string | null; status: ClaimStatus } | null;
+  preAuth?: { id: string; procedureDescription: string; status: PreAuthStatus } | null;
+  tpa?: { id: string; name: string } | null;
+  communicator?: { id: string; firstName: string; lastName?: string | null } | null;
+}
+
 export interface InsurancePolicy {
   id: string;
   patientId: string;
@@ -185,6 +213,7 @@ export const insuranceKeys = {
     ['insurance', 'reports', kind, params] as const,
   expiringClaims: (withinDays?: number) => ['insurance', 'claims', 'expiring', withinDays] as const,
   calc: (policyId?: string, billId?: string) => ['insurance', 'calc', policyId, billId] as const,
+  tpaLogs: (params?: Record<string, unknown>) => ['insurance', 'tpa-logs', params] as const,
 };
 
 // ============================================================
@@ -742,6 +771,51 @@ export function useSplitBill() {
       );
       return res.data;
     },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance'] }),
+  });
+}
+
+// ============================================================
+// TPA Communication Logs
+// ============================================================
+
+export function useTpaLogs(params?: {
+  claimId?: string;
+  preAuthId?: string;
+  tpaId?: string;
+  direction?: CommunicationDirection;
+  communicationType?: CommunicationType;
+  isSystem?: boolean;
+  search?: string;
+  page?: number;
+  limit?: number;
+}) {
+  return useQuery({
+    queryKey: insuranceKeys.tpaLogs(params as Record<string, unknown>),
+    queryFn: async () => {
+      const res = await apiGet<TpaCommunicationLog[]>('/insurance/tpa-logs', { params });
+      return { data: res.data, meta: res.meta! };
+    },
+  });
+}
+
+export function useCreateTpaLog() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: {
+      claimId?: string;
+      preAuthId?: string;
+      tpaId?: string;
+      communicationType: CommunicationType;
+      direction: CommunicationDirection;
+      subject: string;
+      content?: string;
+    }) => {
+      const res = await apiPost<TpaCommunicationLog>('/insurance/tpa-logs', body);
+      return res.data;
+    },
+    // The claim and pre-auth detail views carry the log alongside them, so the
+    // whole insurance tree is refreshed rather than just the log list.
     onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance'] }),
   });
 }
