@@ -38,6 +38,11 @@ interface Props {
   claimId?: string;
   /** The pre-authorization this log belongs to. */
   preAuthId?: string;
+  /**
+   * Drop the card chrome, for when the panel already sits inside one — a
+   * dialog, say. A card nested in a dialog reads as a box inside a box.
+   */
+  embedded?: boolean;
 }
 
 const TYPE_LABELS: Record<CommunicationType, string> = {
@@ -68,7 +73,7 @@ const EMPTY_FORM: FormState = {
  * Most entries write themselves as the claim moves; the button is for the ones
  * that do not leave a trace on their own — a phone call, an emailed query.
  */
-export function CommunicationLogPanel({ claimId, preAuthId }: Props) {
+export function CommunicationLogPanel({ claimId, preAuthId, embedded = false }: Props) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
 
@@ -99,49 +104,60 @@ export function CommunicationLogPanel({ claimId, preAuthId }: Props) {
     }
   }
 
+  const addButton = (
+    <Button
+      size="sm"
+      variant="outline"
+      className="gap-1.5"
+      onClick={() => {
+        setForm(EMPTY_FORM);
+        setDialogOpen(true);
+      }}
+    >
+      <Plus className="size-4" /> Log communication
+    </Button>
+  );
+
+  const body = isLoading ? (
+    <p className="py-6 text-center text-sm text-on-surface-variant">Loading…</p>
+  ) : logs.length === 0 ? (
+    <p className="py-6 text-center text-sm text-on-surface-variant">
+      Nothing recorded yet. Steps such as submission and approval are logged automatically; use
+      the button above for a call or an email.
+    </p>
+  ) : (
+    <ol className="space-y-3">
+      {logs.map((log) => (
+        <LogEntry key={log.id} log={log} />
+      ))}
+    </ol>
+  );
+
   return (
     <>
-      <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <MessageSquare className="size-4 text-primary" /> Communication Log
-              </CardTitle>
-              <CardDescription>
-                Everything sent to and received from the insurer, in order.
-              </CardDescription>
+      {embedded ? (
+        <div className="space-y-3">
+          <div className="flex justify-end">{addButton}</div>
+          <div className="max-h-[50vh] overflow-y-auto pr-1">{body}</div>
+        </div>
+      ) : (
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <MessageSquare className="size-4 text-primary" /> Communication Log
+                </CardTitle>
+                <CardDescription>
+                  Everything sent to and received from the insurer, in order.
+                </CardDescription>
+              </div>
+              {addButton}
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-1.5"
-              onClick={() => {
-                setForm(EMPTY_FORM);
-                setDialogOpen(true);
-              }}
-            >
-              <Plus className="size-4" /> Log communication
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <p className="py-6 text-center text-sm text-on-surface-variant">Loading…</p>
-          ) : logs.length === 0 ? (
-            <p className="py-6 text-center text-sm text-on-surface-variant">
-              Nothing recorded yet. Steps such as submission and approval are logged
-              automatically; use the button above for a call or an email.
-            </p>
-          ) : (
-            <ol className="space-y-3">
-              {logs.map((log) => (
-                <LogEntry key={log.id} log={log} />
-              ))}
-            </ol>
-          )}
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent>{body}</CardContent>
+        </Card>
+      )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>

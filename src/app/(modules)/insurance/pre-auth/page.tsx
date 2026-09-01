@@ -1,17 +1,29 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, ShieldAlert, Search, CheckCircle2, XCircle, Pause, Play, X } from 'lucide-react';
+import {
+  Plus,
+  ShieldAlert,
+  Search,
+  CheckCircle2,
+  XCircle,
+  Pause,
+  Play,
+  X,
+  MessageSquare,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { CommunicationLogPanel } from '@/components/insurance/communication-log-panel';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -99,6 +111,7 @@ export default function PreAuthPage() {
   const [rejecting, setRejecting] = useState<PreAuthRequest | null>(null);
   const [rejectNotes, setRejectNotes] = useState('');
   const [holding, setHolding] = useState<PreAuthRequest | null>(null);
+  const [viewingLog, setViewingLog] = useState<PreAuthRequest | null>(null);
   const [holdReason, setHoldReason] = useState('');
 
   const { data, isLoading } = usePreAuths({
@@ -402,6 +415,14 @@ export default function PreAuthPage() {
                             <X className="size-3.5" />
                           </Button>
                         )}
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          title="Communication log"
+                          onClick={() => setViewingLog(p)}
+                        >
+                          <MessageSquare className="size-3.5 text-primary" />
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -648,6 +669,16 @@ export default function PreAuthPage() {
               Put on Hold
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!viewingLog} onOpenChange={(open) => !open && setViewingLog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Communication Log</DialogTitle>
+            <DialogDescription>{viewingLog?.procedureDescription}</DialogDescription>
+          </DialogHeader>
+          {viewingLog && <CommunicationLogPanel preAuthId={viewingLog.id} embedded />}
         </DialogContent>
       </Dialog>
     </div>
