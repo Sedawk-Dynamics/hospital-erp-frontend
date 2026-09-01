@@ -38,6 +38,7 @@ import {
   Sparkles,
   History,
   ShieldOff,
+  MessageSquare,
   type LucideIcon,
 } from 'lucide-react';
 import type { ModuleKey } from '@/stores/module-store';
@@ -276,6 +277,7 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Policies', href: '/insurance/policies', icon: ClipboardCheck },
       { label: 'Insurers', href: '/insurance/insurers', icon: Building2 },
       { label: 'TPA Providers', href: '/insurance/tpa', icon: Users },
+      { label: 'TPA Communications', href: '/insurance/tpa-logs', icon: MessageSquare },
       { label: 'Reports', href: '/insurance/reports', icon: BarChart3 },
       { label: 'Settings', href: '/insurance/settings', icon: Settings },
     ],
