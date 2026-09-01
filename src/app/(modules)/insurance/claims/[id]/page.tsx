@@ -28,6 +28,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
 } from '@/components/ui/select';
+import { CommunicationLogPanel } from '@/components/insurance/communication-log-panel';
 import { formatDate, formatDateTime } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
 import {
@@ -442,6 +443,8 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
           </CardContent>
         </Card>
       </div>
+
+      <CommunicationLogPanel claimId={claim.id} />
 
       {/* Dialogs */}
       <Dialog open={approveOpen} onOpenChange={setApproveOpen}>
