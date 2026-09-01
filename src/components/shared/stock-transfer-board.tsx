@@ -6,9 +6,10 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod/v4';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { formatDate } from '@/lib/date-utils';
+import { fullName } from '@/lib/person-name';
 import {
-  ArrowLeftRight, Search, Plus, ArrowRight, Clock, CheckCircle2, XCircle, Truck,
-  Send, Inbox, Loader2, ChevronLeft, ChevronRight, Ban, ShieldAlert,
+  ArrowLeftRight, Search, Plus, ArrowRight, Clock, Truck,
+  Inbox, Loader2, ChevronLeft, ChevronRight, ShieldAlert,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
@@ -26,11 +27,8 @@ import { PageHeader } from '@/components/shared/page-header';
 import { EmptyState } from '@/components/shared/empty-state';
 import { apiGet } from '@/lib/api';
 import {
-  useStockTransfers, useCreateStockTransfer, useApproveStockTransfer,
-  useRejectStockTransfer, useDispatchStockTransfer, useReceiveStockTransfer,
-  useCancelStockTransfer,
+  useStockTransfers, useCreateStockTransfer,
   type StockTransferStatus,
-  type StockTransfer,
 } from '@/hooks/use-inventory';
 import { useUsersList } from '@/hooks/use-users';
 
@@ -47,13 +45,12 @@ const STATUS_COLOR: Record<StockTransferStatus, string> = {
   cancelled: 'bg-gray-200 text-gray-700 border-gray-300',
 };
 
+// A transfer is done the moment it is recorded, so there is nothing to filter
+// by any more. `cancelled` and `rejected` survive only as history: 12 rows
+// predate the one-step flow and still have to be readable.
 const STATUS_FILTERS: Array<{ key: StockTransferStatus | 'all'; label: string; icon: typeof Clock }> = [
-  { key: 'all', label: 'All', icon: ArrowLeftRight },
-  { key: 'pending', label: 'Pending', icon: Clock },
-  { key: 'approved', label: 'Approved', icon: CheckCircle2 },
-  { key: 'dispatched', label: 'Dispatched', icon: Send },
-  { key: 'received', label: 'Received', icon: Inbox },
-  { key: 'rejected', label: 'Rejected', icon: XCircle },
+  { key: 'all', label: 'All', icon: ArrowRight },
+  { key: 'received', label: 'Completed', icon: Inbox },
 ];
 
 const createSchema = z.object({
@@ -72,6 +69,8 @@ const createSchema = z.object({
   batchNumber: z.string().optional(),
   reason: z.string().optional(),
   notes: z.string().optional(),
+  /** Who takes custody of a vault narcotic. The server refuses without it. */
+  custodianId: z.string().optional(),
 }).refine((d) => !!d.inventoryItemId || !!d.drugBatchId, {
   message: 'Select an item or a pharmacy drug',
   path: ['inventoryItemId'],
@@ -96,7 +95,21 @@ type EndpointType = 'department' | 'ward' | 'location';
 
 interface Dept { id: string; name: string }
 interface ItemRow { id: string; itemName: string; itemCode?: string | null; currentStock: number; unitOfMeasurement?: string | null }
-interface DrugBatchRow { id: string; batchNumber: string; quantityInStock: number; drug?: { drugName: string } | null }
+interface DrugBatchRow {
+  id: string;
+  batchNumber: string;
+  quantityInStock: number;
+  drug?: {
+    drugName: string;
+    /**
+     * Carried so the form knows to ask for a receiving custodian before the
+     * move is submitted. A vault narcotic is refused without one.
+     */
+    controlledClass?: 'narcotic' | 'psychotropic' | null;
+    vaultControlled?: boolean | null;
+    schedule?: string | null;
+  } | null;
+}
 
 interface Props {
   /** Title for the page header */
@@ -125,9 +138,6 @@ export function StockTransferBoard({
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
-  const [rejectingId, setRejectingId] = useState<string | null>(null);
-  const [handingOver, setHandingOver] = useState<StockTransfer | null>(null);
-  const [rejectReason, setRejectReason] = useState('');
 
   const params = {
     status: statusFilter === 'all' ? undefined : statusFilter,
@@ -149,11 +159,6 @@ export function StockTransferBoard({
   }, [allData]);
 
   // Mutations
-  const approve = useApproveStockTransfer();
-  const reject = useRejectStockTransfer();
-  const dispatch = useDispatchStockTransfer();
-  const receive = useReceiveStockTransfer();
-  const cancel = useCancelStockTransfer();
 
   return (
     <div className="space-y-5 animate-fade-in-up">
@@ -221,7 +226,6 @@ export function StockTransferBoard({
                   <th className="px-4 py-3 text-right">Qty</th>
                   <th className="px-4 py-3">Date</th>
                   <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -256,86 +260,6 @@ export function StockTransferBoard({
                         {STATUS_LABEL[t.status]}
                       </Badge>
                     </td>
-                    <td className="px-4 py-2">
-                      <div className="flex items-center justify-center gap-1">
-                        {t.status === 'pending' && (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="text-emerald-700 hover:bg-emerald-50 h-8"
-                              onClick={() => approve.mutate({ id: t.id }, {
-                                onSuccess: () => toast.success('Transfer approved'),
-                                onError: (e: any) => toast.error(e?.message ?? 'Approve failed'),
-                              })}
-                              disabled={approve.isPending}
-                            >
-                              <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Approve
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="text-red-700 hover:bg-red-50 h-8"
-                              onClick={() => setRejectingId(t.id)}
-                            >
-                              <XCircle className="h-3.5 w-3.5 mr-1" /> Reject
-                            </Button>
-                          </>
-                        )}
-                        {t.status === 'approved' && (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="text-purple-700 hover:bg-purple-50 h-8"
-                              onClick={() => {
-                                // A vault narcotic is handed over, not just
-                                // sent: the server refuses it without a named
-                                // second person, so ask here rather than let
-                                // the counter hit a refusal it cannot satisfy.
-                                if (t.drugBatch?.drug?.vaultControlled) {
-                                  setHandingOver(t);
-                                  return;
-                                }
-                                dispatch.mutate({ id: t.id }, {
-                                  onSuccess: () => toast.success('Transfer dispatched'),
-                                  onError: (e: any) => toast.error(e?.message ?? 'Dispatch failed'),
-                                });
-                              }}
-                              disabled={dispatch.isPending}
-                            >
-                              <Send className="h-3.5 w-3.5 mr-1" /> Dispatch
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="text-gray-600 hover:bg-gray-50 h-8"
-                              onClick={() => cancel.mutate({ id: t.id }, {
-                                onSuccess: () => toast.success('Cancelled'),
-                                onError: (e: any) => toast.error(e?.message ?? 'Cancel failed'),
-                              })}
-                              disabled={cancel.isPending}
-                            >
-                              <Ban className="h-3.5 w-3.5 mr-1" /> Cancel
-                            </Button>
-                          </>
-                        )}
-                        {t.status === 'dispatched' && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-emerald-700 hover:bg-emerald-50 h-8"
-                            onClick={() => receive.mutate(t.id, {
-                              onSuccess: () => toast.success('Transfer received'),
-                              onError: (e: any) => toast.error(e?.message ?? 'Receive failed'),
-                            })}
-                            disabled={receive.isPending}
-                          >
-                            <Inbox className="h-3.5 w-3.5 mr-1" /> Receive
-                          </Button>
-                        )}
-                      </div>
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -366,144 +290,7 @@ export function StockTransferBoard({
         fromPharmacyOnly={fromPharmacyOnly}
       />
 
-      <HandoverDialog
-        transfer={handingOver}
-        onClose={() => setHandingOver(null)}
-        pending={dispatch.isPending}
-        onConfirm={(custodianId) => {
-          if (!handingOver) return;
-          dispatch.mutate(
-            { id: handingOver.id, custodianId },
-            {
-              onSuccess: () => {
-                toast.success('Custody handed over and stock dispatched');
-                setHandingOver(null);
-              },
-              onError: (e: any) => toast.error(e?.message ?? 'Dispatch failed'),
-            },
-          );
-        }}
-      />
-
-      <Dialog open={rejectingId !== null} onOpenChange={(o) => { if (!o) { setRejectingId(null); setRejectReason(''); } }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Reject Transfer</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Label>Reason</Label>
-            <Input value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Why is this transfer rejected?" />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setRejectingId(null); setRejectReason(''); }}>Cancel</Button>
-            <Button
-              disabled={!rejectReason.trim() || reject.isPending}
-              onClick={() => {
-                if (!rejectingId) return;
-                reject.mutate({ id: rejectingId, rejectionReason: rejectReason }, {
-                  onSuccess: () => {
-                    toast.success('Transfer rejected');
-                    setRejectingId(null);
-                    setRejectReason('');
-                  },
-                  onError: (e: any) => toast.error(e?.message ?? 'Reject failed'),
-                });
-              }}
-            >
-              {reject.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
-              Reject
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
-  );
-}
-
-/**
- * Handing a vault narcotic over.
- *
- * Moving one is a transfer of CUSTODY between two people, not one person
- * pressing Dispatch — the rule the NDPS challan screen has always enforced and
- * which now applies here, since this board is the only place stock moves. The
- * server refuses the dispatch without a named custodian and refuses one who is
- * the dispatcher, so the choice is collected here rather than letting the
- * counter hit a refusal it has no way to satisfy.
- */
-function HandoverDialog({
-  transfer,
-  onClose,
-  onConfirm,
-  pending,
-}: {
-  transfer: StockTransfer | null;
-  onClose: () => void;
-  onConfirm: (custodianId: string) => void;
-  pending: boolean;
-}) {
-  const [custodianId, setCustodianId] = useState('');
-  const { data } = useUsersList({ limit: 200 });
-  const users = (data?.data ?? []) as Array<{ id: string; firstName: string; lastName?: string }>;
-
-  // A fresh choice per hand-over — carrying the last one over is how the wrong
-  // person ends up named on a narcotic record.
-  const [seededFor, setSeededFor] = useState<string | null>(null);
-  if (transfer && seededFor !== transfer.id) {
-    setSeededFor(transfer.id);
-    setCustodianId('');
-  }
-
-  if (!transfer) return null;
-  const drugName = transfer.drugBatch?.drug?.drugName ?? 'This medicine';
-
-  return (
-    <Dialog open={Boolean(transfer)} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Hand over {drugName}</DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-4">
-          <p className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs">
-            <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
-            <span>
-              {drugName} is held in the narcotic safe. Moving it is a hand-over: name the person
-              receiving custody, and it cannot be you. Both names are recorded on the
-              controlled-drug register.
-            </span>
-          </p>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="custodian">Receiving custodian</Label>
-            <Select value={custodianId || null} onValueChange={(v) => setCustodianId(v ?? '')}>
-              <SelectTrigger id="custodian" className="w-full">
-                <SelectValue placeholder="Choose who is taking custody" />
-              </SelectTrigger>
-              <SelectContent>
-                {users.map((u) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {`${u.firstName} ${u.lastName ?? ''}`.trim()}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <p className="text-xs text-muted-foreground">
-            Transfer {transfer.transferNumber} &middot; {transfer.quantityRequested} unit
-            {transfer.quantityRequested === 1 ? '' : 's'}
-            {transfer.drugBatch?.batchNumber ? ` · batch ${transfer.drugBatch.batchNumber}` : ''}
-          </p>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={pending}>Cancel</Button>
-          <Button onClick={() => onConfirm(custodianId)} disabled={pending || !custodianId}>
-            {pending ? 'Dispatching…' : 'Confirm hand-over'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -574,6 +361,7 @@ function CreateTransferDialog({
     defaultValues: {
       inventoryItemId: '',
       drugBatchId: '',
+      custodianId: '',
       fromDepartmentId: defaultFromDepartmentId ?? '',
       toDepartmentId: defaultToDepartmentId ?? '',
       toWardId: '',
@@ -596,6 +384,15 @@ function CreateTransferDialog({
     () => drugBatches.find((b) => b.id === selectedDrugId) ?? null,
     [selectedDrugId, drugBatches],
   );
+
+  // Only fetched for the custody picker below; a vault narcotic is the only
+  // thing that needs one.
+  const { data: usersData } = useUsersList({ limit: 200 });
+  const custodianOptions = (usersData?.data ?? []) as Array<{
+    id: string;
+    firstName: string;
+    lastName?: string | null;
+  }>;
 
   // Each side can be a Department (FK), a Ward (stored as location name), or a
   // free-text location.
@@ -664,10 +461,11 @@ function CreateTransferDialog({
         batchNumber: values.batchNumber || undefined,
         reason: values.reason || undefined,
         notes: values.notes || undefined,
+        custodianId: values.custodianId || undefined,
       },
       {
         onSuccess: () => {
-          toast.success('Transfer request created');
+          toast.success('Stock transferred');
           close();
         },
         onError: (e: any) => toast.error(e?.message ?? 'Failed to create transfer'),
@@ -828,6 +626,41 @@ function CreateTransferDialog({
               <Input {...register('batchNumber')} placeholder="e.g., BTH-2023-08-001" />
             </div>
           </div>
+
+          {/* Custody — only for a drug kept in the narcotic safe. Moving one is a
+              hand-over between two people, and the server refuses it without a
+              named second person, so ask here rather than let the counter hit a
+              refusal it cannot satisfy. */}
+          {selectedDrug?.drug?.vaultControlled && (
+            <div className="space-y-2 rounded-md border border-warning/30 bg-warning/10 p-3">
+              <p className="flex items-start gap-2 text-xs">
+                <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
+                <span>
+                  {selectedDrug.drug?.drugName ?? 'This medicine'} is held in the narcotic safe.
+                  Moving it is a hand-over: name the person receiving custody, and it cannot be
+                  you. Both names go on the controlled-drug register.
+                </span>
+              </p>
+              <div className="space-y-1.5">
+                <Label htmlFor="custodian">Receiving custodian *</Label>
+                <Select
+                  value={watch('custodianId') || null}
+                  onValueChange={(v) => setValue('custodianId', v ?? '', { shouldValidate: true })}
+                >
+                  <SelectTrigger id="custodian" className="w-full">
+                    <SelectValue placeholder="Choose who is taking custody" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {custodianOptions.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {fullName(u, 'Unnamed user')}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
 
           <div>
             <Label>Reason</Label>

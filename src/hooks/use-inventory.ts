@@ -1046,6 +1046,12 @@ export interface CreateStockTransferInput {
   batchNumber?: string;
   reason?: string;
   notes?: string;
+  /**
+   * Who takes custody of a vault narcotic. Compulsory for those and ignored for
+   * everything else — the move is refused without it, and the custodian cannot
+   * be the person making the transfer.
+   */
+  custodianId?: string;
 }
 
 export interface StockTransferQueryParams extends PaginatedParams {
@@ -1083,97 +1089,6 @@ export function useCreateStockTransfer() {
   return useMutation({
     mutationFn: async (data: CreateStockTransferInput) => {
       const response = await apiPost<StockTransfer>('/inventory/transfers', data);
-      return response.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: inventoryKeys.transfers.all });
-    },
-  });
-}
-
-export function useApproveStockTransfer() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, notes }: { id: string; notes?: string }) => {
-      const response = await apiPatch<StockTransfer>(`/inventory/transfers/${id}/approve`, { notes });
-      return response.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: inventoryKeys.transfers.all });
-    },
-  });
-}
-
-export function useRejectStockTransfer() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, rejectionReason }: { id: string; rejectionReason: string }) => {
-      const response = await apiPatch<StockTransfer>(`/inventory/transfers/${id}/reject`, {
-        rejectionReason,
-      });
-      return response.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: inventoryKeys.transfers.all });
-    },
-  });
-}
-
-export function useDispatchStockTransfer() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({
-      id,
-      quantityDispatched,
-      custodianId,
-    }: {
-      id: string;
-      quantityDispatched?: number;
-      /**
-       * The person taking custody of a vault narcotic. Compulsory for those and
-       * ignored for everything else — the server refuses a narcotic hand-over
-       * with nobody named, and refuses one where the custodian is the
-       * dispatcher, because the point of a second person is that it is
-       * somebody else.
-       */
-      custodianId?: string | null;
-    }) => {
-      const response = await apiPatch<StockTransfer>(`/inventory/transfers/${id}/dispatch`, {
-        quantityDispatched,
-        custodianId: custodianId ?? undefined,
-      });
-      return response.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: inventoryKeys.transfers.all });
-      queryClient.invalidateQueries({ queryKey: inventoryKeys.items.all });
-      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
-      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
-    },
-  });
-}
-
-export function useReceiveStockTransfer() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: string) => {
-      const response = await apiPatch<StockTransfer>(`/inventory/transfers/${id}/receive`);
-      return response.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: inventoryKeys.transfers.all });
-      queryClient.invalidateQueries({ queryKey: inventoryKeys.items.all });
-      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
-      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
-    },
-  });
-}
-
-export function useCancelStockTransfer() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, reason }: { id: string; reason?: string }) => {
-      const response = await apiPatch<StockTransfer>(`/inventory/transfers/${id}/cancel`, { reason });
       return response.data;
     },
     onSuccess: () => {
