@@ -47,6 +47,7 @@ import {
   useAdjustAdvance,
   type FrontdeskPaymentMethod,
 } from '@/hooks/use-hospital';
+import { getApiErrorMessage } from '@/lib/utils';
 
 const PAYMENT_METHODS: {
   value: FrontdeskPaymentMethod;
@@ -210,8 +211,12 @@ export function CollectBillPaymentDialog({
       onOpenChange(false);
       onCollected?.();
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Failed to collect payment';
-      toast.error(message);
+      // axios throws an AxiosError whose `.message` is the generic
+      // "Request failed with status code 400" — the server's actual reason
+      // (bill already paid, amount over the balance, duplicate receipt number)
+      // sits in response.data.message and was being thrown away, so the
+      // cashier was told nothing they could act on.
+      toast.error(getApiErrorMessage(error, 'Failed to collect payment'));
     } finally {
       setSubmitting(false);
     }
