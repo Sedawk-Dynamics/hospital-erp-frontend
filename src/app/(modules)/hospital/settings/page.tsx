@@ -41,6 +41,7 @@ const settingsGroups: SettingsGroup[] = [
     items: [
       { label: 'Service Master Configuration', href: '/hospital/settings/services' },
       { label: 'Registration Fee', href: '/hospital/settings/registration-fee' },
+      { label: 'GST Registration', href: '/hospital/settings/gst' },
     ],
   },
   {
