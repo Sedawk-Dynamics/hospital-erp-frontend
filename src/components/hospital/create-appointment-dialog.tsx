@@ -681,9 +681,14 @@ export function PatientVisitPanel({
             <span className="mt-1 block text-[13px] leading-snug text-on-surface-variant">
               {fee.oncePerPatient && data.registrationFeeCharged
                 ? `Already charged${data.registrationFeeChargedAt ? ` on ${formatDate(data.registrationFeeChargedAt)}` : ''} — it cannot be taken twice.`
-                : data.isFirstVisit
-                  ? 'Ticked because this is their first visit here. It goes on this appointment’s bill.'
-                  : 'Not a first visit — tick only if this patient still owes the registration fee.'}
+                : data.registrationFeeCharged
+                  ? // Chargeable again, but the desk should know it has been
+                    // taken before — otherwise a repeat charge looks like a
+                    // mistake to whoever reads the bill afterwards.
+                    `Charged before${data.registrationFeeChargedAt ? ` on ${formatDate(data.registrationFeeChargedAt)}` : ''}. This hospital allows it more than once — tick to charge it again.`
+                  : data.isFirstVisit
+                    ? 'Ticked because this is their first visit here. It goes on this appointment’s bill.'
+                    : 'Not a first visit — tick only if this patient still owes the registration fee.'}
             </span>
           </span>
         </label>

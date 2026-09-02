@@ -98,6 +98,21 @@ describe('the front desk visit banner', () => {
     expect(screen.getByText(/Already charged on 18\/05\/2026/)).toBeInTheDocument();
   });
 
+  it('lets the fee be charged again where the hospital allows it, and says it was charged before', () => {
+    // With once-per-patient off the fee may be taken more than once, so the box
+    // stays tickable — but the desk is told it has been taken before, or a
+    // repeat charge looks like a mistake to whoever reads the bill later.
+    status.current = base({
+      settings: { ...SETTINGS, oncePerPatient: false },
+      registrationFeeCharged: true,
+      registrationFeeChargedAt: '2026-05-18T06:00:00.000Z',
+    });
+    renderPanel();
+    expect(screen.getByRole('checkbox')).not.toBeDisabled();
+    expect(screen.getByText(/Charged before on 18\/05\/2026/)).toBeInTheDocument();
+    expect(screen.getByText(/allows it more than once/)).toBeInTheDocument();
+  });
+
   it('says nothing about a fee the hospital does not charge', () => {
     status.current = base({ settings: { ...SETTINGS, enabled: false } });
     renderPanel();
