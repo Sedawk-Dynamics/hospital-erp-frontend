@@ -576,3 +576,71 @@ export function RateOverridesView({ q }: { q: Q }) {
   );
 }
 
+// ── C-8 ────────────────────────────────────────────────────────────────────
+
+export function RateChangeImpactView({ q }: { q: Q }) {
+  const { data, isLoading } = R.useRateChangeImpact(q);
+  if (isLoading) return <Loading />;
+  const rows = data?.changes ?? [];
+  return (
+    <div className="space-y-6">
+      <StatStrip
+        stats={[
+          { label: 'Changes', value: String(data?.totals.changes ?? 0) },
+          { label: 'Lines touching those codes', value: String(data?.totals.linesAffected ?? 0) },
+          {
+            label: 'Billed at the old rate after',
+            value: String(data?.totals.outOfStep ?? 0),
+            tone: (data?.totals.outOfStep ?? 0) > 0 ? 'bad' : 'good',
+          },
+          { label: 'Scope', value: 'Platform masters' },
+        ]}
+      />
+      <ReportTable
+        columns={[
+          { key: 'w', label: 'When', cell: (r: (typeof rows)[number]) => formatDate(r.changedAt) },
+          { key: 'c', label: 'Code', cell: (r) => `${r.codeType.toUpperCase()} ${r.code}` },
+          { key: 'd', label: 'Description', cell: (r) => r.description ?? '—' },
+          { key: 'a', label: 'Action', cell: (r) => <Badge variant={r.action === 'deactivate' ? 'destructive' : 'secondary'}>{titleCase(r.action)}</Badge> },
+          {
+            key: 'r',
+            label: 'Rate',
+            align: 'right',
+            cell: (r) =>
+              `${r.previousRate == null ? '—' : `${r.previousRate}%`} → ${r.newRate == null ? '—' : `${r.newRate}%`}`,
+          },
+          { key: 'by', label: 'Changed by', cell: (r) => r.changedBy ?? '—' },
+          { key: 'b', label: 'Lines before', align: 'right', cell: (r) => r.linesBefore.count },
+          { key: 'af', label: 'Lines after', align: 'right', cell: (r) => r.linesAfter.count },
+          {
+            key: 'o',
+            label: 'Out of step',
+            align: 'right',
+            cell: (r) => (r.outOfStep.length ? <span className="text-red-600">{r.outOfStep.length}</span> : 0),
+          },
+        ]}
+        rows={rows}
+        empty="Nothing on a tax master changed in this period."
+      />
+      {rows.some((r) => r.outOfStep.length > 0) ? (
+        <section className="space-y-2">
+          <h3 className="text-sm font-semibold">
+            Billed after a change, still at the old rate
+          </h3>
+          <ReportTable
+            columns={[
+              { key: 'b', label: 'Document', cell: (l: { billNumber: string | null }) => l.billNumber ?? '—' },
+              { key: 'd', label: 'Billed', cell: (l: { billDate: string | null }) => formatDate(l.billDate) },
+              { key: 'i', label: 'Item', cell: (l: { description: string }) => l.description },
+              { key: 'r', label: 'Rate used', align: 'right', cell: (l: { ratePercent: number }) => `${l.ratePercent}%` },
+              { key: 't', label: 'Tax', align: 'right', cell: (l: { taxAmount: number }) => plain(l.taxAmount) },
+            ]}
+            rows={rows.flatMap((r) => r.outOfStep)}
+          />
+        </section>
+      ) : null}
+      <ReportNotes notes={data?.notes ?? []} />
+    </div>
+  );
+}
+

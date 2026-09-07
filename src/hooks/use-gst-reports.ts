@@ -393,6 +393,25 @@ export const useDepartmentGst = (q: GstReportQuery, on = true) =>
     totals: TaxTotals;
   }>('department-gst', '/gst/reports/department-gst', q, on);
 
+export const useRateChangeImpact = (q: GstReportQuery, on = true) =>
+  useReport<{
+    period: GstPeriod;
+    changes: Array<{
+      id: string; changedAt: string; changedBy: string | null;
+      codeType: string; code: string; description: string | null; action: string;
+      previousRate: number | null; newRate: number | null;
+      previousTreatment: string | null; newTreatment: string | null;
+      linesBefore: { count: number; taxCharged: number; value: number };
+      linesAfter: { count: number; taxCharged: number; value: number };
+      outOfStep: Array<{
+        billNumber: string | null; billDate: string | null;
+        description: string; ratePercent: number; taxAmount: number;
+      }>;
+    }>;
+    totals: { changes: number; linesAffected: number; outOfStep: number };
+    notes: string[];
+  }>('rate-changes', '/gst/reports/rate-changes', q, on);
+
 export const useCancelledInvoices = (q: GstReportQuery, on = true) =>
   useReport<{
     period: GstPeriod;
