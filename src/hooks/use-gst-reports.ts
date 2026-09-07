@@ -399,6 +399,98 @@ export function useFilePeriod() {
   });
 }
 
+// ── B-5 — the GSTR-2B reconciliation ──────────────────────────────────────
+
+export interface ReconRow {
+  supplierGstin: string | null;
+  supplierName: string | null;
+  invoiceNumber: string;
+  portalInvoiceNumber?: string;
+  invoiceDate: string | null;
+  lines?: number;
+  booksTaxableValue?: number;
+  booksTaxAmount?: number;
+  portalTaxableValue?: number;
+  portalTaxAmount?: number;
+  taxableValue?: number;
+  taxAmount?: number;
+  taxableDifference?: number;
+  taxDifference?: number;
+  itcAvailable?: boolean;
+  itcBlockedReason?: string | null;
+  supplierFiledOn?: string | null;
+}
+
+export const useGstr2bReconciliation = (q: GstReportQuery, on = true) =>
+  useReport<{
+    period: GstPeriod;
+    returnPeriod: string;
+    statement: {
+      id: string; gstin: string | null; generatedAt: string | null; fileName: string | null;
+      importedAt: string; importedBy: string | null; invoiceCount: number;
+    } | null;
+    matched: ReconRow[];
+    mismatched: ReconRow[];
+    inPortalOnly: ReconRow[];
+    inBooksOnly: ReconRow[];
+    supplierNotes: Array<{
+      supplierGstin: string; supplierName: string | null; documentType: string;
+      documentNumber: string; documentDate: string | null; taxableValue: number; taxAmount: number;
+    }>;
+    unmatchable: Array<{
+      batchId: string; supplierName: string | null; supplierGstin: string | null;
+      invoiceNumber: string | null; drugName: string; taxAmount: number; problem: string;
+    }>;
+    totals: {
+      matched: { count: number; taxAmount: number };
+      mismatched: { count: number; taxAmount: number };
+      inPortalOnly: { count: number; taxAmount: number };
+      inBooksOnly: { count: number; taxAmount: number };
+      unmatchable: { count: number; taxAmount: number };
+      supplierNotes: { count: number; taxAmount: number };
+      creditAtRisk: number;
+      claimable: number;
+    };
+    notes: string[];
+  }>('gstr2b-reconciliation', '/gst/reports/gstr2b-reconciliation', q, on);
+
+export const gstr2bImportsKey = ['gst-report', 'gstr2b-imports'] as const;
+
+export function useGstr2bImports() {
+  return useQuery({
+    queryKey: gstr2bImportsKey,
+    queryFn: async () =>
+      (
+        await apiGet<{
+          imports: Array<{
+            id: string; returnPeriod: string; gstin: string | null; generatedAt: string | null;
+            fileName: string | null; importedAt: string; importedBy: string | null;
+            invoiceCount: number; taxTotal: number;
+          }>;
+        }>('/gst/reports/gstr2b-imports')
+      ).data,
+  });
+}
+
+export function useImportGstr2b() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: { file: unknown; fileName?: string | null }) =>
+      (
+        await apiPost<{ returnPeriod: string; documents: number; taxTotal: number; warnings: string[] }>(
+          '/gst/reports/gstr2b-imports',
+          body,
+        )
+      ).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: gstr2bImportsKey });
+      // The reconciliation is the whole reason for importing, so it must not
+      // keep showing the answer from before the statement arrived.
+      qc.invalidateQueries({ queryKey: ['gst-report', 'gstr2b-reconciliation'] });
+    },
+  });
+}
+
 // ── Group C — operational and control ──────────────────────────────────────
 
 export const useDailyCollection = (q: GstReportQuery, on = true) =>

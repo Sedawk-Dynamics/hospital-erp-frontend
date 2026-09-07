@@ -20,6 +20,7 @@ import {
   RevenueMixView, SeriesContinuityView, SupplierGstinView, UnmappedItemsView,
 } from '@/components/hospital/gst/gst-report-views-bc';
 import { FiledPeriodsView } from '@/components/hospital/gst/gst-filed-periods';
+import { Gstr2bReconciliationView } from '@/components/hospital/gst/gst-2b-reconciliation';
 
 // ============================================================
 // GST Reports.
@@ -67,6 +68,7 @@ const GROUPS: Array<{ group: string; caption: string; reports: ReportDef[] }> = 
       { ref: 'B-2', label: 'Input Tax Credit', what: 'Credit available, rate-wise and supplier-wise', View: ItcSummaryView },
       { ref: 'B-3', label: 'Rule 42 / 43 Reversal', what: 'How much credit the hospital actually keeps', View: ItcReversalView },
       { ref: 'B-4', label: 'Supplier GSTIN Exceptions', what: 'Purchases where the credit is at risk', View: SupplierGstinView },
+      { ref: 'B-5', label: 'GSTR-2B Reconciliation', what: 'Our purchases against what suppliers actually filed', View: Gstr2bReconciliationView },
       { ref: 'B-6', label: 'Returns & Write-offs', what: 'Credit that has to go back', View: PurchaseReturnsView },
     ],
   },
