@@ -56,6 +56,7 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
   const [discValue, setDiscValue] = useState<number>(0);
   const [payAmt, setPayAmt] = useState<number>(0);
   const [collectOpen, setCollectOpen] = useState(false);
+  const [preparing, setPreparing] = useState(false);
 
   if (!bill) return null;
   const cat = (bill.admission?.billingCategory ?? 'cash').toLowerCase();
@@ -77,7 +78,6 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
     try { await consolidate.mutateAsync(admissionId); toast.success('All charges pulled onto the bill.'); }
     catch (e) { toast.error((e as Error).message || 'Could not generate the bill.'); }
   };
-  const [preparing, setPreparing] = useState(false);
 
   /**
    * Consolidate and finalize before opening the counter.
