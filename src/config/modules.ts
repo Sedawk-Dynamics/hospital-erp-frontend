@@ -1,5 +1,6 @@
 import {
   Building2,
+  FileSpreadsheet,
   FlaskConical,
   ScanLine,
   Pill,
@@ -77,6 +78,9 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       { label: 'Hospital Billing', href: '/hospital/billing', icon: Receipt },
       { label: 'Billing Transaction', href: '/hospital/transactions', icon: ArrowLeftRight },
       { label: 'Reports', href: '/hospital/reports', icon: BarChart3 },
+      // The accounts/GST team owns these; the endpoints are gated on
+      // billing:approve, which is why the entry is not shown to a doctor.
+      { label: 'GST Reports', href: '/hospital/gst-reports', icon: FileSpreadsheet, restrictTo: ['admin', 'super_admin', 'billing_admin', 'insurance_staff', 'front_desk'] },
       { label: 'Settings', href: '/hospital/settings', icon: Settings },
       { label: 'PDF Builder', href: '/hospital/pdf-builder', icon: FileText, restrictTo: ['admin', 'super_admin'] },
       { label: 'Dashboard', href: '/hospital/dashboard', icon: LayoutDashboard },
