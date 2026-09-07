@@ -37,6 +37,30 @@ const BRANDING = {
   },
 };
 
+/**
+ * A line with no tax position — a pending charge, or a bill raised before any
+ * of the GST work existed. The layout must fall back to what it always was.
+ */
+function noTax(amount: number) {
+  return {
+    hsnSac: null, gstTreatment: null, treatmentLabel: null,
+    taxRatePercent: 0, taxableValue: amount, taxAmount: 0,
+    cgstRate: 0, cgstAmount: 0, sgstRate: 0, sgstAmount: 0,
+    igstRate: 0, igstAmount: 0, cessAmount: 0,
+  };
+}
+
+/** An unregistered hospital: no document type, no numbers, no tax columns. */
+const NO_GST = {
+  registered: false,
+  documentType: null, documentLabel: null, invoiceNumbers: [], financialYear: null,
+  supplierGstin: null, supplierStateCode: null, supplierStateName: null,
+  recipientGstin: null, placeOfSupplyStateCode: null, placeOfSupplyStateName: null,
+  isInterState: false, hasTax: false, hasClassifiedLines: false,
+  taxSummary: [], notes: [],
+  totals: { taxableValue: 0, cgstAmount: 0, sgstAmount: 0, igstAmount: 0, cessAmount: 0, taxAmount: 0 },
+};
+
 /** A template override on top of the product defaults. */
 function withTemplate(over: Partial<PdfTemplate>): PdfTemplate {
   return { ...DEFAULT_PDF_TEMPLATE, ...over };
@@ -64,14 +88,18 @@ function makeDoc(over: Partial<AdmissionBillDocument> = {}): AdmissionBillDocume
       ward: 'General', bed: 'G03', doctor: 'Dr. Rao',
       billingCategory: 'cash', reason: 'Day-care procedure',
     },
-    bills: [{ billNumber: 'IPW-1', status: 'paid', totalAmount: 3000 }],
+    bills: [{
+      billNumber: 'IPW-1', status: 'paid', totalAmount: 3000,
+      invoiceNumber: null, gstDocumentType: null,
+    }],
+    gst: NO_GST,
     groups: [
       {
         category: 'room', label: 'Room / Bed Charges', total: 1500,
         lines: [{
           description: 'Day-care bed', category: 'room', quantity: 1,
           unitPrice: 1500, totalAmount: 1500, status: 'posted',
-          at: '2026-08-01T09:30:00Z',
+          at: '2026-08-01T09:30:00Z', ...noTax(1500),
         }],
       },
       {
@@ -79,7 +107,7 @@ function makeDoc(over: Partial<AdmissionBillDocument> = {}): AdmissionBillDocume
         lines: [{
           description: 'Injection Ceftriaxone 1g', category: 'pharmacy', quantity: 2,
           unitPrice: 1000, totalAmount: 2000, status: 'pending',
-          at: '2026-08-02T09:30:00Z',
+          at: '2026-08-02T09:30:00Z', ...noTax(2000),
         }],
       },
     ],
@@ -351,5 +379,161 @@ describe('AdmissionBillDocumentView', () => {
     render(<AdmissionBillDocumentView doc={doc} />);
     expect(screen.getByText(/Day Care · Final Bill/)).toBeInTheDocument();
     expect(screen.getByText('Green city Hospital')).toBeInTheDocument();
+  });
+  // ── The GST document ─────────────────────────────────────────────────────
+  //
+  // The layout follows what KIND of document this is, and the difference is not
+  // cosmetic: a bill of supply may not carry tax columns, a tax invoice must
+  // carry the split against each line, and a hospital that is not registered
+  // must print exactly what it printed before any of this existed.
+
+  /** A mixed stay — an exempt medicine beside a taxed room, the ordinary case. */
+  function taxedDoc(over: Record<string, unknown> = {}) {
+    return makeDoc({
+      documentTitle: 'Invoice-cum-Bill of Supply',
+      groups: [
+        {
+          category: 'room', label: 'Room / Bed Charges', total: 8400,
+          lines: [{
+            description: 'Deluxe AC room', category: 'room', quantity: 1,
+            unitPrice: 8000, totalAmount: 8400, status: 'posted',
+            at: '2026-08-01T09:30:00Z',
+            hsnSac: '996311', gstTreatment: 'taxable', treatmentLabel: 'Taxable',
+            taxRatePercent: 5, taxableValue: 8000, taxAmount: 400,
+            cgstRate: 2.5, cgstAmount: 200, sgstRate: 2.5, sgstAmount: 200,
+            igstRate: 0, igstAmount: 0, cessAmount: 0,
+          }],
+        },
+        {
+          category: 'pharmacy', label: 'Pharmacy & Medicines', total: 240,
+          lines: [{
+            description: 'Injection Ceftriaxone 1g', category: 'pharmacy', quantity: 2,
+            unitPrice: 120, totalAmount: 240, status: 'posted',
+            at: '2026-08-02T09:30:00Z',
+            hsnSac: '30042090', gstTreatment: 'exempt', treatmentLabel: 'Exempt',
+            taxRatePercent: 0, taxableValue: 240, taxAmount: 0,
+            cgstRate: 0, cgstAmount: 0, sgstRate: 0, sgstAmount: 0,
+            igstRate: 0, igstAmount: 0, cessAmount: 0,
+          }],
+        },
+      ],
+      gst: {
+        ...NO_GST,
+        registered: true,
+        documentType: 'invoice_cum_bill_of_supply',
+        documentLabel: 'Invoice-cum-Bill of Supply',
+        invoiceNumbers: ['INV/2026-27/000003'],
+        financialYear: '2026-27',
+        supplierGstin: '27AAPFU0939F1ZV',
+        supplierStateCode: '27',
+        supplierStateName: 'Maharashtra',
+        placeOfSupplyStateCode: '27',
+        placeOfSupplyStateName: 'Maharashtra',
+        hasTax: true,
+        hasClassifiedLines: true,
+        taxSummary: [
+          {
+            label: 'Taxable', treatment: 'taxable', ratePercent: 5, taxableValue: 8000,
+            cgstAmount: 200, sgstAmount: 200, igstAmount: 0, cessAmount: 0, taxAmount: 400,
+          },
+          {
+            label: 'Exempt', treatment: 'exempt', ratePercent: 0, taxableValue: 240,
+            cgstAmount: 0, sgstAmount: 0, igstAmount: 0, cessAmount: 0, taxAmount: 0,
+          },
+        ],
+        notes: ['Tax is not payable on reverse charge basis.'],
+        totals: {
+          taxableValue: 8240, cgstAmount: 200, sgstAmount: 200,
+          igstAmount: 0, cessAmount: 0, taxAmount: 400,
+        },
+      },
+      ...over,
+    });
+  }
+
+  it('prints the legacy four columns for a hospital that is not registered', () => {
+    // Nothing about a hospital outside GST should move because of this work.
+    render(<AdmissionBillDocumentView doc={makeDoc()} />);
+    expect(screen.queryByRole('columnheader', { name: 'HSN / SAC' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'CGST' })).not.toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Particulars' })).toBeInTheDocument();
+  });
+
+  it('names the document by what it legally is, and quotes its number', () => {
+    render(<AdmissionBillDocumentView doc={taxedDoc()} />);
+    // The name appears twice on purpose — as the title, and as the label on the
+    // number the document was issued under.
+    expect(screen.getAllByText(/Invoice-cum-Bill of Supply/).length).toBe(2);
+    expect(screen.getAllByText('INV/2026-27/000003').length).toBeGreaterThan(0);
+    expect(screen.getByText('27AAPFU0939F1ZV')).toBeInTheDocument();
+    expect(screen.getByText('Maharashtra (27)')).toBeInTheDocument();
+  });
+
+  it('carries HSN, taxable value and the split against each line', () => {
+    render(<AdmissionBillDocumentView doc={taxedDoc()} />);
+    // CGST and SGST head both the charge table and the summary below it.
+    expect(screen.getByRole('columnheader', { name: 'HSN / SAC' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Taxable' })).toBeInTheDocument();
+    for (const header of ['CGST', 'SGST']) {
+      expect(screen.getAllByRole('columnheader', { name: header }).length).toBe(2);
+    }
+    expect(screen.getByText('996311')).toBeInTheDocument();
+    // The rate belongs against the line too, not only in the total.
+    expect(screen.getAllByText(/2\.5%/).length).toBe(2);
+  });
+
+  // An exemption stated twice reads as two exemptions rather than one untaxed
+  // line, so the word goes on one cell and the other holds a dash.
+  it('says once, in words, that an exempt line carries no tax', () => {
+    render(<AdmissionBillDocumentView doc={taxedDoc()} />);
+    const exemptCells = screen.getAllByText('Exempt');
+    expect(exemptCells.length).toBe(2); // the line, and its row in the summary
+  });
+
+  it('summarises the bill one row per rate, and adds it up', () => {
+    render(<AdmissionBillDocumentView doc={taxedDoc()} />);
+    expect(screen.getByText('Tax Summary')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Taxable Value' })).toBeInTheDocument();
+    expect(screen.getByText('5%')).toBeInTheDocument();
+    expect(screen.getByText('Total')).toBeInTheDocument();
+    expect(screen.getByText('₹8,240.00')).toBeInTheDocument();
+    expect(screen.getByText(/reverse charge/)).toBeInTheDocument();
+  });
+
+  it('bills a patient from another state IGST, with no CGST/SGST columns', () => {
+    const doc = taxedDoc();
+    doc.gst.isInterState = true;
+    doc.gst.placeOfSupplyStateCode = '29';
+    doc.gst.placeOfSupplyStateName = 'Karnataka';
+    doc.gst.taxSummary = [{
+      label: 'Taxable', treatment: 'taxable', ratePercent: 5, taxableValue: 8000,
+      cgstAmount: 0, sgstAmount: 0, igstAmount: 400, cessAmount: 0, taxAmount: 400,
+    }];
+    doc.gst.totals = {
+      taxableValue: 8000, cgstAmount: 0, sgstAmount: 0,
+      igstAmount: 400, cessAmount: 0, taxAmount: 400,
+    };
+    doc.groups[0].lines[0] = {
+      ...doc.groups[0].lines[0],
+      cgstRate: 0, cgstAmount: 0, sgstRate: 0, sgstAmount: 0,
+      igstRate: 5, igstAmount: 400,
+    };
+    render(<AdmissionBillDocumentView doc={doc} />);
+    expect(screen.getAllByRole('columnheader', { name: 'IGST' }).length).toBe(2);
+    expect(screen.queryByRole('columnheader', { name: 'CGST' })).not.toBeInTheDocument();
+    expect(screen.getByText('Karnataka (29)')).toBeInTheDocument();
+  });
+
+  // A bill of supply is the document for an EXEMPT supply. Tax columns on one
+  // would claim the hospital charged tax it never did.
+  it('shows HSN but no tax columns on an all-exempt bill of supply', () => {
+    const doc = taxedDoc();
+    doc.gst.documentType = 'bill_of_supply';
+    doc.gst.documentLabel = 'Bill of Supply';
+    doc.gst.hasTax = false;
+    render(<AdmissionBillDocumentView doc={doc} />);
+    expect(screen.getByRole('columnheader', { name: 'HSN / SAC' })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'CGST' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Tax Summary')).not.toBeInTheDocument();
   });
 });

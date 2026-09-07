@@ -2,7 +2,7 @@
 
 import { Fragment, forwardRef } from 'react';
 import { resolveLogoUrl } from '@/hooks/use-branding';
-import type { AdmissionBillDocument } from '@/hooks/use-ip-billing';
+import type { AdmissionBillDocument, BillDocumentLine } from '@/hooks/use-ip-billing';
 import {
   buildHtmlTheme,
   lineHeightFor,
@@ -88,7 +88,15 @@ export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: Admis
     const t = doc.totals;
 
     const title = tpl.header.titleOverride ?? `${doc.admissionTypeLabel} · ${doc.documentTitle}`;
-    const subtitle = doc.bills.length ? doc.bills.map((b) => b.billNumber).join(', ') : '';
+    const gst = doc.gst;
+    // The allotted document number is what the law identifies this paper by, so
+    // it leads. `billNumber` is the internal reference staff search on, and it
+    // stays on the card below.
+    const subtitle = gst?.invoiceNumbers?.length
+      ? gst.invoiceNumbers.join(', ')
+      : doc.bills.length
+        ? doc.bills.map((b) => b.billNumber).join(', ')
+        : '';
     // The same two meta items the PDF puts in the strip.
     const meta = [
       { label: 'IP No', value: dash(a.ipNumber) },
@@ -111,6 +119,76 @@ export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: Admis
     ];
     if (p.address) info.push(['Address', p.address]);
     if (doc.bills.length) info.push(['Bill No.', doc.bills.map((b) => b.billNumber).join(', ')]);
+    // What Rule 46 wants identified on the face of the document. Only for a
+    // registered hospital: an unregistered one issues no numbered document and
+    // has no place of supply to declare, and printing the fields empty would
+    // suggest it was supposed to.
+    if (gst?.registered) {
+      if (gst.invoiceNumbers.length) {
+        info.push([`${gst.documentLabel ?? 'Invoice'} No.`, gst.invoiceNumbers.join(', ')]);
+      }
+      if (gst.supplierGstin) info.push(['GSTIN (Hospital)', gst.supplierGstin]);
+      // A patient with a GSTIN is being billed as a business — it is what lets
+      // them claim the credit, so it belongs on the paper.
+      if (gst.recipientGstin) info.push(['GSTIN (Patient)', gst.recipientGstin]);
+      if (gst.placeOfSupplyStateName) {
+        info.push(['Place of Supply', `${gst.placeOfSupplyStateName} (${gst.placeOfSupplyStateCode})`]);
+      }
+    }
+
+    // ── The charge table's shape, which follows what KIND of document this is.
+    //
+    // Decided from the server's booleans rather than re-derived here, so the
+    // dialog and the PDF cannot disagree about whether this paper carries tax.
+    // Nothing classified prints exactly what it always printed; classified but
+    // untaxed is a bill of supply and must NOT carry tax columns; anything
+    // taxed shows the taxable value and the split against the LINE, because
+    // that is where Rule 46 wants them.
+    const showHsn = !!gst?.registered && !!gst?.hasClassifiedLines;
+    const showTax = showHsn && gst.hasTax;
+    const interState = !!gst?.isInterState;
+    const chargeColumns: Array<[string, 'left' | 'right', string | undefined]> = showTax
+      ? [
+          ['Particulars', 'left', undefined],
+          ['HSN / SAC', 'left', '9%'],
+          ['Qty', 'right', '5%'],
+          ['Rate', 'right', '11%'],
+          ['Taxable', 'right', '12%'],
+          ...(interState
+            ? ([['IGST', 'right', '14%']] as Array<[string, 'left' | 'right', string]>)
+            : ([
+                ['CGST', 'right', '11%'],
+                ['SGST', 'right', '11%'],
+              ] as Array<[string, 'left' | 'right', string]>)),
+          ['Amount', 'right', '15%'],
+        ]
+      : showHsn
+        ? [
+            ['Particulars', 'left', undefined],
+            ['HSN / SAC', 'left', '12%'],
+            ['Qty', 'right', '8%'],
+            ['Rate', 'right', '16%'],
+            ['Amount', 'right', '18%'],
+          ]
+        : [
+            ['Particulars', 'left', undefined],
+            ['Qty', 'right', '10%'],
+            ['Rate', 'right', '16%'],
+            ['Amount', 'right', '18%'],
+          ];
+    /** The rate ABOVE the amount, as the PDF stacks them. */
+    const taxCell = (rate: number, amount: number, treatmentLabel: string | null) =>
+      amount > 0 || rate > 0 ? (
+        <>
+          {rate}%
+          <br />
+          {fmtMoney(amount)}
+        </>
+      ) : (
+        (treatmentLabel ?? '—')
+      );
+    const sumOver = (lines: BillDocumentLine[], pick: (l: BillDocumentLine) => number) =>
+      Math.round(lines.reduce((n, l) => n + pick(l), 0) * 100) / 100;
 
     // Same fallback chain and same wording as the shared PDF footer
     // (`services/pdf-branding.drawBrandedFooters`), so a hospital that has set
@@ -352,14 +430,7 @@ export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: Admis
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: pt(theme.size.small) }}>
                 <thead>
                   <tr>
-                    {(
-                      [
-                        ['Particulars', 'left', undefined],
-                        ['Qty', 'right', '10%'],
-                        ['Rate', 'right', '16%'],
-                        ['Amount', 'right', '18%'],
-                      ] as const
-                    ).map(([label, align, width]) => (
+                    {chargeColumns.map(([label, align, width]) => (
                       <th
                         key={label}
                         style={{
@@ -379,7 +450,10 @@ export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: Admis
                     // so React saw an unkeyed list of group blocks here.
                     <Fragment key={g.category}>
                       <tr style={{ backgroundColor: soft }}>
-                        <td colSpan={4} style={{ ...bodyCellStyle(theme), fontWeight: 700 }}>
+                        <td
+                          colSpan={chargeColumns.length}
+                          style={{ ...bodyCellStyle(theme), fontWeight: 700 }}
+                        >
                           {g.label}
                         </td>
                       </tr>
@@ -411,15 +485,68 @@ export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: Admis
                               </span>
                             )}
                           </td>
+                          {showHsn && <td style={bodyCellStyle(theme)}>{dash(l.hsnSac)}</td>}
                           <td style={{ ...bodyCellStyle(theme), textAlign: 'right' }}>{l.quantity}</td>
                           <td style={{ ...bodyCellStyle(theme), textAlign: 'right' }}>{fmtMoney(l.unitPrice)}</td>
+                          {showTax && (
+                            <>
+                              <td style={{ ...bodyCellStyle(theme), textAlign: 'right' }}>
+                                {fmtMoney(l.taxableValue)}
+                              </td>
+                              {interState ? (
+                                <td style={{ ...bodyCellStyle(theme), textAlign: 'right' }}>
+                                  {taxCell(l.igstRate, l.igstAmount, l.treatmentLabel)}
+                                </td>
+                              ) : (
+                                <>
+                                  <td style={{ ...bodyCellStyle(theme), textAlign: 'right' }}>
+                                    {taxCell(l.cgstRate, l.cgstAmount, l.treatmentLabel)}
+                                  </td>
+                                  {/* The exemption label belongs on ONE of the two
+                                      cells. Repeated, it reads as two separate
+                                      exemptions rather than one untaxed line. */}
+                                  <td style={{ ...bodyCellStyle(theme), textAlign: 'right' }}>
+                                    {l.cgstAmount > 0 || l.cgstRate > 0
+                                      ? taxCell(l.sgstRate, l.sgstAmount, null)
+                                      : '—'}
+                                  </td>
+                                </>
+                              )}
+                            </>
+                          )}
                           <td style={{ ...bodyCellStyle(theme), textAlign: 'right' }}>{fmtMoney(l.totalAmount)}</td>
                         </tr>
                       ))}
                       <tr>
-                        <td colSpan={3} style={{ ...bodyCellStyle(theme), textAlign: 'right', fontWeight: 700 }}>
+                        <td
+                          colSpan={showTax ? 4 : chargeColumns.length - 1}
+                          style={{ ...bodyCellStyle(theme), textAlign: 'right', fontWeight: 700 }}
+                        >
                           {g.label} total
                         </td>
+                        {/* Every money column shown has to add up, or the reader
+                            is left to trust that it would have. */}
+                        {showTax && (
+                          <>
+                            <td style={{ ...bodyCellStyle(theme), textAlign: 'right', fontWeight: 700 }}>
+                              {fmtMoney(sumOver(g.lines, (l) => l.taxableValue))}
+                            </td>
+                            {interState ? (
+                              <td style={{ ...bodyCellStyle(theme), textAlign: 'right', fontWeight: 700 }}>
+                                {fmtMoney(sumOver(g.lines, (l) => l.igstAmount))}
+                              </td>
+                            ) : (
+                              <>
+                                <td style={{ ...bodyCellStyle(theme), textAlign: 'right', fontWeight: 700 }}>
+                                  {fmtMoney(sumOver(g.lines, (l) => l.cgstAmount))}
+                                </td>
+                                <td style={{ ...bodyCellStyle(theme), textAlign: 'right', fontWeight: 700 }}>
+                                  {fmtMoney(sumOver(g.lines, (l) => l.sgstAmount))}
+                                </td>
+                              </>
+                            )}
+                          </>
+                        )}
                         <td style={{ ...bodyCellStyle(theme), textAlign: 'right', fontWeight: 700 }}>
                           {fmtMoney(g.total)}
                         </td>
@@ -430,6 +557,92 @@ export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: Admis
               </table>
             )}
           </section>
+
+          {/* Rate-wise tax summary — one row per rate, which is how a return
+              reads a bill. Printed only where there is tax to summarise: on a
+              bill of supply it would be a table of zeroes claiming the hospital
+              charged tax it never did. */}
+          {showTax && gst.taxSummary.length > 0 && (
+            <section className="break-inside-avoid" style={{ marginTop: pt(12) }}>
+              <SectionHeading theme={theme}>Tax Summary</SectionHeading>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: pt(theme.size.small) }}>
+                <thead>
+                  <tr>
+                    {(interState
+                      ? ['Rate', 'Taxable Value', 'IGST', 'Total Tax']
+                      : ['Rate', 'Taxable Value', 'CGST', 'SGST', 'Total Tax']
+                    ).map((label, i) => (
+                      <th
+                        key={label}
+                        style={{
+                          ...headerCellStyle(theme),
+                          textAlign: i === 0 ? 'left' : 'right',
+                          width: i === 0 ? undefined : '20%',
+                        }}
+                      >
+                        {label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {gst.taxSummary.map((r, i) => (
+                    <tr
+                      key={`${r.treatment}-${r.ratePercent}`}
+                      style={{ backgroundColor: tpl.table.zebraRows && i % 2 === 1 ? soft : 'transparent' }}
+                    >
+                      {/* An exempt row has no rate to state, so it states what
+                          it is instead. */}
+                      <td style={bodyCellStyle(theme)}>
+                        {r.treatment === 'taxable' ? `${r.ratePercent}%` : r.label}
+                      </td>
+                      <td style={{ ...bodyCellStyle(theme), textAlign: 'right' }}>{fmtMoney(r.taxableValue)}</td>
+                      {interState ? (
+                        <td style={{ ...bodyCellStyle(theme), textAlign: 'right' }}>{fmtMoney(r.igstAmount)}</td>
+                      ) : (
+                        <>
+                          <td style={{ ...bodyCellStyle(theme), textAlign: 'right' }}>{fmtMoney(r.cgstAmount)}</td>
+                          <td style={{ ...bodyCellStyle(theme), textAlign: 'right' }}>{fmtMoney(r.sgstAmount)}</td>
+                        </>
+                      )}
+                      <td style={{ ...bodyCellStyle(theme), textAlign: 'right' }}>{fmtMoney(r.taxAmount)}</td>
+                    </tr>
+                  ))}
+                  <tr>
+                    <td style={{ ...bodyCellStyle(theme), fontWeight: 700 }}>Total</td>
+                    <td style={{ ...bodyCellStyle(theme), textAlign: 'right', fontWeight: 700 }}>
+                      {fmtMoney(gst.totals.taxableValue)}
+                    </td>
+                    {interState ? (
+                      <td style={{ ...bodyCellStyle(theme), textAlign: 'right', fontWeight: 700 }}>
+                        {fmtMoney(gst.totals.igstAmount)}
+                      </td>
+                    ) : (
+                      <>
+                        <td style={{ ...bodyCellStyle(theme), textAlign: 'right', fontWeight: 700 }}>
+                          {fmtMoney(gst.totals.cgstAmount)}
+                        </td>
+                        <td style={{ ...bodyCellStyle(theme), textAlign: 'right', fontWeight: 700 }}>
+                          {fmtMoney(gst.totals.sgstAmount)}
+                        </td>
+                      </>
+                    )}
+                    <td style={{ ...bodyCellStyle(theme), textAlign: 'right', fontWeight: 700 }}>
+                      {fmtMoney(gst.totals.taxAmount)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              {/* Worded server-side so the screen and the paper carry the same
+                  declaration. Rule 46(o) asks for the reverse-charge sentence;
+                  the exempt lines have to name what exempts them. */}
+              {gst.notes.length > 0 && (
+                <p style={{ marginTop: pt(4), fontSize: pt(theme.size.tiny), color: muted }}>
+                  {gst.notes.join('  ')}
+                </p>
+              )}
+            </section>
+          )}
 
           {/* Summary. */}
           <section

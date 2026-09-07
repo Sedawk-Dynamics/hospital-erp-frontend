@@ -270,6 +270,72 @@ export interface BillDocumentLine {
   totalAmount: number;
   status: string;
   at: string;
+  /**
+   * The line's frozen tax position, as the server resolved it. Null on a
+   * pending charge, which has not been priced onto a bill and so has no
+   * position yet — the print view shows that as blank, never as exempt.
+   */
+  hsnSac: string | null;
+  gstTreatment: string | null;
+  /** 'Exempt' / 'Nil rated' / 'Taxable' — worded server-side, one map. */
+  treatmentLabel: string | null;
+  taxRatePercent: number;
+  taxableValue: number;
+  taxAmount: number;
+  cgstRate: number;
+  cgstAmount: number;
+  sgstRate: number;
+  sgstAmount: number;
+  igstRate: number;
+  igstAmount: number;
+  cessAmount: number;
+}
+
+/** One rate's worth of the bill — the rate-wise summary Rule 46 asks for. */
+export interface BillTaxSummaryRow {
+  label: string;
+  treatment: string;
+  ratePercent: number;
+  taxableValue: number;
+  cgstAmount: number;
+  sgstAmount: number;
+  igstAmount: number;
+  cessAmount: number;
+  taxAmount: number;
+}
+
+/**
+ * What makes this a GST document rather than "a bill".
+ *
+ * Every layout switch is decided on the SERVER and read here as a boolean.
+ * The PDF and this view have to reach the same answer about whether a document
+ * carries tax columns, and a rule implemented twice is a rule that drifts.
+ */
+export interface BillDocumentGst {
+  registered: boolean;
+  documentType: string | null;
+  documentLabel: string | null;
+  invoiceNumbers: string[];
+  financialYear: string | null;
+  supplierGstin: string | null;
+  supplierStateCode: string | null;
+  supplierStateName: string | null;
+  recipientGstin: string | null;
+  placeOfSupplyStateCode: string | null;
+  placeOfSupplyStateName: string | null;
+  isInterState: boolean;
+  hasTax: boolean;
+  hasClassifiedLines: boolean;
+  taxSummary: BillTaxSummaryRow[];
+  notes: string[];
+  totals: {
+    taxableValue: number;
+    cgstAmount: number;
+    sgstAmount: number;
+    igstAmount: number;
+    cessAmount: number;
+    taxAmount: number;
+  };
 }
 
 export interface AdmissionBillDocument {
@@ -313,7 +379,14 @@ export interface AdmissionBillDocument {
     billingCategory: string;
     reason: string | null;
   };
-  bills: Array<{ billNumber: string; status: string; totalAmount: number }>;
+  bills: Array<{
+    billNumber: string;
+    status: string;
+    totalAmount: number;
+    invoiceNumber: string | null;
+    gstDocumentType: string | null;
+  }>;
+  gst: BillDocumentGst;
   groups: Array<{ category: string; label: string; lines: BillDocumentLine[]; total: number }>;
   payments: Array<{
     date: string;
