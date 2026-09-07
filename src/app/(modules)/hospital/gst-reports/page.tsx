@@ -19,6 +19,7 @@ import {
   RateOverridesView,
   RevenueMixView, SeriesContinuityView, SupplierGstinView, UnmappedItemsView,
 } from '@/components/hospital/gst/gst-report-views-bc';
+import { FiledPeriodsView } from '@/components/hospital/gst/gst-filed-periods';
 
 // ============================================================
 // GST Reports.
@@ -78,6 +79,7 @@ const GROUPS: Array<{ group: string; caption: string; reports: ReportDef[] }> = 
       { ref: 'C-3', label: 'Unmapped Items', what: 'Everything billed without a code or a treatment', View: UnmappedItemsView },
       { ref: 'C-4', label: 'Series Continuity', what: 'Any gap or duplicate in a document series', View: SeriesContinuityView, wholeYear: true },
       { ref: 'C-5', label: 'Rate Override Log', what: 'Every line where somebody typed the tax', View: RateOverridesView },
+      { ref: 'C-6', label: 'Filed Periods', what: 'A frozen copy of what actually went in', View: FiledPeriodsView },
       { ref: 'C-7', label: 'Department-wise GST', what: 'Tax by pharmacy, lab, radiology, OT, room', View: DepartmentGstView },
       { ref: 'C-8', label: 'Rate Change Impact', what: 'What moved on a tax master, and what it touched', View: RateChangeImpactView },
       { ref: 'C-9', label: 'Cancelled Invoices', what: 'Invoices cancelled after issue, and what reversed them', View: CancelledInvoicesView },

@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
-import { apiGet } from '@/lib/api';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiGet, apiPost } from '@/lib/api';
 
 // ============================================================
 // The GST reports.
@@ -319,6 +319,85 @@ export const usePurchaseReturns = (q: GstReportQuery, on = true) =>
     };
     notes: string[];
   }>('purchase-returns', '/gst/reports/purchase-returns', q, on);
+
+// ── C-6 — the filed period archive ────────────────────────────────────────
+//
+// Filing is a write, so this one has a mutation beside its queries. It is the
+// accountant's act of saying "this is what went in", not a report.
+
+export interface FiledPeriod {
+  id: string;
+  returnPeriod: string;
+  financialYear: string;
+  periodFrom: string;
+  periodTo: string;
+  filedAt: string;
+  filedBy: string | null;
+  note: string | null;
+  outwardTax: number;
+  netTaxPayable: number;
+  exemptTurnover: number;
+  reconciled: boolean;
+}
+
+export const filedPeriodsKey = ['gst-report', 'filed-periods'] as const;
+
+export function useFiledPeriods() {
+  return useQuery({
+    queryKey: filedPeriodsKey,
+    queryFn: async () =>
+      (await apiGet<{ periods: FiledPeriod[] }>('/gst/reports/filed-periods')).data,
+  });
+}
+
+/**
+ * The snapshot's own shape, as far as this screen reads it.
+ *
+ * Deliberately partial: a snapshot taken a year ago was written by the code of
+ * a year ago, and every field is optional because an older copy may simply not
+ * have one. Reading it defensively is the only way an archive stays readable.
+ */
+export interface FiledSnapshot {
+  capturedAt?: string;
+  gstr3b?: {
+    outwardTaxable?: { taxableValue?: number; taxAmount?: number };
+    outwardExempt?: number;
+    outwardNonGst?: number;
+    inputTaxCredit?: { available?: number; reversed?: number; net?: number };
+    netTaxPayable?: number;
+  };
+  exemptTurnover?: { exemptTurnover?: number; totalTurnover?: number; exemptRatio?: number };
+}
+
+export interface FiledPeriodDetail {
+  id: string;
+  returnPeriod: string;
+  periodFrom: string;
+  periodTo: string;
+  filedAt: string;
+  filedBy: string | null;
+  note: string | null;
+  snapshot: FiledSnapshot;
+  drift: { outwardTaxAsFiled: number; outwardTaxNow: number; difference: number; moved: boolean };
+  notes: string[];
+}
+
+export function useFiledPeriod(id: string | null) {
+  return useQuery({
+    queryKey: [...filedPeriodsKey, id],
+    queryFn: async () => (await apiGet<FiledPeriodDetail>(`/gst/reports/filed-periods/${id}`)).data,
+    enabled: !!id,
+  });
+}
+
+export function useFilePeriod() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: { from: string; to: string; note?: string | null; sixDigit?: boolean }) =>
+      (await apiPost<{ id: string; returnPeriod: string }>('/gst/reports/filed-periods', body)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: filedPeriodsKey }),
+  });
+}
 
 // ── Group C — operational and control ──────────────────────────────────────
 
