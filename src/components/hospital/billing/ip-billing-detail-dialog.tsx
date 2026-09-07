@@ -75,7 +75,17 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
     catch (e) { toast.error((e as Error).message || 'Could not apply the discount.'); }
   };
   const doConsolidate = async () => {
-    try { await consolidate.mutateAsync(admissionId); toast.success('All charges pulled onto the bill.'); }
+    try {
+      const res = await consolidate.mutateAsync(admissionId);
+      // Say so when the patient's own money came off the bill — the desk is
+      // about to ask them for the rest and should know why the figure moved.
+      const applied = n((res as { depositApplied?: number } | undefined)?.depositApplied);
+      toast.success(
+        applied > 0
+          ? `All charges pulled onto the bill. ${money(applied)} deposit applied.`
+          : 'All charges pulled onto the bill.',
+      );
+    }
     catch (e) { toast.error((e as Error).message || 'Could not generate the bill.'); }
   };
 
@@ -95,7 +105,9 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
   const openCollect = async () => {
     setPreparing(true);
     try {
-      await consolidate.mutateAsync(admissionId);
+      const res = await consolidate.mutateAsync(admissionId);
+      const applied = n((res as { depositApplied?: number } | undefined)?.depositApplied);
+      if (applied > 0) toast.success(`${money(applied)} deposit applied to the bill.`);
       await qc.invalidateQueries({ queryKey: ['hospital', 'ip-bills'] });
       await qc.invalidateQueries({ queryKey: ['ip-ledger', admissionId] });
       setCollectOpen(true);
