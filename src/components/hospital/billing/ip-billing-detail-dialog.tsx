@@ -344,7 +344,9 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
         bill={{
           id: bill.id,
           billNumber: bill.billNumber,
-          balanceDue: n(bill.balanceDue),
+          // The stay total and what this one bill can take are not always the
+          // same figure — see IpBill.payableNow.
+          balanceDue: n(bill.payableNow ?? bill.balanceDue),
           patientName,
           // Lets the counter settle from a deposit the patient has already paid.
           patientId: bill.patient?.id,

@@ -38,6 +38,13 @@ export interface IpBill {
   patientPayableAmount: number | string;
   amountPaid: number | string;
   balanceDue: number | string;
+  /**
+   * What the counter can collect against THIS bill right now. `balanceDue` is
+   * the whole stay summed over every bill on the admission, which is not the
+   * same number whenever a pharmacy or counter bill sits alongside the IP one —
+   * paying the stay total against a single bill is refused by the server.
+   */
+  payableNow?: number | string;
   discountAmount?: number | string;
   patient?: { id: string; mrn: string | null; firstName: string; lastName: string } | null;
   admission?: {
