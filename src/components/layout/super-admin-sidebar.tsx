@@ -28,6 +28,7 @@ import {
   Stethoscope,
   Sparkles,
   Receipt,
+  BriefcaseMedical,
   Image as ImageIcon,
   HeartPulse,
 } from 'lucide-react';
@@ -49,6 +50,9 @@ const NAV_ITEMS = [
   { href: '/super-admin/drug-master', label: 'Drug Master', icon: Pill },
   { href: '/super-admin/salts', label: 'Molecules', icon: FlaskConical },
   { href: '/super-admin/hsn-gst', label: 'HSN → GST', icon: Receipt },
+  // The services half of the same question: HSN decides the rate on goods,
+  // SAC decides it on a consultation, a surgery, a room.
+  { href: '/super-admin/sac-codes', label: 'SAC → GST', icon: BriefcaseMedical },
   { href: '/super-admin/icd-codes', label: 'ICD Codes', icon: Stethoscope },
   { href: '/super-admin/disorders', label: 'Disorders', icon: ClipboardList },
   { href: '/super-admin/ai-settings', label: 'AI Settings', icon: Sparkles },
