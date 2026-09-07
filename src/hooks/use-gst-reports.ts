@@ -53,6 +53,7 @@ export interface SalesLine {
   treatmentLabel: string | null;
   rateSource: string | null;
   requiresTaxResolution: boolean;
+  raisedBy: string | null;
   quantity: number;
   unitPrice: number;
   discountAmount: number;
@@ -357,6 +358,20 @@ export const useUnmappedItems = (q: GstReportQuery, on = true) =>
     };
     totals: { linesChecked: number; exceptions: number };
   }>('unmapped-items', '/gst/reports/unmapped-items', q, on);
+
+export const useRateOverrides = (q: GstReportQuery, on = true) =>
+  useReport<{
+    period: GstPeriod;
+    rows: Array<{
+      billDate: string; document: string; billNumber: string;
+      patientName: string | null; department: string; description: string;
+      ratePercent: number; taxAmount: number; totalAmount: number;
+      rateSource: string | null; raisedBy: string | null;
+    }>;
+    byPerson: Array<{ person: string; lines: number; taxCharged: number; value: number }>;
+    totals: { linesChecked: number; overrides: number; taxCharged: number; value: number };
+    notes: string[];
+  }>('rate-overrides', '/gst/reports/rate-overrides', q, on);
 
 export const useSeriesContinuity = (q: GstReportQuery, on = true) =>
   useReport<{

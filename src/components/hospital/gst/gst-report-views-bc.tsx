@@ -517,3 +517,62 @@ export function CancelledInvoicesView({ q }: { q: Q }) {
     </div>
   );
 }
+
+// ── C-5 ────────────────────────────────────────────────────────────────────
+
+export function RateOverridesView({ q }: { q: Q }) {
+  const { data, isLoading } = R.useRateOverrides(q);
+  if (isLoading) return <Loading />;
+  const rows = data?.rows ?? [];
+  const cols: Column<(typeof rows)[number]>[] = [
+    { key: 'd', label: 'Date', cell: (r) => formatDate(r.billDate), csv: (r) => formatDate(r.billDate) },
+    { key: 'doc', label: 'Document', cell: (r) => r.document, csv: (r) => r.document },
+    { key: 'p', label: 'Patient', cell: (r) => r.patientName ?? '—', csv: (r) => r.patientName ?? '' },
+    { key: 'dept', label: 'Department', cell: (r) => titleCase(r.department), csv: (r) => r.department },
+    { key: 'i', label: 'Item', cell: (r) => r.description, csv: (r) => r.description },
+    { key: 'rate', label: 'Rate typed', align: 'right', cell: (r) => `${r.ratePercent}%`, csv: (r) => r.ratePercent },
+    { key: 't', label: 'Tax charged', align: 'right', cell: (r) => plain(r.taxAmount), csv: (r) => r.taxAmount },
+    { key: 'v', label: 'Line value', align: 'right', cell: (r) => plain(r.totalAmount), csv: (r) => r.totalAmount },
+    { key: 'w', label: 'Raised by', cell: (r) => r.raisedBy ?? <span className="text-muted-foreground">unattributed</span>, csv: (r) => r.raisedBy ?? '' },
+  ];
+  return (
+    <div className="space-y-6">
+      <StatStrip
+        stats={[
+          { label: 'Lines checked', value: String(data?.totals.linesChecked ?? 0) },
+          {
+            label: 'Rates typed',
+            value: String(data?.totals.overrides ?? 0),
+            tone: (data?.totals.overrides ?? 0) > 0 ? 'bad' : 'good',
+          },
+          { label: 'Tax charged on them', value: money(data?.totals.taxCharged), tone: 'warn' },
+          { label: 'Line value', value: money(data?.totals.value) },
+        ]}
+      />
+      <div className="flex justify-end">
+        <ExportButton onClick={() => exportCsv('gst-rate-overrides', cols, rows, q)} disabled={!rows.length} />
+      </div>
+      <ReportTable
+        columns={cols}
+        rows={rows}
+        empty="Every rate in this period came from a master. Nothing was typed."
+      />
+      {(data?.byPerson.length ?? 0) > 0 ? (
+        <section className="space-y-2">
+          <h3 className="text-sm font-semibold">By who raised the document</h3>
+          <ReportTable
+            columns={[
+              { key: 'p', label: 'Raised by', cell: (r: { person: string }) => titleCase(r.person) },
+              { key: 'l', label: 'Lines', align: 'right', cell: (r: { lines: number }) => r.lines },
+              { key: 't', label: 'Tax charged', align: 'right', cell: (r: { taxCharged: number }) => plain(r.taxCharged) },
+              { key: 'v', label: 'Value', align: 'right', cell: (r: { value: number }) => plain(r.value) },
+            ]}
+            rows={data?.byPerson ?? []}
+          />
+        </section>
+      ) : null}
+      <ReportNotes notes={data?.notes ?? []} />
+    </div>
+  );
+}
+
