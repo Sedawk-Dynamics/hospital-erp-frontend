@@ -1,5 +1,6 @@
 'use client';
 
+import { DailyLiabilityView, Gstr9View, Gstr9cView } from '@/components/hospital/gst/gst-report-views-annual';
 import { useMemo, useState, type ComponentType } from 'react';
 import { FileSpreadsheet, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -58,6 +59,8 @@ const GROUPS: Array<{ group: string; caption: string; reports: ReportDef[] }> = 
       { ref: 'A-8', label: 'GSTR-1', what: 'Every table, ready to check, with the JSON', View: Gstr1View },
       { ref: 'A-9', label: 'GSTR-3B', what: 'Liability, credit, and the net payable', View: Gstr3bView },
       { ref: 'A-10', label: 'Advances', what: 'Tax due on advances, and what has been adjusted', View: AdvancesView },
+      { ref: 'A-11', label: 'GSTR-9 Annual Return', what: 'The whole year, in the form’s own table order', View: Gstr9View, wholeYear: true },
+      { ref: 'A-12', label: 'GSTR-9C Reconciliation', what: 'Books against returns — the data the accountant needs', View: Gstr9cView, wholeYear: true },
     ],
   },
   {
@@ -76,7 +79,8 @@ const GROUPS: Array<{ group: string; caption: string; reports: ReportDef[] }> = 
     group: 'C · Control',
     caption: 'Catch a problem during the month rather than on the day of filing.',
     reports: [
-      { ref: 'C-1', label: 'Daily Collection', what: 'What was collected, by counter, cashier and mode', View: DailyCollectionView },
+      { ref: 'C-1', label: 'Daily Billing / Liability', what: 'What the hospital CHARGED — the liability that arose', View: DailyLiabilityView },
+      { ref: 'C-1b', label: 'GST Collected', what: 'What actually came in, by counter, cashier and mode', View: DailyCollectionView },
       { ref: 'C-2', label: 'Revenue Mix', what: 'Taxable share of income, trended by month', View: RevenueMixView },
       { ref: 'C-3', label: 'Unmapped Items', what: 'Everything billed without a code or a treatment', View: UnmappedItemsView },
       { ref: 'C-4', label: 'Series Continuity', what: 'Any gap or duplicate in a document series', View: SeriesContinuityView, wholeYear: true },

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPost } from '@/lib/api';
+import { apiGet, apiPatch, apiPost } from '@/lib/api';
 
 // ============================================================
 // The GST reports.
@@ -65,6 +65,16 @@ export interface SalesLine {
   cessAmount: number;
   taxAmount: number;
   totalAmount: number;
+  /** Billed at a rate the law did not recognise on the bill's own date. */
+  illegalRate: boolean;
+}
+
+/** One rung of the input-tax-credit ladder, with where its figure came from. */
+export interface ItcLadderRung {
+  key: string;
+  label: string;
+  amount: number | null;
+  source: string;
 }
 
 export interface GstReportQuery {
@@ -112,6 +122,14 @@ export const useRateSummary = (q: GstReportQuery, on = true) =>
     byRate: RateSummaryRow[];
     byDepartment: Array<TaxTotals & { department: string; byRate: RateSummaryRow[] }>;
     totals: TaxTotals;
+    /** Rates in the period the law did not recognise. Filing gets rejected. */
+    illegalRates: {
+      lines: number;
+      taxableValue: number;
+      taxAmount: number;
+      rates: number[];
+      bills: string[];
+    };
   }>('rate-summary', '/gst/reports/rate-summary', q, on);
 
 export const useHsnSummary = (q: GstReportQuery, on = true) =>
@@ -272,8 +290,19 @@ export const useItcSummary = (q: GstReportQuery, on = true) =>
     period: GstPeriod;
     byRate: Array<{ ratePercent: number | null; count: number; taxableValue: number; taxAmount: number; landingTotal: number }>;
     bySupplier: Array<{ supplierId: string | null; supplierName: string | null; supplierGstin: string | null; count: number; taxableValue: number; taxAmount: number; landingTotal: number }>;
-    totals: { count: number; taxableValue: number; taxAmount: number; landingTotal: number };
+    totals: {
+      count: number; taxableValue: number; taxAmount: number; landingTotal: number;
+      cgstAmount: number; sgstAmount: number; igstAmount: number;
+    };
+    /**
+     * Gross → ineligible → reversal → eligible → claimed, each with its source.
+     * The report used to stop at gross, which for a hospital is the rung that
+     * flatters it: most of that credit is reversed again under Rule 42.
+     */
+    ladder: ItcLadderRung[];
     withoutRate: number;
+    ineligibleCount: number;
+    partlyEligibleCount: number;
     coverage: string;
   }>('itc-summary', '/gst/reports/itc-summary', q, on);
 
@@ -333,6 +362,15 @@ export interface FiledPeriod {
   periodTo: string;
   filedAt: string;
   filedBy: string | null;
+  /**
+   * When the period was LOCKED, which is a separate act from filing.
+   *
+   * Filing archives the figures; locking shuts the doors on every bill dated
+   * inside the period. Null means open, which is what every period archived
+   * before the lock existed still is.
+   */
+  lockedAt: string | null;
+  lockedBy: string | null;
   note: string | null;
   outwardTax: number;
   netTaxPayable: number;
@@ -596,3 +634,97 @@ export const useCancelledInvoices = (q: GstReportQuery, on = true) =>
     }>;
     totals: { count: number; taxAmount: number; totalAmount: number; unreversed: number };
   }>('cancelled-invoices', '/gst/reports/cancelled-invoices', q, on);
+
+// ── The annual return ──────────────────────────────────────────────────────
+
+export interface Gstr9TableRow {
+  ref: string;
+  label: string;
+  taxableValue?: number;
+  amount?: number;
+  cgstAmount?: number;
+  sgstAmount?: number;
+  igstAmount?: number;
+  cessAmount?: number;
+  source: string;
+}
+
+/**
+ * GSTR-9 — the annual return, folded from the same monthly reports so it cannot
+ * disagree with the twelve returns it summarises.
+ */
+export const useGstr9 = (financialYear: string | undefined, on = true) =>
+  useReport<{
+    financialYear: string;
+    period: GstPeriod;
+    tables: {
+      table4: { label: string; rows: Gstr9TableRow[] };
+      table5: { label: string; rows: Gstr9TableRow[]; total: number };
+      table6: { label: string; rows: Gstr9TableRow[]; ladder: ItcLadderRung[] };
+      table7: { label: string; rows: Gstr9TableRow[]; total: number };
+      table9: { label: string; taxPayable: TaxTotals; taxPaid: null; note: string };
+      table17: { label: string; rows: Array<Record<string, unknown>>; unclassified: TaxTotals; reportingDigits: number };
+    };
+    turnover: {
+      grossOutward: number; taxableTurnover: number; exemptTurnover: number;
+      totalTurnover: number; exemptRatioPercent: number;
+    };
+    documents: { invoices: number; lines: number; creditNotes: number; purchases: number };
+    rateWise: RateSummaryRow[];
+    reconciliation: { registerTaxableValue: number; registerTaxAmount: number; partsTaxableValue: number; agrees: boolean };
+    notes: string[];
+  }>('gstr9', '/gst/reports/gstr9', { financialYear }, on);
+
+/** GSTR-9C — the books side of the reconciliation, for the accountant. */
+export const useGstr9c = (
+  q: { financialYear?: string; auditedTurnover?: number },
+  on = true,
+) =>
+  useReport<{
+    financialYear: string;
+    period: GstPeriod;
+    turnover: {
+      auditedTurnover: number | null;
+      auditedTurnoverSource: string;
+      declaredTurnover: number;
+      declaredTurnoverSource: string;
+      adjustments: Array<{ label: string; amount: number; source: string }>;
+      unreconciledDifference: number | null;
+    };
+    taxableTurnover: Record<string, number>;
+    inputTaxCredit: {
+      perBooks: number; perBooksSource: string;
+      ladder: ItcLadderRung[];
+      claimedInReturns: null; claimedInReturnsSource: string;
+    };
+    unreconciled: string[];
+    lines: number;
+    notes: string[];
+  }>('gstr9c', '/gst/reports/gstr9c', q as GstReportQuery, on);
+
+/** C-1 — what the hospital BILLED, which is not what it collected. */
+export const useDailyLiability = (q: GstReportQuery, on = true) =>
+  useReport<{
+    period: GstPeriod;
+    byDay: Array<{ day: string; taxableValue: number; exemptValue: number; taxAmount: number; cgstAmount: number; sgstAmount: number; igstAmount: number; lines: number; bills: number }>;
+    byDepartment: Array<{ department: string; taxableValue: number; exemptValue: number; taxAmount: number; lines: number; bills: number }>;
+    byRaisedBy: Array<{ raisedBy: string; taxableValue: number; exemptValue: number; taxAmount: number; lines: number; bills: number }>;
+    totals: {
+      bills: number; lines: number; taxableValue: number; exemptValue: number;
+      cgstAmount: number; sgstAmount: number; igstAmount: number; taxAmount: number;
+    };
+    note: string;
+  }>('daily-liability', '/gst/reports/daily-liability', q, on);
+
+/** Lock a filed period, or open it again. */
+export function useSetPeriodLock() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, locked }: { id: string; locked: boolean }) =>
+      (await apiPatch(`/gst/reports/filed-periods/${id}/lock`, { locked })).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['gst-report'] });
+      qc.invalidateQueries({ queryKey: ['gst-filed-periods'] });
+    },
+  });
+}
