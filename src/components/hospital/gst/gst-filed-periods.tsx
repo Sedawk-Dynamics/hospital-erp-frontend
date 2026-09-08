@@ -13,7 +13,9 @@ import {
 import { formatDate, formatDateTime } from '@/lib/date-utils';
 import { Loading, ReportNotes, ReportTable, StatStrip, money, plain } from './gst-report-shell';
 import type { GstReportQuery } from '@/hooks/use-gst-reports';
-import { useFilePeriod, useFiledPeriod, useFiledPeriods } from '@/hooks/use-gst-reports';
+import {
+  useFilePeriod, useFiledPeriod, useFiledPeriods, useSetPeriodLock,
+} from '@/hooks/use-gst-reports';
 
 // ============================================================
 // C-6 — the filed period archive.
@@ -26,6 +28,7 @@ import { useFilePeriod, useFiledPeriod, useFiledPeriods } from '@/hooks/use-gst-
 
 export function FiledPeriodsView({ q }: { q: GstReportQuery }) {
   const { data, isLoading } = useFiledPeriods();
+  const setLock = useSetPeriodLock();
   const file = useFilePeriod();
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState('');
@@ -94,12 +97,52 @@ export function FiledPeriodsView({ q }: { q: GstReportQuery }) {
             cell: (r) => (r.reconciled ? <Badge variant="outline">Yes</Badge> : <Badge variant="destructive">No</Badge>),
           },
           {
+            key: 'lock',
+            label: 'Period',
+            cell: (r) =>
+              r.lockedAt ? (
+                <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-900">
+                  Locked
+                </Badge>
+              ) : (
+                <span className="text-xs text-on-surface-variant">Open</span>
+              ),
+          },
+          {
             key: 'v',
             label: '',
             cell: (r) => (
-              <Button variant="ghost" size="sm" onClick={() => setViewing(r.id)}>
-                Open
-              </Button>
+              <div className="flex items-center justify-end gap-1">
+                {/* Locking is what makes section 6.10 real: every bill dated
+                    inside the period becomes read-only and a correction has to
+                    go through a credit note in the current period. Filing on
+                    its own only archives the figures, so this is deliberately a
+                    second, separate action. */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={setLock.isPending}
+                  onClick={() =>
+                    setLock.mutate(
+                      { id: r.id, locked: !r.lockedAt },
+                      {
+                        onSuccess: () =>
+                          toast.success(
+                            r.lockedAt
+                              ? `Period ${r.returnPeriod} reopened`
+                              : `Period ${r.returnPeriod} locked — bills in it can no longer be changed`,
+                          ),
+                        onError: (e: unknown) => toast.error((e as Error)?.message || 'Could not change the lock'),
+                      },
+                    )
+                  }
+                >
+                  {r.lockedAt ? 'Reopen' : 'Lock'}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setViewing(r.id)}>
+                  Open
+                </Button>
+              </div>
             ),
           },
         ]}
