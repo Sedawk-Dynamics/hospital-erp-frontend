@@ -1349,6 +1349,10 @@ export interface PharmacySaleGst {
     cessAmount: number;
     taxAmount: number;
   };
+  /** Section 10.1 item 8 — the tax written out. */
+  taxAmountInWords: string;
+  /** Rule 46's copy marking, for the title band. */
+  copyMarking: string | null;
 }
 
 export interface PharmacySale {
@@ -1362,6 +1366,8 @@ export interface PharmacySale {
     totalAmount: number | string;
     amountPaid: number | string;
     balanceDue: number | string;
+    /** Section 6.9's round-off, so the printed total agrees with the lines. */
+    roundOff?: number | string | null;
     status: string;
     patient?: {
       id: string;
@@ -1414,6 +1420,13 @@ export interface SalePreviewLine {
 
 export interface SalePreview {
   lines: SalePreviewLine[];
+  /**
+   * Reasons this cart cannot be billed as it stands — an unclassified medicine,
+   * or one priced at a rate that is not a legal GST slab. The sale itself
+   * refuses both; the preview reports them so the counter finds out while there
+   * is still time to fix it, rather than with the patient standing there.
+   */
+  blockers?: string[];
   totals: {
     taxableValue: number; cgstAmount: number; sgstAmount: number;
     igstAmount: number; taxAmount: number; totalAmount: number;

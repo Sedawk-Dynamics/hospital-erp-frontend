@@ -1722,6 +1722,19 @@ function PharmacyPOS() {
                 </div>
               </>
             ) : null}
+            {/* Why this cart cannot be billed as it stands.
+                The sale itself refuses an unclassified medicine and one priced
+                at a rate that is not a legal slab — both would go onto a
+                numbered Tax Invoice and into a return. Finding that out at
+                "Generate Bill", with the patient at the counter, is the worst
+                possible moment, so the reason arrives with the pricing. */}
+            {(salePreview.data?.blockers?.length ?? 0) > 0 && (
+              <div className="rounded-md border border-red-300 bg-red-50 px-2.5 py-2 text-[11px] leading-relaxed text-red-800">
+                {salePreview.data!.blockers!.map((b) => (
+                  <p key={b}>{b}</p>
+                ))}
+              </div>
+            )}
             {summary.roundOff !== 0 && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Round Off</span>

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { formatDateTime } from '@/lib/date-utils';
 import type { PharmacySale } from '@/hooks/use-pharmacy';
+import { amountInWords as inWords } from '@/lib/amount-in-words';
 
 const num = (n: number | string | null | undefined): number => {
   if (n == null) return 0;
@@ -109,6 +110,10 @@ export function PharmacyReceiptDialog({
                   )}
                   {hospital?.phone && <p className="muted">Ph: {hospital.phone}</p>}
                   <p className="title">PHARMACY {docLabel}</p>
+                  {/* Rule 46 wants the copy marked, and section 10.2 puts it in
+                      the title band. The copy handed over is always the
+                      original; only the phrase changes with the document. */}
+                  {gst?.copyMarking && <p className="muted xs">{gst.copyMarking}</p>}
                   {gst?.supplierGstin && (
                     <p className="muted xs">
                       GSTIN: {gst.supplierGstin}
@@ -232,6 +237,15 @@ export function PharmacyReceiptDialog({
                       )}
                     </>
                   )}
+                  {/* Section 6.9 — without it the grand total does not agree
+                      with the lines above. Never applied to the tax figures. */}
+                  {num(bill.roundOff) !== 0 && (
+                    <Row
+                      label="Round off"
+                      value={`${num(bill.roundOff) > 0 ? '+ ' : '- '}${inr(Math.abs(num(bill.roundOff)))}`}
+                      muted
+                    />
+                  )}
                   <div className="rule thin" />
                   <Row label="Grand Total" value={inr(bill.totalAmount)} bold />
                   <Row label="Paid" value={inr(bill.amountPaid)} />
@@ -248,6 +262,58 @@ export function PharmacyReceiptDialog({
                   {change > 0 && <Row label="Change" value={inr(change)} />}
                   {num(bill.balanceDue) > 0 && <Row label="Balance Due" value={inr(bill.balanceDue)} bold />}
                 </div>
+
+                {/* The rate-wise summary section 10.1 item 7 requires and the
+                    worked example in 3.6 prints. A counter sale routinely
+                    carries three different rates, and a single "Incl. GST" line
+                    cannot show which value sat at which. */}
+                {(gst?.taxSummary?.length ?? 0) > 1 && (
+                  <>
+                    <div className="rule" />
+                    <table>
+                      <thead>
+                        <tr>
+                          <th className="l">Rate</th>
+                          <th className="r">Taxable</th>
+                          {gst!.isInterState ? (
+                            <th className="r">IGST</th>
+                          ) : (
+                            <>
+                              <th className="r">CGST</th>
+                              <th className="r">SGST</th>
+                            </>
+                          )}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {gst!.taxSummary.map((r) => (
+                          <tr key={`${r.treatment}:${r.ratePercent}`}>
+                            <td className="l">
+                              {r.treatment === 'taxable' ? `${r.ratePercent}%` : r.label}
+                            </td>
+                            <td className="r">{num(r.taxableValue).toFixed(2)}</td>
+                            {gst!.isInterState ? (
+                              <td className="r">{num(r.igstAmount).toFixed(2)}</td>
+                            ) : (
+                              <>
+                                <td className="r">{num(r.cgstAmount).toFixed(2)}</td>
+                                <td className="r">{num(r.sgstAmount).toFixed(2)}</td>
+                              </>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </>
+                )}
+
+                <div className="rule" />
+                {/* Section 10.1 item 8. What stops a printed bill being altered
+                    after it is handed over. */}
+                <p className="muted xs">{inWords(num(bill.totalAmount))}</p>
+                {gst?.taxAmountInWords ? (
+                  <p className="muted xs">Tax: {gst.taxAmountInWords}</p>
+                ) : null}
 
                 <div className="rule" />
                 <p className="center muted xs">
