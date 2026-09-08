@@ -890,6 +890,32 @@ function ManualLineForm({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
+        <NumberInput
+          className="col-span-1"
+          min={0}
+          integer
+          value={quantity}
+          onValueChange={setQuantity}
+          placeholder="Qty"
+        />
+        <Input
+          className="col-span-2"
+          type="number"
+          step="0.01"
+          value={unitPrice}
+          onChange={(e) => setUnitPrice(e.target.value === '' ? '' : Number(e.target.value))}
+          placeholder="Unit ₹"
+        />
+        <Input
+          className="col-span-2"
+          type="number"
+          step="0.01"
+          value={discount}
+          onChange={(e) => setDiscount(e.target.value === '' ? '' : Number(e.target.value))}
+          placeholder="Disc"
+        />
+        {/* No Tax% box. The engine classifies the line from its code or its
+            tariff; a rate typed here would be ignored by it anyway. */}
         <Button className="col-span-2" onClick={submit} disabled={loading}>
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Plus className="h-4 w-4 mr-1" /> Add</>}
         </Button>
@@ -1099,11 +1125,12 @@ function BillLineRow({
       <td className="px-3 py-2 text-right font-label text-sm">{fmt(Number(item.unitPrice))}</td>
       <td className="px-3 py-2 text-right font-label text-sm">{fmt(Number(item.discountAmount))}</td>
       <td className="px-3 py-2 text-right font-label text-sm">{fmt(Number(item.taxableValue ?? 0))}</td>
-      <td className="px-3 py-2" title={item.taxReason ?? undefined}>
+      <td className="px-3 py-2">
         <TreatmentBadge
           treatment={item.gstTreatment}
           ratePercent={Number(item.taxPercent)}
           requiresResolution={item.requiresTaxResolution}
+          reason={item.taxReason}
         />
       </td>
       <td className="px-3 py-2 text-right font-label text-sm">{fmt(Number(item.cgstAmount ?? 0))}</td>

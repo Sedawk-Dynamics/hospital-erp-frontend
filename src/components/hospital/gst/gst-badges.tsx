@@ -61,10 +61,13 @@ export function TreatmentBadge({
   treatment,
   ratePercent,
   requiresResolution,
+  reason,
 }: {
   treatment?: string | null;
   ratePercent?: number;
   requiresResolution?: boolean;
+  /** The engine's own words for why. Shown on hover in place of a guess. */
+  reason?: string | null;
 }) {
   if (!treatment) {
     return (
@@ -84,7 +87,11 @@ export function TreatmentBadge({
             ? 'border-primary/30 bg-primary/10 text-primary'
             : 'border-border bg-muted text-muted-foreground'
       }`}
-      title={requiresResolution ? 'A rate somebody typed — no code behind it, nobody approved it' : undefined}
+      // The engine's own reason, whenever it gave one. Two different things
+      // reach `requiresResolution` — a rate somebody typed on an unapproved
+      // item, and a line nothing classified at all — and a badge that named
+      // only the first was telling the desk the wrong story about the second.
+      title={reason ?? (requiresResolution ? 'Nothing has established a tax position for this line' : undefined)}
     >
       {label}
       {taxable && ratePercent != null ? ` ${ratePercent}%` : ''}
