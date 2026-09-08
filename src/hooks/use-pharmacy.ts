@@ -1308,6 +1308,47 @@ export interface PharmacyBillItem {
   taxPercent: number | string;
   taxAmount: number | string;
   totalAmount: number | string;
+  // What the line was classified as. Rule 46 wants the code against the line it
+  // belongs to, and the receipt is the paper that goes out with the medicine.
+  hsnSacCode?: string | null;
+  gstTreatment?: string | null;
+}
+
+/** The GST block carried on a counter-sale receipt. Mirrors the server's. */
+export interface PharmacySaleGst {
+  registered: boolean;
+  documentType: string | null;
+  documentLabel: string | null;
+  invoiceNumbers: string[];
+  financialYear: string | null;
+  supplierGstin: string | null;
+  supplierStateName: string | null;
+  recipientGstin: string | null;
+  placeOfSupplyStateCode: string | null;
+  placeOfSupplyStateName: string | null;
+  isInterState: boolean;
+  hasTax: boolean;
+  hasClassifiedLines: boolean;
+  taxSummary: Array<{
+    label: string;
+    treatment: string;
+    ratePercent: number;
+    taxableValue: number;
+    cgstAmount: number;
+    sgstAmount: number;
+    igstAmount: number;
+    cessAmount: number;
+    taxAmount: number;
+  }>;
+  notes: string[];
+  totals: {
+    taxableValue: number;
+    cgstAmount: number;
+    sgstAmount: number;
+    igstAmount: number;
+    cessAmount: number;
+    taxAmount: number;
+  };
 }
 
 export interface PharmacySale {
@@ -1335,6 +1376,12 @@ export interface PharmacySale {
     payments: Array<{ id: string; amount: number | string; paymentMethod: string; paymentDate: string }>;
     generator?: { id: string; firstName: string; lastName: string } | null;
   };
+  /**
+   * What this paper IS — assembled server-side by the same function the IP and
+   * OP bills use, so all three documents name themselves the same way. The
+   * receipt used to decide for itself and always said "tax invoice".
+   */
+  gst?: PharmacySaleGst;
   hospital: {
     name: string;
     logoUrl: string | null;

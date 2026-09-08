@@ -61,8 +61,22 @@ export function PharmacyReceiptDialog({
 
   const bill = sale?.bill;
   const hospital = sale?.hospital;
-  const taxable = num(bill?.totalAmount) - num(bill?.taxAmount);
-  const halfGst = num(bill?.taxAmount) / 2;
+  const gst = sale?.gst;
+
+  // Everything below comes off the server's GST block rather than being worked
+  // out here. This screen used to halve `taxAmount` into CGST and SGST, which
+  // disagreed with the stored split by a paisa on any odd amount, and would
+  // have printed a CGST/SGST pair on an inter-State supply that carries IGST.
+  const totals = gst?.totals;
+  const taxable = totals ? totals.taxableValue : num(bill?.totalAmount) - num(bill?.taxAmount);
+  // What the law calls this piece of paper. A sale with nothing taxable is
+  // issued as a Bill of Supply, and a receipt that calls itself a tax invoice
+  // regardless is a document claiming something that did not happen.
+  const docLabel = (gst?.documentLabel ?? 'Tax Invoice').toUpperCase();
+  // The consecutive number allotted for the financial year — the number the
+  // return is filed under. `billNumber` is this system's internal handle and
+  // appears beside it, not in place of it.
+  const invoiceNumber = gst?.invoiceNumbers?.[0] ?? null;
   // "Paid" can exceed the total when the cashier tenders extra; show the change.
   const change = Math.max(0, num(bill?.amountPaid) - num(bill?.totalAmount));
 
@@ -94,7 +108,13 @@ export function PharmacyReceiptDialog({
                     </p>
                   )}
                   {hospital?.phone && <p className="muted">Ph: {hospital.phone}</p>}
-                  <p className="title">PHARMACY TAX INVOICE</p>
+                  <p className="title">PHARMACY {docLabel}</p>
+                  {gst?.supplierGstin && (
+                    <p className="muted xs">
+                      GSTIN: {gst.supplierGstin}
+                      {gst.supplierStateName ? ` · ${gst.supplierStateName}` : ''}
+                    </p>
+                  )}
                 </div>
 
                 <div className="rule" />
@@ -102,12 +122,25 @@ export function PharmacyReceiptDialog({
                 {/* Meta */}
                 <div className="meta">
                   <div>
-                    <span className="muted">Invoice:</span> <b>{bill.billNumber}</b>
+                    <span className="muted">{invoiceNumber ? 'Invoice No:' : 'Bill No:'}</span>{' '}
+                    <b>{invoiceNumber ?? bill.billNumber}</b>
                   </div>
                   <div>
                     <span className="muted">Date:</span> {formatDateTime(bill.billDate)}
                   </div>
                 </div>
+                {invoiceNumber && (
+                  <div className="meta">
+                    <div>
+                      <span className="muted">Bill Ref:</span> {bill.billNumber}
+                    </div>
+                    {gst?.placeOfSupplyStateName && (
+                      <div>
+                        <span className="muted">Place of Supply:</span> {gst.placeOfSupplyStateName}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {bill.patient && (
                   <div className="meta">
                     <div>
@@ -146,7 +179,22 @@ export function PharmacyReceiptDialog({
                       <tr key={it.id}>
                         <td className="l">
                           {it.description}
-                          <div className="muted xs">GST {num(it.taxPercent)}%</div>
+                          {/* HSN against the line it belongs to — Rule 46(g),
+                              and Rule 49 wants it on a bill of supply too. An
+                              exempt line says so rather than reading "GST 0%",
+                              which claims a rate was charged. */}
+                          <div className="muted xs">
+                            {[
+                              it.hsnSacCode ? `HSN ${it.hsnSacCode}` : null,
+                              it.gstTreatment === 'taxable' || num(it.taxPercent) > 0
+                                ? `GST ${num(it.taxPercent)}%`
+                                : it.gstTreatment
+                                  ? it.gstTreatment.replace(/_/g, ' ')
+                                  : null,
+                            ]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </div>
                         </td>
                         <td className="r">{it.quantity}</td>
                         <td className="r">{num(it.unitPrice).toFixed(2)}</td>
@@ -165,9 +213,25 @@ export function PharmacyReceiptDialog({
                   {num(bill.discountAmount) > 0 && (
                     <Row label="Discount" value={`- ${inr(bill.discountAmount)}`} />
                   )}
-                  <Row label="Taxable Value" value={inr(taxable)} muted />
-                  <Row label={`CGST`} value={inr(halfGst)} muted />
-                  <Row label={`SGST`} value={inr(halfGst)} muted />
+                  {(gst?.hasTax ?? num(bill.taxAmount) > 0) && (
+                    <>
+                      <Row label="Taxable Value" value={inr(taxable)} muted />
+                      {/* A supply is either within the state or across it, never
+                          both. Printing the pair that does not apply as ₹0.00
+                          invites a reader to add it in. */}
+                      {gst?.isInterState ? (
+                        <Row label="IGST" value={inr(totals?.igstAmount ?? bill.taxAmount)} muted />
+                      ) : (
+                        <>
+                          <Row label="CGST" value={inr(totals?.cgstAmount ?? 0)} muted />
+                          <Row label="SGST" value={inr(totals?.sgstAmount ?? 0)} muted />
+                        </>
+                      )}
+                      {num(totals?.cessAmount) > 0 && (
+                        <Row label="Cess" value={inr(totals?.cessAmount)} muted />
+                      )}
+                    </>
+                  )}
                   <div className="rule thin" />
                   <Row label="Grand Total" value={inr(bill.totalAmount)} bold />
                   <Row label="Paid" value={inr(bill.amountPaid)} />
@@ -192,6 +256,14 @@ export function PharmacyReceiptDialog({
                 <p className="center muted xs">
                   GST is inclusive in MRP. Goods once sold are returnable only per policy.
                 </p>
+                {/* Rule 46(o)'s reverse-charge line and the exemption note the
+                    rest of the bill relies on — the server's words, so the
+                    receipt and the hospital's other bills say the same thing. */}
+                {gst?.notes?.map((n) => (
+                  <p key={n} className="center muted xs">
+                    {n}
+                  </p>
+                ))}
                 <p className="center muted xs">Get well soon — Thank you!</p>
               </div>
             </div>
