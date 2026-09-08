@@ -14,6 +14,7 @@
 // ───────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DocumentBadge, TreatmentBadge } from '@/components/hospital/gst/gst-badges';
 import { toast } from 'sonner';
 import {
   Loader2, Search, Plus, Trash2, Stethoscope, FlaskConical, Pill, Scan, BedDouble,
@@ -57,12 +58,15 @@ interface BackendBill {
   totalAmount?: string | number;
   amountPaid?: string | number;
   balanceDue?: string | number;
-  billItems?: Array<{
-    id: string; description: string; quantity: number; unitPrice: string | number;
-    discountAmount: string | number; taxPercent: string | number; taxAmount: string | number;
-    totalAmount: string | number; isAutoPulled?: boolean; category?: string;
-  }>;
+  billItems?: BillLineItem[];
   patient?: { id: string; firstName: string; lastName: string; mrn?: string | null };
+  // What this bill IS under GST, once it has been finalised and issued.
+  gstDocumentType?: string | null;
+  invoiceNumber?: string | null;
+  taxableValue?: string | number;
+  cgstAmount?: string | number;
+  sgstAmount?: string | number;
+  igstAmount?: string | number;
 }
 
 interface BillGeneratorDialogProps {
@@ -418,7 +422,7 @@ function ComposeStep({
   }, [effectiveBillId, selectedRefs, pullCharges]);
 
   const handleAddManual = useCallback(
-    async (data: { description: string; quantity: number; unitPrice: number; discount: number; taxRate: number }) => {
+    async (data: { description: string; quantity: number; unitPrice: number; discount: number }) => {
       if (!effectiveBillId) return;
       try {
         await addBillItem.mutateAsync({
@@ -428,7 +432,6 @@ function ComposeStep({
             quantity: data.quantity,
             unitPrice: data.unitPrice,
             discount: data.discount,
-            taxRate: data.taxRate,
           },
         });
         toast.success('Line added');
@@ -452,7 +455,7 @@ function ComposeStep({
   );
 
   const handleUpdateItem = useCallback(
-    async (itemId: string, data: { description?: string; quantity?: number; unitPrice?: number; discount?: number; taxRate?: number }) => {
+    async (itemId: string, data: { description?: string; quantity?: number; unitPrice?: number; discount?: number }) => {
       if (!effectiveBillId) return;
       try {
         await updateBillItem.mutateAsync({ billId: effectiveBillId, itemId, data });
@@ -777,7 +780,6 @@ function ChargesPanel({
                 <th className="px-3 py-2 text-right">Qty</th>
                 <th className="px-3 py-2 text-right">Unit</th>
                 <th className="px-3 py-2 text-right">Total</th>
-                <th className="px-3 py-2 text-right">Tax%</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-container/40">
@@ -822,8 +824,11 @@ function ChargesPanel({
                     </td>
                     <td className="px-3 py-2 text-right font-label text-sm">{row.quantity}</td>
                     <td className="px-3 py-2 text-right font-label text-sm">{fmt(row.unitPrice)}</td>
+                    {/* No tax column here on purpose. A pending charge has not
+                        been priced yet — its rate is decided when it is pulled
+                        onto the bill, and showing a source's guess beforehand is
+                        how the desk learns to distrust the figure that matters. */}
                     <td className="px-3 py-2 text-right font-label text-sm font-bold">{fmt(row.totalAmount)}</td>
-                    <td className="px-3 py-2 text-right font-label text-sm">{row.taxRate}%</td>
                   </tr>
                 );
               })}
@@ -843,14 +848,13 @@ function ManualLineForm({
   onAdd,
   loading,
 }: {
-  onAdd: (data: { description: string; quantity: number; unitPrice: number; discount: number; taxRate: number }) => Promise<void>;
+  onAdd: (data: { description: string; quantity: number; unitPrice: number; discount: number }) => Promise<void>;
   loading: boolean;
 }) {
   const [description, setDescription] = useState('');
   const [quantity, setQuantity] = useState(0);
   const [unitPrice, setUnitPrice] = useState<number | ''>('');
   const [discount, setDiscount] = useState<number | ''>(0);
-  const [taxRate, setTaxRate] = useState<number | ''>(0);
 
   const submit = async () => {
     if (!description.trim()) {
@@ -866,13 +870,12 @@ function ManualLineForm({
       quantity: Number(quantity),
       unitPrice: Number(unitPrice),
       discount: Number(discount) || 0,
-      taxRate: Number(taxRate) || 0,
+
     });
     setDescription('');
     setQuantity(0);
     setUnitPrice('');
     setDiscount(0);
-    setTaxRate(0);
   };
 
   return (
@@ -886,38 +889,6 @@ function ManualLineForm({
           placeholder="Description (e.g. Dressing fee)"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-        />
-        <NumberInput
-          className="col-span-1"
-          min={0}
-          integer
-          value={quantity}
-          onValueChange={setQuantity}
-          placeholder="Qty"
-        />
-        <Input
-          className="col-span-2"
-          type="number"
-          step="0.01"
-          value={unitPrice}
-          onChange={(e) => setUnitPrice(e.target.value === '' ? '' : Number(e.target.value))}
-          placeholder="Unit ₹"
-        />
-        <Input
-          className="col-span-1"
-          type="number"
-          step="0.01"
-          value={discount}
-          onChange={(e) => setDiscount(e.target.value === '' ? '' : Number(e.target.value))}
-          placeholder="Disc"
-        />
-        <Input
-          className="col-span-1"
-          type="number"
-          step="0.01"
-          value={taxRate}
-          onChange={(e) => setTaxRate(e.target.value === '' ? '' : Number(e.target.value))}
-          placeholder="Tax%"
         />
         <Button className="col-span-2" onClick={submit} disabled={loading}>
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Plus className="h-4 w-4 mr-1" /> Add</>}
@@ -935,9 +906,21 @@ type BillLineItem = {
   id: string; description: string; quantity: number; unitPrice: string | number;
   discountAmount: string | number; taxPercent: string | number; taxAmount: string | number;
   totalAmount: string | number; isAutoPulled?: boolean; category?: string;
+  // The tax position the determination engine settled on for this line. Not
+  // typed by anyone — read off the item's code, its tariff, or the rule that
+  // applies (a room over the threshold, a medicine to an admitted patient).
+  hsnSacCode?: string | null;
+  gstTreatment?: string | null;
+  taxableValue?: string | number;
+  cgstAmount?: string | number;
+  sgstAmount?: string | number;
+  igstAmount?: string | number;
+  rateSource?: string | null;
+  taxReason?: string | null;
+  requiresTaxResolution?: boolean;
 };
 
-type BillLineEdit = { description?: string; quantity?: number; unitPrice?: number; discount?: number; taxRate?: number };
+type BillLineEdit = { description?: string; quantity?: number; unitPrice?: number; discount?: number };
 
 function BillLinesPanel({
   items,
@@ -975,10 +958,15 @@ function BillLinesPanel({
             <thead className="sticky top-0 bg-surface-container-lowest">
               <tr className="text-on-surface-variant font-label text-[10px] uppercase tracking-widest border-b border-surface-container">
                 <th className="px-3 py-2">Description</th>
+                <th className="px-3 py-2">HSN / SAC</th>
                 <th className="px-3 py-2 text-right">Qty</th>
                 <th className="px-3 py-2 text-right">Unit</th>
                 <th className="px-3 py-2 text-right">Disc</th>
-                <th className="px-3 py-2 text-right">Tax%</th>
+                <th className="px-3 py-2 text-right">Taxable</th>
+                {/* The engine's answer, not a number anybody typed. */}
+                <th className="px-3 py-2">GST</th>
+                <th className="px-3 py-2 text-right">CGST</th>
+                <th className="px-3 py-2 text-right">SGST</th>
                 <th className="px-3 py-2 text-right">Total</th>
                 <th className="px-3 py-2 w-16"></th>
               </tr>
@@ -1026,23 +1014,33 @@ function BillLineRow({
   const [qty, setQty] = useState<number>(item.quantity);
   const [unit, setUnit] = useState<number>(Number(item.unitPrice));
   const [disc, setDisc] = useState<number>(Number(item.discountAmount));
-  const [tax, setTax] = useState<number>(Number(item.taxPercent));
 
   const start = () => {
     setDesc(item.description);
     setQty(item.quantity);
     setUnit(Number(item.unitPrice));
     setDisc(Number(item.discountAmount));
-    setTax(Number(item.taxPercent));
     setEditing(true);
   };
 
-  const preview = Math.max(0, qty * unit - disc) * (1 + tax / 100);
+  /**
+   * The NET, before tax — deliberately not a total.
+   *
+   * Whether tax is added on top or already inside the price is decided by the
+   * engine, per line: a service is taxed on top, a medicine's MRP has the GST
+   * inside it. The old preview assumed on-top for everything and quietly
+   * disagreed with the saved line on any tax-inclusive item. Showing the net
+   * and letting the total come back from the server is the only figure the
+   * screen can be sure of.
+   */
+  const previewNet = Math.max(0, qty * unit - disc);
 
   const save = async () => {
     if (!desc.trim()) { toast.error('Description is required'); return; }
     if (qty <= 0) { toast.error('Quantity must be positive'); return; }
-    await onUpdate(item.id, { description: desc.trim(), quantity: qty, unitPrice: unit, discount: disc, taxRate: tax });
+    // No rate is sent. The engine re-resolves the line from its code, its
+    // tariff or the rule that applies — which is the whole point of having one.
+    await onUpdate(item.id, { description: desc.trim(), quantity: qty, unitPrice: unit, discount: disc });
     setEditing(false);
   };
 
@@ -1051,6 +1049,9 @@ function BillLineRow({
       <tr className="bg-primary/5">
         <td className="px-3 py-2">
           <Input value={desc} onChange={(e) => setDesc(e.target.value)} className="h-7 text-sm" />
+        </td>
+        <td className="px-3 py-2 font-mono text-[11px] text-on-surface-variant">
+          {item.hsnSacCode ?? '—'}
         </td>
         <td className="px-2 py-2">
           <NumberInput value={qty} onValueChange={setQty} min={0} integer className="h-7 w-14 text-right text-sm" />
@@ -1061,10 +1062,13 @@ function BillLineRow({
         <td className="px-2 py-2">
           <NumberInput value={disc} onValueChange={setDisc} min={0} className="h-7 w-16 text-right text-sm" />
         </td>
-        <td className="px-2 py-2">
-          <NumberInput value={tax} onValueChange={setTax} min={0} max={100} className="h-7 w-14 text-right text-sm" />
+        <td className="px-3 py-2 text-right font-label text-sm">{fmt(previewNet)}</td>
+        <td className="px-3 py-2" colSpan={3}>
+          <span className="font-label text-[10px] text-on-surface-variant">
+            GST is recalculated on save
+          </span>
         </td>
-        <td className="px-3 py-2 text-right font-label text-sm font-bold">{fmt(preview)}</td>
+        <td className="px-3 py-2 text-right font-label text-sm font-bold">{fmt(previewNet)}</td>
         <td className="px-2 py-2">
           <div className="flex items-center justify-end gap-1">
             <button type="button" onClick={save} disabled={updating} title="Save" className="rounded p-1 text-emerald-600 hover:bg-emerald-50 disabled:opacity-40">
@@ -1088,10 +1092,22 @@ function BillLineRow({
           {item.isAutoPulled && <span className="ml-2 text-primary">· auto</span>}
         </p>
       </td>
+      <td className="px-3 py-2 font-mono text-[11px] text-on-surface-variant">
+        {item.hsnSacCode ?? '—'}
+      </td>
       <td className="px-3 py-2 text-right font-label text-sm">{item.quantity}</td>
       <td className="px-3 py-2 text-right font-label text-sm">{fmt(Number(item.unitPrice))}</td>
       <td className="px-3 py-2 text-right font-label text-sm">{fmt(Number(item.discountAmount))}</td>
-      <td className="px-3 py-2 text-right font-label text-sm">{Number(item.taxPercent)}%</td>
+      <td className="px-3 py-2 text-right font-label text-sm">{fmt(Number(item.taxableValue ?? 0))}</td>
+      <td className="px-3 py-2" title={item.taxReason ?? undefined}>
+        <TreatmentBadge
+          treatment={item.gstTreatment}
+          ratePercent={Number(item.taxPercent)}
+          requiresResolution={item.requiresTaxResolution}
+        />
+      </td>
+      <td className="px-3 py-2 text-right font-label text-sm">{fmt(Number(item.cgstAmount ?? 0))}</td>
+      <td className="px-3 py-2 text-right font-label text-sm">{fmt(Number(item.sgstAmount ?? 0))}</td>
       <td className="px-3 py-2 text-right font-label text-sm font-bold">{fmt(Number(item.totalAmount))}</td>
       <td className="px-2 py-2">
         <div className="flex items-center justify-end gap-1">
@@ -1234,6 +1250,9 @@ function BillSummaryPanel({
     subtotal?: string | number; discountAmount?: string | number;
     taxAmount?: string | number; totalAmount?: string | number;
     amountPaid?: string | number; balanceDue?: string | number;
+    taxableValue?: string | number; cgstAmount?: string | number;
+    sgstAmount?: string | number; igstAmount?: string | number;
+    gstDocumentType?: string | null; invoiceNumber?: string | null;
   } | null;
 }) {
   const rows = useMemo(() => {
@@ -1241,6 +1260,10 @@ function BillSummaryPanel({
     return {
       subtotal: Number(bill.subtotal ?? 0),
       discount: Number(bill.discountAmount ?? 0),
+      taxable: Number(bill.taxableValue ?? 0),
+      cgst: Number(bill.cgstAmount ?? 0),
+      sgst: Number(bill.sgstAmount ?? 0),
+      igst: Number(bill.igstAmount ?? 0),
       tax: Number(bill.taxAmount ?? 0),
       total: Number(bill.totalAmount ?? 0),
       paid: Number(bill.amountPaid ?? 0),
@@ -1257,9 +1280,27 @@ function BillSummaryPanel({
         <p className="text-xs text-on-surface-variant">No bill yet.</p>
       ) : (
         <>
+          {/* What this bill is called, once it has been issued. A draft shows
+              nothing — it has no name and no number yet. */}
+          <DocumentBadge
+            documentType={bill?.gstDocumentType}
+            invoiceNumber={bill?.invoiceNumber}
+            className="pb-1"
+          />
           <SummaryRow label="Subtotal" value={fmt(rows.subtotal)} />
           <SummaryRow label="Discount" value={`− ${fmt(rows.discount)}`} negative />
-          <SummaryRow label="Tax (GST)" value={fmt(rows.tax)} />
+          <SummaryRow label="Taxable value" value={fmt(rows.taxable)} muted />
+          {/* Broken out the way the return asks for it. CGST/SGST and IGST are
+              mutually exclusive, so only the pair that applies is shown. */}
+          {rows.igst > 0 ? (
+            <SummaryRow label="IGST" value={fmt(rows.igst)} muted />
+          ) : (
+            <>
+              <SummaryRow label="CGST" value={fmt(rows.cgst)} muted />
+              <SummaryRow label="SGST" value={fmt(rows.sgst)} muted />
+            </>
+          )}
+          <SummaryRow label="Total GST" value={fmt(rows.tax)} />
           <div className="h-px bg-surface-container my-1" />
           <SummaryRow label="Total" value={fmt(rows.total)} bold />
           <SummaryRow label="Paid" value={fmt(rows.paid)} muted />

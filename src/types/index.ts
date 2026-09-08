@@ -473,6 +473,33 @@ export interface BillItem {
   discount: number;
   tax: number;
   total: number;
+
+  /**
+   * The line's frozen GST position, decided by the determination engine when
+   * the charge was priced — not by whoever was at the counter.
+   *
+   * Optional because a bill raised before any of this existed carries none,
+   * and a screen that renders `undefined` as 0% would be claiming a position
+   * nothing established.
+   */
+  hsnSacCode?: string | null;
+  gstTreatment?: 'taxable' | 'exempt' | 'nil_rated' | 'non_gst' | 'zero_rated' | null;
+  taxPercent?: number | string;
+  taxableValue?: number | string;
+  taxAmount?: number | string;
+  cgstRate?: number | string;
+  cgstAmount?: number | string;
+  sgstRate?: number | string;
+  sgstAmount?: number | string;
+  igstRate?: number | string;
+  igstAmount?: number | string;
+  cessAmount?: number | string;
+  /** Which rule decided it — 'hsn_master', 'room_rule', 'inpatient_composite'… */
+  rateSource?: string | null;
+  /** Plain words for why, straight from the engine. */
+  taxReason?: string | null;
+  /** Taxable, unapproved, no code behind it. Somebody typed this rate. */
+  requiresTaxResolution?: boolean;
 }
 
 export interface Payment {
@@ -516,7 +543,43 @@ export interface Bill {
   tenantId: string;
   createdAt: string;
   updatedAt: string;
+
+  /**
+   * What this bill IS as a GST document, and the number it was issued under.
+   *
+   * Both are null until the bill is finalised: a draft is a basket, not a
+   * document, and it has no name and no number to show.
+   */
+  gstDocumentType?: 'tax_invoice' | 'bill_of_supply' | 'invoice_cum_bill_of_supply' | null;
+  invoiceNumber?: string | null;
+  financialYear?: string | null;
+  taxableValue?: number | string;
+  cgstAmount?: number | string;
+  sgstAmount?: number | string;
+  igstAmount?: number | string;
+  cessAmount?: number | string;
+  roundOff?: number | string;
+  supplierGstin?: string | null;
+  recipientGstin?: string | null;
+  placeOfSupplyStateCode?: string | null;
+  isInterState?: boolean;
 }
+
+/** What a GST document is called on screen. The law's words, not ours. */
+export const GST_DOCUMENT_LABELS: Record<string, string> = {
+  tax_invoice: 'Tax Invoice',
+  bill_of_supply: 'Bill of Supply',
+  invoice_cum_bill_of_supply: 'Invoice-cum-Bill of Supply',
+};
+
+/** How a line's tax treatment reads to a person. */
+export const GST_TREATMENT_LABELS: Record<string, string> = {
+  taxable: 'Taxable',
+  exempt: 'Exempt',
+  nil_rated: 'Nil rated',
+  non_gst: 'Non-GST',
+  zero_rated: 'Zero rated',
+};
 
 // --- Patient Hospital Connections ---
 export interface HospitalConnection {

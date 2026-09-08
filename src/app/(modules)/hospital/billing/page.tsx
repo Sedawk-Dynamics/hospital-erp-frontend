@@ -17,6 +17,7 @@ import { CollectBillPaymentDialog } from '@/components/hospital/billing/collect-
 import { BillGeneratorDialog } from '@/components/hospital/billing/bill-generator-dialog';
 import { IpBillingTab } from '@/components/hospital/billing/ip-billing-tab';
 import { fullName } from '@/lib/person-name';
+import { DocumentBadge } from '@/components/hospital/gst/gst-badges';
 
 type TopAction = 'op-list' | 'draft' | 'order-list' | null;
 
@@ -185,6 +186,9 @@ function BillingTab({
             <thead>
               <tr className="text-on-surface-variant font-label text-[10px] uppercase tracking-widest border-b border-surface-container">
                 <th className="px-4 pb-4 pt-5 font-semibold">Bill #</th>
+                {/* What the bill IS under GST. Staff cannot otherwise tell a
+                    Tax Invoice from a Bill of Supply without opening it. */}
+                <th className="px-4 pb-4 pt-5 font-semibold">Document</th>
                 <th className="px-4 pb-4 pt-5 font-semibold">Patient</th>
                 <th className="px-4 pb-4 pt-5 font-semibold">Date</th>
                 <th className="px-4 pb-4 pt-5 font-semibold text-right">Total</th>
@@ -196,13 +200,13 @@ function BillingTab({
             <tbody className="divide-y divide-surface-container/50">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center">
+                  <td colSpan={8} className="px-4 py-8 text-center">
                     <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                   </td>
                 </tr>
               ) : bills.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center font-label text-on-surface-variant">No bills found.</td>
+                  <td colSpan={8} className="px-4 py-8 text-center font-label text-on-surface-variant">No bills found.</td>
                 </tr>
               ) : (
                 bills.map((bill) => {
@@ -221,6 +225,12 @@ function BillingTab({
                       className="group hover:bg-surface-container-low transition-colors cursor-pointer"
                     >
                       <td className="px-4 py-4 font-label text-sm font-bold">{bill.billNumber}</td>
+                      <td className="px-4 py-4">
+                        <DocumentBadge
+                          documentType={(bill as { gstDocumentType?: string | null }).gstDocumentType}
+                          invoiceNumber={(bill as { invoiceNumber?: string | null }).invoiceNumber}
+                        />
+                      </td>
                       <td className="px-4 py-4 font-label text-sm">
                         {bill.patient ? fullName(bill.patient) : '-'}
                       </td>

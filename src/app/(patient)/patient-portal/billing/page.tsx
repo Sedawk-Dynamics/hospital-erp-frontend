@@ -27,8 +27,17 @@ export default function PatientBillingPage() {
       const res = await apiGet<Array<{
         id: string; billNumber: string; total: number; paidAmount: number;
         balanceAmount: number; status: string; createdAt: string;
-        billItems?: Array<{ description?: string; totalAmount?: number }>;
+        billItems?: Array<{
+          description?: string; totalAmount?: number;
+          hsnSacCode?: string | null; gstTreatment?: string | null;
+          taxPercent?: number | string; taxAmount?: number | string;
+        }>;
         patient?: { tenant?: { name?: string } };
+        // What the hospital issued this as, and the tax inside it.
+        gstDocumentType?: string | null; invoiceNumber?: string | null;
+        taxAmount?: number | string;
+        cgstAmount?: number | string; sgstAmount?: number | string;
+        igstAmount?: number | string;
       }>>('/patient-portal/billing', { params });
       return res.data ?? [];
     },
@@ -107,10 +116,27 @@ export default function PatientBillingPage() {
                   key={bill.id}
                   className="hover:bg-surface-container-low transition-colors"
                 >
-                  <td className="px-4 py-3 font-label font-bold text-on-surface">{bill.billNumber}</td>
+                  <td className="px-4 py-3 font-label font-bold text-on-surface">
+                    {/* The number the hospital issued it under, where there is
+                        one — that is what the patient quotes back. */}
+                    {bill.invoiceNumber ?? bill.billNumber}
+                    {bill.invoiceNumber ? (
+                      <span className="block font-label text-[10px] font-normal text-on-surface-variant">
+                        {bill.billNumber}
+                      </span>
+                    ) : null}
+                  </td>
                   <td className="px-4 py-3 text-on-surface-variant">{formatDate(bill.createdAt)}</td>
                   <td className="px-4 py-3 text-right font-label font-bold text-on-surface">
                     {`\u20B9${Number(bill.total).toLocaleString('en-IN')}`}
+                    {/* Say what the tax inside it was — including when it is
+                        nothing. Most of a hospital bill is exempt, and a patient
+                        who cannot see that assumes tax is buried in the total. */}
+                    <span className="block font-label text-[10px] font-normal text-on-surface-variant">
+                      {Number(bill.taxAmount ?? 0) > 0
+                        ? `incl. GST \u20B9${Number(bill.taxAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
+                        : 'no GST charged'}
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-right text-primary font-label font-semibold">
                     {`\u20B9${Number(bill.paidAmount).toLocaleString('en-IN')}`}

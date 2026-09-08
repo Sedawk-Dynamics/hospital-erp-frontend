@@ -1347,6 +1347,60 @@ export interface PharmacySale {
 }
 
 // Bill an entire cart as ONE invoice (partial / loose / walk-in / GST / payment).
+export interface SalePreviewLine {
+  drugBatchId: string;
+  drugName: string;
+  quantity: number;
+  unitPrice: number;
+  discountAmount: number;
+  hsnSacCode: string | null;
+  gstTreatment: string;
+  taxRatePercent: number;
+  taxableValue: number;
+  taxAmount: number;
+  cgstAmount: number;
+  sgstAmount: number;
+  igstAmount: number;
+  totalAmount: number;
+  taxReason: string;
+}
+
+export interface SalePreview {
+  lines: SalePreviewLine[];
+  totals: {
+    taxableValue: number; cgstAmount: number; sgstAmount: number;
+    igstAmount: number; taxAmount: number; totalAmount: number;
+  };
+}
+
+/**
+ * Price the cart on the SERVER while the cashier is still building it.
+ *
+ * The POS used to work its own GST out in the browser, falling back to a bare
+ * 12% for a drug with no rate — not a rate any medicine carries after GST 2.0,
+ * and the common case rather than the rare one. The cashier quoted one figure
+ * and the receipt printed another.
+ *
+ * This asks the same resolver the sale itself runs, so the quote IS the bill.
+ * Debounced by the query key: a cart that has not changed is not re-priced.
+ */
+export function useSalePreview(
+  items: Array<{
+    drugBatchId: string; quantity: number; saleUnit?: 'pack' | 'loose';
+    unitPrice?: number; discountPercent?: number;
+  }>,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ['pharmacy', 'sale-preview', items],
+    queryFn: async () =>
+      (await apiPost<SalePreview>('/pharmacy/sales/preview', { items })).data,
+    enabled: enabled && items.length > 0,
+    // The cart is the truth; a stale price is worse than none.
+    staleTime: 0,
+  });
+}
+
 export function useCreatePharmacySale() {
   const queryClient = useQueryClient();
   return useMutation({

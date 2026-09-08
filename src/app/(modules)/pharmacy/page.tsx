@@ -39,6 +39,7 @@ import {
   useFormulary,
   useBatchesByDrug,
   useCreatePharmacySale,
+  useSalePreview,
   useDispenseIpPrescription,
   useControlledDrugSettings,
   useResolveScan,
@@ -189,12 +190,17 @@ function computeItemNet(item: CartItem): number {
   return gross - gross * (item.discount / 100);
 }
 
-// GST embedded in the MRP (prices are tax-inclusive).
-function computeItemTax(item: CartItem): number {
-  const net = computeItemNet(item);
-  const rate = item.taxPercent || 0;
-  return net - net / (1 + rate / 100);
-}
+/**
+ * The browser no longer works out the tax.
+ *
+ * It used to: net minus net/(1+rate), with the rate falling back to a bare 12%
+ * for any drug that had none — which is not a rate any medicine carries after
+ * GST 2.0, and was the common case rather than the rare one. The cashier quoted
+ * one figure and the receipt printed another.
+ *
+ * The server prices the cart now, through the same resolver the sale runs, so
+ * what is quoted IS what is billed. See `useSalePreview`.
+ */
 
 function computeItemMargin(item: CartItem): number {
   const cost = item.purchasePrice * baseQtyOf(item);
@@ -376,7 +382,9 @@ function PharmacyPOS() {
           packSize: 1,
           looseUnitLabel: 'unit',
           dosageForm: null,
-          taxPercent: 12,
+          // No rate is guessed here any more — the server resolves it. Kept at
+          // zero so nothing downstream can mistake a placeholder for an answer.
+          taxPercent: 0,
           // Prescriptions are written in loose units (tablets), never packs —
           // bill the exact count the doctor ordered.
           saleUnit: 'loose',
@@ -543,7 +551,7 @@ function PharmacyPOS() {
           packSize: pack,
           looseUnitLabel: looseUnitLabel(item.dosageForm, item.looseUnitLabel),
           dosageForm: item.dosageForm ?? null,
-          taxPercent: item.taxPercent != null ? toNum(item.taxPercent) : 12,
+          taxPercent: item.taxPercent != null ? toNum(item.taxPercent) : 0,
           // Default to loose so "give me X" works out of the box; the cashier
           // can flip to pack selling when a packSize is configured.
           saleUnit: pack > 1 ? 'loose' : 'pack',
@@ -676,12 +684,52 @@ function PharmacyPOS() {
     const subtotal = cart.reduce((s, c) => s + computeItemGross(c), 0);
     const totalDiscount = cart.reduce((s, c) => s + computeItemGross(c) * (c.discount / 100), 0);
     const afterDiscount = subtotal - totalDiscount;
-    const totalTax = cart.reduce((s, c) => s + computeItemTax(c), 0);
     const rounded = Math.round(afterDiscount);
     const roundOff = Math.round((rounded - afterDiscount) * 100) / 100;
     const margin = cart.reduce((s, c) => s + computeItemMargin(c), 0);
-    return { subtotal, totalDiscount, afterDiscount, totalTax, rounded, roundOff, margin };
+    return { subtotal, totalDiscount, afterDiscount, rounded, roundOff, margin };
   }, [cart]);
+
+  /**
+   * What the server says this cart is taxed at.
+   *
+   * Only what changes the tax is sent — batch, quantity, unit, price, discount
+   * — so the preview refires when one of those moves and not when anything else
+   * on the screen does.
+   */
+  const previewItems = useMemo(
+    () =>
+      cart
+        // A cart row with no batch behind it is not sellable and cannot be
+        // priced — the checkout refuses it, and quoting it would be a guess.
+        .filter((c): c is typeof c & { batchId: string } => !!c.batchId)
+        .map((c) => ({
+          drugBatchId: c.batchId,
+          quantity: c.quantity,
+          saleUnit: c.saleUnit,
+          unitPrice: c.sellingPrice,
+          discountPercent: c.discount,
+        })),
+    [cart],
+  );
+  const salePreview = useSalePreview(previewItems, previewItems.length > 0);
+  const gst = salePreview.data?.totals;
+  /**
+   * The server's answer per line, so a cart row shows the rate it will actually
+   * be billed at. Keyed by batch: two rows on the same batch are the same drug
+   * and carry the same rate, so a collision is the right answer anyway.
+   */
+  const gstByBatch = useMemo(() => {
+    const m = new Map<string, { taxRatePercent: number; gstTreatment: string; taxReason: string }>();
+    for (const l of salePreview.data?.lines ?? []) {
+      m.set(l.drugBatchId, {
+        taxRatePercent: l.taxRatePercent,
+        gstTreatment: l.gstTreatment,
+        taxReason: l.taxReason,
+      });
+    }
+    return m;
+  }, [salePreview.data]);
 
   // G2: bill-level discount on top of per-item discounts → final payable.
   const billDiscPctNum = Math.min(100, Math.max(0, Number(billDiscPct) || 0));
@@ -1502,11 +1550,25 @@ function PharmacyPOS() {
                       </td>
                       <td className="px-3 py-2.5 text-right font-medium">
                         {`₹${fmt(computeItemNet(item))}`}
-                        {item.taxPercent > 0 && (
-                          <div className="text-[10px] font-normal text-muted-foreground">
-                            incl. GST {item.taxPercent}%
-                          </div>
-                        )}
+                        {/* The rate the SERVER resolved for this line. It used
+                            to print the browser's own guess, which fell back to
+                            12% for any drug with no rate on it. */}
+                        {(() => {
+                          const g = item.batchId ? gstByBatch.get(item.batchId) : undefined;
+                          if (!g) return null;
+                          return (
+                            <div
+                              className="text-[10px] font-normal text-muted-foreground"
+                              title={g.taxReason}
+                            >
+                              {g.gstTreatment === 'taxable'
+                                ? `incl. GST ${g.taxRatePercent}%`
+                                : g.gstTreatment === 'exempt'
+                                  ? 'exempt'
+                                  : g.gstTreatment.replace(/_/g, ' ')}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="px-3 py-2.5 text-center">
                         <button
@@ -1618,10 +1680,48 @@ function PharmacyPOS() {
                 {summary.totalDiscount > 0 ? `-₹${fmt(summary.totalDiscount)}` : '0.00'}
               </span>
             </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-muted-foreground">Incl. GST</span>
-              <span className="text-muted-foreground">₹{fmt(summary.totalTax)}</span>
-            </div>
+            {/* The server's figure, broken out the way the receipt will print
+                it. CGST/SGST and IGST are mutually exclusive, so only the pair
+                that applies is shown — and a cart with no tax says so rather
+                than showing a silent zero. */}
+            {salePreview.isLoading ? (
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">GST</span>
+                <span className="text-muted-foreground">pricing…</span>
+              </div>
+            ) : gst ? (
+              <>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Taxable value</span>
+                  <span className="text-muted-foreground">₹{fmt(gst.taxableValue)}</span>
+                </div>
+                {gst.igstAmount > 0 ? (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-muted-foreground">IGST</span>
+                    <span className="text-muted-foreground">₹{fmt(gst.igstAmount)}</span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">CGST</span>
+                      <span className="text-muted-foreground">₹{fmt(gst.cgstAmount)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">SGST</span>
+                      <span className="text-muted-foreground">₹{fmt(gst.sgstAmount)}</span>
+                    </div>
+                  </>
+                )}
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">
+                    {gst.taxAmount > 0 ? 'Incl. GST' : 'GST'}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {gst.taxAmount > 0 ? `₹${fmt(gst.taxAmount)}` : 'exempt'}
+                  </span>
+                </div>
+              </>
+            ) : null}
             {summary.roundOff !== 0 && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Round Off</span>
