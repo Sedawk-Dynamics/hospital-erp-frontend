@@ -70,20 +70,36 @@ function AddChargeDialog({
   const [description, setDescription] = useState('');
   const [quantity, setQuantity] = useState(0);
   const [unitPrice, setUnitPrice] = useState<number>(0);
-  const [taxRate, setTaxRate] = useState<number>(0);
 
   const reset = () => {
-    setCategory(defaultCat); setDescription(''); setQuantity(0); setUnitPrice(0); setTaxRate(0);
+    setCategory(defaultCat); setDescription(''); setQuantity(0); setUnitPrice(0);
   };
 
-  const total = Math.max(0, unitPrice) * Math.max(0, quantity) * (1 + Math.max(0, taxRate) / 100);
+  /**
+   * The NET, before tax — deliberately not a total.
+   *
+   * There used to be a "Tax %" box here and this line read
+   * `unitPrice × quantity × (1 + taxRate/100)`. The server has resolved the
+   * rate from the tariff and the inpatient rule for some time now and ignores
+   * whatever is typed, so the box did nothing except make the screen disagree
+   * with the ledger: 18% typed on a ₹1,000 dressing previewed ₹1,180 and
+   * posted ₹1,000 exempt.
+   *
+   * Showing the net and letting the tax come back from the server is the only
+   * figure this screen can be sure of — the same rule the bill generator
+   * follows. Everything on an admission's ledger is supplied to an admitted
+   * patient in the course of treatment, so it is almost always exempt anyway.
+   */
+  const net = Math.max(0, unitPrice) * Math.max(0, quantity);
 
   const submit = async () => {
     if (!description.trim()) { toast.error('Enter a description.'); return; }
     if (!(unitPrice > 0)) { toast.error('Enter a unit price.'); return; }
     if (!(quantity > 0)) { toast.error('Enter a quantity.'); return; }
     try {
-      await add.mutateAsync({ category, description: description.trim(), quantity, unitPrice, taxRate });
+      // No rate is sent. The ledger resolves it from the tariff, the item's
+      // SAC code and the inpatient composite-supply rule.
+      await add.mutateAsync({ category, description: description.trim(), quantity, unitPrice });
       toast.success('Charge added to the ledger.');
       reset();
       onOpenChange(false);
@@ -124,20 +140,20 @@ function AddChargeDialog({
             <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Dressing change, Oxygen (per hour), IV cannula" className="mt-1 h-8 text-sm" />
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <Label className="text-[10px] uppercase tracking-widest text-muted-foreground">Unit price (₹)</Label>
-              <NumberInput min={0} step="0.01" value={unitPrice} onValueChange={setUnitPrice} className="mt-1 h-8 text-sm" />
-            </div>
-            <div>
-              <Label className="text-[10px] uppercase tracking-widest text-muted-foreground">Tax %</Label>
-              <NumberInput min={0} max={100} step="0.01" value={taxRate} onValueChange={setTaxRate} className="mt-1 h-8 text-sm" />
-            </div>
+          <div>
+            <Label className="text-[10px] uppercase tracking-widest text-muted-foreground">Unit price (₹)</Label>
+            <NumberInput min={0} step="0.01" value={unitPrice} onValueChange={setUnitPrice} className="mt-1 h-8 text-sm" />
           </div>
 
-          <div className="rounded-md bg-muted/40 px-3 py-2 text-sm flex items-center justify-between">
-            <span className="text-muted-foreground">Line total</span>
-            <span className="font-semibold">{money(total)}</span>
+          <div className="rounded-md bg-muted/40 px-3 py-2 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Line net</span>
+              <span className="font-semibold">{money(net)}</span>
+            </div>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              GST is decided by the ledger from the charge&apos;s own classification —
+              treatment given to an admitted patient is exempt.
+            </p>
           </div>
         </div>
 
