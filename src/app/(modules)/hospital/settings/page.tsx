@@ -42,6 +42,10 @@ const settingsGroups: SettingsGroup[] = [
       { label: 'Service Master Configuration', href: '/hospital/settings/services' },
       { label: 'Registration Fee', href: '/hospital/settings/registration-fee' },
       { label: 'GST Registration', href: '/hospital/settings/gst' },
+      // Where the auditor maps each service to a SAC code and signs it off.
+      // Until a tariff is approved its own rate is not used, so this is not
+      // optional setup — it is what makes the classification take effect.
+      { label: 'GST Classification', href: '/hospital/settings/gst-classification' },
     ],
   },
   {
