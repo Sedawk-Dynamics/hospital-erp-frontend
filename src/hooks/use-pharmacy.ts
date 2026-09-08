@@ -2475,8 +2475,17 @@ export function useUnrecallBatch() {
 // GST Report
 // ============================================================
 
+/**
+ * The pharmacy's GST position — the A-2 rate-wise summary cut to this
+ * department, folded from the same bill lines the hospital files from.
+ *
+ * There used to be a `gstRate` on both sides of this: the screen asked the user
+ * to pick one (defaulting to 12%) and the server applied it to every dispense.
+ * Every line already carries the rate it was billed at, so there is nothing to
+ * pick — and 12% stopped being a slab on 22 September 2025.
+ */
 export interface GstReport {
-  gstRate: number;
+  period: { from: string | null; to: string | null };
   summary: {
     totalSales: number;
     taxableValue: number;
@@ -2485,10 +2494,34 @@ export interface GstReport {
     sgst: number;
     igst: number;
     transactions: number;
+    lines: number;
   };
+  byRate: Array<{
+    treatment: string;
+    label: string;
+    ratePercent: number;
+    taxableValue: number;
+    cgstAmount: number;
+    sgstAmount: number;
+    igstAmount: number;
+    taxAmount: number;
+    totalAmount: number;
+    lines: number;
+  }>;
+  byHsn: Array<{
+    hsnSacCode: string | null;
+    ratePercent: number;
+    taxableValue: number;
+    taxAmount: number;
+    totalAmount: number;
+    lines: number;
+  }>;
   byDrug: Array<{
     drugId: string;
     drugName: string;
+    hsnSacCode: string | null;
+    ratePercent: number;
+    treatment: string;
     taxableValue: number;
     gstAmount: number;
     totalAmount: number;
@@ -2496,7 +2529,7 @@ export interface GstReport {
   }>;
 }
 
-export function useGstReport(params?: { fromDate?: string; toDate?: string; gstRate?: number }) {
+export function useGstReport(params?: { fromDate?: string; toDate?: string }) {
   return useQuery({
     queryKey: ['pharmacy', 'gst', params],
     queryFn: async () => {
