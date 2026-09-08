@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
 import { BillPrintDialog } from '@/components/hospital/billing/bill-print-dialog';
+import { TreatmentBadge } from '@/components/hospital/gst/gst-badges';
 import {
   useAdmissionLedger, useAddIpCharge, useRemoveIpCharge, useAdmissionActivity,
   type ActivityEvent, type LedgerLine,
@@ -440,6 +441,8 @@ export function IpLedgerPanel({ admissionId, patientId, role }: { admissionId: s
                       <th className="px-2 py-1.5 whitespace-nowrap">Date / Time</th>
                       <th className="px-2 py-1.5">Item</th>
                       <th className="px-2 py-1.5">Category</th>
+                      <th className="px-2 py-1.5">HSN / SAC</th>
+                      <th className="px-2 py-1.5">GST</th>
                       <th className="px-2 py-1.5 text-right">Qty</th>
                       <th className="px-2 py-1.5 text-right">Total</th>
                       <th className="px-2 py-1.5 text-center">Status</th>
@@ -452,6 +455,20 @@ export function IpLedgerPanel({ admissionId, patientId, role }: { admissionId: s
                         <td className="px-2 py-1.5 whitespace-nowrap text-muted-foreground">{l.at ? formatDateTimeAmPm(l.at) : '—'}</td>
                         <td className="px-2 py-1.5 max-w-[240px]"><span className="truncate block">{l.description}</span></td>
                         <td className="px-2 py-1.5 capitalize text-muted-foreground">{catLabel(l.category)}</td>
+                        <td className="px-2 py-1.5 font-mono text-[10px] text-muted-foreground">{l.hsnSac ?? '—'}</td>
+                        <td className="px-2 py-1.5">
+                          {/* A pending charge has not been priced onto a bill
+                              yet, so it has no tax position at all — showing a
+                              badge would claim a classification nothing made. */}
+                          {l.status === 'pending' ? (
+                            <span className="text-[10px] text-muted-foreground">on billing</span>
+                          ) : (
+                            <TreatmentBadge
+                              treatment={l.gstTreatment}
+                              ratePercent={l.taxRatePercent}
+                            />
+                          )}
+                        </td>
                         <td className="px-2 py-1.5 text-right">{l.quantity}</td>
                         <td className="px-2 py-1.5 text-right font-medium">{money(l.totalAmount)}</td>
                         <td className="px-2 py-1.5 text-center">

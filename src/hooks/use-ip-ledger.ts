@@ -19,6 +19,20 @@ export interface LedgerLine {
   addedByMe?: boolean;
   status: 'posted' | 'pending';
   at: string;
+  // The line's frozen tax position. The ledger has carried these since the
+  // determination engine went in; nothing on screen was reading them.
+  hsnSac?: string | null;
+  gstTreatment?: string | null;
+  taxRatePercent?: number;
+  taxableValue?: number;
+  taxAmount?: number;
+  cgstRate?: number;
+  cgstAmount?: number;
+  sgstRate?: number;
+  sgstAmount?: number;
+  igstRate?: number;
+  igstAmount?: number;
+  cessAmount?: number;
 }
 
 export interface AdmissionLedger {
