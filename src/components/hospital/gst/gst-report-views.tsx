@@ -110,6 +110,33 @@ export function RateSummaryView({ q }: { q: Q }) {
           { label: 'Lines', value: String(data?.totals.count ?? 0) },
         ]}
       />
+
+      {/* The one that gets a return REJECTED rather than merely queried.
+          The portal validates every rate against the slabs in force, so a line
+          at 2%, 10% or a post-September-2025 12% fails the upload — and this
+          hospital's register is full of them. The finalisation gate stops new
+          ones; these are already issued and nothing was saying so. */}
+      {(data?.illegalRates?.lines ?? 0) > 0 && (
+        <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900">
+          <p className="font-medium">
+            {data!.illegalRates.lines} line(s) at a rate that was not a legal slab
+          </p>
+          <p className="mt-1 text-xs">
+            {data!.illegalRates.rates.map((r) => `${r}%`).join(', ')} —{' '}
+            {money(data!.illegalRates.taxableValue)} of value carrying{' '}
+            {money(data!.illegalRates.taxAmount)} of tax. The portal will reject a return
+            filed from this register. Correct each with a credit note and a fresh invoice at
+            the right rate; the unmapped items report (C-3) lists them.
+          </p>
+          {data!.illegalRates.bills.length > 0 && (
+            <p className="mt-1 font-mono text-[11px]">
+              {data!.illegalRates.bills.slice(0, 12).join(', ')}
+              {data!.illegalRates.bills.length > 12 ? ' …' : ''}
+            </p>
+          )}
+        </div>
+      )}
+
       <section className="space-y-2">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold">By rate — feeds GSTR-3B 3.1(a)</h3>
