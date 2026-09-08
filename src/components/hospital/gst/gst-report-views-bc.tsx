@@ -76,9 +76,42 @@ export function ItcSummaryView({ q }: { q: Q }) {
           },
         ]}
       />
+      {/* The ladder the review document asks for. This report used to stop at
+          gross credit, which for a hospital is the rung that flatters it: most
+          of that number is reversed again under Rule 42, and the accountant had
+          to assemble the real answer from B-2 and B-3 in their head.
+          `null` shows as a dash, never a zero — "not recorded here" and
+          "nothing was claimed" are very different statements. */}
+      {(data?.ladder?.length ?? 0) > 0 && (
+        <section className="space-y-2">
+          <h3 className="text-sm font-semibold">What the hospital actually keeps</h3>
+          <div className="overflow-hidden rounded-lg border border-border">
+            {data!.ladder.map((r, i) => (
+              <div
+                key={r.key}
+                className={`flex items-start justify-between gap-4 px-3 py-2 ${
+                  i % 2 ? 'bg-surface-container-lowest' : ''
+                } ${r.key === 'eligible' ? 'border-y border-border font-medium' : ''}`}
+              >
+                <div className="min-w-0">
+                  <p className="text-sm">{r.label}</p>
+                  <p className="text-[11px] text-on-surface-variant">{r.source}</p>
+                </div>
+                <p className="shrink-0 font-label text-sm tabular-nums">
+                  {r.amount === null ? (
+                    <span className="text-on-surface-variant">—</span>
+                  ) : (
+                    money(r.amount)
+                  )}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
       <ReportNotes
         notes={[
-          'This is credit BEFORE reversal. What the hospital actually keeps is the Rule 42 / 43 working — for a hospital the gap between the two is most of the number.',
+          'The figures below are credit BEFORE reversal, cut by rate and by supplier. The ladder above is what the hospital actually keeps.',
           data?.coverage ?? '',
         ].filter(Boolean)}
       />
