@@ -25,8 +25,16 @@ export default function PatientBillingPage() {
       if (hospitalFilter) params.tenantId = hospitalFilter;
       if (selectedProfileId) params.profileId = selectedProfileId;
       const res = await apiGet<Array<{
-        id: string; billNumber: string; total: number; paidAmount: number;
-        balanceAmount: number; status: string; createdAt: string;
+        id: string; billNumber: string; status: string; createdAt: string;
+        // The API returns Prisma's own column names. This screen asked for
+        // `total` / `paidAmount` / `balanceAmount`, which no response has ever
+        // carried — so every figure on it rendered as ₹NaN, and the balance
+        // column fell to "-" because NaN > 0 is false. The old names are kept
+        // as a fallback in case an older payload still uses them.
+        totalAmount?: number | string; amountPaid?: number | string;
+        balanceDue?: number | string;
+        total?: number | string; paidAmount?: number | string;
+        balanceAmount?: number | string;
         billItems?: Array<{
           description?: string; totalAmount?: number;
           hsnSacCode?: string | null; gstTreatment?: string | null;
@@ -44,7 +52,15 @@ export default function PatientBillingPage() {
   });
 
   const bills = data ?? [];
-  const totalDue = bills.reduce((s, b) => s + (Number(b.balanceAmount) || 0), 0);
+  /** A money figure off a bill, whichever name the payload carries it under. */
+  const money = (...vals: Array<number | string | undefined>) => {
+    for (const v of vals) {
+      const n = Number(v);
+      if (v !== undefined && v !== null && Number.isFinite(n)) return n;
+    }
+    return 0;
+  };
+  const totalDue = bills.reduce((s, b) => s + money(b.balanceDue, b.balanceAmount), 0);
 
   return (
     <div className="space-y-6">
@@ -128,7 +144,7 @@ export default function PatientBillingPage() {
                   </td>
                   <td className="px-4 py-3 text-on-surface-variant">{formatDate(bill.createdAt)}</td>
                   <td className="px-4 py-3 text-right font-label font-bold text-on-surface">
-                    {`\u20B9${Number(bill.total).toLocaleString('en-IN')}`}
+                    {`\u20B9${money(bill.totalAmount, bill.total).toLocaleString('en-IN')}`}
                     {/* Say what the tax inside it was — including when it is
                         nothing. Most of a hospital bill is exempt, and a patient
                         who cannot see that assumes tax is buried in the total. */}
@@ -139,11 +155,11 @@ export default function PatientBillingPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right text-primary font-label font-semibold">
-                    {`\u20B9${Number(bill.paidAmount).toLocaleString('en-IN')}`}
+                    {`\u20B9${money(bill.amountPaid, bill.paidAmount).toLocaleString('en-IN')}`}
                   </td>
                   <td className="px-4 py-3 text-right text-error font-label font-bold">
-                    {Number(bill.balanceAmount) > 0
-                      ? `\u20B9${Number(bill.balanceAmount).toLocaleString('en-IN')}`
+                    {money(bill.balanceDue, bill.balanceAmount) > 0
+                      ? `\u20B9${money(bill.balanceDue, bill.balanceAmount).toLocaleString('en-IN')}`
                       : '-'}
                   </td>
                   <td className="px-4 py-3">
@@ -160,13 +176,17 @@ export default function PatientBillingPage() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1.5">
-                      {Number(bill.balanceAmount) > 0 &&
+                      {/* Same field-name bug as the columns above: this read
+                          `balanceAmount`, the payload carries `balanceDue`, and
+                          NaN > 0 is false — so Pay Now never rendered on any
+                          bill and no patient could settle one from here. */}
+                      {money(bill.balanceDue, bill.balanceAmount) > 0 &&
                         (bill.status === 'pending' || bill.status === 'partially_paid') && (
                           <PayNowButton
                             bill={{
                               id: bill.id,
                               billNumber: bill.billNumber,
-                              balanceAmount: Number(bill.balanceAmount),
+                              balanceAmount: money(bill.balanceDue, bill.balanceAmount),
                             }}
                             hospitalName={bill.patient?.tenant?.name}
                             onPaid={() =>
