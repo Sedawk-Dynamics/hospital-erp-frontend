@@ -30,7 +30,7 @@ import {
   Receipt,
   BriefcaseMedical,
   Image as ImageIcon,
-  HeartPulse,
+  HeartPulse, Scale,
 } from 'lucide-react';
 import { PlatformLogo } from '@/components/branding/platform-logo';
 import { fullName } from '@/lib/person-name';
@@ -53,6 +53,9 @@ const NAV_ITEMS = [
   // The services half of the same question: HSN decides the rate on goods,
   // SAC decides it on a consultation, a surgery, a room.
   { href: '/super-admin/sac-codes', label: 'SAC → GST', icon: BriefcaseMedical },
+  // The rates the law recognises. Nothing on the platform may be billed
+  // outside this list, so it sits beside the two masters that resolve into it.
+  { href: '/super-admin/gst-slabs', label: 'GST Slabs', icon: Scale },
   { href: '/super-admin/icd-codes', label: 'ICD Codes', icon: Stethoscope },
   { href: '/super-admin/disorders', label: 'Disorders', icon: ClipboardList },
   { href: '/super-admin/ai-settings', label: 'AI Settings', icon: Sparkles },
