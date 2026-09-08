@@ -59,6 +59,7 @@ const NO_GST = {
   isInterState: false, hasTax: false, hasClassifiedLines: false,
   taxSummary: [], notes: [],
   totals: { taxableValue: 0, cgstAmount: 0, sgstAmount: 0, igstAmount: 0, cessAmount: 0, taxAmount: 0 },
+  taxAmountInWords: '', copyMarking: null,
 };
 
 /** A template override on top of the product defaults. */

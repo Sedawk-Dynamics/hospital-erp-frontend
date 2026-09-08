@@ -2,6 +2,7 @@
 
 import { Fragment, forwardRef } from 'react';
 import { resolveLogoUrl } from '@/hooks/use-branding';
+import { amountInWords } from '@/lib/amount-in-words';
 import type { AdmissionBillDocument, BillDocumentLine } from '@/hooks/use-ip-billing';
 import {
   buildHtmlTheme,
@@ -658,6 +659,16 @@ export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: Admis
                 {t.insuranceCovered > 0 && (
                   <SumRow theme={theme} label="Covered by insurer / TPA" value={`− ${fmtMoney(t.insuranceCovered)}`} />
                 )}
+                {/* Section 6.9. Without it the net below does not agree with
+                    the charges above, and the PDF prints the same line — the
+                    dialog and the PDF are ONE document. */}
+                {t.roundOff !== 0 && (
+                  <SumRow
+                    theme={theme}
+                    label="Round off"
+                    value={`${t.roundOff > 0 ? '+ ' : '− '}${fmtMoney(Math.abs(t.roundOff))}`}
+                  />
+                )}
                 <SumRow theme={theme} label="Net payable" value={fmtMoney(t.netPayable)} bold border />
                 {t.deposit > 0 && <SumRow theme={theme} label="Deposit received" value={`− ${fmtMoney(t.deposit)}`} />}
                 {t.cashPaid > 0 && <SumRow theme={theme} label="Paid at counter" value={`− ${fmtMoney(t.cashPaid)}`} />}
@@ -677,6 +688,17 @@ export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: Admis
                 )}
               </tbody>
             </table>
+            {/* Section 10.1 item 8 and the block in 10.2. An amount in words is
+                what stops a printed bill being altered after it is handed
+                over. */}
+            <p style={{ marginTop: pt(6), fontSize: pt(theme.size.small), color: theme.muted }}>
+              {amountInWords(t.netPayable)}
+            </p>
+            {doc.gst?.taxAmountInWords ? (
+              <p style={{ fontSize: pt(theme.size.small), color: theme.muted }}>
+                Tax: {doc.gst.taxAmountInWords}
+              </p>
+            ) : null}
           </section>
 
           {doc.isPaid && (

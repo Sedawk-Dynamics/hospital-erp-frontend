@@ -336,6 +336,10 @@ export interface BillDocumentGst {
     cessAmount: number;
     taxAmount: number;
   };
+  /** Section 10.1 item 8 — the total tax written out. */
+  taxAmountInWords: string;
+  /** Rule 46's copy marking, for the title band. */
+  copyMarking: string | null;
 }
 
 export interface AdmissionBillDocument {
@@ -408,6 +412,8 @@ export interface AdmissionBillDocument {
     depositRefunded: number;
     paid: number;
     cashPaid: number;
+    /** Section 6.9 — what the grand total was rounded by, 0 when it was not. */
+    roundOff: number;
     netPayable: number;
     balanceDue: number;
     refundable: number;
