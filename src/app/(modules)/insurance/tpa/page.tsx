@@ -38,6 +38,7 @@ interface FormState {
   phone: string;
   email: string;
   address: string;
+  gstin: string;
   isActive: boolean;
 }
 
@@ -47,6 +48,7 @@ const EMPTY_FORM: FormState = {
   phone: '',
   email: '',
   address: '',
+  gstin: '',
   isActive: true,
 };
 
@@ -74,6 +76,7 @@ export default function TpaPage() {
       phone: tpa.phone ?? '',
       email: tpa.email ?? '',
       address: tpa.address ?? '',
+      gstin: tpa.gstin ?? '',
       isActive: tpa.isActive,
     });
     setDialogOpen(true);
@@ -87,6 +90,13 @@ export default function TpaPage() {
       phone: form.phone.trim() || undefined,
       email: form.email.trim() || undefined,
       address: form.address.trim() || undefined,
+      // Blank clears it; an invalid one is refused at the door rather than
+
+      // tidied up — a wrong GSTIN means every invoice against this payer is
+
+      // defective.
+
+      gstin: form.gstin.trim() || null,
       isActive: form.isActive,
     };
     try {
@@ -253,6 +263,28 @@ export default function TpaPage() {
                 value={form.address}
                 onChange={(e) => setForm({ ...form, address: e.target.value })}
               />
+            </div>
+            <div className="col-span-2">
+              <Label htmlFor="gstin">GSTIN</Label>
+              <Input
+                id="gstin"
+                value={form.gstin}
+                onChange={(e) => setForm({ ...form, gstin: e.target.value.toUpperCase() })}
+                placeholder="27AAPFU0939F1ZV"
+                maxLength={15}
+                className="font-mono"
+              />
+              {/* Without this the whole B2B path is unreachable. A payer with a
+                  GSTIN is a REGISTERED recipient, which is what turns a hospital
+                  bill into a tax invoice under GSTR-1 Table 4 instead of the
+                  B2C summary — and one registered in another state is what makes
+                  the supply inter-state, so IGST rather than CGST+SGST. Leave it
+                  blank and billing carries on exactly as before. */}
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Their own GST registration. With it, a bill raised against them
+                becomes a B2B tax invoice — and if they are registered in another
+                state, it carries IGST. The state is taken from the GSTIN itself.
+              </p>
             </div>
             <label className="col-span-2 inline-flex cursor-pointer items-center gap-2 text-sm">
               <input

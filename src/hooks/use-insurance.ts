@@ -33,6 +33,17 @@ export interface Insurer {
   phone?: string | null;
   email?: string | null;
   address?: string | null;
+  /**
+   * The payer's own GST registration.
+   *
+   * A payer with a GSTIN is a REGISTERED recipient, which is what turns a
+   * hospital bill into a B2B tax invoice and, where they are registered in
+   * another state, what makes the supply inter-state. Nothing could record it
+   * until now, so report A-4 was structurally always empty.
+   */
+  gstin?: string | null;
+  /** Always the first two digits of the GSTIN — derived, never typed. */
+  stateCode?: string | null;
   isActive: boolean;
   createdAt: string;
 }
@@ -44,6 +55,17 @@ export interface TpaProvider {
   phone?: string | null;
   email?: string | null;
   address?: string | null;
+  /**
+   * The payer's own GST registration.
+   *
+   * A payer with a GSTIN is a REGISTERED recipient, which is what turns a
+   * hospital bill into a B2B tax invoice and, where they are registered in
+   * another state, what makes the supply inter-state. Nothing could record it
+   * until now, so report A-4 was structurally always empty.
+   */
+  gstin?: string | null;
+  /** Always the first two digits of the GSTIN — derived, never typed. */
+  stateCode?: string | null;
   isActive: boolean;
   createdAt: string;
 }
