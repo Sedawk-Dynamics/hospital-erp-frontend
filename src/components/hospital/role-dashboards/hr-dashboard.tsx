@@ -1,7 +1,7 @@
 'use client';
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPatch } from '@/lib/api';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiGet } from '@/lib/api';
 import { formatDate, toInputDateStr } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import {
   ShieldAlert, CalendarDays,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useApproveLeave, useRejectLeave } from '@/hooks/use-hr';
 
 interface StaffStats {
   total: number;
@@ -98,18 +99,30 @@ export function HRDashboard() {
     },
   });
 
-  const leaveActionMutation = useMutation({
-    mutationFn: async ({ id, action }: { id: string; action: 'approved' | 'rejected' }) => {
-      await apiPatch(`/hr/leaves/${id}`, { status: action });
-    },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['hr'] });
-      toast.success(`Leave request ${variables.action}`);
-    },
-    onError: () => {
-      toast.error('Failed to update leave request');
-    },
-  });
+  // The shared hooks, not a third copy of the call.
+  //
+  // This dashboard had rolled its own: PATCH /hr/leaves/:id with the outcome in
+  // the body. The server carries the decision in the PATH — /approve and
+  // /reject — and reads no body at all, so both buttons hit Express's 404 and
+  // toasted "Failed to update leave request". Neither had ever worked, while
+  // the HR module's own leave screen, which uses these hooks, did.
+  const approveLeave = useApproveLeave();
+  const rejectLeave = useRejectLeave();
+
+  /** Same feedback for either decision, so the two buttons behave alike. */
+  const decideLeave = (id: string, approve: boolean) => {
+    const m = approve ? approveLeave : rejectLeave;
+    m.mutate(id, {
+      onSuccess: () => {
+        // The hooks refresh ['hr','leaves']; this dashboard reads several other
+        // 'hr' keys (staff counts, attendance) that a decision also moves.
+        queryClient.invalidateQueries({ queryKey: ['hr'] });
+        toast.success(`Leave request ${approve ? 'approved' : 'rejected'}`);
+      },
+      onError: () => toast.error('Failed to update leave request'),
+    });
+  };
+  const leaveActionPending = approveLeave.isPending || rejectLeave.isPending;
 
   const staff = staffStats ?? { total: 0, active: 0, onLeave: 0, newThisMonth: 0 };
   const attend = attendance ?? { present: 0, absent: 0, late: 0, total: 0 };
@@ -264,8 +277,8 @@ export function HRDashboard() {
                             size="sm"
                             variant="outline"
                             className="h-7 w-7 p-0 text-primary hover:bg-primary/10"
-                            disabled={leaveActionMutation.isPending}
-                            onClick={() => leaveActionMutation.mutate({ id: leave.id, action: 'approved' })}
+                            disabled={leaveActionPending}
+                            onClick={() => decideLeave(leave.id, true)}
                             title="Approve"
                           >
                             <CheckCircle2 className="h-3.5 w-3.5" />
@@ -274,8 +287,8 @@ export function HRDashboard() {
                             size="sm"
                             variant="outline"
                             className="h-7 w-7 p-0 text-error hover:bg-error-container"
-                            disabled={leaveActionMutation.isPending}
-                            onClick={() => leaveActionMutation.mutate({ id: leave.id, action: 'rejected' })}
+                            disabled={leaveActionPending}
+                            onClick={() => decideLeave(leave.id, false)}
                             title="Reject"
                           >
                             <XCircle className="h-3.5 w-3.5" />
