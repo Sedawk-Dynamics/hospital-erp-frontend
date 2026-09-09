@@ -1,11 +1,11 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { formatDate } from '@/lib/date-utils';
 import {
   Column, ExportButton, Loading, ReportNotes, ReportTable, StatStrip, TieBack,
-  exportCsv, money, pct, plain, titleCase,
+  DrillThrough, exportCsv, exportXlsx, money, pct, plain, titleCase,
 } from './gst-report-shell';
 import type { GstReportQuery } from '@/hooks/use-gst-reports';
 import * as R from '@/hooks/use-gst-reports';
@@ -75,7 +75,8 @@ export function SalesRegisterView({ q }: { q: Q }) {
         ]}
       />
       <div className="flex justify-end">
-        <ExportButton onClick={() => exportCsv('gst-sales-register', columns, rows, q)} disabled={!rows.length} />
+        <ExportButton onClick={() => exportCsv('gst-sales-register', columns, rows, q)}
+          onExcel={() => exportXlsx('gst-sales-register', columns, rows, q)} disabled={!rows.length} />
       </div>
       <ReportTable columns={columns} rows={rows} />
     </div>
@@ -86,9 +87,37 @@ export function SalesRegisterView({ q }: { q: Q }) {
 
 export function RateSummaryView({ q }: { q: Q }) {
   const { data, isLoading } = R.useRateSummary(q);
+  // Section 11.6: "drill-through from any total down to the individual bill
+  // lines behind it". A-2 is a fold of A-1, so the lines are one query away and
+  // filtered here rather than re-fetched — a drill-down that does not add up to
+  // the total it came from is worse than none.
+  const register = R.useSalesRegister(q);
+  const [drill, setDrill] = useState<{ treatment: string; ratePercent: number; label: string } | null>(null);
+
   if (isLoading) return <Loading />;
   const byRate = data?.byRate ?? [];
   const byDept = data?.byDepartment ?? [];
+
+  const drillRows = drill
+    ? (register.data?.rows ?? []).filter(
+        (l) =>
+          (l.gstTreatment ?? 'unclassified') === drill.treatment &&
+          l.taxRatePercent === drill.ratePercent,
+      )
+    : [];
+
+  /** What a drilled-into figure is made of — one row per bill LINE. */
+  const drillCols: Column<R.SalesLine>[] = [
+    { key: 'd', label: 'Date', cell: (l) => formatDate(l.billDate), csv: (l) => formatDate(l.billDate) },
+    { key: 'inv', label: 'Document', cell: (l) => l.invoiceNumber ?? l.billNumber, csv: (l) => l.invoiceNumber ?? l.billNumber },
+    { key: 'p', label: 'Patient', cell: (l) => l.patientName ?? '—', csv: (l) => l.patientName ?? '' },
+    { key: 'desc', label: 'Line', cell: (l) => l.description, csv: (l) => l.description },
+    { key: 'dep', label: 'Department', cell: (l) => titleCase(l.department), csv: (l) => l.department },
+    { key: 'hsn', label: 'HSN / SAC', cell: (l) => l.hsnSac ?? '—', csv: (l) => l.hsnSac ?? '' },
+    { key: 'tv', label: 'Taxable value', align: 'right', cell: (l) => plain(l.taxableValue), csv: (l) => l.taxableValue },
+    { key: 'tax', label: 'Tax', align: 'right', cell: (l) => plain(l.taxAmount), csv: (l) => l.taxAmount },
+    { key: 'src', label: 'Why this rate', cell: (l) => l.rateSource ?? '—', csv: (l) => l.rateSource ?? '' },
+  ];
 
   const rateCols: Column<R.RateSummaryRow>[] = [
     { key: 'rate', label: 'Rate', cell: (r) => (r.treatment === 'taxable' ? `${r.ratePercent}%` : r.label), csv: (r) => (r.treatment === 'taxable' ? `${r.ratePercent}%` : r.label) },
@@ -140,11 +169,20 @@ export function RateSummaryView({ q }: { q: Q }) {
       <section className="space-y-2">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold">By rate — feeds GSTR-3B 3.1(a)</h3>
-          <ExportButton onClick={() => exportCsv('gst-rate-summary', rateCols, byRate, q)} disabled={!byRate.length} />
+          <ExportButton onClick={() => exportCsv('gst-rate-summary', rateCols, byRate, q)}
+          onExcel={() => exportXlsx('gst-rate-summary', rateCols, byRate, q)} disabled={!byRate.length} />
         </div>
         <ReportTable
           columns={rateCols}
           rows={byRate}
+          onRowClick={(r) =>
+            setDrill(
+              drill && drill.treatment === r.treatment && drill.ratePercent === r.ratePercent
+                ? null
+                : { treatment: r.treatment, ratePercent: r.ratePercent, label: r.label },
+            )
+          }
+          rowTitle={() => 'Open the bill lines behind this figure'}
           footer={
             <tr>
               <td className="px-3 py-2">Total</td>
@@ -156,6 +194,22 @@ export function RateSummaryView({ q }: { q: Q }) {
               <td className="px-3 py-2 text-right tabular-nums">{plain(data?.totals.taxAmount)}</td>
             </tr>
           }
+        />
+        <DrillThrough
+          open={!!drill}
+          onClose={() => setDrill(null)}
+          title={
+            drill
+              ? `${drill.treatment === 'taxable' ? `${drill.ratePercent}%` : drill.label} — the lines behind it`
+              : ''
+          }
+          subtitle={
+            register.isLoading
+              ? 'Loading the register…'
+              : `${drillRows.length} line(s) from the sales register`
+          }
+          columns={drillCols}
+          rows={drillRows}
         />
       </section>
       <section className="space-y-2">
@@ -208,7 +262,8 @@ export function HsnSummaryView({ q }: { q: Q }) {
         ]}
       />
       <div className="flex justify-end">
-        <ExportButton onClick={() => exportCsv('gst-hsn-summary', cols, rows, q)} disabled={!rows.length} />
+        <ExportButton onClick={() => exportCsv('gst-hsn-summary', cols, rows, q)}
+          onExcel={() => exportXlsx('gst-hsn-summary', cols, rows, q)} disabled={!rows.length} />
       </div>
       <ReportTable columns={cols} rows={rows} />
       {(data?.unclassified.count ?? 0) > 0 ? (
@@ -249,7 +304,8 @@ export function B2bRegisterView({ q }: { q: Q }) {
         ]}
       />
       <div className="flex justify-end">
-        <ExportButton onClick={() => exportCsv('gst-b2b-register', cols, rows, q)} disabled={!rows.length} />
+        <ExportButton onClick={() => exportCsv('gst-b2b-register', cols, rows, q)}
+          onExcel={() => exportXlsx('gst-b2b-register', cols, rows, q)} disabled={!rows.length} />
       </div>
       <ReportTable columns={cols} rows={rows} empty="No supplies to a GST-registered recipient in this period." />
     </div>
@@ -370,7 +426,8 @@ export function CreditNoteView({ q }: { q: Q }) {
         ]}
       />
       <div className="flex justify-end">
-        <ExportButton onClick={() => exportCsv('gst-credit-notes', cols, rows, q)} disabled={!rows.length} />
+        <ExportButton onClick={() => exportCsv('gst-credit-notes', cols, rows, q)}
+          onExcel={() => exportXlsx('gst-credit-notes', cols, rows, q)} disabled={!rows.length} />
       </div>
       <ReportTable columns={cols} rows={rows} />
       <ReportNotes notes={notes} />
@@ -498,6 +555,7 @@ export function Gstr1View({ q }: { q: Q }) {
           <h3 className="text-sm font-semibold">Table 12 — HSN summary</h3>
           <ExportButton
             onClick={() => exportCsv('gstr1-table12', hsnColumns, t?.hsn ?? [], q)}
+          onExcel={() => exportXlsx('gstr1-table12', hsnColumns, t?.hsn ?? [], q)}
             disabled={!(t?.hsn ?? []).length}
           />
         </div>
@@ -596,7 +654,8 @@ export function AdvancesView({ q }: { q: Q }) {
         ]}
       />
       <div className="flex justify-end">
-        <ExportButton onClick={() => exportCsv('gst-advances', cols, rows, q)} disabled={!rows.length} />
+        <ExportButton onClick={() => exportCsv('gst-advances', cols, rows, q)}
+          onExcel={() => exportXlsx('gst-advances', cols, rows, q)} disabled={!rows.length} />
       </div>
       <ReportTable columns={cols} rows={rows} />
       {(data?.summary.unclassifiedCount ?? 0) > 0 ? (

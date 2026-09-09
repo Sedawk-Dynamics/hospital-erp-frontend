@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { formatDate, formatDateTime } from '@/lib/date-utils';
 import {
   Column, ExportButton, Loading, ReportNotes, ReportTable, StatStrip,
-  exportCsv, money, plain,
+  exportCsv, exportXlsx, money, plain,
 } from './gst-report-shell';
 import type { GstReportQuery, ReconRow } from '@/hooks/use-gst-reports';
 import { useGstr2bReconciliation, useImportGstr2b } from '@/hooks/use-gst-reports';
@@ -286,7 +286,8 @@ function Bucket({
           <h3 className="text-sm font-semibold">{title}</h3>
           <p className="text-xs text-muted-foreground">{note}</p>
         </div>
-        <ExportButton onClick={() => exportCsv(name, cols, rows, q)} disabled={!rows.length} />
+        <ExportButton onClick={() => exportCsv(name, cols, rows, q)}
+          onExcel={() => exportXlsx(name, cols, rows, q)} disabled={!rows.length} />
       </div>
       <ReportTable columns={cols} rows={rows} empty={empty} />
     </section>

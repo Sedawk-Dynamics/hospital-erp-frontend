@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import {
   Column, ExportButton, Loading, ReportNotes, ReportTable, StatStrip, TieBack,
-  exportCsv, money, pct, plain,
+  exportCsv, exportXlsx, money, pct, plain,
 } from './gst-report-shell';
 import type { GstReportQuery, ItcLadderRung } from '@/hooks/use-gst-reports';
 import * as R from '@/hooks/use-gst-reports';
@@ -289,6 +289,7 @@ export function DailyLiabilityView({ q }: { q: Q }) {
         <ExportButton
           disabled={!data}
           onClick={() => exportCsv('daily-gst-liability', dayCols, data?.byDay ?? [], q)}
+          onExcel={() => exportXlsx('daily-gst-liability', dayCols, data?.byDay ?? [], q)}
         />
       </div>
       <StatStrip

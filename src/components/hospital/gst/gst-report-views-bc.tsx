@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { formatDate } from '@/lib/date-utils';
 import {
   Column, ExportButton, Loading, ReportNotes, ReportTable, StatStrip,
-  exportCsv, money, pct, plain, titleCase,
+  exportCsv, exportXlsx, money, pct, plain, titleCase,
 } from './gst-report-shell';
 import type { GstReportQuery } from '@/hooks/use-gst-reports';
 import * as R from '@/hooks/use-gst-reports';
@@ -49,7 +49,8 @@ export function PurchaseRegisterView({ q }: { q: Q }) {
         ]}
       />
       <div className="flex justify-end">
-        <ExportButton onClick={() => exportCsv('gst-purchase-register', cols, rows, q)} disabled={!rows.length} />
+        <ExportButton onClick={() => exportCsv('gst-purchase-register', cols, rows, q)}
+          onExcel={() => exportXlsx('gst-purchase-register', cols, rows, q)} disabled={!rows.length} />
       </div>
       <ReportTable columns={cols} rows={rows} />
     </div>
@@ -199,7 +200,8 @@ export function SupplierGstinView({ q }: { q: Q }) {
         ]}
       />
       <div className="flex justify-end">
-        <ExportButton onClick={() => exportCsv('gst-supplier-gstin-exceptions', cols, rows, q)} disabled={!rows.length} />
+        <ExportButton onClick={() => exportCsv('gst-supplier-gstin-exceptions', cols, rows, q)}
+          onExcel={() => exportXlsx('gst-supplier-gstin-exceptions', cols, rows, q)} disabled={!rows.length} />
       </div>
       <ReportTable columns={cols} rows={rows} empty="Every supplier in this period has a valid GSTIN." />
     </div>
@@ -244,7 +246,8 @@ export function PurchaseReturnsView({ q }: { q: Q }) {
         ]}
       />
       <div className="flex justify-end">
-        <ExportButton onClick={() => exportCsv('gst-purchase-returns', cols, rows, q)} disabled={!rows.length} />
+        <ExportButton onClick={() => exportCsv('gst-purchase-returns', cols, rows, q)}
+          onExcel={() => exportXlsx('gst-purchase-returns', cols, rows, q)} disabled={!rows.length} />
       </div>
       <ReportTable columns={cols} rows={rows} empty="No stock went back to a supplier in this period." />
       <section className="space-y-2">
@@ -583,7 +586,8 @@ export function RateOverridesView({ q }: { q: Q }) {
         ]}
       />
       <div className="flex justify-end">
-        <ExportButton onClick={() => exportCsv('gst-rate-overrides', cols, rows, q)} disabled={!rows.length} />
+        <ExportButton onClick={() => exportCsv('gst-rate-overrides', cols, rows, q)}
+          onExcel={() => exportXlsx('gst-rate-overrides', cols, rows, q)} disabled={!rows.length} />
       </div>
       <ReportTable
         columns={cols}

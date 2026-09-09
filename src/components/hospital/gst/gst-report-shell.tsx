@@ -1,7 +1,8 @@
 'use client';
 
+import * as XLSX from 'xlsx';
 import { type ReactNode } from 'react';
-import { AlertTriangle, CheckCircle2, Download, Loader2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Download, Loader2, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatDate } from '@/lib/date-utils';
 
@@ -52,11 +53,20 @@ export function ReportTable<T>({
   rows,
   empty = 'Nothing in this period.',
   footer,
+  onRowClick,
+  rowTitle,
 }: {
   columns: Column<T>[];
   rows: T[];
   empty?: string;
   footer?: ReactNode;
+  /**
+   * Drill-through — section 11.6: "from any total down to the individual bill
+   * lines behind it". A summary figure an accountant cannot open is a figure
+   * they have to reproduce by hand before they will sign it.
+   */
+  onRowClick?: (row: T) => void;
+  rowTitle?: (row: T) => string;
 }) {
   if (rows.length === 0) {
     return <p className="py-8 text-center text-sm text-muted-foreground">{empty}</p>;
@@ -80,7 +90,12 @@ export function ReportTable<T>({
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr key={i} className="border-t hover:bg-muted/30">
+            <tr
+              key={i}
+              className={`border-t hover:bg-muted/30 ${onRowClick ? 'cursor-pointer' : ''}`}
+              onClick={onRowClick ? () => onRowClick(row) : undefined}
+              title={rowTitle ? rowTitle(row) : undefined}
+            >
               {columns.map((c) => (
                 <td
                   key={c.key}
@@ -207,11 +222,150 @@ export function exportCsv<T>(name: string, columns: Column<T>[], rows: T[], peri
   URL.revokeObjectURL(url);
 }
 
-export function ExportButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
+/**
+ * The same rows as a real spreadsheet.
+ *
+ * Section 11.6 asks for "export to Excel and to PDF", and the owner's answer to
+ * question 12 repeats it: "build JSON export. And excel as well." CSV opens IN
+ * Excel, which is not the same thing — every code with a leading zero becomes a
+ * number, an HSN of 04012 arrives as 4012, and a return filed from it is wrong.
+ *
+ * Written as TEXT for anything that is a code and as a number for anything that
+ * is money, so the sheet the accountant opens holds what the screen showed.
+ */
+export function exportXlsx<T>(
+  name: string,
+  columns: Column<T>[],
+  rows: T[],
+  period: { from?: string; to?: string },
+) {
+  const value = (c: Column<T>, r: T) => {
+    const v = c.csv ? c.csv(r) : c.cell(r);
+    if (typeof v === 'number') return v;
+    if (typeof v === 'string') return v;
+    return '';
+  };
+  const data = rows.map((r) => {
+    const out: Record<string, string | number> = {};
+    for (const c of columns) out[c.label] = value(c, r);
+    return out;
+  });
+  const sheet = XLSX.utils.json_to_sheet(data, {
+    header: columns.map((c) => c.label),
+  });
+  // A code is text. Excel turns "04012" into 4012 and "00" into 0 otherwise,
+  // and an HSN or a state code that has lost its leading zero is a return the
+  // portal rejects.
+  const codeCols = new Set(
+    columns
+      .map((c, i) => ({ i, label: c.label.toLowerCase() }))
+      .filter((c) => /hsn|sac|code|gstin|invoice|number|series|state/.test(c.label))
+      .map((c) => c.i),
+  );
+  for (let r = 0; r < data.length; r += 1) {
+    for (const ci of codeCols) {
+      const ref = XLSX.utils.encode_cell({ r: r + 1, c: ci });
+      const cell = sheet[ref];
+      if (cell && cell.v !== '' && cell.v != null) {
+        cell.t = 's';
+        cell.v = String(cell.v);
+      }
+    }
+  }
+  const book = XLSX.utils.book_new();
+  // Sheet names are capped at 31 characters and cannot hold : \ / ? * [ ].
+  XLSX.utils.book_append_sheet(book, sheet, name.replace(/[:\\/?*[\]]/g, '-').slice(0, 31));
+  XLSX.writeFile(book, `${name}_${period.from ?? 'all'}_${period.to ?? 'all'}.xlsx`);
+}
+
+/**
+ * Export the rows on screen, as a spreadsheet or as CSV.
+ *
+ * Both, because they are for different people: the accountant wants a sheet to
+ * work in, and a system that has to ingest the figures wants CSV. Printing is
+ * the browser's own — the report screens carry the print CSS, so a PDF is
+ * Ctrl-P, and a second rendering of the same table server-side is one more
+ * place for it to disagree with the screen.
+ */
+export function ExportButton({
+  onClick,
+  onExcel,
+  disabled,
+}: {
+  onClick: () => void;
+  /** Omit on a view whose shape is not one flat table. */
+  onExcel?: () => void;
+  disabled?: boolean;
+}) {
   return (
-    <Button variant="outline" size="sm" onClick={onClick} disabled={disabled}>
-      <Download className="mr-1.5 h-4 w-4" /> Export CSV
-    </Button>
+    <div className="flex items-center gap-1.5">
+      {onExcel ? (
+        <Button variant="outline" size="sm" onClick={onExcel} disabled={disabled}>
+          <Download className="mr-1.5 h-4 w-4" /> Excel
+        </Button>
+      ) : null}
+      <Button variant="outline" size="sm" onClick={onClick} disabled={disabled}>
+        <Download className="mr-1.5 h-4 w-4" /> CSV
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => window.print()}
+        disabled={disabled}
+        title="Print or save as PDF"
+      >
+        <Printer className="mr-1.5 h-4 w-4" /> PDF
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * The lines behind a total.
+ *
+ * Section 11.6 asks for drill-through "from any total down to the individual
+ * bill lines behind it". The lines are already on the client — every Group A
+ * report folds the same register — so this filters what is in hand rather than
+ * asking the server again: a second request could return a different set if a
+ * bill were raised between the two, and a drill-down that does not add up to
+ * the total it came from is worse than none.
+ */
+export function DrillThrough<T>({
+  title,
+  subtitle,
+  columns,
+  rows,
+  open,
+  onClose,
+}: {
+  title: string;
+  subtitle?: string;
+  columns: Column<T>[];
+  rows: T[];
+  open: boolean;
+  onClose: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+      <div className="mb-2 flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold">{title}</p>
+          {subtitle ? <p className="text-xs text-on-surface-variant">{subtitle}</p> : null}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <ExportButton
+            onClick={() => exportCsv('drill-through', columns, rows, {})}
+            onExcel={() => exportXlsx('drill-through', columns, rows, {})}
+            disabled={!rows.length}
+          />
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      </div>
+      <ReportTable columns={columns} rows={rows} empty="No lines behind this figure." />
+    </div>
   );
 }
 
