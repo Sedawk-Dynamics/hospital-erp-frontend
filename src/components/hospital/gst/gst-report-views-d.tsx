@@ -99,6 +99,14 @@ function StatusChip({ status }: { status: string }) {
   );
 }
 
+/** How long is left, as a phrase rather than a signed number nobody reads twice. */
+function deadlineText(days: number | null): string {
+  if (days == null) return '—';
+  if (days < 0) return `${Math.abs(days)} day(s) overdue`;
+  if (days === 0) return 'Due today';
+  return `${days} day(s) left`;
+}
+
 const irnCols: Column<IrnRow>[] = [
   { key: 'date', label: 'Date', cell: (r) => formatDate(r.documentDate), csv: (r) => formatDate(r.documentDate) },
   { key: 'kind', label: 'Document', cell: (r) => KIND_LABELS[r.kind] ?? titleCase(r.kind), csv: (r) => r.kind },
@@ -164,6 +172,79 @@ export function EInvoiceRegisterView({ q }: { q: Q }) {
         rows={rows}
         empty="No B2B document in this period needed an IRN."
       />
+    </div>
+  );
+}
+
+/**
+ * D-2 — Failed IRN Report.
+ *
+ * Two populations on one screen: what the portal refused, and what was never
+ * sent. Both have the same deadline and the same consequence, and the reason
+ * column carries the portal's own words rather than a paraphrase — an
+ * accountant fixing a rejection needs the error the portal will accept a
+ * correction against.
+ */
+export function FailedIrnView({ q }: { q: Q }) {
+  const { data, isLoading } = R.useFailedIrn(q);
+  if (isLoading) return <Loading />;
+  const rows = data?.rows ?? [];
+  const s = data?.summary;
+
+  const cols: Column<(typeof rows)[number]>[] = [
+    { key: 'date', label: 'Date', cell: (r) => formatDate(r.documentDate), csv: (r) => formatDate(r.documentDate) },
+    { key: 'kind', label: 'Document', cell: (r) => KIND_LABELS[r.kind] ?? titleCase(r.kind), csv: (r) => r.kind },
+    { key: 'num', label: 'Number', cell: (r) => <span className="font-mono text-xs">{r.documentNumber}</span>, csv: (r) => r.documentNumber },
+    { key: 'to', label: 'Recipient', cell: (r) => r.recipientName ?? '—', csv: (r) => r.recipientName ?? '' },
+    { key: 'val', label: 'Value', align: 'right', cell: (r) => plain(r.totalAmount), csv: (r) => r.totalAmount },
+    { key: 'st', label: 'Status', cell: (r) => <StatusChip status={r.status} />, csv: (r) => r.status },
+    {
+      key: 'why',
+      label: 'Why',
+      cell: (r) => <span className="text-xs">{r.reason}</span>,
+      csv: (r) => r.reason,
+    },
+    {
+      key: 'due',
+      label: 'Deadline',
+      cell: (r) => (
+        <span className={r.overdue ? 'font-medium text-red-600' : ''}>{deadlineText(r.daysToDeadline)}</span>
+      ),
+      csv: (r) => deadlineText(r.daysToDeadline),
+    },
+    {
+      key: 'try',
+      label: 'Last attempt',
+      cell: (r) => (r.attemptedAt ? formatDate(r.attemptedAt) : 'Never'),
+      csv: (r) => (r.attemptedAt ? formatDate(r.attemptedAt) : 'Never'),
+    },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {data?.applicability ? <Applicability a={data.applicability} /> : null}
+      <StatStrip
+        stats={[
+          { label: 'Outstanding', value: String(s?.outstanding ?? 0), tone: (s?.outstanding ?? 0) > 0 ? 'bad' : 'good' },
+          { label: 'Refused by the portal', value: String(s?.rejected ?? 0), tone: (s?.rejected ?? 0) > 0 ? 'bad' : undefined },
+          { label: 'Never sent', value: String(s?.neverSent ?? 0), tone: (s?.neverSent ?? 0) > 0 ? 'warn' : undefined },
+          {
+            label: 'Past the window',
+            value: String(s?.overdue ?? 0),
+            tone: (s?.overdue ?? 0) > 0 ? 'bad' : 'good',
+            hint: `${data?.uploadDays ?? 30} days, from the hospital's GST settings`,
+          },
+        ]}
+      />
+      <EmptyMeaning note={data?.note ?? ''} bad={(s?.outstanding ?? 0) > 0} />
+      <div className="flex justify-end">
+        <ExportButton
+          onClick={() => exportCsv('D2-failed-irn', cols, rows, { from: q.from, to: q.to })}
+          onExcel={() => exportXlsx('D2-failed-irn', cols, rows, { from: q.from, to: q.to })}
+          disabled={!rows.length}
+        />
+      </div>
+      <ReportTable columns={cols} rows={rows} empty="Nothing is outstanding — every B2B document carries an IRN." />
     </div>
   );
 }

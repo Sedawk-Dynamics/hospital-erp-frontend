@@ -775,3 +775,16 @@ export const useEInvoiceRegister = (q: GstReportQuery & { status?: string }, on 
     rows: IrnRow[];
     note: string;
   }>('einvoice-register', '/gst/reports/einvoice-register', q as GstReportQuery, on);
+
+/** D-2 — Failed IRN Report. */
+export const useFailedIrn = (q: GstReportQuery, on = true) =>
+  useReport<{
+    applicability: EInvoiceApplicability;
+    uploadDays: number;
+    summary: {
+      outstanding: number; rejected: number; neverSent: number;
+      awaiting: number; overdue: number; valueAtRisk: number;
+    };
+    rows: Array<IrnRow & { overdue: boolean; reason: string }>;
+    note: string;
+  }>('failed-irn', '/gst/reports/failed-irn', q, on);

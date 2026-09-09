@@ -23,7 +23,7 @@ import {
 import { FiledPeriodsView } from '@/components/hospital/gst/gst-filed-periods';
 import { Gstr2bReconciliationView } from '@/components/hospital/gst/gst-2b-reconciliation';
 import {
-  EInvoiceRegisterView,
+  EInvoiceRegisterView, FailedIrnView,
 } from '@/components/hospital/gst/gst-report-views-d';
 
 // ============================================================
@@ -106,6 +106,7 @@ const GROUPS: Array<{ group: string; caption: string; reports: ReportDef[] }> = 
       'Each report states the hospital’s current position.',
     reports: [
       { ref: 'D-1', label: 'E-invoice Register', what: 'Every B2B document, its IRN, acknowledgement and date', View: EInvoiceRegisterView },
+      { ref: 'D-2', label: 'Failed IRN', what: 'Refused by the portal, or never sent — and how long is left', View: FailedIrnView },
     ],
   },
 ];
