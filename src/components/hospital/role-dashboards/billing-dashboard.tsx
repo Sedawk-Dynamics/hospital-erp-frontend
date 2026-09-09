@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPost } from '@/lib/api';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiGet } from '@/lib/api';
 import { formatDate } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import {
   CreditCard, ReceiptText, Undo2, 
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useFinalizeBill } from '@/hooks/use-hospital';
 
 interface BillItem {
   id: string;
@@ -86,18 +87,14 @@ export function BillingDashboard() {
     },
   });
 
-  const finalizeMutation = useMutation({
-    mutationFn: async (billId: string) => {
-      await apiPost(`/billing/${billId}/finalize`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['billing-admin'] });
-      toast.success('Bill finalized successfully');
-    },
-    onError: () => {
-      toast.error('Failed to finalize bill');
-    },
-  });
+  // The shared hook, not a second copy of the call.
+  //
+  // This dashboard had rolled its own: POST /billing/:id/finalize, where the
+  // server has only ever served PATCH. Every press of Finalize here hit
+  // Express's 404 and toasted "Failed to finalize bill", so the button had
+  // never once worked — while the identical button on the billing worklist,
+  // which uses this hook, did.
+  const finalize = useFinalizeBill();
 
   const bills = billsData?.data ?? [];
   const pendingRefunds = refunds ?? [];
@@ -224,8 +221,19 @@ export function BillingDashboard() {
                           size="sm"
                           variant="outline"
                           className="gap-1.5 text-xs"
-                          disabled={finalizeMutation.isPending}
-                          onClick={() => finalizeMutation.mutate(bill.id)}
+                          disabled={finalize.isPending}
+                          onClick={() =>
+                            // The hook refreshes the hospital-wide bill lists;
+                            // this dashboard's own list is keyed differently
+                            // and is refreshed here.
+                            finalize.mutate(bill.id, {
+                              onSuccess: () => {
+                                queryClient.invalidateQueries({ queryKey: ['billing-admin'] });
+                                toast.success('Bill finalized successfully');
+                              },
+                              onError: () => toast.error('Failed to finalize bill'),
+                            })
+                          }
                         >
                           <FileCheck className="h-3.5 w-3.5" />
                           Finalize
