@@ -140,15 +140,6 @@ export interface NursingNoteRecord extends NurseRef {
   updatedAt: string;
 }
 
-export interface PatientFormsSummary {
-  admissionAssessment: { latest: AdmissionAssessment | null; total: number };
-  pain: { recent: PainAssessment[]; total: number };
-  fallRisk: { latest: FallRiskAssessment | null; total: number };
-  intakeOutput: { recent: IntakeOutputRecord[]; total: number };
-  woundCare: { recent: WoundCareRecord[]; total: number };
-  nursingNote: { latest: NursingNoteRecord | null; total: number };
-}
-
 // ──────────────────────────────────────────────────────────
 // Query keys
 // ──────────────────────────────────────────────────────────
@@ -194,10 +185,8 @@ function makeListHook<T>(slug: string, path = `/nursing-forms/${slug}`) {
   };
 }
 
-export const useAdmissionAssessments = makeListHook<AdmissionAssessment>('admission-assessments');
-export const usePainAssessments = makeListHook<PainAssessment>('pain-assessments');
-export const useFallRiskAssessments = makeListHook<FallRiskAssessment>('fall-risks');
 export const useIntakeOutputRecords = makeListHook<IntakeOutputRecord>('intake-output');
+
 // Wound care and nursing notes live under progress-notes.
 //
 // Their routes were taken off the nursing-forms module in "update patient
@@ -216,17 +205,6 @@ export const useNursingNotes = makeListHook<NursingNoteRecord>(
   '/progress-notes/nursing',
 );
 
-export function usePatientFormsSummary(patientId: string | undefined, opts?: { enabled?: boolean }) {
-  return useQuery({
-    queryKey: nursingFormsKeys.summary(patientId ?? ''),
-    queryFn: async () => {
-      const res = await apiGet<PatientFormsSummary>(`/nursing-forms/summary/${patientId}`);
-      return res;
-    },
-    enabled: !!patientId && (opts?.enabled ?? true),
-  });
-}
-
 // ──────────────────────────────────────────────────────────
 // Mutations
 // ──────────────────────────────────────────────────────────
@@ -236,96 +214,20 @@ function invalidateForPatient(qc: ReturnType<typeof useQueryClient>, patientId?:
   if (patientId) qc.invalidateQueries({ queryKey: nursingFormsKeys.summary(patientId) });
 }
 
-export interface CreateAdmissionAssessmentInput {
-  visitId?: string;
-  admissionId?: string;
-  appointmentId?: string;
-  patientId: string;
-  arrivalMode?: ArrivalMode;
-  consciousnessLevel?: ConsciousnessLevel;
-  chiefComplaint?: string;
-  allergies?: string;
-  currentMedications?: string;
-  skinCondition?: string;
-  mobility?: string;
-  nutritionStatus?: string;
-  elimination?: string;
-  preferredLanguage?: string;
-  religiousNeeds?: string;
-  nextOfKin?: { name?: string; relationship?: string; phone?: string };
-  notes?: string;
-  assessedAt?: string;
-}
-
-export function useCreateAdmissionAssessment() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (data: CreateAdmissionAssessmentInput) => {
-      const res = await apiPost<AdmissionAssessment>(
-        '/nursing-forms/admission-assessments',
-        data,
-      );
-      return res;
-    },
-    onSuccess: (_d, vars) => invalidateForPatient(qc, vars.patientId),
-  });
-}
-
-export interface CreatePainInput {
-  visitId?: string;
-  admissionId?: string;
-  appointmentId?: string;
-  patientId: string;
-  painScore: number;
-  painScale?: PainScale;
-  painLocation?: string;
-  painCharacter?: string;
-  painOnsetAt?: string;
-  aggravatingFactors?: string;
-  relievingFactors?: string;
-  intervention?: string;
-  reassessmentDueAt?: string;
-  notes?: string;
-  assessedAt?: string;
-}
-
-export function useCreatePainAssessment() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (data: CreatePainInput) => {
-      const res = await apiPost<PainAssessment>('/nursing-forms/pain-assessments', data);
-      return res;
-    },
-    onSuccess: (_d, vars) => invalidateForPatient(qc, vars.patientId),
-  });
-}
-
-export interface CreateFallRiskInput {
-  visitId?: string;
-  admissionId?: string;
-  appointmentId?: string;
-  patientId: string;
-  historyOfFalling: 0 | 25;
-  secondaryDiagnosis: 0 | 15;
-  ambulatoryAid: 0 | 15 | 30;
-  ivOrSalineLock: 0 | 20;
-  gait: 0 | 10 | 20;
-  mentalStatus: 0 | 15;
-  intervention?: string;
-  notes?: string;
-  assessedAt?: string;
-}
-
-export function useCreateFallRisk() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (data: CreateFallRiskInput) => {
-      const res = await apiPost<FallRiskAssessment>('/nursing-forms/fall-risks', data);
-      return res;
-    },
-    onSuccess: (_d, vars) => invalidateForPatient(qc, vars.patientId),
-  });
-}
+// ──────────────────────────────────────────────────────────
+// Admission assessment, pain and fall risk are NOT here.
+//
+// They were purpose-built forms until "update patient forms" (228f0a3) moved
+// that job to the dynamic form system: /nurse/forms renders hospital templates
+// now, their dialogs were deleted, and their routes came off the backend in the
+// same commit. What was left behind was a set of hooks with no caller and no
+// endpoint — they could only ever have 404'd.
+//
+// The Prisma models and the service functions survive, so the forms can be
+// brought back as purpose-built ones if the hospital ever wants them. That is a
+// product decision, not a path fix, and nothing should call these paths again
+// until it is made.
+// ──────────────────────────────────────────────────────────
 
 export interface CreateIntakeOutputInput {
   visitId?: string;
