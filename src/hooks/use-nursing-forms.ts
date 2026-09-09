@@ -172,12 +172,21 @@ interface ListParams {
 // Reads
 // ──────────────────────────────────────────────────────────
 
-function makeListHook<T>(slug: string) {
+/**
+ * A list hook for one form type.
+ *
+ * `slug` names the CACHE key and `path` the URL, because for two of these they
+ * are no longer the same thing: wound care and nursing notes are served by the
+ * progress-notes module, while every screen here still invalidates under the
+ * 'nursing-forms' key. Keeping the key still means one invalidation continues
+ * to refresh all of them.
+ */
+function makeListHook<T>(slug: string, path = `/nursing-forms/${slug}`) {
   return function useList(params?: ListParams, opts?: { enabled?: boolean }) {
     return useQuery({
       queryKey: nursingFormsKeys.list(slug, params as Record<string, unknown> | undefined),
       queryFn: async () => {
-        const res = await apiGet<T[]>(`/nursing-forms/${slug}`, { params });
+        const res = await apiGet<T[]>(path, { params });
         return res as ApiResponse<T[]>;
       },
       enabled: opts?.enabled ?? true,
@@ -189,8 +198,23 @@ export const useAdmissionAssessments = makeListHook<AdmissionAssessment>('admiss
 export const usePainAssessments = makeListHook<PainAssessment>('pain-assessments');
 export const useFallRiskAssessments = makeListHook<FallRiskAssessment>('fall-risks');
 export const useIntakeOutputRecords = makeListHook<IntakeOutputRecord>('intake-output');
-export const useWoundCareRecords = makeListHook<WoundCareRecord>('wound-care');
-export const useNursingNotes = makeListHook<NursingNoteRecord>('nursing-notes');
+// Wound care and nursing notes live under progress-notes.
+//
+// Their routes were taken off the nursing-forms module in "update patient
+// forms" (228f0a3) when the dynamic form system arrived, but these two were
+// never dynamic forms — they are purpose-built records with their own tables,
+// and the progress-notes module had been serving them all along. The hooks
+// were left pointing at the old path, so the wound care panel could neither
+// list nor save, and the DOCTOR's consultation page showed no nursing notes
+// at all. All four were Express 404s that React Query rendered as "empty".
+export const useWoundCareRecords = makeListHook<WoundCareRecord>(
+  'wound-care',
+  '/progress-notes/wound-care',
+);
+export const useNursingNotes = makeListHook<NursingNoteRecord>(
+  'nursing-notes',
+  '/progress-notes/nursing',
+);
 
 export function usePatientFormsSummary(patientId: string | undefined, opts?: { enabled?: boolean }) {
   return useQuery({
@@ -353,7 +377,7 @@ export function useCreateWoundCare() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (data: CreateWoundCareInput) => {
-      const res = await apiPost<WoundCareRecord>('/nursing-forms/wound-care', data);
+      const res = await apiPost<WoundCareRecord>('/progress-notes/wound-care', data);
       return res;
     },
     onSuccess: (_d, vars) => invalidateForPatient(qc, vars.patientId),
@@ -374,7 +398,7 @@ export function useCreateNursingNote() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (data: CreateNursingNoteInput) => {
-      const res = await apiPost<NursingNoteRecord>('/nursing-forms/nursing-notes', data);
+      const res = await apiPost<NursingNoteRecord>('/progress-notes/nursing', data);
       return res;
     },
     onSuccess: (_d, vars) => invalidateForPatient(qc, vars.patientId),
