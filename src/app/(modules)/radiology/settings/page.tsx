@@ -15,6 +15,10 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import { useGstSlabs } from '@/hooks/use-gst-slabs';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -231,6 +235,13 @@ function ModalityEditorDialog({
   const [name, setName] = useState('');
   const [basePrice, setBasePrice] = useState<number | ''>('');
   const [taxRate, setTaxRate] = useState<number | ''>(0);
+  // The rates in force today — the same list the finalisation gate checks
+  // against, so this form cannot offer one the bill will refuse.
+  const { data: radSlabs } = useGstSlabs();
+  const radLegalRates = (radSlabs?.slabs ?? [])
+    .filter((x) => x.current)
+    .map((x) => x.ratePercent)
+    .sort((a, b) => a - b);
   const [isActive, setIsActive] = useState(true);
 
   useEffect(() => {
@@ -306,14 +317,29 @@ function ModalityEditorDialog({
             </div>
             <div>
               <Label>GST %</Label>
-              <Input
-                type="number"
-                min={0}
-                max={100}
-                step="0.5"
-                value={taxRate}
-                onChange={(e) => setTaxRate(e.target.value === '' ? '' : Number(e.target.value))}
-              />
+              {/* A rate the law recognises, not a free number. Imaging is a
+                  diagnostic service and exempt under Notification 12/2017, so
+                  Nil is the honest default here — but the choice is between
+                  legal slabs rather than anything anyone types. */}
+              <Select
+                value={String(taxRate || 0)}
+                onValueChange={(v: string | null) => v != null && setTaxRate(Number(v))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {radLegalRates.map((r) => (
+                    <SelectItem key={r} value={String(r)}>
+                      {r === 0 ? 'Nil / exempt' : `${r}%`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Diagnostic imaging is exempt healthcare. Set a rate only where
+                your auditor says this study is not.
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">

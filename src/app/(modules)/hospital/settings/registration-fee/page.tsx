@@ -17,6 +17,10 @@ import { toast } from 'sonner';
 import { ArrowLeft, Loader2, Save, IndianRupee } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import { useGstSlabs } from '@/hooks/use-gst-slabs';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getApiErrorMessage } from '@/lib/utils';
@@ -57,6 +61,21 @@ function RegistrationFeeForm({ initial }: { initial: RegistrationFeeSettings }) 
 
   const set = <K extends keyof RegistrationFeeSettings>(k: K, v: RegistrationFeeSettings[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
+
+  // The rates in force today. The same list the finalisation gate checks
+
+  // against, so the form cannot offer something the bill will refuse.
+
+  const { data: slabData } = useGstSlabs();
+
+  const legalRates = (slabData?.slabs ?? [])
+
+    .filter((x) => x.current)
+
+    .map((x) => x.ratePercent)
+
+    .sort((a, b) => a - b);
+
 
   const total = form.amount + Math.round(form.amount * (form.gstRatePercent / 100) * 100) / 100;
 
@@ -127,14 +146,35 @@ function RegistrationFeeForm({ initial }: { initial: RegistrationFeeSettings }) 
                 </div>
                 <div>
                   <Label className="mb-1 block text-xs text-muted-foreground">GST (%)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={28}
-                    step="0.5"
-                    value={form.gstRatePercent}
-                    onChange={(e) => set('gstRatePercent', Number(e.target.value) || 0)}
-                  />
+                  {/* A rate the law recognises, not a free number.
+                      This was a plain box capped at 28 — a slab that stopped
+                      existing on 22 September 2025 — and this hospital's fee
+                      sits at 10%, which has never been a slab at all. Four
+                      registration lines went out at it. The server refuses an
+                      illegal rate now; offering one to be typed would only move
+                      the refusal later. */}
+                  <Select
+                    value={String(form.gstRatePercent)}
+                    onValueChange={(v) => v != null && set('gstRatePercent', Number(v))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {legalRates.map((r) => (
+                        <SelectItem key={r} value={String(r)}>
+                          {r === 0 ? 'Nil / exempt' : `${r}%`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {!legalRates.includes(form.gstRatePercent) && (
+                    <p className="mt-1 text-[11px] text-red-700">
+                      {form.gstRatePercent}% is not a legal slab today. Pick one of{' '}
+                      {legalRates.map((r) => `${r}%`).join(', ')} — a bill raised at the
+                      current rate will be refused when it is finalised.
+                    </p>
+                  )}
                 </div>
                 <div className="sm:col-span-2">
                   <Label className="mb-1 block text-xs text-muted-foreground">
