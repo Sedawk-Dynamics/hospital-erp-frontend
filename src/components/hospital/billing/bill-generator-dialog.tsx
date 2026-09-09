@@ -1124,7 +1124,13 @@ function BillLineRow({
       <td className="px-3 py-2 text-right font-label text-sm">{item.quantity}</td>
       <td className="px-3 py-2 text-right font-label text-sm">{fmt(Number(item.unitPrice))}</td>
       <td className="px-3 py-2 text-right font-label text-sm">{fmt(Number(item.discountAmount))}</td>
-      <td className="px-3 py-2 text-right font-label text-sm">{fmt(Number(item.taxableValue ?? 0))}</td>
+      {/* A dash where there is no taxable value. An exempt supply HAS a value
+          — it is in Total, on the same row — but it has no taxable value, and
+          printing one under this heading beside an "Exempt" badge made the row
+          contradict itself. */}
+      <td className="px-3 py-2 text-right font-label text-sm">
+        {item.gstTreatment === 'taxable' ? fmt(Number(item.taxableValue ?? 0)) : '—'}
+      </td>
       <td className="px-3 py-2">
         <TreatmentBadge
           treatment={item.gstTreatment}
@@ -1280,14 +1286,39 @@ function BillSummaryPanel({
     taxableValue?: string | number; cgstAmount?: string | number;
     sgstAmount?: string | number; igstAmount?: string | number;
     gstDocumentType?: string | null; invoiceNumber?: string | null;
+    /** Read for the taxable/exempt split — see the note in `rows`. */
+    billItems?: BillLineItem[];
   } | null;
 }) {
   const rows = useMemo(() => {
     if (!bill) return null;
+    // Split by TREATMENT, from the lines.
+    //
+    // The bill header's `taxable_value` is the undifferentiated sum of every
+    // line's value, exempt ones included — deliberately, because the reports
+    // partition it to fill both the taxable tables and the exempt table. Shown
+    // raw under a heading that says "Taxable value" it was simply wrong: a
+    // stay reading 8,168.60 taxable against 100.00 of GST implies a rate of
+    // 1.2%, and most of that 8,168.60 is exempt healthcare.
+    //
+    // The two figures below add back up to the subtotal, so the panel still
+    // reconciles on its face.
+    const items = bill.billItems ?? [];
+    const sumWhere = (pick: (t: string | null | undefined) => boolean) =>
+      items
+        .filter((i) => pick(i.gstTreatment))
+        .reduce((t, i) => t + Number(i.taxableValue ?? 0), 0);
+    const taxableSupplies = sumWhere((t) => t === 'taxable');
+    const exemptSupplies = sumWhere((t) => !!t && t !== 'taxable');
+    const unclassified = sumWhere((t) => !t);
     return {
       subtotal: Number(bill.subtotal ?? 0),
       discount: Number(bill.discountAmount ?? 0),
-      taxable: Number(bill.taxableValue ?? 0),
+      // Falls back to the header only when the lines have not loaded — an
+      // empty bill, where the two are the same number anyway.
+      taxable: items.length ? taxableSupplies : Number(bill.taxableValue ?? 0),
+      exempt: exemptSupplies,
+      unclassified,
       cgst: Number(bill.cgstAmount ?? 0),
       sgst: Number(bill.sgstAmount ?? 0),
       igst: Number(bill.igstAmount ?? 0),
@@ -1317,6 +1348,20 @@ function BillSummaryPanel({
           <SummaryRow label="Subtotal" value={fmt(rows.subtotal)} />
           <SummaryRow label="Discount" value={`− ${fmt(rows.discount)}`} negative />
           <SummaryRow label="Taxable value" value={fmt(rows.taxable)} muted />
+          {/* Named, rather than folded into the line above it. Most of a
+              hospital's income is exempt healthcare, and a summary that does
+              not say so leaves the reader to assume the tax was simply
+              under-charged. */}
+          {rows.exempt > 0 ? (
+            <SummaryRow label="Exempt / nil-rated" value={fmt(rows.exempt)} muted />
+          ) : null}
+          {/* Neither taxable nor exempt: nothing has established a position for
+              it. The finalisation gate refuses a bill carrying one, so this is
+              a draft-only warning — but it has to be visible, or the two rows
+              above would silently fail to add up to the subtotal. */}
+          {rows.unclassified > 0 ? (
+            <SummaryRow label="Unclassified" value={fmt(rows.unclassified)} negative />
+          ) : null}
           {/* Broken out the way the return asks for it. CGST/SGST and IGST are
               mutually exclusive, so only the pair that applies is shown. */}
           {rows.igst > 0 ? (
