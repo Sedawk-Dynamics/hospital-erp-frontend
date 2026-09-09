@@ -3,6 +3,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { TreatmentBadge } from '@/components/hospital/gst/gst-badges';
+import { GST_DOCUMENT_LABELS } from '@/types';
 import {
   ArrowLeft, BedDouble, Activity, Pill, Scissors,
   Receipt, FileCheck, ClipboardList, HeartPulse,
@@ -16,8 +18,20 @@ interface Vital {
 }
 interface MedItem { drug: string; dosage?: string | null; frequency?: string | null; duration?: string | null; route?: string | null; instructions?: string | null; isPrn?: boolean | null }
 interface Medication { id: string; prescribedAt?: string | null; status?: string | null; notes?: string | null; doctor?: string | null; items: MedItem[] }
-interface BillItem { description: string; quantity: number; amount: number }
-interface Bill { id: string; billNumber: string; status: string; total: number; paid: number; balance: number; items: BillItem[] }
+interface BillItem {
+  description: string; quantity: number; amount: number;
+  // Why this line was taxed as it was. A stay is the one bill where a patient
+  // sees GST on ONE line and nothing on the rest — the room rent above the
+  // 5,000/day threshold — and the screen used to leave that unexplained.
+  hsnSacCode?: string | null; gstTreatment?: string | null;
+  taxPercent?: number; taxAmount?: number; taxReason?: string | null;
+}
+interface Bill {
+  id: string; billNumber: string; status: string;
+  total: number; paid: number; balance: number; items: BillItem[];
+  documentType?: string | null; invoiceNumber?: string | null;
+  tax?: number; cgst?: number; sgst?: number; igst?: number;
+}
 interface AdmissionDetail {
   id: string; status: string; hospital?: string | null; dischargeSummaryId?: string | null;
   patient: { name: string; mrn?: string | null; dateOfBirth?: string | null; gender?: string | null; bloodGroup?: string | null };
@@ -265,22 +279,82 @@ export default function AdmissionDetailPage() {
           <div className="mt-3 space-y-3">
             {a.billing.bills.map((b) => (
               <div key={b.id}>
-                <div className="mb-1 flex items-center gap-2">
-                  <span className="text-[11px] font-semibold text-on-surface">{b.billNumber}</span>
+                <div className="mb-1 flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] font-semibold text-on-surface">
+                    {b.invoiceNumber ?? b.billNumber}
+                  </span>
+                  {b.invoiceNumber ? (
+                    <span className="font-mono text-[10px] text-on-surface-variant">{b.billNumber}</span>
+                  ) : null}
                   <span className="rounded-full bg-surface-container-high px-2 py-0.5 text-[10px] font-medium text-on-surface-variant capitalize">{b.status}</span>
+                  {/* What the hospital issued it as. A stay bill with any
+                      taxable line is an invoice-cum-bill-of-supply, not a bill
+                      of supply, and the two are different documents in law. */}
+                  {b.documentType ? (
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                      {GST_DOCUMENT_LABELS[b.documentType] ?? b.documentType}
+                    </span>
+                  ) : null}
                 </div>
                 {b.items.length > 0 && (
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[420px] border-collapse text-[12px]">
+                    <table className="w-full min-w-[560px] border-collapse text-[12px]">
                       <tbody>
                         {b.items.map((it, i) => (
                           <tr key={i} className={i % 2 ? 'bg-surface-container-low' : ''}>
-                            <td className="px-2 py-1.5 text-on-surface">{it.description}</td>
+                            <td className="px-2 py-1.5 text-on-surface">
+                              {it.description}
+                              {it.hsnSacCode ? (
+                                <span className="ml-1.5 font-mono text-[10px] text-on-surface-variant">
+                                  {it.hsnSacCode}
+                                </span>
+                              ) : null}
+                            </td>
                             <td className="px-2 py-1.5 text-right text-on-surface-variant">×{it.quantity}</td>
+                            <td className="px-2 py-1.5">
+                              {/* The same badge the counter reads, so "Exempt"
+                                  means one thing on both sides of the desk.
+                                  A line nothing classified says "No GST" here
+                                  rather than the staff screens' red flag: the
+                                  fact that is the patient's to know is that
+                                  they were not charged tax on it. */}
+                              {it.gstTreatment ? (
+                                <TreatmentBadge
+                                  treatment={it.gstTreatment}
+                                  ratePercent={it.taxPercent ?? 0}
+                                  reason={it.taxReason}
+                                />
+                              ) : (
+                                <span className="text-[10px] text-on-surface-variant">No GST</span>
+                              )}
+                            </td>
+                            <td className="px-2 py-1.5 text-right text-on-surface-variant">
+                              {(it.taxAmount ?? 0) > 0 ? rupee(it.taxAmount ?? 0) : '—'}
+                            </td>
                             <td className="px-2 py-1.5 text-right font-medium text-on-surface">{rupee(it.amount)}</td>
                           </tr>
                         ))}
                       </tbody>
+                      {/* The heads the tax was charged under — CGST + SGST
+                          within the state, IGST across it. Stated even when it
+                          is nothing, because "no GST" on a hospital bill is the
+                          answer to a question patients actually ask. */}
+                      <tfoot>
+                        <tr>
+                          <td colSpan={5} className="px-2 pt-2 text-right text-[11px] text-on-surface-variant">
+                            {(b.tax ?? 0) > 0 ? (
+                              <>
+                                {(b.cgst ?? 0) > 0 ? <span className="mr-3">CGST {rupee(b.cgst ?? 0)}</span> : null}
+                                {(b.sgst ?? 0) > 0 ? <span className="mr-3">SGST {rupee(b.sgst ?? 0)}</span> : null}
+                                {(b.igst ?? 0) > 0 ? <span className="mr-3">IGST {rupee(b.igst ?? 0)}</span> : null}
+                                <span className="font-semibold text-on-surface">Total GST {rupee(b.tax ?? 0)}</span>
+                              </>
+                            ) : (
+                              'No GST was charged on this bill.'
+                            )}
+                          </td>
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
                 )}
