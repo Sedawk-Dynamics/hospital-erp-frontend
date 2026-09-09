@@ -728,3 +728,50 @@ export function useSetPeriodLock() {
     },
   });
 }
+
+// ── Group D — e-invoice and e-way bill ─────────────────────────────────────
+//
+// These reports answer with an `applicability` block before they answer with
+// rows, and the screen renders that FIRST. An empty e-invoice register means
+// one of two opposite things — nothing was due, or nothing has been sent — and
+// the rows alone cannot say which.
+
+export interface EInvoiceApplicability {
+  applicable: boolean;
+  /** Correction 14's wording. Never a turnover figure. */
+  statement: string;
+  note: string;
+  settingsPath: string;
+}
+
+export interface IrnRow {
+  id: string;
+  kind: 'invoice' | 'credit_note' | 'debit_note';
+  documentNumber: string;
+  documentDate: string;
+  recipientName: string | null;
+  recipientGstin: string | null;
+  taxableValue: number;
+  taxAmount: number;
+  totalAmount: number;
+  irn: string | null;
+  ackNo: string | null;
+  ackDate: string | null;
+  status: string;
+  error: string | null;
+  attemptedAt: string | null;
+  cancelledAt: string | null;
+  daysToDeadline: number | null;
+}
+
+/** D-1 — E-invoice (IRN) Register. */
+export const useEInvoiceRegister = (q: GstReportQuery & { status?: string }, on = true) =>
+  useReport<{
+    applicability: EInvoiceApplicability;
+    summary: {
+      required: number; registered: number; pending: number; failed: number;
+      notSent: number; cancelled: number; totalValue: number; totalTax: number;
+    };
+    rows: IrnRow[];
+    note: string;
+  }>('einvoice-register', '/gst/reports/einvoice-register', q as GstReportQuery, on);

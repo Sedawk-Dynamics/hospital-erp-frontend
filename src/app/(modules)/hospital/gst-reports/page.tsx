@@ -22,13 +22,17 @@ import {
 } from '@/components/hospital/gst/gst-report-views-bc';
 import { FiledPeriodsView } from '@/components/hospital/gst/gst-filed-periods';
 import { Gstr2bReconciliationView } from '@/components/hospital/gst/gst-2b-reconciliation';
+import {
+  EInvoiceRegisterView,
+} from '@/components/hospital/gst/gst-report-views-d';
 
 // ============================================================
 // GST Reports.
 //
-// Twenty-one reports in three groups: A is what the accountant files from, B is
-// how the hospital claims money back, C is how it keeps itself out of trouble
-// day to day.
+// Four groups: A is what the accountant files from, B is how the hospital
+// claims money back, C is how it keeps itself out of trouble day to day, and D
+// is the e-invoice side — which applies when the hospital's own settings say it
+// does, never when a turnover figure written into the code says so.
 //
 // The period is chosen ONCE and every report reads it. That is not a
 // convenience — a screen where each report carried its own dates is a screen
@@ -89,6 +93,19 @@ const GROUPS: Array<{ group: string; caption: string; reports: ReportDef[] }> = 
       { ref: 'C-7', label: 'Department-wise GST', what: 'Tax by pharmacy, lab, radiology, OT, room', View: DepartmentGstView },
       { ref: 'C-8', label: 'Rate Change Impact', what: 'What moved on a tax master, and what it touched', View: RateChangeImpactView },
       { ref: 'C-9', label: 'Cancelled Invoices', what: 'Invoices cancelled after issue, and what reversed them', View: CancelledInvoicesView },
+    ],
+  },
+  {
+    group: 'D · E-invoice',
+    // Correction 14: never "only above ₹5 crore". Whether these apply is the
+    // hospital's own setting for the period, and each report says so itself
+    // rather than being hidden — "it does not apply to us" is a thing an
+    // auditor asks the hospital to demonstrate, not to assert.
+    caption:
+      'Applicable where e-invoicing and e-way bill requirements apply to the hospital for the period. ' +
+      'Each report states the hospital’s current position.',
+    reports: [
+      { ref: 'D-1', label: 'E-invoice Register', what: 'Every B2B document, its IRN, acknowledgement and date', View: EInvoiceRegisterView },
     ],
   },
 ];
