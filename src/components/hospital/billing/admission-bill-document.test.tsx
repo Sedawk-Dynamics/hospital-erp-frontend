@@ -494,11 +494,51 @@ describe('AdmissionBillDocumentView', () => {
   it('summarises the bill one row per rate, and adds it up', () => {
     render(<AdmissionBillDocumentView doc={taxedDoc()} />);
     expect(screen.getByText('Tax Summary')).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'Taxable Value' })).toBeInTheDocument();
+    // "Value", not "Taxable Value": the table has a row per TREATMENT as well
+    // as per rate, so an exempt row sits under the same column as a taxed one.
+    expect(screen.getByRole('columnheader', { name: 'Value' })).toBeInTheDocument();
     expect(screen.getByText('5%')).toBeInTheDocument();
     expect(screen.getByText('Total')).toBeInTheDocument();
     expect(screen.getByText('₹8,240.00')).toBeInTheDocument();
     expect(screen.getByText(/reverse charge/)).toBeInTheDocument();
+  });
+
+  // An exempt supply has a VALUE — it is in Amount on the same row — but it has
+  // no TAXABLE value. Printing one under that heading beside an "Exempt" cell
+  // made the row contradict itself, and made the column stop summing to the tax
+  // below it.
+  it('leaves the taxable column empty on an exempt line, and fills it on a taxed one', () => {
+    render(<AdmissionBillDocumentView doc={taxedDoc()} />);
+
+    // By COLUMN, not by row: the exempt line's money is still on the row, in
+    // Amount. What must be empty is the cell under "Taxable".
+    const headers = [...screen.getAllByRole('columnheader')].map((h) => h.textContent);
+    const taxableCol = headers.indexOf('Taxable');
+    expect(taxableCol).toBeGreaterThan(-1);
+
+    const cellsOf = (label: string) =>
+      [...screen.getByText(label).closest('tr')!.querySelectorAll('td')].map((c) => c.textContent);
+
+    const exempt = cellsOf('Injection Ceftriaxone 1g');
+    expect(exempt[taxableCol]).toBe('—');
+    // ...and the line's own money is untouched, in the last column.
+    expect(exempt[exempt.length - 1]).toBe('₹240.00');
+
+    expect(cellsOf('Deluxe AC room')[taxableCol]).toBe('₹8,000.00');
+  });
+
+  // A total under a column has to sum that column, or it is not a total of
+  // anything the reader can see.
+  it('foots the taxable column to zero for a group that is entirely exempt', () => {
+    render(<AdmissionBillDocumentView doc={taxedDoc()} />);
+    const cells = [
+      ...screen.getByText('Pharmacy & Medicines total').closest('tr')!.querySelectorAll('td'),
+    ].map((c) => c.textContent);
+    // The label cell spans the first four columns, so Taxable is the second
+    // cell in the DOM even though it is the fifth column on the page.
+    expect(cells[1]).toBe('₹0.00');
+    // Zero taxable, and the group's actual money still stated beside it.
+    expect(cells[cells.length - 1]).toBe('₹240.00');
   });
 
   it('bills a patient from another state IGST, with no CGST/SGST columns', () => {
