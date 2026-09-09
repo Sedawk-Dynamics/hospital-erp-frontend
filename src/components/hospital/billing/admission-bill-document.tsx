@@ -491,8 +491,14 @@ export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: Admis
                           <td style={{ ...bodyCellStyle(theme), textAlign: 'right' }}>{fmtMoney(l.unitPrice)}</td>
                           {showTax && (
                             <>
+                              {/* A dash where there is no taxable value. An
+                                  exempt supply has a value — it is in Amount on
+                                  the same row — but no TAXABLE value, and one
+                                  printed here beside an "Exempt" cell made the
+                                  row contradict itself. Mirrors
+                                  `taxableValueOf` in billing.gst-layout.ts. */}
                               <td style={{ ...bodyCellStyle(theme), textAlign: 'right' }}>
-                                {fmtMoney(l.taxableValue)}
+                                {l.gstTreatment === 'taxable' ? fmtMoney(l.taxableValue) : '—'}
                               </td>
                               {interState ? (
                                 <td style={{ ...bodyCellStyle(theme), textAlign: 'right' }}>
@@ -530,7 +536,9 @@ export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: Admis
                         {showTax && (
                           <>
                             <td style={{ ...bodyCellStyle(theme), textAlign: 'right', fontWeight: 700 }}>
-                              {fmtMoney(sumOver(g.lines, (l) => l.taxableValue))}
+                              {fmtMoney(
+                                sumOver(g.lines, (l) => (l.gstTreatment === 'taxable' ? l.taxableValue : 0)),
+                              )}
                             </td>
                             {interState ? (
                               <td style={{ ...bodyCellStyle(theme), textAlign: 'right', fontWeight: 700 }}>
@@ -569,9 +577,16 @@ export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: Admis
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: pt(theme.size.small) }}>
                 <thead>
                   <tr>
+                    {/* "Value", not "Taxable Value": this table has a row per
+                        TREATMENT as well as per rate, so an exempt row sits
+                        under the same column as a taxed one — and an exempt
+                        supply has no taxable value. Named this way the column
+                        is true of every row, and the Total becomes a figure
+                        worth printing: value plus tax equals the gross charges
+                        below it. */}
                     {(interState
-                      ? ['Rate', 'Taxable Value', 'IGST', 'Total Tax']
-                      : ['Rate', 'Taxable Value', 'CGST', 'SGST', 'Total Tax']
+                      ? ['Rate', 'Value', 'IGST', 'Total Tax']
+                      : ['Rate', 'Value', 'CGST', 'SGST', 'Total Tax']
                     ).map((label, i) => (
                       <th
                         key={label}
