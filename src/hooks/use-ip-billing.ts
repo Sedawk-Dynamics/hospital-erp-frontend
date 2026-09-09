@@ -226,7 +226,13 @@ export interface BillPayment {
 export function useBillPayments(billId: string | null) {
   return useQuery({
     queryKey: ['bill-payments', billId],
-    queryFn: async () => (await apiGet<BillPayment[]>('/payments', { params: { billId, limit: 50 } })).data,
+    queryFn: async () =>
+      // `/billing/payments`, not `/payments` — there has never been a payments
+      // router at the root, so this 404'd every time an IP bill was opened and
+      // the instalment list silently rendered empty. A bill paid in three
+      // instalments looked unpaid on the one screen that shows the stay's
+      // pharmacy, room and procedure charges together.
+      (await apiGet<BillPayment[]>('/billing/payments', { params: { billId, limit: 50 } })).data,
     enabled: !!billId,
   });
 }
