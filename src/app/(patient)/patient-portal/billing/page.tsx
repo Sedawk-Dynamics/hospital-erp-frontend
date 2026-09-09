@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { CreditCard, Download, Wallet, Loader2 } from 'lucide-react';
+import { Fragment, useState } from 'react';
+import { ChevronDown, ChevronRight, CreditCard, Download, Wallet, Loader2 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { apiGet, apiPost } from '@/lib/api';
@@ -12,9 +12,40 @@ import { HospitalFilter } from '../_components/hospital-filter';
 import { usePatientProfileStore } from '@/stores/patient-profile-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { fullName } from '@/lib/person-name';
+import { TreatmentBadge } from '@/components/hospital/gst/gst-badges';
+import { GST_DOCUMENT_LABELS } from '@/types';
+
+/**
+ * One line of a patient's own bill, with the tax position on it.
+ *
+ * Section 6.10: "every bill line keeps the reason for its rate ... this is what
+ * lets the counter answer a patient's question without calling accounts". The
+ * patient's own screen is one step better than that — it answers the question
+ * without them having to ask it, which is the point of section 15's
+ * "patient disputes the GST on their bill" risk.
+ */
+type BillLine = {
+  id?: string;
+  description?: string;
+  quantity?: number | string;
+  unitPrice?: number | string;
+  totalAmount?: number | string;
+  hsnSacCode?: string | null;
+  gstTreatment?: string | null;
+  taxPercent?: number | string;
+  taxableValue?: number | string;
+  taxAmount?: number | string;
+  cgstAmount?: number | string;
+  sgstAmount?: number | string;
+  igstAmount?: number | string;
+  /** The determination engine's own words. Shown on hover, never invented. */
+  taxReason?: string | null;
+};
 
 export default function PatientBillingPage() {
   const [hospitalFilter, setHospitalFilter] = useState('');
+  /** Which bill is opened out. One at a time — this is a phone screen too. */
+  const [openBillId, setOpenBillId] = useState<string | null>(null);
   const { selectedProfileId } = usePatientProfileStore();
   const queryClient = useQueryClient();
 
@@ -35,11 +66,7 @@ export default function PatientBillingPage() {
         balanceDue?: number | string;
         total?: number | string; paidAmount?: number | string;
         balanceAmount?: number | string;
-        billItems?: Array<{
-          description?: string; totalAmount?: number;
-          hsnSacCode?: string | null; gstTreatment?: string | null;
-          taxPercent?: number | string; taxAmount?: number | string;
-        }>;
+        billItems?: BillLine[];
         patient?: { tenant?: { name?: string } };
         // What the hospital issued this as, and the tax inside it.
         gstDocumentType?: string | null; invoiceNumber?: string | null;
@@ -128,19 +155,33 @@ export default function PatientBillingPage() {
               </tr>
             ) : (
               bills.map((bill) => (
+                <Fragment key={bill.id}>
                 <tr
-                  key={bill.id}
-                  className="hover:bg-surface-container-low transition-colors"
+                  className="hover:bg-surface-container-low transition-colors cursor-pointer"
+                  onClick={() => setOpenBillId(openBillId === bill.id ? null : bill.id)}
+                  title="Show what this bill is made of"
                 >
                   <td className="px-4 py-3 font-label font-bold text-on-surface">
-                    {/* The number the hospital issued it under, where there is
-                        one — that is what the patient quotes back. */}
-                    {bill.invoiceNumber ?? bill.billNumber}
-                    {bill.invoiceNumber ? (
-                      <span className="block font-label text-[10px] font-normal text-on-surface-variant">
-                        {bill.billNumber}
+                    <span className="flex items-center gap-1.5">
+                      {/* The bill opens out into its lines. A patient who wants
+                          to know why a figure is what it is should not have to
+                          telephone the counter to find out. */}
+                      {openBillId === bill.id ? (
+                        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-on-surface-variant" />
+                      ) : (
+                        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-on-surface-variant" />
+                      )}
+                      <span>
+                        {/* The number the hospital issued it under, where there
+                            is one — that is what the patient quotes back. */}
+                        {bill.invoiceNumber ?? bill.billNumber}
+                        {bill.invoiceNumber ? (
+                          <span className="block font-label text-[10px] font-normal text-on-surface-variant">
+                            {bill.billNumber}
+                          </span>
+                        ) : null}
                       </span>
-                    ) : null}
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-on-surface-variant">{formatDate(bill.createdAt)}</td>
                   <td className="px-4 py-3 text-right font-label font-bold text-on-surface">
@@ -175,7 +216,12 @@ export default function PatientBillingPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1.5">
+                    {/* The row toggles the breakdown; the buttons in it must
+                        not, or Pay Now would open the panel instead. */}
+                    <div
+                      className="flex items-center justify-end gap-1.5"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       {/* Same field-name bug as the columns above: this read
                           `balanceAmount`, the payload carries `balanceDue`, and
                           NaN > 0 is false — so Pay Now never rendered on any
@@ -200,6 +246,21 @@ export default function PatientBillingPage() {
                     </div>
                   </td>
                 </tr>
+                {openBillId === bill.id ? (
+                  <tr className="bg-surface-container-low/60">
+                    <td colSpan={7} className="px-4 py-4">
+                      <BillLines
+                        lines={bill.billItems ?? []}
+                        documentType={bill.gstDocumentType}
+                        cgst={bill.cgstAmount}
+                        sgst={bill.sgstAmount}
+                        igst={bill.igstAmount}
+                        tax={bill.taxAmount}
+                      />
+                    </td>
+                  </tr>
+                ) : null}
+                </Fragment>
               ))
             )}
           </tbody>
@@ -210,6 +271,131 @@ export default function PatientBillingPage() {
 }
 
 // ────────────────────────────────────────────────────────────────────────
+// What a bill is made of, and the tax on each part of it.
+//
+// The API has always sent these lines; nothing rendered them, so a patient
+// could see "incl. GST 450" on a stay and had no way to learn that the 450 was
+// the room rent above the 5,000/day threshold and nothing else. That is
+// section 15's "patient disputes the GST on their bill" arriving at the
+// counter as a telephone call.
+//
+// The vocabulary is deliberately the SAME component the billing worklist, the
+// bill generator and the IP ledger use, so "Exempt" means one thing across all
+// four screens.
+// ────────────────────────────────────────────────────────────────────────
+function BillLines({
+  lines,
+  documentType,
+  cgst,
+  sgst,
+  igst,
+  tax,
+}: {
+  lines: BillLine[];
+  documentType?: string | null;
+  cgst?: number | string;
+  sgst?: number | string;
+  igst?: number | string;
+  tax?: number | string;
+}) {
+  const n = (v: number | string | null | undefined) => {
+    const x = Number(v ?? 0);
+    return Number.isFinite(x) ? x : 0;
+  };
+  const rupees = (v: number | string | null | undefined) =>
+    `\u20B9${n(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  if (!lines.length) {
+    return (
+      <p className="font-label text-xs text-on-surface-variant">
+        The hospital has not published the line detail for this bill. Ask at the billing counter for
+        an itemised copy.
+      </p>
+    );
+  }
+
+  const totalTax = n(tax) || n(cgst) + n(sgst) + n(igst);
+
+  return (
+    <div className="space-y-3">
+      {documentType ? (
+        <p className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
+          {GST_DOCUMENT_LABELS[documentType] ?? documentType}
+        </p>
+      ) : null}
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-on-surface-variant font-label text-[10px] uppercase tracking-widest">
+              <th className="py-1.5 pr-3 text-left font-bold">Item</th>
+              <th className="py-1.5 px-3 text-right font-bold">Qty</th>
+              <th className="py-1.5 px-3 text-left font-bold">HSN / SAC</th>
+              <th className="py-1.5 px-3 text-left font-bold">GST</th>
+              <th className="py-1.5 px-3 text-right font-bold">Tax</th>
+              <th className="py-1.5 pl-3 text-right font-bold">Amount</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-surface-container/50">
+            {lines.map((l, i) => (
+              <tr key={l.id ?? i}>
+                <td className="py-2 pr-3 text-on-surface">{l.description ?? '\u2014'}</td>
+                <td className="py-2 px-3 text-right text-on-surface-variant">
+                  {l.quantity != null ? n(l.quantity).toLocaleString('en-IN') : '\u2014'}
+                </td>
+                <td className="py-2 px-3 font-mono text-[11px] text-on-surface-variant">
+                  {l.hsnSacCode ?? '\u2014'}
+                </td>
+                <td className="py-2 px-3">
+                  {l.gstTreatment ? (
+                    <TreatmentBadge
+                      treatment={l.gstTreatment}
+                      ratePercent={n(l.taxPercent)}
+                      reason={l.taxReason}
+                    />
+                  ) : (
+                    // NOT the red "Unclassified" the staff screens show. That
+                    // badge is a data-quality flag aimed at the hospital's own
+                    // people; on a patient's bill the only fact that is theirs
+                    // to know is that no GST was charged on the line, and that
+                    // much the figures themselves prove.
+                    <span className="inline-flex items-center rounded border border-surface-container bg-surface-container px-1.5 py-0.5 text-[11px] font-medium text-on-surface-variant">
+                      No GST
+                    </span>
+                  )}
+                </td>
+                <td className="py-2 px-3 text-right text-on-surface-variant">
+                  {n(l.taxAmount) > 0 ? rupees(l.taxAmount) : '\u2014'}
+                </td>
+                <td className="py-2 pl-3 text-right font-label font-semibold text-on-surface">
+                  {rupees(l.totalAmount)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* The heads the tax was charged under. A patient comparing this bill
+          against one from another state should be able to see WHY one says
+          CGST + SGST and the other says IGST. */}
+      {totalTax > 0 ? (
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-surface-container pt-2 font-label text-[11px] text-on-surface-variant">
+          {n(cgst) > 0 ? <span>CGST {rupees(cgst)}</span> : null}
+          {n(sgst) > 0 ? <span>SGST {rupees(sgst)}</span> : null}
+          {n(igst) > 0 ? <span>IGST {rupees(igst)}</span> : null}
+          <span className="font-semibold text-on-surface">Total GST {rupees(totalTax)}</span>
+        </div>
+      ) : (
+        <p className="border-t border-surface-container pt-2 font-label text-[11px] text-on-surface-variant">
+          No GST was charged on this bill. Healthcare services to an in-patient are exempt.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // Pay Now — opens Razorpay checkout for an outstanding bill.
 // Backend (POST /patient-portal/create-bill-payment-order) scopes the bill to
 // the logged-in patient, so a patient can only pay their own bills. The
