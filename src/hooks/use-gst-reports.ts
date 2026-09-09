@@ -818,3 +818,39 @@ export const useEwayBills = (q: GstReportQuery, on = true) =>
     rows: EwayRow[];
     note: string;
   }>('eway-bills', '/gst/reports/eway-bills', q, on);
+
+// ── A-13 — amendments ──────────────────────────────────────────────────────
+//
+// Deliberately NOT keyed on the shared period picker. An amendment belongs to
+// the return being prepared now and corrects an earlier one, so the filter here
+// names the period being CORRECTED.
+
+export interface AmendmentRow {
+  table: '9A' | '9C' | '10';
+  change: string;
+  originalNumber: string;
+  originalDate: string | null;
+  originalPeriod: string;
+  recipientGstin: string | null;
+  placeOfSupply: string | null;
+  filedValue: number | null;
+  currentValue: number | null;
+  filedTax: number | null;
+  currentTax: number | null;
+  difference: number;
+  reason: string;
+}
+
+export const useGstr1Amendments = (q: { returnPeriod?: string }, on = true) =>
+  useReport<{
+    summary: {
+      filedPeriods: number; comparablePeriods: number; amendments: number;
+      table9A: number; table9C: number; table10: number; netValueChange: number;
+    };
+    periods: Array<{
+      returnPeriod: string; filedAt: string; locked: boolean;
+      comparable: boolean; amendments: number; note: string;
+    }>;
+    rows: AmendmentRow[];
+    note: string;
+  }>('gstr1-amendments', '/gst/reports/gstr1-amendments', q as GstReportQuery, on);
