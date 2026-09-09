@@ -788,3 +788,33 @@ export const useFailedIrn = (q: GstReportQuery, on = true) =>
     rows: Array<IrnRow & { overdue: boolean; reason: string }>;
     note: string;
   }>('failed-irn', '/gst/reports/failed-irn', q, on);
+
+export interface EwayRow {
+  returnId: string;
+  date: string;
+  documentNumber: string;
+  status: string;
+  itemName: string;
+  hsnCode: string | null;
+  quantity: number;
+  consignmentValue: number;
+  supplierName: string | null;
+  supplierGstin: string | null;
+  destination: string | null;
+  ewayBillNumber: string | null;
+  ewayBillDate: string | null;
+  billRequired: boolean;
+}
+
+/** D-3 — E-way Bill Register. */
+export const useEwayBills = (q: GstReportQuery, on = true) =>
+  useReport<{
+    applicability: EInvoiceApplicability;
+    threshold: number;
+    summary: {
+      movements: number; aboveThreshold: number; withBill: number;
+      missingBill: number; totalValue: number;
+    };
+    rows: EwayRow[];
+    note: string;
+  }>('eway-bills', '/gst/reports/eway-bills', q, on);

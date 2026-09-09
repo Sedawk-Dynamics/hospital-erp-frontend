@@ -7,7 +7,7 @@ import {
   Column, ExportButton, Loading, ReportTable, StatStrip,
   exportCsv, exportXlsx, money, plain, titleCase,
 } from './gst-report-shell';
-import type { EInvoiceApplicability, GstReportQuery, IrnRow } from '@/hooks/use-gst-reports';
+import type { EInvoiceApplicability, EwayRow, GstReportQuery, IrnRow } from '@/hooks/use-gst-reports';
 import * as R from '@/hooks/use-gst-reports';
 
 // ============================================================
@@ -245,6 +245,82 @@ export function FailedIrnView({ q }: { q: Q }) {
         />
       </div>
       <ReportTable columns={cols} rows={rows} empty="Nothing is outstanding — every B2B document carries an IRN." />
+    </div>
+  );
+}
+
+const ewayCols: Column<EwayRow>[] = [
+  { key: 'date', label: 'Date', cell: (r) => formatDate(r.date), csv: (r) => formatDate(r.date) },
+  { key: 'num', label: 'Return', cell: (r) => <span className="font-mono text-xs">{r.documentNumber || '—'}</span>, csv: (r) => r.documentNumber },
+  { key: 'item', label: 'Item', cell: (r) => r.itemName || '—', csv: (r) => r.itemName },
+  { key: 'hsn', label: 'HSN', cell: (r) => <span className="font-mono text-xs">{r.hsnCode ?? '—'}</span>, csv: (r) => r.hsnCode ?? '' },
+  { key: 'qty', label: 'Qty', align: 'right', cell: (r) => r.quantity, csv: (r) => r.quantity },
+  { key: 'val', label: 'Consignment value', align: 'right', cell: (r) => plain(r.consignmentValue), csv: (r) => r.consignmentValue },
+  { key: 'to', label: 'Consignee', cell: (r) => r.supplierName ?? '—', csv: (r) => r.supplierName ?? '' },
+  { key: 'gstin', label: 'Consignee GSTIN', cell: (r) => <span className="font-mono text-xs">{r.supplierGstin ?? '—'}</span>, csv: (r) => r.supplierGstin ?? '' },
+  {
+    key: 'ewb',
+    label: 'E-way bill',
+    cell: (r) =>
+      r.ewayBillNumber ? (
+        <span className="font-mono text-xs">{r.ewayBillNumber}</span>
+      ) : (
+        <span className="inline-flex items-center rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-900">
+          Not recorded
+        </span>
+      ),
+    csv: (r) => r.ewayBillNumber ?? '',
+  },
+  { key: 'ewbd', label: 'Bill date', cell: (r) => (r.ewayBillDate ? formatDate(r.ewayBillDate) : '—'), csv: (r) => (r.ewayBillDate ? formatDate(r.ewayBillDate) : '') },
+];
+
+/**
+ * D-3 — E-way Bill Register.
+ *
+ * Almost nothing a hospital does moves goods on a public road: a ward transfer
+ * and a pharmacy issue stay inside the building, and a patient carries their
+ * own medicines out. Stock going BACK to a supplier is the exception, and that
+ * is what this lists — against the hospital's own consignment threshold rather
+ * than a figure written into the screen.
+ */
+export function EwayBillView({ q }: { q: Q }) {
+  const { data, isLoading } = R.useEwayBills(q);
+  if (isLoading) return <Loading />;
+  const rows = data?.rows ?? [];
+  const s = data?.summary;
+
+  return (
+    <div className="space-y-4">
+      {data?.applicability ? <Applicability a={data.applicability} /> : null}
+      <StatStrip
+        stats={[
+          { label: 'Goods movements', value: String(s?.movements ?? 0), hint: 'Stock returned to a supplier' },
+          {
+            label: 'Above the threshold',
+            value: String(s?.aboveThreshold ?? 0),
+            hint: `Over ${money(data?.threshold)} per consignment`,
+          },
+          { label: 'With an e-way bill', value: String(s?.withBill ?? 0), tone: 'good' },
+          {
+            label: 'Without one',
+            value: String(s?.missingBill ?? 0),
+            tone: (s?.missingBill ?? 0) > 0 ? 'bad' : 'good',
+          },
+        ]}
+      />
+      <EmptyMeaning note={data?.note ?? ''} bad={(s?.missingBill ?? 0) > 0} />
+      <div className="flex justify-end">
+        <ExportButton
+          onClick={() => exportCsv('D3-eway-bills', ewayCols, rows, { from: q.from, to: q.to })}
+          onExcel={() => exportXlsx('D3-eway-bills', ewayCols, rows, { from: q.from, to: q.to })}
+          disabled={!rows.length}
+        />
+      </div>
+      <ReportTable
+        columns={ewayCols}
+        rows={rows}
+        empty="No goods movement in this period crossed the consignment threshold."
+      />
     </div>
   );
 }
