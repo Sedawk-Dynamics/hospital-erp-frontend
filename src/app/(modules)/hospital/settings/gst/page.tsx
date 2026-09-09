@@ -268,6 +268,50 @@ function GstForm({ initial }: { initial: GstProfile }) {
             title="E-way bills apply"
             hint="Only where goods physically move above the threshold. Rare for a hospital."
           />
+
+          {/* The two numbers behind the switches. Here rather than in the
+              reports for the same reason as the switches themselves: both have
+              already moved once, and a report that compiles one in starts
+              lying the day the rule changes rather than the day this hospital
+              does. Shown only when the switch above them is on, so a hospital
+              outside the regime is not asked a question it cannot answer. */}
+          {form.eInvoiceApplicable ? (
+            <div className="pl-1">
+              <Label className="mb-1 block text-xs text-muted-foreground">
+                Days to register an invoice
+              </Label>
+              <Input
+                type="number"
+                min={0}
+                max={365}
+                className="max-w-[10rem]"
+                value={String(form.eInvoiceUploadDays)}
+                onChange={(e) => set('eInvoiceUploadDays', Number(e.target.value))}
+              />
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                The window report D-2 measures its deadline against. Zero means the invoice must be
+                registered the same day.
+              </p>
+            </div>
+          ) : null}
+
+          {form.eWayBillApplicable ? (
+            <div className="pl-1">
+              <Label className="mb-1 block text-xs text-muted-foreground">
+                Consignment value needing an e-way bill
+              </Label>
+              <Input
+                type="number"
+                min={0}
+                className="max-w-[12rem]"
+                value={String(form.eWayBillThreshold)}
+                onChange={(e) => set('eWayBillThreshold', Number(e.target.value))}
+              />
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Report D-3 lists the goods movements that cross it.
+              </p>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 

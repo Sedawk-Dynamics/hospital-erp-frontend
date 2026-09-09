@@ -28,6 +28,10 @@ export interface GstProfile {
   sixDigitHsn: boolean;
   eInvoiceApplicable: boolean;
   eWayBillApplicable: boolean;
+  /** Days after the document date an invoice may still be registered (report D-2). */
+  eInvoiceUploadDays: number;
+  /** Consignment value above which goods on a road need an e-way bill (report D-3). */
+  eWayBillThreshold: number;
   dischargeMedicinesTaxable: boolean;
   inpatientCompositeExempt: boolean;
   roomUpgradeTreatment: RoomUpgradeTreatment;
@@ -45,6 +49,8 @@ export const EMPTY_GST_PROFILE: GstProfile = {
   sixDigitHsn: false,
   eInvoiceApplicable: false,
   eWayBillApplicable: false,
+  eInvoiceUploadDays: 30,
+  eWayBillThreshold: 50000,
   dischargeMedicinesTaxable: true,
   inpatientCompositeExempt: true,
   roomUpgradeTreatment: 'accommodation',
