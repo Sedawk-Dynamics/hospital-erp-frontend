@@ -22,6 +22,7 @@ import {
 } from '@/components/hospital/gst/gst-report-views-bc';
 import { FiledPeriodsView } from '@/components/hospital/gst/gst-filed-periods';
 import { Gstr2bReconciliationView } from '@/components/hospital/gst/gst-2b-reconciliation';
+import { AmendmentsView } from '@/components/hospital/gst/gst-report-view-amendments';
 import {
   EInvoiceRegisterView, EwayBillView, FailedIrnView,
 } from '@/components/hospital/gst/gst-report-views-d';
@@ -65,6 +66,10 @@ const GROUPS: Array<{ group: string; caption: string; reports: ReportDef[] }> = 
       { ref: 'A-10', label: 'Advances', what: 'Tax due on advances, and what has been adjusted', View: AdvancesView },
       { ref: 'A-11', label: 'GSTR-9 Annual Return', what: 'The whole year, in the form’s own table order', View: Gstr9View, wholeYear: true },
       { ref: 'A-12', label: 'GSTR-9C Reconciliation', what: 'Books against returns — the data the accountant needs', View: Gstr9cView, wholeYear: true },
+      // Ignores the period picker on purpose: an amendment belongs to the
+      // return being prepared NOW and corrects an earlier one, so "what
+      // happened in March" is the wrong question to put to it.
+      { ref: 'A-13', label: 'Amendments', what: 'What no longer matches a return that has already gone in', View: AmendmentsView, wholeYear: true },
     ],
   },
   {
