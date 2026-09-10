@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DocumentBadge, TreatmentBadge } from '@/components/hospital/gst/gst-badges';
+import { useGstProfile } from '@/hooks/use-gst-profile';
 import { toast } from 'sonner';
 import {
   Loader2, Search, Plus, Trash2, Stethoscope, FlaskConical, Pill, Scan, BedDouble,
@@ -1276,7 +1277,15 @@ function DiscountPanel({
 // Right-rail summary
 // ────────────────────────────────────────────────────────────────────────
 
-function BillSummaryPanel({
+/**
+ * Exported for its own test.
+ *
+ * It is pure presentation over figures the server settled, and it carries the
+ * one thing on this screen that is easy to get quietly wrong — what the tax
+ * rows MEAN. Reaching it through the whole dialog would mean standing up ten
+ * hooks to assert on a sentence.
+ */
+export function BillSummaryPanel({
   bill,
 }: {
   bill: {
@@ -1290,6 +1299,13 @@ function BillSummaryPanel({
     billItems?: BillLineItem[];
   } | null;
 }) {
+  // Whether the hospital charges GST at all. "No tax because we are not
+  // registered" and "no tax because these supplies are exempt" are completely
+  // different statements, and saying the wrong one is worse than saying
+  // nothing. Cached centrally, so this costs nothing on top of the screens
+  // that already read it.
+  const { data: gstProfile } = useGstProfile();
+
   const rows = useMemo(() => {
     if (!bill) return null;
     // Split by TREATMENT, from the lines.
@@ -1312,6 +1328,7 @@ function BillSummaryPanel({
     const exemptSupplies = sumWhere((t) => !!t && t !== 'taxable');
     const unclassified = sumWhere((t) => !t);
     return {
+      lineCount: items.length,
       subtotal: Number(bill.subtotal ?? 0),
       discount: Number(bill.discountAmount ?? 0),
       // Falls back to the header only when the lines have not loaded — an
@@ -1373,6 +1390,20 @@ function BillSummaryPanel({
             </>
           )}
           <SummaryRow label="Total GST" value={fmt(rows.tax)} />
+          {/* Why there is no tax.
+              A bill of nothing but exempt healthcare shows a column of dashes
+              and four zeroes, and to the person at the counter that reads as
+              "the tax has not loaded" rather than "no tax is due". Every other
+              surface says it outright — the patient portal, the printed
+              invoice and the stay document all do — and this screen, the one
+              the bill is actually assembled on, was the only one silent. */}
+          {rows.tax === 0 && rows.lineCount > 0 && rows.unclassified === 0 ? (
+            <p className="rounded-lg bg-surface-container-low px-2 py-1.5 font-label text-[11px] leading-relaxed text-on-surface-variant">
+              {gstProfile && !gstProfile.registered
+                ? 'This hospital is not registered under GST, so no tax is charged on any bill.'
+                : 'No GST is due — every line on this bill is exempt or nil-rated. Hover a line’s badge for the reason it was treated that way.'}
+            </p>
+          ) : null}
           <div className="h-px bg-surface-container my-1" />
           <SummaryRow label="Total" value={fmt(rows.total)} bold />
           <SummaryRow label="Paid" value={fmt(rows.paid)} muted />
