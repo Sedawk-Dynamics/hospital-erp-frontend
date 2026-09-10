@@ -394,6 +394,13 @@ function ComposeStep({
     try {
       const res = await pullCharges.mutateAsync({
         billId: effectiveBillId,
+        // Everything the tax rules need, not just the money.
+        //
+        // This used to rebuild each row from seven fields, which threw away
+        // every fact the server had worked out about the supply — and the
+        // server then re-resolved the line with almost nothing. A ₹10,000/day
+        // room came back EXEMPT because `dailyRate` never arrived, so the room
+        // rule saw zero and put it under the ₹5,000 threshold.
         charges: items.map((c) => ({
           referenceType: c.referenceType,
           referenceId: c.referenceId,
@@ -402,6 +409,21 @@ function ComposeStep({
           unitPrice: c.unitPrice,
           taxRate: c.taxRate,
           category: c.category,
+          // The supply's own identity and classification.
+          hsnCode: c.hsnCode,
+          sacCode: c.sacCode,
+          gstTreatment: c.gstTreatment,
+          gstApproved: c.gstApproved,
+          taxInclusive: c.taxInclusive,
+          // The context it was supplied in.
+          patientAdmitted: c.patientAdmitted,
+          issuedForTreatment: c.issuedForTreatment,
+          isTakeHome: c.isTakeHome,
+          isCosmetic: c.isCosmetic,
+          // What the room rule is judged on.
+          dailyRate: c.dailyRate,
+          bedType: c.bedType,
+          wardType: c.wardType,
         })),
       });
       // Anything the server refused was already billed elsewhere — usually the

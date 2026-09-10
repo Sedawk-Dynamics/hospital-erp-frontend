@@ -1321,6 +1321,37 @@ export interface ChargeRow {
    */
   pullable?: boolean;
   notPullableReason?: string;
+
+  /**
+   * What the tax rules need to know about this supply.
+   *
+   * The server works all of this out when it builds the charge list, and the
+   * pull endpoint's schema names every one of these — but this type did not,
+   * and the dialog rebuilt each row from seven fields on the way back, so the
+   * lot was thrown away. The server then re-resolved with almost nothing:
+   *
+   *   - no `dailyRate` meant the room rule saw a daily rate of ZERO, so a
+   *     ₹10,000/day room fell under the ₹5,000 threshold and billed EXEMPT;
+   *   - no `hsnCode`/`sacCode` left the line with no code at all, which is
+   *     what fills report C-3 and keeps the line out of GSTR-1 table 12;
+   *   - no `patientAdmitted`/`issuedForTreatment` meant the inpatient
+   *     composite rule could not fire;
+   *   - no `taxInclusive` would tax an MRP-priced medicine on TOP of a price
+   *     that already contains the tax.
+   */
+  taxInclusive?: boolean;
+  hsnCode?: string | null;
+  sacCode?: string | null;
+  gstTreatment?: 'taxable' | 'exempt' | 'nil_rated' | 'non_gst' | 'zero_rated' | null;
+  gstApproved?: boolean;
+  patientAdmitted?: boolean;
+  issuedForTreatment?: boolean;
+  isTakeHome?: boolean;
+  isCosmetic?: boolean;
+  /** Room lines: what decides whether the rent crosses the threshold. */
+  dailyRate?: number;
+  bedType?: string | null;
+  wardType?: string | null;
 }
 
 export interface ChargesResponse {
