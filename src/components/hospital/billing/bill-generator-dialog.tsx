@@ -39,6 +39,7 @@ import {
   usePatientCharges,
   usePullCharges,
   useAddBillItem,
+  useRefreshDraftTax,
   useRemoveBillItem,
   useUpdateBillItem,
   useSetBillDiscount,
@@ -371,6 +372,7 @@ function ComposeStep({
   );
 
   const pullCharges = usePullCharges();
+  const refreshDraftTax = useRefreshDraftTax();
   const addBillItem = useAddBillItem();
   const removeBillItem = useRemoveBillItem();
   const updateBillItem = useUpdateBillItem();
@@ -387,6 +389,28 @@ function ComposeStep({
       return next;
     });
   }, []);
+
+  // Re-decide the tax when a DRAFT is opened.
+  //
+  // A draft's lines keep whatever they were stamped with when they were added,
+  // so every correction made since is invisible on it — a room pulled while
+  // the browser was dropping its daily rate went on reading "at or below the
+  // ₹5,000/day threshold" on a ₹10,000/day room, and medicines added before
+  // their HSN codes were filled in still carried no code.
+  //
+  // Once per draft per opening: keyed on the bill so re-renders do not re-fire
+  // it, and the server refuses anything past draft so a document is untouched.
+  const refreshedFor = useRef<string | null>(null);
+  useEffect(() => {
+    const id = effectiveBillId;
+    if (!open || !id || billTyped?.status !== 'draft') return;
+    if (refreshedFor.current === id) return;
+    refreshedFor.current = id;
+    refreshDraftTax.mutate(id);
+    // `refreshDraftTax` is a stable mutation object; including it would re-run
+    // this on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, effectiveBillId, billTyped?.status]);
 
   const handlePull = useCallback(async () => {
     const items = Object.values(selectedRefs);

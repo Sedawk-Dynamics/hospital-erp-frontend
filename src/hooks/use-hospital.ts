@@ -1382,6 +1382,31 @@ export function usePatientCharges(params: { patientId: string; source?: ChargeSo
   });
 }
 
+/**
+ * Re-decide a DRAFT bill's tax against today's rules.
+ *
+ * A draft has been issued to nobody, so it should say what the rules say now —
+ * not what they said when each line was added. Without this a draft keeps the
+ * answer it was stamped with, and every correction made since is invisible on
+ * it: a room pulled before the browser sent its daily rate went on reading
+ * "at or below the ₹5,000/day threshold" on a ₹10,000/day room.
+ *
+ * The server refuses anything past draft, so this cannot touch a document.
+ */
+export function useRefreshDraftTax() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (billId: string) =>
+      (await apiPost<{ refreshed: number; skipped: number; status: string }>(
+        `/billing/${billId}/refresh-tax`,
+      )).data ?? null,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bill'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bills'] });
+    },
+  });
+}
+
 export function usePullCharges() {
   const queryClient = useQueryClient();
   return useMutation({
