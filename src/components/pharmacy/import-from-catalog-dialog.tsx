@@ -1,12 +1,12 @@
 'use client';
 
 // "Import from Catalog" — lets a hospital pharmacist search the platform-wide
-// DrugMaster (~254K Indian drugs) and copy drugs into their own formulary.
-// Supports single-click add AND multi-select bulk copy. The MRP becomes the
-// default selling price (editable later under Storage).
+// DrugMaster (~745K Indian medicines and OTC products) and copy them into their
+// own formulary. Supports single-click add AND multi-select bulk copy. The MRP
+// becomes the default selling price (editable later under Storage).
 
 import { useEffect, useMemo, useState } from 'react';
-import { Search, Loader2, Download, PackagePlus, CheckSquare, Square } from 'lucide-react';
+import { Search, Loader2, Download, PackagePlus, CheckSquare, Square, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dialog';
 import { useDrugMasterSearch } from '@/hooks/use-drug-master';
 import { useImportFormularyItem, useImportFormularyBulk } from '@/hooks/use-pharmacy';
+import { DrugMonographPanel } from '@/components/pharmacy/drug-monograph-panel';
 
 export function ImportFromCatalogDialog() {
   const [open, setOpen] = useState(false);
@@ -28,6 +29,8 @@ export function ImportFromCatalogDialog() {
   const [query, setQuery] = useState('');
   const [importingId, setImportingId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // One product's label facts and monograph, opened in place.
+  const [detailsId, setDetailsId] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setQuery(input.trim()), 300);
@@ -39,6 +42,7 @@ export function ImportFromCatalogDialog() {
     if (!open) {
       setSelected(new Set());
       setInput('');
+      setDetailsId(null);
     }
   }, [open]);
 
@@ -167,49 +171,82 @@ export function ImportFromCatalogDialog() {
               {results.map((d) => {
                 const checked = selected.has(d.id);
                 return (
-                  <li key={d.id} className="flex items-center gap-3 py-2">
-                    <button
-                      type="button"
-                      onClick={() => toggleOne(d.id)}
-                      className="shrink-0 text-muted-foreground hover:text-primary"
-                      aria-label={checked ? 'Unselect' : 'Select'}
-                    >
-                      {checked ? (
-                        <CheckSquare className="h-4 w-4 text-primary" />
-                      ) : (
-                        <Square className="h-4 w-4" />
-                      )}
-                    </button>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-sm truncate">{d.name}</p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {[d.genericName, d.manufacturer].filter(Boolean).join(' · ') || '—'}
-                      </p>
+                  <li key={d.id} className="py-2">
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => toggleOne(d.id)}
+                        className="shrink-0 text-muted-foreground hover:text-primary"
+                        aria-label={checked ? 'Unselect' : 'Select'}
+                      >
+                        {checked ? (
+                          <CheckSquare className="h-4 w-4 text-primary" />
+                        ) : (
+                          <Square className="h-4 w-4" />
+                        )}
+                      </button>
+                      <div className="min-w-0 flex-1">
+                        <p className="flex items-center gap-1 text-sm">
+                          <span className="truncate font-semibold">{d.name}</span>
+                          {d.type === 'otc' && (
+                            <span className="shrink-0 rounded bg-sky-100 px-1.5 py-0.5 text-[9px] font-bold text-sky-800">
+                              OTC
+                            </span>
+                          )}
+                          {d.rxRequired && (
+                            <span
+                              className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-800"
+                              title="The label says prescription required"
+                            >
+                              Rx
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {[d.genericName, d.manufacturer].filter(Boolean).join(' · ') || '—'}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setDetailsId((cur) => (cur === d.id ? null : d.id))}
+                        className={`shrink-0 rounded p-1 hover:bg-surface-container-high ${
+                          detailsId === d.id ? 'text-primary' : 'text-muted-foreground'
+                        }`}
+                        aria-label={detailsId === d.id ? 'Hide details' : 'Show details'}
+                        aria-expanded={detailsId === d.id}
+                      >
+                        <Info className="h-4 w-4" />
+                      </button>
+                      <div className="text-right shrink-0">
+                        {d.mrp != null && (
+                          <p className="text-xs font-medium">₹ {Number(d.mrp).toLocaleString('en-IN')}</p>
+                        )}
+                        {d.packSizeLabel && (
+                          <p className="text-[10px] text-muted-foreground">{d.packSizeLabel}</p>
+                        )}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="shrink-0"
+                        disabled={importingId === d.id}
+                        onClick={() => handleImport(d.id)}
+                      >
+                        {importingId === d.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <>
+                            <PackagePlus className="mr-1 h-3.5 w-3.5" />
+                            Add
+                          </>
+                        )}
+                      </Button>
                     </div>
-                    <div className="text-right shrink-0">
-                      {d.mrp != null && (
-                        <p className="text-xs font-medium">₹ {Number(d.mrp).toLocaleString('en-IN')}</p>
-                      )}
-                      {d.packSizeLabel && (
-                        <p className="text-[10px] text-muted-foreground">{d.packSizeLabel}</p>
-                      )}
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      className="shrink-0"
-                      disabled={importingId === d.id}
-                      onClick={() => handleImport(d.id)}
-                    >
-                      {importingId === d.id ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <>
-                          <PackagePlus className="mr-1 h-3.5 w-3.5" />
-                          Add
-                        </>
-                      )}
-                    </Button>
+                    {detailsId === d.id && (
+                      <div className="ml-7 mt-2 rounded-lg border bg-surface-container-low p-3">
+                        <DrugMonographPanel drugId={d.id} />
+                      </div>
+                    )}
                   </li>
                 );
               })}
