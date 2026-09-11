@@ -343,7 +343,12 @@ function DecideDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button onClick={() => onSave({ scheduleCode: choice, note: note.trim() || null })} disabled={saving}>
+          {/* A schedule must be chosen: saving none used to mark the molecule
+              "undecided, set by hand", which no re-seed ever revisits. */}
+          <Button
+            onClick={() => onSave({ scheduleCode: choice, note: note.trim() || null })}
+            disabled={saving || !choice}
+          >
             {saving ? 'Saving…' : 'Save and re-classify'}
           </Button>
         </DialogFooter>
