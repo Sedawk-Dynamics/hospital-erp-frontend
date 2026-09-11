@@ -1,10 +1,10 @@
 'use client';
 
-// Super-admin "Refresh Catalog" — upserts the Drug Master against a CSV
-// snapshot so MRP / discontinued / composition changes flow in WITHOUT
-// duplicating drugs, breaking hospital import links, or touching any
-// hospital's own formulary/batch prices. Re-pull the default dataset or
-// upload a newer/price-adjusted CSV.
+// Super-admin "Refresh Catalog". The catalogue is the vendor's, bundled with
+// each build and applied on boot; this re-applies that release or upserts a CSV
+// exported from the vendor's workbook. Products are matched on their Product
+// ID, so nothing is duplicated, every hospital import stays linked, and no
+// hospital's own formulary or batch prices are touched.
 
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -23,16 +23,31 @@ import {
   useRefreshStatus,
   useStartRefresh,
   useDrugProviders,
+  useCatalogRelease,
   drugMasterKeys,
+  type RefreshSummary,
 } from '@/hooks/use-drug-master';
+
+const n = (v: number) => v.toLocaleString('en-IN');
+
+function summaryLine(r: RefreshSummary): string {
+  const parts = [`${n(r.inserted)} added`, `${n(r.updated)} updated`, `${n(r.unchanged)} unchanged`];
+  if (r.discontinued) parts.push(`${n(r.discontinued)} discontinued`);
+  if (r.legacyRemoved) parts.push(`${n(r.legacyRemoved)} old-dataset rows removed`);
+  if (r.relinked) parts.push(`${n(r.relinked)} hospital drugs re-linked`);
+  if (r.unlinked) parts.push(`${n(r.unlinked)} hospital drugs left unlinked`);
+  if (r.skipped) parts.push(`${n(r.skipped)} rows without a Product ID skipped`);
+  return parts.join(' · ');
+}
 
 export function RefreshCatalogDialog() {
   const [open, setOpen] = useState(false);
-  const [provider, setProvider] = useState('open-dataset');
+  const [provider, setProvider] = useState('bundled');
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const { data: status } = useRefreshStatus(open);
   const { data: providers = [] } = useDrugProviders(open);
+  const { data: release } = useCatalogRelease(open);
   const startRefresh = useStartRefresh();
 
   const running = status?.status === 'running' || startRefresh.isPending;
@@ -42,12 +57,7 @@ export function RefreshCatalogDialog() {
   useEffect(() => {
     if (prevStatus.current === 'running' && status?.status === 'success') {
       qc.invalidateQueries({ queryKey: drugMasterKeys.all });
-      const r = status.result;
-      if (r) {
-        toast.success(
-          `Catalog refreshed — ${r.inserted} added, ${r.updated} updated, ${r.unchanged} unchanged`,
-        );
-      }
+      if (status.result) toast.success(`Catalog refreshed — ${summaryLine(status.result)}`);
     }
     if (prevStatus.current === 'running' && status?.status === 'error') {
       toast.error(status.error ?? 'Refresh failed');
@@ -73,6 +83,8 @@ export function RefreshCatalogDialog() {
     if (fileRef.current) fileRef.current.value = '';
   }
 
+  const selected = providers.find((p) => p.name === provider);
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
@@ -87,13 +99,27 @@ export function RefreshCatalogDialog() {
         <DialogHeader>
           <DialogTitle>Refresh Drug Catalog</DialogTitle>
           <DialogDescription>
-            Updates MRP, discontinued status and composition against a dataset snapshot. Existing
-            drugs and hospital imports are preserved — hospital formulary/batch prices are never
-            changed.
+            Re-apply the vendor release shipped with this build, or upload a CSV exported from the
+            vendor&apos;s workbook. Products are matched on their Product ID, so nothing is duplicated
+            and hospital imports stay linked — hospital formulary and batch prices are never changed.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
+          {release && (
+            <p className="rounded-md border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
+              This build carries release <b>{release.bundled ?? 'none'}</b>; the database holds{' '}
+              <b>{release.applied ?? 'none yet'}</b>.
+              {release.latest && release.latest.status !== 'complete' && (
+                <>
+                  {' '}
+                  Release {release.latest.release} is <b>{release.latest.status}</b>
+                  {release.latest.error ? ` — ${release.latest.error}` : ''}.
+                </>
+              )}
+            </p>
+          )}
+
           {/* Provider picker */}
           <div className="space-y-1">
             <label className="text-xs font-medium">Data source</label>
@@ -110,17 +136,13 @@ export function RefreshCatalogDialog() {
                 </option>
               ))}
             </select>
-            {providers.find((p) => p.name === provider) && (
-              <p className="text-[11px] text-muted-foreground">
-                {providers.find((p) => p.name === provider)!.description}
-              </p>
-            )}
+            {selected && <p className="text-[11px] text-muted-foreground">{selected.description}</p>}
           </div>
 
           <div className="flex items-center gap-2">
             <Button
               className="flex-1"
-              disabled={running || !providers.find((p) => p.name === provider)?.configured}
+              disabled={running || !selected?.configured}
               onClick={() => handleStart({ provider })}
             >
               {running ? (
@@ -162,12 +184,7 @@ export function RefreshCatalogDialog() {
                     <CheckCircle2 className="h-4 w-4" />
                     Last refresh complete
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    {status.result.inserted.toLocaleString('en-IN')} added ·{' '}
-                    {status.result.updated.toLocaleString('en-IN')} updated ·{' '}
-                    {status.result.unchanged.toLocaleString('en-IN')} unchanged · catalog now{' '}
-                    {(status.result.existingBefore + status.result.inserted).toLocaleString('en-IN')}
-                  </p>
+                  <p className="text-xs text-muted-foreground">{summaryLine(status.result)}</p>
                 </div>
               )}
               {status.status === 'error' && (
@@ -180,8 +197,9 @@ export function RefreshCatalogDialog() {
           )}
 
           <p className="text-[11px] text-muted-foreground">
-            Tip: to reflect new market prices, upload an updated CSV with the same columns.
-            The refresh matches drugs by name + manufacturer + pack, so it updates in place.
+            Tip: a CSV needs the vendor&apos;s columns — at least <code>Product ID</code> and{' '}
+            <code>Product Name</code> (drugs) or <code>name</code> (OTC). Rows are updated in place by
+            Product ID; a partial file never discontinues anything.
           </p>
         </div>
       </DialogContent>
