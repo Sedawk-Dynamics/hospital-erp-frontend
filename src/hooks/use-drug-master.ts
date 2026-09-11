@@ -44,11 +44,120 @@ export interface DrugMaster {
   isPublished: boolean;
   // Rich clinical detail
   saltComposition?: string | null;
+  /** Uses — the vendor's primary uses, "; "-separated. */
   description?: string | null;
   sideEffects?: string | null;
   drugInteractions?: { drug?: string[]; brand?: string[]; effect?: string[] } | null;
+  // ── Vendor catalogue (null on rows a person added by hand) ──
+  /** The vendor's Product ID: "DRS…" for a drug, "DR…" for an OTC product. */
+  sourceId?: string | null;
+  sourceRelease?: string | null;
+  packageType?: string | null;
+  packQuantity?: string | null;
+  /** The vendor's own form, finer than dosageForm: "Tablet SR". */
+  productForm?: string | null;
+  /** What the label says. Not a schedule — see scheduleResolved. */
+  rxRequired?: boolean | null;
+  habitForming?: boolean | null;
+  therapeuticClass?: string | null;
+  chemicalClass?: string | null;
+  actionClass?: string | null;
+  productCategory?: string | null;
+  categoryPath?: string | null;
+  storage?: string | null;
+  countryOfOrigin?: string | null;
+  safetyAdvice?: Partial<Record<SafetyTopic, SafetyVerdict>> | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export type SafetyTopic = 'alcohol' | 'pregnancy' | 'lactation' | 'driving' | 'kidney' | 'liver';
+export type SafetyVerdict =
+  | 'safe'
+  | 'safe_if_prescribed'
+  | 'caution'
+  | 'unsafe'
+  | 'consult_doctor'
+  | 'not_relevant';
+
+export interface DrugInteractionEntry {
+  drug: string;
+  route: string | null;
+  severity: string | null;
+  advice: string;
+}
+
+/** A monograph section as data — the API never sends markup to render. */
+export type MonographBlock =
+  | { type: 'paragraphs'; paragraphs: string[] }
+  | { type: 'list'; items: string[] }
+  | { type: 'faq'; items: Array<{ question: string; answer: string }> }
+  | { type: 'verdicts'; items: Array<{ topic: string; verdict: string | null; text: string }> }
+  | { type: 'interactions'; items: DrugInteractionEntry[] };
+
+export interface DrugMonograph {
+  id: string;
+  name: string;
+  kind: 'drug' | 'otc';
+  sourceId: string | null;
+  sourceRelease: string | null;
+  genericName: string | null;
+  saltComposition: string | null;
+  manufacturer: string | null;
+  productForm: string | null;
+  packageType: string | null;
+  packQuantity: string | null;
+  packSizeLabel: string | null;
+  mrp: number | string | null;
+  rxRequired: boolean | null;
+  habitForming: boolean | null;
+  therapeuticClass: string | null;
+  chemicalClass: string | null;
+  actionClass: string | null;
+  productCategory: string | null;
+  categoryPath: string | null;
+  storage: string | null;
+  countryOfOrigin: string | null;
+  description: string | null;
+  sideEffects: string | null;
+  safetyAdvice: Partial<Record<SafetyTopic, SafetyVerdict>> | null;
+  scheduleResolved: DrugSchedule | null;
+  isDiscontinued: boolean;
+  sections: Array<{ key: string; title: string; block: MonographBlock }>;
+}
+
+/**
+ * A catalogue product's label facts and monograph. Reference data about a
+ * medicine — the 'drug-master' key prefix gives it the reference cache policy.
+ */
+export function useDrugMonograph(id: string | null | undefined) {
+  return useQuery({
+    queryKey: ['drug-master', 'monograph', id],
+    queryFn: async () => {
+      const response = await apiGet<DrugMonograph>(`/drug-master/${id}/monograph`);
+      return response.data as DrugMonograph;
+    },
+    enabled: !!id,
+  });
+}
+
+export interface CatalogReleaseStatus {
+  /** The release shipped with the running build. */
+  bundled: string | null;
+  /** The newest release the database holds completely. */
+  applied: string | null;
+  latest: { release: string; status: string; finishedAt: string | null; error: string | null } | null;
+}
+
+export function useCatalogRelease(enabled = true) {
+  return useQuery({
+    queryKey: ['drug-master', 'release'],
+    queryFn: async () => {
+      const response = await apiGet<CatalogReleaseStatus>('/drug-master/release');
+      return response.data as CatalogReleaseStatus;
+    },
+    enabled,
+  });
 }
 
 interface PaginationMeta {
@@ -77,8 +186,11 @@ export interface DrugMasterSearchResult {
   hsnCode: string | null;
   gtin: string | null;
   mrp: number | string | null;
+  /** 'drug' | 'otc' for the vendor catalogue. */
   type: string | null;
   schedule: string | null;
+  rxRequired?: boolean | null;
+  productForm?: string | null;
 }
 
 // ============================================================
@@ -237,6 +349,8 @@ export interface DrugMasterListParams {
   controlled?: boolean;
   /** Schedule H2 formulations, whose packs must be QR-scanned at sale. */
   qrTracked?: boolean;
+  /** The vendor catalogue's two halves. */
+  type?: 'drug' | 'otc';
 }
 
 export function useDrugMasterList(params?: DrugMasterListParams) {
@@ -321,8 +435,9 @@ export function useDeleteDrugMaster() {
 }
 
 // ============================================================
-// Catalog refresh (super-admin). Upserts the catalog against a CSV snapshot —
-// preserves ids + hospital import links, only moves mrp/discontinued/comp.
+// Catalog refresh (super-admin). Re-applies the bundled vendor release or
+// upserts a vendor CSV on its Product IDs — preserves ids + hospital import
+// links, never touches a hospital's formulary or prices.
 // ============================================================
 
 export interface RefreshSummary {
@@ -331,6 +446,14 @@ export interface RefreshSummary {
   inserted: number;
   updated: number;
   unchanged: number;
+  /** Bundled release only. */
+  release?: string;
+  discontinued?: number;
+  legacyRemoved?: number;
+  relinked?: number;
+  unlinked?: number;
+  /** Upload rows without a Product ID. */
+  skipped?: number;
 }
 
 export interface RefreshState {

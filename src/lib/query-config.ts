@@ -18,7 +18,7 @@
 //              while the tab is visible, so a change shows up even when nobody
 //              switches windows.
 //   REFERENCE  catalogues and config that change rarely and cost a lot to
-//              fetch (the drug master is ~254K rows). Held longer ON PURPOSE,
+//              fetch (the drug master is ~745K rows). Held longer ON PURPOSE,
 //              so tightening the global default does not turn into a stampede.
 //
 // Why prefixes and not per-hook options: `setQueryDefaults` matches on key
@@ -151,7 +151,7 @@ const LIVE_KEYS: string[][] = [
  * tighter global default cannot quietly multiply load on the heavy endpoints.
  */
 const REFERENCE_KEYS: string[][] = [
-  ['drug-master'], // ~254K rows behind the search
+  ['drug-master'], // ~745K products behind the search, plus their monographs
   ['icd'],
   ['tariffs'],
   ['lab', 'tests'], // the test catalogue, not the orders
