@@ -1,8 +1,9 @@
 'use client';
 
-// Super-admin Drug Master — platform-wide Indian drug catalog (~254K brands)
-// seeded from the open Indian medicine dataset. Hospitals search this and
-// import drugs into their own formulary (one-click "add to formulary").
+// Super-admin Drug Master — the platform-wide catalogue of Indian medicines and
+// OTC products (~745K), loaded from the vendor release bundled with each build.
+// Hospitals search this and import products into their own formulary
+// (one-click "add to formulary").
 //
 // Mirrors the Lab Test Templates page (see /super-admin/lab-templates).
 
@@ -45,10 +46,12 @@ import {
   useCreateDrugMaster,
   useUpdateDrugMaster,
   useDeleteDrugMaster,
+  useCatalogRelease,
   type DrugMaster,
   type DrugMasterInput,
 } from '@/hooks/use-drug-master';
 import { RefreshCatalogDialog } from '@/components/pharmacy/refresh-catalog-dialog';
+import { DrugMonographPanel } from '@/components/pharmacy/drug-monograph-panel';
 
 const DOSAGE_FORMS = [
   'tablet',
@@ -66,7 +69,7 @@ const EMPTY: DrugMasterInput = {
   genericName: '',
   saltComposition: '',
   manufacturer: '',
-  type: 'allopathy',
+  type: 'drug',
   dosageForm: null,
   strength: '',
   packSizeLabel: '',
@@ -87,6 +90,8 @@ export default function SuperAdminDrugMasterPage() {
   const [search, setSearch] = useState('');
   // '' | a schedule code | 'controlled' (cuts across schedules)
   const [scheduleFilter, setScheduleFilter] = useState('');
+  // The vendor catalogue's two halves.
+  const [typeFilter, setTypeFilter] = useState<'' | 'drug' | 'otc'>('');
   const [page, setPage] = useState(1);
   const limit = 25;
 
@@ -104,6 +109,7 @@ export default function SuperAdminDrugMasterPage() {
     limit,
     search: search || undefined,
     includeDiscontinued: true,
+    ...(typeFilter ? { type: typeFilter } : {}),
     ...(scheduleFilter === 'controlled'
       ? { controlled: true }
       : scheduleFilter === 'qr'
@@ -115,6 +121,7 @@ export default function SuperAdminDrugMasterPage() {
   const createDrug = useCreateDrugMaster();
   const updateDrug = useUpdateDrugMaster();
   const deleteDrug = useDeleteDrugMaster();
+  const { data: release } = useCatalogRelease();
 
   const drugs = data?.data ?? [];
   const meta = data?.meta;
@@ -236,8 +243,10 @@ export default function SuperAdminDrugMasterPage() {
             Drug Master Catalog
           </h1>
           <p className="font-label text-sm text-on-surface-variant">
-            Platform-wide Indian drug catalog. Hospitals search this and import drugs into their own
-            formulary. {meta ? `${meta.total.toLocaleString('en-IN')} drugs` : ''}
+            Platform-wide catalogue of Indian medicines and OTC products
+            {release?.applied ? ` — vendor release ${release.applied}` : ''}. Hospitals search this and
+            import products into their own formulary.{' '}
+            {meta ? `${meta.total.toLocaleString('en-IN')} products` : ''}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -260,6 +269,16 @@ export default function SuperAdminDrugMasterPage() {
               className="pl-8 h-8 text-xs"
             />
           </div>
+          <select
+            aria-label="Filter by product type"
+            className="h-8 rounded-md border bg-background px-2 text-xs"
+            value={typeFilter}
+            onChange={(e) => { setTypeFilter(e.target.value as '' | 'drug' | 'otc'); setPage(1); }}
+          >
+            <option value="">All products</option>
+            <option value="drug">Drugs</option>
+            <option value="otc">OTC products</option>
+          </select>
           {/* Filter on what the classifier resolved. "Controlled" cuts across
               the schedules — tramadol is Schedule H1 AND a psychotropic. */}
           <select
@@ -288,7 +307,7 @@ export default function SuperAdminDrugMasterPage() {
           <div className="py-12 text-center text-sm text-muted-foreground">
             {search
               ? 'No drugs match your search.'
-              : 'Catalog is empty. Run "npm run db:seed:drug-master" to import the Indian medicine dataset, or add drugs manually.'}
+              : 'Catalog is empty. The vendor release loads by itself when the server starts (locally: "npm run db:seed:drug-master"); you can also add drugs manually.'}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -309,16 +328,35 @@ export default function SuperAdminDrugMasterPage() {
                 {drugs.map((d) => (
                   <tr key={d.id} className="border-b hover:bg-surface-container-low transition-colors">
                     <td className="py-2 px-2">
-                      <span className="font-semibold text-foreground">{d.name}</span>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span className="font-semibold text-foreground">{d.name}</span>
+                        {d.type === 'otc' && (
+                          <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[9px] font-bold text-sky-800">
+                            OTC
+                          </span>
+                        )}
+                        {d.rxRequired && (
+                          <span
+                            className="rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-800"
+                            title="The label says prescription required"
+                          >
+                            Rx
+                          </span>
+                        )}
+                      </div>
                       {d.packSizeLabel && (
                         <p className="text-[10px] text-muted-foreground mt-0.5">{d.packSizeLabel}</p>
                       )}
                     </td>
                     <td className="py-2 px-2 text-xs text-muted-foreground max-w-[260px]">
-                      <span className="line-clamp-1 text-foreground">{d.genericName ?? '—'}</span>
-                      {d.saltComposition && (
+                      <span className="line-clamp-1 text-foreground">
+                        {d.genericName ?? d.productCategory ?? '—'}
+                      </span>
+                      {d.saltComposition && d.saltComposition !== d.genericName ? (
                         <span className="line-clamp-1 text-[10px] text-muted-foreground">{d.saltComposition}</span>
-                      )}
+                      ) : d.type === 'otc' && d.categoryPath ? (
+                        <span className="line-clamp-1 text-[10px] text-muted-foreground">{d.categoryPath}</span>
+                      ) : null}
                     </td>
                     <td className="py-2 px-2 text-xs text-muted-foreground">{d.manufacturer ?? '—'}</td>
                     <td className="py-2 px-2 text-xs capitalize">{d.dosageForm ?? '—'}</td>
@@ -433,6 +471,9 @@ export default function SuperAdminDrugMasterPage() {
             <DialogDescription>
               Platform-wide entry. Hospitals import this into their own formulary and set local
               pricing.
+              {editing?.sourceId &&
+                ' This product comes from the vendor catalogue: its name, composition, pack and MRP are ' +
+                  'refreshed by the next release; GTIN, HSN, GST and publish state stay as you set them.'}
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3">
@@ -559,7 +600,7 @@ export default function SuperAdminDrugMasterPage() {
               <Input
                 value={form.type ?? ''}
                 onChange={(e) => setForm((p) => ({ ...p, type: e.target.value }))}
-                placeholder="allopathy / ayurvedic / …"
+                placeholder="drug / otc"
               />
             </div>
             <div>
@@ -641,23 +682,11 @@ export default function SuperAdminDrugMasterPage() {
             </div>
           </div>
 
-          {/* Read-only clinical detail (from the dataset / provider feed) */}
-          {editing && (editing.description || editing.sideEffects) && (
-            <div className="space-y-2 rounded-lg border bg-surface-container-low p-3 text-xs max-h-56 overflow-y-auto">
-              <p className="font-semibold text-on-surface-variant">Clinical detail (reference)</p>
-              {editing.description && (
-                <p><span className="text-muted-foreground">Uses: </span>{editing.description}</p>
-              )}
-              {editing.sideEffects && (
-                <p><span className="text-muted-foreground">Side effects: </span>{editing.sideEffects}</p>
-              )}
-              {editing.drugInteractions?.drug && editing.drugInteractions.drug.length > 0 && (
-                <p>
-                  <span className="text-muted-foreground">Interactions: </span>
-                  {editing.drugInteractions.drug.slice(0, 8).join(', ')}
-                  {editing.drugInteractions.drug.length > 8 ? ` +${editing.drugInteractions.drug.length - 8}` : ''}
-                </p>
-              )}
+          {/* Read-only reference: the label facts and the vendor's monograph. */}
+          {editing && (
+            <div className="space-y-2 rounded-lg border bg-surface-container-low p-3">
+              <p className="text-xs font-semibold text-on-surface-variant">Catalogue details (reference)</p>
+              <DrugMonographPanel drugId={editing.id} />
             </div>
           )}
           <DialogFooter>
