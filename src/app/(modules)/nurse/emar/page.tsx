@@ -1083,7 +1083,14 @@ export default function EmarPage() {
                   <div key={i} className={cn('rounded-lg border p-3', severityClass(p.severity))}>
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-sm font-semibold">with {other}</span>
-                      <span className={cn('text-[10px] font-bold uppercase px-2 py-0.5 rounded-full', severityBadge(p.severity))}>{p.severity}</span>
+                      <div className="flex items-center gap-1.5">
+                        {p.source === 'catalogue' && (
+                          <span className="text-[10px] font-medium uppercase px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant">
+                            catalogue
+                          </span>
+                        )}
+                        <span className={cn('text-[10px] font-bold uppercase px-2 py-0.5 rounded-full', severityBadge(p.severity))}>{p.severity}</span>
+                      </div>
                     </div>
                     <p className="text-xs">{p.description}</p>
                   </div>

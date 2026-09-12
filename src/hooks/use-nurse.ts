@@ -736,6 +736,12 @@ export interface InteractionPair {
   drugs: [string, string];
   severity: InteractionSeverity;
   description: string;
+  /**
+   * Where the alert came from: 'curated' is the reviewed in-house list, the only
+   * one that can block a prescription; 'catalogue' is the drug catalogue's own
+   * per-product data, which warns.
+   */
+  source?: 'curated' | 'catalogue';
 }
 
 export interface DrugContraindicationEntry {
