@@ -247,15 +247,24 @@ export default function AiSettingsPage() {
                   >
                     <SelectTrigger><SelectValue placeholder="Select model" /></SelectTrigger>
                     <SelectContent>
-                      {providerModels.map((m) => (
-                        <SelectItem key={m.id} value={m.id}>
-                          {m.label} {m.free ? '· free tier' : '· paid'}
-                        </SelectItem>
-                      ))}
+                      {providerModels
+                        .filter((m) => !m.retired || m.id === form.textModel)
+                        .map((m) => (
+                          <SelectItem key={m.id} value={m.id}>
+                            {m.label} {m.retired ? '· retired' : m.free ? '· free tier' : '· paid'}
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                   {selectedModel && (
-                    <p className="mt-1 text-[11px] text-muted-foreground">{selectedModel.limits}</p>
+                    <p
+                      className={cn(
+                        'mt-1 text-[11px]',
+                        selectedModel.retired ? 'text-amber-700' : 'text-muted-foreground',
+                      )}
+                    >
+                      {selectedModel.retired ?? selectedModel.limits}
+                    </p>
                   )}
                 </div>
               </div>
@@ -272,7 +281,7 @@ export default function AiSettingsPage() {
                 <div>
                   <Label className="text-xs mb-1">Fallback models (tried when the primary is rate-limited / unavailable)</Label>
                   <div className="flex flex-wrap gap-1.5">
-                    {providerModels.filter((m) => m.id !== form.textModel).map((m) => {
+                    {providerModels.filter((m) => m.id !== form.textModel && (!m.retired || form.fallbackModels.includes(m.id))).map((m) => {
                       const on = form.fallbackModels.includes(m.id);
                       return (
                         <button
@@ -293,6 +302,7 @@ export default function AiSettingsPage() {
                           )}
                         >
                           {m.label}
+                          {m.retired ? ' · retired' : ''}
                         </button>
                       );
                     })}

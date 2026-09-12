@@ -70,6 +70,8 @@ export interface AiModelInfo {
   limits: string;
   notes?: string;
   recommended?: boolean;
+  /** Set when the provider has withdrawn the model — it can only fail now. */
+  retired?: string;
 }
 
 /** Catalog of selectable models + which providers have a key on the server. */
