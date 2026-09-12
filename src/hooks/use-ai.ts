@@ -217,6 +217,8 @@ export interface PlatformChatResponse {
   role?: string;
   data?: { label: string; value: string };
   sources?: string[];
+  /** Catalogue products the answer was allowed to draw on, when it was about a medicine. */
+  medicines?: Array<{ id: string; name: string }>;
   model?: string;
   provider?: string;
 }

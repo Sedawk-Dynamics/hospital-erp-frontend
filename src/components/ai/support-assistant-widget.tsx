@@ -78,7 +78,12 @@ export function SupportAssistantWidget() {
     try {
       const res = await chat.mutateAsync({ message: text, history });
       const tag = res.mode === 'data' && !res.restricted ? '📊 ' : '';
-      setMessages((prev) => [...prev, { role: 'assistant', content: `${tag}${res.reply}` }]);
+      // Name the medicine the answer came from. The assistant may only use the
+      // catalogue's facts about it, so the reader can go and check them.
+      const cited = res.medicines?.length
+        ? `\n\nFrom the drug catalogue: ${res.medicines.map((m) => m.name).join(', ')}`
+        : '';
+      setMessages((prev) => [...prev, { role: 'assistant', content: `${tag}${res.reply}${cited}` }]);
     } catch (err: any) {
       setMessages((prev) => [
         ...prev,
