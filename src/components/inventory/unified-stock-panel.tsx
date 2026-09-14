@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Search, Plus, Pill, Edit2, PackagePlus, ChevronDown, ChevronRight,
+  Search, Plus, Edit2, PackagePlus, ChevronDown, ChevronRight,
   ChevronLeft, AlertTriangle, MoreHorizontal, MoreVertical, ClipboardCheck, ClipboardList,
   Warehouse, Pencil, Trash2, Replace, Merge, Lightbulb,
 } from 'lucide-react';
@@ -40,6 +40,8 @@ import { StockTakeDialog } from '@/components/pharmacy/stock-take-dialog';
 import { StockTypeBadge, stockTypeLabel } from '@/components/shared/stock-type-badge';
 import { StockAdjustmentsLogDialog } from '@/components/pharmacy/stock-adjust-dialogs';
 import { DrugFormDialog } from '@/components/pharmacy/drug-form-dialog';
+import { ProductFormDialog } from '@/components/pharmacy/product-form-dialog';
+import { NewItemChooserDialog } from './new-item-chooser-dialog';
 import { MergeDrugDialog } from '@/components/pharmacy/merge-drug-dialog';
 import { AlternativesDialog } from '@/components/pharmacy/alternatives-dialog';
 import { ImportFromCatalogDialog } from '@/components/pharmacy/import-from-catalog-dialog';
@@ -55,6 +57,7 @@ type StatusFilter = 'all' | 'in' | 'low' | 'out' | 'expiring' | 'recalled';
 const TYPE_FILTERS: { value: TypeFilter; label: string }[] = [
   { value: 'all', label: 'All types' },
   { value: 'drug', label: 'Medicines' },
+  { value: 'product', label: 'Products' },
   { value: 'consumable', label: 'Consumables' },
   { value: 'surgical_supply', label: 'Surgical' },
   { value: 'equipment', label: 'Equipment' },
@@ -86,8 +89,11 @@ export function UnifiedStockPanel() {
 
   // Drug (formulary) operations — the old /inventory/drug-formulary page is gone,
   // so all of its drug actions live here on the unified Storage rows.
+  const [newItemOpen, setNewItemOpen] = useState(false);
   const [newDrugOpen, setNewDrugOpen] = useState(false);
+  const [newProductOpen, setNewProductOpen] = useState(false);
   const [editDrugId, setEditDrugId] = useState<string | null>(null);
+  const [editProductId, setEditProductId] = useState<string | null>(null);
   const [mergeDrug, setMergeDrug] = useState<{ id: string; name: string } | null>(null);
   const [altDrug, setAltDrug] = useState<{ id: string; name: string } | null>(null);
 
@@ -96,13 +102,14 @@ export function UnifiedStockPanel() {
   const deleteDrug = useDeleteFormularyItem();
   const suggestMaster = useSuggestDrugMaster();
 
-  const handleDeleteDrug = async (id: string, name: string) => {
-    if (!window.confirm(`Remove "${name}" from the formulary? This can't be undone.`)) return;
+  const handleDeleteDrug = async (id: string, name: string, category?: string | null) => {
+    const label = category === 'drug' || !category ? 'drug' : 'product';
+    if (!window.confirm(`Remove ${label} "${name}" from storage? This can't be undone.`)) return;
     try {
       await deleteDrug.mutateAsync(id);
-      toast.success('Drug removed');
+      toast.success(`${label === 'drug' ? 'Drug' : 'Product'} removed`);
     } catch (err) {
-      toast.error(getApiErrorMessage(err, 'Failed to remove drug'));
+      toast.error(getApiErrorMessage(err, `Failed to remove ${label}`));
     }
   };
 
@@ -185,12 +192,14 @@ export function UnifiedStockPanel() {
               {/* Recall is issued per batch — open a drug and recall the affected batch. */}
             </DropdownMenuContent>
           </DropdownMenu>
-          {/* Catalog import + a blank New Drug form (moved here from the retired
-              Drug Formulary page). Bulk stock inward still lives on /inventory/add. */}
+          {/* Catalogue import + two deliberately separate manual forms. */}
           <ImportFromCatalogDialog />
-          <Button size="sm" variant="outline" onClick={() => setNewDrugOpen(true)}>
-            <Pill className="mr-1.5 h-4 w-4" /> New Drug
-          </Button>
+          <NewItemChooserDialog
+            open={newItemOpen}
+            onOpenChange={setNewItemOpen}
+            onDrug={() => setNewDrugOpen(true)}
+            onProduct={() => setNewProductOpen(true)}
+          />
           <Button size="sm" onClick={() => router.push('/inventory/add')}>
             <Plus className="mr-1.5 h-4 w-4" /> Add Stock
           </Button>
@@ -288,10 +297,11 @@ export function UnifiedStockPanel() {
                     }
                     onEdit={() => setEditItemId(row.refId)}
                     onEditDrug={() => setEditDrugId(row.refId)}
+                    onEditProduct={() => setEditProductId(row.refId)}
                     onMerge={() => setMergeDrug({ id: row.refId, name: row.name })}
                     onAlternatives={() => setAltDrug({ id: row.refId, name: row.name })}
                     onSuggest={() => handleSuggestToMaster(row)}
-                    onDeleteDrug={() => handleDeleteDrug(row.refId, row.name)}
+                    onDeleteDrug={() => handleDeleteDrug(row.refId, row.name, row.category)}
                   />
                 ))}
               </TableBody>
@@ -334,6 +344,9 @@ export function UnifiedStockPanel() {
         onOpenChange={setNewDrugOpen}
         onUseExisting={(m) => setExpandedId(`drug-${m.id}`)}
       />
+      {newProductOpen && (
+        <ProductFormDialog open onOpenChange={setNewProductOpen} />
+      )}
       {/* Edit an existing drug — loads the full record first. */}
       {editDrugId && (
         <DrugEditLoader
@@ -341,6 +354,9 @@ export function UnifiedStockPanel() {
           onClose={() => setEditDrugId(null)}
           onUseExisting={(m) => setExpandedId(`drug-${m.id}`)}
         />
+      )}
+      {editProductId && (
+        <ProductEditLoader id={editProductId} onClose={() => setEditProductId(null)} />
       )}
       {/* Merge / Alternatives only need the drug's id + name. */}
       <MergeDrugDialog
@@ -352,6 +368,19 @@ export function UnifiedStockPanel() {
         onOpenChange={(o) => !o && setAltDrug(null)}
       />
     </div>
+  );
+}
+
+function ProductEditLoader({ id, onClose }: { id: string; onClose: () => void }) {
+  const { data: product, isLoading } = useFormularyItem(id);
+  if (isLoading || !product) return null;
+  return (
+    <ProductFormDialog
+      open
+      product={product}
+      onOpenChange={(open) => !open && onClose()}
+      onSaved={onClose}
+    />
   );
 }
 
@@ -381,7 +410,7 @@ function DrugEditLoader({
 // generic items expose Stock In + Edit.
 function StockRow({
   row, expanded, onToggle, onStockIn, onEdit,
-  onEditDrug, onMerge, onAlternatives, onSuggest, onDeleteDrug,
+  onEditDrug, onEditProduct, onMerge, onAlternatives, onSuggest, onDeleteDrug,
 }: {
   row: UnifiedStockRow;
   expanded: boolean;
@@ -389,6 +418,7 @@ function StockRow({
   onStockIn: () => void;
   onEdit: () => void;
   onEditDrug: () => void;
+  onEditProduct: () => void;
   onMerge: () => void;
   onAlternatives: () => void;
   onSuggest: () => void;
@@ -397,7 +427,8 @@ function StockRow({
   // `kind` only says which table the row came from — since every type is stocked
   // as a formulary row now, it is 'drug' for consumables and equipment too. What
   // the row IS comes from `category`; whether it expands to batches from `kind`.
-  const isDrug = row.kind === 'drug';
+  const isFormulary = row.kind === 'drug';
+  const isMedicine = !row.category || row.category === 'drug';
   const low = row.reorderLevel != null && row.currentStock > 0 && row.currentStock <= row.reorderLevel;
   const out = row.currentStock <= 0;
   const expDays = row.nearestExpiry ? daysUntil(row.nearestExpiry) : null;
@@ -408,7 +439,7 @@ function StockRow({
     <>
       <TableRow className={expanded ? 'bg-muted/30' : undefined}>
         <TableCell className="pr-0">
-          {isDrug && (
+          {isFormulary && (
             <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onToggle} title="Show batches">
               {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             </Button>
@@ -419,14 +450,21 @@ function StockRow({
             <span className="font-medium">{row.name}</span>
             {/* Advisory only — the schedule and the NDPS class are two separate
                 facts, so they get two chips rather than one merged label. */}
-            <ScheduleBadge schedule={row.schedule} reason={row.scheduleReason} />
-            <ControlledBadge
-              controlledClass={row.controlledClass}
-              vaultControlled={row.vaultControlled}
-            />
+            {isMedicine && (
+              <>
+                <ScheduleBadge schedule={row.schedule} reason={row.scheduleReason} />
+                <ControlledBadge
+                  controlledClass={row.controlledClass}
+                  vaultControlled={row.vaultControlled}
+                />
+              </>
+            )}
           </div>
           {row.composition && (
             <div className="text-xs text-muted-foreground italic">{row.composition}</div>
+          )}
+          {row.productCategory && (
+            <div className="text-xs text-muted-foreground">{row.productCategory}</div>
           )}
           <div className="text-xs text-muted-foreground">
             {[row.code, row.unit].filter(Boolean).join(' · ') || stockTypeLabel(row.category).toLowerCase()}
@@ -446,7 +484,7 @@ function StockRow({
           <span className={cn('font-medium', out ? 'text-red-700' : low ? 'text-amber-700' : '')}>
             {row.currentStock}
           </span>
-          {isDrug && row.batchCount > 0 && (
+          {isFormulary && row.batchCount > 0 && (
             <span className="ml-1 text-[11px] text-muted-foreground">({row.batchCount} batch{row.batchCount === 1 ? '' : 'es'})</span>
           )}
         </TableCell>
@@ -477,7 +515,7 @@ function StockRow({
         </TableCell>
         <TableCell className="text-right">
           <div className="flex items-center justify-end gap-1">
-            {isDrug ? (
+            {isFormulary ? (
               <>
                 <Button size="sm" variant="outline" className="h-8 px-2" onClick={onToggle} title="Receive & manage batches">
                   <PackagePlus className="mr-1 h-3.5 w-3.5" /> Batches
@@ -490,20 +528,24 @@ function StockRow({
                     <MoreVertical className="h-3.5 w-3.5" />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={onEditDrug}>
-                      <Pencil className="mr-2 h-4 w-4" /> Edit drug
+                    <DropdownMenuItem onClick={isMedicine ? onEditDrug : onEditProduct}>
+                      <Pencil className="mr-2 h-4 w-4" /> {isMedicine ? 'Edit drug' : 'Edit product'}
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={onAlternatives}>
-                      <Replace className="mr-2 h-4 w-4" /> Alternatives
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={onMerge}>
-                      <Merge className="mr-2 h-4 w-4" /> Merge duplicate
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={onSuggest}>
-                      <Lightbulb className="mr-2 h-4 w-4" /> Suggest to catalog
-                    </DropdownMenuItem>
+                    {isMedicine && (
+                      <>
+                        <DropdownMenuItem onClick={onAlternatives}>
+                          <Replace className="mr-2 h-4 w-4" /> Alternatives
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={onMerge}>
+                          <Merge className="mr-2 h-4 w-4" /> Merge duplicate
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={onSuggest}>
+                          <Lightbulb className="mr-2 h-4 w-4" /> Suggest to catalog
+                        </DropdownMenuItem>
+                      </>
+                    )}
                     <DropdownMenuItem className="text-red-600 focus:text-red-600" onClick={onDeleteDrug}>
-                      <Trash2 className="mr-2 h-4 w-4" /> Remove drug
+                      <Trash2 className="mr-2 h-4 w-4" /> Remove {isMedicine ? 'drug' : 'product'}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -522,7 +564,7 @@ function StockRow({
         </TableCell>
       </TableRow>
 
-      {isDrug && expanded && (
+      {isFormulary && expanded && (
         <TableRow className="bg-muted/20 hover:bg-muted/20">
           <TableCell colSpan={9} className="p-0">
             <div className="border-t px-4 py-3">
