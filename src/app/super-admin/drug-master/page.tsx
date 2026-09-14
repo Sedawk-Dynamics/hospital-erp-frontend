@@ -81,6 +81,7 @@ const EMPTY: DrugMasterInput = {
   manufacturerCode: '',
   hsnCode: '',
   gstRate: null,
+  gstTreatment: null,
   isDiscontinued: false,
   isPublished: true,
 };
@@ -163,6 +164,7 @@ export default function SuperAdminDrugMasterPage() {
       manufacturerCode: d.manufacturerCode ?? '',
       hsnCode: d.hsnCode ?? '',
       gstRate: d.gstRate != null ? Number(d.gstRate) : null,
+      gstTreatment: d.gstTreatment ?? null,
       isDiscontinued: d.isDiscontinued,
       isPublished: d.isPublished,
     });
@@ -201,6 +203,7 @@ export default function SuperAdminDrugMasterPage() {
       manufacturerCode: form.manufacturerCode?.toString().trim() || null,
       hsnCode: form.hsnCode?.toString().trim() || null,
       gstRate: form.gstRate != null && !Number.isNaN(Number(form.gstRate)) ? Number(form.gstRate) : null,
+      gstTreatment: form.gstTreatment ?? null,
     };
     try {
       if (editing) {
@@ -609,7 +612,7 @@ export default function SuperAdminDrugMasterPage() {
                 className="font-mono"
                 value={form.hsnCode ?? ''}
                 onChange={(e) => setForm((p) => ({ ...p, hsnCode: e.target.value }))}
-                placeholder="e.g. 30049099"
+                placeholder="e.g. 3004"
               />
             </div>
             <div>
@@ -619,8 +622,33 @@ export default function SuperAdminDrugMasterPage() {
                 step="0.01"
                 value={form.gstRate ?? ''}
                 onChange={(e) => setForm((p) => ({ ...p, gstRate: e.target.value === '' ? null : Number(e.target.value) }))}
-                placeholder="e.g. 12"
+                placeholder="e.g. 5"
               />
+            </div>
+            <div className="col-span-2">
+              <label className="text-xs font-medium">GST treatment</label>
+              <select
+                className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                value={form.gstTreatment ?? ''}
+                onChange={(e) => {
+                  const treatment = e.target.value || null;
+                  setForm((p) => ({
+                    ...p,
+                    gstTreatment: treatment as DrugMasterInput['gstTreatment'],
+                    gstRate: treatment && treatment !== 'taxable' ? 0 : p.gstRate,
+                  }));
+                }}
+              >
+                <option value="">Automatic from HSN master</option>
+                <option value="taxable">Taxable (manual override)</option>
+                <option value="exempt">Exempt by notification</option>
+                <option value="nil_rated">Nil-rated</option>
+                <option value="non_gst">Non-GST</option>
+                <option value="zero_rated">Zero-rated</option>
+              </select>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Leave automatic for ordinary medicines; use an explicit value for a named exemption or other product-specific treatment.
+              </p>
             </div>
             <div className="col-span-2 border-t pt-2 mt-1">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Barcodes / Product Resolution</p>

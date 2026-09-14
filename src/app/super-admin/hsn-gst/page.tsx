@@ -60,8 +60,7 @@ const CATEGORIES = ['medicine', 'consumable', 'device', 'supplement', 'other'] a
 const NONE_CATEGORY = '__none__';
 
 // GST 2.0 slabs (effective 22-Sep-2025). Pharma/healthcare falls in these:
-//   0%  — Nil-rated: 33 notified life-saving drugs, and all individual health &
-//         life insurance. Also NIL medicines like ORS.
+//   0%  — Nil/exempt/non-GST, whose treatment must be recorded separately.
 //   5%  — Standard rate for the vast majority of medicines (formulations,
 //         AYUSH, most APIs) and medical devices/consumables (reduced from 12%).
 //   18% — A handful of items still taxed higher (e.g. nicotine gums, certain
@@ -79,6 +78,7 @@ const EMPTY: HsnGstRateInput = {
   hsnCode: '',
   description: '',
   gstRate: 5,
+  treatment: 'taxable',
   category: 'medicine',
   isActive: true,
 };
@@ -134,6 +134,7 @@ export default function SuperAdminHsnGstPage() {
       hsnCode: r.hsnCode,
       description: r.description ?? '',
       gstRate: r.gstRate,
+      treatment: r.treatment,
       category: r.category ?? 'other',
       isActive: r.isActive ?? true,
     });
@@ -154,6 +155,7 @@ export default function SuperAdminHsnGstPage() {
       hsnCode,
       description: form.description?.toString().trim() || null,
       gstRate: Number(form.gstRate),
+      treatment: form.treatment,
       category: form.category || null,
       isActive: form.isActive ?? true,
     };
@@ -309,7 +311,7 @@ export default function SuperAdminHsnGstPage() {
         <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
         <p>
           Matching is <strong>longest-prefix</strong>: a specific 8-digit tariff item (e.g. ORS
-          <span className="font-mono"> 30049010</span> → 0%) wins over its 4-digit chapter heading
+          <span className="font-mono"> 30049010</span>) wins over its 4-digit chapter heading
           (<span className="font-mono">3004</span> → 5%). Rates reflect the GST 2.0 slabs effective
           22-Sep-2025 (most medicines &amp; medical devices at 5%). Edit any row to match your own
           classification — hospitals bill at their own price regardless.
@@ -344,6 +346,7 @@ export default function SuperAdminHsnGstPage() {
                   <th className="text-left py-2 px-2">Description</th>
                   <th className="text-left py-2 px-2">Category</th>
                   <th className="text-right py-2 px-2">GST %</th>
+                  <th className="text-left py-2 px-2">Treatment</th>
                   <th className="text-left py-2 px-2">Status</th>
                   <th className="w-10" />
                 </tr>
@@ -369,6 +372,7 @@ export default function SuperAdminHsnGstPage() {
                       )}
                     </td>
                     <td className="py-2 px-2 text-right font-semibold tabular-nums">{r.gstRate}%</td>
+                    <td className="py-2 px-2 text-xs capitalize">{r.treatment.replace(/_/g, ' ')}</td>
                     <td className="py-2 px-2">
                       <span
                         className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -436,7 +440,13 @@ export default function SuperAdminHsnGstPage() {
               <label className="text-xs font-medium">GST rate *</label>
               <Select
                 value={String(form.gstRate)}
-                onValueChange={(v) => v != null && setForm((p) => ({ ...p, gstRate: Number(v) }))}
+                onValueChange={(v) => v != null && setForm((p) => ({
+                  ...p,
+                  gstRate: Number(v),
+                  treatment: Number(v) > 0
+                    ? 'taxable'
+                    : p.treatment === 'taxable' ? 'nil_rated' : p.treatment,
+                }))}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select rate">
@@ -456,6 +466,26 @@ export default function SuperAdminHsnGstPage() {
                   {!GST_SLABS.some((s) => s.value === Number(form.gstRate)) && (
                     <SelectItem value={String(form.gstRate)}>{form.gstRate}% (legacy)</SelectItem>
                   )}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">GST treatment *</label>
+              <Select
+                value={form.treatment ?? (form.gstRate > 0 ? 'taxable' : 'nil_rated')}
+                onValueChange={(value) => value && setForm((p) => ({
+                  ...p,
+                  treatment: value as HsnGstRate['treatment'],
+                  gstRate: value === 'taxable' ? p.gstRate : 0,
+                }))}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="taxable">Taxable</SelectItem>
+                  <SelectItem value="exempt">Exempt</SelectItem>
+                  <SelectItem value="nil_rated">Nil-rated</SelectItem>
+                  <SelectItem value="non_gst">Non-GST</SelectItem>
+                  <SelectItem value="zero_rated">Zero-rated</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -594,7 +624,7 @@ export default function SuperAdminHsnGstPage() {
               className="w-full min-h-40 rounded-md border bg-background px-2.5 py-2 text-sm font-mono"
               value={bulkText}
               onChange={(e) => setBulkText(e.target.value)}
-              placeholder={`3004\n30049010, 0, ORS sachets\n9018, 5, Medical devices, device\n300450, 18`}
+              placeholder={`3004\n30049010, 5, ORS sachets\n9018, 5, Medical devices, device\n300450, 18`}
             />
             <p className="mt-1 text-[11px] text-muted-foreground">
               {bulkPreview.length} valid row{bulkPreview.length === 1 ? '' : 's'} detected.
