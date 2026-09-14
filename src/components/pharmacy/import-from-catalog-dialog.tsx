@@ -2,8 +2,8 @@
 
 // "Import from Catalog" — lets a hospital pharmacist search the platform-wide
 // DrugMaster (~745K Indian medicines and OTC products) and copy them into their
-// own formulary. Supports single-click add AND multi-select bulk copy. The MRP
-// becomes the default selling price (editable later under Storage).
+// own inventory. Medicines remain drugs; OTC catalogue rows become retail
+// products. Supports single-click add and multi-select bulk copy.
 
 import { useEffect, useMemo, useState } from 'react';
 import { Search, Loader2, Download, PackagePlus, CheckSquare, Square, Info } from 'lucide-react';
@@ -77,8 +77,8 @@ export function ImportFromCatalogDialog() {
   async function handleImport(drugMasterId: string) {
     setImportingId(drugMasterId);
     try {
-      await importItem.mutateAsync({ drugMasterId });
-      toast.success('Drug added to formulary');
+      const item = await importItem.mutateAsync({ drugMasterId });
+      toast.success(item.category === 'product' ? 'Product added to storage' : 'Drug added to formulary');
     } catch (e: unknown) {
       const msg =
         (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
@@ -94,7 +94,7 @@ export function ImportFromCatalogDialog() {
     try {
       const res = await importBulk.mutateAsync({ drugMasterIds: [...selected] });
       toast.success(
-        `Copied ${res.created} drug${res.created !== 1 ? 's' : ''} to formulary` +
+        `Copied ${res.created} catalogue item${res.created !== 1 ? 's' : ''} to storage` +
           (res.skipped ? ` · ${res.skipped} already there` : ''),
       );
       setSelected(new Set());
@@ -118,11 +118,11 @@ export function ImportFromCatalogDialog() {
       />
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Copy from Drug Catalog</DialogTitle>
+          <DialogTitle>Copy from Product Catalog</DialogTitle>
           <DialogDescription>
-            Search the platform-wide Indian drug catalog and copy drugs into your formulary. Tick
-            several and use “Add selected” to copy in bulk. MRP becomes the default price — edit it
-            and add stock afterwards.
+            Search the platform-wide Indian catalogue. Medicine rows are added as drugs; OTC rows
+            are added as non-drug retail products. Tick several to copy them in bulk. Catalogue MRP
+            becomes the default unit price; review it before receiving stock.
           </DialogDescription>
         </DialogHeader>
 
@@ -164,7 +164,7 @@ export function ImportFromCatalogDialog() {
             </div>
           ) : results.length === 0 ? (
             <p className="py-10 text-center text-sm text-muted-foreground">
-              No drugs found. You can still add it manually with &quot;Add Drug&quot;.
+              No catalogue items found. You can still add one manually with &quot;New Item&quot;.
             </p>
           ) : (
             <ul className="divide-y">
@@ -205,6 +205,11 @@ export function ImportFromCatalogDialog() {
                         <p className="text-xs text-muted-foreground truncate">
                           {[d.genericName, d.manufacturer].filter(Boolean).join(' · ') || '—'}
                         </p>
+                        {d.type === 'otc' && d.productCategory && (
+                          <p className="text-[10px] text-amber-700 dark:text-amber-300">
+                            {d.productCategory}
+                          </p>
+                        )}
                       </div>
                       <button
                         type="button"

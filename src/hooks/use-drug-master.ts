@@ -191,6 +191,8 @@ export interface DrugMasterSearchResult {
   schedule: string | null;
   rxRequired?: boolean | null;
   productForm?: string | null;
+  productCategory?: string | null;
+  categoryPath?: string | null;
 }
 
 // ============================================================
