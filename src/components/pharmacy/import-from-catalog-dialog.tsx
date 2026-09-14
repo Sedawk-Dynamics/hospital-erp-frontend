@@ -210,6 +210,18 @@ export function ImportFromCatalogDialog() {
                             {d.productCategory}
                           </p>
                         )}
+                        {d.hsnCode ? (
+                          <p className="text-[10px] text-muted-foreground">
+                            HSN {d.hsnCode}
+                            {d.gstTreatment && d.gstTreatment !== 'taxable'
+                              ? ` · ${d.gstTreatment.replace(/_/g, ' ')}`
+                              : d.gstRate != null ? ` · GST ${Number(d.gstRate)}%` : ''}
+                          </p>
+                        ) : d.type === 'otc' ? (
+                          <p className="text-[10px] font-medium text-amber-700 dark:text-amber-300">
+                            GST setup required after import
+                          </p>
+                        ) : null}
                       </div>
                       <button
                         type="button"

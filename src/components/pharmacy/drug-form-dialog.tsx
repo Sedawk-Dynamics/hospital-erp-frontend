@@ -56,6 +56,7 @@ interface FormState {
   packSize: string;
   looseUnitLabel: string;
   taxPercent: string;
+  gstTreatment: string;
   minStock: string;
   gtin: string;
   hsnCode: string;
@@ -70,7 +71,7 @@ interface FormState {
 const EMPTY_FORM: FormState = {
   drugName: '', category: 'drug', genericName: '', composition: '', manufacturer: '', dosageForm: '',
   strength: '', unitOfMeasurement: '', price: '', packSize: '', looseUnitLabel: '',
-  taxPercent: '', minStock: '', gtin: '', hsnCode: '', indications: '', contraindications: '',
+  taxPercent: '', gstTreatment: '', minStock: '', gtin: '', hsnCode: '', indications: '', contraindications: '',
   isLifeSaving: false, isNarcotic: false, isReimbursable: true, isActive: true,
 };
 
@@ -88,6 +89,7 @@ function formStateFromItem(item: FormularyItem): FormState {
     packSize: item.packSize != null ? String(item.packSize) : '',
     looseUnitLabel: item.looseUnitLabel ?? '',
     taxPercent: item.taxPercent != null ? String(item.taxPercent) : '',
+    gstTreatment: item.gstTreatment ?? '',
     minStock: item.minStock != null ? String(item.minStock) : '',
     gtin: item.gtin ?? '',
     hsnCode: item.hsnCode ?? '',
@@ -113,6 +115,7 @@ function formStateToInput(form: FormState): CreateFormularyInput {
   if (form.packSize && !isNaN(parseInt(form.packSize, 10))) out.packSize = parseInt(form.packSize, 10);
   if (form.looseUnitLabel.trim()) out.looseUnitLabel = form.looseUnitLabel.trim();
   if (form.taxPercent && !isNaN(parseFloat(form.taxPercent))) out.taxPercent = parseFloat(form.taxPercent);
+  out.gstTreatment = (form.gstTreatment || null) as CreateFormularyInput['gstTreatment'];
   if (form.minStock && !isNaN(parseInt(form.minStock, 10))) out.minStock = parseInt(form.minStock, 10);
   if (form.gtin.trim()) out.gtin = form.gtin.trim();
   if (form.hsnCode.trim()) out.hsnCode = form.hsnCode.trim();
@@ -390,6 +393,26 @@ function DrugForm({
             <GenericNamesInput value={formData.genericName} onChange={(v) => updateField('genericName', v)} />
             <p className="text-[10px] text-on-surface-variant">Add one or more — press Enter or comma after each.</p>
           </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label>GST treatment</Label>
+          <Select
+            value={formData.gstTreatment || '__hsn__'}
+            onValueChange={(value) => updateField('gstTreatment', value === '__hsn__' ? '' : (value ?? ''))}
+          >
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__hsn__">Automatic from HSN master</SelectItem>
+              <SelectItem value="taxable">Taxable (manual override)</SelectItem>
+              <SelectItem value="exempt">Exempt by notification</SelectItem>
+              <SelectItem value="nil_rated">Nil-rated</SelectItem>
+              <SelectItem value="non_gst">Non-GST</SelectItem>
+              <SelectItem value="zero_rated">Zero-rated</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-[11px] text-muted-foreground">
+            Leave automatic for ordinary medicines. Set an explicit treatment only for a product-specific exception.
+          </p>
         </div>
 
         {/* Composition — the salt composition, separate from the generic name(s).

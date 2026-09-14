@@ -14,6 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getApiErrorMessage } from '@/lib/utils';
 import { useCreateUnifiedStock } from '@/hooks/use-inventory';
 import { useUpdateFormularyItem, type FormularyItem } from '@/hooks/use-pharmacy';
@@ -28,6 +29,7 @@ interface ProductFormState {
   gtin: string;
   hsnCode: string;
   gst: string;
+  gstTreatment: string;
   sellingPrice: string;
   purchasePrice: string;
   openingStock: string;
@@ -44,6 +46,7 @@ const EMPTY: ProductFormState = {
   gtin: '',
   hsnCode: '',
   gst: '',
+  gstTreatment: '',
   sellingPrice: '',
   purchasePrice: '',
   openingStock: '0',
@@ -61,6 +64,7 @@ function fromItem(item: FormularyItem): ProductFormState {
     gtin: item.gtin ?? '',
     hsnCode: item.hsnCode ?? '',
     gst: item.taxPercent != null ? String(item.taxPercent) : '',
+    gstTreatment: item.gstTreatment ?? '',
     sellingPrice: item.price != null ? String(item.price) : '',
     purchasePrice: '',
     openingStock: '0',
@@ -148,6 +152,7 @@ export function ProductFormDialog({
       gtin: form.gtin.trim() || undefined,
       hsnCode: form.hsnCode.trim(),
       taxPercent: numberOrUndefined(form.gst),
+      gstTreatment: (form.gstTreatment || null) as FormularyItem['gstTreatment'],
       price: numberOrUndefined(form.sellingPrice),
       minStock: intOrUndefined(form.minStock),
       isReimbursable: false,
@@ -220,6 +225,23 @@ export function ProductFormDialog({
                 <Label htmlFor="product-unit">Unit of Sale *</Label>
                 <Input id="product-unit" value={form.unit} onChange={(e) => set('unit', e.target.value)} placeholder="e.g. Piece, Bottle, Box" />
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>GST treatment</Label>
+              <Select
+                value={form.gstTreatment || '__hsn__'}
+                onValueChange={(value) => set('gstTreatment', value === '__hsn__' ? '' : (value ?? ''))}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__hsn__">Automatic from HSN master</SelectItem>
+                  <SelectItem value="taxable">Taxable (manual override)</SelectItem>
+                  <SelectItem value="exempt">Exempt</SelectItem>
+                  <SelectItem value="nil_rated">Nil-rated</SelectItem>
+                  <SelectItem value="non_gst">Non-GST</SelectItem>
+                  <SelectItem value="zero_rated">Zero-rated</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </section>
 

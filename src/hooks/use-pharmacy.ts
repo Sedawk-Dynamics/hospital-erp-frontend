@@ -26,6 +26,7 @@ export type DosageForm =
  *   OTC unscheduled
  */
 export type DrugSchedule = 'X' | 'H1' | 'H' | 'H2' | 'G' | 'OTC';
+export type GstTreatment = 'taxable' | 'exempt' | 'nil_rated' | 'non_gst' | 'zero_rated';
 
 export interface FormularyItem {
   id: string;
@@ -45,6 +46,7 @@ export interface FormularyItem {
   packSize: number | null;
   looseUnitLabel: string | null;
   taxPercent: number | string | null;
+  gstTreatment?: GstTreatment | null;
   // Product Resolution Engine / compliance identity (GTIN-13 consumer unit,
   // GTIN-14 case + units-per-case, HSN code, manufacturer product code).
   gtin?: string | null;
@@ -310,6 +312,7 @@ export interface CreateFormularyInput {
   packSize?: number;
   looseUnitLabel?: string;
   taxPercent?: number;
+  gstTreatment?: GstTreatment | null;
   minStock?: number;
   // Product Resolution Engine / compliance identity. Nullable so an edit can
   // CLEAR a wrong GTIN (send null); create simply omits it when blank.
@@ -802,6 +805,12 @@ export interface CatalogItem {
   packSize: number | null;
   mrp: number | string | null;
   schedule: string | null;
+  type: string | null;
+  rxRequired?: boolean | null;
+  productCategory?: string | null;
+  hsnCode?: string | null;
+  gstRate?: number | string | null;
+  gstTreatment?: GstTreatment | null;
   imported: boolean;
   formularyId: string | null;
 }

@@ -39,6 +39,7 @@ export interface DrugMaster {
   manufacturerCode?: string | null;
   hsnCode?: string | null;
   gstRate?: number | string | null;
+  gstTreatment?: 'taxable' | 'exempt' | 'nil_rated' | 'non_gst' | 'zero_rated' | null;
   aliases: string[];
   tags: string[];
   isPublished: boolean;
@@ -193,6 +194,8 @@ export interface DrugMasterSearchResult {
   productForm?: string | null;
   productCategory?: string | null;
   categoryPath?: string | null;
+  gstRate?: number | string | null;
+  gstTreatment?: DrugMaster['gstTreatment'];
 }
 
 // ============================================================
@@ -206,6 +209,7 @@ export interface HsnGstRate {
   hsnCode: string;
   description: string | null;
   gstRate: number;
+  treatment: 'taxable' | 'exempt' | 'nil_rated' | 'non_gst' | 'zero_rated';
   category: string | null;
   // Present on the super-admin list (`/hsn/all`); absent on the cached public list.
   isActive?: boolean;
@@ -232,6 +236,7 @@ export interface HsnGstRateInput {
   hsnCode: string;
   description?: string | null;
   gstRate: number;
+  treatment?: HsnGstRate['treatment'];
   category?: string | null;
   isActive?: boolean;
 }
@@ -309,7 +314,7 @@ export function useDeleteHsnGstRate() {
 
 /**
  * Longest-prefix match against the HSN → GST reference: an 8-digit tariff item
- * (e.g. ORS 30049010 → nil) wins over its 4-digit chapter heading (3004 → 5%).
+ * (e.g. ORS 30049010) wins over its 4-digit chapter heading (3004).
  * Mirrors the backend matcher so client and server agree. Returns null when no
  * seeded row is a prefix of the input.
  */
@@ -398,6 +403,7 @@ export interface DrugMasterInput {
   manufacturerCode?: string | null;
   hsnCode?: string | null;
   gstRate?: number | null;
+  gstTreatment?: DrugMaster['gstTreatment'];
   aliases?: string[];
   tags?: string[];
   isPublished?: boolean;
