@@ -43,14 +43,6 @@ const DOSAGE_FORMS: DosageForm[] = [
   'tablet', 'capsule', 'syrup', 'injection', 'cream', 'drops', 'inhaler', 'other',
 ];
 
-const CATEGORY_OPTIONS = [
-  { value: 'drug', label: 'Medicine' },
-  { value: 'consumable', label: 'Consumable' },
-  { value: 'surgical_supply', label: 'Surgical Supply' },
-  { value: 'equipment', label: 'Equipment' },
-  { value: 'other', label: 'Other' },
-];
-
 interface FormState {
   drugName: string;
   category: string;
@@ -256,6 +248,7 @@ function DrugForm({
       manufacturer: formData.manufacturer || undefined,
       strength: formData.strength || undefined,
       dosageForm: formData.dosageForm || undefined,
+      category: 'drug',
     },
     liveEnabled,
   );
@@ -410,25 +403,14 @@ function DrugForm({
             updateField('composition', compositionPreview(rows));
           }}
         />
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <Label>Type</Label>
-            <Select value={formData.category} onValueChange={(value) => updateField('category', value ?? 'drug')}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Select type" /></SelectTrigger>
-              <SelectContent>
-                {CATEGORY_OPTIONS.map((c) => (<SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Dosage Form</Label>
-            <Select value={formData.dosageForm} onValueChange={(value) => updateField('dosageForm', value ?? '')}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Select form" /></SelectTrigger>
-              <SelectContent>
-                {DOSAGE_FORMS.map((form) => (<SelectItem key={form} value={form} className="capitalize">{form}</SelectItem>))}
-              </SelectContent>
-            </Select>
-          </div>
+        <div className="space-y-1.5">
+          <Label>Dosage Form</Label>
+          <Select value={formData.dosageForm} onValueChange={(value) => updateField('dosageForm', value ?? '')}>
+            <SelectTrigger className="w-full"><SelectValue placeholder="Select form" /></SelectTrigger>
+            <SelectContent>
+              {DOSAGE_FORMS.map((form) => (<SelectItem key={form} value={form} className="capitalize">{form}</SelectItem>))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="grid grid-cols-3 gap-3">
           <div className="space-y-1.5">

@@ -33,9 +33,10 @@ export interface FormularyItem {
   genericName: string | null;
   composition: string | null;
   manufacturer: string | null;
-  // Stock type — every kind (medicine, consumable, surgical supply, equipment,
-  // other) lives in the formulary and shares one flow. 'drug' = medicine.
-  category?: 'drug' | 'consumable' | 'surgical_supply' | 'equipment' | 'other';
+  // Stock type. Medicines and retail products share batches/POS, while only
+  // medicines enter clinical drug workflows.
+  category?: 'drug' | 'product' | 'consumable' | 'surgical_supply' | 'equipment' | 'other';
+  productCategory?: string | null;
   dosageForm: DosageForm | null;
   strength: string | null;
   unitOfMeasurement: string | null;
@@ -297,7 +298,8 @@ export function useFormularyItem(id: string | null) {
 export interface CreateFormularyInput {
   drugName: string;
   // Type of stock — the formulary holds consumables/surgical/equipment too.
-  category?: 'drug' | 'consumable' | 'surgical_supply' | 'equipment' | 'other';
+  category?: 'drug' | 'product' | 'consumable' | 'surgical_supply' | 'equipment' | 'other';
+  productCategory?: string | null;
   genericName?: string;
   composition?: string;
   manufacturer?: string;
@@ -386,6 +388,7 @@ export interface FormularyMatchParams {
   manufacturer?: string;
   strength?: string;
   dosageForm?: string;
+  category?: CreateFormularyInput['category'];
   excludeId?: string;
 }
 
@@ -780,6 +783,8 @@ export function useImportFormularyItem() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
       queryClient.invalidateQueries({ queryKey: ['pharmacy', 'catalog'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
     },
   });
 }
@@ -832,6 +837,8 @@ export function useImportFormularyBulk() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: pharmacyKeys.formulary.all });
       queryClient.invalidateQueries({ queryKey: ['pharmacy', 'catalog'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'stock-overview'] });
     },
   });
 }

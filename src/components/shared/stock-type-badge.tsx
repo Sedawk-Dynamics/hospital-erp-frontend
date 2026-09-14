@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 
 export type StockCategory =
   | 'drug'
+  | 'product'
   | 'consumable'
   | 'surgical_supply'
   | 'equipment'
@@ -21,6 +22,7 @@ export type StockCategory =
 
 const LABELS: Record<StockCategory, string> = {
   drug: 'Medicine',
+  product: 'Product',
   consumable: 'Consumable',
   surgical_supply: 'Surgical',
   equipment: 'Equipment',
@@ -57,7 +59,9 @@ export function StockTypeBadge({
         'shrink-0 text-[10px] font-medium',
         medicine
           ? 'border-primary/20 bg-primary/10 text-primary'
-          : 'border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-300',
+          : category === 'product'
+            ? 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+            : 'border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-300',
         className,
       )}
     >

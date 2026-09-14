@@ -7,7 +7,13 @@ import type { DrugSchedule } from './use-pharmacy';
 // stock_transactions, purchase_orders, supply_requests.
 // ============================================================
 
-export type InventoryCategory = 'drug' | 'consumable' | 'surgical_supply' | 'equipment' | 'other';
+export type InventoryCategory =
+  | 'drug'
+  | 'product'
+  | 'consumable'
+  | 'surgical_supply'
+  | 'equipment'
+  | 'other';
 export type SupplyType = 'drugs' | 'consumables' | 'equipment' | 'all';
 export type StockTransactionType =
   | 'stock_in'
@@ -1224,6 +1230,7 @@ export interface UnifiedStockRow {
   // Drug composition (generic/salt) and learned vendor/invoice names mapped to
   // this drug — shown under the name and searchable.
   composition: string | null;
+  productCategory: string | null;
   mappingNames: string | null;
   // Drug schedule (Drugs & Cosmetics Rules 1945) + the NDPS overlay. Null for
   // non-medicine stock. Advisory labelling — nothing gates a sale on it yet.
@@ -1266,6 +1273,7 @@ export interface CreateUnifiedDrugPayload {
   drugName: string;
   // Type of stock — every type is created through this one payload.
   category?: InventoryCategory;
+  productCategory?: string;
   description?: string;
   // Opening stock → a no-expiry OPENING batch created server-side.
   openingStock?: number;

@@ -28,6 +28,7 @@ import { useInwardScan } from '@/hooks/use-pharmacy';
 // it's created as a formulary drug (batch/expiry tracked) or a generic item.
 const CATEGORY_OPTIONS: { value: InventoryCategory; label: string }[] = [
   { value: 'drug', label: 'Medicine' },
+  { value: 'product', label: 'Retail Product' },
   { value: 'consumable', label: 'Consumable' },
   { value: 'surgical_supply', label: 'Surgical Supply' },
   { value: 'equipment', label: 'Equipment' },
@@ -52,6 +53,7 @@ export function UnifiedItemForm({
 
   // One shared field set for medicines AND other items.
   const [name, setName] = useState('');
+  const [productCategory, setProductCategory] = useState('');
   const [genericName, setGenericName] = useState('');
   const [manufacturer, setManufacturer] = useState('');
   const [strength, setStrength] = useState('');
@@ -95,6 +97,7 @@ export function UnifiedItemForm({
   const reset = () => {
     setCategory(defaultCategory);
     setName('');
+    setProductCategory('');
     setGenericName('');
     setManufacturer('');
     setStrength('');
@@ -147,6 +150,10 @@ export function UnifiedItemForm({
       toast.error(`${isMedicine ? 'Medicine' : 'Item'} name is required`);
       return null;
     }
+    if (category === 'product' && !productCategory.trim()) {
+      toast.error('Product category is required');
+      return null;
+    }
     // EVERY type takes the same path — a formulary row plus batches. A
     // consumable routed to the legacy inventory table would have no batches, and
     // the sale engine always dispenses from a batch, so it could never be billed
@@ -158,6 +165,7 @@ export function UnifiedItemForm({
       drug: {
         drugName: name.trim(),
         category,
+        productCategory: category === 'product' ? productCategory.trim() : undefined,
         genericName: genericName.trim() || undefined,
         manufacturer: manufacturer.trim() || undefined,
         strength: strength.trim() || undefined,
@@ -234,6 +242,17 @@ export function UnifiedItemForm({
             </Select>
           </div>
         </div>
+
+        {category === 'product' && (
+          <div>
+            <Label className="text-xs">Product category *</Label>
+            <Input
+              value={productCategory}
+              onChange={(e) => setProductCategory(e.target.value)}
+              placeholder="e.g. Baby Care, Personal Care, Nutrition"
+            />
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <div>

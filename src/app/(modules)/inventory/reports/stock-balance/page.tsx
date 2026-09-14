@@ -14,7 +14,7 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { StockTypeBadge } from '@/components/shared/stock-type-badge';
 import { useStockBalanceReport } from '@/hooks/use-inventory';
 
-const CATEGORIES = ['drug', 'consumable', 'surgical_supply', 'equipment', 'other'] as const;
+const CATEGORIES = ['drug', 'product', 'consumable', 'surgical_supply', 'equipment', 'other'] as const;
 type Cat = (typeof CATEGORIES)[number];
 
 function fmt(n: number) {
