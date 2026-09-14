@@ -16,10 +16,10 @@ describe('NewItemChooserDialog', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: /new drug/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /new product/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /new drug/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /new product/i })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /new product/i }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /new product/i }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(onProduct).toHaveBeenCalledOnce();
     expect(onDrug).not.toHaveBeenCalled();
