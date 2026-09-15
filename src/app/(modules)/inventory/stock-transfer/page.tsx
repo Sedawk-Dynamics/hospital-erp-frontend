@@ -23,7 +23,7 @@
 import { useState } from 'react';
 import {
   ArrowLeftRight, BedDouble, ScrollText, ShieldAlert,
-  PackagePlus, Syringe, Trash2, Boxes,
+  PackagePlus, Trash2, Boxes,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -33,13 +33,13 @@ import {
   WardStockPanel, WardLedgerPanel, useWardOptions,
 } from '@/components/pharmacy/ward-stock-board';
 import {
-  LocationDialog, ReceiveDialog, ConsumptionDialog, DisposalDialog, PatientResidualsPanel,
+  LocationDialog, ReceiveDialog, DisposalDialog, PatientResidualsPanel,
 } from '@/components/pharmacy/ndps-statutory';
 
 export default function InventoryStockTransferPage() {
   const wards = useWardOptions();
   const [wardId, setWardId] = useState('');
-  const [dialog, setDialog] = useState<null | 'receive' | 'consume' | 'dispose' | 'location'>(null);
+  const [dialog, setDialog] = useState<null | 'receive' | 'dispose' | 'location'>(null);
 
   return (
     <div className="space-y-4 animate-fade-in-up">
@@ -117,9 +117,6 @@ export default function InventoryStockTransferPage() {
             <Button size="sm" variant="outline" onClick={() => setDialog('receive')}>
               <PackagePlus className="mr-1.5 h-4 w-4" /> Receive (Form 3C)
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setDialog('consume')}>
-              <Syringe className="mr-1.5 h-4 w-4" /> Administer (Form 3E)
-            </Button>
             <Button size="sm" variant="outline" onClick={() => setDialog('dispose')}>
               <Trash2 className="mr-1.5 h-4 w-4" /> Disposal
             </Button>
@@ -129,14 +126,13 @@ export default function InventoryStockTransferPage() {
           </div>
 
           <p className="text-xs text-muted-foreground">
-            What these produce — the register, the running balances and Form 35 — is read on the
-            Controlled-Drug Register.
+            Patient Form 3E administration and residual reconciliation are recorded from the nurse eMAR.
+            What these produce — the register, the running balances and Form 3H — is read on the Controlled-Drug Register.
           </p>
         </TabsContent>
       </Tabs>
 
       <ReceiveDialog open={dialog === 'receive'} onOpenChange={(o) => setDialog(o ? 'receive' : null)} />
-      <ConsumptionDialog open={dialog === 'consume'} onOpenChange={(o) => setDialog(o ? 'consume' : null)} />
       <DisposalDialog open={dialog === 'dispose'} onOpenChange={(o) => setDialog(o ? 'dispose' : null)} />
       <LocationDialog open={dialog === 'location'} onOpenChange={(o) => setDialog(o ? 'location' : null)} />
     </div>

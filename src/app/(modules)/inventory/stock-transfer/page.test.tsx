@@ -65,7 +65,8 @@ describe('Stock Transfer — the one place stock moves', () => {
     await userEvent.click(screen.getByRole('tab', { name: /NDPS records/i }));
     expect(await screen.findByText(/Narcotics only/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Receive \(Form 3C\)/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Administer \(Form 3E\)/i })).toBeInTheDocument();
+    expect(screen.getByText(/Patient Form 3E administration.*nurse eMAR/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Administer \(Form 3E\)/i })).not.toBeInTheDocument();
     expect(screen.getByText('patient residual worklist')).toBeInTheDocument();
   });
 });
