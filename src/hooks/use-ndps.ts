@@ -63,11 +63,38 @@ export interface NdpsDailyRow {
   variance: number | null;
 }
 
+export interface NdpsPatientResidual {
+  id: string;
+  emarScheduleId: string;
+  patient: { id: string; mrn: string; name: string };
+  drug: { id: string; name: string; strength: string | null };
+  batch: { id: string; number: string; expiryDate: string | null };
+  location: { id: string; name: string };
+  labelledQuantity: number | string;
+  administeredQuantity: number | string;
+  residualQuantity: number | string;
+  quantityUnit: string;
+  containerQuantity: number;
+  status: 'quarantined' | 'destroyed' | 'fully_administered';
+  disposition: 'quarantined' | 'destroyed' | 'none';
+  quarantineLocation: string | null;
+  quarantinedAt: string | null;
+  disposalMethod: string | null;
+  destroyedAt: string | null;
+  administeredAt: string;
+  administeredBy: string | null;
+  witnessedBy: string | null;
+  emergencyUse: boolean;
+  emergencyReason: string | null;
+  notes: string | null;
+}
+
 const keys = {
   locations: ['ndps', 'locations'] as const,
   stock: (drugId?: string) => ['ndps', 'stock', drugId ?? null] as const,
   register: (p: unknown) => ['ndps', 'register', p] as const,
   daily: (p: unknown) => ['ndps', 'daily', p] as const,
+  residuals: (p: unknown) => ['ndps', 'patient-residuals', p] as const,
 };
 
 export function useNdpsLocations() {
@@ -98,6 +125,38 @@ export function useNdpsDailyBalances(params: { drugFormularyId?: string; fromDat
     queryKey: keys.daily(params),
     queryFn: async () =>
       (await apiGet<{ items: NdpsDailyRow[]; total: number }>('/ndps/daily-balances', { params })).data,
+  });
+}
+
+export function useNdpsPatientResiduals(params: {
+  status?: 'quarantined' | 'destroyed' | 'fully_administered' | 'all';
+  patientId?: string;
+  fromDate?: string;
+  toDate?: string;
+} = {}) {
+  return useQuery({
+    queryKey: keys.residuals(params),
+    queryFn: async () =>
+      (await apiGet<{ items: NdpsPatientResidual[]; total: number }>('/ndps/patient-residuals', { params })).data,
+  });
+}
+
+export function useDestroyNdpsPatientResidual() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...body }: {
+      id: string;
+      disposalMethod: string;
+      referenceNumber: string;
+      witnessedById: string;
+      witnessPassword: string;
+      attachmentUrl?: string;
+      notes?: string;
+    }) => (await apiPost(`/ndps/patient-residuals/${id}/destroy`, body)).data,
+    onSuccess: () => {
+      invalidateAll(qc);
+      qc.invalidateQueries({ queryKey: ['emar'] });
+    },
   });
 }
 

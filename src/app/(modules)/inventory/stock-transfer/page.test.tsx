@@ -24,6 +24,7 @@ vi.mock('@/components/pharmacy/ndps-statutory', () => ({
   ConsumptionDialog: () => null,
   DisposalDialog: () => null,
   LocationDialog: () => null,
+  PatientResidualsPanel: () => <div>patient residual worklist</div>,
 }));
 
 import StockTransferPage from './page';
@@ -65,5 +66,6 @@ describe('Stock Transfer — the one place stock moves', () => {
     expect(await screen.findByText(/Narcotics only/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Receive \(Form 3C\)/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Administer \(Form 3E\)/i })).toBeInTheDocument();
+    expect(screen.getByText('patient residual worklist')).toBeInTheDocument();
   });
 });

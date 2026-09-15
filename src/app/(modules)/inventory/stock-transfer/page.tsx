@@ -33,7 +33,7 @@ import {
   WardStockPanel, WardLedgerPanel, useWardOptions,
 } from '@/components/pharmacy/ward-stock-board';
 import {
-  LocationDialog, ReceiveDialog, ConsumptionDialog, DisposalDialog,
+  LocationDialog, ReceiveDialog, ConsumptionDialog, DisposalDialog, PatientResidualsPanel,
 } from '@/components/pharmacy/ndps-statutory';
 
 export default function InventoryStockTransferPage() {
@@ -110,6 +110,8 @@ export default function InventoryStockTransferPage() {
               any medicine, these included — is the other tabs on this page.
             </p>
           </div>
+
+          <PatientResidualsPanel />
 
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={() => setDialog('receive')}>

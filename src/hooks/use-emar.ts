@@ -54,6 +54,8 @@ export interface EmarSchedule {
   prescriptionItemId: string;
   patientId: string;
   admissionId: string | null;
+  drugBatchId?: string | null;
+  dispensingRecordId?: string | null;
   drugName: string;
   dosage: string;
   route: string;
@@ -92,6 +94,60 @@ export interface EmarSchedule {
   };
   givenBy?: { id: string; firstName: string; lastName: string | null };
   amendedBy?: { id: string; firstName: string; lastName: string | null };
+  ndpsPatientDose?: NdpsPatientDoseSummary | null;
+}
+
+export interface NdpsPatientDoseSummary {
+  id: string;
+  labelledQuantity: number | string;
+  administeredQuantity: number | string;
+  residualQuantity: number | string;
+  quantityUnit: string;
+  status: 'fully_administered' | 'destroyed' | 'quarantined';
+  disposition: 'none' | 'destroyed' | 'quarantined';
+  quarantineLocation?: string | null;
+  disposalMethod?: string | null;
+  emergencyUse?: boolean;
+}
+
+export interface NdpsPatientDoseInput {
+  drugBatchId: string;
+  ndpsLocationId: string;
+  labelledQuantity: number;
+  administeredQuantity: number;
+  quantityUnit: string;
+  containerQuantity?: number;
+  disposition: 'none' | 'destroyed' | 'quarantined';
+  disposalMethod?: string;
+  quarantineLocation?: string;
+  witnessedById?: string;
+  witnessPassword?: string;
+  emergencyUse?: boolean;
+  emergencyReason?: string;
+  notes?: string;
+}
+
+export interface NdpsDoseContext {
+  isNdps: boolean;
+  drug?: { id: string; name: string; strength: string | null };
+  linkedBatchId?: string | null;
+  dispensingRecordId?: string | null;
+  requiresEmergencyReason?: boolean;
+  clinicalDetails?: {
+    doctorRegistration: string | null;
+    bedNumber: string | null;
+    diagnosis: string | null;
+  };
+  batches?: Array<{ id: string; batchNumber: string; expiryDate: string; quantityInStock: number }>;
+  locations?: Array<{
+    id: string;
+    name: string;
+    type: string;
+    wardId: string | null;
+    availableContainers: number;
+    preferred: boolean;
+  }>;
+  existingDose?: NdpsPatientDoseSummary | null;
 }
 
 export interface EmarAuditEntry {
@@ -121,6 +177,7 @@ const keys = {
   timeSlots: ['emar', 'time-slots'] as const,
   frequencies: ['emar', 'frequencies'] as const,
   settings: ['emar', 'settings'] as const,
+  ndpsContext: (id: string) => ['emar', 'ndps-context', id] as const,
 };
 
 // ============================================================
@@ -182,6 +239,15 @@ export function useEmarAudit(id: string | null) {
   });
 }
 
+export function useNdpsDoseContext(id: string | null, enabled = true) {
+  return useQuery({
+    queryKey: keys.ndpsContext(id ?? ''),
+    queryFn: async () => (await apiGet<NdpsDoseContext>(`/emar/doses/${id}/ndps-context`)).data,
+    enabled: Boolean(id && enabled),
+    staleTime: 15_000,
+  });
+}
+
 // ============================================================
 // Dose mutations
 // ============================================================
@@ -193,10 +259,11 @@ function invalidateSchedules(qc: ReturnType<typeof useQueryClient>) {
 export function useGiveDose() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (vars: { id: string; actualGivenTime?: string; notes?: string }) => {
+    mutationFn: async (vars: { id: string; actualGivenTime?: string; notes?: string; ndps?: NdpsPatientDoseInput }) => {
       const res = await apiPost<EmarSchedule>(`/emar/doses/${vars.id}/give`, {
         actualGivenTime: vars.actualGivenTime,
         notes: vars.notes,
+        ndps: vars.ndps,
       });
       return res;
     },

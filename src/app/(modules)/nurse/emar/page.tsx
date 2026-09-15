@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, type Dispatch, type SetStateAction } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { toInputDateStr, formatTime, formatDateTime } from '@/lib/date-utils';
 import { Input } from '@/components/ui/input';
@@ -52,9 +52,15 @@ import {
   useRegenerateSchedules,
   useCatchUpDose,
   useEmarAudit,
+  useNdpsDoseContext,
   type EmarSchedule,
   type EmarDoseStatus,
+  type NdpsPatientDoseInput,
+  type NdpsDoseContext,
 } from '@/hooks/use-emar';
+import { useUsersList } from '@/hooks/use-users';
+import { useAuthStore } from '@/stores/auth-store';
+import { WitnessCosignDialog } from '@/components/pharmacy/witness-cosign-dialog';
 import Link from 'next/link';
 import {
   AlertTriangle,
@@ -73,6 +79,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Settings as SettingsIcon,
+  ShieldAlert,
 } from 'lucide-react';
 import { fullName } from '@/lib/person-name';
 
@@ -108,6 +115,25 @@ function nowIso(): string {
 
 function buildIso(dateStr: string, timeStr: string): string {
   return new Date(`${dateStr}T${timeStr}:00`).toISOString();
+}
+
+const EMPTY_NDPS_FORM = {
+  drugBatchId: '', ndpsLocationId: '', labelledQuantity: '', administeredQuantity: '',
+  quantityUnit: 'mL', containerQuantity: '1', disposition: 'quarantined' as 'destroyed' | 'quarantined',
+  disposalMethod: '', quarantineLocation: '', emergencyReason: '', notes: '',
+};
+
+function effectiveNdpsBatch(context: NdpsDoseContext, value: typeof EMPTY_NDPS_FORM) {
+  return value.drugBatchId || context.linkedBatchId || context.batches?.[0]?.id || '';
+}
+
+function effectiveNdpsLocation(context: NdpsDoseContext, value: typeof EMPTY_NDPS_FORM) {
+  if (value.ndpsLocationId) return value.ndpsLocationId;
+  const locations = context.locations ?? [];
+  return locations.find((location) => location.preferred && location.availableContainers > 0)?.id
+    ?? locations.find((location) => location.availableContainers > 0)?.id
+    ?? locations[0]?.id
+    ?? '';
 }
 
 // ── Page component ───────────────────────────────────────────
@@ -154,6 +180,9 @@ export default function EmarPage() {
   const [actionReason, setActionReason] = useState('');
   const [actionNotes, setActionNotes] = useState('');
   const [amendTargetStatus, setAmendTargetStatus] = useState<'given_late' | 'given' | 'missed' | 'held' | 'refused'>('given_late');
+  const [ndpsForm, setNdpsForm] = useState(EMPTY_NDPS_FORM);
+  const [ndpsWitnessOpen, setNdpsWitnessOpen] = useState(false);
+  const [pendingNdpsGive, setPendingNdpsGive] = useState<NdpsPatientDoseInput | null>(null);
 
   // PRN dialog state
   const [prnDialog, setPrnDialog] = useState<{ open: boolean; itemId: string; drugName: string; dosage: string; frequency: string }>({
@@ -167,6 +196,24 @@ export default function EmarPage() {
 
   // Interaction detail
   const [interactionDialog, setInteractionDialog] = useState<{ drugName: string; pairs: InteractionPair[] } | null>(null);
+
+  const ndpsScheduleId = actionDialog.open && actionDialog.mode === 'give'
+    ? actionDialog.schedule?.id ?? null
+    : null;
+  const ndpsContextQ = useNdpsDoseContext(ndpsScheduleId);
+  const ndpsContext = ndpsContextQ.data;
+  const { data: witnessUsers } = useUsersList({ isActive: 'true', limit: 200 });
+  const currentUserId = useAuthStore((state) => state.user?.id) ?? null;
+  const witnessOptions = useMemo(
+    () => (witnessUsers?.data ?? [])
+      .filter((user) => user.id !== currentUserId)
+      .map((user) => ({
+        id: user.id,
+        name: `${user.firstName} ${user.lastName ?? ''}`.trim(),
+        role: user.userRoles?.[0]?.role?.name ?? null,
+      })),
+    [witnessUsers, currentUserId],
+  );
 
   // Every dose in the focused state, across all patients on the ward.
   const { data: focusDosesRaw, isLoading: focusLoading } = useEmarSchedules({
@@ -391,6 +438,8 @@ export default function EmarPage() {
     setActionReason(schedule.reason ?? '');
     setActionNotes('');
     setAmendTargetStatus('given_late');
+    setNdpsForm(EMPTY_NDPS_FORM);
+    setPendingNdpsGive(null);
   }, []);
 
   // Open the action dialog for a slot that has no dose row yet (its time had
@@ -400,7 +449,50 @@ export default function EmarPage() {
     setActualGivenTime(nowTimeStr());
     setActionReason('');
     setActionNotes('');
+    setNdpsForm(EMPTY_NDPS_FORM);
+    setPendingNdpsGive(null);
   }, []);
+
+  const buildNdpsDose = useCallback((): NdpsPatientDoseInput | undefined => {
+    if (!ndpsContext?.isNdps) return undefined;
+    const labelledQuantity = Number(ndpsForm.labelledQuantity);
+    const administeredQuantity = Number(ndpsForm.administeredQuantity);
+    const containerQuantity = Number(ndpsForm.containerQuantity);
+    const drugBatchId = effectiveNdpsBatch(ndpsContext, ndpsForm);
+    const ndpsLocationId = effectiveNdpsLocation(ndpsContext, ndpsForm);
+    if (!drugBatchId) throw new Error('Select the exact batch/container used.');
+    if (!ndpsLocationId) throw new Error('Select the NDPS custody location.');
+    if (!(labelledQuantity > 0)) throw new Error('Enter the quantity printed on the container label.');
+    if (!(administeredQuantity > 0)) throw new Error('Enter the quantity actually administered.');
+    if (administeredQuantity > labelledQuantity) throw new Error('Administered quantity cannot exceed labelled quantity.');
+    if (!Number.isInteger(containerQuantity) || containerQuantity <= 0) throw new Error('Container count must be a positive whole number.');
+    if (!ndpsForm.quantityUnit.trim()) throw new Error('Enter the quantity unit.');
+    const residual = Math.round((labelledQuantity - administeredQuantity) * 10_000) / 10_000;
+    const disposition = residual === 0 ? 'none' : ndpsForm.disposition;
+    if (residual > 0 && disposition === 'destroyed' && !ndpsForm.disposalMethod.trim()) {
+      throw new Error('Record the immediate destruction method.');
+    }
+    if (residual > 0 && disposition === 'quarantined' && !ndpsForm.quarantineLocation.trim()) {
+      throw new Error('Record where the sealed residual will be quarantined.');
+    }
+    if (ndpsContext.requiresEmergencyReason && !ndpsForm.emergencyReason.trim()) {
+      throw new Error('Enter why emergency stock was used without a linked pharmacy issue.');
+    }
+    return {
+      drugBatchId,
+      ndpsLocationId,
+      labelledQuantity,
+      administeredQuantity,
+      quantityUnit: ndpsForm.quantityUnit.trim(),
+      containerQuantity,
+      disposition,
+      disposalMethod: ndpsForm.disposalMethod.trim() || undefined,
+      quarantineLocation: ndpsForm.quarantineLocation.trim() || undefined,
+      emergencyUse: Boolean(ndpsContext.requiresEmergencyReason),
+      emergencyReason: ndpsForm.emergencyReason.trim() || undefined,
+      notes: ndpsForm.notes.trim() || undefined,
+    };
+  }, [ndpsContext, ndpsForm]);
 
   const makeCatchUpTarget = useCallback(
     (
@@ -457,7 +549,14 @@ export default function EmarPage() {
 
       if (mode === 'give') {
         const iso = buildIso(selectedDate, actualGivenTime);
-        await giveDose.mutateAsync({ id: schedule.id, actualGivenTime: iso, notes: actionNotes.trim() || undefined });
+        const ndps = buildNdpsDose();
+        const residual = ndps ? ndps.labelledQuantity - ndps.administeredQuantity : 0;
+        if (ndps && residual > 0 && ndps.disposition === 'destroyed') {
+          setPendingNdpsGive(ndps);
+          setNdpsWitnessOpen(true);
+          return;
+        }
+        await giveDose.mutateAsync({ id: schedule.id, actualGivenTime: iso, notes: actionNotes.trim() || undefined, ndps });
         toast.success(`${schedule.drugName} marked as given`);
       } else if (mode === 'hold') {
         await holdDose.mutateAsync({ id: schedule.id, reason: actionReason.trim(), notes: actionNotes.trim() || undefined });
@@ -482,7 +581,26 @@ export default function EmarPage() {
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? 'Action failed');
     }
-  }, [actionDialog, actionReason, actionNotes, actualGivenTime, amendTargetStatus, selectedDate, giveDose, holdDose, refuseDose, amendDose, catchUpDose, closeActionDialog]);
+  }, [actionDialog, actionReason, actionNotes, actualGivenTime, amendTargetStatus, selectedDate, giveDose, holdDose, refuseDose, amendDose, catchUpDose, closeActionDialog, buildNdpsDose]);
+
+  const confirmNdpsWitness = useCallback(async (witnessedById: string, witnessPassword: string) => {
+    const schedule = actionDialog.schedule;
+    if (!schedule || !pendingNdpsGive) return;
+    try {
+      await giveDose.mutateAsync({
+        id: schedule.id,
+        actualGivenTime: buildIso(selectedDate, actualGivenTime),
+        notes: actionNotes.trim() || undefined,
+        ndps: { ...pendingNdpsGive, witnessedById, witnessPassword },
+      });
+      toast.success(`${schedule.drugName} given and residual destroyed under witness`);
+      setNdpsWitnessOpen(false);
+      setPendingNdpsGive(null);
+      closeActionDialog();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? err?.message ?? 'NDPS dose could not be recorded');
+    }
+  }, [actionDialog.schedule, pendingNdpsGive, giveDose, selectedDate, actualGivenTime, actionNotes, closeActionDialog]);
 
   const submitPrn = useCallback(async () => {
     if (!prnDialog.itemId) return;
@@ -932,7 +1050,7 @@ export default function EmarPage() {
 
       {/* Action dialog */}
       <Dialog open={actionDialog.open} onOpenChange={(open) => !open && closeActionDialog()}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Pill className="h-4 w-4 text-primary" />
@@ -1004,6 +1122,16 @@ export default function EmarPage() {
                 </div>
               )}
 
+              {actionDialog.mode === 'give' && actionDialog.schedule && ndpsContextQ.isLoading && (
+                <div className="flex items-center gap-2 rounded-lg border p-3 text-xs text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Checking controlled-drug requirements…
+                </div>
+              )}
+
+              {actionDialog.mode === 'give' && actionDialog.schedule && ndpsContext?.isNdps && (
+                <NdpsDoseFields context={ndpsContext} value={ndpsForm} onChange={setNdpsForm} />
+              )}
+
               {/* Reason */}
               {(actionDialog.mode === 'hold' || actionDialog.mode === 'refuse' ||
                 (actionDialog.mode === 'amend' && (amendTargetStatus === 'held' || amendTargetStatus === 'refused'))) && (
@@ -1024,13 +1152,26 @@ export default function EmarPage() {
 
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" size="sm" onClick={closeActionDialog}>Cancel</Button>
-            <Button size="sm" onClick={submitAction} disabled={anyActionPending} className="gap-1.5">
+            <Button size="sm" onClick={submitAction} disabled={anyActionPending || ndpsContextQ.isLoading} className="gap-1.5">
               {anyActionPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               Confirm
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <WitnessCosignDialog
+        open={ndpsWitnessOpen}
+        onOpenChange={(open) => {
+          setNdpsWitnessOpen(open);
+          if (!open) setPendingNdpsGive(null);
+        }}
+        title="Witness residual destruction"
+        description="A second authorised person must observe the measured residual being destroyed and enter their own password. The dose and disposal will then be confirmed together."
+        witnessOptions={witnessOptions}
+        busy={giveDose.isPending}
+        onConfirm={confirmNdpsWitness}
+      />
 
       {/* PRN dialog */}
       <Dialog open={prnDialog.open} onOpenChange={(open) => !open && setPrnDialog({ ...prnDialog, open: false })}>
@@ -1101,6 +1242,130 @@ export default function EmarPage() {
           <DialogFooter><Button variant="outline" size="sm" onClick={() => setInteractionDialog(null)}>Close</Button></DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function NdpsDoseFields({
+  context,
+  value,
+  onChange,
+}: {
+  context: NdpsDoseContext;
+  value: typeof EMPTY_NDPS_FORM;
+  onChange: Dispatch<SetStateAction<typeof EMPTY_NDPS_FORM>>;
+}) {
+  const set = (key: keyof typeof EMPTY_NDPS_FORM, next: string) =>
+    onChange((current) => ({ ...current, [key]: next }));
+  const labelled = Number(value.labelledQuantity);
+  const administered = Number(value.administeredQuantity);
+  const residual = labelled > 0 && administered > 0 && administered <= labelled
+    ? Math.round((labelled - administered) * 10_000) / 10_000
+    : null;
+  const clinical = context.clinicalDetails;
+  const selectedBatchId = effectiveNdpsBatch(context, value);
+  const selectedLocationId = effectiveNdpsLocation(context, value);
+
+  return (
+    <div className="space-y-3 rounded-xl border border-red-200 bg-red-50/40 p-3">
+      <div className="flex items-start gap-2">
+        <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-red-700" />
+        <div>
+          <p className="text-xs font-semibold text-red-900">NDPS patient-dose reconciliation</p>
+          <p className="text-[11px] text-red-800">
+            Record the exact batch and contents now. An opened residual can only be destroyed under witness or sealed for the NDPS disposal worklist.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="space-y-1">
+          <Label className="text-xs">Batch / container *</Label>
+          <Select value={selectedBatchId} onValueChange={(next) => next && set('drugBatchId', next)}>
+            <SelectTrigger><SelectValue placeholder="Select exact batch" /></SelectTrigger>
+            <SelectContent>
+              {(context.batches ?? []).map((batch) => (
+                <SelectItem key={batch.id} value={batch.id}>
+                  {batch.batchNumber} · exp {formatDateTime(batch.expiryDate).split(',')[0]}
+                  {batch.id === context.linkedBatchId ? ' · linked issue' : ` · ${batch.quantityInStock} available`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Custody location *</Label>
+          <Select value={selectedLocationId} onValueChange={(next) => next && set('ndpsLocationId', next)}>
+            <SelectTrigger><SelectValue placeholder="Select safe / ward cart" /></SelectTrigger>
+            <SelectContent>
+              {(context.locations ?? []).map((location) => (
+                <SelectItem key={location.id} value={location.id} disabled={location.availableContainers <= 0}>
+                  {location.name} · {location.availableContainers} container(s){location.preferred ? ' · current ward' : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Labelled contents *</Label>
+          <Input type="number" min="0" step="any" value={value.labelledQuantity} onChange={(event) => set('labelledQuantity', event.target.value)} placeholder="e.g. 2" />
+        </div>
+        <div className="grid grid-cols-[1fr_88px] gap-2">
+          <div className="space-y-1">
+            <Label className="text-xs">Actually given *</Label>
+            <Input type="number" min="0" step="any" value={value.administeredQuantity} onChange={(event) => set('administeredQuantity', event.target.value)} placeholder="e.g. 0.5" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Unit *</Label>
+            <Input value={value.quantityUnit} onChange={(event) => set('quantityUnit', event.target.value)} placeholder="mL" />
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 rounded-lg border bg-background p-2 text-center text-xs">
+        <div><span className="block text-muted-foreground">Labelled</span><b>{labelled > 0 ? labelled : '—'} {value.quantityUnit}</b></div>
+        <div><span className="block text-muted-foreground">Given</span><b>{administered > 0 ? administered : '—'} {value.quantityUnit}</b></div>
+        <div><span className="block text-muted-foreground">Residual</span><b className={residual && residual > 0 ? 'text-red-700' : ''}>{residual ?? '—'} {value.quantityUnit}</b></div>
+      </div>
+
+      {residual !== null && residual > 0 && (
+        <div className="space-y-2">
+          <Label className="text-xs">Residual action *</Label>
+          <div className="grid grid-cols-2 gap-2">
+            <Button type="button" size="sm" variant={value.disposition === 'destroyed' ? 'default' : 'outline'} onClick={() => set('disposition', 'destroyed')}>
+              Destroy now under witness
+            </Button>
+            <Button type="button" size="sm" variant={value.disposition === 'quarantined' ? 'default' : 'outline'} onClick={() => set('disposition', 'quarantined')}>
+              Seal and quarantine
+            </Button>
+          </div>
+          {value.disposition === 'destroyed' ? (
+            <div className="space-y-1">
+              <Label className="text-xs">Approved destruction method *</Label>
+              <Input value={value.disposalMethod} onChange={(event) => set('disposalMethod', event.target.value)} placeholder="e.g. denatured, then placed in pharmaceutical waste container" />
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <Label className="text-xs">Sealed quarantine location *</Label>
+              <Input value={value.quarantineLocation} onChange={(event) => set('quarantineLocation', event.target.value)} placeholder="e.g. ICU narcotic safe · residual bin A" />
+            </div>
+          )}
+        </div>
+      )}
+
+      {context.requiresEmergencyReason && (
+        <div className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-2">
+          <Label className="text-xs text-amber-900">Emergency stock reason *</Label>
+          <Textarea value={value.emergencyReason} onChange={(event) => set('emergencyReason', event.target.value)} rows={2} placeholder="Why treatment could not wait for patient-specific pharmacy issue" />
+          <p className="text-[10px] text-amber-800">This is billed and moved from the selected ward/batch when the dose is confirmed.</p>
+        </div>
+      )}
+
+      {clinical && (!clinical.doctorRegistration || !clinical.diagnosis) && (
+        <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-800">
+          Complete the prescriber registration number and diagnosis/clinical justification in the patient record before confirming Form 3E.
+        </p>
+      )}
     </div>
   );
 }
@@ -1180,6 +1445,19 @@ function DoseButton({
       )}
       {schedule.status === 'given_late' && schedule.delayMinutes != null && (
         <div className="text-[9px] text-emerald-700 font-bold mt-0.5">+{schedule.delayMinutes}m</div>
+      )}
+      {schedule.ndpsPatientDose && (
+        <div
+          className={cn(
+            'mt-1 max-w-[92px] rounded px-1 py-0.5 text-center text-[8px] font-semibold leading-tight',
+            schedule.ndpsPatientDose.status === 'quarantined'
+              ? 'bg-amber-100 text-amber-800'
+              : 'bg-red-100 text-red-800',
+          )}
+          title={`NDPS: ${Number(schedule.ndpsPatientDose.administeredQuantity)} ${schedule.ndpsPatientDose.quantityUnit} given; ${Number(schedule.ndpsPatientDose.residualQuantity)} ${schedule.ndpsPatientDose.quantityUnit} residual ${schedule.ndpsPatientDose.status}`}
+        >
+          {Number(schedule.ndpsPatientDose.administeredQuantity)} given · {Number(schedule.ndpsPatientDose.residualQuantity)} {schedule.ndpsPatientDose.status === 'quarantined' ? 'sealed' : 'destroyed'}
+        </div>
       )}
     </div>
   );
