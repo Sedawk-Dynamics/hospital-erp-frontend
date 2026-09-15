@@ -178,6 +178,7 @@ const keys = {
   frequencies: ['emar', 'frequencies'] as const,
   settings: ['emar', 'settings'] as const,
   ndpsContext: (id: string) => ['emar', 'ndps-context', id] as const,
+  ndpsItemContext: (id: string) => ['emar', 'ndps-item-context', id] as const,
 };
 
 // ============================================================
@@ -243,6 +244,15 @@ export function useNdpsDoseContext(id: string | null, enabled = true) {
   return useQuery({
     queryKey: keys.ndpsContext(id ?? ''),
     queryFn: async () => (await apiGet<NdpsDoseContext>(`/emar/doses/${id}/ndps-context`)).data,
+    enabled: Boolean(id && enabled),
+    staleTime: 15_000,
+  });
+}
+
+export function useNdpsPrescriptionItemContext(id: string | null, enabled = true) {
+  return useQuery({
+    queryKey: keys.ndpsItemContext(id ?? ''),
+    queryFn: async () => (await apiGet<NdpsDoseContext>(`/emar/prescription-items/${id}/ndps-context`)).data,
     enabled: Boolean(id && enabled),
     staleTime: 15_000,
   });
@@ -322,6 +332,7 @@ export function useAmendDose() {
       actualGivenTime?: string;
       reason?: string;
       notes?: string;
+      ndps?: NdpsPatientDoseInput;
     }) => {
       const { id, ...body } = vars;
       const res = await apiPost<EmarSchedule>(`/emar/doses/${id}/amend`, body);
@@ -334,10 +345,11 @@ export function useAmendDose() {
 export function useTriggerPrn() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (vars: { prescriptionItemId: string; actualGivenTime?: string; notes?: string }) => {
+    mutationFn: async (vars: { prescriptionItemId: string; actualGivenTime?: string; notes?: string; ndps?: NdpsPatientDoseInput }) => {
       const res = await apiPost<EmarSchedule>(`/emar/prn/${vars.prescriptionItemId}`, {
         actualGivenTime: vars.actualGivenTime,
         notes: vars.notes,
+        ndps: vars.ndps,
       });
       return res;
     },
@@ -371,6 +383,7 @@ export function useCatchUpDose() {
       actualGivenTime?: string;
       reason?: string;
       notes?: string;
+      ndps?: NdpsPatientDoseInput;
     }) => {
       const res = await apiPost<EmarSchedule>('/emar/catch-up', vars);
       return res;
