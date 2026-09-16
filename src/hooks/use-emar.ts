@@ -117,11 +117,8 @@ export interface NdpsPatientDoseInput {
   administeredQuantity: number;
   quantityUnit: string;
   containerQuantity?: number;
-  disposition: 'none' | 'destroyed' | 'quarantined';
-  disposalMethod?: string;
+  disposition: 'none' | 'quarantined';
   quarantineLocation?: string;
-  witnessedById?: string;
-  witnessPassword?: string;
   emergencyUse?: boolean;
   emergencyReason?: string;
   notes?: string;

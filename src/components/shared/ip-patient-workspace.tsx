@@ -91,7 +91,6 @@ import {
   useNdpsPrescriptionItemContext,
   useTriggerPrn,
   type EmarSchedule,
-  type NdpsPatientDoseInput,
 } from '@/hooks/use-emar';
 import {
   EMPTY_NDPS_FORM,
@@ -121,8 +120,6 @@ import { VitalValue } from '@/components/shared/vital-value';
 import { formatTemperature, temperatureIn, temperatureUnitLabel, temperatureValue } from '@/lib/vitals-temperature';
 import { useTemperatureUnit } from '@/stores/temperature-unit-store';
 import { fullName } from '@/lib/person-name';
-import { useUsersList } from '@/hooks/use-users';
-import { WitnessCosignDialog } from '@/components/pharmacy/witness-cosign-dialog';
 
 // Hooks here return raw `ApiResponse<T>` — pull out the inner payload safely.
 function unwrapList<T>(value: unknown): T[] {
@@ -671,41 +668,20 @@ function PrescriptionsPanel({ admissionId, patientId, role, onNewRx }: { admissi
   const [prnTime, setPrnTime] = useState(nowTimeInput());
   const [prnNotes, setPrnNotes] = useState('');
   const [ndpsForm, setNdpsForm] = useState(EMPTY_NDPS_FORM);
-  const [ndpsWitnessOpen, setNdpsWitnessOpen] = useState(false);
-  const [pendingNdpsDose, setPendingNdpsDose] = useState<NdpsPatientDoseInput | null>(null);
   const { data: ndpsContext, isLoading: ndpsContextLoading } = useNdpsPrescriptionItemContext(
     prnDialog.open ? prnDialog.itemId : null,
-  );
-  const { data: witnessUsers } = useUsersList({ isActive: 'true', limit: 200 });
-  const currentUserId = useAuthStore((state) => state.user?.id) ?? null;
-  const witnessOptions = useMemo(
-    () => (witnessUsers?.data ?? [])
-      .filter((user) => user.id !== currentUserId)
-      .map((user) => ({
-        id: user.id,
-        name: `${user.firstName} ${user.lastName ?? ''}`.trim(),
-        role: user.userRoles?.[0]?.role?.name ?? null,
-      })),
-    [witnessUsers, currentUserId],
   );
 
   const closePrnDialog = () => {
     setPrnDialog({ open: false, itemId: '', drugName: '', dosage: '', frequency: '' });
     setPrnNotes('');
     setNdpsForm(EMPTY_NDPS_FORM);
-    setPendingNdpsDose(null);
   };
 
   const submitPrnDose = async () => {
     if (!prnDialog.itemId) return;
     try {
       const ndps = buildNdpsPatientDose(ndpsContext, ndpsForm);
-      const residual = ndps ? ndps.labelledQuantity - ndps.administeredQuantity : 0;
-      if (ndps && residual > 0 && ndps.disposition === 'destroyed') {
-        setPendingNdpsDose(ndps);
-        setNdpsWitnessOpen(true);
-        return;
-      }
       await triggerPrn.mutateAsync({
         prescriptionItemId: prnDialog.itemId,
         actualGivenTime: localDateTimeIso(todayInputDate(), prnTime),
@@ -716,23 +692,6 @@ function PrescriptionsPanel({ admissionId, patientId, role, onNewRx }: { admissi
       closePrnDialog();
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? err?.message ?? 'PRN dose could not be recorded');
-    }
-  };
-
-  const confirmNdpsWitness = async (witnessedById: string, witnessPassword: string) => {
-    if (!pendingNdpsDose || !prnDialog.itemId) return;
-    try {
-      await triggerPrn.mutateAsync({
-        prescriptionItemId: prnDialog.itemId,
-        actualGivenTime: localDateTimeIso(todayInputDate(), prnTime),
-        notes: prnNotes.trim() || undefined,
-        ndps: { ...pendingNdpsDose, witnessedById, witnessPassword },
-      });
-      toast.success(`${prnDialog.drugName} PRN dose and residual destruction recorded`);
-      setNdpsWitnessOpen(false);
-      closePrnDialog();
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? err?.message ?? 'NDPS dose could not be recorded');
     }
   };
 
@@ -801,7 +760,6 @@ function PrescriptionsPanel({ admissionId, patientId, role, onNewRx }: { admissi
                         setPrnTime(nowTimeInput());
                         setPrnNotes('');
                         setNdpsForm(EMPTY_NDPS_FORM);
-                        setPendingNdpsDose(null);
                       }}
                     >
                       <Plus className="h-3 w-3" />
@@ -881,18 +839,6 @@ function PrescriptionsPanel({ admissionId, patientId, role, onNewRx }: { admissi
         </DialogContent>
       </Dialog>
 
-      <WitnessCosignDialog
-        open={ndpsWitnessOpen}
-        onOpenChange={(open) => {
-          setNdpsWitnessOpen(open);
-          if (!open) setPendingNdpsDose(null);
-        }}
-        title="Witness residual destruction"
-        description="A second authorised person must observe the measured residual being destroyed and enter their own password. The PRN dose and disposal will then be confirmed together."
-        witnessOptions={witnessOptions}
-        busy={triggerPrn.isPending}
-        onConfirm={confirmNdpsWitness}
-      />
     </div>
   );
 }

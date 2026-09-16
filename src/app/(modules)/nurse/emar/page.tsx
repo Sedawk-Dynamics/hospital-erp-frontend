@@ -59,9 +59,6 @@ import {
   type NdpsPatientDoseInput,
   type NdpsDoseContext,
 } from '@/hooks/use-emar';
-import { useUsersList } from '@/hooks/use-users';
-import { useAuthStore } from '@/stores/auth-store';
-import { WitnessCosignDialog } from '@/components/pharmacy/witness-cosign-dialog';
 import Link from 'next/link';
 import {
   AlertTriangle,
@@ -167,11 +164,6 @@ export default function EmarPage() {
   const [actionNotes, setActionNotes] = useState('');
   const [amendTargetStatus, setAmendTargetStatus] = useState<'given_late' | 'given' | 'missed' | 'held' | 'refused'>('given_late');
   const [ndpsForm, setNdpsForm] = useState(EMPTY_NDPS_FORM);
-  const [ndpsWitnessOpen, setNdpsWitnessOpen] = useState(false);
-  const [pendingNdpsGive, setPendingNdpsGive] = useState<{
-    kind: 'scheduled' | 'catchup' | 'prn' | 'amend';
-    ndps: NdpsPatientDoseInput;
-  } | null>(null);
 
   // PRN dialog state
   const [prnDialog, setPrnDialog] = useState<{ open: boolean; itemId: string; drugName: string; dosage: string; frequency: string }>({
@@ -198,18 +190,6 @@ export default function EmarPage() {
   const ndpsContextLoading = ndpsScheduleId
     ? ndpsScheduleContextQ.isLoading
     : Boolean(ndpsItemId && ndpsItemContextQ.isLoading);
-  const { data: witnessUsers } = useUsersList({ isActive: 'true', limit: 200 });
-  const currentUserId = useAuthStore((state) => state.user?.id) ?? null;
-  const witnessOptions = useMemo(
-    () => (witnessUsers?.data ?? [])
-      .filter((user) => user.id !== currentUserId)
-      .map((user) => ({
-        id: user.id,
-        name: `${user.firstName} ${user.lastName ?? ''}`.trim(),
-        role: user.userRoles?.[0]?.role?.name ?? null,
-      })),
-    [witnessUsers, currentUserId],
-  );
 
   // Every dose in the focused state, across all patients on the ward.
   const { data: focusDosesRaw, isLoading: focusLoading } = useEmarSchedules({
@@ -435,7 +415,6 @@ export default function EmarPage() {
     setActionNotes('');
     setAmendTargetStatus('given_late');
     setNdpsForm(EMPTY_NDPS_FORM);
-    setPendingNdpsGive(null);
   }, []);
 
   // Open the action dialog for a slot that has no dose row yet (its time had
@@ -446,7 +425,6 @@ export default function EmarPage() {
     setActionReason('');
     setActionNotes('');
     setNdpsForm(EMPTY_NDPS_FORM);
-    setPendingNdpsGive(null);
   }, []);
 
   const buildNdpsDose = useCallback((): NdpsPatientDoseInput | undefined => {
@@ -491,12 +469,6 @@ export default function EmarPage() {
         if (mode === 'amend') return;
         const iso = mode === 'give' ? buildIso(catchUp.date, actualGivenTime) : undefined;
         const ndps = mode === 'give' ? buildNdpsDose() : undefined;
-        const residual = ndps ? ndps.labelledQuantity - ndps.administeredQuantity : 0;
-        if (ndps && residual > 0 && ndps.disposition === 'destroyed') {
-          setPendingNdpsGive({ kind: 'catchup', ndps });
-          setNdpsWitnessOpen(true);
-          return;
-        }
         await catchUpDose.mutateAsync({
           prescriptionItemId: catchUp.prescriptionItemId,
           slotCode: catchUp.slotCode,
@@ -517,12 +489,6 @@ export default function EmarPage() {
       if (mode === 'give') {
         const iso = buildIso(selectedDate, actualGivenTime);
         const ndps = buildNdpsDose();
-        const residual = ndps ? ndps.labelledQuantity - ndps.administeredQuantity : 0;
-        if (ndps && residual > 0 && ndps.disposition === 'destroyed') {
-          setPendingNdpsGive({ kind: 'scheduled', ndps });
-          setNdpsWitnessOpen(true);
-          return;
-        }
         await giveDose.mutateAsync({ id: schedule.id, actualGivenTime: iso, notes: actionNotes.trim() || undefined, ndps });
         toast.success(`${schedule.drugName} marked as given`);
       } else if (mode === 'hold') {
@@ -538,12 +504,6 @@ export default function EmarPage() {
         const ndps = (amendTargetStatus === 'given' || amendTargetStatus === 'given_late')
           ? buildNdpsDose()
           : undefined;
-        const residual = ndps ? ndps.labelledQuantity - ndps.administeredQuantity : 0;
-        if (ndps && residual > 0 && ndps.disposition === 'destroyed') {
-          setPendingNdpsGive({ kind: 'amend', ndps });
-          setNdpsWitnessOpen(true);
-          return;
-        }
         await amendDose.mutateAsync({
           id: schedule.id,
           toStatus: amendTargetStatus,
@@ -560,73 +520,11 @@ export default function EmarPage() {
     }
   }, [actionDialog, actionReason, actionNotes, actualGivenTime, amendTargetStatus, selectedDate, giveDose, holdDose, refuseDose, amendDose, catchUpDose, closeActionDialog, buildNdpsDose]);
 
-  const confirmNdpsWitness = useCallback(async (witnessedById: string, witnessPassword: string) => {
-    if (!pendingNdpsGive) return;
-    const ndps = { ...pendingNdpsGive.ndps, witnessedById, witnessPassword };
-    try {
-      if (pendingNdpsGive.kind === 'scheduled' && actionDialog.schedule) {
-        await giveDose.mutateAsync({
-          id: actionDialog.schedule.id,
-          actualGivenTime: buildIso(selectedDate, actualGivenTime),
-          notes: actionNotes.trim() || undefined,
-          ndps,
-        });
-        toast.success(`${actionDialog.schedule.drugName} given and residual destroyed under witness`);
-        closeActionDialog();
-      } else if (pendingNdpsGive.kind === 'catchup' && actionDialog.catchUp) {
-        await catchUpDose.mutateAsync({
-          prescriptionItemId: actionDialog.catchUp.prescriptionItemId,
-          slotCode: actionDialog.catchUp.slotCode,
-          date: actionDialog.catchUp.date,
-          action: 'give',
-          actualGivenTime: buildIso(actionDialog.catchUp.date, actualGivenTime),
-          notes: actionNotes.trim() || undefined,
-          ndps,
-        });
-        toast.success(`${actionDialog.catchUp.drugName} given and residual destroyed under witness`);
-        closeActionDialog();
-      } else if (pendingNdpsGive.kind === 'prn' && prnDialog.itemId) {
-        await triggerPrn.mutateAsync({
-          prescriptionItemId: prnDialog.itemId,
-          actualGivenTime: buildIso(selectedDate, prnTime),
-          notes: prnNotes.trim() || undefined,
-          ndps,
-        });
-        toast.success(`${prnDialog.drugName} PRN dose and residual recorded`);
-        setPrnDialog({ open: false, itemId: '', drugName: '', dosage: '', frequency: '' });
-        setPrnNotes('');
-      } else if (pendingNdpsGive.kind === 'amend' && actionDialog.schedule) {
-        await amendDose.mutateAsync({
-          id: actionDialog.schedule.id,
-          toStatus: amendTargetStatus,
-          actualGivenTime: buildIso(selectedDate, actualGivenTime),
-          reason: actionReason.trim() || undefined,
-          notes: actionNotes.trim() || undefined,
-          ndps,
-        });
-        toast.success(`${actionDialog.schedule.drugName} amended and NDPS residual recorded`);
-        closeActionDialog();
-      } else {
-        return;
-      }
-      setNdpsWitnessOpen(false);
-      setPendingNdpsGive(null);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? err?.message ?? 'NDPS dose could not be recorded');
-    }
-  }, [actionDialog, pendingNdpsGive, giveDose, catchUpDose, triggerPrn, amendDose, amendTargetStatus, selectedDate, actualGivenTime, actionReason, actionNotes, prnDialog, prnTime, prnNotes, closeActionDialog]);
-
   const submitPrn = useCallback(async () => {
     if (!prnDialog.itemId) return;
     try {
       const iso = buildIso(selectedDate, prnTime);
       const ndps = buildNdpsDose();
-      const residual = ndps ? ndps.labelledQuantity - ndps.administeredQuantity : 0;
-      if (ndps && residual > 0 && ndps.disposition === 'destroyed') {
-        setPendingNdpsGive({ kind: 'prn', ndps });
-        setNdpsWitnessOpen(true);
-        return;
-      }
       await triggerPrn.mutateAsync({
         prescriptionItemId: prnDialog.itemId,
         actualGivenTime: iso,
@@ -1056,7 +954,6 @@ export default function EmarPage() {
                             setPrnTime(nowTimeStr());
                             setPrnNotes('');
                             setNdpsForm(EMPTY_NDPS_FORM);
-                            setPendingNdpsGive(null);
                           }}
                         >
                           <Plus className="h-3 w-3" />
@@ -1192,19 +1089,6 @@ export default function EmarPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <WitnessCosignDialog
-        open={ndpsWitnessOpen}
-        onOpenChange={(open) => {
-          setNdpsWitnessOpen(open);
-          if (!open) setPendingNdpsGive(null);
-        }}
-        title="Witness residual destruction"
-        description="A second authorised person must observe the measured residual being destroyed and enter their own password. The dose and disposal will then be confirmed together."
-        witnessOptions={witnessOptions}
-        busy={giveDose.isPending || catchUpDose.isPending || triggerPrn.isPending || amendDose.isPending}
-        onConfirm={confirmNdpsWitness}
-      />
 
       {/* PRN dialog */}
       <Dialog open={prnDialog.open} onOpenChange={(open) => !open && setPrnDialog({ ...prnDialog, open: false })}>

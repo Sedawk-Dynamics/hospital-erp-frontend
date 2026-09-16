@@ -3,7 +3,6 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { ShieldAlert } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -17,8 +16,6 @@ export const EMPTY_NDPS_FORM = {
   administeredQuantity: '',
   quantityUnit: 'mL',
   containerQuantity: '1',
-  disposition: 'quarantined' as 'destroyed' | 'quarantined',
-  disposalMethod: '',
   quarantineLocation: '',
   emergencyReason: '',
   notes: '',
@@ -55,11 +52,8 @@ export function buildNdpsPatientDose(context: NdpsDoseContext | undefined, form:
   if (!Number.isInteger(containerQuantity) || containerQuantity <= 0) throw new Error('Container count must be a positive whole number.');
   if (!form.quantityUnit.trim()) throw new Error('Enter the quantity unit.');
   const residual = Math.round((labelledQuantity - administeredQuantity) * 10_000) / 10_000;
-  const disposition = residual === 0 ? 'none' : form.disposition;
-  if (residual > 0 && disposition === 'destroyed' && !form.disposalMethod.trim()) {
-    throw new Error('Record the immediate destruction method.');
-  }
-  if (residual > 0 && disposition === 'quarantined' && !form.quarantineLocation.trim()) {
+  const disposition = residual === 0 ? 'none' : 'quarantined';
+  if (residual > 0 && !form.quarantineLocation.trim()) {
     throw new Error('Record where the sealed residual will be quarantined.');
   }
   if (context.requiresEmergencyReason && !form.emergencyReason.trim()) {
@@ -73,7 +67,6 @@ export function buildNdpsPatientDose(context: NdpsDoseContext | undefined, form:
     quantityUnit: form.quantityUnit.trim(),
     containerQuantity,
     disposition,
-    disposalMethod: form.disposalMethod.trim() || undefined,
     quarantineLocation: form.quarantineLocation.trim() || undefined,
     emergencyUse: Boolean(context.requiresEmergencyReason),
     emergencyReason: form.emergencyReason.trim() || undefined,
@@ -110,7 +103,7 @@ export function NdpsDoseFields({
         <div className="min-w-0">
           <p className="text-sm font-semibold text-red-950">NDPS patient-dose reconciliation</p>
           <p className="mt-0.5 text-xs leading-5 text-red-800">
-            Record the exact batch and opened contents. Any residual must be destroyed under witness or sealed for the NDPS disposal worklist.
+            Record what was given and what remains. Any remainder must be sealed and placed in quarantine for authorised NDPS disposal.
           </p>
         </div>
       </div>
@@ -166,31 +159,21 @@ export function NdpsDoseFields({
       <div className="grid grid-cols-3 gap-2 rounded-lg border bg-background p-2 text-center text-xs">
         <div><span className="block text-muted-foreground">Labelled</span><b>{labelled > 0 ? labelled : '-'} {value.quantityUnit}</b></div>
         <div><span className="block text-muted-foreground">Given</span><b>{administered > 0 ? administered : '-'} {value.quantityUnit}</b></div>
-        <div><span className="block text-muted-foreground">Residual</span><b className={residual && residual > 0 ? 'text-red-700' : ''}>{residual ?? '-'} {value.quantityUnit}</b></div>
+        <div><span className="block text-muted-foreground">Remaining (not given)</span><b className={residual && residual > 0 ? 'text-red-700' : ''}>{residual ?? '-'} {value.quantityUnit}</b></div>
       </div>
 
       {residual !== null && residual > 0 && (
-        <div className="space-y-2">
-          <Label className="text-xs">Residual action *</Label>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <Button type="button" size="sm" variant={value.disposition === 'destroyed' ? 'default' : 'outline'} onClick={() => set('disposition', 'destroyed')}>
-              Destroy now under witness
-            </Button>
-            <Button type="button" size="sm" variant={value.disposition === 'quarantined' ? 'default' : 'outline'} onClick={() => set('disposition', 'quarantined')}>
-              Seal and quarantine
-            </Button>
+        <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <div>
+            <p className="text-xs font-semibold text-amber-950">Seal and quarantine the remainder</p>
+            <p className="mt-0.5 text-[11px] leading-4 text-amber-800">
+              Doctor/nurse records custody only. Pharmacy or an authorised NDPS officer will review and complete witnessed destruction later.
+            </p>
           </div>
-          {value.disposition === 'destroyed' ? (
-            <div className="space-y-1.5">
-              <Label className="text-xs">Approved destruction method *</Label>
-              <Input value={value.disposalMethod} onChange={(event) => set('disposalMethod', event.target.value)} placeholder="e.g. denatured, then placed in pharmaceutical waste container" />
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              <Label className="text-xs">Sealed quarantine location *</Label>
-              <Input value={value.quarantineLocation} onChange={(event) => set('quarantineLocation', event.target.value)} placeholder="e.g. ICU narcotic safe - residual bin A" />
-            </div>
-          )}
+          <div className="space-y-1.5">
+            <Label className="text-xs">Sealed quarantine location *</Label>
+            <Input value={value.quarantineLocation} onChange={(event) => set('quarantineLocation', event.target.value)} placeholder="e.g. ICU narcotic safe - residual bin A" />
+          </div>
         </div>
       )}
 
