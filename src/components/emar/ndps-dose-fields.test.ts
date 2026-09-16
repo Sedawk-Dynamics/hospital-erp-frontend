@@ -7,6 +7,11 @@ const context: NdpsDoseContext = {
   isNdps: true,
   linkedBatchId: '11111111-1111-4111-8111-111111111111',
   requiresEmergencyReason: false,
+  clinicalDetails: {
+    doctorRegistration: 'NMC-12345',
+    bedNumber: 'ICU-01',
+    diagnosis: 'Post-operative pain',
+  },
   batches: [],
   locations: [
     {
@@ -66,5 +71,30 @@ describe('NDPS bedside dose reconciliation', () => {
 
     expect(dose?.disposition).toBe('none');
     expect(dose?.quarantineLocation).toBeUndefined();
+  });
+
+  it('accepts a per-administration registration number when the doctor profile is incomplete', () => {
+    const dose = buildNdpsPatientDose({
+      ...context,
+      clinicalDetails: { ...context.clinicalDetails!, doctorRegistration: null },
+    }, {
+      ...EMPTY_NDPS_FORM,
+      labelledQuantity: '2',
+      administeredQuantity: '2',
+      prescriberRegistrationNumber: 'SMC-98765',
+    });
+
+    expect(dose?.prescriberRegistrationNumber).toBe('SMC-98765');
+  });
+
+  it('explains how to resolve a missing doctor registration number', () => {
+    expect(() => buildNdpsPatientDose({
+      ...context,
+      clinicalDetails: { ...context.clinicalDetails!, doctorRegistration: null },
+    }, {
+      ...EMPTY_NDPS_FORM,
+      labelledQuantity: '2',
+      administeredQuantity: '2',
+    })).toThrow("Enter the prescribing doctor's medical council registration number.");
   });
 });
