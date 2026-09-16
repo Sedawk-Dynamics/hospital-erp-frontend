@@ -1257,7 +1257,9 @@ function DoseButton({
           )}
           title={`NDPS: ${Number(schedule.ndpsPatientDose.administeredQuantity)} ${schedule.ndpsPatientDose.quantityUnit} given; ${Number(schedule.ndpsPatientDose.residualQuantity)} ${schedule.ndpsPatientDose.quantityUnit} residual ${schedule.ndpsPatientDose.status}`}
         >
-          {Number(schedule.ndpsPatientDose.administeredQuantity)} given · {Number(schedule.ndpsPatientDose.residualQuantity)} {schedule.ndpsPatientDose.status === 'quarantined' ? 'sealed' : 'destroyed'}
+          {Number(schedule.ndpsPatientDose.administeredQuantity)} given · {Number(schedule.ndpsPatientDose.residualQuantity)} {schedule.ndpsPatientDose.status === 'destroyed'
+            ? 'destroyed'
+            : schedule.ndpsPatientDose.residualHandling === 'pending_destruction' ? 'awaiting disposal' : 'sealed'}
         </div>
       )}
     </div>

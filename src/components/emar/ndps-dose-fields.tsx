@@ -16,6 +16,7 @@ export const EMPTY_NDPS_FORM = {
   administeredQuantity: '',
   quantityUnit: 'mL',
   containerQuantity: '1',
+  residualHandling: '' as '' | 'pending_destruction' | 'sealed_quarantine',
   quarantineLocation: '',
   emergencyReason: '',
   notes: '',
@@ -53,7 +54,10 @@ export function buildNdpsPatientDose(context: NdpsDoseContext | undefined, form:
   if (!form.quantityUnit.trim()) throw new Error('Enter the quantity unit.');
   const residual = Math.round((labelledQuantity - administeredQuantity) * 10_000) / 10_000;
   const disposition = residual === 0 ? 'none' : 'quarantined';
-  if (residual > 0 && !form.quarantineLocation.trim()) {
+  if (residual > 0 && !form.residualHandling) {
+    throw new Error('Choose whether the remainder should be destroyed or sealed and quarantined.');
+  }
+  if (residual > 0 && form.residualHandling === 'sealed_quarantine' && !form.quarantineLocation.trim()) {
     throw new Error('Record where the sealed residual will be quarantined.');
   }
   if (context.requiresEmergencyReason && !form.emergencyReason.trim()) {
@@ -67,7 +71,10 @@ export function buildNdpsPatientDose(context: NdpsDoseContext | undefined, form:
     quantityUnit: form.quantityUnit.trim(),
     containerQuantity,
     disposition,
-    quarantineLocation: form.quarantineLocation.trim() || undefined,
+    residualHandling: residual > 0 ? form.residualHandling || undefined : undefined,
+    quarantineLocation: residual > 0 && form.residualHandling === 'sealed_quarantine'
+      ? form.quarantineLocation.trim()
+      : undefined,
     emergencyUse: Boolean(context.requiresEmergencyReason),
     emergencyReason: form.emergencyReason.trim() || undefined,
     notes: form.notes.trim() || undefined,
@@ -103,7 +110,7 @@ export function NdpsDoseFields({
         <div className="min-w-0">
           <p className="text-sm font-semibold text-red-950">NDPS patient-dose reconciliation</p>
           <p className="mt-0.5 text-xs leading-5 text-red-800">
-            Record what was given and what remains. Any remainder must be sealed and placed in quarantine for authorised NDPS disposal.
+            Record what was given and what remains, then select the required handling instruction.
           </p>
         </div>
       </div>
@@ -164,16 +171,46 @@ export function NdpsDoseFields({
 
       {residual !== null && residual > 0 && (
         <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <div>
-            <p className="text-xs font-semibold text-amber-950">Seal and quarantine the remainder</p>
-            <p className="mt-0.5 text-[11px] leading-4 text-amber-800">
-              Doctor/nurse records custody only. Pharmacy or an authorised NDPS officer will review and complete witnessed destruction later.
+          <p className="text-xs font-medium text-amber-950">Select one *</p>
+          <label className="flex cursor-pointer items-start gap-3 rounded-lg border bg-background p-3">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 accent-red-700"
+              checked={value.residualHandling === 'pending_destruction'}
+              onChange={() => set('residualHandling', 'pending_destruction')}
+            />
+            <span>
+              <span className="block text-xs font-semibold">It should be destroyed</span>
+              <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
+                Sends the remainder to Inventory - Stock Transfer - Patient residual disposal. Authorised staff record the witnessed destruction there.
+              </span>
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-3 rounded-lg border bg-background p-3">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 accent-amber-700"
+              checked={value.residualHandling === 'sealed_quarantine'}
+              onChange={() => set('residualHandling', 'sealed_quarantine')}
+            />
+            <span>
+              <span className="block text-xs font-semibold">Seal and quarantine the remainder</span>
+              <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
+                Keep it sealed in secure NDPS storage and record the exact location below.
+              </span>
+            </span>
+          </label>
+          {value.residualHandling === 'sealed_quarantine' && (
+            <div className="space-y-1.5">
+              <Label className="text-xs">Sealed quarantine location *</Label>
+              <Input value={value.quarantineLocation} onChange={(event) => set('quarantineLocation', event.target.value)} placeholder="e.g. ICU narcotic safe - residual bin A" />
+            </div>
+          )}
+          {value.residualHandling === 'pending_destruction' && (
+            <p className="rounded-md border border-red-200 bg-red-50 p-2 text-[11px] leading-4 text-red-800">
+              This is only a destruction request. The remainder stays in the selected NDPS custody location until authorised disposal is completed.
             </p>
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Sealed quarantine location *</Label>
-            <Input value={value.quarantineLocation} onChange={(event) => set('quarantineLocation', event.target.value)} placeholder="e.g. ICU narcotic safe - residual bin A" />
-          </div>
+          )}
         </div>
       )}
 

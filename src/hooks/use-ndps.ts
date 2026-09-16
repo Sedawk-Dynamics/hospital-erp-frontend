@@ -77,6 +77,7 @@ export interface NdpsPatientResidual {
   containerQuantity: number;
   status: 'quarantined' | 'destroyed' | 'fully_administered';
   disposition: 'quarantined' | 'destroyed' | 'none';
+  residualHandling: 'pending_destruction' | 'sealed_quarantine' | null;
   quarantineLocation: string | null;
   quarantinedAt: string | null;
   disposalMethod: string | null;

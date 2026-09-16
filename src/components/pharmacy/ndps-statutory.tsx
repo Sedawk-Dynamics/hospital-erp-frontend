@@ -478,6 +478,7 @@ export function PatientResidualsPanel() {
                 <TableHead>Drug / batch</TableHead>
                 <TableHead>Given</TableHead>
                 <TableHead>Residual</TableHead>
+                <TableHead>Instruction</TableHead>
                 <TableHead>Custody</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Action</TableHead>
@@ -496,6 +497,11 @@ export function PatientResidualsPanel() {
                   </TableCell>
                   <TableCell>{Number(row.administeredQuantity)} {row.quantityUnit}</TableCell>
                   <TableCell className="font-semibold text-red-700">{Number(row.residualQuantity)} {row.quantityUnit}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className={row.residualHandling === 'pending_destruction' ? 'border-red-200 text-red-700' : 'border-amber-200 text-amber-700'}>
+                      {row.residualHandling === 'pending_destruction' ? 'Destroy requested' : 'Sealed quarantine'}
+                    </Badge>
+                  </TableCell>
                   <TableCell>
                     <span className="block text-xs">{row.quarantineLocation ?? row.location.name}</span>
                     <span className="text-[10px] text-muted-foreground">since {formatDateTime(row.quarantinedAt ?? row.administeredAt)}</span>

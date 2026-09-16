@@ -105,6 +105,7 @@ export interface NdpsPatientDoseSummary {
   quantityUnit: string;
   status: 'fully_administered' | 'destroyed' | 'quarantined';
   disposition: 'none' | 'destroyed' | 'quarantined';
+  residualHandling?: 'pending_destruction' | 'sealed_quarantine' | null;
   quarantineLocation?: string | null;
   disposalMethod?: string | null;
   emergencyUse?: boolean;
@@ -118,6 +119,7 @@ export interface NdpsPatientDoseInput {
   quantityUnit: string;
   containerQuantity?: number;
   disposition: 'none' | 'quarantined';
+  residualHandling?: 'pending_destruction' | 'sealed_quarantine';
   quarantineLocation?: string;
   emergencyUse?: boolean;
   emergencyReason?: string;

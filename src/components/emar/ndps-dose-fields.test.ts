@@ -21,20 +21,21 @@ const context: NdpsDoseContext = {
 };
 
 describe('NDPS bedside dose reconciliation', () => {
-  it('automatically quarantines a positive remainder', () => {
+  it('records a destruction request without claiming destruction occurred', () => {
     const dose = buildNdpsPatientDose(context, {
       ...EMPTY_NDPS_FORM,
       labelledQuantity: '2',
       administeredQuantity: '0.5',
-      quarantineLocation: 'ICU narcotic safe - residual bin A',
+      residualHandling: 'pending_destruction',
     });
 
     expect(dose).toMatchObject({
       labelledQuantity: 2,
       administeredQuantity: 0.5,
       disposition: 'quarantined',
-      quarantineLocation: 'ICU narcotic safe - residual bin A',
+      residualHandling: 'pending_destruction',
     });
+    expect(dose?.quarantineLocation).toBeUndefined();
     expect(dose).not.toHaveProperty('disposalMethod');
     expect(dose).not.toHaveProperty('witnessedById');
   });
@@ -44,7 +45,16 @@ describe('NDPS bedside dose reconciliation', () => {
       ...EMPTY_NDPS_FORM,
       labelledQuantity: '2',
       administeredQuantity: '0.5',
+      residualHandling: 'sealed_quarantine',
     })).toThrow('Record where the sealed residual will be quarantined.');
+  });
+
+  it('requires one handling checkbox when medicine remains', () => {
+    expect(() => buildNdpsPatientDose(context, {
+      ...EMPTY_NDPS_FORM,
+      labelledQuantity: '2',
+      administeredQuantity: '0.5',
+    })).toThrow('Choose whether the remainder should be destroyed or sealed and quarantined.');
   });
 
   it('records no disposition when the full labelled quantity is given', () => {
