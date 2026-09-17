@@ -341,7 +341,9 @@ export interface FormularyMatch {
   manufacturer: string | null;
   dosageForm: DosageForm | null;
   strength: string | null;
+  unitOfMeasurement?: string | null;
   packSize: number | null;
+  looseUnitLabel?: string | null;
   price: number | string | null;
   drugMasterId: string | null;
   totalStock: number;
@@ -514,6 +516,7 @@ export interface OcrInvoiceLine {
   manufacturer?: string | null;
   strength?: string | null;
   dosageForm?: string | null;
+  primaryUnit?: string | null;
   unit?: string | null;
   gtin?: string | null;
   hsnCode?: string | null;
@@ -679,6 +682,7 @@ export interface CommitInwardLine extends InwardMatchLine {
   // Raw distributor line text stored as the learned-mapping key (defaults to drugName).
   externalName?: string;
   packSize?: number;
+  unitOfMeasurement?: string;
   looseUnitLabel?: string;
   // Full product-definition fields carried onto a newly-created product.
   minStock?: number;
@@ -698,6 +702,9 @@ export interface CommitInwardLine extends InwardMatchLine {
   purchaseDiscountPercent?: number;
   gstPercent?: number;
   sellingPrice?: number;
+  // Unit used for the entered monetary fields. The backend stores them per
+  // smallest unit, converting package/strip prices with packSize.
+  priceBasis?: 'package' | 'smallest_unit';
   supplierId?: string;
   invoiceNumber?: string;
   invoiceDate?: string;
