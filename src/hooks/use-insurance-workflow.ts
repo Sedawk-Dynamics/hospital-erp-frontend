@@ -159,7 +159,7 @@ export interface ClaimQuery {
   queryReference?: string | null;
   subject: string;
   queryText: string;
-  status: 'open' | 'responded' | 'resolved' | 'overdue';
+  status: 'open' | 'responseSubmitted' | 'resolved' | 'closed';
   raisedAt: string;
   responseDueAt: string;
   responseText?: string | null;
