@@ -46,7 +46,7 @@ import {
   type ClaimStatus,
 } from '@/hooks/use-insurance';
 import apiClient from '@/lib/api-client';
-import { useInsuranceCases } from '@/hooks/use-insurance-workflow';
+import { useApplyPayerCoverage, useCoveragePreview, useInsuranceCases } from '@/hooks/use-insurance-workflow';
 
 const STATUS_TONE: Record<ClaimStatus, string> = {
   submitted: 'bg-amber-100 text-amber-700 border-amber-300',
@@ -131,6 +131,8 @@ export default function ClaimsListPage() {
     form.policyId || undefined,
     form.billId || undefined,
   );
+  const coveragePreview = useCoveragePreview(form.insuranceCaseId || undefined, form.billId || undefined);
+  const applyCoverage = useApplyPayerCoverage();
   const createMut = useCreateClaim();
 
   // Fetch bills when a patient is picked
@@ -513,6 +515,11 @@ export default function ClaimsListPage() {
                     tone="text-primary"
                   />
                 </div>
+              </div>
+            )}
+            {form.insuranceCaseId && form.billId && (
+              <div className="col-span-2 rounded-lg border border-blue-200 bg-blue-50/50 p-3 text-sm">
+                {coveragePreview.isLoading ? <span>Calculating payer contract coverage…</span> : coveragePreview.data ? <div className="space-y-2"><div className="flex flex-wrap items-center justify-between gap-2"><div><div className="font-semibold">{coveragePreview.data.contract.name}</div><div className="text-xs text-on-surface-variant">Negotiated rates, room cap and non-payable rules applied to {coveragePreview.data.lines.length} bill lines.</div></div><Button size="sm" variant="outline" disabled={applyCoverage.isPending} onClick={async () => { try { const result = await applyCoverage.mutateAsync({ caseId: form.insuranceCaseId, billId: form.billId }); setForm({ ...form, claimAmount: String(result.summary.payerAllowedAmount) }); toast.success('Payer contract split applied to bill'); } catch (error: unknown) { const message = (error as { response?: { data?: { message?: string } } })?.response?.data?.message; toast.error(message ?? 'Could not apply payer contract'); } }}>Apply contract split</Button></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-4"><SplitCell label="Billed" value={coveragePreview.data.summary.billedAmount} /><SplitCell label="Payer allowed" value={coveragePreview.data.summary.payerAllowedAmount} tone="text-emerald-700" /><SplitCell label="Patient payable" value={coveragePreview.data.summary.patientPayableAmount} tone="text-amber-700" /><SplitCell label="Contract reduction" value={coveragePreview.data.summary.contractualReduction} tone="text-rose-700" /></div></div> : <div className="text-amber-800">No active payer contract covers this bill date. Configure the contract before applying negotiated coverage.</div>}
               </div>
             )}
             <div className="col-span-2">

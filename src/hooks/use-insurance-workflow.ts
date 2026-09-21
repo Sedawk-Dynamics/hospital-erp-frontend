@@ -270,6 +270,28 @@ export interface WorkflowAnalytics {
   leakage: { patientShare: number; disallowed: number; tdsReceivable: number; insurerDelayLiability: number };
 }
 
+export interface CoveragePreview {
+  insuranceCase: { id: string; caseNumber: string };
+  contract: { id: string; name: string; contractNumber?: string | null; roomRentCap?: number | null; roomRentCapPercent?: number | null };
+  bill: { id: string; billNumber: string; billDate: string; totalAmount: number };
+  packageRates: PayerContract['packageRates'];
+  lines: Array<{
+    billItemId: string;
+    serviceTariffId?: string | null;
+    serviceCode?: string | null;
+    description: string;
+    category: string;
+    quantity: number;
+    billedAmount: number;
+    allowedAmount: number;
+    patientPayableAmount: number;
+    isReimbursable: boolean;
+    nonPayable: boolean;
+    ruleApplied: string;
+  }>;
+  summary: { billedAmount: number; payerAllowedAmount: number; patientPayableAmount: number; contractualReduction: number };
+}
+
 export interface ContractInput {
   payerType: PayerType;
   payerId: string;
@@ -404,6 +426,23 @@ export function useRequestFinalAuthorization() {
   return useMutation({
     mutationFn: async ({ caseId, ...body }: { caseId: string; claimId?: string; finalAmount: number; procedureDescription?: string; submissionChannel?: 'portal' | 'email' | 'nhcx' | 'api' | 'manual'; submissionReference?: string; notes?: string }) =>
       (await apiPost<PreAuthRequest>(`/insurance/cases/${caseId}/final-authorization`, body)).data,
+    onSuccess: refresh,
+  });
+}
+
+export function useCoveragePreview(caseId?: string, billId?: string) {
+  return useQuery({
+    queryKey: ['insurance', 'workflow', 'coverage-preview', caseId, billId],
+    enabled: Boolean(caseId && billId),
+    retry: false,
+    queryFn: async () => (await apiGet<CoveragePreview>(`/insurance/cases/${caseId}/coverage-preview`, { params: { billId } })).data,
+  });
+}
+
+export function useApplyPayerCoverage() {
+  const refresh = useRefreshInsurance();
+  return useMutation({
+    mutationFn: async ({ caseId, billId }: { caseId: string; billId: string }) => (await apiPost<CoveragePreview>(`/insurance/cases/${caseId}/apply-coverage`, { billId })).data,
     onSuccess: refresh,
   });
 }
