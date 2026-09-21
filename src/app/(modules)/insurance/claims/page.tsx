@@ -50,6 +50,8 @@ import apiClient from '@/lib/api-client';
 const STATUS_TONE: Record<ClaimStatus, string> = {
   submitted: 'bg-amber-100 text-amber-700 border-amber-300',
   under_review: 'bg-amber-100 text-amber-700 border-amber-300',
+  query_raised: 'bg-orange-100 text-orange-700 border-orange-300',
+  response_submitted: 'bg-indigo-100 text-indigo-700 border-indigo-300',
   approved: 'bg-emerald-100 text-emerald-700 border-emerald-300',
   partially_approved: 'bg-sky-100 text-sky-700 border-sky-300',
   rejected: 'bg-rose-100 text-rose-700 border-rose-300',
@@ -216,6 +218,8 @@ export default function ClaimsListPage() {
                   <SelectItem value="all">All statuses</SelectItem>
                   <SelectItem value="submitted">Submitted</SelectItem>
                   <SelectItem value="under_review">Under Review</SelectItem>
+                  <SelectItem value="query_raised">Query Raised</SelectItem>
+                  <SelectItem value="response_submitted">Response Submitted</SelectItem>
                   <SelectItem value="approved">Approved</SelectItem>
                   <SelectItem value="partially_approved">Partially Approved</SelectItem>
                   <SelectItem value="rejected">Rejected</SelectItem>

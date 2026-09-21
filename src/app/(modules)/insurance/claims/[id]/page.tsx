@@ -48,6 +48,8 @@ import {
 const STATUS_TONE: Record<ClaimStatus, string> = {
   submitted: 'bg-amber-100 text-amber-700 border-amber-300',
   under_review: 'bg-amber-100 text-amber-700 border-amber-300',
+  query_raised: 'bg-orange-100 text-orange-700 border-orange-300',
+  response_submitted: 'bg-indigo-100 text-indigo-700 border-indigo-300',
   approved: 'bg-emerald-100 text-emerald-700 border-emerald-300',
   partially_approved: 'bg-sky-100 text-sky-700 border-sky-300',
   rejected: 'bg-rose-100 text-rose-700 border-rose-300',
@@ -210,6 +212,7 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
     }
   }
   async function doApplySplit() {
+    if (!claimSafe.policyId) return toast.error('A policy is required to calculate this split');
     try {
       await splitMut.mutateAsync({
         billId: claimSafe.billId,
@@ -221,7 +224,7 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
       toast.error(err?.response?.data?.message ?? 'Failed');
     }
   }
-  const isOpen = ['submitted', 'under_review', 'resubmitted'].includes(claim.status);
+  const isOpen = ['submitted', 'under_review', 'query_raised', 'response_submitted', 'resubmitted'].includes(claim.status);
   const isApproved = ['approved', 'partially_approved', 'partially_settled'].includes(claim.status);
   const isResubmittable = ['rejected', 'partially_approved'].includes(claim.status);
 

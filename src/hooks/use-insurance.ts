@@ -8,6 +8,8 @@ import { apiGet, apiPost, apiPatch, apiPut, apiDelete } from '@/lib/api';
 export type ClaimStatus =
   | 'submitted'
   | 'under_review'
+  | 'query_raised'
+  | 'response_submitted'
   | 'approved'
   | 'partially_approved'
   | 'rejected'
@@ -123,7 +125,9 @@ export interface InsuranceClaim {
   id: string;
   tenantId: string;
   patientId: string;
-  policyId: string;
+  policyId?: string | null;
+  insuranceCaseId?: string | null;
+  preAuthId?: string | null;
   billId: string;
   claimNumber?: string | null;
   claimAmount: number;
@@ -133,7 +137,18 @@ export interface InsuranceClaim {
   deductibleAmount?: number | null;
   coveredAmount?: number | null;
   paidAmount: number;
+  tdsReceivableAmount?: number | null;
+  disallowedAmount?: number | null;
+  writtenOffAmount?: number | null;
+  delayLiabilityAmount?: number | null;
   outstandingAmount?: number | null;
+  tier?: 'primary' | 'secondary' | 'supplementary';
+  sequence?: number;
+  settlementMode?: 'cashless' | 'reimbursement' | 'credit';
+  submissionChannel?: 'portal' | 'email' | 'nhcx' | 'api' | 'manual' | null;
+  payerClaimReference?: string | null;
+  submissionReference?: string | null;
+  nhcxTransactionId?: string | null;
   status: ClaimStatus;
   submissionDate: string;
   approvalDate?: string | null;
@@ -149,7 +164,16 @@ export interface InsuranceClaim {
     id: string;
     policyNumber: string;
     insurer?: { id: string; name: string };
-  };
+  } | null;
+  insuranceCase?: {
+    id: string;
+    caseNumber: string;
+    status: string;
+    insurer?: { id: string; name: string } | null;
+    tpa?: { id: string; name: string } | null;
+    corporatePayer?: { id: string; name: string } | null;
+    governmentSchemePayer?: { id: string; name: string } | null;
+  } | null;
   bill?: { id: string; billNumber: string; totalAmount: number };
   previousClaim?: { id: string; claimNumber?: string | null; status: ClaimStatus } | null;
 }
@@ -157,12 +181,28 @@ export interface InsuranceClaim {
 export interface PreAuthRequest {
   id: string;
   patientId: string;
-  policyId: string;
+  policyId?: string | null;
+  insuranceCaseId?: string | null;
+  admissionId?: string | null;
+  visitId?: string | null;
+  doctorId?: string | null;
+  requestNumber?: string | null;
+  requestType?: 'initial' | 'enhancement' | 'finalAuthorization';
+  parentRequestId?: string | null;
+  diagnosisCode?: string | null;
+  procedureCode?: string | null;
   procedureDescription: string;
   estimatedCost?: number | null;
   approvedAmount?: number | null;
   status: PreAuthStatus;
   approvalNumber?: string | null;
+  submissionChannel?: 'portal' | 'email' | 'nhcx' | 'api' | 'manual' | null;
+  submissionReference?: string | null;
+  nhcxTransactionId?: string | null;
+  submittedAt?: string | null;
+  alertAt?: string | null;
+  decisionDueAt?: string | null;
+  decidedAt?: string | null;
   validFrom?: string | null;
   validTo?: string | null;
   holdReason?: string | null;
@@ -173,7 +213,8 @@ export interface PreAuthRequest {
     id: string;
     policyNumber: string;
     insurer?: { id: string; name: string };
-  };
+  } | null;
+  insuranceCase?: { id: string; caseNumber: string; priority?: string } | null;
 }
 
 export interface DashboardData {
@@ -462,10 +503,19 @@ export function useCreateClaim() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (body: {
-      policyId: string;
+      policyId?: string;
+      insuranceCaseId?: string;
+      preAuthId?: string;
       patientId: string;
       billId: string;
       claimAmount: number;
+      tier?: 'primary' | 'secondary' | 'supplementary';
+      sequence?: number;
+      settlementMode?: 'cashless' | 'reimbursement' | 'credit';
+      submissionChannel?: 'portal' | 'email' | 'nhcx' | 'api' | 'manual';
+      payerClaimReference?: string;
+      submissionReference?: string;
+      nhcxTransactionId?: string;
       notes?: string;
       expiryDays?: number;
       documentsUrl?: unknown;
@@ -676,8 +726,16 @@ export function useCreatePreAuth() {
   return useMutation({
     mutationFn: async (body: {
       patientId: string;
-      policyId: string;
+      policyId?: string;
+      insuranceCaseId?: string;
+      admissionId?: string;
+      visitId?: string;
+      doctorId?: string;
       procedureDescription: string;
+      diagnosisCode?: string;
+      procedureCode?: string;
+      submissionChannel?: 'portal' | 'email' | 'nhcx' | 'api' | 'manual';
+      submissionReference?: string;
       estimatedCost?: number;
       validFrom?: string;
       validTo?: string;
