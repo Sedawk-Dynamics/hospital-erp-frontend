@@ -195,7 +195,7 @@ export interface PreAuthRequest {
   visitId?: string | null;
   doctorId?: string | null;
   requestNumber?: string | null;
-  requestType?: 'initial' | 'enhancement' | 'finalAuthorization';
+  requestType?: 'initial' | 'enhancement' | 'finalDischarge';
   parentRequestId?: string | null;
   diagnosisCode?: string | null;
   procedureCode?: string | null;

@@ -276,7 +276,7 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
       </Card>
 
       {/* Money breakdown */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-4 xl:grid-cols-8">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-9">
         <MoneyCard label="Claim Amount" value={inr(claim.claimAmount)} />
         <MoneyCard label="Co-Pay" value={inr(claim.copayAmount)} tone="text-amber-700" />
         <MoneyCard label="Deductible" value={inr(claim.deductibleAmount)} tone="text-rose-700" />
@@ -288,6 +288,7 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
         <MoneyCard label="Gross Recovered" value={inr(claim.paidAmount)} tone="text-teal-700" />
         <MoneyCard label="TDS Receivable" value={inr(claim.tdsReceivableAmount)} tone="text-violet-700" />
         <MoneyCard label="Outstanding" value={inr(claim.outstandingAmount)} tone="text-rose-700" />
+        <MoneyCard label="Delay Liability" value={inr(claim.delayLiabilityAmount)} tone="text-orange-700" />
         <MoneyCard
           label="Patient Pays"
           value={inr(claim.patientShare)}
