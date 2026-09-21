@@ -272,7 +272,8 @@ export default function PreAuthPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Approval #</TableHead>
+                <TableHead>Request #</TableHead>
+                <TableHead>Payer Reference</TableHead>
                 <TableHead>Patient</TableHead>
                 <TableHead>Procedure</TableHead>
                 <TableHead>Insurer / Policy</TableHead>
@@ -286,14 +287,15 @@ export default function PreAuthPage() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-on-surface-variant">
+                  <TableCell colSpan={10} className="text-center text-on-surface-variant">
                     Loading…
                   </TableCell>
                 </TableRow>
               ) : data?.data?.length ? (
                 data.data.map((p) => (
                   <TableRow key={p.id}>
-                    <TableCell className="font-medium">{p.approvalNumber ?? '—'}</TableCell>
+                    <TableCell className="font-medium">{p.requestNumber ?? p.id.slice(0, 8)}</TableCell>
+                    <TableCell>{p.approvalNumber ?? 'Not received'}</TableCell>
                     <TableCell>
                       {p.patient?.firstName} {p.patient?.lastName ?? ''}
                     </TableCell>
@@ -306,7 +308,7 @@ export default function PreAuthPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <div>{p.policy?.insurer?.name ?? '—'}</div>
+                      <div>{p.policy?.insurer?.name ?? (p.insuranceCase?.caseNumber ? `Case ${p.insuranceCase.caseNumber}` : '—')}</div>
                       <div className="text-xs text-on-surface-variant">
                         {p.policy?.policyNumber}
                       </div>
@@ -429,7 +431,7 @@ export default function PreAuthPage() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-on-surface-variant">
+                  <TableCell colSpan={10} className="text-center text-on-surface-variant">
                     No pre-auth requests found.
                   </TableCell>
                 </TableRow>
@@ -567,9 +569,9 @@ export default function PreAuthPage() {
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <Label>Approval Number</Label>
+              <Label>Payer-issued pre-authorization reference</Label>
               <Input
-                placeholder="Auto-generated if blank"
+                placeholder="Leave blank until supplied by the payer"
                 value={approveData.approvalNumber}
                 onChange={(e) =>
                   setApproveData({ ...approveData, approvalNumber: e.target.value })
