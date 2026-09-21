@@ -46,6 +46,7 @@ import {
   type ClaimStatus,
 } from '@/hooks/use-insurance';
 import apiClient from '@/lib/api-client';
+import { useInsuranceCases } from '@/hooks/use-insurance-workflow';
 
 const STATUS_TONE: Record<ClaimStatus, string> = {
   submitted: 'bg-amber-100 text-amber-700 border-amber-300',
@@ -65,22 +66,36 @@ interface CreateForm {
   patientId: string;
   patientLabel: string;
   policyId: string;
+  insuranceCaseId: string;
   billId: string;
   billLabel: string;
   claimAmount: string;
   notes: string;
   expiryDays: string;
+  tier: 'primary' | 'secondary' | 'supplementary';
+  sequence: string;
+  submissionChannel: 'portal' | 'email' | 'nhcx' | 'api' | 'manual';
+  settlementMode: 'cashless' | 'reimbursement' | 'credit';
+  payerClaimReference: string;
+  submissionReference: string;
 }
 
 const EMPTY: CreateForm = {
   patientId: '',
   patientLabel: '',
   policyId: '',
+  insuranceCaseId: '',
   billId: '',
   billLabel: '',
   claimAmount: '',
   notes: '',
   expiryDays: '30',
+  tier: 'primary',
+  sequence: '1',
+  submissionChannel: 'portal',
+  settlementMode: 'cashless',
+  payerClaimReference: '',
+  submissionReference: '',
 };
 
 interface BillSummary {
@@ -102,6 +117,7 @@ export default function ClaimsListPage() {
   const debouncedPatient = useDebounce(patientSearch, 250);
   const [bills, setBills] = useState<BillSummary[]>([]);
   const [billLoading, setBillLoading] = useState(false);
+  const [expiryWarningAt] = useState(() => Date.now() + 7 * 24 * 60 * 60 * 1000);
 
   const { data, isLoading } = useClaims({
     status: statusFilter === 'all' ? undefined : statusFilter,
@@ -110,6 +126,7 @@ export default function ClaimsListPage() {
   const { data: expiring } = useExpiringClaims(7);
   const { data: patients } = usePatientSearch(debouncedPatient);
   const { data: policies } = usePoliciesByPatient(form.patientId || undefined);
+  const { data: payerCases } = useInsuranceCases({ patientId: form.patientId || undefined, limit: 100 });
   const { data: calc } = useCalcResponsibility(
     form.policyId || undefined,
     form.billId || undefined,
@@ -137,23 +154,31 @@ export default function ClaimsListPage() {
   }, [calc]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleCreate() {
-    if (!form.policyId) return toast.error('Pick a policy');
+    if (!form.policyId && !form.insuranceCaseId) return toast.error('Pick a policy or payer case');
     if (!form.billId) return toast.error('Pick a bill');
     if (!form.claimAmount) return toast.error('Claim amount is required');
     try {
       await createMut.mutateAsync({
         patientId: form.patientId,
-        policyId: form.policyId,
+        policyId: form.policyId || undefined,
+        insuranceCaseId: form.insuranceCaseId || undefined,
         billId: form.billId,
         claimAmount: Number(form.claimAmount),
         notes: form.notes.trim() || undefined,
         expiryDays: Number(form.expiryDays || 30),
+        tier: form.tier,
+        sequence: Number(form.sequence || 1),
+        submissionChannel: form.submissionChannel,
+        settlementMode: form.settlementMode,
+        payerClaimReference: form.payerClaimReference.trim() || undefined,
+        submissionReference: form.submissionReference.trim() || undefined,
       });
       toast.success('Claim submitted');
       setDialogOpen(false);
       setForm(EMPTY);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Submit failed');
+    } catch (err: unknown) {
+      const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(message ?? 'Submit failed');
     }
   }
 
@@ -282,7 +307,7 @@ export default function ClaimsListPage() {
                     <TableCell>
                       {c.patient?.firstName} {c.patient?.lastName ?? ''}
                     </TableCell>
-                    <TableCell>{c.policy?.insurer?.name ?? '—'}</TableCell>
+                    <TableCell>{c.policy?.insurer?.name ?? c.insuranceCase?.insurer?.name ?? c.insuranceCase?.corporatePayer?.name ?? c.insuranceCase?.governmentSchemePayer?.name ?? '—'}</TableCell>
                     <TableCell>{c.bill?.billNumber ?? '—'}</TableCell>
                     <TableCell>₹{Number(c.claimAmount).toLocaleString('en-IN')}</TableCell>
                     <TableCell>
@@ -305,7 +330,7 @@ export default function ClaimsListPage() {
                       className={cn(
                         c.expiryDate &&
                           new Date(c.expiryDate).getTime() <=
-                            Date.now() + 7 * 24 * 60 * 60 * 1000 &&
+                            expiryWarningAt &&
                           'text-amber-700 font-medium',
                       )}
                     >
@@ -349,7 +374,7 @@ export default function ClaimsListPage() {
               />
               {patientSearch.length >= 2 && patients && patients.length > 0 && (
                 <div className="mt-1 max-h-40 overflow-y-auto rounded-lg border bg-surface-container-lowest">
-                  {patients.map((pt: any) => (
+                  {patients.map((pt) => (
                     <button
                       key={pt.id}
                       type="button"
@@ -359,6 +384,7 @@ export default function ClaimsListPage() {
                           patientId: pt.id,
                           patientLabel: `${pt.firstName} ${pt.lastName ?? ''} (${pt.mrn})`,
                           policyId: '',
+                          insuranceCaseId: '',
                           billId: '',
                           billLabel: '',
                         });
@@ -379,7 +405,20 @@ export default function ClaimsListPage() {
               )}
             </div>
             <div>
-              <Label>Policy *</Label>
+              <Label>Payer case</Label>
+              <Select
+                value={form.insuranceCaseId || null}
+                onValueChange={(v) => {
+                  const selected = payerCases?.data.find((item) => item.id === v);
+                  setForm({ ...form, insuranceCaseId: (v as string) ?? '', policyId: selected?.policies[0]?.policy.id ?? form.policyId, settlementMode: selected?.settlementMode ?? form.settlementMode });
+                }}
+              >
+                <SelectTrigger className="w-full"><SelectValue placeholder="Select payer case" /></SelectTrigger>
+                <SelectContent>{payerCases?.data.map((item) => <SelectItem key={item.id} value={item.id}>{item.caseNumber} · {item.settlementMode}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Policy (optional for corporate / scheme)</Label>
               <Select
                 value={form.policyId || null}
                 onValueChange={(v) => v && setForm({ ...form, policyId: v as string })}
@@ -396,6 +435,11 @@ export default function ClaimsListPage() {
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label>Claim tier</Label>
+              <Select value={form.tier} onValueChange={(value) => value && setForm({ ...form, tier: value as CreateForm['tier'] })}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="primary">Primary</SelectItem><SelectItem value="secondary">Secondary</SelectItem><SelectItem value="supplementary">Supplementary</SelectItem></SelectContent></Select>
+            </div>
+            <div><Label>Claim sequence</Label><Input type="number" min="1" value={form.sequence} onChange={(event) => setForm({ ...form, sequence: event.target.value })} /></div>
             <div>
               <Label>Bill *</Label>
               <Select
@@ -440,6 +484,12 @@ export default function ClaimsListPage() {
                 onChange={(e) => setForm({ ...form, expiryDays: e.target.value })}
               />
             </div>
+            <div>
+              <Label>Submission channel</Label>
+              <Select value={form.submissionChannel} onValueChange={(value) => value && setForm({ ...form, submissionChannel: value as CreateForm['submissionChannel'] })}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{['portal', 'email', 'nhcx', 'api', 'manual'].map((value) => <SelectItem key={value} value={value}>{value.toUpperCase()}</SelectItem>)}</SelectContent></Select>
+            </div>
+            <div><Label>Payer claim reference</Label><Input value={form.payerClaimReference} onChange={(event) => setForm({ ...form, payerClaimReference: event.target.value })} /></div>
+            <div><Label>Submission reference</Label><Input value={form.submissionReference} onChange={(event) => setForm({ ...form, submissionReference: event.target.value })} /></div>
             {calc?.split && (
               <div className="col-span-2 rounded-lg border bg-surface-container-low p-3 text-sm">
                 <div className="mb-2 text-xs font-bold uppercase tracking-wider text-on-surface-variant">

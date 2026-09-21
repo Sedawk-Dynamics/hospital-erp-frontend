@@ -175,6 +175,14 @@ export interface InsuranceClaim {
     governmentSchemePayer?: { id: string; name: string } | null;
   } | null;
   bill?: { id: string; billNumber: string; totalAmount: number };
+  preAuth?: PreAuthRequest | null;
+  documents?: Array<{ id: string; code?: string | null; name: string; category: string; fileUrl: string; version: number; status: string; rejectionReason?: string | null; createdAt: string }>;
+  checklistItems?: Array<{ id: string; requirementCode: string; label: string; isRequired: boolean; isComplete: boolean; documentId?: string | null }>;
+  queries?: Array<{ id: string; queryReference?: string | null; subject: string; queryText: string; status: string; raisedAt: string; responseDueAt: string; responseText?: string | null; respondedAt?: string | null; resolvedAt?: string | null }>;
+  settlements?: Array<{ id: string; grossApprovedAmount: number; grossPaidAmount: number; tdsAmount: number; tdsSection?: string | null; tdsRate?: number | null; disallowedAmount: number; disallowanceReason?: string | null; netPaidAmount: number; paymentReference?: string | null; bankReference?: string | null; settlementDate: string; notes?: string | null }>;
+  writeOffs?: Array<{ id: string; amount: number; reason: string; status: string; decisionNote?: string | null; createdAt: string }>;
+  adjustments?: Array<{ id: string; adjustmentType: string; amount: number; reference?: string | null; reason: string; effectiveDate: string }>;
+  auditEvents?: Array<{ id: string; eventType: string; fromStatus?: string | null; toStatus?: string | null; details?: unknown; occurredAt: string }>;
   previousClaim?: { id: string; claimNumber?: string | null; status: ClaimStatus } | null;
 }
 
@@ -471,6 +479,7 @@ export function useVerifyPolicy() {
 export function useClaims(params?: {
   patientId?: string;
   policyId?: string;
+  insuranceCaseId?: string;
   status?: ClaimStatus;
   search?: string;
   fromDate?: string;
