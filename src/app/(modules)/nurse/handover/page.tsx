@@ -196,15 +196,25 @@ function CreateHandoverForm({ currentShift }: { currentShift: ShiftType }) {
     status: 'active',
     limit: 200,
   });
+  // The ward is stored in TWO places: the nurse-admin's duty roster (the shift
+  // schedule) and the per-patient nurse_assignments (the bedside workload). A
+  // nurse rostered to a ward with no patients assigned yet has the ward only on
+  // the roster, so reading nurse_assignments alone left the picker empty and
+  // blocked the handover ("not assigned to any ward"). Merge the roster ward in.
+  const { data: myActive } = useActiveRoster(user?.id ? { userId: user.id } : {});
   const myWards = useMemo(() => {
     const map = new Map<string, string>();
+    const rosterWard = myActive?.mine?.ward;
+    if (rosterWard?.id && rosterWard.name) map.set(rosterWard.id, rosterWard.name);
     for (const a of myAssignments?.items ?? []) {
       if (a.wardId && a.ward?.name) map.set(a.wardId, a.ward.name);
     }
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
-  }, [myAssignments]);
+  }, [myAssignments, myActive]);
 
-  // Nurses rostered to take the next shift on the selected ward.
+  // Nurses rostered to take the next shift on the selected ward. The roster's
+  // `role` is stamped at creation (see hr.service deriveStaffRosterRole), so
+  // filtering by role:'nurse' correctly surfaces the incoming nurses.
   const { data: rosterRes } = useDutyRosters({
     fromDate: toShiftDateIso,
     toDate: toShiftDateIso,

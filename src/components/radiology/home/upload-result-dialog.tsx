@@ -52,12 +52,12 @@ export function UploadResultDialog({
 
   const [impression, setImpression] = useState('');
   const result = request?.imagingResult;
-  const resultId = result?.id;
   const status = result?.status;
   const isPublished = status === 'published';
   const isFinalized = status === 'finalized';
   const files = attachmentsQ.data ?? [];
   const hasFiles = files.length > 0;
+  const resultId =result?.id ?? files.find((f) => f.imagingResultId)?.imagingResultId ?? undefined;
 
   useSeedOnChange(request?.id ?? null, () => {
     setImpression((request?.imagingResult as { impression?: string } | undefined)?.impression ?? '');
