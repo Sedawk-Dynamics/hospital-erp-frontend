@@ -12,10 +12,15 @@ import {
   TrendingUp,
   Pause,
   IndianRupee,
+  BriefcaseMedical,
+  TimerReset,
+  FileCog,
+  Landmark,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useInsuranceDashboard, type ClaimStatus, type PreAuthStatus } from '@/hooks/use-insurance';
+import { useSlaQueue, useWorkflowAnalytics } from '@/hooks/use-insurance-workflow';
 import { formatDate } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
 
@@ -54,14 +59,23 @@ function patientName(p?: { firstName: string; lastName?: string | null } | null)
 
 export default function InsuranceDashboardPage() {
   const { data, isLoading } = useInsuranceDashboard();
+  const { data: analytics } = useWorkflowAnalytics();
+  const { data: slaQueue } = useSlaQueue();
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold font-headline">Insurance & TPA Dashboard</h1>
+        <h1 className="text-2xl font-bold font-headline">Insurance & Payer Dashboard</h1>
         <p className="text-sm text-on-surface-variant">
-          Pending claims, pre-auth status, settlement overview, and deadline alerts.
+          Eligibility, authorization, claims, settlement, leakage and deadline control.
         </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <QuickLink href="/insurance/cases" icon={<BriefcaseMedical />} title="Payer Cases" detail={`${analytics?.cases.open ?? 0} open`} />
+        <QuickLink href="/insurance/sla" icon={<TimerReset />} title="SLA Command Centre" detail={`${slaQueue?.filter((item) => item.breached).length ?? 0} overdue`} alert={Boolean(slaQueue?.some((item) => item.breached))} />
+        <QuickLink href="/insurance/contracts" icon={<FileCog />} title="Contracts & Tariffs" detail="Rates, packages, rules" />
+        <QuickLink href="/insurance/payers" icon={<Landmark />} title="Payer Masters" detail="Corporate and schemes" />
       </div>
 
       {/* Claim status row */}
@@ -203,7 +217,7 @@ export default function InsuranceDashboardPage() {
                   <div>
                     <div className="font-medium">{c.claimNumber ?? c.id.slice(0, 8)}</div>
                     <div className="text-xs text-on-surface-variant">
-                      {patientName(c.patient)} · {c.policy?.insurer?.name ?? '—'}
+                      {patientName(c.patient)} · {c.policy?.insurer?.name ?? c.insuranceCase?.insurer?.name ?? c.insuranceCase?.corporatePayer?.name ?? c.insuranceCase?.governmentSchemePayer?.name ?? '—'}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -254,6 +268,10 @@ export default function InsuranceDashboardPage() {
       </div>
     </div>
   );
+}
+
+function QuickLink({ href, icon, title, detail, alert }: { href: string; icon: React.ReactNode; title: string; detail: string; alert?: boolean }) {
+  return <Link href={href}><Card className={cn('h-full transition-shadow hover:shadow-md', alert && 'border-rose-300 bg-rose-50/50')}><CardContent className="flex items-center gap-3 pt-6"><div className={cn('flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary [&_svg]:size-5', alert && 'bg-rose-100 text-rose-700')}>{icon}</div><div><div className="font-semibold">{title}</div><div className="text-xs text-on-surface-variant">{detail}</div></div></CardContent></Card></Link>;
 }
 
 function StatTile({
