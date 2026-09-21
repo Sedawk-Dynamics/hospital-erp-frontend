@@ -476,26 +476,37 @@ export function TestItemRow({
                           </div>
                         )}
                       </div>
-                      {canApprove && r.status !== 'approved' && (
+                      {canApprove && (
                         <div className="flex gap-1 shrink-0">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-6 px-2 text-[10px]"
-                            disabled={verifyResult.isPending}
-                            onClick={() => onVerifyResult(r.id, 'approve')}
-                          >
-                            Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-6 px-2 text-[10px]"
-                            disabled={verifyResult.isPending}
-                            onClick={() => onVerifyResult(r.id, 'request_correction')}
-                          >
-                            Request fix
-                          </Button>
+                          {/* A not-yet-approved value is still a plain entry: fix
+                              it by editing it in the grid below and saving — no
+                              reason, no "correction". Only offer Approve here. */}
+                          {r.status !== 'approved' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6 px-2 text-[10px]"
+                              disabled={verifyResult.isPending}
+                              onClick={() => onVerifyResult(r.id, 'approve')}
+                            >
+                              Approve
+                            </Button>
+                          )}
+                          {/* "Request fix" logs a reasoned correction/amendment.
+                              That only makes sense once a value is APPROVED — an
+                              approved result is a signed record, so changing it
+                              is an amendment, not a routine edit. */}
+                          {r.status === 'approved' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6 px-2 text-[10px]"
+                              disabled={verifyResult.isPending}
+                              onClick={() => onVerifyResult(r.id, 'request_correction')}
+                            >
+                              Request fix
+                            </Button>
+                          )}
                         </div>
                       )}
                     </li>

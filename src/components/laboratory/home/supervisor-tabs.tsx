@@ -157,9 +157,15 @@ export function IncomingOrderTab() {
     setPage(1);
   }, [search]);
 
+  // Intake = orders the lab has not ACCEPTED yet, regardless of how far the
+  // sample has moved. Keying this on `status: 'ordered'` dropped an order out of
+  // Intake the moment a ward nurse advanced the sample (collected → received),
+  // so an un-accepted IP order became un-acceptable: it left Intake but result
+  // upload still demanded acceptance ("accept the order first"), a dead end.
+  // Filter on acceptance alone; exclude only cancelled orders.
   const { data, isLoading } = useLabOrders({
     accepted: false,
-    status: 'ordered',
+    statuses: 'ordered,sample_collected,in_transit,received,in_progress,completed',
     page,
     limit: 20,
     search: search.trim() || undefined,

@@ -581,6 +581,19 @@ function SectionHeading({
 // portal, or who is a regular at another hospital on this platform, is still
 // opening a new file here.
 
+// "how many days ago" for the last visit — a quick read for the desk when it
+// decides whether a return counts as a follow-up. Returns '' for a future or
+// unparseable date so we simply show nothing.
+function daysAgoLabel(dateStr: string): string {
+  const then = new Date(dateStr).getTime();
+  if (Number.isNaN(then)) return '';
+  const days = Math.floor((Date.now() - then) / 86_400_000);
+  if (days < 0) return '';
+  if (days === 0) return 'today';
+  if (days === 1) return '1 day ago';
+  return `${days} days ago`;
+}
+
 export function PatientVisitPanel({
   patientId,
   chargeRegistration,
@@ -638,6 +651,11 @@ export function PatientVisitPanel({
               <span className="text-sm text-on-surface-variant">
                 Last {lastVisitKindLabel}{' '}
                 <b className="font-semibold text-foreground">{formatDate(data.lastVisitAt)}</b>
+                {/* Days-since, so the desk can judge a follow-up at a glance
+                    without doing the date math. */}
+                {daysAgoLabel(data.lastVisitAt) && (
+                  <span className="text-muted-foreground"> ({daysAgoLabel(data.lastVisitAt)})</span>
+                )}
                 {data.priorEncounters > 0 && (
                   <>
                     {' · '}
