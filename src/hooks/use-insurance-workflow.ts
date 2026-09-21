@@ -184,6 +184,7 @@ export interface ClaimSettlement {
   tdsCertificateDate?: string | null;
   settlementDate: string;
   notes?: string | null;
+  claim?: { id: string; claimNumber?: string | null; patient?: { mrn?: string; firstName?: string; lastName?: string | null } };
 }
 
 export interface ClaimWriteOff {

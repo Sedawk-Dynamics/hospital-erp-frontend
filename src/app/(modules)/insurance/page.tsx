@@ -16,6 +16,7 @@ import {
   TimerReset,
   FileCog,
   Landmark,
+  WalletCards,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -71,11 +72,12 @@ export default function InsuranceDashboardPage() {
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <QuickLink href="/insurance/cases" icon={<BriefcaseMedical />} title="Payer Cases" detail={`${analytics?.cases.open ?? 0} open`} />
         <QuickLink href="/insurance/sla" icon={<TimerReset />} title="SLA Command Centre" detail={`${slaQueue?.filter((item) => item.breached).length ?? 0} overdue`} alert={Boolean(slaQueue?.some((item) => item.breached))} />
         <QuickLink href="/insurance/contracts" icon={<FileCog />} title="Contracts & Tariffs" detail="Rates, packages, rules" />
         <QuickLink href="/insurance/payers" icon={<Landmark />} title="Payer Masters" detail="Corporate and schemes" />
+        <QuickLink href="/insurance/settlements" icon={<WalletCards />} title="Settlements" detail="Bulk remittance and TDS" />
       </div>
 
       {/* Claim status row */}
