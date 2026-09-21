@@ -127,6 +127,7 @@ export interface InsuranceCase {
   eligibilityChecks: EligibilitySnapshot[];
   preAuthRequests: PreAuthRequest[];
   claims: InsuranceClaim[];
+  auditEvents: AuditEvent[];
 }
 
 export interface ClaimDocument {
