@@ -6,8 +6,8 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "dev": "next dev -p 5173",
-    "dev:clean": "npm run clean && next dev -p 5173",
+    "dev": "next dev --webpack -p 5173",
+    "dev:clean": "npm run clean && npm run dev",
     "clean": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\"",
     "build": "npm run lint:build && next build",
     "build:skip-lint": "next build",
