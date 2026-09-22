@@ -53,6 +53,10 @@ describe('cartNeedsWitness', () => {
     expect(cartNeedsWitness([TRAMADOL])).toBe(false);
     expect(cartNeedsWitness([line()])).toBe(false);
   });
+
+  it('also requires a witness for the legacy isNarcotic flag', () => {
+    expect(cartNeedsWitness([line({ drugName: 'Legacy narcotic', isNarcotic: true })])).toBe(true);
+  });
 });
 
 describe('ControlledDrugPanel', () => {

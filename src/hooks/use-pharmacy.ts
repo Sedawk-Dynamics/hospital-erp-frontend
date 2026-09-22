@@ -1881,6 +1881,7 @@ export interface PrescriptionListItem {
       schedule?: DrugSchedule | null;
       controlledClass?: 'narcotic' | 'psychotropic' | null;
       vaultControlled?: boolean;
+      isNarcotic?: boolean;
     } | null;
   }>;
   // Progress notes a doctor linked to this prescription (visible to anyone who
@@ -2220,8 +2221,15 @@ export function useSetPharmacyOrderStatus() {
 export function useDispenseIpPrescription() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (prescriptionId: string) =>
-      (await apiPost(`/pharmacy/queue/${prescriptionId}/dispense-ip`, {})).data,
+    mutationFn: async ({
+      prescriptionId,
+      ...body
+    }: {
+      prescriptionId: string;
+      batches?: Array<{ itemId: string; drugBatchId: string }>;
+      witnessedById?: string | null;
+      witnessPassword?: string | null;
+    }) => (await apiPost(`/pharmacy/queue/${prescriptionId}/dispense-ip`, body)).data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['prescriptions', 'queue'] });
       queryClient.invalidateQueries({ queryKey: ['ip-ledger'] });

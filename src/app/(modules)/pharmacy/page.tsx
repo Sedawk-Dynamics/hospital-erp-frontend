@@ -28,7 +28,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { cn, getApiErrorMessage } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
 import { toast } from 'sonner';
@@ -123,6 +123,7 @@ interface CartItem {
   schedule: DrugSchedule | null;
   controlledClass: 'narcotic' | 'psychotropic' | null;
   vaultControlled: boolean;
+  isNarcotic: boolean;
   // Selected batch (null until the cashier picks one)
   batchId: string | null;
   batchNumber: string;
@@ -374,6 +375,7 @@ function PharmacyPOS() {
           schedule: it.drug?.schedule ?? null,
           controlledClass: it.drug?.controlledClass ?? null,
           vaultControlled: Boolean(it.drug?.vaultControlled),
+          isNarcotic: Boolean(it.drug?.isNarcotic),
           batchId: null,
           batchNumber: '-',
           expiryDate: null,
@@ -543,6 +545,7 @@ function PharmacyPOS() {
           schedule: item.schedule ?? null,
           controlledClass: item.controlledClass ?? null,
           vaultControlled: Boolean(item.vaultControlled),
+          isNarcotic: Boolean(item.isNarcotic),
           batchId: null,
           batchNumber: '-',
           expiryDate: null,
@@ -800,15 +803,31 @@ function PharmacyPOS() {
     // IP prescription: dispense straight to the patient's hospital IP ledger — no
     // counter sale, ₹0 collected here. Uses the prescription's own lines (FEFO).
     if (isIp && activePrescriptionId) {
+      if (controlledSettings?.mode !== 'legacy_block' && needsWitness && (!witnessId || !witnessPassword)) {
+        setWitnessDialogOpen(true);
+        toast.info('A second authorised person must co-sign this narcotic hand-over.');
+        return;
+      }
       try {
-        await dispenseIp.mutateAsync(activePrescriptionId);
+        await dispenseIp.mutateAsync({
+          prescriptionId: activePrescriptionId,
+          batches: cart.flatMap((item) =>
+            item.prescriptionItemId && item.batchId
+              ? [{ itemId: item.prescriptionItemId, drugBatchId: item.batchId }]
+              : [],
+          ),
+          witnessedById: witnessId,
+          witnessPassword,
+        });
         toast.success("Dispensed — billed to the patient's IP ledger (₹0 at the pharmacy).");
         setCart([]);
         setActivePrescriptionId(null);
+        setWitnessId(null);
+        setWitnessPassword(null);
         clearPatient();
         router.push('/pharmacy/queue');
       } catch (err: unknown) {
-        toast.error(err instanceof Error ? err.message : 'Could not dispense to the IP ledger');
+        toast.error(getApiErrorMessage(err, 'Could not dispense to the IP ledger'));
       }
       return;
     }
