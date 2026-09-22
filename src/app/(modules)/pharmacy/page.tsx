@@ -64,10 +64,7 @@ import { StockTypeBadge } from '@/components/shared/stock-type-badge';
 import { BillingSummaryDialog } from '@/components/pharmacy/billing-summary-dialog';
 import { PharmacyReceiptDialog } from '@/components/pharmacy/pharmacy-receipt-dialog';
 import { OutsidePrescriptionDialog } from '@/components/pharmacy/outside-prescription-dialog';
-import { useUsersList } from '@/hooks/use-users';
-import { useAuthStore } from '@/stores/auth-store';
-import { ControlledDrugPanel, cartNeedsWitness } from '@/components/pharmacy/controlled-drug-panel';
-import { WitnessCosignDialog } from '@/components/pharmacy/witness-cosign-dialog';
+import { ControlledDrugPanel } from '@/components/pharmacy/controlled-drug-panel';
 import { RecallAlertBanner } from '@/components/pharmacy/recall-alert-banner';
 import { fullName } from '@/lib/person-name';
 
@@ -247,11 +244,6 @@ function PharmacyPOS() {
   // activePrescriptionId — a sale is backed by one or the other.
   const [outsideRxOpen, setOutsideRxOpen] = useState(false);
   const [externalRx, setExternalRx] = useState<ExternalPrescription | null>(null);
-  // Second person co-signing a vault-narcotic hand-over. The password is held
-  // only until the sale is submitted — it authorises that one request.
-  const [witnessId, setWitnessId] = useState<string | null>(null);
-  const [witnessPassword, setWitnessPassword] = useState<string | null>(null);
-  const [witnessDialogOpen, setWitnessDialogOpen] = useState(false);
   const prescriptionPickerRef = useRef<HTMLDivElement>(null);
 
   // --- Walk-in medicine search ---
@@ -747,27 +739,6 @@ function PharmacyPOS() {
     n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const { data: controlledSettings } = useControlledDrugSettings();
-  const currentUserId = useAuthStore((st) => st.user?.id) ?? null;
-  // Only fetched when the cart actually holds a vault narcotic — the common
-  // sale should not pull the whole staff list.
-  const needsWitness = cartNeedsWitness(cart);
-  const { data: witnessUsers } = useUsersList(
-    needsWitness ? { isActive: 'true', limit: 200 } : undefined,
-  );
-  const witnessOptions = useMemo(
-    () =>
-      (witnessUsers?.data ?? [])
-        // A witness who is the person dispensing is not a witness, so the
-        // current user is never offered.
-        .filter((u) => u.id !== currentUserId)
-        .map((u) => ({
-          id: u.id,
-          name: `${u.firstName} ${u.lastName ?? ''}`.trim(),
-          role: u.userRoles?.[0]?.role?.name ?? null,
-        })),
-    [witnessUsers, currentUserId],
-  );
-
   const cartHasAllBatches = cart.length > 0 && cart.every((c) => c.batchId !== null);
   // A bill needs a cart with a batch per line. Patient AND prescription are
   // both OPTIONAL — a walk-in / OTC counter sale needs neither. For an IP Rx we
@@ -803,11 +774,6 @@ function PharmacyPOS() {
     // IP prescription: dispense straight to the patient's hospital IP ledger — no
     // counter sale, ₹0 collected here. Uses the prescription's own lines (FEFO).
     if (isIp && activePrescriptionId) {
-      if (controlledSettings?.mode !== 'legacy_block' && needsWitness && (!witnessId || !witnessPassword)) {
-        setWitnessDialogOpen(true);
-        toast.info('A second authorised person must co-sign this narcotic hand-over.');
-        return;
-      }
       try {
         await dispenseIp.mutateAsync({
           prescriptionId: activePrescriptionId,
@@ -816,14 +782,10 @@ function PharmacyPOS() {
               ? [{ itemId: item.prescriptionItemId, drugBatchId: item.batchId }]
               : [],
           ),
-          witnessedById: witnessId,
-          witnessPassword,
         });
         toast.success("Dispensed — billed to the patient's IP ledger (₹0 at the pharmacy).");
         setCart([]);
         setActivePrescriptionId(null);
-        setWitnessId(null);
-        setWitnessPassword(null);
         clearPatient();
         router.push('/pharmacy/queue');
       } catch (err: unknown) {
@@ -928,8 +890,6 @@ function PharmacyPOS() {
         patientId: selectedPatient?.id,
         prescriptionId: activePrescriptionId || undefined,
         externalPrescriptionId: externalRx?.id,
-        witnessedById: witnessId ?? undefined,
-        witnessPassword: witnessPassword ?? undefined,
         items: cart.map((c) => ({
           drugBatchId: c.batchId as string,
           // The Schedule H2 pack code, when the counter read one.
@@ -954,8 +914,6 @@ function PharmacyPOS() {
       setTenders([{ id: 'tender-1', method: 'Cash', amount: '' }]);
       setActivePrescriptionId(null);
       setExternalRx(null);
-      setWitnessId(null);
-      setWitnessPassword(null);
       clearPatient();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to create bill';
@@ -1674,8 +1632,7 @@ function PharmacyPOS() {
           <ControlledDrugPanel
             lines={cart}
             hasRx={!!activePrescriptionId || !!externalRx}
-            witnessName={witnessOptions.find((w) => w.id === witnessId)?.name ?? null}
-            onRequestWitness={() => setWitnessDialogOpen(true)}
+            requireWitness={false}
             enforced={controlledSettings?.mode === 'inline'}
           />
 
@@ -2083,20 +2040,6 @@ function PharmacyPOS() {
       </Dialog>
 
       <PharmacyReceiptDialog sale={receiptSale} open={receiptOpen} onOpenChange={setReceiptOpen} />
-
-      {/* A second authorised person co-signs a vault-narcotic hand-over with
-          their own password — a name picked from a list proves nothing. */}
-      <WitnessCosignDialog
-        open={witnessDialogOpen}
-        onOpenChange={setWitnessDialogOpen}
-        description="This sale includes a narcotic held in the safe. A second authorised person must co-sign the hand-over."
-        witnessOptions={witnessOptions}
-        onConfirm={(id, password) => {
-          setWitnessId(id);
-          setWitnessPassword(password);
-          setWitnessDialogOpen(false);
-        }}
-      />
 
       {/* Capture a paper prescription a walk-in presents at the counter. */}
       <OutsidePrescriptionDialog

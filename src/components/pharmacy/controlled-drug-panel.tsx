@@ -51,15 +51,18 @@ export function ControlledDrugPanel({
   hasRx,
   witnessName,
   onRequestWitness,
+  requireWitness = true,
   enforced,
 }: {
   lines: ControlledLine[];
   /** True when either an in-system or an outside prescription is attached. */
   hasRx: boolean;
-  /** Who has already co-signed, if anyone. */
-  witnessName: string | null;
+  /** Who has already co-signed, if this workflow requires a witness. */
+  witnessName?: string | null;
   /** Opens the co-sign dialog, where the witness enters their own password. */
-  onRequestWitness: () => void;
+  onRequestWitness?: () => void;
+  /** Pharmacy sales are prescription-backed but do not require a co-sign. */
+  requireWitness?: boolean;
   /**
    * False while the hospital is still on the legacy block. The panel then
    * informs rather than demands — nothing is being enforced yet.
@@ -69,7 +72,7 @@ export function ControlledDrugPanel({
   const controlled = controlledLinesOf(lines);
   if (controlled.length === 0) return null;
 
-  const needsWitness = cartNeedsWitness(controlled);
+  const needsWitness = requireWitness && cartNeedsWitness(controlled);
   const rxMissing = enforced && !hasRx;
   const witnessMissing = enforced && needsWitness && !witnessName;
 
@@ -94,7 +97,11 @@ export function ControlledDrugPanel({
               <span className="font-medium">{l.drugName}</span>
               {l.schedule ? <span className="text-muted-foreground"> · Schedule {l.schedule}</span> : null}
               {l.vaultControlled || l.isNarcotic ? (
-                <span className="text-error"> · safe custody, needs a witness</span>
+                <span className="text-error">
+                  {requireWitness
+                    ? ' · safe custody, needs a witness'
+                    : ' · prescription + NDPS register entry'}
+                </span>
               ) : (
                 <span className="text-muted-foreground"> · prescription + register entry</span>
               )}
