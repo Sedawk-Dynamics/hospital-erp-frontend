@@ -73,7 +73,7 @@ describe('NDPS bedside dose reconciliation', () => {
     expect(dose?.quarantineLocation).toBeUndefined();
   });
 
-  it('accepts a per-administration registration number when the doctor profile is incomplete', () => {
+  it('does not block administration when the doctor profile has no registration number', () => {
     const dose = buildNdpsPatientDose({
       ...context,
       clinicalDetails: { ...context.clinicalDetails!, doctorRegistration: null },
@@ -81,21 +81,10 @@ describe('NDPS bedside dose reconciliation', () => {
       ...EMPTY_NDPS_FORM,
       labelledQuantity: '2',
       administeredQuantity: '2',
-      prescriberRegistrationNumber: 'SMC-98765',
     });
 
-    expect(dose?.prescriberRegistrationNumber).toBe('SMC-98765');
-  });
-
-  it('explains how to resolve a missing doctor registration number', () => {
-    expect(() => buildNdpsPatientDose({
-      ...context,
-      clinicalDetails: { ...context.clinicalDetails!, doctorRegistration: null },
-    }, {
-      ...EMPTY_NDPS_FORM,
-      labelledQuantity: '2',
-      administeredQuantity: '2',
-    })).toThrow("Enter the prescribing doctor's medical council registration number.");
+    expect(dose?.disposition).toBe('none');
+    expect(dose).not.toHaveProperty('prescriberRegistrationNumber');
   });
 
   it('accepts a per-dose clinical justification when the patient record has no diagnosis', () => {

@@ -18,7 +18,6 @@ export const EMPTY_NDPS_FORM = {
   containerQuantity: '1',
   residualHandling: '' as '' | 'pending_destruction' | 'sealed_quarantine',
   quarantineLocation: '',
-  prescriberRegistrationNumber: '',
   clinicalJustification: '',
   emergencyReason: '',
   notes: '',
@@ -62,9 +61,6 @@ export function buildNdpsPatientDose(context: NdpsDoseContext | undefined, form:
   if (residual > 0 && form.residualHandling === 'sealed_quarantine' && !form.quarantineLocation.trim()) {
     throw new Error('Record where the sealed residual will be quarantined.');
   }
-  if (context.clinicalDetails && !context.clinicalDetails.doctorRegistration && !form.prescriberRegistrationNumber.trim()) {
-    throw new Error("Enter the prescribing doctor's medical council registration number.");
-  }
   if (context.clinicalDetails && !context.clinicalDetails.diagnosis && !form.clinicalJustification.trim()) {
     throw new Error('Enter the diagnosis or clinical justification for this dose.');
   }
@@ -83,7 +79,6 @@ export function buildNdpsPatientDose(context: NdpsDoseContext | undefined, form:
     quarantineLocation: residual > 0 && form.residualHandling === 'sealed_quarantine'
       ? form.quarantineLocation.trim()
       : undefined,
-    prescriberRegistrationNumber: form.prescriberRegistrationNumber.trim() || undefined,
     clinicalJustification: form.clinicalJustification.trim() || undefined,
     emergencyUse: Boolean(context.requiresEmergencyReason),
     emergencyReason: form.emergencyReason.trim() || undefined,
@@ -172,20 +167,6 @@ export function NdpsDoseFields({
           </div>
         </div>
       </div>
-
-      {clinical && !clinical.doctorRegistration && (
-        <div className="space-y-1.5 rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <Label className="text-xs text-amber-950">Prescribing doctor registration number *</Label>
-          <Input
-            value={value.prescriberRegistrationNumber}
-            onChange={(event) => set('prescriberRegistrationNumber', event.target.value)}
-            placeholder="NMC / MCI / State Medical Council number"
-          />
-          <p className="text-[10px] leading-4 text-amber-800">
-            This number is recorded in the NDPS Form 3E transaction for this administration. It does not overwrite the doctor&apos;s profile.
-          </p>
-        </div>
-      )}
 
       <div className="grid grid-cols-3 gap-2 rounded-lg border bg-background p-2 text-center text-xs">
         <div><span className="block text-muted-foreground">Labelled</span><b>{labelled > 0 ? labelled : '-'} {value.quantityUnit}</b></div>
