@@ -97,4 +97,29 @@ describe('NDPS bedside dose reconciliation', () => {
       administeredQuantity: '2',
     })).toThrow("Enter the prescribing doctor's medical council registration number.");
   });
+
+  it('accepts a per-dose clinical justification when the patient record has no diagnosis', () => {
+    const dose = buildNdpsPatientDose({
+      ...context,
+      clinicalDetails: { ...context.clinicalDetails!, diagnosis: null },
+    }, {
+      ...EMPTY_NDPS_FORM,
+      labelledQuantity: '2',
+      administeredQuantity: '2',
+      clinicalJustification: 'Severe breakthrough pain',
+    });
+
+    expect(dose?.clinicalJustification).toBe('Severe breakthrough pain');
+  });
+
+  it('requires that justification only when no diagnosis is recorded', () => {
+    expect(() => buildNdpsPatientDose({
+      ...context,
+      clinicalDetails: { ...context.clinicalDetails!, diagnosis: null },
+    }, {
+      ...EMPTY_NDPS_FORM,
+      labelledQuantity: '2',
+      administeredQuantity: '2',
+    })).toThrow('Enter the diagnosis or clinical justification for this dose.');
+  });
 });

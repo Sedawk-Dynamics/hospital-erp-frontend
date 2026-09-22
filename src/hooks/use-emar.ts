@@ -122,6 +122,7 @@ export interface NdpsPatientDoseInput {
   residualHandling?: 'pending_destruction' | 'sealed_quarantine';
   quarantineLocation?: string;
   prescriberRegistrationNumber?: string;
+  clinicalJustification?: string;
   emergencyUse?: boolean;
   emergencyReason?: string;
   notes?: string;

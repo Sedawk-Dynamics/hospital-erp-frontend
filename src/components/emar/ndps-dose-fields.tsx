@@ -19,6 +19,7 @@ export const EMPTY_NDPS_FORM = {
   residualHandling: '' as '' | 'pending_destruction' | 'sealed_quarantine',
   quarantineLocation: '',
   prescriberRegistrationNumber: '',
+  clinicalJustification: '',
   emergencyReason: '',
   notes: '',
 };
@@ -64,6 +65,9 @@ export function buildNdpsPatientDose(context: NdpsDoseContext | undefined, form:
   if (context.clinicalDetails && !context.clinicalDetails.doctorRegistration && !form.prescriberRegistrationNumber.trim()) {
     throw new Error("Enter the prescribing doctor's medical council registration number.");
   }
+  if (context.clinicalDetails && !context.clinicalDetails.diagnosis && !form.clinicalJustification.trim()) {
+    throw new Error('Enter the diagnosis or clinical justification for this dose.');
+  }
   if (context.requiresEmergencyReason && !form.emergencyReason.trim()) {
     throw new Error('Enter why emergency stock was used without a linked pharmacy issue.');
   }
@@ -80,6 +84,7 @@ export function buildNdpsPatientDose(context: NdpsDoseContext | undefined, form:
       ? form.quarantineLocation.trim()
       : undefined,
     prescriberRegistrationNumber: form.prescriberRegistrationNumber.trim() || undefined,
+    clinicalJustification: form.clinicalJustification.trim() || undefined,
     emergencyUse: Boolean(context.requiresEmergencyReason),
     emergencyReason: form.emergencyReason.trim() || undefined,
     notes: form.notes.trim() || undefined,
@@ -242,9 +247,18 @@ export function NdpsDoseFields({
       )}
 
       {clinical && !clinical.diagnosis && (
-        <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-800">
-          Complete the diagnosis/clinical justification in the patient record before confirming Form 3E.
-        </p>
+        <div className="space-y-1.5 rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <Label className="text-xs text-amber-950">Diagnosis / clinical justification *</Label>
+          <Textarea
+            value={value.clinicalJustification}
+            onChange={(event) => set('clinicalJustification', event.target.value)}
+            rows={2}
+            placeholder="Why this NDPS dose is clinically required, e.g. severe breakthrough pain"
+          />
+          <p className="text-[10px] leading-4 text-amber-800">
+            Recorded on Form 3E for this dose because no diagnosis is available in the patient record.
+          </p>
+        </div>
       )}
     </div>
   );
