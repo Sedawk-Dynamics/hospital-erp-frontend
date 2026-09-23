@@ -169,6 +169,40 @@ export function useTransferToTpa() {
   });
 }
 
+export interface ChangeBillingToTpaResult {
+  admission: { id: string; billingCategory: 'insurance'; status: string };
+  policy: {
+    id: string;
+    policyNumber: string;
+    insurer?: { name: string } | null;
+    tpa?: { name: string } | null;
+  };
+  claim?: IpClaim | null;
+  connected: boolean;
+}
+
+/**
+ * Billing-counter correction for an admission initially booked as cash/package.
+ * Unlike the legacy transfer action this does not finalise the running IP bill;
+ * it changes the category and joins the existing auto-synchronised TPA flow.
+ */
+export function useChangeBillingToTpa() {
+  const invalidate = useIpBillingInvalidate();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: Pick<TransferToTpaInput, 'admissionId' | 'policyId'>) =>
+      (await apiPost<ChangeBillingToTpaResult>(
+        `/billing/admissions/${v.admissionId}/change-to-tpa`,
+        v.policyId ? { policyId: v.policyId } : {},
+      )).data,
+    onSuccess: () => {
+      invalidate();
+      qc.invalidateQueries({ queryKey: ['patient-policies'] });
+      qc.invalidateQueries({ queryKey: ['insurance'] });
+    },
+  });
+}
+
 // A patient's existing insurance policies (to pick from at transfer time).
 export interface PatientPolicy {
   id: string;

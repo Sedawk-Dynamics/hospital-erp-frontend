@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -19,6 +19,7 @@ import { CollectBillPaymentDialog } from '@/components/hospital/billing/collect-
 import {
   useRecordTpaSettlement, useSetBillDiscount, useConsolidateIpBill,
   useSetBillItemReimbursable, useBillPayments, useApplyDeposit, useRefundDeposit,
+  useChangeBillingToTpa, usePatientPolicies,
   type IpBill,
 } from '@/hooks/use-ip-billing';
 import { useAdmissionLedger } from '@/hooks/use-ip-ledger';
@@ -47,16 +48,29 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
   const setReimbursable = useSetBillItemReimbursable();
   const applyDeposit = useApplyDeposit();
   const refundDeposit = useRefundDeposit();
+  const changeToTpa = useChangeBillingToTpa();
   const qc = useQueryClient();
   const admissionId = bill?.admissionId ?? '';
   const { data: ledger } = useAdmissionLedger(open ? admissionId : null);
   const { data: payments } = useBillPayments(open ? (bill?.id ?? null) : null);
+  const { data: patientPolicies, isLoading: policiesLoading } = usePatientPolicies(
+    open ? (bill?.patient?.id ?? null) : null,
+  );
 
   const [discType, setDiscType] = useState<'percentage' | 'fixed'>('fixed');
   const [discValue, setDiscValue] = useState<number>(0);
   const [payAmt, setPayAmt] = useState<number>(0);
   const [collectOpen, setCollectOpen] = useState(false);
   const [preparing, setPreparing] = useState(false);
+  const [selectedPolicyId, setSelectedPolicyId] = useState('');
+  const [confirmingTpa, setConfirmingTpa] = useState(false);
+
+  // This dialog stays mounted while rows are swapped into it. Never carry one
+  // patient's selected policy or an open confirmation into the next admission.
+  useEffect(() => {
+    setSelectedPolicyId('');
+    setConfirmingTpa(false);
+  }, [bill?.admissionId]);
 
   if (!bill) return null;
   const cat = (bill.admission?.billingCategory ?? 'cash').toLowerCase();
@@ -68,6 +82,28 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
     if (!(payAmt > 0)) { toast.error('Enter the amount the TPA paid.'); return; }
     try { await settle.mutateAsync({ admissionId, paidAmount: payAmt }); toast.success('TPA payment recorded.'); setPayAmt(0); }
     catch (e) { toast.error((e as Error).message || 'Could not record the TPA payment.'); }
+  };
+  const doChangeToTpa = async () => {
+    if (!admissionId) return;
+    try {
+      const result = await changeToTpa.mutateAsync({
+        admissionId,
+        ...(selectedPolicyId ? { policyId: selectedPolicyId } : {}),
+      });
+      const payer = result.policy.tpa?.name || result.policy.insurer?.name || 'pending TPA assignment';
+      toast.success(`Billing changed to TPA — ${payer}.`);
+      setConfirmingTpa(false);
+      await qc.invalidateQueries({ queryKey: ['hospital', 'ip-bills'] });
+      // Close the stale cash-bill snapshot. Reopening uses the refreshed row and
+      // shows the new category, policy and claim amounts.
+      onOpenChange(false);
+    } catch (e) {
+      const message =
+        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        (e as Error).message ??
+        'Could not change billing to TPA.';
+      toast.error(message);
+    }
   };
   const doDiscount = async () => {
     if (!(discValue > 0)) { toast.error('Enter a discount value.'); return; }
@@ -200,7 +236,11 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
           <div className="rounded-xl border bg-card p-3">
             <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold"><Percent className="h-4 w-4 text-primary" /> Discount</h3>
             <div className="flex items-center gap-1.5">
-              <select className="h-8 rounded-md border border-input bg-background px-2 text-xs" value={discType} onChange={(e) => setDiscType(e.target.value as any)}>
+              <select
+                className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                value={discType}
+                onChange={(e) => setDiscType(e.target.value === 'percentage' ? 'percentage' : 'fixed')}
+              >
                 <option value="fixed">₹ Fixed</option>
                 <option value="percentage">% Percent</option>
               </select>
@@ -237,9 +277,9 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
             >
               {preparing ? 'Preparing bill…' : 'Collect payment'}
             </Button>
-            {n(ledger?.totals.pending) > 0 && (
+            {n(ledger?.totals?.pending) > 0 && (
               <p className="mt-1 text-[11px] text-amber-700">
-                {money(ledger?.totals.pending)} of charges are not on the bill yet — they will be
+                {money(ledger?.totals?.pending)} of charges are not on the bill yet — they will be
                 pulled on before payment.
               </p>
             )}
@@ -259,50 +299,50 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
               <span className="text-[11px] font-normal text-muted-foreground">— collected at admission, cut from the running bill</span>
             </h3>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <Stat label="Held for patient" value={money(ledger?.totals.deposit)} className="text-teal-700" />
-              <Stat label="Applied to bill" value={money(ledger?.totals.depositApplied)} />
-              <Stat label="Balance after deposit" value={money(ledger?.totals.balanceAfterDeposit)} className="text-amber-700" />
-              <Stat label="Refundable" value={money(ledger?.totals.refundable)} className="text-emerald-700" />
+              <Stat label="Held for patient" value={money(ledger?.totals?.deposit)} className="text-teal-700" />
+              <Stat label="Applied to bill" value={money(ledger?.totals?.depositApplied)} />
+              <Stat label="Balance after deposit" value={money(ledger?.totals?.balanceAfterDeposit)} className="text-amber-700" />
+              <Stat label="Refundable" value={money(ledger?.totals?.refundable)} className="text-emerald-700" />
             </div>
             {/* Money reaches a patient through two counters — a deposit taken
                 against the stay, and an advance taken at the front desk. The
                 desk uses the second one, so saying which is which stops the
                 figure looking wrong to whoever collected it. */}
-            {(n(ledger?.totals.depositOnFile) > 0 || n(ledger?.totals.advanceOnFile) > 0) && (
+            {(n(ledger?.totals?.depositOnFile) > 0 || n(ledger?.totals?.advanceOnFile) > 0) && (
               <p className="mt-1.5 text-[11px] text-muted-foreground">
-                {n(ledger?.totals.depositOnFile) > 0 && (
-                  <span>Stay deposit {money(ledger?.totals.depositOnFile)}</span>
+                {n(ledger?.totals?.depositOnFile) > 0 && (
+                  <span>Stay deposit {money(ledger?.totals?.depositOnFile)}</span>
                 )}
-                {n(ledger?.totals.depositOnFile) > 0 && n(ledger?.totals.advanceOnFile) > 0 && ' · '}
-                {n(ledger?.totals.advanceOnFile) > 0 && (
-                  <span>Front-desk advance {money(ledger?.totals.advanceOnFile)}</span>
+                {n(ledger?.totals?.depositOnFile) > 0 && n(ledger?.totals?.advanceOnFile) > 0 && ' · '}
+                {n(ledger?.totals?.advanceOnFile) > 0 && (
+                  <span>Front-desk advance {money(ledger?.totals?.advanceOnFile)}</span>
                 )}
               </p>
             )}
-            {n(ledger?.totals.deposit) === 0 && (
+            {n(ledger?.totals?.deposit) === 0 && (
               <p className="mt-1.5 text-[11px] text-muted-foreground">
                 Nothing held for this patient yet — a deposit or advance collected at any
                 counter will show here.
               </p>
             )}
-            {n(ledger?.totals.depositRefunded) > 0 && (
-              <p className="mt-1.5 text-[11px] text-muted-foreground">Already returned: {money(ledger?.totals.depositRefunded)}</p>
+            {n(ledger?.totals?.depositRefunded) > 0 && (
+              <p className="mt-1.5 text-[11px] text-muted-foreground">Already returned: {money(ledger?.totals?.depositRefunded)}</p>
             )}
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={doApplyDeposit}
-                disabled={applyDeposit.isPending || n(ledger?.totals.depositAvailable) <= 0}
+                disabled={applyDeposit.isPending || n(ledger?.totals?.depositAvailable) <= 0}
                 title="Cut what the patient has already paid — deposit or advance — from the current bill balance">
                 {applyDeposit.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wallet className="h-3.5 w-3.5" />}
                 Apply to bill
               </Button>
               <Button size="sm" className="h-8 gap-1.5 bg-emerald-600 hover:bg-emerald-700" onClick={doRefundDeposit}
-                disabled={refundDeposit.isPending || n(ledger?.totals.refundable) <= 0}
+                disabled={refundDeposit.isPending || n(ledger?.totals?.refundable) <= 0}
                 title="Return what is left over to the patient (e.g. insurance covered the charges)">
                 {refundDeposit.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />}
                 Return to patient
               </Button>
-              {n(ledger?.totals.refundable) > 0 && (
-                <span className="text-[11px] text-emerald-700">Insurance / payments cover the charges — {money(ledger?.totals.refundable)} can be returned.</span>
+              {n(ledger?.totals?.refundable) > 0 && (
+                <span className="text-[11px] text-emerald-700">Insurance / payments cover the charges — {money(ledger?.totals?.refundable)} can be returned.</span>
               )}
             </div>
           </div>
@@ -315,13 +355,67 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
           </h3>
 
           {!liveClaim ? (
-            <div className="flex items-start gap-2 rounded-lg border border-purple-200 bg-purple-50/50 px-3 py-2">
-              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
-              <p className="text-sm text-muted-foreground">
-                {isInsurance(cat)
-                  ? <><strong className="text-purple-700">Connected to the TPA.</strong> Because the patient was booked as {cat}, the claim is raised automatically once there are charges and kept in sync as the bill builds — no manual transfer needed. The insurance team fills in the policy &amp; approvals; insurer-tagged lines are claimed.</>
-                  : <>This is a <strong>{cat}</strong> patient — settled directly, not through a TPA. Change the billing category on the admission to route it to insurance.</>}
-              </p>
+            <div className="space-y-3">
+              <div className="flex items-start gap-2 rounded-lg border border-purple-200 bg-purple-50/50 px-3 py-2">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
+                <p className="text-sm text-muted-foreground">
+                  {isInsurance(cat)
+                    ? <><strong className="text-purple-700">Connected to the TPA.</strong> Because the patient was booked as {cat}, the claim is raised automatically once there are charges and kept in sync as the bill builds. The insurance team fills in the policy &amp; approvals; insurer-tagged lines are claimed.</>
+                    : <>This is a <strong>{cat}</strong> admission. Change it to TPA billing here to link the policy and route current and future eligible charges to insurance.</>}
+                </p>
+              </div>
+
+              {!isInsurance(cat) && bill.admission?.status !== 'discharged' && (
+                <div className="rounded-lg border bg-background p-3">
+                  <label htmlFor="tpa-policy" className="text-xs font-medium">Insurance policy</label>
+                  <select
+                    id="tpa-policy"
+                    value={selectedPolicyId}
+                    onChange={(e) => { setSelectedPolicyId(e.target.value); setConfirmingTpa(false); }}
+                    disabled={policiesLoading || changeToTpa.isPending}
+                    className="mt-1 h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm"
+                  >
+                    <option value="">Use active policy / assign later</option>
+                    {(patientPolicies ?? [])
+                      .filter((policy) => policy.status === 'active')
+                      .map((policy) => (
+                        <option key={policy.id} value={policy.id}>
+                          {policy.tpa?.name || policy.insurer?.name || 'Insurance policy'} — {policy.policyNumber}
+                        </option>
+                      ))}
+                  </select>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    If no policy is selected, the active policy is used. If none exists, a pending TPA assignment is created for the insurance team.
+                  </p>
+
+                  {!confirmingTpa ? (
+                    <Button
+                      size="sm"
+                      className="mt-2 gap-1.5 bg-purple-600 hover:bg-purple-700"
+                      onClick={() => setConfirmingTpa(true)}
+                    >
+                      <ShieldCheck className="h-3.5 w-3.5" /> Change billing to TPA
+                    </Button>
+                  ) : (
+                    <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-2.5">
+                      <p className="text-xs text-amber-900">
+                        Confirm this admission should use TPA / insurance billing. Existing payments remain recorded; eligible bill lines will be routed to the claim.
+                      </p>
+                      <div className="mt-2 flex gap-2">
+                        <Button size="sm" variant="outline" onClick={() => setConfirmingTpa(false)} disabled={changeToTpa.isPending}>Cancel</Button>
+                        <Button size="sm" onClick={doChangeToTpa} disabled={changeToTpa.isPending}>
+                          {changeToTpa.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                          Confirm change
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!isInsurance(cat) && bill.admission?.status === 'discharged' && (
+                <p className="text-xs text-amber-700">A discharged admission can no longer be changed to TPA billing.</p>
+              )}
             </div>
           ) : (
             <div className="space-y-2.5">

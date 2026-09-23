@@ -1,13 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // ─── Mock the transport ───
 const mockGet = vi.fn();
+const mockPost = vi.fn();
 vi.mock('@/lib/api-client', () => ({
   default: {
     get: (...args: unknown[]) => mockGet(...args),
-    post: vi.fn(),
+    post: (...args: unknown[]) => mockPost(...args),
     patch: vi.fn(),
     put: vi.fn(),
     delete: vi.fn(),
@@ -47,7 +49,34 @@ function renderDialog(b: IpBill | null) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockGet.mockResolvedValue({ data: { data: [] } });
+  mockGet.mockImplementation((url: string) => {
+    if (url.endsWith('/ledger')) {
+      return Promise.resolve({
+        data: {
+          data: {
+            admissionId: 'adm-1',
+            patientId: 'pat-1',
+            billingCategory: 'cash',
+            lines: [],
+            categoryTotals: [],
+            bills: [],
+            totals: {},
+          },
+        },
+      });
+    }
+    return Promise.resolve({ data: { data: [] } });
+  });
+  mockPost.mockResolvedValue({
+    data: {
+      data: {
+        admission: { id: 'adm-1', billingCategory: 'insurance', status: 'admitted' },
+        policy: { id: 'policy-1', policyNumber: 'PENDING-1', insurer: { name: 'Pending TPA Assignment' } },
+        claim: null,
+        connected: true,
+      },
+    },
+  });
 });
 
 describe('IpBillingDetailDialog', () => {
@@ -71,5 +100,23 @@ describe('IpBillingDetailDialog', () => {
     renderDialog(bill);
     expect(screen.getByText('IPB-0001')).toBeInTheDocument();
     expect(screen.getByText('MRN-1')).toBeInTheDocument();
+  });
+
+  it('lets billing staff change a cash admission to TPA after confirmation', async () => {
+    const user = userEvent.setup();
+    renderDialog(bill);
+
+    await user.click(screen.getByRole('button', { name: 'Change billing to TPA' }));
+    expect(screen.getByText(/Confirm this admission should use TPA/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Confirm change' }));
+
+    await waitFor(() => {
+      expect(mockPost).toHaveBeenCalledWith(
+        '/billing/admissions/adm-1/change-to-tpa',
+        {},
+        undefined,
+      );
+    });
   });
 });
