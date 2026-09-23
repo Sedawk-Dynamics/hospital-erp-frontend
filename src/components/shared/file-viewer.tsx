@@ -10,8 +10,8 @@
 // Supports:
 //   • PDF                — embedded iframe + open-in-new-tab
 //   • Image              — <img> with zoom/pan inside a modal
-//   • DICOM (.dcm)       — DicomRenderer (dicom-parser) for uncompressed
-//                          syntaxes, falls back to download for compressed
+//   • DICOM (.dcm)       — inline tile is a click-to-open card that launches
+//                          the fullscreen OHIF/PACS viewer (no black inline)
 //   • Video (mp4/webm)   — native <video controls>
 //   • Audio              — native <audio controls>
 //   • Plain text         — fetched + rendered in <pre>
@@ -29,7 +29,6 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { DicomRenderer } from '@/components/radiology/dicom-renderer';
 import { RadiologyViewer, DicomDetailedViewer } from '@/components/radiology/viewer';
 import {
   type ImagingAttachment,
@@ -177,7 +176,7 @@ export function FileViewer({ file, dense = false, inlinePreview = true, enableOr
         </div>
       </div>
       <div className="max-h-[480px] overflow-hidden bg-black/5">
-        <InlineRenderer file={file} url={url} />
+        <InlineRenderer file={file} url={url} onOpenFull={() => setPreviewOpen(true)} />
       </div>
       <FilePreviewDialog file={file} open={previewOpen} onOpenChange={setPreviewOpen} enableOrthanc={enableOrthanc} />
     </div>
@@ -187,7 +186,7 @@ export function FileViewer({ file, dense = false, inlinePreview = true, enableOr
 // Render the actual file content for the inline preview. Each branch picks
 // the right player for the MIME type and falls through to a "no preview"
 // hint when the type isn't browser-renderable.
-function InlineRenderer({ file, url }: { file: ViewableFile; url: string }) {
+function InlineRenderer({ file, url, onOpenFull }: { file: ViewableFile; url: string; onOpenFull?: () => void }) {
   const isPdf = isPdfMime(file.mimeType);
   const isImage = isImageMime(file.mimeType);
   const isVideo = isVideoMime(file.mimeType);
@@ -235,10 +234,22 @@ function InlineRenderer({ file, url }: { file: ViewableFile; url: string }) {
     );
   }
   if (isDicom) {
+    // The in-house inline canvas can't decode compressed / colour / palette
+    // DICOM (it renders black), and diagnostic viewing belongs in the full
+    // OHIF/PACS viewer anyway. So the inline tile is a click-to-open card that
+    // launches the fullscreen viewer instead of a broken inline preview.
     return (
-      <div className="h-[480px] bg-black">
-        <DicomRenderer fileUrl={url} className="h-full" />
-      </div>
+      <button
+        type="button"
+        onClick={onOpenFull}
+        className="flex h-60 w-full flex-col items-center justify-center gap-2 bg-zinc-950 text-zinc-300 transition-colors hover:bg-zinc-900"
+      >
+        <ScanLine className="size-10 text-zinc-400" />
+        <span className="text-sm font-medium">DICOM study</span>
+        <span className="flex items-center gap-1 text-xs text-zinc-400">
+          <Maximize2 className="size-3.5" /> Open viewer
+        </span>
+      </button>
     );
   }
   if (isText) {
