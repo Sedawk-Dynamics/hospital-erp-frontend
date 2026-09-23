@@ -16,9 +16,6 @@ export const EMPTY_NDPS_FORM = {
   administeredQuantity: '',
   quantityUnit: 'mL',
   containerQuantity: '1',
-  residualHandling: '' as '' | 'pending_destruction' | 'sealed_quarantine',
-  quarantineLocation: '',
-  clinicalJustification: '',
   emergencyReason: '',
   notes: '',
 };
@@ -55,15 +52,6 @@ export function buildNdpsPatientDose(context: NdpsDoseContext | undefined, form:
   if (!form.quantityUnit.trim()) throw new Error('Enter the quantity unit.');
   const residual = Math.round((labelledQuantity - administeredQuantity) * 10_000) / 10_000;
   const disposition = residual === 0 ? 'none' : 'quarantined';
-  if (residual > 0 && !form.residualHandling) {
-    throw new Error('Choose whether the remainder should be destroyed or sealed and quarantined.');
-  }
-  if (residual > 0 && form.residualHandling === 'sealed_quarantine' && !form.quarantineLocation.trim()) {
-    throw new Error('Record where the sealed residual will be quarantined.');
-  }
-  if (context.clinicalDetails && !context.clinicalDetails.diagnosis && !form.clinicalJustification.trim()) {
-    throw new Error('Enter the diagnosis or clinical justification for this dose.');
-  }
   if (context.requiresEmergencyReason && !form.emergencyReason.trim()) {
     throw new Error('Enter why emergency stock was used without a linked pharmacy issue.');
   }
@@ -75,11 +63,9 @@ export function buildNdpsPatientDose(context: NdpsDoseContext | undefined, form:
     quantityUnit: form.quantityUnit.trim(),
     containerQuantity,
     disposition,
-    residualHandling: residual > 0 ? form.residualHandling || undefined : undefined,
-    quarantineLocation: residual > 0 && form.residualHandling === 'sealed_quarantine'
-      ? form.quarantineLocation.trim()
-      : undefined,
-    clinicalJustification: form.clinicalJustification.trim() || undefined,
+    // Bedside staff only record what was administered. Any positive remainder
+    // is routed to the existing authorised disposal worklist automatically.
+    residualHandling: residual > 0 ? 'pending_destruction' : undefined,
     emergencyUse: Boolean(context.requiresEmergencyReason),
     emergencyReason: form.emergencyReason.trim() || undefined,
     notes: form.notes.trim() || undefined,
@@ -102,7 +88,6 @@ export function NdpsDoseFields({
   const residual = labelled > 0 && administered > 0 && administered <= labelled
     ? Math.round((labelled - administered) * 10_000) / 10_000
     : null;
-  const clinical = context.clinicalDetails;
   const selectedBatchId = effectiveNdpsBatch(context, value);
   const selectedLocationId = effectiveNdpsLocation(context, value);
 
@@ -115,7 +100,7 @@ export function NdpsDoseFields({
         <div className="min-w-0">
           <p className="text-sm font-semibold text-red-950">NDPS patient-dose reconciliation</p>
           <p className="mt-0.5 text-xs leading-5 text-red-800">
-            Record what was given and what remains, then select the required handling instruction.
+            Record what was given and what remains. Any remainder is sent to the authorised disposal worklist automatically.
           </p>
         </div>
       </div>
@@ -174,51 +159,6 @@ export function NdpsDoseFields({
         <div><span className="block text-muted-foreground">Remaining (not given)</span><b className={residual && residual > 0 ? 'text-red-700' : ''}>{residual ?? '-'} {value.quantityUnit}</b></div>
       </div>
 
-      {residual !== null && residual > 0 && (
-        <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <p className="text-xs font-medium text-amber-950">Select one *</p>
-          <label className="flex cursor-pointer items-start gap-3 rounded-lg border bg-background p-3">
-            <input
-              type="checkbox"
-              className="mt-0.5 h-4 w-4 accent-red-700"
-              checked={value.residualHandling === 'pending_destruction'}
-              onChange={() => set('residualHandling', 'pending_destruction')}
-            />
-            <span>
-              <span className="block text-xs font-semibold">It should be destroyed</span>
-              <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
-                Sends the remainder to Inventory - Stock Transfer - Patient residual disposal. Authorised staff record the witnessed destruction there.
-              </span>
-            </span>
-          </label>
-          <label className="flex cursor-pointer items-start gap-3 rounded-lg border bg-background p-3">
-            <input
-              type="checkbox"
-              className="mt-0.5 h-4 w-4 accent-amber-700"
-              checked={value.residualHandling === 'sealed_quarantine'}
-              onChange={() => set('residualHandling', 'sealed_quarantine')}
-            />
-            <span>
-              <span className="block text-xs font-semibold">Seal and quarantine the remainder</span>
-              <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
-                Keep it sealed in secure NDPS storage and record the exact location below.
-              </span>
-            </span>
-          </label>
-          {value.residualHandling === 'sealed_quarantine' && (
-            <div className="space-y-1.5">
-              <Label className="text-xs">Sealed quarantine location *</Label>
-              <Input value={value.quarantineLocation} onChange={(event) => set('quarantineLocation', event.target.value)} placeholder="e.g. ICU narcotic safe - residual bin A" />
-            </div>
-          )}
-          {value.residualHandling === 'pending_destruction' && (
-            <p className="rounded-md border border-red-200 bg-red-50 p-2 text-[11px] leading-4 text-red-800">
-              This is only a destruction request. The remainder stays in the selected NDPS custody location until authorised disposal is completed.
-            </p>
-          )}
-        </div>
-      )}
-
       {context.requiresEmergencyReason && (
         <div className="space-y-1.5 rounded-lg border border-amber-200 bg-amber-50 p-3">
           <Label className="text-xs text-amber-900">Emergency stock reason *</Label>
@@ -227,20 +167,6 @@ export function NdpsDoseFields({
         </div>
       )}
 
-      {clinical && !clinical.diagnosis && (
-        <div className="space-y-1.5 rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <Label className="text-xs text-amber-950">Diagnosis / clinical justification *</Label>
-          <Textarea
-            value={value.clinicalJustification}
-            onChange={(event) => set('clinicalJustification', event.target.value)}
-            rows={2}
-            placeholder="Why this NDPS dose is clinically required, e.g. severe breakthrough pain"
-          />
-          <p className="text-[10px] leading-4 text-amber-800">
-            Recorded on Form 3E for this dose because no diagnosis is available in the patient record.
-          </p>
-        </div>
-      )}
     </div>
   );
 }

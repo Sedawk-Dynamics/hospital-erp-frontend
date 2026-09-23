@@ -31,7 +31,6 @@ describe('NDPS bedside dose reconciliation', () => {
       ...EMPTY_NDPS_FORM,
       labelledQuantity: '2',
       administeredQuantity: '0.5',
-      residualHandling: 'pending_destruction',
     });
 
     expect(dose).toMatchObject({
@@ -43,23 +42,6 @@ describe('NDPS bedside dose reconciliation', () => {
     expect(dose?.quarantineLocation).toBeUndefined();
     expect(dose).not.toHaveProperty('disposalMethod');
     expect(dose).not.toHaveProperty('witnessedById');
-  });
-
-  it('requires the sealed quarantine location when medicine remains', () => {
-    expect(() => buildNdpsPatientDose(context, {
-      ...EMPTY_NDPS_FORM,
-      labelledQuantity: '2',
-      administeredQuantity: '0.5',
-      residualHandling: 'sealed_quarantine',
-    })).toThrow('Record where the sealed residual will be quarantined.');
-  });
-
-  it('requires one handling checkbox when medicine remains', () => {
-    expect(() => buildNdpsPatientDose(context, {
-      ...EMPTY_NDPS_FORM,
-      labelledQuantity: '2',
-      administeredQuantity: '0.5',
-    })).toThrow('Choose whether the remainder should be destroyed or sealed and quarantined.');
   });
 
   it('records no disposition when the full labelled quantity is given', () => {
@@ -87,7 +69,7 @@ describe('NDPS bedside dose reconciliation', () => {
     expect(dose).not.toHaveProperty('prescriberRegistrationNumber');
   });
 
-  it('accepts a per-dose clinical justification when the patient record has no diagnosis', () => {
+  it('does not require bedside clinical justification when the chart has no diagnosis', () => {
     const dose = buildNdpsPatientDose({
       ...context,
       clinicalDetails: { ...context.clinicalDetails!, diagnosis: null },
@@ -95,20 +77,9 @@ describe('NDPS bedside dose reconciliation', () => {
       ...EMPTY_NDPS_FORM,
       labelledQuantity: '2',
       administeredQuantity: '2',
-      clinicalJustification: 'Severe breakthrough pain',
     });
 
-    expect(dose?.clinicalJustification).toBe('Severe breakthrough pain');
-  });
-
-  it('requires that justification only when no diagnosis is recorded', () => {
-    expect(() => buildNdpsPatientDose({
-      ...context,
-      clinicalDetails: { ...context.clinicalDetails!, diagnosis: null },
-    }, {
-      ...EMPTY_NDPS_FORM,
-      labelledQuantity: '2',
-      administeredQuantity: '2',
-    })).toThrow('Enter the diagnosis or clinical justification for this dose.');
+    expect(dose?.disposition).toBe('none');
+    expect(dose).not.toHaveProperty('clinicalJustification');
   });
 });
