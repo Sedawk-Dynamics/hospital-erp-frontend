@@ -121,6 +121,69 @@ export interface InsurancePolicy {
   tpa?: { id: string; name: string } | null;
 }
 
+export type InsuranceMoney = number | string;
+
+export interface InsuranceBillItem {
+  id: string;
+  description: string;
+  category: string;
+  quantity: number;
+  unitPrice: InsuranceMoney;
+  discountPercent: InsuranceMoney;
+  discountAmount: InsuranceMoney;
+  taxPercent: InsuranceMoney;
+  taxAmount: InsuranceMoney;
+  totalAmount: InsuranceMoney;
+  hsnSacCode?: string | null;
+  gstTreatment?: string | null;
+  taxableValue: InsuranceMoney;
+  cgstAmount: InsuranceMoney;
+  sgstAmount: InsuranceMoney;
+  igstAmount: InsuranceMoney;
+  cessAmount: InsuranceMoney;
+  isReimbursable?: boolean | null;
+  tpaCategory?: string | null;
+  createdAt: string;
+}
+
+export interface InsuranceBillPayment {
+  id: string;
+  paymentDate: string;
+  amount: InsuranceMoney;
+  paymentMethod: string;
+  paymentSource?: string | null;
+  paymentType: string;
+  status: string;
+  transactionId?: string | null;
+  notes?: string | null;
+}
+
+export interface InsuranceClaimBill {
+  id: string;
+  billNumber: string;
+  billDate?: string;
+  status?: string;
+  subtotal?: InsuranceMoney;
+  discountAmount?: InsuranceMoney;
+  taxAmount?: InsuranceMoney;
+  totalAmount: InsuranceMoney;
+  insuranceCoveredAmount?: InsuranceMoney;
+  patientPayableAmount?: InsuranceMoney;
+  amountPaid?: InsuranceMoney;
+  balanceDue?: InsuranceMoney;
+  taxableValue?: InsuranceMoney;
+  cgstAmount?: InsuranceMoney;
+  sgstAmount?: InsuranceMoney;
+  igstAmount?: InsuranceMoney;
+  cessAmount?: InsuranceMoney;
+  roundOff?: InsuranceMoney;
+  gstDocumentType?: string | null;
+  invoiceNumber?: string | null;
+  billOfSupplyNumber?: string | null;
+  billItems?: InsuranceBillItem[];
+  payments?: InsuranceBillPayment[];
+}
+
 export interface InsuranceClaim {
   id: string;
   tenantId: string;
@@ -174,7 +237,7 @@ export interface InsuranceClaim {
     corporatePayer?: { id: string; name: string } | null;
     governmentSchemePayer?: { id: string; name: string } | null;
   } | null;
-  bill?: { id: string; billNumber: string; totalAmount: number };
+  bill?: InsuranceClaimBill;
   preAuth?: PreAuthRequest | null;
   documents?: Array<{ id: string; code?: string | null; name: string; category: string; fileUrl: string; version: number; status: string; rejectionReason?: string | null; createdAt: string }>;
   checklistItems?: Array<{ id: string; requirementCode: string; label: string; isRequired: boolean; isComplete: boolean; documentId?: string | null }>;

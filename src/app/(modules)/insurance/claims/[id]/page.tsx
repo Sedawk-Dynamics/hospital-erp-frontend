@@ -27,6 +27,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { CommunicationLogPanel } from '@/components/insurance/communication-log-panel';
 import { ClaimWorkflowPanel } from '@/components/insurance/claim-workflow-panel';
+import { ClaimBillCard } from '@/components/insurance/claim-bill-card';
 import { formatDate, formatDateTime } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
 import {
@@ -64,7 +65,7 @@ const PIPELINE: ClaimStatus[] = [
   'settled',
 ];
 
-function inr(value: number | null | undefined) {
+function inr(value: number | string | null | undefined) {
   if (value === null || value === undefined) return '—';
   return `₹${Number(value).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 }
@@ -295,6 +296,8 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
           tone="text-primary"
         />
       </div>
+
+      {claim.bill && <ClaimBillCard bill={claim.bill} />}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Actions */}
