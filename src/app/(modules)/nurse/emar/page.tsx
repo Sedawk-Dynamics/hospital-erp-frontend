@@ -28,6 +28,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { PatientSafetyBanner } from '@/components/shared/patient-safety-banner';
+import { PrnDoseHistoryCard, latestAdministeredPrnByItem } from '@/components/emar/prn-dose-history';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
@@ -277,6 +278,21 @@ export default function EmarPage() {
     if (!schedulesRaw) return [];
     return Array.isArray(schedulesRaw) ? schedulesRaw : (schedulesRaw as any).data ?? [];
   }, [schedulesRaw]);
+
+  // Keep PRN history independent of the selected eMAR day so staff can see
+  // the last dose before recording another one.
+  const { data: prnHistoryRaw } = useEmarSchedules({
+    admissionId: selectedAdmissionId || undefined,
+    includePrn: true,
+    limit: 500,
+  });
+  const latestPrnByItem = useMemo(
+    () => latestAdministeredPrnByItem(
+      (Array.isArray(prnHistoryRaw) ? prnHistoryRaw : ((prnHistoryRaw as any)?.data ?? [])) as EmarSchedule[],
+    ),
+    [prnHistoryRaw],
+  );
+  const latestPrnDose = prnDialog.itemId ? latestPrnByItem.get(prnDialog.itemId) : undefined;
 
   const { data: prescriptionsRaw } = useActivePrescriptions({
     admissionId: selectedAdmissionId || undefined,
@@ -919,9 +935,7 @@ export default function EmarPage() {
             ) : (
               <div className="divide-y divide-outline-variant/50">
                 {prnItems.map((p) => {
-                  const lastPrn = schedules
-                    .filter((s) => s.isPrn && s.prescriptionItemId === p.itemId && (s.status === 'given' || s.status === 'given_late'))
-                    .sort((a, b) => new Date(b.actualGivenTime ?? b.createdAt ?? '').getTime() - new Date(a.actualGivenTime ?? a.createdAt ?? '').getTime())[0];
+                  const lastPrn = latestPrnByItem.get(p.itemId);
                   return (
                     <div key={p.itemId} className="flex items-center justify-between px-4 py-3 hover:bg-surface-container-low/40 transition-colors">
                       <div className="min-w-0 flex-1">
@@ -942,7 +956,12 @@ export default function EmarPage() {
                         {lastPrn && (
                           <div className="text-right">
                             <p className="text-[10px] text-on-surface-variant">Last given</p>
-                            <p className="text-xs font-medium text-on-surface">{formatTime(lastPrn.actualGivenTime ?? '')}</p>
+                            <p className="text-xs font-medium text-on-surface">{formatDateTime(lastPrn.actualGivenTime ?? lastPrn.actionedAt)}</p>
+                            {lastPrn.givenBy && (
+                              <p className="text-[10px] text-on-surface-variant">
+                                {lastPrn.givenBy.firstName} {lastPrn.givenBy.lastName ?? ''}
+                              </p>
+                            )}
                           </div>
                         )}
                         <Button
@@ -1102,6 +1121,7 @@ export default function EmarPage() {
               <p className="text-xs text-on-surface-variant">Dose: <span className="font-medium text-on-surface">{prnDialog.dosage}</span></p>
               <p className="text-xs text-on-surface-variant">Frequency: {prnDialog.frequency}</p>
             </div>
+            {latestPrnDose && <PrnDoseHistoryCard dose={latestPrnDose} />}
             <div>
               <Label className="text-xs font-medium mb-1.5 block">Time given</Label>
               <Input type="time" value={prnTime} onChange={(e) => setPrnTime(e.target.value)} className="w-40" />

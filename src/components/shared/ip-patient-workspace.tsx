@@ -97,6 +97,7 @@ import {
   NdpsDoseFields,
   buildNdpsPatientDose,
 } from '@/components/emar/ndps-dose-fields';
+import { PrnDoseHistoryCard, latestAdministeredPrnByItem } from '@/components/emar/prn-dose-history';
 import { useProgressNotes, useLabOrders, useImagingRequests, usePatientDetail, type ProgressNote } from '@/hooks/use-doctor';
 import { LabOrderDetailDialog } from '@/components/shared/lab-order-detail-dialog';
 import { IpPrescriptionDialog } from '@/components/doctor/ip-prescription-dialog';
@@ -655,6 +656,15 @@ function PrescriptionsPanel({ admissionId, patientId, role, onNewRx }: { admissi
   });
 
   const prescriptions = useMemo(() => unwrapList<Prescription>(data), [data]);
+  const { data: prnHistoryData } = useEmarSchedules({
+    admissionId,
+    includePrn: true,
+    limit: 500,
+  });
+  const latestPrnByItem = useMemo(
+    () => latestAdministeredPrnByItem(unwrapList<EmarSchedule>(prnHistoryData)),
+    [prnHistoryData],
+  );
   const triggerPrn = useTriggerPrn();
   const [prnDialog, setPrnDialog] = useState<{
     open: boolean;
@@ -671,6 +681,7 @@ function PrescriptionsPanel({ admissionId, patientId, role, onNewRx }: { admissi
   const { data: ndpsContext, isLoading: ndpsContextLoading } = useNdpsPrescriptionItemContext(
     prnDialog.open ? prnDialog.itemId : null,
   );
+  const latestPrnDose = prnDialog.itemId ? latestPrnByItem.get(prnDialog.itemId) : undefined;
 
   const closePrnDialog = () => {
     setPrnDialog({ open: false, itemId: '', drugName: '', dosage: '', frequency: '' });
@@ -718,7 +729,9 @@ function PrescriptionsPanel({ admissionId, patientId, role, onNewRx }: { admissi
       ) : (
         <div className="space-y-2">
           {prescriptions.flatMap((rx) =>
-            rx.items.map((item, idx) => (
+            rx.items.map((item, idx) => {
+              const lastPrn = item.id ? latestPrnByItem.get(item.id) : undefined;
+              return (
               <div
                 key={`${rx.id}-${idx}`}
                 className="flex items-start justify-between gap-3 rounded-md border bg-card px-3 py-2 text-xs"
@@ -735,6 +748,12 @@ function PrescriptionsPanel({ admissionId, patientId, role, onNewRx }: { admissi
                   </p>
                   {item.instructions && (
                     <p className="mt-0.5 italic text-muted-foreground">{item.instructions}</p>
+                  )}
+                  {lastPrn && (
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      Last given {formatDateTime(lastPrn.actualGivenTime ?? lastPrn.actionedAt)}
+                      {lastPrn.givenBy ? ` by ${lastPrn.givenBy.firstName} ${lastPrn.givenBy.lastName ?? ''}` : ''}
+                    </p>
                   )}
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-2 text-right text-[10px] text-muted-foreground">
@@ -768,7 +787,8 @@ function PrescriptionsPanel({ admissionId, patientId, role, onNewRx }: { admissi
                   )}
                 </div>
               </div>
-            )),
+              );
+            }),
           )}
         </div>
       )}
@@ -800,6 +820,8 @@ function PrescriptionsPanel({ admissionId, patientId, role, onNewRx }: { admissi
                 <p className="mt-2 text-xs italic text-muted-foreground">{prnDialog.instructions}</p>
               )}
             </div>
+
+            {latestPrnDose && <PrnDoseHistoryCard dose={latestPrnDose} />}
 
             <PatientSafetyBanner patientId={patientId} />
 
