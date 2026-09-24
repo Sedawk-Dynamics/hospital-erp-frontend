@@ -49,6 +49,7 @@ import {
   type ChargeRow,
   type ChargeSource,
 } from '@/hooks/use-hospital';
+import { useAddIpCharge } from '@/hooks/use-ip-ledger';
 
 interface BackendBill {
   id: string;
@@ -377,6 +378,7 @@ function ComposeStep({
   const pullCharges = usePullCharges();
   const refreshDraftTax = useRefreshDraftTax();
   const addBillItem = useAddBillItem();
+  const addIpCharge = useAddIpCharge(admissionId ?? '');
   const removeBillItem = useRemoveBillItem();
   const updateBillItem = useUpdateBillItem();
   const setBillDiscount = useSetBillDiscount();
@@ -473,7 +475,9 @@ function ComposeStep({
 
   const handleAddManual = useCallback(
     async (data: { description: string; quantity: number; unitPrice: number; discount: number }) => {
-      if (!effectiveBillId || billTyped?.status !== 'draft') {
+      const admissionBillAcceptsCharges =
+        !!admissionId && ['draft', 'pending', 'partially_paid'].includes(billTyped?.status ?? '');
+      if (!effectiveBillId || (billTyped?.status !== 'draft' && !admissionBillAcceptsCharges)) {
         toast.error(
           effectiveBillId
             ? 'Reopen this bill before adding another charge'
@@ -482,15 +486,25 @@ function ComposeStep({
         return false;
       }
       try {
-        await addBillItem.mutateAsync({
-          billId: effectiveBillId,
-          data: {
+        if (admissionId) {
+          await addIpCharge.mutateAsync({
+            category: 'other',
             description: data.description,
             quantity: data.quantity,
             unitPrice: data.unitPrice,
             discount: data.discount,
-          },
-        });
+          });
+        } else {
+          await addBillItem.mutateAsync({
+            billId: effectiveBillId,
+            data: {
+              description: data.description,
+              quantity: data.quantity,
+              unitPrice: data.unitPrice,
+              discount: data.discount,
+            },
+          });
+        }
         toast.success('Line added');
         return true;
       } catch (e: unknown) {
@@ -498,7 +512,7 @@ function ComposeStep({
         return false;
       }
     },
-    [effectiveBillId, billTyped?.status, addBillItem],
+    [effectiveBillId, billTyped?.status, admissionId, addBillItem, addIpCharge],
   );
 
   const handleRemove = useCallback(
@@ -569,8 +583,10 @@ function ComposeStep({
   // enough: a TPA split can leave it at zero while a claim or applied admission
   // advance still makes the issued bill immutable.
   const isPendingFinalized = billTyped?.status === 'pending';
+  const admissionBillAcceptsCharges =
+    !!admissionId && ['draft', 'pending', 'partially_paid'].includes(billTyped?.status ?? '');
   const isFinalizedEditable =
-    isPendingFinalized &&
+    !admissionId && isPendingFinalized &&
     (billTyped?.canReopen ?? Number(billTyped?.amountPaid ?? 0) === 0);
 
   const selectedCount = Object.keys(selectedRefs).length;
@@ -626,12 +642,16 @@ function ComposeStep({
 
           <ManualLineForm
             onAdd={handleAddManual}
-            loading={addBillItem.isPending}
-            disabled={!effectiveBillId || billLoading || billTyped?.status !== 'draft'}
+            loading={addBillItem.isPending || addIpCharge.isPending}
+            disabled={
+              !effectiveBillId ||
+              billLoading ||
+              (billTyped?.status !== 'draft' && !admissionBillAcceptsCharges)
+            }
             disabledReason={
               !effectiveBillId || billLoading || !billTyped
                 ? 'Preparing the draft bill…'
-                : billTyped.status !== 'draft'
+                : billTyped.status !== 'draft' && !admissionBillAcceptsCharges
                   ? isFinalizedEditable
                     ? 'Reopen this bill before adding another charge.'
                     : billTyped.reopenBlockedReason ?? 'Manual charges can only be added to a draft bill.'
@@ -659,7 +679,11 @@ function ComposeStep({
           />
           <BillSummaryPanel bill={billTyped ?? null} />
           <div className="flex flex-col gap-2">
-            {isPendingFinalized ? (
+            {isPendingFinalized && admissionId ? (
+              <p className="rounded-lg bg-primary/5 border border-primary/20 px-3 py-2 font-label text-[11px] text-on-surface-variant">
+                This is a running IP bill. Add new manual charges above; the TPA and patient split is refreshed automatically.
+              </p>
+            ) : isPendingFinalized ? (
               isFinalizedEditable ? (
                 <>
                   <p className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 font-label text-[11px] text-amber-800">
