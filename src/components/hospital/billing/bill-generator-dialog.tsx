@@ -470,7 +470,14 @@ function ComposeStep({
 
   const handleAddManual = useCallback(
     async (data: { description: string; quantity: number; unitPrice: number; discount: number }) => {
-      if (!effectiveBillId) return;
+      if (!effectiveBillId || billTyped?.status !== 'draft') {
+        toast.error(
+          effectiveBillId
+            ? 'Reopen this bill before adding another charge'
+            : 'The draft bill is still being prepared',
+        );
+        return false;
+      }
       try {
         await addBillItem.mutateAsync({
           billId: effectiveBillId,
@@ -482,11 +489,13 @@ function ComposeStep({
           },
         });
         toast.success('Line added');
+        return true;
       } catch (e: unknown) {
-        toast.error(e instanceof Error ? e.message : 'Failed to add line');
+        toast.error(getApiErrorMessage(e, 'Failed to add line'));
+        return false;
       }
     },
-    [effectiveBillId, addBillItem],
+    [effectiveBillId, billTyped?.status, addBillItem],
   );
 
   const handleRemove = useCallback(
@@ -608,7 +617,20 @@ function ComposeStep({
             selectedTotal={selectedTotal}
           />
 
-          <ManualLineForm onAdd={handleAddManual} loading={addBillItem.isPending} />
+          <ManualLineForm
+            onAdd={handleAddManual}
+            loading={addBillItem.isPending}
+            disabled={!effectiveBillId || billLoading || billTyped?.status !== 'draft'}
+            disabledReason={
+              !effectiveBillId || billLoading || !billTyped
+                ? 'Preparing the draft bill…'
+                : billTyped.status !== 'draft'
+                  ? isFinalizedEditable
+                    ? 'Reopen this bill before adding another charge.'
+                    : 'Manual charges can only be added to a draft bill.'
+                  : undefined
+            }
+          />
 
           <BillLinesPanel
             items={billTyped?.billItems ?? []}
@@ -891,36 +913,52 @@ function ChargesPanel({
 // Manual line add — for ad-hoc charges not in any other module
 // ────────────────────────────────────────────────────────────────────────
 
-function ManualLineForm({
+export function ManualLineForm({
   onAdd,
   loading,
+  disabled = false,
+  disabledReason,
 }: {
-  onAdd: (data: { description: string; quantity: number; unitPrice: number; discount: number }) => Promise<void>;
+  onAdd: (data: { description: string; quantity: number; unitPrice: number; discount: number }) => Promise<boolean>;
   loading: boolean;
+  disabled?: boolean;
+  disabledReason?: string;
 }) {
   const [description, setDescription] = useState('');
-  const [quantity, setQuantity] = useState(0);
+  const [quantity, setQuantity] = useState(1);
   const [unitPrice, setUnitPrice] = useState<number | ''>('');
   const [discount, setDiscount] = useState<number | ''>(0);
 
   const submit = async () => {
+    if (loading || disabled) return;
     if (!description.trim()) {
       toast.error('Description required');
+      return;
+    }
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      toast.error('Quantity must be a positive whole number');
       return;
     }
     if (!unitPrice || Number(unitPrice) <= 0) {
       toast.error('Unit price must be > 0');
       return;
     }
-    await onAdd({
+    if (Number(discount) < 0) {
+      toast.error('Discount cannot be negative');
+      return;
+    }
+    const added = await onAdd({
       description: description.trim(),
       quantity: Number(quantity),
       unitPrice: Number(unitPrice),
       discount: Number(discount) || 0,
-
     });
+    // Preserve what the user typed when the API refuses the line so they can
+    // correct it and retry. Clearing on every resolved promise made a failed
+    // add look successful while nothing appeared on the bill.
+    if (!added) return;
     setDescription('');
-    setQuantity(0);
+    setQuantity(1);
     setUnitPrice('');
     setDiscount(0);
   };
@@ -936,14 +974,17 @@ function ManualLineForm({
           placeholder="Description (e.g. Dressing fee)"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
+          disabled={disabled || loading}
         />
         <NumberInput
           className="col-span-1"
-          min={0}
+          min={1}
+          emptyValue={1}
           integer
           value={quantity}
           onValueChange={setQuantity}
           placeholder="Qty"
+          disabled={disabled || loading}
         />
         <Input
           className="col-span-2"
@@ -952,6 +993,8 @@ function ManualLineForm({
           value={unitPrice}
           onChange={(e) => setUnitPrice(e.target.value === '' ? '' : Number(e.target.value))}
           placeholder="Unit ₹"
+          min="0.01"
+          disabled={disabled || loading}
         />
         <Input
           className="col-span-2"
@@ -960,13 +1003,18 @@ function ManualLineForm({
           value={discount}
           onChange={(e) => setDiscount(e.target.value === '' ? '' : Number(e.target.value))}
           placeholder="Disc"
+          min="0"
+          disabled={disabled || loading}
         />
         {/* No Tax% box. The engine classifies the line from its code or its
             tariff; a rate typed here would be ignored by it anyway. */}
-        <Button className="col-span-2" onClick={submit} disabled={loading}>
+        <Button className="col-span-2" onClick={submit} disabled={loading || disabled}>
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Plus className="h-4 w-4 mr-1" /> Add</>}
         </Button>
       </div>
+      {disabledReason && (
+        <p className="mt-2 font-label text-[11px] text-amber-700">{disabledReason}</p>
+      )}
     </div>
   );
 }
