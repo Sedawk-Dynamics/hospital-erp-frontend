@@ -60,6 +60,9 @@ interface BackendBill {
   totalAmount?: string | number;
   amountPaid?: string | number;
   balanceDue?: string | number;
+  /** Decided by the API from payment + TPA state, not guessed from amountPaid. */
+  canReopen?: boolean;
+  reopenBlockedReason?: string | null;
   billItems?: BillLineItem[];
   patient?: { id: string; firstName: string; lastName: string; mrn?: string | null };
   // What this bill IS under GST, once it has been finalised and issued.
@@ -548,7 +551,7 @@ function ComposeStep({
       await reopenBill.mutateAsync(effectiveBillId);
       toast.success('Bill reopened — you can add items again');
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Failed to reopen bill');
+      toast.error(getApiErrorMessage(e, 'Failed to reopen bill'));
     }
   }, [effectiveBillId, reopenBill]);
 
@@ -562,9 +565,13 @@ function ComposeStep({
     }
   }, [effectiveBillId, finalizeBill, onFinalized]);
 
-  // A finalized bill with nothing collected can still be pulled back to draft.
+  // Reopen eligibility comes from the server because amountPaid alone is not
+  // enough: a TPA split can leave it at zero while a claim or applied admission
+  // advance still makes the issued bill immutable.
+  const isPendingFinalized = billTyped?.status === 'pending';
   const isFinalizedEditable =
-    billTyped?.status === 'pending' && Number(billTyped?.amountPaid ?? 0) === 0;
+    isPendingFinalized &&
+    (billTyped?.canReopen ?? Number(billTyped?.amountPaid ?? 0) === 0);
 
   const selectedCount = Object.keys(selectedRefs).length;
   const selectedTotal = Object.values(selectedRefs).reduce((s, c) => s + c.totalAmount, 0);
@@ -627,7 +634,7 @@ function ComposeStep({
                 : billTyped.status !== 'draft'
                   ? isFinalizedEditable
                     ? 'Reopen this bill before adding another charge.'
-                    : 'Manual charges can only be added to a draft bill.'
+                    : billTyped.reopenBlockedReason ?? 'Manual charges can only be added to a draft bill.'
                   : undefined
             }
           />
@@ -652,25 +659,36 @@ function ComposeStep({
           />
           <BillSummaryPanel bill={billTyped ?? null} />
           <div className="flex flex-col gap-2">
-            {isFinalizedEditable ? (
-              <>
-                <p className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 font-label text-[11px] text-amber-800">
-                  This bill is finalized. Reopen it to add or remove items — allowed
-                  because nothing has been collected against it yet.
-                </p>
-                <Button
-                  className="w-full"
-                  variant="outline"
-                  disabled={reopenBill.isPending}
-                  onClick={handleReopen}
-                >
-                  {reopenBill.isPending ? (
-                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Reopening...</>
-                  ) : (
-                    <><Undo2 className="mr-2 h-4 w-4" /> Reopen Bill for Editing</>
-                  )}
-                </Button>
-              </>
+            {isPendingFinalized ? (
+              isFinalizedEditable ? (
+                <>
+                  <p className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 font-label text-[11px] text-amber-800">
+                    This bill is finalized. Reopen it to add or remove items — allowed
+                    because nothing has been collected against it yet.
+                  </p>
+                  <Button
+                    className="w-full"
+                    variant="outline"
+                    disabled={reopenBill.isPending}
+                    onClick={handleReopen}
+                  >
+                    {reopenBill.isPending ? (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Reopening...</>
+                    ) : (
+                      <><Undo2 className="mr-2 h-4 w-4" /> Reopen Bill for Editing</>
+                    )}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <p className="rounded-lg bg-surface-container-low border border-outline-variant px-3 py-2 font-label text-[11px] text-on-surface-variant">
+                    {billTyped?.reopenBlockedReason ?? 'This finalized bill cannot be reopened.'}
+                  </p>
+                  <Button className="w-full" variant="outline" disabled>
+                    <Undo2 className="mr-2 h-4 w-4" /> Reopen unavailable
+                  </Button>
+                </>
+              )
             ) : (
               <Button
                 className="w-full"
