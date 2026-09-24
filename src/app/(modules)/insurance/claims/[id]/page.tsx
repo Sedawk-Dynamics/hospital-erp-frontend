@@ -41,6 +41,7 @@ import {
   useExportClaim,
   useSplitBill,
   type ClaimStatus,
+  type AppliedBillSplit,
 } from '@/hooks/use-insurance';
 
 const STATUS_TONE: Record<ClaimStatus, string> = {
@@ -90,6 +91,7 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
   const [resubmitNotes, setResubmitNotes] = useState('');
   const [resubmitAmount, setResubmitAmount] = useState('');
   const [cancelReason, setCancelReason] = useState('');
+  const [appliedSplit, setAppliedSplit] = useState<AppliedBillSplit | null>(null);
 
   const submitMut = useSubmitClaim();
   const approveMut = useApproveClaim();
@@ -202,14 +204,23 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
   async function doApplySplit() {
     if (!claimSafe.policyId) return toast.error('A policy is required to calculate this split');
     try {
-      await splitMut.mutateAsync({
+      const result = await splitMut.mutateAsync({
         billId: claimSafe.billId,
         policyId: claimSafe.policyId,
         claimAmount: Number(claimSafe.claimAmount),
       });
-      toast.success('Bill split applied');
+      setAppliedSplit(result.billSplit);
+      const wasAlreadyCorrect =
+        Number(claimSafe.bill?.insuranceCoveredAmount ?? 0) === result.billSplit.insurancePortion &&
+        Number(claimSafe.bill?.patientPayableAmount ?? 0) === result.billSplit.patientPortion &&
+        Number(claimSafe.bill?.balanceDue ?? 0) === result.billSplit.balanceDue;
+      toast.success(
+        wasAlreadyCorrect
+          ? 'TPA / patient split was already correct.'
+          : `Split updated: TPA ${inr(result.billSplit.insurancePortion)}, patient ${inr(result.billSplit.patientPortion)}.`,
+      );
     } catch (err: unknown) {
-      toast.error(apiError(err, 'Failed'));
+      toast.error(apiError(err, 'Could not recalculate the bill split'));
     }
   }
   const isOpen = ['submitted', 'under_review', 'query_raised', 'response_submitted', 'resubmitted'].includes(claim.status);
@@ -291,7 +302,7 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
         <MoneyCard label="Outstanding" value={inr(claim.outstandingAmount)} tone="text-rose-700" />
         <MoneyCard label="Delay Liability" value={inr(claim.delayLiabilityAmount)} tone="text-orange-700" />
         <MoneyCard
-          label="Patient Pays"
+          label="Patient Share (Claim)"
           value={inr(claim.patientShare)}
           tone="text-primary"
         />
@@ -361,9 +372,25 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
             <Button onClick={doExport} variant="outline" className="justify-start gap-1.5">
               <Download className="size-4 text-primary" /> Legacy Claim Export
             </Button>
-            <Button onClick={doApplySplit} variant="outline" className="justify-start gap-1.5">
-              <Split className="size-4 text-cyan-700" /> Re-apply Bill Split
+            <Button
+              onClick={doApplySplit}
+              variant="outline"
+              className="justify-start gap-1.5"
+              disabled={splitMut.isPending}
+            >
+              <Split className="size-4 text-cyan-700" />
+              {splitMut.isPending ? 'Recalculating…' : 'Recalculate TPA / Patient Share'}
             </Button>
+            {appliedSplit && (
+              <div role="status" className="rounded-md border border-cyan-200 bg-cyan-50 p-2.5 text-xs text-cyan-950">
+                <div className="font-semibold">Bill split recalculated</div>
+                <div className="mt-1 grid grid-cols-3 gap-2">
+                  <span>TPA <strong>{inr(appliedSplit.insurancePortion)}</strong></span>
+                  <span>Patient <strong>{inr(appliedSplit.patientPortion)}</strong></span>
+                  <span>Due <strong>{inr(appliedSplit.balanceDue)}</strong></span>
+                </div>
+              </div>
+            )}
             {claim.status !== 'cancelled' && claim.status !== 'settled' && (
               <Button
                 onClick={() => {

@@ -327,6 +327,13 @@ export interface ResponsibilitySplit {
   insurancePortion: number;
 }
 
+export interface AppliedBillSplit {
+  insurancePortion: number;
+  patientPortion: number;
+  claimPatientPortion: number;
+  balanceDue: number;
+}
+
 // ============================================================
 // Query keys
 // ============================================================
@@ -917,7 +924,11 @@ export function useSplitBill() {
       policyId,
       claimAmount,
     }: { billId: string; policyId: string; claimAmount?: number }) => {
-      const res = await apiPatch<{ billId: string; split: ResponsibilitySplit }>(
+      const res = await apiPatch<{
+        billId: string;
+        split: ResponsibilitySplit;
+        billSplit: AppliedBillSplit;
+      }>(
         `/insurance/bills/${billId}/split`,
         { policyId, claimAmount },
       );
