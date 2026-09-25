@@ -26,6 +26,28 @@ const context: NdpsDoseContext = {
 };
 
 describe('NDPS bedside dose reconciliation', () => {
+  it('uses labelled contents derived from the selected drug when the form is empty', () => {
+    const dose = buildNdpsPatientDose({
+      ...context,
+      labelledContents: {
+        quantity: 10,
+        unit: 'mL',
+        source: 'drug_strength',
+        sourceText: '10ml',
+      },
+    }, {
+      ...EMPTY_NDPS_FORM,
+      administeredQuantity: '2',
+    });
+
+    expect(dose).toMatchObject({
+      labelledQuantity: 10,
+      administeredQuantity: 2,
+      quantityUnit: 'mL',
+      residualHandling: 'pending_destruction',
+    });
+  });
+
   it('records a destruction request without claiming destruction occurred', () => {
     const dose = buildNdpsPatientDose(context, {
       ...EMPTY_NDPS_FORM,

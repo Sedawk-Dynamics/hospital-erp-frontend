@@ -268,16 +268,6 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
                 ))}
               </div>
             )}
-            <Button
-              size="sm"
-              variant="outline"
-              className="mt-2 w-full"
-              onClick={openCollect}
-              disabled={preparing || consolidate.isPending}
-            >
-              {preparing ? 'Preparing bill…' : 'Collect payment'}
-            </Button>
-            {n(ledger?.totals?.pending) > 0 && (
             {/* Nothing to collect once the deposit already clears the balance —
                 offering "Collect payment" there let the desk take cash on top of
                 a deposit that had settled the bill (a double charge), and the

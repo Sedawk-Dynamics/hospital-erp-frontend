@@ -14,7 +14,7 @@ export const EMPTY_NDPS_FORM = {
   ndpsLocationId: '',
   labelledQuantity: '',
   administeredQuantity: '',
-  quantityUnit: 'mL',
+  quantityUnit: '',
   containerQuantity: '1',
   emergencyReason: '',
   notes: '',
@@ -35,12 +35,23 @@ export function effectiveNdpsLocation(context: NdpsDoseContext, value: NdpsDoseF
     ?? '';
 }
 
+export function effectiveLabelledQuantity(context: NdpsDoseContext, value: NdpsDoseForm) {
+  return value.labelledQuantity || (context.labelledContents?.quantity
+    ? String(context.labelledContents.quantity)
+    : '');
+}
+
+export function effectiveQuantityUnit(context: NdpsDoseContext, value: NdpsDoseForm) {
+  return value.quantityUnit || context.labelledContents?.unit || 'mL';
+}
+
 export function buildNdpsPatientDose(context: NdpsDoseContext | undefined, form: NdpsDoseForm): NdpsPatientDoseInput | undefined {
   if (!context?.isNdps) return undefined;
   if (context.existingDose) return undefined;
-  const labelledQuantity = Number(form.labelledQuantity);
+  const labelledQuantity = Number(effectiveLabelledQuantity(context, form));
   const administeredQuantity = Number(form.administeredQuantity);
   const containerQuantity = Number(form.containerQuantity);
+  const quantityUnit = effectiveQuantityUnit(context, form);
   const drugBatchId = effectiveNdpsBatch(context, form);
   const ndpsLocationId = effectiveNdpsLocation(context, form);
   if (!drugBatchId) throw new Error('Select the exact batch/container used.');
@@ -49,7 +60,7 @@ export function buildNdpsPatientDose(context: NdpsDoseContext | undefined, form:
   if (!(administeredQuantity > 0)) throw new Error('Enter the quantity actually administered.');
   if (administeredQuantity > labelledQuantity) throw new Error('Administered quantity cannot exceed labelled quantity.');
   if (!Number.isInteger(containerQuantity) || containerQuantity <= 0) throw new Error('Container count must be a positive whole number.');
-  if (!form.quantityUnit.trim()) throw new Error('Enter the quantity unit.');
+  if (!quantityUnit.trim()) throw new Error('Enter the quantity unit.');
   const residual = Math.round((labelledQuantity - administeredQuantity) * 10_000) / 10_000;
   const disposition = residual === 0 ? 'none' : 'quarantined';
   if (context.requiresEmergencyReason && !form.emergencyReason.trim()) {
@@ -60,7 +71,7 @@ export function buildNdpsPatientDose(context: NdpsDoseContext | undefined, form:
     ndpsLocationId,
     labelledQuantity,
     administeredQuantity,
-    quantityUnit: form.quantityUnit.trim(),
+    quantityUnit: quantityUnit.trim(),
     containerQuantity,
     disposition,
     // Bedside staff only record what was administered. Any positive remainder
@@ -83,7 +94,9 @@ export function NdpsDoseFields({
 }) {
   const set = (key: keyof NdpsDoseForm, next: string) =>
     onChange((current) => ({ ...current, [key]: next }));
-  const labelled = Number(value.labelledQuantity);
+  const labelledQuantityValue = effectiveLabelledQuantity(context, value);
+  const quantityUnit = effectiveQuantityUnit(context, value);
+  const labelled = Number(labelledQuantityValue);
   const administered = Number(value.administeredQuantity);
   const residual = labelled > 0 && administered > 0 && administered <= labelled
     ? Math.round((labelled - administered) * 10_000) / 10_000
@@ -139,7 +152,21 @@ export function NdpsDoseFields({
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs">Labelled contents *</Label>
-          <Input type="number" min="0" step="any" value={value.labelledQuantity} onChange={(event) => set('labelledQuantity', event.target.value)} placeholder="e.g. 2" />
+          <Input
+            type="number"
+            min="0"
+            step="any"
+            value={labelledQuantityValue}
+            readOnly
+            aria-readonly="true"
+            className="cursor-not-allowed bg-surface-container-high text-on-surface-variant"
+            placeholder="Not available"
+          />
+          <p className={`text-[10px] ${context.labelledContents ? 'text-muted-foreground' : 'text-red-700'}`}>
+            {context.labelledContents
+              ? `Locked from drug strength: ${context.labelledContents.sourceText}`
+              : 'Labelled contents are unavailable. Update the drug strength in the formulary.'}
+          </p>
         </div>
         <div className="grid grid-cols-[minmax(0,1fr)_88px] gap-2">
           <div className="space-y-1.5">
@@ -148,15 +175,15 @@ export function NdpsDoseFields({
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">Unit *</Label>
-            <Input value={value.quantityUnit} onChange={(event) => set('quantityUnit', event.target.value)} placeholder="mL" />
+            <Input value={quantityUnit} onChange={(event) => set('quantityUnit', event.target.value)} placeholder="mL" />
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-3 gap-2 rounded-lg border bg-background p-2 text-center text-xs">
-        <div><span className="block text-muted-foreground">Labelled</span><b>{labelled > 0 ? labelled : '-'} {value.quantityUnit}</b></div>
-        <div><span className="block text-muted-foreground">Given</span><b>{administered > 0 ? administered : '-'} {value.quantityUnit}</b></div>
-        <div><span className="block text-muted-foreground">Remaining (not given)</span><b className={residual && residual > 0 ? 'text-red-700' : ''}>{residual ?? '-'} {value.quantityUnit}</b></div>
+        <div><span className="block text-muted-foreground">Labelled</span><b>{labelled > 0 ? labelled : '-'} {quantityUnit}</b></div>
+        <div><span className="block text-muted-foreground">Given</span><b>{administered > 0 ? administered : '-'} {quantityUnit}</b></div>
+        <div><span className="block text-muted-foreground">Remaining (not given)</span><b className={residual && residual > 0 ? 'text-red-700' : ''}>{residual ?? '-'} {quantityUnit}</b></div>
       </div>
 
       {context.requiresEmergencyReason && (
