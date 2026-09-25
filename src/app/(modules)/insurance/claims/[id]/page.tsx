@@ -10,7 +10,6 @@ import {
   Download,
   Split,
   X,
-  Banknote,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -26,9 +25,9 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import {
-} from '@/components/ui/select';
 import { CommunicationLogPanel } from '@/components/insurance/communication-log-panel';
+import { ClaimWorkflowPanel } from '@/components/insurance/claim-workflow-panel';
+import { ClaimBillCard } from '@/components/insurance/claim-bill-card';
 import { formatDate, formatDateTime } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
 import {
@@ -37,17 +36,19 @@ import {
   useApproveClaim,
   useRejectClaim,
   usePartialApproveClaim,
-  useSettleClaim,
   useResubmitClaim,
   useCancelClaim,
   useExportClaim,
   useSplitBill,
   type ClaimStatus,
+  type AppliedBillSplit,
 } from '@/hooks/use-insurance';
 
 const STATUS_TONE: Record<ClaimStatus, string> = {
   submitted: 'bg-amber-100 text-amber-700 border-amber-300',
   under_review: 'bg-amber-100 text-amber-700 border-amber-300',
+  query_raised: 'bg-orange-100 text-orange-700 border-orange-300',
+  response_submitted: 'bg-indigo-100 text-indigo-700 border-indigo-300',
   approved: 'bg-emerald-100 text-emerald-700 border-emerald-300',
   partially_approved: 'bg-sky-100 text-sky-700 border-sky-300',
   rejected: 'bg-rose-100 text-rose-700 border-rose-300',
@@ -65,9 +66,13 @@ const PIPELINE: ClaimStatus[] = [
   'settled',
 ];
 
-function inr(value: number | null | undefined) {
+function inr(value: number | string | null | undefined) {
   if (value === null || value === undefined) return '—';
   return `₹${Number(value).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+}
+
+function apiError(error: unknown, fallback: string) {
+  return (error as { response?: { data?: { message?: string } } })?.response?.data?.message ?? fallback;
 }
 
 export default function ClaimDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -77,24 +82,21 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
   const [approveOpen, setApproveOpen] = useState(false);
   const [partialOpen, setPartialOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
-  const [settleOpen, setSettleOpen] = useState(false);
   const [resubmitOpen, setResubmitOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
 
   const [approvedAmount, setApprovedAmount] = useState('');
   const [approveNotes, setApproveNotes] = useState('');
   const [rejectReason, setRejectReason] = useState('');
-  const [settleAmount, setSettleAmount] = useState('');
-  const [settleDate, setSettleDate] = useState('');
   const [resubmitNotes, setResubmitNotes] = useState('');
   const [resubmitAmount, setResubmitAmount] = useState('');
   const [cancelReason, setCancelReason] = useState('');
+  const [appliedSplit, setAppliedSplit] = useState<AppliedBillSplit | null>(null);
 
   const submitMut = useSubmitClaim();
   const approveMut = useApproveClaim();
   const partialMut = usePartialApproveClaim();
   const rejectMut = useRejectClaim();
-  const settleMut = useSettleClaim();
   const resubmitMut = useResubmitClaim();
   const cancelMut = useCancelClaim();
   const exportMut = useExportClaim();
@@ -104,15 +106,19 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
     return <div className="p-8 text-on-surface-variant">Loading claim…</div>;
   }
 
-  const stage = PIPELINE.indexOf(claim.status as ClaimStatus);
+  const stage = claim.status === 'query_raised' || claim.status === 'response_submitted' || claim.status === 'rejected'
+    ? 1
+    : claim.status === 'partially_approved'
+      ? 2
+      : PIPELINE.indexOf(claim.status as ClaimStatus);
   const claimSafe = claim;
 
   async function doSubmit() {
     try {
       await submitMut.mutateAsync(id);
       toast.success('Marked under review');
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Failed');
+    } catch (err: unknown) {
+      toast.error(apiError(err, 'Failed'));
     }
   }
   async function doApprove() {
@@ -125,8 +131,8 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
       });
       toast.success('Claim approved');
       setApproveOpen(false);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Failed');
+    } catch (err: unknown) {
+      toast.error(apiError(err, 'Failed'));
     }
   }
   async function doPartial() {
@@ -140,8 +146,8 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
       });
       toast.success('Marked partially approved');
       setPartialOpen(false);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Failed');
+    } catch (err: unknown) {
+      toast.error(apiError(err, 'Failed'));
     }
   }
   async function doReject() {
@@ -150,22 +156,8 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
       await rejectMut.mutateAsync({ id, rejectionReason: rejectReason.trim() });
       toast.success('Claim rejected');
       setRejectOpen(false);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Failed');
-    }
-  }
-  async function doSettle() {
-    if (!settleAmount) return toast.error('Amount is required');
-    try {
-      await settleMut.mutateAsync({
-        id,
-        paidAmount: Number(settleAmount),
-        settlementDate: settleDate || undefined,
-      });
-      toast.success('Settlement recorded');
-      setSettleOpen(false);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Failed');
+    } catch (err: unknown) {
+      toast.error(apiError(err, 'Failed'));
     }
   }
   async function doResubmit() {
@@ -180,8 +172,8 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
       });
       toast.success('Claim resubmitted');
       setResubmitOpen(false);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Failed');
+    } catch (err: unknown) {
+      toast.error(apiError(err, 'Failed'));
     }
   }
   async function doCancel() {
@@ -190,8 +182,8 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
       await cancelMut.mutateAsync({ id, reason: cancelReason.trim() });
       toast.success('Claim cancelled');
       setCancelOpen(false);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Failed');
+    } catch (err: unknown) {
+      toast.error(apiError(err, 'Failed'));
     }
   }
   async function doExport() {
@@ -204,25 +196,34 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
       a.download = `claim-${claimSafe.claimNumber ?? id}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      toast.success('TPA-ready export downloaded');
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Export failed');
+      toast.success('Claim export downloaded');
+    } catch (err: unknown) {
+      toast.error(apiError(err, 'Export failed'));
     }
   }
   async function doApplySplit() {
+    if (!claimSafe.policyId) return toast.error('A policy is required to calculate this split');
     try {
-      await splitMut.mutateAsync({
+      const result = await splitMut.mutateAsync({
         billId: claimSafe.billId,
         policyId: claimSafe.policyId,
         claimAmount: Number(claimSafe.claimAmount),
       });
-      toast.success('Bill split applied');
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Failed');
+      setAppliedSplit(result.billSplit);
+      const wasAlreadyCorrect =
+        Number(claimSafe.bill?.insuranceCoveredAmount ?? 0) === result.billSplit.insurancePortion &&
+        Number(claimSafe.bill?.patientPayableAmount ?? 0) === result.billSplit.patientPortion &&
+        Number(claimSafe.bill?.balanceDue ?? 0) === result.billSplit.balanceDue;
+      toast.success(
+        wasAlreadyCorrect
+          ? 'TPA / patient split was already correct.'
+          : `Split updated: TPA ${inr(result.billSplit.insurancePortion)}, patient ${inr(result.billSplit.patientPortion)}.`,
+      );
+    } catch (err: unknown) {
+      toast.error(apiError(err, 'Could not recalculate the bill split'));
     }
   }
-  const isOpen = ['submitted', 'under_review', 'resubmitted'].includes(claim.status);
-  const isApproved = ['approved', 'partially_approved', 'partially_settled'].includes(claim.status);
+  const isOpen = ['submitted', 'under_review', 'query_raised', 'response_submitted', 'resubmitted'].includes(claim.status);
   const isResubmittable = ['rejected', 'partially_approved'].includes(claim.status);
 
   return (
@@ -241,7 +242,7 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
           </h1>
           <p className="text-sm text-on-surface-variant">
             Patient: {claim.patient?.firstName} {claim.patient?.lastName} ·{' '}
-            Insurer: {claim.policy?.insurer?.name ?? '—'} ·{' '}
+            Payer: {claim.policy?.insurer?.name ?? claim.insuranceCase?.insurer?.name ?? claim.insuranceCase?.corporatePayer?.name ?? claim.insuranceCase?.governmentSchemePayer?.name ?? '—'} ·{' '}
             Bill: {claim.bill?.billNumber ?? '—'}
           </p>
         </div>
@@ -287,29 +288,34 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
       </Card>
 
       {/* Money breakdown */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-9">
         <MoneyCard label="Claim Amount" value={inr(claim.claimAmount)} />
         <MoneyCard label="Co-Pay" value={inr(claim.copayAmount)} tone="text-amber-700" />
         <MoneyCard label="Deductible" value={inr(claim.deductibleAmount)} tone="text-rose-700" />
         <MoneyCard
-          label="Insurer Approved"
+          label="Payer Approved"
           value={inr(claim.approvedAmount ?? claim.coveredAmount)}
           tone="text-emerald-700"
         />
-        <MoneyCard label="Paid by Insurer" value={inr(claim.paidAmount)} tone="text-teal-700" />
+        <MoneyCard label="Gross Recovered" value={inr(claim.paidAmount)} tone="text-teal-700" />
+        <MoneyCard label="TDS Receivable" value={inr(claim.tdsReceivableAmount)} tone="text-violet-700" />
+        <MoneyCard label="Outstanding" value={inr(claim.outstandingAmount)} tone="text-rose-700" />
+        <MoneyCard label="Delay Liability" value={inr(claim.delayLiabilityAmount)} tone="text-orange-700" />
         <MoneyCard
-          label="Patient Pays"
+          label="Patient Share (Claim)"
           value={inr(claim.patientShare)}
           tone="text-primary"
         />
       </div>
+
+      {claim.bill && <ClaimBillCard bill={claim.bill} />}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Actions */}
         <Card className="lg:col-span-1">
           <CardHeader>
             <CardTitle>Actions</CardTitle>
-            <CardDescription>Lifecycle and TPA operations</CardDescription>
+            <CardDescription>Claim lifecycle and payer decisions</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
             {isOpen && (
@@ -350,19 +356,6 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
                 </Button>
               </>
             )}
-            {isApproved && (
-              <Button
-                onClick={() => {
-                  setSettleAmount('');
-                  setSettleDate(new Date().toISOString().slice(0, 10));
-                  setSettleOpen(true);
-                }}
-                variant="outline"
-                className="justify-start gap-1.5"
-              >
-                <Banknote className="size-4 text-teal-600" /> Record Settlement
-              </Button>
-            )}
             {isResubmittable && (
               <Button
                 onClick={() => {
@@ -377,11 +370,27 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
               </Button>
             )}
             <Button onClick={doExport} variant="outline" className="justify-start gap-1.5">
-              <Download className="size-4 text-primary" /> Export for TPA
+              <Download className="size-4 text-primary" /> Legacy Claim Export
             </Button>
-            <Button onClick={doApplySplit} variant="outline" className="justify-start gap-1.5">
-              <Split className="size-4 text-cyan-700" /> Re-apply Bill Split
+            <Button
+              onClick={doApplySplit}
+              variant="outline"
+              className="justify-start gap-1.5"
+              disabled={splitMut.isPending}
+            >
+              <Split className="size-4 text-cyan-700" />
+              {splitMut.isPending ? 'Recalculating…' : 'Recalculate TPA / Patient Share'}
             </Button>
+            {appliedSplit && (
+              <div role="status" className="rounded-md border border-cyan-200 bg-cyan-50 p-2.5 text-xs text-cyan-950">
+                <div className="font-semibold">Bill split recalculated</div>
+                <div className="mt-1 grid grid-cols-3 gap-2">
+                  <span>TPA <strong>{inr(appliedSplit.insurancePortion)}</strong></span>
+                  <span>Patient <strong>{inr(appliedSplit.patientPortion)}</strong></span>
+                  <span>Due <strong>{inr(appliedSplit.balanceDue)}</strong></span>
+                </div>
+              </div>
+            )}
             {claim.status !== 'cancelled' && claim.status !== 'settled' && (
               <Button
                 onClick={() => {
@@ -433,16 +442,21 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
 
         <Card>
           <CardHeader>
-            <CardTitle>Policy & Bill</CardTitle>
+            <CardTitle>Payer, Policy & Bill</CardTitle>
           </CardHeader>
           <CardContent className="space-y-1 text-sm">
             <Row label="Policy #" value={claim.policy?.policyNumber} />
-            <Row label="Insurer" value={claim.policy?.insurer?.name} />
+            <Row label="Payer" value={claim.policy?.insurer?.name ?? claim.insuranceCase?.insurer?.name ?? claim.insuranceCase?.corporatePayer?.name ?? claim.insuranceCase?.governmentSchemePayer?.name} />
+            {claim.insuranceCase && <Row label="Payer Case" value={<Link href={`/insurance/cases/${claim.insuranceCase.id}`} className="text-primary underline">{claim.insuranceCase.caseNumber}</Link>} />}
+            <Row label="Claim tier" value={(claim.tier ?? 'primary').replace(/_/g, ' ')} />
+            <Row label="Payer claim ref" value={claim.payerClaimReference ?? '—'} />
             <Row label="Bill #" value={claim.bill?.billNumber} />
             <Row label="Bill Total" value={inr(claim.bill?.totalAmount)} />
           </CardContent>
         </Card>
       </div>
+
+      <ClaimWorkflowPanel claim={claim} />
 
       <CommunicationLogPanel claimId={claim.id} />
 
@@ -526,38 +540,6 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
             </Button>
             <Button onClick={doReject} disabled={rejectMut.isPending}>
               Reject
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={settleOpen} onOpenChange={setSettleOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Record Insurer Payment</DialogTitle>
-          </DialogHeader>
-          <Label>Amount paid by insurer (₹)</Label>
-          <Input
-            type="number"
-            value={settleAmount}
-            onChange={(e) => setSettleAmount(e.target.value)}
-          />
-          <Label>Settlement Date</Label>
-          <Input
-            type="date"
-            value={settleDate}
-            onChange={(e) => setSettleDate(e.target.value)}
-          />
-          <p className="text-xs text-on-surface-variant">
-            Partial payments are allowed — the claim will move to “Partially Settled” until the full
-            approved amount is received.
-          </p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSettleOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={doSettle} disabled={settleMut.isPending}>
-              Record Payment
             </Button>
           </DialogFooter>
         </DialogContent>

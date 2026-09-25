@@ -21,6 +21,8 @@ export interface ControlledLine {
   schedule: DrugSchedule | null;
   controlledClass: 'narcotic' | 'psychotropic' | null;
   vaultControlled: boolean;
+  /** Legacy formulary flag; the server treats this as vault-controlled too. */
+  isNarcotic?: boolean;
 }
 
 export interface WitnessOption {
@@ -32,7 +34,7 @@ export interface WitnessOption {
 /** Mirrors the server's resolveControlRequirements, which stays authoritative. */
 export function controlledLinesOf(lines: ControlledLine[]): ControlledLine[] {
   return lines.filter(
-    (l) => l.vaultControlled || l.controlledClass || l.schedule === 'X' || l.schedule === 'H1',
+    (l) => l.vaultControlled || l.isNarcotic || l.controlledClass || l.schedule === 'X' || l.schedule === 'H1',
   );
 }
 
@@ -41,7 +43,7 @@ export function cartNeedsRx(lines: ControlledLine[]): boolean {
 }
 
 export function cartNeedsWitness(lines: ControlledLine[]): boolean {
-  return lines.some((l) => l.vaultControlled);
+  return lines.some((l) => l.vaultControlled || l.isNarcotic);
 }
 
 export function ControlledDrugPanel({
@@ -49,15 +51,18 @@ export function ControlledDrugPanel({
   hasRx,
   witnessName,
   onRequestWitness,
+  requireWitness = true,
   enforced,
 }: {
   lines: ControlledLine[];
   /** True when either an in-system or an outside prescription is attached. */
   hasRx: boolean;
-  /** Who has already co-signed, if anyone. */
-  witnessName: string | null;
+  /** Who has already co-signed, if this workflow requires a witness. */
+  witnessName?: string | null;
   /** Opens the co-sign dialog, where the witness enters their own password. */
-  onRequestWitness: () => void;
+  onRequestWitness?: () => void;
+  /** Pharmacy sales are prescription-backed but do not require a co-sign. */
+  requireWitness?: boolean;
   /**
    * False while the hospital is still on the legacy block. The panel then
    * informs rather than demands — nothing is being enforced yet.
@@ -67,7 +72,7 @@ export function ControlledDrugPanel({
   const controlled = controlledLinesOf(lines);
   if (controlled.length === 0) return null;
 
-  const needsWitness = cartNeedsWitness(controlled);
+  const needsWitness = requireWitness && cartNeedsWitness(controlled);
   const rxMissing = enforced && !hasRx;
   const witnessMissing = enforced && needsWitness && !witnessName;
 
@@ -83,7 +88,7 @@ export function ControlledDrugPanel({
       <ul className="space-y-1 px-4 py-2">
         {controlled.map((l, i) => (
           <li key={i} className="flex items-start gap-2 text-xs">
-            {l.vaultControlled ? (
+            {l.vaultControlled || l.isNarcotic ? (
               <Lock className="mt-0.5 h-3 w-3 shrink-0 text-error" />
             ) : (
               <FileCheck2 className="mt-0.5 h-3 w-3 shrink-0 text-warning" />
@@ -91,8 +96,12 @@ export function ControlledDrugPanel({
             <span>
               <span className="font-medium">{l.drugName}</span>
               {l.schedule ? <span className="text-muted-foreground"> · Schedule {l.schedule}</span> : null}
-              {l.vaultControlled ? (
-                <span className="text-error"> · safe custody, needs a witness</span>
+              {l.vaultControlled || l.isNarcotic ? (
+                <span className="text-error">
+                  {requireWitness
+                    ? ' · safe custody, needs a witness'
+                    : ' · prescription + NDPS register entry'}
+                </span>
               ) : (
                 <span className="text-muted-foreground"> · prescription + register entry</span>
               )}

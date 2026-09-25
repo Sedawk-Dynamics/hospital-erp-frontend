@@ -46,10 +46,13 @@ import {
   type ClaimStatus,
 } from '@/hooks/use-insurance';
 import apiClient from '@/lib/api-client';
+import { useApplyPayerCoverage, useCoveragePreview, useInsuranceCases } from '@/hooks/use-insurance-workflow';
 
 const STATUS_TONE: Record<ClaimStatus, string> = {
   submitted: 'bg-amber-100 text-amber-700 border-amber-300',
   under_review: 'bg-amber-100 text-amber-700 border-amber-300',
+  query_raised: 'bg-orange-100 text-orange-700 border-orange-300',
+  response_submitted: 'bg-indigo-100 text-indigo-700 border-indigo-300',
   approved: 'bg-emerald-100 text-emerald-700 border-emerald-300',
   partially_approved: 'bg-sky-100 text-sky-700 border-sky-300',
   rejected: 'bg-rose-100 text-rose-700 border-rose-300',
@@ -63,22 +66,36 @@ interface CreateForm {
   patientId: string;
   patientLabel: string;
   policyId: string;
+  insuranceCaseId: string;
   billId: string;
   billLabel: string;
   claimAmount: string;
   notes: string;
   expiryDays: string;
+  tier: 'primary' | 'secondary' | 'supplementary';
+  sequence: string;
+  submissionChannel: 'portal' | 'email' | 'nhcx' | 'api' | 'manual';
+  settlementMode: 'cashless' | 'reimbursement' | 'credit';
+  payerClaimReference: string;
+  submissionReference: string;
 }
 
 const EMPTY: CreateForm = {
   patientId: '',
   patientLabel: '',
   policyId: '',
+  insuranceCaseId: '',
   billId: '',
   billLabel: '',
   claimAmount: '',
   notes: '',
   expiryDays: '30',
+  tier: 'primary',
+  sequence: '1',
+  submissionChannel: 'portal',
+  settlementMode: 'cashless',
+  payerClaimReference: '',
+  submissionReference: '',
 };
 
 interface BillSummary {
@@ -100,6 +117,7 @@ export default function ClaimsListPage() {
   const debouncedPatient = useDebounce(patientSearch, 250);
   const [bills, setBills] = useState<BillSummary[]>([]);
   const [billLoading, setBillLoading] = useState(false);
+  const [expiryWarningAt] = useState(() => Date.now() + 7 * 24 * 60 * 60 * 1000);
 
   const { data, isLoading } = useClaims({
     status: statusFilter === 'all' ? undefined : statusFilter,
@@ -108,10 +126,13 @@ export default function ClaimsListPage() {
   const { data: expiring } = useExpiringClaims(7);
   const { data: patients } = usePatientSearch(debouncedPatient);
   const { data: policies } = usePoliciesByPatient(form.patientId || undefined);
+  const { data: payerCases } = useInsuranceCases({ patientId: form.patientId || undefined, limit: 100 });
   const { data: calc } = useCalcResponsibility(
     form.policyId || undefined,
     form.billId || undefined,
   );
+  const coveragePreview = useCoveragePreview(form.insuranceCaseId || undefined, form.billId || undefined);
+  const applyCoverage = useApplyPayerCoverage();
   const createMut = useCreateClaim();
 
   // Fetch bills when a patient is picked
@@ -135,23 +156,31 @@ export default function ClaimsListPage() {
   }, [calc]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleCreate() {
-    if (!form.policyId) return toast.error('Pick a policy');
+    if (!form.policyId && !form.insuranceCaseId) return toast.error('Pick a policy or payer case');
     if (!form.billId) return toast.error('Pick a bill');
     if (!form.claimAmount) return toast.error('Claim amount is required');
     try {
       await createMut.mutateAsync({
         patientId: form.patientId,
-        policyId: form.policyId,
+        policyId: form.policyId || undefined,
+        insuranceCaseId: form.insuranceCaseId || undefined,
         billId: form.billId,
         claimAmount: Number(form.claimAmount),
         notes: form.notes.trim() || undefined,
         expiryDays: Number(form.expiryDays || 30),
+        tier: form.tier,
+        sequence: Number(form.sequence || 1),
+        submissionChannel: form.submissionChannel,
+        settlementMode: form.settlementMode,
+        payerClaimReference: form.payerClaimReference.trim() || undefined,
+        submissionReference: form.submissionReference.trim() || undefined,
       });
       toast.success('Claim submitted');
       setDialogOpen(false);
       setForm(EMPTY);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Submit failed');
+    } catch (err: unknown) {
+      const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(message ?? 'Submit failed');
     }
   }
 
@@ -216,6 +245,8 @@ export default function ClaimsListPage() {
                   <SelectItem value="all">All statuses</SelectItem>
                   <SelectItem value="submitted">Submitted</SelectItem>
                   <SelectItem value="under_review">Under Review</SelectItem>
+                  <SelectItem value="query_raised">Query Raised</SelectItem>
+                  <SelectItem value="response_submitted">Response Submitted</SelectItem>
                   <SelectItem value="approved">Approved</SelectItem>
                   <SelectItem value="partially_approved">Partially Approved</SelectItem>
                   <SelectItem value="rejected">Rejected</SelectItem>
@@ -278,7 +309,7 @@ export default function ClaimsListPage() {
                     <TableCell>
                       {c.patient?.firstName} {c.patient?.lastName ?? ''}
                     </TableCell>
-                    <TableCell>{c.policy?.insurer?.name ?? '—'}</TableCell>
+                    <TableCell>{c.policy?.insurer?.name ?? c.insuranceCase?.insurer?.name ?? c.insuranceCase?.corporatePayer?.name ?? c.insuranceCase?.governmentSchemePayer?.name ?? '—'}</TableCell>
                     <TableCell>{c.bill?.billNumber ?? '—'}</TableCell>
                     <TableCell>₹{Number(c.claimAmount).toLocaleString('en-IN')}</TableCell>
                     <TableCell>
@@ -301,7 +332,7 @@ export default function ClaimsListPage() {
                       className={cn(
                         c.expiryDate &&
                           new Date(c.expiryDate).getTime() <=
-                            Date.now() + 7 * 24 * 60 * 60 * 1000 &&
+                            expiryWarningAt &&
                           'text-amber-700 font-medium',
                       )}
                     >
@@ -345,7 +376,7 @@ export default function ClaimsListPage() {
               />
               {patientSearch.length >= 2 && patients && patients.length > 0 && (
                 <div className="mt-1 max-h-40 overflow-y-auto rounded-lg border bg-surface-container-lowest">
-                  {patients.map((pt: any) => (
+                  {patients.map((pt) => (
                     <button
                       key={pt.id}
                       type="button"
@@ -355,6 +386,7 @@ export default function ClaimsListPage() {
                           patientId: pt.id,
                           patientLabel: `${pt.firstName} ${pt.lastName ?? ''} (${pt.mrn})`,
                           policyId: '',
+                          insuranceCaseId: '',
                           billId: '',
                           billLabel: '',
                         });
@@ -375,7 +407,20 @@ export default function ClaimsListPage() {
               )}
             </div>
             <div>
-              <Label>Policy *</Label>
+              <Label>Payer case</Label>
+              <Select
+                value={form.insuranceCaseId || null}
+                onValueChange={(v) => {
+                  const selected = payerCases?.data.find((item) => item.id === v);
+                  setForm({ ...form, insuranceCaseId: (v as string) ?? '', policyId: selected?.policies[0]?.policy.id ?? form.policyId, settlementMode: selected?.settlementMode ?? form.settlementMode });
+                }}
+              >
+                <SelectTrigger className="w-full"><SelectValue placeholder="Select payer case" /></SelectTrigger>
+                <SelectContent>{payerCases?.data.map((item) => <SelectItem key={item.id} value={item.id}>{item.caseNumber} · {item.settlementMode}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Policy (optional for corporate / scheme)</Label>
               <Select
                 value={form.policyId || null}
                 onValueChange={(v) => v && setForm({ ...form, policyId: v as string })}
@@ -392,6 +437,11 @@ export default function ClaimsListPage() {
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label>Claim tier</Label>
+              <Select value={form.tier} onValueChange={(value) => value && setForm({ ...form, tier: value as CreateForm['tier'] })}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="primary">Primary</SelectItem><SelectItem value="secondary">Secondary</SelectItem><SelectItem value="supplementary">Supplementary</SelectItem></SelectContent></Select>
+            </div>
+            <div><Label>Claim sequence</Label><Input type="number" min="1" value={form.sequence} onChange={(event) => setForm({ ...form, sequence: event.target.value })} /></div>
             <div>
               <Label>Bill *</Label>
               <Select
@@ -436,6 +486,12 @@ export default function ClaimsListPage() {
                 onChange={(e) => setForm({ ...form, expiryDays: e.target.value })}
               />
             </div>
+            <div>
+              <Label>Submission channel</Label>
+              <Select value={form.submissionChannel} onValueChange={(value) => value && setForm({ ...form, submissionChannel: value as CreateForm['submissionChannel'] })}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{['portal', 'email', 'nhcx', 'api', 'manual'].map((value) => <SelectItem key={value} value={value}>{value.toUpperCase()}</SelectItem>)}</SelectContent></Select>
+            </div>
+            <div><Label>Payer claim reference</Label><Input value={form.payerClaimReference} onChange={(event) => setForm({ ...form, payerClaimReference: event.target.value })} /></div>
+            <div><Label>Submission reference</Label><Input value={form.submissionReference} onChange={(event) => setForm({ ...form, submissionReference: event.target.value })} /></div>
             {calc?.split && (
               <div className="col-span-2 rounded-lg border bg-surface-container-low p-3 text-sm">
                 <div className="mb-2 text-xs font-bold uppercase tracking-wider text-on-surface-variant">
@@ -459,6 +515,11 @@ export default function ClaimsListPage() {
                     tone="text-primary"
                   />
                 </div>
+              </div>
+            )}
+            {form.insuranceCaseId && form.billId && (
+              <div className="col-span-2 rounded-lg border border-blue-200 bg-blue-50/50 p-3 text-sm">
+                {coveragePreview.isLoading ? <span>Calculating payer contract coverage…</span> : coveragePreview.data ? <div className="space-y-2"><div className="flex flex-wrap items-center justify-between gap-2"><div><div className="font-semibold">{coveragePreview.data.contract.name}</div><div className="text-xs text-on-surface-variant">Negotiated rates, room cap and non-payable rules applied to {coveragePreview.data.lines.length} bill lines.</div></div><Button size="sm" variant="outline" disabled={applyCoverage.isPending} onClick={async () => { try { const result = await applyCoverage.mutateAsync({ caseId: form.insuranceCaseId, billId: form.billId }); setForm({ ...form, claimAmount: String(result.summary.payerAllowedAmount) }); toast.success('Payer contract split applied to bill'); } catch (error: unknown) { const message = (error as { response?: { data?: { message?: string } } })?.response?.data?.message; toast.error(message ?? 'Could not apply payer contract'); } }}>Apply contract split</Button></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-4"><SplitCell label="Billed" value={coveragePreview.data.summary.billedAmount} /><SplitCell label="Payer allowed" value={coveragePreview.data.summary.payerAllowedAmount} tone="text-emerald-700" /><SplitCell label="Patient payable" value={coveragePreview.data.summary.patientPayableAmount} tone="text-amber-700" /><SplitCell label="Contract reduction" value={coveragePreview.data.summary.contractualReduction} tone="text-rose-700" /></div></div> : <div className="text-amber-800">No active payer contract covers this bill date. Configure the contract before applying negotiated coverage.</div>}
               </div>
             )}
             <div className="col-span-2">

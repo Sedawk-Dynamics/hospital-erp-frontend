@@ -49,6 +49,7 @@ import {
   type ChargeRow,
   type ChargeSource,
 } from '@/hooks/use-hospital';
+import { useAddIpCharge } from '@/hooks/use-ip-ledger';
 
 interface BackendBill {
   id: string;
@@ -60,6 +61,9 @@ interface BackendBill {
   totalAmount?: string | number;
   amountPaid?: string | number;
   balanceDue?: string | number;
+  /** Decided by the API from payment + TPA state, not guessed from amountPaid. */
+  canReopen?: boolean;
+  reopenBlockedReason?: string | null;
   billItems?: BillLineItem[];
   patient?: { id: string; firstName: string; lastName: string; mrn?: string | null };
   // What this bill IS under GST, once it has been finalised and issued.
@@ -374,6 +378,7 @@ function ComposeStep({
   const pullCharges = usePullCharges();
   const refreshDraftTax = useRefreshDraftTax();
   const addBillItem = useAddBillItem();
+  const addIpCharge = useAddIpCharge(admissionId ?? '');
   const removeBillItem = useRemoveBillItem();
   const updateBillItem = useUpdateBillItem();
   const setBillDiscount = useSetBillDiscount();
@@ -470,23 +475,44 @@ function ComposeStep({
 
   const handleAddManual = useCallback(
     async (data: { description: string; quantity: number; unitPrice: number; discount: number }) => {
-      if (!effectiveBillId) return;
+      const admissionBillAcceptsCharges =
+        !!admissionId && ['draft', 'pending', 'partially_paid'].includes(billTyped?.status ?? '');
+      if (!effectiveBillId || (billTyped?.status !== 'draft' && !admissionBillAcceptsCharges)) {
+        toast.error(
+          effectiveBillId
+            ? 'Reopen this bill before adding another charge'
+            : 'The draft bill is still being prepared',
+        );
+        return false;
+      }
       try {
-        await addBillItem.mutateAsync({
-          billId: effectiveBillId,
-          data: {
+        if (admissionId) {
+          await addIpCharge.mutateAsync({
+            category: 'other',
             description: data.description,
             quantity: data.quantity,
             unitPrice: data.unitPrice,
             discount: data.discount,
-          },
-        });
+          });
+        } else {
+          await addBillItem.mutateAsync({
+            billId: effectiveBillId,
+            data: {
+              description: data.description,
+              quantity: data.quantity,
+              unitPrice: data.unitPrice,
+              discount: data.discount,
+            },
+          });
+        }
         toast.success('Line added');
+        return true;
       } catch (e: unknown) {
-        toast.error(e instanceof Error ? e.message : 'Failed to add line');
+        toast.error(getApiErrorMessage(e, 'Failed to add line'));
+        return false;
       }
     },
-    [effectiveBillId, addBillItem],
+    [effectiveBillId, billTyped?.status, admissionId, addBillItem, addIpCharge],
   );
 
   const handleRemove = useCallback(
@@ -539,7 +565,7 @@ function ComposeStep({
       await reopenBill.mutateAsync(effectiveBillId);
       toast.success('Bill reopened — you can add items again');
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Failed to reopen bill');
+      toast.error(getApiErrorMessage(e, 'Failed to reopen bill'));
     }
   }, [effectiveBillId, reopenBill]);
 
@@ -553,9 +579,15 @@ function ComposeStep({
     }
   }, [effectiveBillId, finalizeBill, onFinalized]);
 
-  // A finalized bill with nothing collected can still be pulled back to draft.
+  // Reopen eligibility comes from the server because amountPaid alone is not
+  // enough: a TPA split can leave it at zero while a claim or applied admission
+  // advance still makes the issued bill immutable.
+  const isPendingFinalized = billTyped?.status === 'pending';
+  const admissionBillAcceptsCharges =
+    !!admissionId && ['draft', 'pending', 'partially_paid'].includes(billTyped?.status ?? '');
   const isFinalizedEditable =
-    billTyped?.status === 'pending' && Number(billTyped?.amountPaid ?? 0) === 0;
+    !admissionId && isPendingFinalized &&
+    (billTyped?.canReopen ?? Number(billTyped?.amountPaid ?? 0) === 0);
 
   const selectedCount = Object.keys(selectedRefs).length;
   const selectedTotal = Object.values(selectedRefs).reduce((s, c) => s + c.totalAmount, 0);
@@ -608,7 +640,24 @@ function ComposeStep({
             selectedTotal={selectedTotal}
           />
 
-          <ManualLineForm onAdd={handleAddManual} loading={addBillItem.isPending} />
+          <ManualLineForm
+            onAdd={handleAddManual}
+            loading={addBillItem.isPending || addIpCharge.isPending}
+            disabled={
+              !effectiveBillId ||
+              billLoading ||
+              (billTyped?.status !== 'draft' && !admissionBillAcceptsCharges)
+            }
+            disabledReason={
+              !effectiveBillId || billLoading || !billTyped
+                ? 'Preparing the draft bill…'
+                : billTyped.status !== 'draft' && !admissionBillAcceptsCharges
+                  ? isFinalizedEditable
+                    ? 'Reopen this bill before adding another charge.'
+                    : billTyped.reopenBlockedReason ?? 'Manual charges can only be added to a draft bill.'
+                  : undefined
+            }
+          />
 
           <BillLinesPanel
             items={billTyped?.billItems ?? []}
@@ -630,25 +679,40 @@ function ComposeStep({
           />
           <BillSummaryPanel bill={billTyped ?? null} />
           <div className="flex flex-col gap-2">
-            {isFinalizedEditable ? (
-              <>
-                <p className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 font-label text-[11px] text-amber-800">
-                  This bill is finalized. Reopen it to add or remove items — allowed
-                  because nothing has been collected against it yet.
-                </p>
-                <Button
-                  className="w-full"
-                  variant="outline"
-                  disabled={reopenBill.isPending}
-                  onClick={handleReopen}
-                >
-                  {reopenBill.isPending ? (
-                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Reopening...</>
-                  ) : (
-                    <><Undo2 className="mr-2 h-4 w-4" /> Reopen Bill for Editing</>
-                  )}
-                </Button>
-              </>
+            {isPendingFinalized && admissionId ? (
+              <p className="rounded-lg bg-primary/5 border border-primary/20 px-3 py-2 font-label text-[11px] text-on-surface-variant">
+                This is a running IP bill. Add new manual charges above; the TPA and patient split is refreshed automatically.
+              </p>
+            ) : isPendingFinalized ? (
+              isFinalizedEditable ? (
+                <>
+                  <p className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 font-label text-[11px] text-amber-800">
+                    This bill is finalized. Reopen it to add or remove items — allowed
+                    because nothing has been collected against it yet.
+                  </p>
+                  <Button
+                    className="w-full"
+                    variant="outline"
+                    disabled={reopenBill.isPending}
+                    onClick={handleReopen}
+                  >
+                    {reopenBill.isPending ? (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Reopening...</>
+                    ) : (
+                      <><Undo2 className="mr-2 h-4 w-4" /> Reopen Bill for Editing</>
+                    )}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <p className="rounded-lg bg-surface-container-low border border-outline-variant px-3 py-2 font-label text-[11px] text-on-surface-variant">
+                    {billTyped?.reopenBlockedReason ?? 'This finalized bill cannot be reopened.'}
+                  </p>
+                  <Button className="w-full" variant="outline" disabled>
+                    <Undo2 className="mr-2 h-4 w-4" /> Reopen unavailable
+                  </Button>
+                </>
+              )
             ) : (
               <Button
                 className="w-full"
@@ -891,36 +955,52 @@ function ChargesPanel({
 // Manual line add — for ad-hoc charges not in any other module
 // ────────────────────────────────────────────────────────────────────────
 
-function ManualLineForm({
+export function ManualLineForm({
   onAdd,
   loading,
+  disabled = false,
+  disabledReason,
 }: {
-  onAdd: (data: { description: string; quantity: number; unitPrice: number; discount: number }) => Promise<void>;
+  onAdd: (data: { description: string; quantity: number; unitPrice: number; discount: number }) => Promise<boolean>;
   loading: boolean;
+  disabled?: boolean;
+  disabledReason?: string;
 }) {
   const [description, setDescription] = useState('');
-  const [quantity, setQuantity] = useState(0);
+  const [quantity, setQuantity] = useState(1);
   const [unitPrice, setUnitPrice] = useState<number | ''>('');
   const [discount, setDiscount] = useState<number | ''>(0);
 
   const submit = async () => {
+    if (loading || disabled) return;
     if (!description.trim()) {
       toast.error('Description required');
+      return;
+    }
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      toast.error('Quantity must be a positive whole number');
       return;
     }
     if (!unitPrice || Number(unitPrice) <= 0) {
       toast.error('Unit price must be > 0');
       return;
     }
-    await onAdd({
+    if (Number(discount) < 0) {
+      toast.error('Discount cannot be negative');
+      return;
+    }
+    const added = await onAdd({
       description: description.trim(),
       quantity: Number(quantity),
       unitPrice: Number(unitPrice),
       discount: Number(discount) || 0,
-
     });
+    // Preserve what the user typed when the API refuses the line so they can
+    // correct it and retry. Clearing on every resolved promise made a failed
+    // add look successful while nothing appeared on the bill.
+    if (!added) return;
     setDescription('');
-    setQuantity(0);
+    setQuantity(1);
     setUnitPrice('');
     setDiscount(0);
   };
@@ -936,14 +1016,17 @@ function ManualLineForm({
           placeholder="Description (e.g. Dressing fee)"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
+          disabled={disabled || loading}
         />
         <NumberInput
           className="col-span-1"
-          min={0}
+          min={1}
+          emptyValue={1}
           integer
           value={quantity}
           onValueChange={setQuantity}
           placeholder="Qty"
+          disabled={disabled || loading}
         />
         <Input
           className="col-span-2"
@@ -952,6 +1035,8 @@ function ManualLineForm({
           value={unitPrice}
           onChange={(e) => setUnitPrice(e.target.value === '' ? '' : Number(e.target.value))}
           placeholder="Unit ₹"
+          min="0.01"
+          disabled={disabled || loading}
         />
         <Input
           className="col-span-2"
@@ -960,13 +1045,18 @@ function ManualLineForm({
           value={discount}
           onChange={(e) => setDiscount(e.target.value === '' ? '' : Number(e.target.value))}
           placeholder="Disc"
+          min="0"
+          disabled={disabled || loading}
         />
         {/* No Tax% box. The engine classifies the line from its code or its
             tariff; a rate typed here would be ignored by it anyway. */}
-        <Button className="col-span-2" onClick={submit} disabled={loading}>
+        <Button className="col-span-2" onClick={submit} disabled={loading || disabled}>
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Plus className="h-4 w-4 mr-1" /> Add</>}
         </Button>
       </div>
+      {disabledReason && (
+        <p className="mt-2 font-label text-[11px] text-amber-700">{disabledReason}</p>
+      )}
     </div>
   );
 }

@@ -8,6 +8,8 @@ import { apiGet, apiPost, apiPatch, apiPut, apiDelete } from '@/lib/api';
 export type ClaimStatus =
   | 'submitted'
   | 'under_review'
+  | 'query_raised'
+  | 'response_submitted'
   | 'approved'
   | 'partially_approved'
   | 'rejected'
@@ -119,11 +121,76 @@ export interface InsurancePolicy {
   tpa?: { id: string; name: string } | null;
 }
 
+export type InsuranceMoney = number | string;
+
+export interface InsuranceBillItem {
+  id: string;
+  description: string;
+  category: string;
+  quantity: number;
+  unitPrice: InsuranceMoney;
+  discountPercent: InsuranceMoney;
+  discountAmount: InsuranceMoney;
+  taxPercent: InsuranceMoney;
+  taxAmount: InsuranceMoney;
+  totalAmount: InsuranceMoney;
+  hsnSacCode?: string | null;
+  gstTreatment?: string | null;
+  taxableValue: InsuranceMoney;
+  cgstAmount: InsuranceMoney;
+  sgstAmount: InsuranceMoney;
+  igstAmount: InsuranceMoney;
+  cessAmount: InsuranceMoney;
+  isReimbursable?: boolean | null;
+  tpaCategory?: string | null;
+  createdAt: string;
+}
+
+export interface InsuranceBillPayment {
+  id: string;
+  paymentDate: string;
+  amount: InsuranceMoney;
+  paymentMethod: string;
+  paymentSource?: string | null;
+  paymentType: string;
+  status: string;
+  transactionId?: string | null;
+  notes?: string | null;
+}
+
+export interface InsuranceClaimBill {
+  id: string;
+  billNumber: string;
+  billDate?: string;
+  status?: string;
+  subtotal?: InsuranceMoney;
+  discountAmount?: InsuranceMoney;
+  taxAmount?: InsuranceMoney;
+  totalAmount: InsuranceMoney;
+  insuranceCoveredAmount?: InsuranceMoney;
+  patientPayableAmount?: InsuranceMoney;
+  amountPaid?: InsuranceMoney;
+  balanceDue?: InsuranceMoney;
+  taxableValue?: InsuranceMoney;
+  cgstAmount?: InsuranceMoney;
+  sgstAmount?: InsuranceMoney;
+  igstAmount?: InsuranceMoney;
+  cessAmount?: InsuranceMoney;
+  roundOff?: InsuranceMoney;
+  gstDocumentType?: string | null;
+  invoiceNumber?: string | null;
+  billOfSupplyNumber?: string | null;
+  billItems?: InsuranceBillItem[];
+  payments?: InsuranceBillPayment[];
+}
+
 export interface InsuranceClaim {
   id: string;
   tenantId: string;
   patientId: string;
-  policyId: string;
+  policyId?: string | null;
+  insuranceCaseId?: string | null;
+  preAuthId?: string | null;
   billId: string;
   claimNumber?: string | null;
   claimAmount: number;
@@ -133,7 +200,18 @@ export interface InsuranceClaim {
   deductibleAmount?: number | null;
   coveredAmount?: number | null;
   paidAmount: number;
+  tdsReceivableAmount?: number | null;
+  disallowedAmount?: number | null;
+  writtenOffAmount?: number | null;
+  delayLiabilityAmount?: number | null;
   outstandingAmount?: number | null;
+  tier?: 'primary' | 'secondary' | 'supplementary';
+  sequence?: number;
+  settlementMode?: 'cashless' | 'reimbursement' | 'credit';
+  submissionChannel?: 'portal' | 'email' | 'nhcx' | 'api' | 'manual' | null;
+  payerClaimReference?: string | null;
+  submissionReference?: string | null;
+  nhcxTransactionId?: string | null;
   status: ClaimStatus;
   submissionDate: string;
   approvalDate?: string | null;
@@ -149,20 +227,53 @@ export interface InsuranceClaim {
     id: string;
     policyNumber: string;
     insurer?: { id: string; name: string };
-  };
-  bill?: { id: string; billNumber: string; totalAmount: number };
+  } | null;
+  insuranceCase?: {
+    id: string;
+    caseNumber: string;
+    status: string;
+    insurer?: { id: string; name: string } | null;
+    tpa?: { id: string; name: string } | null;
+    corporatePayer?: { id: string; name: string } | null;
+    governmentSchemePayer?: { id: string; name: string } | null;
+  } | null;
+  bill?: InsuranceClaimBill;
+  preAuth?: PreAuthRequest | null;
+  documents?: Array<{ id: string; code?: string | null; name: string; category: string; fileUrl: string; version: number; status: string; rejectionReason?: string | null; createdAt: string }>;
+  checklistItems?: Array<{ id: string; requirementCode: string; label: string; isRequired: boolean; isComplete: boolean; documentId?: string | null }>;
+  queries?: Array<{ id: string; queryReference?: string | null; subject: string; queryText: string; status: string; raisedAt: string; responseDueAt: string; responseText?: string | null; respondedAt?: string | null; resolvedAt?: string | null }>;
+  settlements?: Array<{ id: string; grossApprovedAmount: number; grossPaidAmount: number; tdsAmount: number; tdsSection?: string | null; tdsRate?: number | null; disallowedAmount: number; disallowanceReason?: string | null; netPaidAmount: number; paymentReference?: string | null; bankReference?: string | null; settlementDate: string; notes?: string | null }>;
+  writeOffs?: Array<{ id: string; amount: number; reason: string; status: string; decisionNote?: string | null; createdAt: string }>;
+  adjustments?: Array<{ id: string; adjustmentType: string; amount: number; reference?: string | null; reason: string; effectiveDate: string }>;
+  auditEvents?: Array<{ id: string; eventType: string; fromStatus?: string | null; toStatus?: string | null; details?: unknown; occurredAt: string }>;
   previousClaim?: { id: string; claimNumber?: string | null; status: ClaimStatus } | null;
 }
 
 export interface PreAuthRequest {
   id: string;
   patientId: string;
-  policyId: string;
+  policyId?: string | null;
+  insuranceCaseId?: string | null;
+  admissionId?: string | null;
+  visitId?: string | null;
+  doctorId?: string | null;
+  requestNumber?: string | null;
+  requestType?: 'initial' | 'enhancement' | 'finalDischarge';
+  parentRequestId?: string | null;
+  diagnosisCode?: string | null;
+  procedureCode?: string | null;
   procedureDescription: string;
   estimatedCost?: number | null;
   approvedAmount?: number | null;
   status: PreAuthStatus;
   approvalNumber?: string | null;
+  submissionChannel?: 'portal' | 'email' | 'nhcx' | 'api' | 'manual' | null;
+  submissionReference?: string | null;
+  nhcxTransactionId?: string | null;
+  submittedAt?: string | null;
+  alertAt?: string | null;
+  decisionDueAt?: string | null;
+  decidedAt?: string | null;
   validFrom?: string | null;
   validTo?: string | null;
   holdReason?: string | null;
@@ -173,7 +284,8 @@ export interface PreAuthRequest {
     id: string;
     policyNumber: string;
     insurer?: { id: string; name: string };
-  };
+  } | null;
+  insuranceCase?: { id: string; caseNumber: string; priority?: string } | null;
 }
 
 export interface DashboardData {
@@ -213,6 +325,13 @@ export interface ResponsibilitySplit {
   copayAmount: number;
   patientResponsibility: number;
   insurancePortion: number;
+}
+
+export interface AppliedBillSplit {
+  insurancePortion: number;
+  patientPortion: number;
+  claimPatientPortion: number;
+  balanceDue: number;
 }
 
 // ============================================================
@@ -430,6 +549,7 @@ export function useVerifyPolicy() {
 export function useClaims(params?: {
   patientId?: string;
   policyId?: string;
+  insuranceCaseId?: string;
   status?: ClaimStatus;
   search?: string;
   fromDate?: string;
@@ -462,10 +582,19 @@ export function useCreateClaim() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (body: {
-      policyId: string;
+      policyId?: string;
+      insuranceCaseId?: string;
+      preAuthId?: string;
       patientId: string;
       billId: string;
       claimAmount: number;
+      tier?: 'primary' | 'secondary' | 'supplementary';
+      sequence?: number;
+      settlementMode?: 'cashless' | 'reimbursement' | 'credit';
+      submissionChannel?: 'portal' | 'email' | 'nhcx' | 'api' | 'manual';
+      payerClaimReference?: string;
+      submissionReference?: string;
+      nhcxTransactionId?: string;
       notes?: string;
       expiryDays?: number;
       documentsUrl?: unknown;
@@ -676,8 +805,16 @@ export function useCreatePreAuth() {
   return useMutation({
     mutationFn: async (body: {
       patientId: string;
-      policyId: string;
+      policyId?: string;
+      insuranceCaseId?: string;
+      admissionId?: string;
+      visitId?: string;
+      doctorId?: string;
       procedureDescription: string;
+      diagnosisCode?: string;
+      procedureCode?: string;
+      submissionChannel?: 'portal' | 'email' | 'nhcx' | 'api' | 'manual';
+      submissionReference?: string;
       estimatedCost?: number;
       validFrom?: string;
       validTo?: string;
@@ -787,7 +924,11 @@ export function useSplitBill() {
       policyId,
       claimAmount,
     }: { billId: string; policyId: string; claimAmount?: number }) => {
-      const res = await apiPatch<{ billId: string; split: ResponsibilitySplit }>(
+      const res = await apiPatch<{
+        billId: string;
+        split: ResponsibilitySplit;
+        billSplit: AppliedBillSplit;
+      }>(
         `/insurance/bills/${billId}/split`,
         { policyId, claimAmount },
       );

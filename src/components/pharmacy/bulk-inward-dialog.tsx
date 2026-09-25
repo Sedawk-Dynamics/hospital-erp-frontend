@@ -79,6 +79,15 @@ import { useDrugMasterSearch, useHsnGstRates, matchHsnGstRate, type HsnGstRate }
 import { VendorFormDialog } from '@/components/inventory/vendor-form-dialog';
 import { BarcodeScanner } from '@/components/shared/barcode-scanner';
 import { apiGet } from '@/lib/api';
+import { pluralizeUnit } from '@/lib/pharmacy-units';
+import {
+  PACKAGING_UNITS,
+  normalizePackagingUnit,
+  packagingUnitLabel,
+  packagingUnitWithUqc,
+  sellingPriceAfterMrpChange,
+  toSmallestUnitPrice,
+} from '@/lib/stock-pricing';
 
 // ============================================================
 // G1 — Bulk Stock Inward (CSV / OCR / manual multi-row)
@@ -111,6 +120,7 @@ interface DraftLine {
   // expandable detail panel and carried onto a newly-created product.
   dosageForm: string;
   packSize: string;
+  primaryUnit: string;
   unit: string;
   minStock: string;
   description: string;
@@ -162,6 +172,8 @@ interface CatalogPick {
   strength?: string | null;
   dosageForm?: string | null;
   packSize?: number | null;
+  unitOfMeasurement?: string | null;
+  looseUnitLabel?: string | null;
   hsnCode?: string | null;
   gtin?: string | null;
 }
@@ -185,6 +197,22 @@ const TYPE_OPTIONS = [
 ];
 
 const DOSAGE_FORMS = ['tablet', 'capsule', 'syrup', 'injection', 'cream', 'drops', 'inhaler', 'other'];
+
+function defaultPackagingForDosageForm(form?: string | null): {
+  primaryUnit: string;
+  smallestUnit: string;
+} {
+  switch ((form ?? '').toLowerCase()) {
+    case 'tablet': return { primaryUnit: 'strip', smallestUnit: 'tablet' };
+    case 'capsule': return { primaryUnit: 'strip', smallestUnit: 'capsule' };
+    case 'syrup':
+    case 'drops': return { primaryUnit: 'bottle', smallestUnit: 'ml' };
+    case 'injection': return { primaryUnit: 'vial', smallestUnit: 'vial' };
+    case 'cream': return { primaryUnit: 'tube', smallestUnit: 'gm' };
+    case 'inhaler': return { primaryUnit: 'piece', smallestUnit: 'piece' };
+    default: return { primaryUnit: '', smallestUnit: '' };
+  }
+}
 
 // A flattened PO line used to CHECK an entered invoice line against the order
 // (the user types what actually arrived; we only compare — never prefill).
@@ -217,6 +245,7 @@ function emptyLine(): DraftLine {
     category: '',
     dosageForm: '',
     packSize: '',
+    primaryUnit: '',
     unit: '',
     minStock: '',
     description: '',
@@ -266,7 +295,8 @@ const HEADER_MAP: Record<string, DraftCol> = {
   sell: 'sellingPrice', selling: 'sellingPrice', sale: 'sellingPrice', sale_rate: 'sellingPrice', mrp_sale: 'sellingPrice',
   form: 'dosageForm', dosage_form: 'dosageForm', dosageform: 'dosageForm',
   pack: 'packSize', packsize: 'packSize', pack_size: 'packSize',
-  unit: 'unit', uom: 'unit', unit_of_measurement: 'unit',
+  primary_unit: 'primaryUnit', package_unit: 'primaryUnit', purchase_unit: 'primaryUnit', unit_of_measurement: 'primaryUnit',
+  unit: 'unit', smallest_unit: 'unit', loose_unit: 'unit', uom: 'unit',
   reorder: 'minStock', minstock: 'minStock', min_stock: 'minStock', reorder_level: 'minStock', reorderlevel: 'minStock',
 };
 
@@ -335,7 +365,11 @@ function parseTabular(text: string): DraftLine[] {
     cells.forEach((cell, i) => {
       const field = order[i];
       if (!field || !cell) return;
-      line[field] = field === 'expiryDate' || field === 'manufacturingDate' ? parseExpiry(cell) : cell;
+      line[field] = field === 'expiryDate' || field === 'manufacturingDate'
+        ? parseExpiry(cell)
+        : field === 'primaryUnit' || field === 'unit'
+          ? normalizePackagingUnit(cell)
+          : cell;
     });
     if (line.drugName) out.push(line);
   }
@@ -354,7 +388,8 @@ const MAP_FIELDS: { value: DraftCol | 'ignore'; label: string }[] = [
   { value: 'manufacturer', label: 'Manufacturer' },
   { value: 'dosageForm', label: 'Dosage form' },
   { value: 'packSize', label: 'Pack size' },
-  { value: 'unit', label: 'Unit' },
+  { value: 'primaryUnit', label: 'Primary unit' },
+  { value: 'unit', label: 'Smallest unit' },
   { value: 'minStock', label: 'Reorder level' },
   { value: 'description', label: 'Description' },
   { value: 'batchNumber', label: 'Batch' },
@@ -394,19 +429,20 @@ const TEMPLATE_COLUMNS: TemplateCol[] = [
   // in our database once the line is mapped, so they are left out of the template.
   { header: 'Manufacturer', hint: 'Brand / manufacturing company.', samples: ['Cipla', 'Safeguard'] },
   { header: 'Dosage Form', hint: 'tablet, capsule, syrup, injection, cream, drops, inhaler, other.', samples: ['tablet', ''] },
-  { header: 'Pack Size', hint: 'Units per pack, e.g. 10 for a strip of 10.', samples: ['10', '100'] },
-  { header: 'Unit', hint: 'Loose unit label, e.g. tablet, ml, piece.', samples: ['tablet', 'piece'] },
+  { header: 'Primary Unit', hint: 'Purchased package: Box, Strip, Tablet, Capsule, Bottle, Vial, Ampoule, Tube, Sachet, ml, gm or Piece.', samples: ['Strip', 'Box'] },
+  { header: 'Pack Size', hint: 'How many smallest units are in one primary unit, e.g. 10 tablets per strip.', samples: ['10', '100'] },
+  { header: 'Smallest Unit', hint: 'Stock/billing unit: Box, Strip, Tablet, Capsule, Bottle, Vial, Ampoule, Tube, Sachet, ml, gm or Piece.', samples: ['Tablet', 'Piece'] },
   { header: 'HSN', hint: 'HSN code (tax classification).', samples: ['30049099', '40151900'] },
   { header: 'Batch', hint: 'Batch / lot number. Required for a medicine when Qty is filled.', samples: ['B23A01', ''] },
   { header: 'Expiry', hint: 'MM/YYYY or DD/MM/YYYY, e.g. 12/2026. Required for a medicine when Qty is filled.', samples: ['12/2026', ''] },
   { header: 'Mfg Date', hint: 'MM/YYYY or DD/MM/YYYY. Optional.', samples: ['01/2024', ''] },
-  { header: 'Qty', hint: 'Units supplied (paid). Leave blank to only register the product without receiving stock.', samples: ['100', '50'] },
-  { header: 'Free Qty', hint: 'Free units supplied on top of Qty.', samples: ['10', ''] },
-  { header: 'MRP', hint: 'Maximum retail price per unit.', samples: ['85', ''] },
-  { header: 'Rate', hint: 'Your purchase rate / PTR per unit.', samples: ['75', '4.5'] },
+  { header: 'Qty', hint: 'Smallest units supplied (paid), e.g. tablets—not strips. Leave blank to only register the product.', samples: ['100', '50'] },
+  { header: 'Free Qty', hint: 'Free smallest units supplied on top of Qty.', samples: ['10', ''] },
+  { header: 'MRP', hint: 'Maximum retail price for one Primary Unit.', samples: ['85', ''] },
+  { header: 'Rate', hint: 'Your purchase rate / PTR for one Primary Unit.', samples: ['75', '4.5'] },
   { header: 'Discount', hint: 'Per-line discount PERCENT (number only, no % sign).', samples: ['5', ''] },
   { header: 'GST', hint: 'GST PERCENT (number only, no % sign).', samples: ['12', '18'] },
-  { header: 'Selling', hint: 'Selling price per unit.', samples: ['82', ''] },
+  { header: 'Selling', hint: 'Selling price for one Primary Unit. Leave blank to use MRP.', samples: ['', ''] },
   { header: 'Reorder Level', hint: 'Alert us when stock falls below this.', samples: ['20', '200'] },
 ];
 
@@ -429,8 +465,10 @@ function templateInstructionsAoa(): string[][] {
     ['2.', 'Replace the two example rows — they are only there to show the format.'],
     ['3.', 'Only "Name" is mandatory. Leave anything you do not know blank.'],
     ['4.', 'Do not rename, reorder or delete the header row — it is what we read.'],
-    ['5.', 'Leave "Qty" blank to just list a product without supplying stock.'],
-    ['6.', 'Send the file back as .xlsx or .csv.'],
+    ['5.', 'Qty and Free Qty are always smallest units (tablets/capsules/ml/pieces).'],
+    ['6.', 'MRP, Rate and Selling are for one Primary Unit; the system derives the Smallest Unit prices.'],
+    ['7.', 'Leave "Qty" blank to just list a product without supplying stock.'],
+    ['8.', 'Send the file back as .xlsx or .csv.'],
     [],
     ['Column', 'What to put in it'],
     ...TEMPLATE_COLUMNS.map((c) => [c.header + (c.required ? ' *' : ''), c.hint]),
@@ -529,6 +567,8 @@ function buildLinesFromRows(
         line.category = t.category;
       } else if (field === 'expiryDate' || field === 'manufacturingDate') {
         line[field] = parseExpiry(cell);
+      } else if (field === 'primaryUnit' || field === 'unit') {
+        line[field] = normalizePackagingUnit(cell);
       } else {
         line[field] = cell;
       }
@@ -564,6 +604,10 @@ function validateLine(l: DraftLine, all: DraftLine[]): LineIssues {
   if (l.quantityReceived.trim() !== '' && (isNaN(qty) || qty <= 0)) {
     errors.push('Quantity must be greater than 0 (or leave blank to just add the product)');
   }
+  if (!normalizePackagingUnit(l.primaryUnit)) errors.push('Primary unit is required');
+  const configuredPackSize = parseInt(l.packSize, 10);
+  if (isNaN(configuredPackSize) || configuredPackSize < 1) errors.push('Per pack must be at least 1');
+  if (!normalizePackagingUnit(l.unit)) errors.push('Smallest unit is required');
 
   // Every type is stocked as a batch now (so it can be sold/tracked like a
   // medicine), so batch + expiry are required whenever stock is received.
@@ -594,7 +638,7 @@ function validateLine(l: DraftLine, all: DraftLine[]): LineIssues {
   const sell = parseFloat(l.sellingPrice);
   const mrp = parseFloat(l.mrp);
   if (!isNaN(sell) && !isNaN(rate) && sell < rate) warnings.push('Selling price is below the purchase rate');
-  if (!isNaN(sell) && !isNaN(mrp) && sell > mrp) warnings.push('Selling price is above the MRP');
+  if (!isNaN(sell) && !isNaN(mrp) && sell > mrp) errors.push('Selling price cannot exceed MRP');
 
   // Duplicate batch within this import (same medicine + batch number).
   if (!isItem && l.batchNumber.trim()) {
@@ -614,6 +658,18 @@ const num = (s: string): number | undefined => {
 const int = (s: string): number | undefined => {
   const n = parseInt(s, 10);
   return s.trim() !== '' && !isNaN(n) ? n : undefined;
+};
+
+// The canonical rate used by invoice totals, PO comparisons and the API. The
+// controls keep showing exactly what the supplier printed; this helper performs
+// the package → smallest-unit conversion at calculation boundaries.
+const canonicalLinePrice = (
+  raw: string,
+  l: Pick<DraftLine, 'packSize'>,
+): number | undefined => {
+  const value = num(raw);
+  if (value == null) return undefined;
+  return toSmallestUnitPrice(value, int(l.packSize));
 };
 
 // Product Resolution Engine badge — prefer how the line resolved (GTIN / learned
@@ -736,7 +792,19 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
   const close = () => onClose();
 
   const updateLine = (id: string, field: DraftCol, value: string) =>
-    setLines((prev) => prev.map((l) => (l.id === id ? { ...l, [field]: value } : l)));
+    setLines((prev) =>
+      prev.map((l) => {
+        if (l.id !== id) return l;
+        if (field === 'mrp') {
+          return {
+            ...l,
+            mrp: value,
+            sellingPrice: sellingPriceAfterMrpChange(l.mrp, l.sellingPrice, value),
+          };
+        }
+        return { ...l, [field]: value };
+      }),
+    );
 
   // HSN → GST tax master. HSN legally determines the GST rate in India, so
   // changing a line's HSN keeps its GST in sync. Derives a rate for a line's
@@ -765,9 +833,15 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
   // derives it at commit, but this makes the auto-fill visible up front).
   const withDerivedGst = (drafts: DraftLine[]): DraftLine[] =>
     drafts.map((l) => {
-      if (l.gstPercent.trim() || !l.hsnCode.trim()) return l;
-      const gst = gstForHsn(l.hsnCode);
-      return gst ? { ...l, gstPercent: gst } : l;
+      const next = {
+        ...l,
+        // Imports follow the same rule as manual entry: MRP is the default sell
+        // price, but an explicit Selling column remains untouched.
+        sellingPrice: l.sellingPrice.trim() || l.mrp,
+      };
+      if (next.gstPercent.trim() || !next.hsnCode.trim()) return next;
+      const gst = gstForHsn(next.hsnCode);
+      return gst ? { ...next, gstPercent: gst } : next;
     });
 
   const addLine = () => setLines((prev) => [...prev, emptyLine()]);
@@ -844,37 +918,41 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
   };
 
   const s = (v: number | null | undefined) => (v === null || v === undefined ? '' : String(v));
-  const ocrToDraft = (o: OcrInvoiceLine): DraftLine => ({
-    id: nextId(),
-    kind: 'drug',
-    category: '',
-    // Auto-filled from the scanned invoice (editable in the line's detail panel).
-    dosageForm: o.dosageForm ?? '',
-    packSize: s(o.packSize),
-    unit: o.unit ?? '',
-    minStock: '',
-    description: '',
-    drugName: o.drugName ?? '',
-    // Composition / strength / GTIN are DB-sourced (filled from the mapped
-    // medicine), never from the scanned invoice — leave blank here.
-    genericName: '',
-    composition: '',
-    manufacturer: o.manufacturer ?? '',
-    strength: '',
-    gtin: '',
-    hsnCode: o.hsnCode ?? '',
-    batchNumber: o.batchNumber ?? '',
-    expiryDate: o.expiryDate ?? '',
-    manufacturingDate: o.manufacturingDate ?? '',
-    quantityReceived: s(o.quantityReceived),
-    freeQuantity: s(o.freeQuantity),
-    mrp: s(o.mrp),
-    purchasePrice: s(o.purchasePrice),
-    purchaseDiscountPercent: s(o.purchaseDiscountPercent),
-    // Prefer the GST printed on the invoice; else derive it from the read HSN.
-    gstPercent: s(o.gstPercent) || gstForHsn(o.hsnCode ?? ''),
-    sellingPrice: s(o.sellingPrice),
-  });
+  const ocrToDraft = (o: OcrInvoiceLine): DraftLine => {
+    const defaults = defaultPackagingForDosageForm(o.dosageForm);
+    return {
+      id: nextId(),
+      kind: 'drug',
+      category: '',
+      // Auto-filled from the scanned invoice and kept editable during review.
+      dosageForm: o.dosageForm ?? '',
+      packSize: s(o.packSize),
+      primaryUnit: normalizePackagingUnit(o.primaryUnit) || defaults.primaryUnit,
+      unit: normalizePackagingUnit(o.unit) || defaults.smallestUnit,
+      minStock: '',
+      description: '',
+      drugName: o.drugName ?? '',
+      // Composition / strength / GTIN are DB-sourced (filled from the mapped
+      // medicine), never from the scanned invoice — leave blank here.
+      genericName: '',
+      composition: '',
+      manufacturer: o.manufacturer ?? '',
+      strength: '',
+      gtin: '',
+      hsnCode: o.hsnCode ?? '',
+      batchNumber: o.batchNumber ?? '',
+      expiryDate: o.expiryDate ?? '',
+      manufacturingDate: o.manufacturingDate ?? '',
+      quantityReceived: s(o.quantityReceived),
+      freeQuantity: s(o.freeQuantity),
+      mrp: s(o.mrp),
+      purchasePrice: s(o.purchasePrice),
+      purchaseDiscountPercent: s(o.purchaseDiscountPercent),
+      // Prefer the GST printed on the invoice; else derive it from the read HSN.
+      gstPercent: s(o.gstPercent) || gstForHsn(o.hsnCode ?? ''),
+      sellingPrice: s(o.sellingPrice ?? o.mrp),
+    };
+  };
 
   // OCR: upload an invoice photo/PDF, seed the grid with the read lines, and let
   // the user verify + fill storage before matching. Matching is skipped here
@@ -922,12 +1000,14 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
     try {
       const res = await inwardScan.mutateAsync(c);
       const L = res.line;
+      const packaging = defaultPackagingForDosageForm(L.dosageForm);
       const seed: Omit<DraftLine, 'id'> = {
         kind: 'drug',
         category: '',
         dosageForm: L.dosageForm || '',
         packSize: L.packSize ? String(L.packSize) : '',
-        unit: '',
+        primaryUnit: packaging.primaryUnit,
+        unit: packaging.smallestUnit,
         minStock: '',
         description: '',
         drugName: L.drugName || '',
@@ -1005,6 +1085,9 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
     if (!next.strength.trim() && L.strength) next.strength = L.strength;
     if (!next.dosageForm.trim() && L.dosageForm) next.dosageForm = L.dosageForm;
     if (!next.packSize.trim() && L.packSize != null) next.packSize = String(L.packSize);
+    const packaging = defaultPackagingForDosageForm(L.dosageForm);
+    if (!next.primaryUnit && packaging.primaryUnit) next.primaryUnit = packaging.primaryUnit;
+    if (!next.unit && packaging.smallestUnit) next.unit = packaging.smallestUnit;
     if (!next.hsnCode.trim() && L.hsnCode) {
       next.hsnCode = L.hsnCode;
       if (!next.gstPercent.trim()) {
@@ -1056,7 +1139,17 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
     if (!cur || cur.drugMasterId || cur.gtin.trim()) return; // catalog/GTIN already set identity
     if (cur.genericName.trim() || cur.strength.trim()) return; // already identified
     try {
-      const res = await apiGet<Array<{ drugName: string; genericName: string | null; composition: string | null; strength: string | null; gtin: string | null; hsnCode: string | null }>>(
+      const res = await apiGet<Array<{
+        drugName: string;
+        genericName: string | null;
+        composition: string | null;
+        strength: string | null;
+        gtin: string | null;
+        hsnCode: string | null;
+        unitOfMeasurement: string | null;
+        looseUnitLabel: string | null;
+        packSize: number | null;
+      }>>(
         '/pharmacy/formulary',
         { params: { search: name, limit: 5, isActive: true } },
       );
@@ -1077,6 +1170,9 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
                 strength: pick.strength ?? '',
                 gtin: pick.gtin ?? '',
                 hsnCode: pick.hsnCode ?? l.hsnCode,
+                primaryUnit: l.primaryUnit || normalizePackagingUnit(pick.unitOfMeasurement),
+                unit: l.unit || normalizePackagingUnit(pick.looseUnitLabel),
+                packSize: l.packSize || (pick.packSize ? String(pick.packSize) : ''),
               }
             : l,
         ),
@@ -1164,7 +1260,9 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
     setLines((prev) =>
       prev.map((l, idx) =>
         idx === i
-          ? {
+          ? (() => {
+              const defaults = defaultPackagingForDosageForm(c.dosageForm);
+              return {
               ...l,
               // Keep the typed name as the learned-mapping key.
               rawName: l.rawName ?? l.drugName.trim(),
@@ -1176,7 +1274,16 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
               composition: c.composition ?? '',
               strength: c.strength ?? '',
               gtin: c.gtin ?? '',
-            }
+              // Packaging is operational rather than identity-only. Keep an
+              // invoice value if present; otherwise use the catalog definition
+              // so package-priced rows can show and apply the conversion.
+              packSize: l.packSize || (c.packSize ? String(c.packSize) : ''),
+              dosageForm: l.dosageForm || c.dosageForm || '',
+              primaryUnit:
+                l.primaryUnit || normalizePackagingUnit(c.unitOfMeasurement) || defaults.primaryUnit,
+              unit: l.unit || normalizePackagingUnit(c.looseUnitLabel) || defaults.smallestUnit,
+            };
+          })()
           : l,
       ),
     );
@@ -1188,16 +1295,36 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
   // imported, so this is their only writer (besides a catalog pick / scan).
   const setLineIdentity = (
     i: number,
-    idn: { genericName: string; composition: string; strength: string; gtin: string },
+    idn: {
+      genericName: string;
+      composition: string;
+      strength: string;
+      gtin: string;
+      packSize?: number | null;
+      dosageForm?: string | null;
+      unitOfMeasurement?: string | null;
+      looseUnitLabel?: string | null;
+    },
   ) => {
     setLines((prev) =>
       prev.map((l, idx) => {
         if (idx !== i) return l;
+        const nextPackSize = l.packSize || (idn.packSize ? String(idn.packSize) : '');
+        const nextDosageForm = l.dosageForm || idn.dosageForm || '';
+        const defaults = defaultPackagingForDosageForm(nextDosageForm);
+        const nextPrimaryUnit =
+          l.primaryUnit || normalizePackagingUnit(idn.unitOfMeasurement) || defaults.primaryUnit;
+        const nextSmallestUnit =
+          l.unit || normalizePackagingUnit(idn.looseUnitLabel) || defaults.smallestUnit;
         if (
           l.genericName === idn.genericName &&
           l.composition === idn.composition &&
           l.strength === idn.strength &&
-          l.gtin === idn.gtin
+          l.gtin === idn.gtin &&
+          l.packSize === nextPackSize &&
+          l.dosageForm === nextDosageForm &&
+          l.primaryUnit === nextPrimaryUnit &&
+          l.unit === nextSmallestUnit
         ) {
           return l; // unchanged — avoid a needless re-render
         }
@@ -1207,6 +1334,10 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
           composition: idn.composition,
           strength: idn.strength,
           gtin: idn.gtin,
+          packSize: nextPackSize,
+          dosageForm: nextDosageForm,
+          primaryUnit: nextPrimaryUnit,
+          unit: nextSmallestUnit,
         };
       }),
     );
@@ -1246,7 +1377,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
   const purchaseTotals = useMemo(() => {
     let gross = 0, afterLine = 0;
     for (const l of lines) {
-      const rate = parseFloat(l.purchasePrice) || 0;
+      const rate = canonicalLinePrice(l.purchasePrice, l) ?? 0;
       const paid = parseInt(l.quantityReceived, 10) || 0;
       const disc = parseFloat(l.purchaseDiscountPercent) || 0;
       gross += rate * paid;
@@ -1259,7 +1390,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
     const net = afterLine - invoiceDisc;
     let gst = 0;
     for (const l of lines) {
-      const rate = parseFloat(l.purchasePrice) || 0;
+      const rate = canonicalLinePrice(l.purchasePrice, l) ?? 0;
       const paid = parseInt(l.quantityReceived, 10) || 0;
       const disc = parseFloat(l.purchaseDiscountPercent) || 0;
       const g = parseFloat(l.gstPercent) || 0;
@@ -1319,7 +1450,8 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         // Full product-definition fields carried onto a newly-created product.
         dosageForm: l.dosageForm || undefined,
         packSize: int(l.packSize),
-        looseUnitLabel: l.unit.trim() || undefined,
+        unitOfMeasurement: packagingUnitWithUqc(l.primaryUnit),
+        looseUnitLabel: normalizePackagingUnit(l.unit) ? packagingUnitLabel(l.unit) : undefined,
         minStock: int(l.minStock),
         description: l.description.trim() || undefined,
         gtin: l.gtin.trim() || undefined,
@@ -1336,6 +1468,9 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         purchaseDiscountPercent: num(l.purchaseDiscountPercent),
         gstPercent: num(l.gstPercent),
         sellingPrice: num(l.sellingPrice),
+        // Primary Unit is the single price-entry level. The API converts these
+        // values to the Smallest Unit before persisting stock and batch prices.
+        priceBasis: 'package',
       };
     });
 
@@ -1384,10 +1519,10 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
       if (paid <= 0) return;
       const m = matchPoLine(l.drugName, poItems);
       if (!m) return;
-      const rate = parseFloat(l.purchasePrice);
+      const rate = canonicalLinePrice(l.purchasePrice, l);
       const cur = agg.get(m.id) ?? { qty: 0, rate: undefined };
       cur.qty += paid;
-      if (!isNaN(rate)) cur.rate = rate;
+      if (rate != null) cur.rate = rate;
       agg.set(m.id, cur);
     });
     return Array.from(agg, ([purchaseOrderItemId, v]) => ({ purchaseOrderItemId, quantityReceived: v.qty, unitPrice: v.rate }));
@@ -1417,7 +1552,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
     const bodyRows = rows.map(({ l }, idx) => {
       const qty = parseInt(l.quantityReceived, 10) || 0;
       const free = parseInt(l.freeQuantity, 10) || 0;
-      const rate = parseFloat(l.purchasePrice) || 0;
+      const rate = canonicalLinePrice(l.purchasePrice, l) ?? 0;
       const disc = parseFloat(l.purchaseDiscountPercent) || 0;
       const gst = parseFloat(l.gstPercent) || 0;
       const net = rate * (1 - disc / 100) * qty;
@@ -1428,7 +1563,7 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
         <td>${esc(l.batchNumber) || '-'}</td>
         <td>${esc(l.expiryDate) || '-'}</td>
         <td class="r">${qty}${free ? ` + ${free}` : ''}</td>
-        <td class="r">${money(rate)}</td>
+        <td class="r">${money(rate)} / ${esc(l.unit || 'unit')}</td>
         <td class="r">${disc ? disc + '%' : '-'}</td>
         <td class="r">${gst ? gst + '%' : '-'}</td>
         <td class="r">${money(amount)}</td>
@@ -1935,7 +2070,14 @@ function EntryStep(props: {
   // medicine it maps to.
   onLineIdentity: (
     i: number,
-    idn: { genericName: string; composition: string; strength: string; gtin: string },
+    idn: {
+      genericName: string;
+      composition: string;
+      strength: string;
+      gtin: string;
+      packSize?: number | null;
+      dosageForm?: string | null;
+    },
   ) => void;
   reviewing: boolean;
 }) {
@@ -1950,7 +2092,9 @@ function EntryStep(props: {
   } = props;
   const money = (n: number) => `₹${n.toFixed(2)}`;
 
-  const cell = 'h-8 text-xs';
+  // Inputs and selects share the same filled, full-width treatment so every
+  // field remains visually distinct even when a row wraps on a smaller screen.
+  const cell = 'h-9 w-full rounded-xl border-none bg-surface-container-low px-3 text-xs shadow-xs';
   // CHECK each entered line against the PO (match by name) — never prefill.
   const poMatchByLine = useMemo(() => lines.map((l) => matchPoLine(l.drugName, poItems)), [lines, poItems]);
   const poCompare = useMemo(() => {
@@ -1998,7 +2142,7 @@ function EntryStep(props: {
           needsReview: m?.recommendation === 'review',
         };
       }),
-    [lines, lineIssues, matched, decisions, reviewing],
+    [lines, lineIssues, matched, reviewing],
   );
   const reviewCounts = useMemo(() => {
     const rows = rowFlags.filter((f) => !f.blank);
@@ -2265,7 +2409,7 @@ function EntryStep(props: {
         </div>
       </div>
       <p className="-mt-2 text-[11px] text-muted-foreground">
-        Add one line or many. Leave <b>Qty</b> blank to just register a product (no stock yet); fill it to also receive stock. Click <ChevronRight className="inline h-3 w-3" /> on a row for more details (dosage form, pack size, unit, reorder level, description). Scan / paste / upload to auto-fill.
+        Add one line or many. Define Primary Unit → Per Pack → Smallest Unit for every product. MRP, Rate and Sell are entered for one Primary Unit and converted to the smallest unit for stock and billing. Sell defaults to MRP and stays editable. Leave <b>Qty</b> blank to only register a product. Click <ChevronRight className="inline h-3 w-3" /> for more details. Scan / paste / upload to auto-fill.
       </p>
 
       {showPaste && (
@@ -2368,6 +2512,12 @@ function EntryStep(props: {
           const net = !rate || isNaN(rate)
             ? null
             : (rate * (1 - (parseFloat(l.purchaseDiscountPercent) || 0) / 100)).toFixed(2);
+          const enteredPackSize = int(l.packSize);
+          const packSize = enteredPackSize ?? 1;
+          const primaryUnit = packagingUnitLabel(l.primaryUnit);
+          const smallestUnit = packagingUnitLabel(l.unit);
+          const perUnitMrp = canonicalLinePrice(l.mrp, l);
+          const perUnitSell = canonicalLinePrice(l.sellingPrice, l);
           return (
             <div
               key={l.id}
@@ -2520,8 +2670,8 @@ function EntryStep(props: {
                 const rec = parseInt(l.quantityReceived, 10) || 0;
                 const remaining = Math.max(0, m.orderedQty - m.alreadyReceived);
                 const qd = rec - remaining;
-                const rate = parseFloat(l.purchasePrice);
-                const rd = m.unitPrice != null && !isNaN(rate) ? rate - m.unitPrice : null;
+                const rate = canonicalLinePrice(l.purchasePrice, l);
+                const rd = m.unitPrice != null && rate != null ? rate - m.unitPrice : null;
                 const chip = 'rounded px-1.5 py-0.5 font-medium';
                 return (
                   <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-t border-primary/15 bg-primary/[0.04] px-3 py-1.5 text-[11px]">
@@ -2546,9 +2696,9 @@ function EntryStep(props: {
                 );
               })()}
 
-              {/* ── Batch & stock · Pricing — divided by hairlines, not nested boxes ── */}
-              <div className="grid gap-x-5 gap-y-3 border-t border-outline-variant/40 bg-surface-container-low/30 px-3 py-2.5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.55fr)]">
-                <div>
+              {/* Full-width groups keep all controls readable inside the dialog. */}
+              <div className="space-y-3 border-t border-outline-variant/40 bg-surface-container-low/30 px-3 py-3">
+                <section className="rounded-xl border border-outline-variant/50 bg-surface-container-lowest p-3 shadow-xs">
                   <SectionLabel>Batch &amp; stock</SectionLabel>
                   <div className="grid grid-cols-2 gap-x-2.5 gap-y-2 sm:grid-cols-4">
                     <LineField label={isItem ? 'Batch (opt)' : 'Batch'}>
@@ -2557,40 +2707,88 @@ function EntryStep(props: {
                     <LineField label={isItem ? 'Expiry (opt)' : 'Expiry'}>
                       <Input className={cell} type="date" value={l.expiryDate} onChange={(e) => updateLine(l.id, 'expiryDate', e.target.value)} />
                     </LineField>
-                    <LineField label="Qty">
+                    <LineField label="Qty (smallest units)">
                       <Input className={cell} type="number" min={1} value={l.quantityReceived} onChange={(e) => updateLine(l.id, 'quantityReceived', e.target.value)} placeholder="blank" />
                     </LineField>
-                    <LineField label="Free">
+                    <LineField label="Free (smallest units)">
                       <Input className={cell} type="number" min={0} value={l.freeQuantity} onChange={(e) => updateLine(l.id, 'freeQuantity', e.target.value)} />
                     </LineField>
                   </div>
-                </div>
+                </section>
 
-                <div className="border-t border-outline-variant/40 pt-3 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-5">
-                  <SectionLabel>Pricing (per unit)</SectionLabel>
-                  <div className="grid grid-cols-3 gap-x-2.5 gap-y-2 sm:grid-cols-6">
-                    <LineField label="MRP">
-                      <Input className={cell} type="number" step="0.01" value={l.mrp} onChange={(e) => updateLine(l.id, 'mrp', e.target.value)} />
+                <section className="rounded-xl border border-outline-variant/50 bg-surface-container-lowest p-3 shadow-xs">
+                  <SectionLabel>Units &amp; Packaging</SectionLabel>
+                  <div className="grid grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-[minmax(0,1.35fr)_minmax(8rem,0.65fr)_minmax(0,1.35fr)]">
+                    <LineField label="Primary Unit *">
+                      <Select value={l.primaryUnit} onValueChange={(v) => updateLine(l.id, 'primaryUnit', v ?? '')}>
+                        <SelectTrigger className={cell}><SelectValue placeholder="Select primary unit" /></SelectTrigger>
+                        <SelectContent align="start" className="min-w-64">
+                          {PACKAGING_UNITS.map((u) => (
+                            <SelectItem key={u.value} value={u.value}>{u.label} (UQC {u.uqc})</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </LineField>
-                    <LineField label="Rate">
-                      <Input className={cell} type="number" step="0.01" value={l.purchasePrice} onChange={(e) => updateLine(l.id, 'purchasePrice', e.target.value)} />
+                    <LineField label="Per Pack *">
+                      <Input className={cell} type="number" min={1} value={l.packSize} onChange={(e) => updateLine(l.id, 'packSize', e.target.value)} placeholder="e.g. 10" />
+                    </LineField>
+                    <LineField label="Smallest Unit *">
+                      <Select value={l.unit} onValueChange={(v) => updateLine(l.id, 'unit', v ?? '')}>
+                        <SelectTrigger className={cell}><SelectValue placeholder="Select smallest unit" /></SelectTrigger>
+                        <SelectContent align="start" className="min-w-52">
+                          {PACKAGING_UNITS.map((u) => (
+                            <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </LineField>
+                  </div>
+                  <p className="mt-2 text-[10px] leading-tight text-muted-foreground">
+                    Example: Strip × 10 Tablets. Primary Unit is also the price-entry unit.
+                  </p>
+                </section>
+
+                <section className="rounded-xl border border-outline-variant/50 bg-surface-container-lowest p-3 shadow-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-1.5">
+                    <SectionLabel>Pricing per Primary Unit</SectionLabel>
+                    <span className="mb-2 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                      per {primaryUnit}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-3 lg:grid-cols-6">
+                    <LineField label={`MRP / ${primaryUnit}`}>
+                      <Input className={cell} type="number" min={0} step="0.01" value={l.mrp} onChange={(e) => updateLine(l.id, 'mrp', e.target.value)} />
+                    </LineField>
+                    <LineField label={`Rate / ${primaryUnit}`}>
+                      <Input className={cell} type="number" min={0} step="0.01" value={l.purchasePrice} onChange={(e) => updateLine(l.id, 'purchasePrice', e.target.value)} />
                     </LineField>
                     <LineField label="Disc %">
                       <Input className={cell} type="number" step="0.01" value={l.purchaseDiscountPercent} onChange={(e) => updateLine(l.id, 'purchaseDiscountPercent', e.target.value)} />
                     </LineField>
                     <LineField label="Net">
-                      <div className={cn('flex h-8 items-center rounded-xl px-2 text-xs font-semibold tabular-nums', net ? 'bg-primary/10 text-primary' : 'bg-surface-container-high text-muted-foreground')}>
+                      <div className={cn('flex h-9 items-center rounded-xl px-3 text-xs font-semibold tabular-nums shadow-xs', net ? 'bg-primary/10 text-primary' : 'bg-surface-container-low text-muted-foreground')}>
                         {net ? `₹${net}` : '—'}
                       </div>
                     </LineField>
                     <LineField label="GST %">
                       <Input className={cell} type="number" step="0.01" value={l.gstPercent} onChange={(e) => updateLine(l.id, 'gstPercent', e.target.value)} />
                     </LineField>
-                    <LineField label="Sell">
-                      <Input className={cell} type="number" step="0.01" value={l.sellingPrice} onChange={(e) => updateLine(l.id, 'sellingPrice', e.target.value)} />
+                    <LineField label={`Sell / ${primaryUnit}`}>
+                      <Input className={cell} type="number" min={0} step="0.01" value={l.sellingPrice} onChange={(e) => updateLine(l.id, 'sellingPrice', e.target.value)} />
                     </LineField>
                   </div>
-                </div>
+                  <p className={cn(
+                    'mt-2 text-[10px] leading-tight',
+                    enteredPackSize == null ? 'text-amber-700' : 'text-muted-foreground',
+                  )}>
+                    {packSize > 1
+                      ? `1 ${primaryUnit} = ${packSize} ${pluralizeUnit(packSize, smallestUnit)}. Saved for billing as ${perUnitMrp != null ? `MRP ₹${perUnitMrp.toFixed(2)}` : 'MRP —'} and ${perUnitSell != null ? `sell ₹${perUnitSell.toFixed(2)}` : 'sell —'} per ${smallestUnit}.`
+                      : enteredPackSize === 1
+                        ? `1 ${primaryUnit} = 1 ${smallestUnit}; prices will be stored unchanged.`
+                        : 'Enter the number of smallest units per primary unit.'}
+                    {' '}Sell follows MRP until you edit it.
+                  </p>
+                </section>
               </div>
 
               {/* Inline validation messages. Errors and warnings are shown
@@ -2624,12 +2822,6 @@ function EntryStep(props: {
                           ))}
                         </SelectContent>
                       </Select>
-                    </LineField>
-                    <LineField label="Pack size (units/pack)">
-                      <Input className={cell} type="number" min={1} value={l.packSize} onChange={(e) => updateLine(l.id, 'packSize', e.target.value)} />
-                    </LineField>
-                    <LineField label="Unit (tablet, box, ml…)">
-                      <Input className={cell} value={l.unit} onChange={(e) => updateLine(l.id, 'unit', e.target.value)} />
                     </LineField>
                     <LineField label="Reorder level">
                       <Input className={cell} type="number" min={0} value={l.minStock} onChange={(e) => updateLine(l.id, 'minStock', e.target.value)} />
@@ -2694,7 +2886,16 @@ function LineMatchControl({
   onUndoCatalog: () => void;
   // Report the mapped medicine's DB identity (composition / strength / GTIN) so
   // the read-only fields on the row reflect it.
-  onIdentity: (idn: { genericName: string; composition: string; strength: string; gtin: string }) => void;
+  onIdentity: (idn: {
+    genericName: string;
+    composition: string;
+    strength: string;
+    gtin: string;
+    packSize?: number | null;
+    dosageForm?: string | null;
+    unitOfMeasurement?: string | null;
+    looseUnitLabel?: string | null;
+  }) => void;
 }) {
   const autoFormulary = m.matches.filter((c) => c.source !== 'catalog');
   const catalogMatches = m.matches.filter((c) => c.source === 'catalog');
@@ -2730,6 +2931,10 @@ function LineMatchControl({
         composition: target?.composition ?? '',
         strength: target?.strength ?? '',
         gtin: target?.gtin ?? '',
+        packSize: target?.packSize,
+        dosageForm: target?.dosageForm,
+        unitOfMeasurement: target?.unitOfMeasurement,
+        looseUnitLabel: target?.looseUnitLabel,
       });
     } else if (!line.drugMasterId && leavingAMapping) {
       onIdentity({ genericName: '', composition: '', strength: '', gtin: '' });
@@ -2753,10 +2958,14 @@ function LineMatchControl({
   const pickExisting = (r: {
     id: string; drugName: string; genericName?: string | null; strength?: string | null;
     manufacturer?: string | null; totalStock?: number | null;
+    dosageForm?: string | null; unitOfMeasurement?: string | null;
+    packSize?: number | null; looseUnitLabel?: string | null;
   }) => {
     const chip = {
       id: r.id, drugName: r.drugName, genericName: r.genericName ?? null,
       strength: r.strength ?? null, manufacturer: r.manufacturer ?? null,
+      dosageForm: r.dosageForm ?? null, unitOfMeasurement: r.unitOfMeasurement ?? null,
+      packSize: r.packSize ?? null, looseUnitLabel: r.looseUnitLabel ?? null,
       totalStock: r.totalStock ?? 0, score: 100, source: 'formulary' as const,
     } as unknown as FormularyMatch;
     setExtraTargets((prev) => (prev.some((x) => x.id === r.id) ? prev : [...prev, chip]));
@@ -2769,6 +2978,7 @@ function LineMatchControl({
     drugName: c.drugName, genericName: c.genericName, manufacturer: c.manufacturer,
     strength: c.strength, dosageForm: c.dosageForm as string | null,
     packSize: c.packSize, hsnCode: c.hsnCode, gtin: c.gtin,
+    unitOfMeasurement: c.unitOfMeasurement, looseUnitLabel: c.looseUnitLabel,
   });
 
   // The auto-suggested closest catalog matches (free-text catalog search now

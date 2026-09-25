@@ -28,6 +28,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { PatientSafetyBanner } from '@/components/shared/patient-safety-banner';
+import { PrnDoseHistoryCard, latestAdministeredPrnByItem } from '@/components/emar/prn-dose-history';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
@@ -52,8 +53,12 @@ import {
   useRegenerateSchedules,
   useCatchUpDose,
   useEmarAudit,
+  useNdpsDoseContext,
+  useNdpsPrescriptionItemContext,
   type EmarSchedule,
   type EmarDoseStatus,
+  type NdpsPatientDoseInput,
+  type NdpsDoseContext,
 } from '@/hooks/use-emar';
 import Link from 'next/link';
 import {
@@ -75,6 +80,11 @@ import {
   Settings as SettingsIcon,
 } from 'lucide-react';
 import { fullName } from '@/lib/person-name';
+import {
+  EMPTY_NDPS_FORM,
+  NdpsDoseFields,
+  buildNdpsPatientDose,
+} from '@/components/emar/ndps-dose-fields';
 
 // ── Status presentation ──────────────────────────────────────
 
@@ -154,6 +164,7 @@ export default function EmarPage() {
   const [actionReason, setActionReason] = useState('');
   const [actionNotes, setActionNotes] = useState('');
   const [amendTargetStatus, setAmendTargetStatus] = useState<'given_late' | 'given' | 'missed' | 'held' | 'refused'>('given_late');
+  const [ndpsForm, setNdpsForm] = useState(EMPTY_NDPS_FORM);
 
   // PRN dialog state
   const [prnDialog, setPrnDialog] = useState<{ open: boolean; itemId: string; drugName: string; dosage: string; frequency: string }>({
@@ -167,6 +178,19 @@ export default function EmarPage() {
 
   // Interaction detail
   const [interactionDialog, setInteractionDialog] = useState<{ drugName: string; pairs: InteractionPair[] } | null>(null);
+
+  const ndpsScheduleId = actionDialog.open && (actionDialog.mode === 'give' || actionDialog.mode === 'amend')
+    ? actionDialog.schedule?.id ?? null
+    : null;
+  const ndpsScheduleContextQ = useNdpsDoseContext(ndpsScheduleId);
+  const ndpsItemId = actionDialog.open && actionDialog.mode === 'give' && actionDialog.catchUp
+    ? actionDialog.catchUp.prescriptionItemId
+    : prnDialog.open ? prnDialog.itemId : null;
+  const ndpsItemContextQ = useNdpsPrescriptionItemContext(ndpsItemId);
+  const ndpsContext = ndpsScheduleId ? ndpsScheduleContextQ.data : ndpsItemContextQ.data;
+  const ndpsContextLoading = ndpsScheduleId
+    ? ndpsScheduleContextQ.isLoading
+    : Boolean(ndpsItemId && ndpsItemContextQ.isLoading);
 
   // Every dose in the focused state, across all patients on the ward.
   const { data: focusDosesRaw, isLoading: focusLoading } = useEmarSchedules({
@@ -254,6 +278,21 @@ export default function EmarPage() {
     if (!schedulesRaw) return [];
     return Array.isArray(schedulesRaw) ? schedulesRaw : (schedulesRaw as any).data ?? [];
   }, [schedulesRaw]);
+
+  // Keep PRN history independent of the selected eMAR day so staff can see
+  // the last dose before recording another one.
+  const { data: prnHistoryRaw } = useEmarSchedules({
+    admissionId: selectedAdmissionId || undefined,
+    includePrn: true,
+    limit: 500,
+  });
+  const latestPrnByItem = useMemo(
+    () => latestAdministeredPrnByItem(
+      (Array.isArray(prnHistoryRaw) ? prnHistoryRaw : ((prnHistoryRaw as any)?.data ?? [])) as EmarSchedule[],
+    ),
+    [prnHistoryRaw],
+  );
+  const latestPrnDose = prnDialog.itemId ? latestPrnByItem.get(prnDialog.itemId) : undefined;
 
   const { data: prescriptionsRaw } = useActivePrescriptions({
     admissionId: selectedAdmissionId || undefined,
@@ -391,6 +430,7 @@ export default function EmarPage() {
     setActionReason(schedule.reason ?? '');
     setActionNotes('');
     setAmendTargetStatus('given_late');
+    setNdpsForm(EMPTY_NDPS_FORM);
   }, []);
 
   // Open the action dialog for a slot that has no dose row yet (its time had
@@ -400,7 +440,12 @@ export default function EmarPage() {
     setActualGivenTime(nowTimeStr());
     setActionReason('');
     setActionNotes('');
+    setNdpsForm(EMPTY_NDPS_FORM);
   }, []);
+
+  const buildNdpsDose = useCallback((): NdpsPatientDoseInput | undefined => {
+    return buildNdpsPatientDose(ndpsContext, ndpsForm);
+  }, [ndpsContext, ndpsForm]);
 
   const makeCatchUpTarget = useCallback(
     (
@@ -439,6 +484,7 @@ export default function EmarPage() {
       if (catchUp) {
         if (mode === 'amend') return;
         const iso = mode === 'give' ? buildIso(catchUp.date, actualGivenTime) : undefined;
+        const ndps = mode === 'give' ? buildNdpsDose() : undefined;
         await catchUpDose.mutateAsync({
           prescriptionItemId: catchUp.prescriptionItemId,
           slotCode: catchUp.slotCode,
@@ -447,6 +493,7 @@ export default function EmarPage() {
           actualGivenTime: iso,
           reason: actionReason.trim() || undefined,
           notes: actionNotes.trim() || undefined,
+          ndps,
         });
         const verb = mode === 'give' ? 'given' : mode === 'hold' ? 'held' : mode === 'refuse' ? 'refused' : 'marked missed';
         toast.success(`${catchUp.drugName} — dose ${verb}`);
@@ -457,7 +504,8 @@ export default function EmarPage() {
 
       if (mode === 'give') {
         const iso = buildIso(selectedDate, actualGivenTime);
-        await giveDose.mutateAsync({ id: schedule.id, actualGivenTime: iso, notes: actionNotes.trim() || undefined });
+        const ndps = buildNdpsDose();
+        await giveDose.mutateAsync({ id: schedule.id, actualGivenTime: iso, notes: actionNotes.trim() || undefined, ndps });
         toast.success(`${schedule.drugName} marked as given`);
       } else if (mode === 'hold') {
         await holdDose.mutateAsync({ id: schedule.id, reason: actionReason.trim(), notes: actionNotes.trim() || undefined });
@@ -469,12 +517,16 @@ export default function EmarPage() {
         const iso = (amendTargetStatus === 'given' || amendTargetStatus === 'given_late')
           ? buildIso(selectedDate, actualGivenTime)
           : undefined;
+        const ndps = (amendTargetStatus === 'given' || amendTargetStatus === 'given_late')
+          ? buildNdpsDose()
+          : undefined;
         await amendDose.mutateAsync({
           id: schedule.id,
           toStatus: amendTargetStatus,
           actualGivenTime: iso,
           reason: actionReason.trim() || undefined,
           notes: actionNotes.trim() || undefined,
+          ndps,
         });
         toast.success(`${schedule.drugName} amended → ${amendTargetStatus}`);
       }
@@ -482,16 +534,18 @@ export default function EmarPage() {
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? 'Action failed');
     }
-  }, [actionDialog, actionReason, actionNotes, actualGivenTime, amendTargetStatus, selectedDate, giveDose, holdDose, refuseDose, amendDose, catchUpDose, closeActionDialog]);
+  }, [actionDialog, actionReason, actionNotes, actualGivenTime, amendTargetStatus, selectedDate, giveDose, holdDose, refuseDose, amendDose, catchUpDose, closeActionDialog, buildNdpsDose]);
 
   const submitPrn = useCallback(async () => {
     if (!prnDialog.itemId) return;
     try {
       const iso = buildIso(selectedDate, prnTime);
+      const ndps = buildNdpsDose();
       await triggerPrn.mutateAsync({
         prescriptionItemId: prnDialog.itemId,
         actualGivenTime: iso,
         notes: prnNotes.trim() || undefined,
+        ndps,
       });
       toast.success(`${prnDialog.drugName} (PRN) recorded`);
       setPrnDialog({ open: false, itemId: '', drugName: '', dosage: '', frequency: '' });
@@ -499,7 +553,7 @@ export default function EmarPage() {
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? 'PRN failed');
     }
-  }, [prnDialog, prnTime, prnNotes, selectedDate, triggerPrn]);
+  }, [prnDialog, prnTime, prnNotes, selectedDate, triggerPrn, buildNdpsDose]);
 
   // Action-dialog display target: a real schedule row, or a catch-up slot with
   // no row yet (both carry drugName/dosage/route/scheduledAt for the header).
@@ -881,9 +935,7 @@ export default function EmarPage() {
             ) : (
               <div className="divide-y divide-outline-variant/50">
                 {prnItems.map((p) => {
-                  const lastPrn = schedules
-                    .filter((s) => s.isPrn && s.prescriptionItemId === p.itemId && (s.status === 'given' || s.status === 'given_late'))
-                    .sort((a, b) => new Date(b.actualGivenTime ?? b.createdAt ?? '').getTime() - new Date(a.actualGivenTime ?? a.createdAt ?? '').getTime())[0];
+                  const lastPrn = latestPrnByItem.get(p.itemId);
                   return (
                     <div key={p.itemId} className="flex items-center justify-between px-4 py-3 hover:bg-surface-container-low/40 transition-colors">
                       <div className="min-w-0 flex-1">
@@ -904,7 +956,12 @@ export default function EmarPage() {
                         {lastPrn && (
                           <div className="text-right">
                             <p className="text-[10px] text-on-surface-variant">Last given</p>
-                            <p className="text-xs font-medium text-on-surface">{formatTime(lastPrn.actualGivenTime ?? '')}</p>
+                            <p className="text-xs font-medium text-on-surface">{formatDateTime(lastPrn.actualGivenTime ?? lastPrn.actionedAt)}</p>
+                            {lastPrn.givenBy && (
+                              <p className="text-[10px] text-on-surface-variant">
+                                {lastPrn.givenBy.firstName} {lastPrn.givenBy.lastName ?? ''}
+                              </p>
+                            )}
                           </div>
                         )}
                         <Button
@@ -915,6 +972,7 @@ export default function EmarPage() {
                             setPrnDialog({ open: true, itemId: p.itemId, drugName: p.drugName, dosage: p.dosage, frequency: p.frequency });
                             setPrnTime(nowTimeStr());
                             setPrnNotes('');
+                            setNdpsForm(EMPTY_NDPS_FORM);
                           }}
                         >
                           <Plus className="h-3 w-3" />
@@ -932,7 +990,7 @@ export default function EmarPage() {
 
       {/* Action dialog */}
       <Dialog open={actionDialog.open} onOpenChange={(open) => !open && closeActionDialog()}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Pill className="h-4 w-4 text-primary" />
@@ -1004,6 +1062,25 @@ export default function EmarPage() {
                 </div>
               )}
 
+              {(actionDialog.mode === 'give' || actionDialog.mode === 'amend') && dlgTarget && ndpsContextLoading && (
+                <div className="flex items-center gap-2 rounded-lg border p-3 text-xs text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Checking controlled-drug requirements…
+                </div>
+              )}
+
+              {actionDialog.mode === 'give' && dlgTarget && ndpsContext?.isNdps && (
+                <NdpsDoseFields context={ndpsContext} value={ndpsForm} onChange={setNdpsForm} />
+              )}
+              {actionDialog.mode === 'amend' && ndpsContext?.isNdps && !ndpsContext.existingDose &&
+                (amendTargetStatus === 'given' || amendTargetStatus === 'given_late') && (
+                  <NdpsDoseFields context={ndpsContext} value={ndpsForm} onChange={setNdpsForm} />
+                )}
+              {actionDialog.mode === 'amend' && ndpsContext?.existingDose && (
+                <p className="rounded-md border border-red-200 bg-red-50 p-2 text-[11px] text-red-800">
+                  This NDPS administration is already reconciled. Its controlled-drug ledger entry cannot be erased by changing the dose to a non-given outcome.
+                </p>
+              )}
+
               {/* Reason */}
               {(actionDialog.mode === 'hold' || actionDialog.mode === 'refuse' ||
                 (actionDialog.mode === 'amend' && (amendTargetStatus === 'held' || amendTargetStatus === 'refused'))) && (
@@ -1024,7 +1101,7 @@ export default function EmarPage() {
 
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" size="sm" onClick={closeActionDialog}>Cancel</Button>
-            <Button size="sm" onClick={submitAction} disabled={anyActionPending} className="gap-1.5">
+            <Button size="sm" onClick={submitAction} disabled={anyActionPending || ndpsContextLoading} className="gap-1.5">
               {anyActionPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               Confirm
             </Button>
@@ -1034,7 +1111,7 @@ export default function EmarPage() {
 
       {/* PRN dialog */}
       <Dialog open={prnDialog.open} onOpenChange={(open) => !open && setPrnDialog({ ...prnDialog, open: false })}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><Plus className="h-4 w-4 text-primary" />Record PRN Dose</DialogTitle>
           </DialogHeader>
@@ -1044,10 +1121,19 @@ export default function EmarPage() {
               <p className="text-xs text-on-surface-variant">Dose: <span className="font-medium text-on-surface">{prnDialog.dosage}</span></p>
               <p className="text-xs text-on-surface-variant">Frequency: {prnDialog.frequency}</p>
             </div>
+            {latestPrnDose && <PrnDoseHistoryCard dose={latestPrnDose} />}
             <div>
               <Label className="text-xs font-medium mb-1.5 block">Time given</Label>
               <Input type="time" value={prnTime} onChange={(e) => setPrnTime(e.target.value)} className="w-40" />
             </div>
+            {ndpsContextLoading && (
+              <div className="flex items-center gap-2 rounded-lg border p-3 text-xs text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Checking controlled-drug requirements…
+              </div>
+            )}
+            {ndpsContext?.isNdps && (
+              <NdpsDoseFields context={ndpsContext} value={ndpsForm} onChange={setNdpsForm} />
+            )}
             <div>
               <Label className="text-xs font-medium mb-1.5 block">Notes</Label>
               <Textarea rows={3} value={prnNotes} onChange={(e) => setPrnNotes(e.target.value)} placeholder="Reason for PRN dose, patient complaint, etc." />
@@ -1055,7 +1141,7 @@ export default function EmarPage() {
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" size="sm" onClick={() => setPrnDialog({ ...prnDialog, open: false })}>Cancel</Button>
-            <Button size="sm" onClick={submitPrn} disabled={triggerPrn.isPending} className="gap-1.5">
+            <Button size="sm" onClick={submitPrn} disabled={triggerPrn.isPending || ndpsContextLoading} className="gap-1.5">
               {triggerPrn.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               Record
             </Button>
@@ -1180,6 +1266,21 @@ function DoseButton({
       )}
       {schedule.status === 'given_late' && schedule.delayMinutes != null && (
         <div className="text-[9px] text-emerald-700 font-bold mt-0.5">+{schedule.delayMinutes}m</div>
+      )}
+      {schedule.ndpsPatientDose && (
+        <div
+          className={cn(
+            'mt-1 max-w-[92px] rounded px-1 py-0.5 text-center text-[8px] font-semibold leading-tight',
+            schedule.ndpsPatientDose.status === 'quarantined'
+              ? 'bg-amber-100 text-amber-800'
+              : 'bg-red-100 text-red-800',
+          )}
+          title={`NDPS: ${Number(schedule.ndpsPatientDose.administeredQuantity)} ${schedule.ndpsPatientDose.quantityUnit} given; ${Number(schedule.ndpsPatientDose.residualQuantity)} ${schedule.ndpsPatientDose.quantityUnit} residual ${schedule.ndpsPatientDose.status}`}
+        >
+          {Number(schedule.ndpsPatientDose.administeredQuantity)} given · {Number(schedule.ndpsPatientDose.residualQuantity)} {schedule.ndpsPatientDose.status === 'destroyed'
+            ? 'destroyed'
+            : schedule.ndpsPatientDose.residualHandling === 'pending_destruction' ? 'awaiting disposal' : 'sealed'}
+        </div>
       )}
     </div>
   );

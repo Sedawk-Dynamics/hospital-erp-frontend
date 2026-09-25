@@ -248,6 +248,17 @@ export function IpBillingTab({ focusAdmissionId }: { focusAdmissionId?: string |
                             <ShieldCheck className="h-3.5 w-3.5" /> {liveClaim ? 'With TPA' : 'Connected to TPA'}
                           </span>
                         )}
+                        {!isInsurance(cat) && b.admission?.status !== 'discharged' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 gap-1 text-[11px] border-purple-300 text-purple-700"
+                            onClick={() => setDetailBill(b)}
+                            title="Change this admission from direct billing to TPA / insurance"
+                          >
+                            <ShieldCheck className="h-3 w-3" /> Change to TPA
+                          </Button>
+                        )}
                         {refundable > 0 && (
                           <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px] border-emerald-300 text-emerald-700"
                             onClick={() => setDetailBill(b)} title="Return the unused deposit to the patient">
@@ -326,7 +337,7 @@ export function IpBillingTab({ focusAdmissionId }: { focusAdmissionId?: string |
         </div>
       )}
       <p className="text-[11px] text-muted-foreground">
-        Every admitted IP patient shows here from day one — one <strong>consolidated bill</strong> that builds up as charges are posted. The <strong>deposit</strong> is cut from the running balance, and its unused part can be <strong>returned</strong> to the patient (e.g. when insurance covers the charges in full). Insurance / corporate patients are <strong>auto-connected to the TPA</strong> at booking — the claim is raised and kept in sync as charges accrue (no manual transfer). Click <strong>Manage</strong> to post charges, apply the deposit, discount, collect &amp; record TPA settlements.
+        Every admitted IP patient shows here from day one — one <strong>consolidated bill</strong> that builds up as charges are posted. The <strong>deposit</strong> is cut from the running balance, and its unused part can be <strong>returned</strong> to the patient (e.g. when insurance covers the charges in full). Insurance / corporate patients are <strong>auto-connected to the TPA</strong>; a cash or package admission can be corrected with <strong>Change to TPA</strong>. The claim is then raised and kept in sync as charges accrue. Click <strong>Manage</strong> to post charges, apply the deposit, discount, collect &amp; record TPA settlements.
       </p>
 
       <IpBillingDetailDialog bill={detailBill} open={!!detailBill} onOpenChange={(o) => { if (!o) setDetailBill(null); }} />

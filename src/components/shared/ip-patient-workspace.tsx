@@ -57,6 +57,7 @@ import { PatientSafetyBanner } from '@/components/shared/patient-safety-banner';
 import { PatientDocumentsPanel } from '@/components/shared/patient-documents-panel';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -68,7 +69,9 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 // Base-UI Button doesn't support `asChild`; use the `render` prop with a Link
 // element so prefetching + accessibility on the underlying anchor still apply.
@@ -83,7 +86,18 @@ function LinkButton({ href, children, ...props }: LinkButtonProps) {
 import { formatDate, formatDateTime, formatTime } from '@/lib/date-utils';
 
 import { useAdmissionDetail, usePatientVitals, useLatestVitals, useActivePrescriptions, useNursingNotes } from '@/hooks/use-nurse';
-import { useEmarSchedules, type EmarSchedule } from '@/hooks/use-emar';
+import {
+  useEmarSchedules,
+  useNdpsPrescriptionItemContext,
+  useTriggerPrn,
+  type EmarSchedule,
+} from '@/hooks/use-emar';
+import {
+  EMPTY_NDPS_FORM,
+  NdpsDoseFields,
+  buildNdpsPatientDose,
+} from '@/components/emar/ndps-dose-fields';
+import { PrnDoseHistoryCard, latestAdministeredPrnByItem } from '@/components/emar/prn-dose-history';
 import { useProgressNotes, useLabOrders, useImagingRequests, usePatientDetail, type ProgressNote } from '@/hooks/use-doctor';
 import { LabOrderDetailDialog } from '@/components/shared/lab-order-detail-dialog';
 import { IpPrescriptionDialog } from '@/components/doctor/ip-prescription-dialog';
@@ -189,6 +203,20 @@ function calcAge(dob?: string | null): string | null {
   } catch {
     return null;
   }
+}
+
+function todayInputDate(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function nowTimeInput(): string {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function localDateTimeIso(date: string, time: string): string {
+  return new Date(`${date}T${time}:00`).toISOString();
 }
 
 // A fourth copy of the ranges lived here and disagreed with the others again
@@ -628,6 +656,55 @@ function PrescriptionsPanel({ admissionId, patientId, role, onNewRx }: { admissi
   });
 
   const prescriptions = useMemo(() => unwrapList<Prescription>(data), [data]);
+  const { data: prnHistoryData } = useEmarSchedules({
+    admissionId,
+    includePrn: true,
+    limit: 500,
+  });
+  const latestPrnByItem = useMemo(
+    () => latestAdministeredPrnByItem(unwrapList<EmarSchedule>(prnHistoryData)),
+    [prnHistoryData],
+  );
+  const triggerPrn = useTriggerPrn();
+  const [prnDialog, setPrnDialog] = useState<{
+    open: boolean;
+    itemId: string;
+    drugName: string;
+    dosage: string;
+    frequency: string;
+    route?: string;
+    instructions?: string;
+  }>({ open: false, itemId: '', drugName: '', dosage: '', frequency: '' });
+  const [prnTime, setPrnTime] = useState(nowTimeInput());
+  const [prnNotes, setPrnNotes] = useState('');
+  const [ndpsForm, setNdpsForm] = useState(EMPTY_NDPS_FORM);
+  const { data: ndpsContext, isLoading: ndpsContextLoading } = useNdpsPrescriptionItemContext(
+    prnDialog.open ? prnDialog.itemId : null,
+  );
+  const latestPrnDose = prnDialog.itemId ? latestPrnByItem.get(prnDialog.itemId) : undefined;
+
+  const closePrnDialog = () => {
+    setPrnDialog({ open: false, itemId: '', drugName: '', dosage: '', frequency: '' });
+    setPrnNotes('');
+    setNdpsForm(EMPTY_NDPS_FORM);
+  };
+
+  const submitPrnDose = async () => {
+    if (!prnDialog.itemId) return;
+    try {
+      const ndps = buildNdpsPatientDose(ndpsContext, ndpsForm);
+      await triggerPrn.mutateAsync({
+        prescriptionItemId: prnDialog.itemId,
+        actualGivenTime: localDateTimeIso(todayInputDate(), prnTime),
+        notes: prnNotes.trim() || undefined,
+        ndps,
+      });
+      toast.success(`${prnDialog.drugName} PRN dose recorded`);
+      closePrnDialog();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? err?.message ?? 'PRN dose could not be recorded');
+    }
+  };
 
   return (
     <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4">
@@ -652,12 +729,14 @@ function PrescriptionsPanel({ admissionId, patientId, role, onNewRx }: { admissi
       ) : (
         <div className="space-y-2">
           {prescriptions.flatMap((rx) =>
-            rx.items.map((item, idx) => (
+            rx.items.map((item, idx) => {
+              const lastPrn = item.id ? latestPrnByItem.get(item.id) : undefined;
+              return (
               <div
                 key={`${rx.id}-${idx}`}
-                className="flex items-start justify-between rounded-md border bg-card px-3 py-2 text-xs"
+                className="flex items-start justify-between gap-3 rounded-md border bg-card px-3 py-2 text-xs"
               >
-                <div>
+                <div className="min-w-0 flex-1">
                   <p className="font-semibold text-foreground">
                     {item.drugName} <span className="font-normal text-muted-foreground">{item.dosage}</span>
                     {item.isPrn && (
@@ -670,18 +749,118 @@ function PrescriptionsPanel({ admissionId, patientId, role, onNewRx }: { admissi
                   {item.instructions && (
                     <p className="mt-0.5 italic text-muted-foreground">{item.instructions}</p>
                   )}
+                  {lastPrn && (
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      Last given {formatDateTime(lastPrn.actualGivenTime ?? lastPrn.actionedAt)}
+                      {lastPrn.givenBy ? ` by ${lastPrn.givenBy.firstName} ${lastPrn.givenBy.lastName ?? ''}` : ''}
+                    </p>
+                  )}
                 </div>
-                <div className="ml-3 text-right text-[10px] text-muted-foreground">
+                <div className="flex shrink-0 flex-col items-end gap-2 text-right text-[10px] text-muted-foreground">
                   {idx === 0 && rx.doctor?.user && (
                     <p>Dr. {rx.doctor.user.firstName} {rx.doctor.user.lastName}</p>
                   )}
                   {idx === 0 && <p>{formatDate(rx.createdAt)}</p>}
+                  {role === 'doctor' && item.isPrn && item.id && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 gap-1 text-xs"
+                      onClick={() => {
+                        setPrnDialog({
+                          open: true,
+                          itemId: item.id ?? '',
+                          drugName: item.drugName,
+                          dosage: item.dosage,
+                          frequency: item.frequency,
+                          route: item.route,
+                          instructions: item.instructions,
+                        });
+                        setPrnTime(nowTimeInput());
+                        setPrnNotes('');
+                        setNdpsForm(EMPTY_NDPS_FORM);
+                      }}
+                    >
+                      <Plus className="h-3 w-3" />
+                      Record dose
+                    </Button>
+                  )}
                 </div>
               </div>
-            )),
+              );
+            }),
           )}
         </div>
       )}
+
+      <Dialog open={prnDialog.open} onOpenChange={(open) => !open && closePrnDialog()}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-4 w-4 text-primary" />
+              Record PRN Dose
+            </DialogTitle>
+            <DialogDescription>
+              Record a doctor-administered PRN medicine directly to this patient&apos;s eMAR.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="rounded-lg border bg-surface-container-low p-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">{prnDialog.drugName}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {[prnDialog.dosage, prnDialog.frequency, prnDialog.route].filter(Boolean).join(' - ')}
+                  </p>
+                </div>
+                <Badge variant="outline" className="text-[10px] uppercase">PRN</Badge>
+              </div>
+              {prnDialog.instructions && (
+                <p className="mt-2 text-xs italic text-muted-foreground">{prnDialog.instructions}</p>
+              )}
+            </div>
+
+            {latestPrnDose && <PrnDoseHistoryCard dose={latestPrnDose} />}
+
+            <PatientSafetyBanner patientId={patientId} />
+
+            <div>
+              <Label className="mb-1.5 block text-xs font-medium">Time given</Label>
+              <Input type="time" value={prnTime} onChange={(e) => setPrnTime(e.target.value)} className="w-40" />
+            </div>
+
+            {ndpsContextLoading && (
+              <div className="flex items-center gap-2 rounded-lg border p-3 text-xs text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Checking controlled-drug requirements...
+              </div>
+            )}
+
+            {ndpsContext?.isNdps && (
+              <NdpsDoseFields context={ndpsContext} value={ndpsForm} onChange={setNdpsForm} />
+            )}
+
+            <div>
+              <Label className="mb-1.5 block text-xs font-medium">Notes</Label>
+              <Textarea
+                rows={3}
+                value={prnNotes}
+                onChange={(e) => setPrnNotes(e.target.value)}
+                placeholder="Indication, patient complaint, response, or bedside note"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" size="sm" onClick={closePrnDialog}>Cancel</Button>
+            <Button size="sm" onClick={submitPrnDose} disabled={triggerPrn.isPending || ndpsContextLoading} className="gap-1.5">
+              {triggerPrn.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              Record
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
