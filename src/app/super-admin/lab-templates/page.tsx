@@ -42,6 +42,7 @@ import {
   type LabTestTemplate,
 } from '@/hooks/use-lab-templates';
 import { LabReportPreviewDialog } from '@/components/laboratory/lab-report-preview';
+import { LoincCodeCombobox } from '@/components/laboratory/loinc-code-combobox';
 
 export default function SuperAdminLabTemplatesPage() {
   const router = useRouter();
@@ -51,7 +52,7 @@ export default function SuperAdminLabTemplatesPage() {
 
   const [search, setSearch] = useState('');
   const [openNew, setOpenNew] = useState(false);
-  const [newForm, setNewForm] = useState({ name: '', code: '' });
+  const [newForm, setNewForm] = useState({ name: '', code: '', loincCode: '', loincDisplayName: '' });
   const [confirmDelete, setConfirmDelete] = useState<LabTestTemplate | null>(null);
   const [previewTpl, setPreviewTpl] = useState<LabTestTemplate | null>(null);
 
@@ -80,12 +81,14 @@ export default function SuperAdminLabTemplatesPage() {
       const tpl = await createTpl.mutateAsync({
         name: newForm.name.trim(),
         code: newForm.code.trim() || null,
+        loincCode: newForm.loincCode.trim() || null,
+        loincDisplayName: newForm.loincDisplayName.trim() || null,
         parameters: [],
         isPublished: false,
       });
       toast.success('Template created');
       setOpenNew(false);
-      setNewForm({ name: '', code: '' });
+      setNewForm({ name: '', code: '', loincCode: '', loincDisplayName: '' });
       if (tpl?.id) router.push(`/super-admin/lab-templates/${tpl.id}`);
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Failed to create';
@@ -260,6 +263,24 @@ export default function SuperAdminLabTemplatesPage() {
               value={newForm.code}
               onChange={(e) => setNewForm((p) => ({ ...p, code: e.target.value }))}
             />
+            <div className="space-y-1">
+              <LoincCodeCombobox
+                value={newForm.loincCode || null}
+                valueTitle={newForm.loincDisplayName || null}
+                onSelect={(loinc) =>
+                  setNewForm((p) => ({
+                    ...p,
+                    loincCode: loinc?.loincCode ?? '',
+                    loincDisplayName: loinc?.displayName ?? '',
+                  }))
+                }
+                className="w-full"
+                placeholder="Search LOINC code (optional)…"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Standardized observation code for interoperability. Optional — you can add it later in the builder.
+              </p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenNew(false)} disabled={createTpl.isPending}>

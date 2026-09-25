@@ -39,6 +39,8 @@ export interface LabTestTemplate {
   id: string;
   name: string;
   code?: string | null;
+  loincCode?: string | null;
+  loincDisplayName?: string | null;
   sampleType?: string | null;
   specimen?: string | null;
   instructions?: string | null;
@@ -63,6 +65,8 @@ export interface LabTestTemplate {
 export type LabTestTemplateInput = {
   name: string;
   code?: string | null;
+  loincCode?: string | null;
+  loincDisplayName?: string | null;
   sampleType?: string | null;
   specimen?: string | null;
   instructions?: string | null;
