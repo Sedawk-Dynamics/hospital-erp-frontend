@@ -27,6 +27,7 @@ import {
   type LabParameterSpec,
 } from '@/hooks/use-lab-templates';
 import { LabParameterBuilder } from '@/components/laboratory/lab-parameter-builder';
+import { LoincCodeCombobox } from '@/components/laboratory/loinc-code-combobox';
 import { LabReportPreviewDialog } from '@/components/laboratory/lab-report-preview';
 import {
   LabTagsInput,
@@ -51,6 +52,8 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
   const [meta, setMeta] = useState({
     name: '',
     code: '',
+    loincCode: '',
+    loincDisplayName: '',
     sampleType: '',
     specimen: '',
     instructions: '',
@@ -76,6 +79,8 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
     setMeta({
       name: template.name,
       code: template.code ?? '',
+      loincCode: template.loincCode ?? '',
+      loincDisplayName: template.loincDisplayName ?? '',
       sampleType: template.sampleType ?? '',
       specimen: template.specimen ?? '',
       instructions: template.instructions ?? '',
@@ -138,6 +143,8 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
         id,
         name: meta.name.trim(),
         code: meta.code.trim() || null,
+        loincCode: meta.loincCode.trim() || null,
+        loincDisplayName: meta.loincDisplayName.trim() || null,
         sampleType: meta.sampleType.trim() || null,
         specimen: meta.specimen.trim() || null,
         instructions: meta.instructions.trim() || null,
@@ -226,6 +233,23 @@ export default function LabTemplateBuilderPage({ params }: LabTemplateBuilderPag
           <div className="col-span-4">
             <Label htmlFor="t-code">Code</Label>
             <Input id="t-code" value={meta.code} onChange={(e) => onMetaChange('code', e.target.value)} placeholder="CBC" />
+          </div>
+
+          <div className="col-span-12">
+            <Label htmlFor="t-loinc">LOINC code</Label>
+            <LoincCodeCombobox
+              value={meta.loincCode || null}
+              valueTitle={meta.loincDisplayName || null}
+              onSelect={(loinc) => {
+                onMetaChange('loincCode', loinc?.loincCode ?? '');
+                onMetaChange('loincDisplayName', loinc?.displayName ?? '');
+              }}
+              className="mt-1 w-full"
+              placeholder="Search LOINC (e.g. CBC, hemoglobin)…"
+            />
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Standardized observation code for interoperability (FHIR/ABDM). Optional.
+            </p>
           </div>
 
           <div className="col-span-3">
