@@ -30,6 +30,7 @@ import {
   TableShell,
   Th,
 } from '@/components/shared/diagnostics/table-bits';
+import { resolveAttachmentUrl } from '@/hooks/use-imaging-attachments';
 import { RadiologyReportPrintDialog } from '@/components/radiology/radiology-report-print-view';
 import { SendBackDialog } from '@/components/shared/diagnostics/send-back-dialog';
 import { EditResultDialog } from './edit-result-dialog';
@@ -228,7 +229,7 @@ export function ResultsTab({
                     {r.pdfReportUrl && (
                       <a
                         className="px-2 py-1 text-xs underline"
-                        href={r.pdfReportUrl}
+                        href={resolveAttachmentUrl(r.pdfReportUrl)}
                         target="_blank"
                         rel="noreferrer"
                       >

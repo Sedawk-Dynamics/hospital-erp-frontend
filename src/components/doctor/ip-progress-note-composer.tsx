@@ -96,17 +96,11 @@ export function IpProgressNoteComposer({
     setMentions([]);
   };
 
-  const anyFilled = [subjective, objective, assessment, plan].some((s) => s.trim());
-
-  // A ward round where nothing changed is a real round: the doctor sees the
-  // patient, writes the drugs, and records how they are. Requiring prose for
-  // that produced either invented text or no note at all.
-  //
-  // A condition alone is deliberately NOT enough — it defaults to Stable, so
-  // accepting it on its own would let an empty note be saved by pressing the
-  // button. There has to be a prescription behind it, or something written.
-  const hasPrescription = writeRx && medicines.length > 0;
-  const canSubmit = anyFilled || hasPrescription;
+  // A ward round where nothing changed is still a real, billable visit: the
+  // doctor saw the patient and recorded their condition. The status selector at
+  // the top is always set, so it alone is enough to save the round — the SOAP
+  // prose and the prescription are both optional. (Requiring prose only ever
+  // produced invented text or no note at all.)
 
   const buildContent = () => {
     const condLabel = CONDITIONS.find((c) => c.value === condition)?.label ?? condition;
@@ -119,8 +113,6 @@ export function IpProgressNoteComposer({
   };
 
   const submit = async () => {
-    if (!canSubmit)
-      return toast.error('Add a prescription, or write at least one section of the round note.');
     if (!visitId) return toast.error('No active IP visit found for this patient.');
 
     const rxItems = writeRx ? buildPrescriptionItems(medicines) : [];
@@ -329,7 +321,7 @@ export function IpProgressNoteComposer({
         <DialogFooter className="mx-0 mb-0 shrink-0 gap-2 border-t px-5 py-3">
           <Badge variant="outline" className="mr-auto self-center text-[10px]">Running IP log</Badge>
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={busy}>Cancel</Button>
-          <Button size="sm" onClick={submit} disabled={busy || !canSubmit} className="gap-1.5">
+          <Button size="sm" onClick={submit} disabled={busy} className="gap-1.5">
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <NotebookPen className="h-3.5 w-3.5" />}
             {busy ? 'Saving…' : 'Save Visit Note'}
           </Button>

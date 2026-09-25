@@ -120,6 +120,7 @@ export function useConsultationCompletion() {
               patientId,
               visitId,
               icdCode: diag.icdCode || undefined,
+              snomedCode: diag.snomedCode || undefined,
               diagnosisName: diag.diagnosisName,
               diagnosisType: diag.diagnosisType,
             });
