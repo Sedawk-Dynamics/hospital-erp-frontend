@@ -3,46 +3,16 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { useDebounce } from '@/hooks/use-debounce';
-import { useIcdSearch } from '@/hooks/use-icd';
+import { useSnomedSearch, fetchSnomedMap } from '@/hooks/use-snomed';
 
-/**
- * The diagnosis name, typed — and searched against ICD-10 as it is typed.
- *
- * Shared by every screen a doctor records a diagnosis on — the prescription
- * pad and the consultation-completion examination step.
- *
- * Neither searched the catalogue by NAME before. The pad had a code picker
- * beside the field and the examination step had a bare text box, so a doctor
- * who types "fever" rather than "R50.9" left the code empty and the diagnosis
- * was stored as free text, with nothing to bill from, report on or drive the
- * CDSS off. Picking a suggestion here fills the name AND the code.
- *
- * Expects `form` to hold a `diagnoses` field array whose rows carry
- * `diagnosisName` and `icdCode`, which both screens already do.
- *
- * The suggestion list is PORTALLED to the body rather than positioned inside
- * the field. Both hosts clip it otherwise, in two different ways that no
- * z-index can escape: the prescription pad's card had `overflow-hidden`, and
- * the consultation card has `overflow-hidden` for its rounded header while the
- * dialog scrolls its body with `overflow-y-auto`. Measured against the real
- * markup, the second result was cut in half and the third never appeared.
- *
- * Free text is still the fallback and always available: anything not chosen
- * from the list is kept exactly as typed, with no code. That matters — a
- * working diagnosis is often not codeable yet, and the form must not force one.
- */
 export function DiagnosisNameField({
   form,
   index,
   placeholder = 'Start typing Diagnosis...',
-  /** The two screens size their inputs differently; the dropdown is shared. */
   inputClassName = 'h-8 text-sm',
 }: {
-  // The forms on both screens are typed `any` already; this follows them
-  // rather than inventing a shape neither actually satisfies.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   form: any;
   index: number;
   placeholder?: string;
@@ -53,13 +23,24 @@ export function DiagnosisNameField({
   const typed: string = form.watch(`diagnoses.${index}.diagnosisName`) ?? '';
   const debounced = useDebounce(typed, 250);
   const term = debounced.trim();
-  const { data: results, isFetching } = useIcdSearch(term, open && term.length >= 2);
+  const { data: results, isFetching } = useSnomedSearch(term, open && term.length >= 2);
   const matches = results ?? [];
 
-  const choose = (icd: { code: string; title: string }) => {
-    form.setValue(`diagnoses.${index}.diagnosisName`, icd.title, { shouldDirty: true });
-    form.setValue(`diagnoses.${index}.icdCode`, icd.code, { shouldDirty: true });
+  const choose = async (concept: { conceptId: string; term: string }) => {
+    form.setValue(`diagnoses.${index}.diagnosisName`, concept.term, { shouldDirty: true });
+    form.setValue(`diagnoses.${index}.snomedCode`, concept.conceptId, { shouldDirty: true });
     setOpen(false);
+
+    // Resolve the ICD code(s) for this concept via the SNOMED→ICD cross-map.
+    // The clinician never picks ICD by hand — it is derived from the selection.
+    // Best-effort: a map failure must not block charting, so the free text +
+    // SNOMED code are already saved above.
+    try {
+      const map = await fetchSnomedMap(concept.conceptId);
+      form.setValue(`diagnoses.${index}.icdCode`, map.icdCodes[0] ?? '', { shouldDirty: true });
+    } catch {
+      form.setValue(`diagnoses.${index}.icdCode`, '', { shouldDirty: true });
+    }
   };
 
   // Where to put the portalled list: pinned under the input, tracked while it
@@ -122,39 +103,30 @@ export function DiagnosisNameField({
             className="fixed z-[60] max-h-56 overflow-y-auto rounded-lg border bg-popover shadow-lg"
             style={{ top: rect.top, left: rect.left, width: rect.width }}
           >
-            {matches.map((icd) => (
+            {matches.map((concept) => (
               <button
-                key={icd.id}
+                key={concept.conceptId}
                 type="button"
                 className="flex w-full items-start gap-2 border-b px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-accent"
                 // onMouseDown, not onClick: blur fires first and would close the
                 // list before a click could land.
                 onMouseDown={(e) => {
                   e.preventDefault();
-                  choose(icd);
+                  choose(concept);
                 }}
               >
-                <Badge
-                  variant="outline"
-                  className="mt-0.5 shrink-0 border-error/30 bg-error/10 px-1.5 py-0 text-[10px] font-bold text-error"
-                >
-                  {icd.code}
-                </Badge>
+                {/* SNOMED code is intentionally NOT shown — it is a backend-only
+                    concept, hidden from clinical UI per the coding standard. */}
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm">{icd.title}</span>
-                  {icd.category && (
-                    <span className="block truncate text-[10px] uppercase text-muted-foreground">
-                      {icd.category}
-                    </span>
-                  )}
+                  <span className="block truncate text-sm">{concept.term}</span>
                 </span>
               </button>
             ))}
               {!matches.length && (
                 <p className="px-3 py-2 text-xs text-muted-foreground">
                   {isFetching
-                    ? 'Searching ICD-10…'
-                    : `No ICD-10 match for “${term}”. It will be saved as free text.`}
+                    ? 'Searching SNOMED…'
+                    : `No SNOMED match for “${term}”. It will be saved as free text.`}
                 </p>
               )}
           </div>,

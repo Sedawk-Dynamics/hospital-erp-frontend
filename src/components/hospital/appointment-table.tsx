@@ -182,11 +182,13 @@ export function AppointmentTable({
                             apt.paymentInfo.paymentStatus === 'paid_at_frontdesk' && 'bg-emerald-100 text-emerald-700',
                             apt.paymentInfo.paymentStatus === 'pay_at_frontdesk' && 'bg-amber-100 text-amber-700',
                             apt.paymentInfo.paymentStatus === 'pending' && 'bg-blue-100 text-blue-700',
+                            apt.paymentInfo.paymentStatus === 'waived' && 'bg-slate-100 text-slate-600',
                           )}>
                             {apt.paymentInfo.paymentStatus === 'paid_online' && 'Paid Online'}
                             {apt.paymentInfo.paymentStatus === 'paid_at_frontdesk' && 'Paid at Desk'}
                             {apt.paymentInfo.paymentStatus === 'pay_at_frontdesk' && 'Pay at Desk'}
                             {apt.paymentInfo.paymentStatus === 'pending' && 'Payment Pending'}
+                            {apt.paymentInfo.paymentStatus === 'waived' && 'Waived (Follow-up)'}
                           </span>
                           {apt.paymentInfo.balanceDue > 0 && (
                             <p className="text-[10px] text-on-surface-variant mt-0.5 font-label">

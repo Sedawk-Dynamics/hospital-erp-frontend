@@ -228,15 +228,28 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
                 ))}
               </div>
             )}
-            <Button
-              size="sm"
-              variant="outline"
-              className="mt-2 w-full"
-              onClick={openCollect}
-              disabled={preparing || consolidate.isPending}
-            >
-              {preparing ? 'Preparing bill…' : 'Collect payment'}
-            </Button>
+            {/* Nothing to collect once the deposit already clears the balance —
+                offering "Collect payment" there let the desk take cash on top of
+                a deposit that had settled the bill (a double charge), and the
+                "from advance" route 400'd on the same already-covered bill. When
+                the after-deposit balance is ₹0, point them at the Deposit section
+                (apply / return) instead of a payment they should not take. */}
+            {n(ledger?.totals.balanceAfterDeposit ?? bill.balanceDue) > 0 ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-2 w-full"
+                onClick={openCollect}
+                disabled={preparing || consolidate.isPending}
+              >
+                {preparing ? 'Preparing bill…' : 'Collect payment'}
+              </Button>
+            ) : (
+              <p className="mt-2 rounded-md bg-teal-50 px-2.5 py-2 text-[11px] text-teal-800">
+                The deposit on file covers this balance — there is nothing to collect here.
+                Apply it to the bill and return any remainder in the Deposit section below.
+              </p>
+            )}
             {n(ledger?.totals.pending) > 0 && (
               <p className="mt-1 text-[11px] text-amber-700">
                 {money(ledger?.totals.pending)} of charges are not on the bill yet — they will be

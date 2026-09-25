@@ -86,6 +86,7 @@ export const DOSAGE_FORM_LABELS: Record<string, string> = {
 const diagnosisRowSchema = z
   .object({
     icdCode: z.string().optional(),
+    snomedCode: z.string().optional(),
     diagnosisName: z.string().optional(),
     diagnosisType: z.enum(['primary', 'secondary', 'differential']),
   })
@@ -365,7 +366,7 @@ export const defaultFormValues: ConsultationFormData = {
   chiefComplaint: '',
   generalExamination: '',
   systemicExamination: '',
-  diagnoses: [{ icdCode: '', diagnosisName: '', diagnosisType: 'primary' }],
+  diagnoses: [{ icdCode: '', snomedCode: '', diagnosisName: '', diagnosisType: 'primary' }],
   medicines: [],
   advice: '',
   followUpDate: '',
