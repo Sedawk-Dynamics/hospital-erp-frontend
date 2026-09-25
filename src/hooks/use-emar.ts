@@ -129,6 +129,12 @@ export interface NdpsPatientDoseInput {
 export interface NdpsDoseContext {
   isNdps: boolean;
   drug?: { id: string; name: string; strength: string | null };
+  labelledContents?: {
+    quantity: number;
+    unit: string;
+    source: 'drug_strength';
+    sourceText: string;
+  } | null;
   linkedBatchId?: string | null;
   dispensingRecordId?: string | null;
   requiresEmergencyReason?: boolean;
