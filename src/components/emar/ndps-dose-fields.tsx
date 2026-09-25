@@ -152,12 +152,21 @@ export function NdpsDoseFields({
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs">Labelled contents *</Label>
-          <Input type="number" min="0" step="any" value={labelledQuantityValue} onChange={(event) => set('labelledQuantity', event.target.value)} placeholder="e.g. 2" />
-          {context.labelledContents && !value.labelledQuantity && (
-            <p className="text-[10px] text-muted-foreground">
-              Auto-filled from drug strength: {context.labelledContents.sourceText}
-            </p>
-          )}
+          <Input
+            type="number"
+            min="0"
+            step="any"
+            value={labelledQuantityValue}
+            readOnly
+            aria-readonly="true"
+            className="cursor-not-allowed bg-surface-container-high text-on-surface-variant"
+            placeholder="Not available"
+          />
+          <p className={`text-[10px] ${context.labelledContents ? 'text-muted-foreground' : 'text-red-700'}`}>
+            {context.labelledContents
+              ? `Locked from drug strength: ${context.labelledContents.sourceText}`
+              : 'Labelled contents are unavailable. Update the drug strength in the formulary.'}
+          </p>
         </div>
         <div className="grid grid-cols-[minmax(0,1fr)_88px] gap-2">
           <div className="space-y-1.5">
