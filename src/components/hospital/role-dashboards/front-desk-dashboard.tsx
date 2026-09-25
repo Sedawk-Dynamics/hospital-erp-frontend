@@ -38,7 +38,7 @@ interface QueueAppointment {
     totalAmount: number;
     amountPaid: number;
     balanceDue: number;
-    paymentStatus: 'paid_online' | 'paid_at_frontdesk' | 'pay_at_frontdesk' | 'pending' | 'no_billing';
+    paymentStatus: 'paid_online' | 'paid_at_frontdesk' | 'waived' | 'pay_at_frontdesk' | 'pending' | 'no_billing';
   } | null;
 }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -43,6 +43,27 @@ const DISCHARGE_SECTIONS: Array<{
   { key: 'advice', label: 'Advice' },
   { key: 'general', label: 'General' },
 ];
+
+// The note's own text, tidied for the discharge summary: drop the
+// "[Progress: <condition>]" prefix line and the "S (Subjective):" / "O …" /
+// "A …" / "P …" labels, keeping just the prose the doctor wrote. This is what
+// the Pin dialog pre-fills so the visit note carries across without retyping.
+// A status-only note (only the [Progress: …] line) keeps that line, so the pin
+// is never empty.
+function pinTextFromNote(note: ProgressNote): string {
+  const raw = (note.content ?? '').replace(/\*\*/g, '').trim();
+  if (!raw) return '';
+  const lines = raw
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const cleaned = lines
+    .filter((l) => !/^\[Progress:[^\]]*\]$/i.test(l))
+    .map((l) => l.replace(/^[SOAP]\s*\([^)]*\):\s*/, ''))
+    .join('\n')
+    .trim();
+  return cleaned || raw;
+}
 
 function SectionBadge({ section }: { section: ProgressNotePinEntry['dischargeSection'] }) {
   const label = DISCHARGE_SECTIONS.find((s) => s.key === section)?.label ?? section;
@@ -196,6 +217,15 @@ function AddPinDialog({
   const [section, setSection] = useState<ProgressNotePinEntry['dischargeSection']>('diagnosis');
   const [content, setContent] = useState('');
   const [saving, setSaving] = useState(false);
+
+
+  useEffect(() => {
+    if (open && note) {
+      setContent(pinTextFromNote(note));
+      setSection('diagnosis');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, note?.id]);
 
   const handleSave = async () => {
     if (!note) return;
