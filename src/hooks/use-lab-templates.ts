@@ -21,10 +21,9 @@ export interface LabParameterSpec {
   name: string;
   code?: string | null;
   unit?: string | null;
-  // Unit-group code (e.g. "concentration_mass"). Lets the parameter builder
-  // filter the unit dropdown to the relevant units. Optional for backwards-
-  // compat with parameters seeded before the unit-groups migration.
   unitGroupCode?: string | null;
+  loincCode?: string | null;
+  loincDisplayName?: string | null;
   refLow?: number | null;
   refHigh?: number | null;
   refRangeText?: string | null;
