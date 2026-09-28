@@ -60,8 +60,6 @@ const userFormSchema = z
 
 type UserFormData = z.infer<typeof userFormSchema>;
 
-// Doctor-only profile fields — rendered via .map() when the "doctor" role is
-// selected. `name` must match a key in userFormSchema.
 const DOCTOR_FIELDS: {
   name: keyof UserFormData;
   label: string;
@@ -72,7 +70,20 @@ const DOCTOR_FIELDS: {
   { name: 'qualifications', label: 'Qualifications', placeholder: 'e.g. MBBS, MD', type: 'text' },
   { name: 'experienceYears', label: 'Experience (years)', placeholder: 'e.g. 8', type: 'number' },
   { name: 'licenseNumber', label: 'License Number', placeholder: 'Medical council license', type: 'text' },
-  { name: 'hprId', label: 'HPR ID (optional)', placeholder: 'ABDM Healthcare Professional Registry', type: 'text' },
+];
+
+
+const HPR_ROLES = [
+  'doctor',
+  'radiologist',
+  'nurse',
+  'nurse_admin',
+  'pharmacist',
+  'pharmacy_admin',
+  'lab_technician',
+  'lab_supervisor',
+  'blood_bank_staff',
+  'radiology_admin',
 ];
 
 // ============================================================
@@ -134,6 +145,13 @@ export function UserFormDialog({
   const isDoctorSelected =
     !!doctorRole && (selectedRoleIds ?? []).includes(doctorRole.id);
 
+  // HPR ID applies to any clinical professional — show it when a selected role
+  // is in HPR_ROLES.
+  const selectedRoleNames = (selectedRoleIds ?? [])
+    .map((id) => roles.find((r) => r.id === id)?.name)
+    .filter(Boolean) as string[];
+  const isClinicalSelected = selectedRoleNames.some((n) => HPR_ROLES.includes(n));
+
   // Departments for the current hospital — populate the Department dropdown.
   // Only fetched when the doctor section is shown.
   const { data: departments = [] } = useQuery({
@@ -168,7 +186,7 @@ export function UserFormDialog({
             user.doctorProfile?.experienceYears != null
               ? String(user.doctorProfile.experienceYears)
               : '',
-          hprId: user.doctorProfile?.hprId ?? '',
+          hprId: user.hprId ?? '',
         });
       } else {
         reset({
@@ -304,6 +322,17 @@ export function UserFormDialog({
               <p className="text-xs text-destructive">{errors.roleIds.message}</p>
             )}
           </div>
+
+          {isClinicalSelected && (
+            <div className="space-y-1.5">
+              <Label htmlFor="hprId">HPR ID (optional)</Label>
+              <Input
+                id="hprId"
+                {...register('hprId')}
+                placeholder="ABDM Healthcare Professional Registry ID"
+              />
+            </div>
+          )}
 
           {/* Doctor-only profile fields — shown only when "doctor" role selected */}
           {isDoctorSelected && (

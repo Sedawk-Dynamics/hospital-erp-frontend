@@ -11,6 +11,7 @@ export interface UserListItem {
   firstName: string;
   lastName: string;
   phone: string | null;
+  hprId: string | null;
   isActive: boolean;
   is2faEnabled: boolean;
   createdAt: string;
@@ -22,7 +23,6 @@ export interface UserListItem {
     qualifications: string | null;
     licenseNumber: string | null;
     experienceYears: number | null;
-    hprId: string | null;
   } | null;
 }
 
@@ -118,13 +118,13 @@ export function useUserStats() {
 
 // Doctor-only profile fields — sent when creating/updating a user with the
 // doctor role. All optional; backend creates/updates the DoctorProfile.
+// NOTE: hprId is NOT here — it's a top-level User field (all clinical roles).
 export interface DoctorProfileInput {
   departmentId?: string;
   specialization?: string;
   qualifications?: string;
   licenseNumber?: string;
   experienceYears?: number;
-  hprId?: string;
 }
 
 export function useCreateUser() {
@@ -137,6 +137,7 @@ export function useCreateUser() {
       lastName: string;
       phone?: string;
       roleIds: string[];
+      hprId?: string;
       doctorProfile?: DoctorProfileInput;
     }) => {
       const response = await apiPost<UserListItem>('/users', data);
@@ -162,6 +163,7 @@ export function useUpdateUser() {
       email?: string;
       isActive?: boolean;
       roleIds?: string[];
+      hprId?: string;
       doctorProfile?: DoctorProfileInput;
     }) => {
       const response = await apiPut<UserListItem>(`/users/${id}`, data);
