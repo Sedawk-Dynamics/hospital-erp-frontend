@@ -13,11 +13,6 @@ interface SubmitParams {
   appointmentId: string;
   doctorProfileId: string;
   doctorUserId: string;
-  /**
-   * When set, updates existing records in-place instead of creating new ones
-   * and does NOT change the appointment status or close the visit. Used for
-   * the 24h edit window on completed consultations.
-   */
   editMode?: {
     visitId: string;
     progressNoteId?: string;
@@ -178,10 +173,6 @@ export function useConsultationCompletion() {
             });
 
         if (editMode?.prescriptionId) {
-          // Single PUT that updates header fields + atomically replaces
-          // items in a transaction. Avoids the old delete-then-recreate
-          // pattern which created duplicate rows whenever the doctor role
-          // lacked `prescriptions:delete` permission.
           setCurrentStep('Updating prescription...');
           await apiPut(`/prescriptions/${editMode.prescriptionId}`, {
             notes: formData.advice || formData.followUpNotes || undefined,
@@ -237,12 +228,6 @@ export function useConsultationCompletion() {
             ...notePayload,
           });
           progressNoteId = noteRes.data?.id;
-          // Don't auto-sign here. The spec's OP rule is "editable for 24
-          // hours → then LOCKED". Matching that, the note stays `active`
-          // so within-window edits don't require an amendment reason; the
-          // OP auto-archive cron flips it to `archived` after 24h. For
-          // notes the doctor wants to finalize early, surface an explicit
-          // Sign action in the consultation UI.
         }
 
         // ── 6-7. Close visit + complete appointment — only on initial submit ──
@@ -301,10 +286,10 @@ function buildProgressNoteContent(data: ConsultationFormData): string {
   if (data.generalExamination) {
     sections.push(`**General Examination:**\n${data.generalExamination}`);
   }
-  if (data.systemicExamination) {
+  /* if (data.systemicExamination) {
     sections.push(`**Systemic Examination:**\n${data.systemicExamination}`);
   }
-
+ */
   // Vitals are recorded separately by the nursing team and surfaced in the
   // patient's vitals history. They are intentionally not duplicated into the
   // doctor's progress-note narrative.
@@ -358,10 +343,10 @@ function buildProgressNoteContent(data: ConsultationFormData): string {
     sections.push(`**Referral:**\n${data.referralNotes}`);
   }
 
-  if (data.physicalObservations && data.physicalObservations.length > 0) {
+  /* if (data.physicalObservations && data.physicalObservations.length > 0) {
     const lines = data.physicalObservations.map((po) => `- ${po.value}`);
     sections.push(`**Physical Observations:**\n${lines.join('\n')}`);
-  }
+  } */
 
   if (data.impression) {
     sections.push(`**Impression:**\n${data.impression}`);
@@ -383,14 +368,14 @@ function buildSoapPayload(data: ConsultationFormData) {
     },
     objective: {
       vitalsSummary: '',
-      physicalObservations: (data.physicalObservations ?? []).map((po) => ({
+      /* physicalObservations: (data.physicalObservations ?? []).map((po) => ({
         source: po.source,
         catalogId: po.catalogId,
         value: po.value,
         system: po.system,
-      })),
+      })), */
       generalExamination: data.generalExamination || '',
-      systemicExamination: data.systemicExamination || '',
+      /* systemicExamination: data.systemicExamination || '', */
       investigations: data.investigationsSummary || '',
     },
     assessment: {
@@ -428,10 +413,10 @@ export function getConsultationSectionText(
     case 'examination': {
       const parts = [
         data.generalExamination?.trim(),
-        data.systemicExamination?.trim(),
+        /* data.systemicExamination?.trim(),
         ...(data.physicalObservations ?? [])
           .map((po) => po.value?.trim())
-          .filter(Boolean),
+          .filter(Boolean), */
       ].filter(Boolean);
       return parts.join('\n');
     }

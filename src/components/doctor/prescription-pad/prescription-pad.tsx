@@ -49,7 +49,6 @@ import {
 import { VoiceInputButton } from '../voice-input-button';
 import { IcdCodeCombobox } from '@/components/clinical/icd-code-combobox';
 import { DiagnosisNameField } from '@/components/clinical/diagnosis-name-field';
-import { PhysicalObservationsPicker } from '../physical-observations-picker';
 import { SmartSuggestionsCard } from '../smart-suggestions-card';
 import { QtyCell } from '../prescription-qty-cell';
 import { StockTypeBadge } from '@/components/shared/stock-type-badge';
@@ -244,7 +243,7 @@ export function PrescriptionPad({
 
   // Watched SOAP extras — reading the field array this way keeps the
   // render in sync without subscribing the whole form to every keystroke.
-  const physicalObservations = watch('physicalObservations') ?? [];
+  /* const physicalObservations = watch('physicalObservations') ?? []; */
   const impression = watch('impression') ?? '';
   const investigationsSummary = watch('investigationsSummary') ?? '';
   const pinnedSections = (watch('pinnedSections') ?? []) as ConsultationPinSection[];
@@ -633,7 +632,7 @@ export function PrescriptionPad({
             />
 
             {/* PHYSICAL OBSERVATIONS */}
-            <PadSection
+            {/* <PadSection
               icon={<ObservationIcon className="h-4 w-4" />}
               title="Physical Observations"
               badge="Catalog"
@@ -645,7 +644,7 @@ export function PrescriptionPad({
                 value={physicalObservations}
                 onChange={(next) => setValue('physicalObservations', next, { shouldDirty: true })}
               />
-            </PadSection>
+            </PadSection> */}
 
             {/* EXAMINATION FINDINGS */}
             <PadSection
@@ -665,7 +664,7 @@ export function PrescriptionPad({
                 </div>
               }
             >
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-1 gap-3">
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-medium text-muted-foreground">General Examination</label>
@@ -682,7 +681,7 @@ export function PrescriptionPad({
                     className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-none"
                   />
                 </div>
-                <div className="space-y-1.5">
+                {/* <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-medium text-muted-foreground">Systemic Examination</label>
                     <VoiceInputButton
@@ -697,7 +696,7 @@ export function PrescriptionPad({
                     rows={3}
                     className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-none"
                   />
-                </div>
+                </div> */}
               </div>
             </PadSection>
 
@@ -809,10 +808,7 @@ export function PrescriptionPad({
               <SmartSuggestionsCard
                 buildInput={() => ({
                   chiefComplaints: watch('chiefComplaint') || undefined,
-                  presentIllness:
-                    [watch('generalExamination'), watch('systemicExamination')]
-                      .filter(Boolean)
-                      .join('\n') || undefined,
+                  presentIllness:watch('generalExamination') || undefined,
                   vitalsSummary: (() => {
                     // Latest reading on file, whoever recorded it.
                     const v = latestVital;
@@ -827,10 +823,10 @@ export function PrescriptionPad({
                     if (v.oxygenSaturation) parts.push(`SpO2 ${v.oxygenSaturation}%`);
                     return parts.join(' · ') || undefined;
                   })(),
-                  physicalObservations: physicalObservations.map((po) => ({
+                  /* physicalObservations: physicalObservations.map((po) => ({
                     value: po.value,
                     system: po.system,
-                  })),
+                  })), */
                   diagnosis: (watch('diagnoses') ?? [])
                     .map((d: any) => d.diagnosisName)
                     .filter(Boolean)

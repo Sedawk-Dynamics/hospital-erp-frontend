@@ -1301,20 +1301,6 @@ export default function PatientConsultationPage({
               <OrdersPanel patientId={patient.id} visitId={activeVisitId || undefined} />
             </section>
           </div>
-
-          {/* ── Right aside (20%) ─────────────────────────────────── */}
-          {/* Flows with the page rather than scrolling inside itself.
-              It used to be sticky and capped at the viewport height with its
-              own overflow-y. Vitals alone runs to seven readings plus the
-              nurse's note, so the column was routinely taller than the cap —
-              which put allergies and family history behind a second scrollbar
-              the doctor had to find, inside a 20% column. Worse, a sticky
-              element taller than the viewport cannot be scrolled to the
-              bottom at all: it pins at top-14 while the page moves past it,
-              so the last card was unreachable rather than merely hidden.
-
-              Nothing is clipped now; the whole aside is reached with the
-              ordinary page scroll. */}
           <aside className="lg:col-span-1 print:hidden">
             <div className="space-y-3">
               <VitalsSidebar
@@ -1397,12 +1383,6 @@ export default function PatientConsultationPage({
             );
           })()}
           <div className="border-t border-outline-variant/30 bg-surface-container-low px-6 py-3 flex items-center justify-between shrink-0">
-            {/* This footer sits under EVERY panel, but only four of the five
-                are read-only. Medical History is editable — Personal has a
-                Save, Family and Allergies add and remove, and disorders come
-                off the ICD-10 picker. Telling a doctor their entries do not
-                count here is worse than saying nothing: they read it and go
-                looking for somewhere else to record an allergy. */}
             <p className="font-label text-[11px] text-on-surface-variant">
               {activeClinical === 'history'
                 ? 'Changes here are saved to the patient record.'
