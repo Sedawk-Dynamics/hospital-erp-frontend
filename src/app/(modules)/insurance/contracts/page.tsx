@@ -25,7 +25,6 @@ const today = new Date().toISOString().slice(0, 10);
 const nextYear = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 const DEFAULT_REQUIREMENTS: Requirement[] = [
   { code: 'FINAL_BILL', name: 'Final itemised bill', category: 'billing', isRequired: true },
-  { code: 'DISCHARGE_SUMMARY', name: 'Discharge summary', category: 'clinical', isRequired: true },
   { code: 'AUTHORIZATION', name: 'Authorization letter', category: 'authorization', isRequired: true },
 ];
 

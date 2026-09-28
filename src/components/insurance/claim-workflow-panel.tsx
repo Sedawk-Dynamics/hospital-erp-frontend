@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Check, Download, FilePlus2, MessageSquareWarning, Plus, RefreshCw, Send, ShieldCheck, WalletCards, X } from 'lucide-react';
+import { Check, Download, FilePlus2, Plus, Send, WalletCards, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,6 @@ import type { InsuranceClaim } from '@/hooks/use-insurance';
 import {
   downloadClaimDossier,
   useAddClaimDocument,
-  useClaimChecklist,
   useCreateClaimAdjustment,
   useDecideClaimWriteOff,
   useQueueInsuranceExchange,
@@ -25,7 +24,6 @@ import {
   useRequestClaimWriteOff,
   useRespondClaimQuery,
   useResolveClaimQuery,
-  useSyncClaimChecklist,
   useVerifyClaimDocument,
   type DocumentCategory,
 } from '@/hooks/use-insurance-workflow';
@@ -36,8 +34,6 @@ const today = new Date().toISOString().slice(0, 10);
 const money = (value?: number | null) => `₹${Number(value ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
 export function ClaimWorkflowPanel({ claim }: { claim: InsuranceClaim }) {
-  const checklist = useClaimChecklist(claim.id);
-  const syncChecklist = useSyncClaimChecklist();
   const addDocument = useAddClaimDocument();
   const verifyDocument = useVerifyClaimDocument();
   const raiseQuery = useRaiseClaimQuery();
@@ -90,13 +86,9 @@ export function ClaimWorkflowPanel({ claim }: { claim: InsuranceClaim }) {
   }
 
   return <Card>
-    <CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle>Claim Operations</CardTitle><CardDescription>Submission dossier, payer queries, financial closure and immutable audit controls.</CardDescription></div><div className="flex gap-2"><Button variant="outline" size="sm" onClick={async () => { try { await downloadClaimDossier(claim.id, claim.claimNumber); toast.success('Claim dossier downloaded'); } catch (error) { fail(error, 'Dossier export failed'); } }}><Download className="mr-1.5 size-4" /> Dossier</Button><Button variant="outline" size="sm" onClick={() => setAction('exchange')}><Send className="mr-1.5 size-4" /> Exchange</Button></div></div></CardHeader>
+    <CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle>Claim Operations</CardTitle><CardDescription>Optional supporting documents, payer queries, financial closure and immutable audit controls.</CardDescription></div><div className="flex gap-2"><Button variant="outline" size="sm" onClick={async () => { try { await downloadClaimDossier(claim.id, claim.claimNumber); toast.success('Claim dossier downloaded'); } catch (error) { fail(error, 'Dossier export failed'); } }}><Download className="mr-1.5 size-4" /> Dossier</Button><Button variant="outline" size="sm" onClick={() => setAction('exchange')}><Send className="mr-1.5 size-4" /> Exchange</Button></div></div></CardHeader>
     <CardContent>
-      <Tabs defaultValue="checklist"><TabsList className="flex h-auto flex-wrap"><TabsTrigger value="checklist">Checklist</TabsTrigger><TabsTrigger value="documents">Documents ({docs.length})</TabsTrigger><TabsTrigger value="queries">Queries ({queries.filter((item) => item.status !== 'resolved').length})</TabsTrigger><TabsTrigger value="settlement">Settlement</TabsTrigger><TabsTrigger value="adjustments">Write-offs & adjustments</TabsTrigger><TabsTrigger value="audit">Audit</TabsTrigger></TabsList>
-        <TabsContent value="checklist" className="mt-4 space-y-3">
-          <div className={cn('flex items-center justify-between rounded-md border p-3', checklist.data?.complete ? 'border-emerald-300 bg-emerald-50' : 'border-amber-300 bg-amber-50')}><div className="flex items-center gap-2">{checklist.data?.complete ? <ShieldCheck className="size-5 text-emerald-700" /> : <MessageSquareWarning className="size-5 text-amber-700" />}<div><div className="font-medium">{checklist.data?.complete ? 'Submission dossier complete' : 'Submission is blocked until required documents are complete'}</div>{checklist.data?.missing.length ? <div className="text-xs text-on-surface-variant">Missing: {checklist.data.missing.join(', ')}</div> : null}</div></div><Button size="sm" variant="outline" onClick={async () => { try { await syncChecklist.mutateAsync(claim.id); toast.success('Checklist synchronized with active payer contract'); } catch (error) { fail(error, 'Checklist sync failed'); } }}><RefreshCw className="mr-1 size-4" /> Sync</Button></div>
-          <div className="grid gap-2 sm:grid-cols-2">{checklist.data?.items.map((item) => <div key={item.id} className="flex items-center gap-2 rounded-md border p-3 text-sm">{item.isComplete ? <Check className="size-4 text-emerald-600" /> : <X className="size-4 text-rose-600" />}<span className="flex-1">{item.label}</span>{item.isRequired && <Badge variant="outline">Required</Badge>}</div>)}</div>
-        </TabsContent>
+      <Tabs defaultValue="documents"><TabsList className="flex h-auto flex-wrap"><TabsTrigger value="documents">Supporting Documents ({docs.length})</TabsTrigger><TabsTrigger value="queries">Queries ({queries.filter((item) => item.status !== 'resolved').length})</TabsTrigger><TabsTrigger value="settlement">Settlement</TabsTrigger><TabsTrigger value="adjustments">Write-offs & adjustments</TabsTrigger><TabsTrigger value="audit">Audit</TabsTrigger></TabsList>
         <TabsContent value="documents" className="mt-4 space-y-3"><Button size="sm" onClick={() => setAction('document')}><FilePlus2 className="mr-1.5 size-4" /> Add document version</Button>{docs.length ? docs.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3"><div><a href={item.fileUrl} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">{item.name}</a><div className="text-xs text-on-surface-variant">{item.category} · version {item.version} · {new Date(item.createdAt).toLocaleString('en-IN')}</div></div><div className="flex items-center gap-2"><Badge variant="outline" className="capitalize">{item.status}</Badge>{item.status === 'pending' && <><Button size="sm" variant="ghost" onClick={() => verifyDocument.mutate({ documentId: item.id, status: 'verified' }, { onSuccess: () => toast.success('Document verified'), onError: (error) => fail(error, 'Verification failed') })}><Check className="size-4 text-emerald-600" /></Button><Button size="sm" variant="ghost" onClick={() => verifyDocument.mutate({ documentId: item.id, status: 'rejected', rejectionReason: 'Document rejected during claim review' }, { onSuccess: () => toast.success('Document rejected'), onError: (error) => fail(error, 'Review failed') })}><X className="size-4 text-rose-600" /></Button></>}</div></div>) : <Empty text="No claim documents uploaded." />}</TabsContent>
         <TabsContent value="queries" className="mt-4 space-y-3">
           <Button size="sm" onClick={() => setAction('query')}><Plus className="mr-1.5 size-4" /> Record payer query</Button>

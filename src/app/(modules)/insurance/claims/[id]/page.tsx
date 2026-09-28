@@ -225,6 +225,8 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
   }
   const isOpen = ['submitted', 'under_review', 'query_raised', 'response_submitted', 'resubmitted'].includes(claim.status);
   const isResubmittable = ['rejected', 'partially_approved'].includes(claim.status);
+  const canMoveUnderReview = ['submitted', 'resubmitted'].includes(claim.status);
+  const billIsFinalized = !!claim.bill?.status && ['pending', 'partially_paid', 'paid'].includes(claim.bill.status);
 
   return (
     <div className="space-y-6">
@@ -320,9 +322,23 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
           <CardContent className="flex flex-col gap-2">
             {isOpen && (
               <>
-                <Button onClick={doSubmit} variant="outline" className="justify-start gap-1.5">
-                  <CheckCircle2 className="size-4 text-amber-600" /> Mark Under Review
-                </Button>
+                {canMoveUnderReview && (
+                  <>
+                    <Button
+                      onClick={doSubmit}
+                      variant="outline"
+                      className="justify-start gap-1.5"
+                      disabled={!billIsFinalized || submitMut.isPending}
+                    >
+                      <CheckCircle2 className="size-4 text-amber-600" /> Proceed to Under Review
+                    </Button>
+                    {!billIsFinalized && (
+                      <p className="px-1 text-xs text-amber-700">
+                        Finalize the hospital bill to proceed. Supporting documents are optional.
+                      </p>
+                    )}
+                  </>
+                )}
                 <Button
                   onClick={() => {
                     setApprovedAmount(String(claim.claimAmount));
