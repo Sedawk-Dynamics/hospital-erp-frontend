@@ -917,19 +917,39 @@ export function useSplitBill() {
     mutationFn: async ({
       billId,
       policyId,
+      claimId,
       claimAmount,
-    }: { billId: string; policyId: string; claimAmount?: number }) => {
+      insuranceAmount,
+      patientAmount,
+    }: {
+      billId: string;
+      policyId?: string;
+      claimId?: string;
+      claimAmount?: number;
+      insuranceAmount?: number;
+      patientAmount?: number;
+    }) => {
+      const body = insuranceAmount !== undefined || patientAmount !== undefined
+        ? { claimId, insuranceAmount, patientAmount }
+        : { policyId, claimAmount };
       const res = await apiPatch<{
         billId: string;
         split: ResponsibilitySplit;
         billSplit: AppliedBillSplit;
       }>(
         `/insurance/bills/${billId}/split`,
-        { policyId, claimAmount },
+        body,
       );
       return res.data;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['insurance'] });
+      qc.invalidateQueries({ queryKey: ['hospital', 'bills'] });
+      qc.invalidateQueries({ queryKey: ['hospital', 'billing-pending'] });
+      qc.invalidateQueries({ queryKey: ['hospital', 'cash-counter'] });
+      qc.invalidateQueries({ queryKey: ['hospital', 'ip-bills'] });
+      qc.invalidateQueries({ queryKey: ['front-desk'] });
+    },
   });
 }
 

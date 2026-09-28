@@ -84,6 +84,7 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
   const [rejectOpen, setRejectOpen] = useState(false);
   const [resubmitOpen, setResubmitOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [splitOpen, setSplitOpen] = useState(false);
 
   const [approvedAmount, setApprovedAmount] = useState('');
   const [approveNotes, setApproveNotes] = useState('');
@@ -91,6 +92,8 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
   const [resubmitNotes, setResubmitNotes] = useState('');
   const [resubmitAmount, setResubmitAmount] = useState('');
   const [cancelReason, setCancelReason] = useState('');
+  const [splitTpaAmount, setSplitTpaAmount] = useState('');
+  const [splitPatientAmount, setSplitPatientAmount] = useState('');
   const [appliedSplit, setAppliedSplit] = useState<AppliedBillSplit | null>(null);
 
   const submitMut = useSubmitClaim();
@@ -201,32 +204,77 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
       toast.error(apiError(err, 'Export failed'));
     }
   }
+  function editableAmount(value: number) {
+    return String(Number(value.toFixed(2)));
+  }
+  function openSplitEditor() {
+    if (!claimSafe.bill) return toast.error('The hospital bill is not available');
+    const total = Number(claimSafe.bill.totalAmount ?? 0);
+    const currentTpa = Number(claimSafe.bill.insuranceCoveredAmount ?? claimSafe.coveredAmount ?? 0);
+    const safeTpa = Math.min(Math.max(0, currentTpa), total);
+    setSplitTpaAmount(editableAmount(safeTpa));
+    setSplitPatientAmount(editableAmount(Math.max(0, total - safeTpa)));
+    setSplitOpen(true);
+  }
+  function changeTpaAmount(value: string) {
+    setSplitTpaAmount(value);
+    const amount = Number(value);
+    if (value !== '' && Number.isFinite(amount) && amount >= 0 && amount <= billTotal) {
+      setSplitPatientAmount(editableAmount(billTotal - amount));
+    }
+  }
+  function changePatientAmount(value: string) {
+    setSplitPatientAmount(value);
+    const amount = Number(value);
+    if (value !== '' && Number.isFinite(amount) && amount >= 0 && amount <= billTotal) {
+      setSplitTpaAmount(editableAmount(billTotal - amount));
+    }
+  }
   async function doApplySplit() {
-    if (!claimSafe.policyId) return toast.error('A policy is required to calculate this split');
+    if (!claimSafe.bill) return toast.error('The hospital bill is not available');
+    if (!splitTpaAmount || !splitPatientAmount) return toast.error('Enter both TPA and patient amounts');
+    const insuranceAmount = Number(splitTpaAmount);
+    const patientAmount = Number(splitPatientAmount);
+    if (!Number.isFinite(insuranceAmount) || !Number.isFinite(patientAmount)) {
+      return toast.error('Enter valid TPA and patient amounts');
+    }
+    if (insuranceAmount < 0 || patientAmount < 0) {
+      return toast.error('TPA and patient amounts cannot be negative');
+    }
+    if (insuranceAmount === 0) {
+      return toast.error('TPA share must be greater than zero. Reject the claim if the payer covers nothing.');
+    }
+    if (Math.abs((insuranceAmount + patientAmount) - billTotal) > 0.01) {
+      return toast.error(`TPA and patient amounts must equal the bill total of ${inr(billTotal)}`);
+    }
     try {
       const result = await splitMut.mutateAsync({
         billId: claimSafe.billId,
-        policyId: claimSafe.policyId,
-        claimAmount: Number(claimSafe.claimAmount),
+        claimId: claimSafe.id,
+        insuranceAmount,
+        patientAmount,
       });
       setAppliedSplit(result.billSplit);
-      const wasAlreadyCorrect =
-        Number(claimSafe.bill?.insuranceCoveredAmount ?? 0) === result.billSplit.insurancePortion &&
-        Number(claimSafe.bill?.patientPayableAmount ?? 0) === result.billSplit.patientPortion &&
-        Number(claimSafe.bill?.balanceDue ?? 0) === result.billSplit.balanceDue;
+      setSplitOpen(false);
       toast.success(
-        wasAlreadyCorrect
-          ? 'TPA / patient split was already correct.'
-          : `Split updated: TPA ${inr(result.billSplit.insurancePortion)}, patient ${inr(result.billSplit.patientPortion)}.`,
+        `Split saved: TPA ${inr(result.billSplit.insurancePortion)}, patient ${inr(result.billSplit.patientPortion)}.`,
       );
     } catch (err: unknown) {
-      toast.error(apiError(err, 'Could not recalculate the bill split'));
+      toast.error(apiError(err, 'Could not save the bill split'));
     }
   }
   const isResubmittable = ['rejected', 'partially_approved'].includes(claim.status);
   const canMoveUnderReview = claim.status === 'submitted';
   const canRecordDecision = claim.status === 'under_review';
   const billIsFinalized = !!claim.bill?.status && ['pending', 'partially_paid', 'paid'].includes(claim.bill.status);
+  const splitIsEditable = ['submitted', 'under_review', 'query_raised', 'response_submitted', 'resubmitted'].includes(claim.status);
+  const canEditSplit = billIsFinalized && splitIsEditable;
+  const billTotal = Number(claim.bill?.totalAmount ?? 0);
+  const amountAlreadyPaid = Number(claim.bill?.amountPaid ?? 0);
+  const splitPatientValue = Number(splitPatientAmount);
+  const frontDeskDue = Number.isFinite(splitPatientValue)
+    ? Math.max(0, splitPatientValue - amountAlreadyPaid)
+    : 0;
 
   return (
     <div className="space-y-6">
@@ -393,17 +441,23 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
               <Download className="size-4 text-primary" /> Legacy Claim Export
             </Button>
             <Button
-              onClick={doApplySplit}
+              onClick={openSplitEditor}
               variant="outline"
               className="justify-start gap-1.5"
-              disabled={splitMut.isPending}
+              disabled={!canEditSplit || splitMut.isPending}
             >
               <Split className="size-4 text-cyan-700" />
-              {splitMut.isPending ? 'Recalculating…' : 'Recalculate TPA / Patient Share'}
+              Recalculate TPA / Patient Share
             </Button>
+            {!billIsFinalized && (
+              <p className="px-1 text-xs text-amber-700">Finalize the hospital bill before setting the split.</p>
+            )}
+            {billIsFinalized && !splitIsEditable && (
+              <p className="px-1 text-xs text-on-surface-variant">The split is locked after the payer decision.</p>
+            )}
             {appliedSplit && (
               <div role="status" className="rounded-md border border-cyan-200 bg-cyan-50 p-2.5 text-xs text-cyan-950">
-                <div className="font-semibold">Bill split recalculated</div>
+                <div className="font-semibold">Bill split updated</div>
                 <div className="mt-1 grid grid-cols-3 gap-2">
                   <span>TPA <strong>{inr(appliedSplit.insurancePortion)}</strong></span>
                   <span>Patient <strong>{inr(appliedSplit.patientPortion)}</strong></span>
@@ -481,6 +535,61 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
       <CommunicationLogPanel claimId={claim.id} />
 
       {/* Dialogs */}
+      <Dialog open={splitOpen} onOpenChange={setSplitOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Set TPA / Patient Share</DialogTitle>
+          </DialogHeader>
+          <div className="rounded-lg border bg-surface-container-low/40 p-3 text-sm">
+            <Row label="Final bill total" value={inr(billTotal)} tone="font-bold" />
+            <Row label="Already received from patient" value={inr(amountAlreadyPaid)} />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="split-tpa-amount">TPA share (₹)</Label>
+              <Input
+                id="split-tpa-amount"
+                type="number"
+                min={0.01}
+                max={billTotal}
+                step="0.01"
+                inputMode="decimal"
+                value={splitTpaAmount}
+                onChange={(event) => changeTpaAmount(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="split-patient-amount">Patient share (₹)</Label>
+              <Input
+                id="split-patient-amount"
+                type="number"
+                min={0}
+                max={billTotal}
+                step="0.01"
+                inputMode="decimal"
+                value={splitPatientAmount}
+                onChange={(event) => changePatientAmount(event.target.value)}
+              />
+            </div>
+          </div>
+          <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-950">
+            Front desk will collect <strong>{inr(frontDeskDue)}</strong> from the patient.
+            {amountAlreadyPaid > 0 && (
+              <span> Patient share is reduced by {inr(amountAlreadyPaid)} already received.</span>
+            )}
+          </div>
+          <p className="text-xs text-on-surface-variant">
+            TPA share and patient share must equal the final bill total. Saving updates the amount due at the front desk.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSplitOpen(false)}>Cancel</Button>
+            <Button onClick={doApplySplit} disabled={splitMut.isPending}>
+              {splitMut.isPending ? 'Saving…' : 'Save Split'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={approveOpen} onOpenChange={setApproveOpen}>
         <DialogContent>
           <DialogHeader>
@@ -576,12 +685,12 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
             value={resubmitAmount}
             onChange={(e) => setResubmitAmount(e.target.value)}
           />
-          <Label>What changed / additional documentation summary</Label>
+          <Label>Reason for resubmission</Label>
           <Textarea
             rows={4}
             value={resubmitNotes}
             onChange={(e) => setResubmitNotes(e.target.value)}
-            placeholder="e.g. attached pathology report, discharge summary signed off, billing breakdown updated…"
+            placeholder="e.g. billing breakdown corrected or claim amount revised…"
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setResubmitOpen(false)}>
