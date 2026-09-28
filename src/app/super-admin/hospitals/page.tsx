@@ -51,6 +51,7 @@ export default function HospitalsPage() {
     city: '',
     state: '',
     country: '',
+    hfrId: '',
   });
 
   const handleCreate = async () => {
@@ -62,7 +63,7 @@ export default function HospitalsPage() {
       await createTenant.mutateAsync(formData);
       toast.success('Hospital created successfully');
       setDialogOpen(false);
-      setFormData({ name: '', slug: '', email: '', phone: '', address: '', city: '', state: '', country: '' });
+      setFormData({ name: '', slug: '', email: '', phone: '', address: '', city: '', state: '', country: '', hfrId: '' });
     } catch (error: unknown) {
       const message = (error as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Failed to create hospital';
       toast.error(message);
@@ -282,6 +283,16 @@ export default function HospitalsPage() {
                     onChange={(e) => setFormData((p) => ({ ...p, country: e.target.value }))}
                   />
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="hfrId" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">HFR ID (optional)</Label>
+                <Input
+                  id="hfrId"
+                  className="bg-surface-container-low border-none rounded-xl px-4 py-2.5 w-full font-label text-sm focus:ring-2 focus:ring-primary/20 transition-all outline-none"
+                  placeholder="ABDM Health Facility Registry ID"
+                  value={formData.hfrId}
+                  onChange={(e) => setFormData((p) => ({ ...p, hfrId: e.target.value }))}
+                />
               </div>
             </div>
             <DialogFooter>

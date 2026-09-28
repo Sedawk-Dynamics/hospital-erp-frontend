@@ -86,6 +86,7 @@ export interface MyHospital {
   email: string | null;
   website: string | null;
   licenseNumber: string | null;
+  hfrId: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
