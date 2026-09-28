@@ -324,12 +324,15 @@ function AdmissionDialog({
         // Doctor optional now — omit when not chosen.
         doctorId: selectedDoctorId || undefined,
         admissionType,
-        // No bed/ward at registration — assigned later from the IP workspace.
         admissionDate,
         expectedDischargeDate: expectedDischarge || undefined,
         admissionReason: admissionReason || undefined,
         depositAmount: depositAmount ? parseFloat(depositAmount) : 0,
         billingCategory,
+        // Ward/bed picked in the admit form (IP only). Omit when empty —
+        // an empty string fails the backend's UUID validation.
+        wardId: selectedWardId || undefined,
+        bedId: selectedBedId || undefined,
       });
       return admissionRes.data;
     },
@@ -806,6 +809,53 @@ function AdmissionDialog({
                   </SelectContent>
                 </Select>
               </div>
+
+              {admissionType === 'ip' && (
+                <>
+              <div className="grid gap-1.5">
+                <Label>Ward</Label>
+                <Select value={selectedWardId} onValueChange={(v) => setSelectedWardId(v ?? '')}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select ward" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {wards.map((w) => {
+                      const avail = availabilityByWard.get(w.id)?.available;
+                      return (
+                        <SelectItem key={w.id} value={w.id}>
+                          {w.name}
+                          {avail != null ? ` (${avail} free)` : ''}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid gap-1.5">
+                <Label>Bed</Label>
+                <Select
+                  value={selectedBedId}
+                  onValueChange={(v) => setSelectedBedId(v ?? '')}
+                  disabled={!selectedWardId}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={selectedWardId ? 'Select bed' : 'Select ward first'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {beds.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        Bed {b.bedNumber}{b.bedType ? ` · ${b.bedType}` : ''}
+                      </SelectItem>
+                    ))}
+                    {selectedWardId && beds.length === 0 && (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">No available beds</div>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+                </>
+              )}
             </div>
 
             {/* Reason */}

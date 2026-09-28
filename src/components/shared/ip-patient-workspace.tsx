@@ -1609,8 +1609,6 @@ function PatientPanel({ patientId }: { patientId: string }) {
 export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPatientWorkspaceProps) {
   const back = backHref ?? defaultBackHref(role);
   const { user } = useAuthStore();
-  // The signed-in user's real role, not the module the workspace was mounted
-  // under. `role` above is the module; this is the person.
   const userRoles = user?.roles ?? (user?.role?.name ? [user.role.name] : []);
   const allowedTabs = useMemo(() => visibleWorkspaceTabs(userRoles), [userRoles]);
   const canSee = (tab: string) => !allowedTabs || allowedTabs.has(tab);
