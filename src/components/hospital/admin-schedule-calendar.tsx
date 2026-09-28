@@ -84,7 +84,10 @@ export function AdminScheduleCalendar({ doctorId, doctorName, doctorUserId }: Pr
     toDate,
     limit: 500,
   });
-  const appointments = appointmentsResp?.data ?? [];
+  const appointments = (appointmentsResp?.data ?? []).filter(
+  (a) => a.status !== 'cancelled' && a.status !== 'no_show',
+);
+
 
   const editingOverride = useMemo(() => {
     if (!editingDate) return null;
