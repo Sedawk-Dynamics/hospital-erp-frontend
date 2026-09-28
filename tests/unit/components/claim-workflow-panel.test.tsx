@@ -7,7 +7,6 @@ vi.mock('@/hooks/use-insurance-workflow', () => {
   const mutation = () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false });
   return {
     downloadClaimDossier: vi.fn(),
-    useAddClaimDocument: mutation,
     useCreateClaimAdjustment: mutation,
     useDecideClaimWriteOff: mutation,
     useQueueInsuranceExchange: mutation,
@@ -16,7 +15,6 @@ vi.mock('@/hooks/use-insurance-workflow', () => {
     useRequestClaimWriteOff: mutation,
     useRespondClaimQuery: mutation,
     useResolveClaimQuery: mutation,
-    useVerifyClaimDocument: mutation,
   };
 });
 
@@ -31,7 +29,6 @@ const claim = {
   status: 'submitted',
   submissionDate: '2026-09-28T10:00:00.000Z',
   resubmissionCount: 0,
-  documents: [],
   queries: [],
   settlements: [],
   writeOffs: [],
@@ -40,11 +37,13 @@ const claim = {
 } satisfies InsuranceClaim;
 
 describe('ClaimWorkflowPanel', () => {
-  it('keeps supporting documents optional and removes the submission checklist gate', () => {
+  it('contains the operational flow without document or checklist controls', () => {
     render(<ClaimWorkflowPanel claim={claim} />);
 
-    expect(screen.getByText('Supporting Documents (0)')).toBeInTheDocument();
-    expect(screen.getByText(/Optional supporting documents/)).toBeInTheDocument();
+    expect(screen.getByText('Queries (0)')).toBeInTheDocument();
+    expect(screen.getByText(/Payer queries, financial closure/)).toBeInTheDocument();
+    expect(screen.queryByText(/Supporting Documents/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Add document/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Submission is blocked/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Discharge summary/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Signed claim form/i)).not.toBeInTheDocument();

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Check, Download, FilePlus2, Plus, Send, WalletCards, X } from 'lucide-react';
+import { Download, Plus, Send, WalletCards } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,6 @@ import { Textarea } from '@/components/ui/textarea';
 import type { InsuranceClaim } from '@/hooks/use-insurance';
 import {
   downloadClaimDossier,
-  useAddClaimDocument,
   useCreateClaimAdjustment,
   useDecideClaimWriteOff,
   useQueueInsuranceExchange,
@@ -24,18 +23,14 @@ import {
   useRequestClaimWriteOff,
   useRespondClaimQuery,
   useResolveClaimQuery,
-  useVerifyClaimDocument,
-  type DocumentCategory,
 } from '@/hooks/use-insurance-workflow';
 import { cn } from '@/lib/utils';
 
-type Action = 'document' | 'query' | 'response' | 'settlement' | 'writeoff' | 'adjustment' | 'exchange' | null;
+type Action = 'query' | 'response' | 'settlement' | 'writeoff' | 'adjustment' | 'exchange' | null;
 const today = new Date().toISOString().slice(0, 10);
 const money = (value?: number | null) => `₹${Number(value ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
 export function ClaimWorkflowPanel({ claim }: { claim: InsuranceClaim }) {
-  const addDocument = useAddClaimDocument();
-  const verifyDocument = useVerifyClaimDocument();
   const raiseQuery = useRaiseClaimQuery();
   const respondQuery = useRespondClaimQuery();
   const resolveQuery = useResolveClaimQuery();
@@ -46,7 +41,6 @@ export function ClaimWorkflowPanel({ claim }: { claim: InsuranceClaim }) {
   const queueExchange = useQueueInsuranceExchange();
   const [action, setAction] = useState<Action>(null);
   const [selectedQueryId, setSelectedQueryId] = useState('');
-  const [document, setDocument] = useState({ code: '', name: '', category: 'clinical' as DocumentCategory, fileUrl: '', mimeType: '' });
   const [query, setQuery] = useState({ queryReference: '', subject: '', queryText: '', responseHours: '24' });
   const [responseText, setResponseText] = useState('');
   const [settlement, setSettlement] = useState({ grossApprovedAmount: String(claim.approvedAmount ?? claim.claimAmount), grossPaidAmount: '', tdsAmount: '0', tdsSection: '', tdsRate: '', disallowedAmount: '0', disallowanceReason: '', netPaidAmount: '', paymentReference: '', bankReference: '', bankStatementDate: '', tdsCertificateNumber: '', tdsCertificateDate: '', settlementDate: today, notes: '' });
@@ -59,18 +53,13 @@ export function ClaimWorkflowPanel({ claim }: { claim: InsuranceClaim }) {
     toast.error(message ?? fallback);
   }
 
-  const docs = claim.documents ?? [];
   const queries = claim.queries ?? [];
   const settlements = claim.settlements ?? [];
   const writeOffs = claim.writeOffs ?? [];
   const adjustments = claim.adjustments ?? [];
   const audit = claim.auditEvents ?? [];
   const settlementAllowed = ['approved', 'partially_approved', 'partially_settled', 'settled'].includes(claim.status);
-
-  async function saveDocument() {
-    if (!document.name || !document.fileUrl) return toast.error('Document name and secure file URL are required');
-    try { await addDocument.mutateAsync({ claimId: claim.id, ...document, code: document.code || undefined, mimeType: document.mimeType || undefined }); toast.success('Document version added'); setAction(null); setDocument({ code: '', name: '', category: 'clinical', fileUrl: '', mimeType: '' }); } catch (error) { fail(error, 'Document could not be added'); }
-  }
+  const queryAllowed = claim.status === 'under_review';
 
   async function saveQuery() {
     if (!query.subject || !query.queryText) return toast.error('Query subject and text are required');
@@ -86,12 +75,12 @@ export function ClaimWorkflowPanel({ claim }: { claim: InsuranceClaim }) {
   }
 
   return <Card>
-    <CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle>Claim Operations</CardTitle><CardDescription>Optional supporting documents, payer queries, financial closure and immutable audit controls.</CardDescription></div><div className="flex gap-2"><Button variant="outline" size="sm" onClick={async () => { try { await downloadClaimDossier(claim.id, claim.claimNumber); toast.success('Claim dossier downloaded'); } catch (error) { fail(error, 'Dossier export failed'); } }}><Download className="mr-1.5 size-4" /> Dossier</Button><Button variant="outline" size="sm" onClick={() => setAction('exchange')}><Send className="mr-1.5 size-4" /> Exchange</Button></div></div></CardHeader>
+    <CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle>Claim Operations</CardTitle><CardDescription>Payer queries, financial closure and immutable audit controls.</CardDescription></div><div className="flex gap-2"><Button variant="outline" size="sm" onClick={async () => { try { await downloadClaimDossier(claim.id, claim.claimNumber); toast.success('Claim dossier downloaded'); } catch (error) { fail(error, 'Dossier export failed'); } }}><Download className="mr-1.5 size-4" /> Dossier</Button><Button variant="outline" size="sm" onClick={() => setAction('exchange')}><Send className="mr-1.5 size-4" /> Exchange</Button></div></div></CardHeader>
     <CardContent>
-      <Tabs defaultValue="documents"><TabsList className="flex h-auto flex-wrap"><TabsTrigger value="documents">Supporting Documents ({docs.length})</TabsTrigger><TabsTrigger value="queries">Queries ({queries.filter((item) => item.status !== 'resolved').length})</TabsTrigger><TabsTrigger value="settlement">Settlement</TabsTrigger><TabsTrigger value="adjustments">Write-offs & adjustments</TabsTrigger><TabsTrigger value="audit">Audit</TabsTrigger></TabsList>
-        <TabsContent value="documents" className="mt-4 space-y-3"><Button size="sm" onClick={() => setAction('document')}><FilePlus2 className="mr-1.5 size-4" /> Add document version</Button>{docs.length ? docs.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3"><div><a href={item.fileUrl} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">{item.name}</a><div className="text-xs text-on-surface-variant">{item.category} · version {item.version} · {new Date(item.createdAt).toLocaleString('en-IN')}</div></div><div className="flex items-center gap-2"><Badge variant="outline" className="capitalize">{item.status}</Badge>{item.status === 'pending' && <><Button size="sm" variant="ghost" onClick={() => verifyDocument.mutate({ documentId: item.id, status: 'verified' }, { onSuccess: () => toast.success('Document verified'), onError: (error) => fail(error, 'Verification failed') })}><Check className="size-4 text-emerald-600" /></Button><Button size="sm" variant="ghost" onClick={() => verifyDocument.mutate({ documentId: item.id, status: 'rejected', rejectionReason: 'Document rejected during claim review' }, { onSuccess: () => toast.success('Document rejected'), onError: (error) => fail(error, 'Review failed') })}><X className="size-4 text-rose-600" /></Button></>}</div></div>) : <Empty text="No claim documents uploaded." />}</TabsContent>
+      <Tabs defaultValue="queries"><TabsList className="flex h-auto flex-wrap"><TabsTrigger value="queries">Queries ({queries.filter((item) => item.status !== 'resolved').length})</TabsTrigger><TabsTrigger value="settlement">Settlement</TabsTrigger><TabsTrigger value="adjustments">Write-offs & adjustments</TabsTrigger><TabsTrigger value="audit">Audit</TabsTrigger></TabsList>
         <TabsContent value="queries" className="mt-4 space-y-3">
-          <Button size="sm" onClick={() => setAction('query')}><Plus className="mr-1.5 size-4" /> Record payer query</Button>
+          <Button size="sm" onClick={() => setAction('query')} disabled={!queryAllowed}><Plus className="mr-1.5 size-4" /> Record payer query</Button>
+          {!queryAllowed && claim.status === 'submitted' && <p className="text-xs text-on-surface-variant">Proceed to Under Review before recording a payer query.</p>}
           {queries.length ? queries.map((item) => (
             <div key={item.id} className={cn('rounded-md border p-3', item.status === 'open' && new Date(item.responseDueAt) < new Date() && 'border-rose-300 bg-rose-50')}>
               <div className="flex flex-wrap items-start justify-between gap-2">
@@ -112,7 +101,6 @@ export function ClaimWorkflowPanel({ claim }: { claim: InsuranceClaim }) {
       </Tabs>
     </CardContent>
 
-    <Dialog open={action === 'document'} onOpenChange={(value) => !value && setAction(null)}><DialogContent><DialogHeader><DialogTitle>Add claim document version</DialogTitle></DialogHeader><Field label="Requirement code" value={document.code} onChange={(value) => setDocument({ ...document, code: value })} /><Field label="Document name *" value={document.name} onChange={(value) => setDocument({ ...document, name: value })} /><Choice label="Category" value={document.category} onChange={(value) => setDocument({ ...document, category: value as DocumentCategory })} options={['identity', 'eligibility', 'clinical', 'diagnostic', 'billing', 'authorization', 'settlement', 'correspondence', 'other']} /><Field label="Secure file URL *" type="url" value={document.fileUrl} onChange={(value) => setDocument({ ...document, fileUrl: value })} /><Field label="MIME type" value={document.mimeType} onChange={(value) => setDocument({ ...document, mimeType: value })} /><DialogFooter><Button onClick={saveDocument} disabled={addDocument.isPending}>Add version</Button></DialogFooter></DialogContent></Dialog>
     <Dialog open={action === 'query'} onOpenChange={(value) => !value && setAction(null)}><DialogContent><DialogHeader><DialogTitle>Record payer query</DialogTitle></DialogHeader><Field label="Payer query reference" value={query.queryReference} onChange={(value) => setQuery({ ...query, queryReference: value })} /><Field label="Subject *" value={query.subject} onChange={(value) => setQuery({ ...query, subject: value })} /><div><Label>Query text *</Label><Textarea value={query.queryText} onChange={(event) => setQuery({ ...query, queryText: event.target.value })} /></div><Field label="Response SLA (hours)" type="number" value={query.responseHours} onChange={(value) => setQuery({ ...query, responseHours: value })} /><DialogFooter><Button onClick={saveQuery} disabled={raiseQuery.isPending}>Record query</Button></DialogFooter></DialogContent></Dialog>
     <Dialog open={action === 'response'} onOpenChange={(value) => !value && setAction(null)}><DialogContent><DialogHeader><DialogTitle>Submit query response</DialogTitle></DialogHeader><div><Label>Response *</Label><Textarea rows={5} value={responseText} onChange={(event) => setResponseText(event.target.value)} /></div><DialogFooter><Button onClick={async () => { if (responseText.trim().length < 3) return toast.error('Response is required'); try { await respondQuery.mutateAsync({ queryId: selectedQueryId, responseText }); toast.success('Response submitted'); setAction(null); } catch (error) { fail(error, 'Response failed'); } }} disabled={respondQuery.isPending}>Submit response</Button></DialogFooter></DialogContent></Dialog>
     <Dialog open={action === 'settlement'} onOpenChange={(value) => !value && setAction(null)}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl"><DialogHeader><DialogTitle>Record claim settlement</DialogTitle></DialogHeader><div className="grid gap-3 sm:grid-cols-2"><Field label="Gross approved *" type="number" value={settlement.grossApprovedAmount} onChange={(value) => setSettlement({ ...settlement, grossApprovedAmount: value })} /><Field label="Gross paid *" type="number" value={settlement.grossPaidAmount} onChange={(value) => setSettlement({ ...settlement, grossPaidAmount: value })} /><Field label="TDS amount" type="number" value={settlement.tdsAmount} onChange={(value) => setSettlement({ ...settlement, tdsAmount: value })} /><div><Label>Net bank receipt</Label><Input type="number" readOnly value={Math.max(0, Number(settlement.grossPaidAmount || 0) - Number(settlement.tdsAmount || 0))} /></div><Field label="TDS section" value={settlement.tdsSection} onChange={(value) => setSettlement({ ...settlement, tdsSection: value })} /><Field label="TDS rate %" type="number" value={settlement.tdsRate} onChange={(value) => setSettlement({ ...settlement, tdsRate: value })} /><Field label="Disallowed amount" type="number" value={settlement.disallowedAmount} onChange={(value) => setSettlement({ ...settlement, disallowedAmount: value })} /><Field label="Disallowance reason" value={settlement.disallowanceReason} onChange={(value) => setSettlement({ ...settlement, disallowanceReason: value })} /><Field label="Payment reference" value={settlement.paymentReference} onChange={(value) => setSettlement({ ...settlement, paymentReference: value })} /><Field label="Bank reference" value={settlement.bankReference} onChange={(value) => setSettlement({ ...settlement, bankReference: value })} /><Field label="Bank statement date" type="date" value={settlement.bankStatementDate} onChange={(value) => setSettlement({ ...settlement, bankStatementDate: value })} /><Field label="Settlement date *" type="date" value={settlement.settlementDate} onChange={(value) => setSettlement({ ...settlement, settlementDate: value })} /><Field label="TDS certificate number" value={settlement.tdsCertificateNumber} onChange={(value) => setSettlement({ ...settlement, tdsCertificateNumber: value })} /><Field label="TDS certificate date" type="date" value={settlement.tdsCertificateDate} onChange={(value) => setSettlement({ ...settlement, tdsCertificateDate: value })} /></div><DialogFooter><Button onClick={saveSettlement} disabled={settle.isPending}>Record settlement</Button></DialogFooter></DialogContent></Dialog>

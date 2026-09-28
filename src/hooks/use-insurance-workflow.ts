@@ -22,17 +22,6 @@ export type InsuranceCaseStatus =
   | 'closed'
   | 'cancelled';
 export type InsurancePriority = 'routine' | 'urgent' | 'critical' | 'deceased';
-export type DocumentCategory =
-  | 'identity'
-  | 'eligibility'
-  | 'clinical'
-  | 'diagnostic'
-  | 'billing'
-  | 'authorization'
-  | 'settlement'
-  | 'correspondence'
-  | 'other';
-
 export interface CorporatePayer {
   id: string;
   name: string;
@@ -130,30 +119,6 @@ export interface InsuranceCase {
   auditEvents: AuditEvent[];
 }
 
-export interface ClaimDocument {
-  id: string;
-  claimId: string;
-  code?: string | null;
-  name: string;
-  category: DocumentCategory;
-  fileUrl: string;
-  mimeType?: string | null;
-  fileHash?: string | null;
-  version: number;
-  status: 'pending' | 'verified' | 'rejected';
-  rejectionReason?: string | null;
-  createdAt: string;
-}
-
-export interface ClaimChecklistItem {
-  id: string;
-  requirementCode: string;
-  label: string;
-  isRequired: boolean;
-  isComplete: boolean;
-  documentId?: string | null;
-}
-
 export interface ClaimQuery {
   id: string;
   queryReference?: string | null;
@@ -218,14 +183,12 @@ export interface ClaimDossier {
   generatedAt: string;
   formatVersion: string;
   claim: InsuranceClaim & {
-    documents: ClaimDocument[];
     queries: ClaimQuery[];
     settlements: ClaimSettlement[];
     writeOffs: ClaimWriteOff[];
     adjustments: ClaimAdjustment[];
     auditEvents: AuditEvent[];
   };
-  checklist: { items: ClaimChecklistItem[]; complete: boolean; missing: string[] };
   financialSummary: {
     claimAmount: number;
     approvedAmount: number;
@@ -254,7 +217,6 @@ export interface PayerContract {
   isActive: boolean;
   serviceRates: Array<{ id: string; serviceCode: string; serviceName: string; agreedRate: number; effectiveFrom: string; effectiveTo?: string | null }>;
   packageRates: Array<{ id: string; packageCode: string; packageName: string; agreedAmount: number; effectiveFrom: string; effectiveTo?: string | null }>;
-  documentRequirements: Array<{ id: string; code: string; name: string; category: DocumentCategory; isRequired: boolean; appliesTo?: InsuranceSettlementMode | null; sortOrder: number }>;
   nonPayableRules: Array<{ id: string; itemCode?: string | null; itemPattern?: string | null; reason: string; patientPayable: boolean; isActive: boolean }>;
 }
 
@@ -309,7 +271,6 @@ export interface ContractInput {
   isActive?: boolean;
   serviceRates?: Array<{ serviceTariffId?: string; serviceCode: string; serviceName: string; agreedRate: number; effectiveFrom: string; effectiveTo?: string }>;
   packageRates?: Array<{ packageCode: string; packageName: string; agreedAmount: number; inclusions?: unknown; exclusions?: unknown; effectiveFrom: string; effectiveTo?: string }>;
-  documentRequirements?: Array<{ code: string; name: string; category: DocumentCategory; isRequired?: boolean; appliesTo?: InsuranceSettlementMode; sortOrder?: number }>;
   nonPayableRules?: Array<{ itemCode?: string; itemPattern?: string; reason: string; patientPayable?: boolean; isActive?: boolean }>;
 }
 
@@ -321,7 +282,6 @@ const keys = {
   payers: (kind: string, params?: Record<string, unknown>) => ['insurance', 'workflow', 'payers', kind, params] as const,
   contracts: (params?: Record<string, unknown>) => ['insurance', 'workflow', 'contracts', params] as const,
   contract: (id: string) => ['insurance', 'workflow', 'contract', id] as const,
-  checklist: (claimId: string) => ['insurance', 'workflow', 'claim', claimId, 'checklist'] as const,
   dossier: (claimId: string) => ['insurance', 'workflow', 'claim', claimId, 'dossier'] as const,
 };
 
@@ -505,29 +465,6 @@ export function useCreatePayerContract() {
 export function useUpdatePayerContract() {
   const refresh = useRefreshInsurance();
   return useMutation({ mutationFn: async ({ id, body }: { id: string; body: ContractInput }) => (await apiPut<PayerContract>(`/insurance/contracts/${id}`, body)).data, onSuccess: refresh });
-}
-
-export function useClaimChecklist(claimId?: string) {
-  return useQuery({
-    queryKey: keys.checklist(claimId ?? ''),
-    enabled: Boolean(claimId),
-    queryFn: async () => (await apiGet<{ items: ClaimChecklistItem[]; complete: boolean; missing: string[] }>(`/insurance/claims/${claimId}/checklist`)).data,
-  });
-}
-
-export function useSyncClaimChecklist() {
-  const refresh = useRefreshInsurance();
-  return useMutation({ mutationFn: async (claimId: string) => (await apiPost<{ items: ClaimChecklistItem[]; complete: boolean; missing: string[] }>(`/insurance/claims/${claimId}/checklist/sync`)).data, onSuccess: refresh });
-}
-
-export function useAddClaimDocument() {
-  const refresh = useRefreshInsurance();
-  return useMutation({ mutationFn: async ({ claimId, ...body }: { claimId: string; code?: string; name: string; category: DocumentCategory; fileUrl: string; mimeType?: string; fileHash?: string }) => (await apiPost<ClaimDocument>(`/insurance/claims/${claimId}/documents`, body)).data, onSuccess: refresh });
-}
-
-export function useVerifyClaimDocument() {
-  const refresh = useRefreshInsurance();
-  return useMutation({ mutationFn: async ({ documentId, status, rejectionReason }: { documentId: string; status: 'verified' | 'rejected'; rejectionReason?: string }) => (await apiPatch<ClaimDocument>(`/insurance/claim-documents/${documentId}/verify`, { status, rejectionReason })).data, onSuccess: refresh });
 }
 
 export function useRaiseClaimQuery() {

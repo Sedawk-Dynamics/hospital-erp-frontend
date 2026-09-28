@@ -223,9 +223,9 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
       toast.error(apiError(err, 'Could not recalculate the bill split'));
     }
   }
-  const isOpen = ['submitted', 'under_review', 'query_raised', 'response_submitted', 'resubmitted'].includes(claim.status);
   const isResubmittable = ['rejected', 'partially_approved'].includes(claim.status);
-  const canMoveUnderReview = ['submitted', 'resubmitted'].includes(claim.status);
+  const canMoveUnderReview = claim.status === 'submitted';
+  const canRecordDecision = claim.status === 'under_review';
   const billIsFinalized = !!claim.bill?.status && ['pending', 'partially_paid', 'paid'].includes(claim.bill.status);
 
   return (
@@ -320,7 +320,7 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
             <CardDescription>Claim lifecycle and payer decisions</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
-            {isOpen && (
+            {(canMoveUnderReview || canRecordDecision) && (
               <>
                 {canMoveUnderReview && (
                   <>
@@ -334,42 +334,46 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
                     </Button>
                     {!billIsFinalized && (
                       <p className="px-1 text-xs text-amber-700">
-                        Finalize the hospital bill to proceed. Supporting documents are optional.
+                        Finalize the hospital bill to proceed.
                       </p>
                     )}
                   </>
                 )}
-                <Button
-                  onClick={() => {
-                    setApprovedAmount(String(claim.claimAmount));
-                    setApproveOpen(true);
-                  }}
-                  variant="outline"
-                  className="justify-start gap-1.5"
-                >
-                  <CheckCircle2 className="size-4 text-emerald-600" /> Approve in Full
-                </Button>
-                <Button
-                  onClick={() => {
-                    setApprovedAmount('');
-                    setRejectReason('');
-                    setPartialOpen(true);
-                  }}
-                  variant="outline"
-                  className="justify-start gap-1.5"
-                >
-                  <CheckCircle2 className="size-4 text-sky-600" /> Partial Approval
-                </Button>
-                <Button
-                  onClick={() => {
-                    setRejectReason('');
-                    setRejectOpen(true);
-                  }}
-                  variant="outline"
-                  className="justify-start gap-1.5"
-                >
-                  <XCircle className="size-4 text-rose-600" /> Reject
-                </Button>
+                {canRecordDecision && (
+                  <>
+                    <Button
+                      onClick={() => {
+                        setApprovedAmount(String(claim.claimAmount));
+                        setApproveOpen(true);
+                      }}
+                      variant="outline"
+                      className="justify-start gap-1.5"
+                    >
+                      <CheckCircle2 className="size-4 text-emerald-600" /> Approve in Full
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setApprovedAmount('');
+                        setRejectReason('');
+                        setPartialOpen(true);
+                      }}
+                      variant="outline"
+                      className="justify-start gap-1.5"
+                    >
+                      <CheckCircle2 className="size-4 text-sky-600" /> Partial Approval
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setRejectReason('');
+                        setRejectOpen(true);
+                      }}
+                      variant="outline"
+                      className="justify-start gap-1.5"
+                    >
+                      <XCircle className="size-4 text-rose-600" /> Reject
+                    </Button>
+                  </>
+                )}
               </>
             )}
             {isResubmittable && (
@@ -382,7 +386,7 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
                 variant="outline"
                 className="justify-start gap-1.5"
               >
-                <RotateCcw className="size-4 text-violet-600" /> Resubmit with Docs
+                <RotateCcw className="size-4 text-violet-600" /> Create Resubmission
               </Button>
             )}
             <Button onClick={doExport} variant="outline" className="justify-start gap-1.5">

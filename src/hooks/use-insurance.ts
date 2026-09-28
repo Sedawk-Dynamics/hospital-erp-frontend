@@ -221,7 +221,6 @@ export interface InsuranceClaim {
   notes?: string | null;
   resubmissionCount: number;
   previousClaimId?: string | null;
-  documentsUrl?: unknown;
   patient?: { id: string; firstName: string; lastName?: string | null };
   policy?: {
     id: string;
@@ -239,8 +238,6 @@ export interface InsuranceClaim {
   } | null;
   bill?: InsuranceClaimBill;
   preAuth?: PreAuthRequest | null;
-  documents?: Array<{ id: string; code?: string | null; name: string; category: string; fileUrl: string; version: number; status: string; rejectionReason?: string | null; createdAt: string }>;
-  checklistItems?: Array<{ id: string; requirementCode: string; label: string; isRequired: boolean; isComplete: boolean; documentId?: string | null }>;
   queries?: Array<{ id: string; queryReference?: string | null; subject: string; queryText: string; status: string; raisedAt: string; responseDueAt: string; responseText?: string | null; respondedAt?: string | null; resolvedAt?: string | null }>;
   settlements?: Array<{ id: string; grossApprovedAmount: number; grossPaidAmount: number; tdsAmount: number; tdsSection?: string | null; tdsRate?: number | null; disallowedAmount: number; disallowanceReason?: string | null; netPaidAmount: number; paymentReference?: string | null; bankReference?: string | null; settlementDate: string; notes?: string | null }>;
   writeOffs?: Array<{ id: string; amount: number; reason: string; status: string; decisionNote?: string | null; createdAt: string }>;
@@ -597,7 +594,6 @@ export function useCreateClaim() {
       nhcxTransactionId?: string;
       notes?: string;
       expiryDays?: number;
-      documentsUrl?: unknown;
     }) => {
       const res = await apiPost<InsuranceClaim>('/insurance/claims', body);
       return res.data;
@@ -725,7 +721,6 @@ export function useResubmitClaim() {
       body: {
         notes: string;
         claimAmount?: number;
-        additionalDocumentsUrl?: unknown;
         expiryDays?: number;
       };
     }) => {
