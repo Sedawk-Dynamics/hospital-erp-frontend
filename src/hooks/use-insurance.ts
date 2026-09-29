@@ -221,7 +221,6 @@ export interface InsuranceClaim {
   notes?: string | null;
   resubmissionCount: number;
   previousClaimId?: string | null;
-  documentsUrl?: unknown;
   patient?: { id: string; firstName: string; lastName?: string | null };
   policy?: {
     id: string;
@@ -239,8 +238,6 @@ export interface InsuranceClaim {
   } | null;
   bill?: InsuranceClaimBill;
   preAuth?: PreAuthRequest | null;
-  documents?: Array<{ id: string; code?: string | null; name: string; category: string; fileUrl: string; version: number; status: string; rejectionReason?: string | null; createdAt: string }>;
-  checklistItems?: Array<{ id: string; requirementCode: string; label: string; isRequired: boolean; isComplete: boolean; documentId?: string | null }>;
   queries?: Array<{ id: string; queryReference?: string | null; subject: string; queryText: string; status: string; raisedAt: string; responseDueAt: string; responseText?: string | null; respondedAt?: string | null; resolvedAt?: string | null }>;
   settlements?: Array<{ id: string; grossApprovedAmount: number; grossPaidAmount: number; tdsAmount: number; tdsSection?: string | null; tdsRate?: number | null; disallowedAmount: number; disallowanceReason?: string | null; netPaidAmount: number; paymentReference?: string | null; bankReference?: string | null; settlementDate: string; notes?: string | null }>;
   writeOffs?: Array<{ id: string; amount: number; reason: string; status: string; decisionNote?: string | null; createdAt: string }>;
@@ -597,7 +594,6 @@ export function useCreateClaim() {
       nhcxTransactionId?: string;
       notes?: string;
       expiryDays?: number;
-      documentsUrl?: unknown;
     }) => {
       const res = await apiPost<InsuranceClaim>('/insurance/claims', body);
       return res.data;
@@ -710,7 +706,17 @@ export function useSettleClaim() {
       });
       return res.data;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['insurance'] });
+      qc.invalidateQueries({ queryKey: ['hospital', 'bills'] });
+      qc.invalidateQueries({ queryKey: ['hospital', 'bill'] });
+      qc.invalidateQueries({ queryKey: ['hospital', 'payments'] });
+      qc.invalidateQueries({ queryKey: ['hospital', 'collection-summary'] });
+      qc.invalidateQueries({ queryKey: ['hospital', 'billing-pending'] });
+      qc.invalidateQueries({ queryKey: ['hospital', 'cash-counter'] });
+      qc.invalidateQueries({ queryKey: ['hospital', 'ip-bills'] });
+      qc.invalidateQueries({ queryKey: ['front-desk'] });
+    },
   });
 }
 
@@ -725,7 +731,6 @@ export function useResubmitClaim() {
       body: {
         notes: string;
         claimAmount?: number;
-        additionalDocumentsUrl?: unknown;
         expiryDays?: number;
       };
     }) => {
@@ -922,19 +927,39 @@ export function useSplitBill() {
     mutationFn: async ({
       billId,
       policyId,
+      claimId,
       claimAmount,
-    }: { billId: string; policyId: string; claimAmount?: number }) => {
+      insuranceAmount,
+      patientAmount,
+    }: {
+      billId: string;
+      policyId?: string;
+      claimId?: string;
+      claimAmount?: number;
+      insuranceAmount?: number;
+      patientAmount?: number;
+    }) => {
+      const body = insuranceAmount !== undefined || patientAmount !== undefined
+        ? { claimId, insuranceAmount, patientAmount }
+        : { policyId, claimAmount };
       const res = await apiPatch<{
         billId: string;
         split: ResponsibilitySplit;
         billSplit: AppliedBillSplit;
       }>(
         `/insurance/bills/${billId}/split`,
-        { policyId, claimAmount },
+        body,
       );
       return res.data;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['insurance'] });
+      qc.invalidateQueries({ queryKey: ['hospital', 'bills'] });
+      qc.invalidateQueries({ queryKey: ['hospital', 'billing-pending'] });
+      qc.invalidateQueries({ queryKey: ['hospital', 'cash-counter'] });
+      qc.invalidateQueries({ queryKey: ['hospital', 'ip-bills'] });
+      qc.invalidateQueries({ queryKey: ['front-desk'] });
+    },
   });
 }
 

@@ -37,6 +37,8 @@ export interface IpBill {
   insuranceCoveredAmount: number | string;
   patientPayableAmount: number | string;
   amountPaid: number | string;
+  /** Patient/front-desk tender only; excludes TPA/insurer remittances. */
+  patientPaidAmount?: number | string;
   balanceDue: number | string;
   /**
    * What the counter can collect against THIS bill right now. `balanceDue` is

@@ -28,6 +28,7 @@ const bill: IpBill = {
   insuranceCoveredAmount: 0,
   patientPayableAmount: 1600,
   amountPaid: 0,
+  patientPaidAmount: 0,
   balanceDue: 1600,
   patient: { id: 'pat-1', mrn: 'MRN-1', firstName: 'Asha', lastName: 'Menon' },
   admission: { id: 'adm-1', billingCategory: 'cash', status: 'admitted' },
@@ -100,6 +101,23 @@ describe('IpBillingDetailDialog', () => {
     renderDialog(bill);
     expect(screen.getByText('IPB-0001')).toBeInTheDocument();
     expect(screen.getByText('MRN-1')).toBeInTheDocument();
+  });
+
+  it('does not display a TPA remittance as money paid by the patient', () => {
+    renderDialog({
+      ...bill,
+      status: 'partially_paid',
+      amountPaid: 13_000,
+      patientPaidAmount: 1_000,
+      insuranceCoveredAmount: 12_000,
+      patientPayableAmount: 5_900,
+      balanceDue: 4_900,
+      admission: { ...bill.admission!, billingCategory: 'insurance' },
+    });
+
+    const row = screen.getByText('Patient paid / patient due').parentElement;
+    expect(row).toHaveTextContent('₹1000.00 / ₹4900.00');
+    expect(row).not.toHaveTextContent('₹13000.00');
   });
 
   it('lets billing staff change a cash admission to TPA after confirmation', async () => {

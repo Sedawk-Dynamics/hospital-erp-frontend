@@ -1377,7 +1377,7 @@ function DischargeDialog({
                 <div className="grid gap-3 rounded-lg border border-blue-200 bg-blue-50/60 p-3">
                   <div>
                     <p className="text-sm font-medium text-blue-900">Payer settlement may remain open</p>
-                    <p className="text-xs text-blue-800">Select the linked payer case and record the release undertaking when the final bill is awaiting insurer, corporate, or scheme settlement. Physical discharge will continue while the claim stays active.</p>
+                    <p className="text-xs text-blue-800">Select the linked payer case and record the release undertaking when the final bill is awaiting insurer, corporate, or scheme settlement. The patient share must still be paid in full before discharge; this selection only keeps the payer claim active.</p>
                   </div>
                   <div className="grid gap-1.5">
                     <Label>Insurance / payer case</Label>

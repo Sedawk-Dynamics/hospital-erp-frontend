@@ -206,7 +206,7 @@ export function CollectBillPaymentDialog({
       toast.success(
         isPartial
           ? `Partial payment of ₹${data.amount.toLocaleString('en-IN')} ${settled}`
-          : `Payment of ₹${data.amount.toLocaleString('en-IN')} ${settled} — bill cleared`,
+          : `Payment of ₹${data.amount.toLocaleString('en-IN')} ${settled} — patient balance cleared`,
       );
       onOpenChange(false);
       onCollected?.();

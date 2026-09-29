@@ -68,4 +68,23 @@ describe('useSplitBill', () => {
       balanceDue: 1500,
     });
   });
+
+  it('sends an exact operator-entered TPA and patient allocation', async () => {
+    const { result } = renderHook(() => useSplitBill(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        billId: 'bill-1',
+        claimId: 'claim-1',
+        insuranceAmount: 12000,
+        patientAmount: 5900,
+      });
+    });
+
+    expect(apiPatch).toHaveBeenCalledWith('/insurance/bills/bill-1/split', {
+      claimId: 'claim-1',
+      insuranceAmount: 12000,
+      patientAmount: 5900,
+    });
+  });
 });
