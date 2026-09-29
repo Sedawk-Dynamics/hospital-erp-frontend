@@ -290,6 +290,21 @@ function useRefreshInsurance() {
   return () => queryClient.invalidateQueries({ queryKey: ['insurance'] });
 }
 
+function useRefreshInsuranceAndBilling() {
+  const queryClient = useQueryClient();
+  return () => {
+    queryClient.invalidateQueries({ queryKey: ['insurance'] });
+    queryClient.invalidateQueries({ queryKey: ['hospital', 'bills'] });
+    queryClient.invalidateQueries({ queryKey: ['hospital', 'bill'] });
+    queryClient.invalidateQueries({ queryKey: ['hospital', 'payments'] });
+    queryClient.invalidateQueries({ queryKey: ['hospital', 'collection-summary'] });
+    queryClient.invalidateQueries({ queryKey: ['hospital', 'billing-pending'] });
+    queryClient.invalidateQueries({ queryKey: ['hospital', 'cash-counter'] });
+    queryClient.invalidateQueries({ queryKey: ['hospital', 'ip-bills'] });
+    queryClient.invalidateQueries({ queryKey: ['front-desk'] });
+  };
+}
+
 export function useInsuranceCases(params?: { patientId?: string; admissionId?: string; caseType?: InsuranceCaseType; settlementMode?: InsuranceSettlementMode; status?: InsuranceCaseStatus; priority?: InsurancePriority; search?: string; page?: number; limit?: number }) {
   return useQuery({
     queryKey: keys.cases(params as Record<string, unknown>),
@@ -501,12 +516,12 @@ export interface SettlementInput {
 }
 
 export function useRecordClaimSettlement() {
-  const refresh = useRefreshInsurance();
+  const refresh = useRefreshInsuranceAndBilling();
   return useMutation({ mutationFn: async ({ claimId, ...body }: { claimId: string } & SettlementInput) => (await apiPost<ClaimSettlement>(`/insurance/claims/${claimId}/settlements`, body)).data, onSuccess: refresh });
 }
 
 export function useRecordBulkSettlements() {
-  const refresh = useRefreshInsurance();
+  const refresh = useRefreshInsuranceAndBilling();
   return useMutation({ mutationFn: async (settlements: Array<{ claimId: string } & SettlementInput>) => (await apiPost<ClaimSettlement[]>('/insurance/claims/settlements/bulk', { settlements })).data, onSuccess: refresh });
 }
 

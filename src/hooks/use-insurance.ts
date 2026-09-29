@@ -706,7 +706,17 @@ export function useSettleClaim() {
       });
       return res.data;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['insurance'] });
+      qc.invalidateQueries({ queryKey: ['hospital', 'bills'] });
+      qc.invalidateQueries({ queryKey: ['hospital', 'bill'] });
+      qc.invalidateQueries({ queryKey: ['hospital', 'payments'] });
+      qc.invalidateQueries({ queryKey: ['hospital', 'collection-summary'] });
+      qc.invalidateQueries({ queryKey: ['hospital', 'billing-pending'] });
+      qc.invalidateQueries({ queryKey: ['hospital', 'cash-counter'] });
+      qc.invalidateQueries({ queryKey: ['hospital', 'ip-bills'] });
+      qc.invalidateQueries({ queryKey: ['front-desk'] });
+    },
   });
 }
 
