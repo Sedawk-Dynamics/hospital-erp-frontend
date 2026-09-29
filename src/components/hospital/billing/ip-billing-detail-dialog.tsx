@@ -255,8 +255,8 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
           <div className="rounded-xl border bg-card p-3">
             <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold"><Wallet className="h-4 w-4 text-primary" /> Patient payment <span className="text-[11px] font-normal text-muted-foreground">— pay in parts</span></h3>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Paid / balance</span>
-              <span className="font-medium">{money(bill.amountPaid)} / <span className="font-semibold">{money(bill.balanceDue)}</span></span>
+              <span className="text-muted-foreground">Patient paid / patient due</span>
+              <span className="font-medium">{money(bill.patientPaidAmount)} / <span className="font-semibold">{money(bill.balanceDue)}</span></span>
             </div>
             {(payments ?? []).filter((p) => p.status !== 'failed' && p.status !== 'reversed').length > 0 && (
               <div className="mt-1.5 max-h-24 space-y-0.5 overflow-y-auto border-t pt-1.5">
