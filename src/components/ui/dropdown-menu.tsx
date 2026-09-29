@@ -74,11 +74,7 @@ function DropdownMenuLabel({
   )
 }
 
-/**
- * A menu item is button-like too, so it carries the same trap: `render={<Link/>}`
- * for a navigate-on-click item warns unless nativeButton is answered. Shares
- * button.tsx's inference so both behave the same way.
- */
+
 function DropdownMenuItem({
   className,
   inset,

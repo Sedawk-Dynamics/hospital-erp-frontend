@@ -44,12 +44,6 @@ const DISCHARGE_SECTIONS: Array<{
   { key: 'general', label: 'General' },
 ];
 
-// The note's own text, tidied for the discharge summary: drop the
-// "[Progress: <condition>]" prefix line and the "S (Subjective):" / "O …" /
-// "A …" / "P …" labels, keeping just the prose the doctor wrote. This is what
-// the Pin dialog pre-fills so the visit note carries across without retyping.
-// A status-only note (only the [Progress: …] line) keeps that line, so the pin
-// is never empty.
 function pinTextFromNote(note: ProgressNote): string {
   const raw = (note.content ?? '').replace(/\*\*/g, '').trim();
   if (!raw) return '';
@@ -184,7 +178,7 @@ function NoteEntry({
         </p>
       )}
 
-      <div className="flex items-center justify-between pt-1">
+      {/* <div className="flex items-center justify-between pt-1">
         <Button
           type="button"
           variant="ghost"
@@ -195,7 +189,7 @@ function NoteEntry({
           <Plus className="h-2.5 w-2.5" />
           Pin section
         </Button>
-      </div>
+      </div> */}
     </div>
   );
 }

@@ -252,6 +252,10 @@ export default function DischargeSummaryPage() {
       const res = await apiPost<any>(`/mrd/discharge-summary/${summaryData.id}/refresh`);
       if (res.data) {
         setSummaryData(res.data);
+        setDiagnosesSummary(res.data.diagnosesSummary ?? '');
+        setProceduresSummary(res.data.proceduresSummary ?? '');
+        setLabResultsSummary(res.data.labResultsSummary ?? '');
+        setMedicationReconciliation(res.data.medicationReconciliation ?? '');
         toast.success('Refreshed from pinned notes & source data');
       }
     } catch {
@@ -300,10 +304,7 @@ export default function DischargeSummaryPage() {
     if (!summaryData) return;
     try {
       const published = await publishMutation.mutateAsync(summaryData.id);
-      if (published) setSummaryData(published);
-      // Publishing is the clinical sign-off only. The patient keeps their bed
-      // until Front Desk / Billing clears the final bill and discharges them.
-      toast.success(
+      if (published) setSummaryData(published);      toast.success(
         published?.dischargeReady
           ? 'Discharge summary published — sent to Billing for bill clearance & discharge'
           : 'Discharge summary published — patient notified via portal & email',
