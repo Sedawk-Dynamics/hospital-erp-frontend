@@ -56,10 +56,32 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
   const { data: patientPolicies, isLoading: policiesLoading } = usePatientPolicies(
     open ? (bill?.patient?.id ?? null) : null,
   );
+  const claim = bill?.insuranceClaims?.[0];
+  const settlementAllowed = !!claim && ['approved', 'partially_approved', 'partially_settled'].includes(claim.status);
+  const approvedOutstanding = settlementAllowed
+    ? Math.max(0, n(claim.outstandingAmount ?? claim.approvedAmount ?? claim.coveredAmount))
+    : 0;
 
   const [discType, setDiscType] = useState<'percentage' | 'fixed'>('fixed');
   const [discValue, setDiscValue] = useState<number>(0);
-  const [payAmt, setPayAmt] = useState<number>(0);
+  // Keep an operator edit only while it belongs to the same claim and the
+  // server-side outstanding figure has not changed. Approval, partial approval
+  // and each partial settlement therefore refresh this input automatically.
+  const [paymentDraft, setPaymentDraft] = useState<{
+    claimId: string;
+    approvedOutstanding: number;
+    amount: number;
+  } | null>(null);
+  const payAmt = paymentDraft !== null &&
+    paymentDraft.claimId === claim?.id &&
+    paymentDraft.approvedOutstanding === approvedOutstanding
+    ? paymentDraft.amount
+    : approvedOutstanding;
+  const setPayAmt = (amount: number) => setPaymentDraft({
+    claimId: claim?.id ?? '',
+    approvedOutstanding,
+    amount,
+  });
   const [collectOpen, setCollectOpen] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const [selectedPolicyId, setSelectedPolicyId] = useState('');
@@ -74,12 +96,16 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
 
   if (!bill) return null;
   const cat = (bill.admission?.billingCategory ?? 'cash').toLowerCase();
-  const claim = bill.insuranceClaims?.[0];
   const liveClaim = claim && !['cancelled', 'rejected'].includes(claim.status);
   const patientName = `${bill.patient?.firstName ?? ''} ${bill.patient?.lastName ?? ''}`.trim();
 
   const doSettle = async () => {
+    if (!settlementAllowed) { toast.error('Approve the claim before recording a TPA payment.'); return; }
     if (!(payAmt > 0)) { toast.error('Enter the amount the TPA paid.'); return; }
+    if (payAmt > approvedOutstanding + 0.009) {
+      toast.error(`TPA payment cannot exceed the approved outstanding amount of ${money(approvedOutstanding)}.`);
+      return;
+    }
     try { await settle.mutateAsync({ admissionId, paidAmount: payAmt }); toast.success('TPA payment recorded.'); setPayAmt(0); }
     catch (e) { toast.error((e as Error).message || 'Could not record the TPA payment.'); }
   };
@@ -444,11 +470,24 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
                 <Stat label="Remaining" value={money(claim!.outstandingAmount)} className="text-amber-700" />
               </div>
               <div className="flex items-center gap-1.5">
-                <NumberInput min={0} placeholder="TPA payment received (₹)" value={payAmt} onValueChange={setPayAmt} className="h-8 text-sm" />
-                <Button size="sm" className="h-8" onClick={doSettle} disabled={settle.isPending}>
+                <NumberInput
+                  min={0}
+                  max={approvedOutstanding}
+                  placeholder="TPA payment received (₹)"
+                  value={payAmt}
+                  onValueChange={setPayAmt}
+                  disabled={!settlementAllowed || approvedOutstanding <= 0}
+                  className="h-8 text-sm"
+                />
+                <Button size="sm" className="h-8" onClick={doSettle} disabled={settle.isPending || !settlementAllowed || approvedOutstanding <= 0}>
                   {settle.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Record payment'}
                 </Button>
               </div>
+              <p className="text-[11px] text-muted-foreground">
+                {settlementAllowed
+                  ? `Auto-filled from the approved outstanding amount: ${money(approvedOutstanding)}.`
+                  : 'The payment amount will fill automatically after full or partial approval.'}
+              </p>
               <p className="text-[11px] text-muted-foreground">
                 Patient out-of-pocket: <strong>{money(bill.patientPayableAmount)}</strong> — collect that from the patient; the rest is settled by the TPA.
               </p>

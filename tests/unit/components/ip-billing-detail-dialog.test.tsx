@@ -120,6 +120,50 @@ describe('IpBillingDetailDialog', () => {
     expect(row).not.toHaveTextContent('₹13000.00');
   });
 
+  it('automatically follows full and partial claim approval amounts', async () => {
+    const approvedBill: IpBill = {
+      ...bill,
+      admission: { ...bill.admission!, billingCategory: 'insurance' },
+      insuranceCoveredAmount: 8_000,
+      patientPayableAmount: 2_000,
+      insuranceClaims: [{
+        id: 'claim-1',
+        claimNumber: 'CLM-1',
+        status: 'approved',
+        claimAmount: 10_000,
+        approvedAmount: 8_000,
+        coveredAmount: 8_000,
+        patientShare: 2_000,
+        paidAmount: 0,
+        outstandingAmount: 8_000,
+      }],
+    };
+    const { show } = renderDialog(approvedBill);
+    const payment = screen.getByPlaceholderText('TPA payment received (₹)');
+
+    expect(payment).toHaveValue(8_000);
+    expect(screen.getByText(/Auto-filled from the approved outstanding amount/)).toHaveTextContent('₹8000.00');
+
+    show({
+      ...approvedBill,
+      insuranceCoveredAmount: 5_000,
+      patientPayableAmount: 5_000,
+      insuranceClaims: [{
+        ...approvedBill.insuranceClaims![0],
+        status: 'partially_approved',
+        approvedAmount: 5_000,
+        coveredAmount: 5_000,
+        patientShare: 5_000,
+        outstandingAmount: 5_000,
+      }],
+    });
+
+    await waitFor(() => {
+      expect(payment).toHaveValue(5_000);
+      expect(payment).toHaveAttribute('max', '5000');
+    });
+  });
+
   it('lets billing staff change a cash admission to TPA after confirmation', async () => {
     const user = userEvent.setup();
     renderDialog(bill);
