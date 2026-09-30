@@ -271,7 +271,7 @@ export function IpBillingTab({ focusAdmissionId }: { focusAdmissionId?: string |
                         {refundable > 0 && (
                           <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px] border-emerald-300 text-emerald-700"
                             onClick={() => setDetailBill(b)} title="Return the unused deposit to the patient">
-                            <Undo2 className="h-3 w-3" /> Return deposit
+                            <Undo2 className="h-3 w-3" /> Refund {money(refundable)}
                           </Button>
                         )}
                         {/* Printable bill — available at any time, not only
@@ -291,7 +291,7 @@ export function IpBillingTab({ focusAdmissionId }: { focusAdmissionId?: string |
                             published summary only marks the patient ready. The
                             server re-checks the balance, so this button is a
                             convenience gate, not the security boundary. */}
-                        {b.admission?.dischargeReady && (
+                        {b.admission?.dischargeReady && b.status !== 'draft' && (
                           <Button
                             size="sm"
                             variant={outstandingOf(b) > 0 ? 'outline' : 'default'}
@@ -314,15 +314,20 @@ export function IpBillingTab({ focusAdmissionId }: { focusAdmissionId?: string |
                             payment history live only on the IP detail dialog —
                             Manage now opens the shared Generate Bill screen, so
                             they keep their own entry point here. */}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 gap-1 text-[11px]"
-                          onClick={() => setDetailBill(b)}
-                          title="Deposit, TPA settlement, insurance split and payment history"
-                        >
-                          Deposit / TPA
-                        </Button>
+                        {/* Settlement (deposit apply / TPA / payment history) needs a
+                            Balance Due, which only exists once the bill is finalized
+                            (draft → pending). Hidden until then. */}
+                        {b.status !== 'draft' && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 gap-1 text-[11px]"
+                            onClick={() => setDetailBill(b)}
+                            title="Collect payment — pay now, use deposit/advance, TPA settlement, insurance split and payment history"
+                          >
+                            Collect Payment
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           className="h-7 gap-1 text-[11px]"
@@ -334,7 +339,7 @@ export function IpBillingTab({ focusAdmissionId }: { focusAdmissionId?: string |
                               : 'No bill on this stay yet'
                           }
                         >
-                          Manage
+                          {b.status !== 'draft' ? 'Edit Bill' : 'Finalize Bill'}
                         </Button>
                       </div>
                     </td>
@@ -349,6 +354,7 @@ export function IpBillingTab({ focusAdmissionId }: { focusAdmissionId?: string |
         Every admitted IP patient shows here from day one — one <strong>consolidated bill</strong> that builds up as charges are posted. The <strong>deposit</strong> is cut from the running balance, and its unused part can be <strong>returned</strong> to the patient (e.g. when insurance covers the charges in full). Insurance / corporate patients are <strong>auto-connected to the TPA</strong>; a cash or package admission can be corrected with <strong>Change to TPA</strong>. The claim is then raised and kept in sync as charges accrue. Click <strong>Manage</strong> to post charges, apply the deposit, discount, collect &amp; record TPA settlements.
       </p>
 
+      <IpBillingDetailDialog bill={detailBill} open={!!detailBill} onOpenChange={(o) => { if (!o) { setDetailBill(null); refresh(); } }} />
       <IpBillingDetailDialog bill={activeDetailBill} open={!!detailBill} onOpenChange={(o) => { if (!o) setDetailBill(null); }} />
 
       {/* IP / Emergency / Day Care bills open the SAME screen as OP, so the
@@ -361,6 +367,11 @@ export function IpBillingTab({ focusAdmissionId }: { focusAdmissionId?: string |
           if (!o) {
             setManageBill(null);
             setAutoOpened(true);
+            // Finalizing / editing runs through the shared bill screen, whose own
+            // hooks invalidate the generic bills key — not the IP worklist key.
+            // Re-pull the IP list on close so Collect Payment / Edit Bill appear
+            // without a manual refresh.
+            refresh();
           }
         }}
         initialBillId={activeManageBill?.id ?? null}

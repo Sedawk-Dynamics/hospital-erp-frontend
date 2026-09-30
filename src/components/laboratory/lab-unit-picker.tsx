@@ -1,17 +1,18 @@
 'use client';
 
 // Combobox-style unit picker used in the lab parameter builder. Behaviour:
-//   • text input is fully editable so admins can type a custom unit
-//     (matches the backend schema which is `unit: string|null, max 50`)
-//   • a small chevron button opens a popover with grouped suggestions —
-//     pulled live from the DB (`/lab/unit-groups`) when available, with a
-//     fallback to the frontend LAB_UNIT_GROUPS constants so the picker
-//     still works on first paint before the query resolves
+//   • SELECT-ONLY — the input is read-only and free-typing is disabled, so
+//     every stored unit maps to a real LabUnit row (and therefore carries a
+//     UCUM code for FHIR). To use a unit that isn't listed, an admin adds it
+//     in the Units Manager first (where it gets its UCUM code), then selects
+//     it here.
+//   • clicking the input (or the chevron) opens a popover with grouped
+//     suggestions — pulled live from the DB (`/lab/unit-groups`) when
+//     available, with a fallback to the frontend LAB_UNIT_GROUPS constants
+//     so the picker still works on first paint before the query resolves
 //   • when a `unitGroupCode` filter is passed, the popover only shows
 //     units from that group (with a "Show all units" footer to escape
 //     the filter when needed)
-//   • when the user types something not in the catalog, the popover shows
-//     a "use {input}" footer so they can commit it explicitly
 //
 // Intentionally lightweight — no Command/Combobox dependency, so it slots
 // straight into the table-style parameter builder without breaking the row
@@ -22,7 +23,7 @@ import { Check, ChevronDown, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import { LAB_UNIT_GROUPS, LAB_UNIT_VALUES } from './lab-units';
+import { LAB_UNIT_GROUPS } from './lab-units';
 import { useLabUnitGroups, type LabUnitGroup as DbUnitGroup } from '@/hooks/use-lab-units';
 
 interface LabUnitPickerProps {
@@ -87,11 +88,6 @@ export function LabUnitPicker({
 
   const filterByGroup = !showAll && !!unitGroupCode;
 
-  const knownSymbols = useMemo(
-    () => new Set(allGroups.flatMap((g) => g.units.map((u) => u.value))),
-    [allGroups],
-  );
-
   const current = value ?? '';
   const trimmedQuery = query.trim();
 
@@ -113,8 +109,6 @@ export function LabUnitPicker({
       .filter((g) => g.units.length > 0);
   }, [allGroups, filterByGroup, unitGroupCode, trimmedQuery]);
 
-  const customAvailable = !!trimmedQuery && !knownSymbols.has(trimmedQuery) && !LAB_UNIT_VALUES.includes(trimmedQuery);
-
   const pick = (val: string) => {
     onChange(val);
     setOpen(false);
@@ -124,10 +118,11 @@ export function LabUnitPicker({
   return (
     <div className={cn('relative flex items-center', className)}>
       <Input
-        className="h-7 text-xs pr-12"
+        className="h-7 text-xs pr-12 cursor-pointer"
         placeholder={placeholder}
         value={current}
-        onChange={(e) => onChange(e.target.value || null)}
+        readOnly
+        onClick={() => setOpen(true)}
         aria-label="Parameter unit"
       />
       {current && (
@@ -180,9 +175,9 @@ export function LabUnitPicker({
             )}
           </div>
           <div className="max-h-72 overflow-y-auto p-1.5">
-            {filteredGroups.length === 0 && !customAvailable && (
+            {filteredGroups.length === 0 && (
               <div className="px-2 py-3 text-center text-xs text-muted-foreground">
-                No matching units. Type a custom value above.
+                No matching units. Add it in the Units Manager first.
               </div>
             )}
             {filteredGroups.map((g) => (
@@ -217,16 +212,6 @@ export function LabUnitPicker({
               </div>
             ))}
           </div>
-          {customAvailable && (
-            <button
-              type="button"
-              className="w-full border-t px-3 py-2 text-left text-xs hover:bg-surface-container-low"
-              onClick={() => pick(trimmedQuery)}
-            >
-              Use custom unit:{' '}
-              <span className="font-mono font-semibold">{trimmedQuery}</span>
-            </button>
-          )}
         </PopoverContent>
       </Popover>
     </div>

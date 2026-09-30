@@ -21,6 +21,7 @@ import type {
 } from '@/hooks/use-lab-templates';
 import { LabUnitPicker } from './lab-unit-picker';
 import { LabUnitGroupPicker } from './lab-unit-group-picker';
+import { LoincCodeCombobox } from './loinc-code-combobox';
 import { useLabUnitGroups, findUnitGroupForSymbol } from '@/hooks/use-lab-units';
 
 interface LabParameterBuilderProps {
@@ -41,6 +42,8 @@ function blankParam(): LabParameterSpec {
     code: null,
     unit: null,
     unitGroupCode: null,
+    loincCode: null,
+    loincDisplayName: null,
     refLow: null,
     refHigh: null,
     refRangeText: null,
@@ -117,7 +120,7 @@ export function LabParameterBuilder({ value, onChange }: LabParameterBuilderProp
       <div className="grid grid-cols-12 gap-1 px-3 py-2 bg-surface-container-low border-b text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant">
         <div className="col-span-1"></div>
         <div className="col-span-2">Parameter name</div>
-        <div className="col-span-2">Section</div>
+        <div className="col-span-2">LOINC</div>
         <div className="col-span-2">Unit group</div>
         <div className="col-span-1">Unit</div>
         <div className="col-span-2">Reference range</div>
@@ -145,11 +148,18 @@ export function LabParameterBuilder({ value, onChange }: LabParameterBuilderProp
                   value={p.name}
                   onChange={(e) => update(idx, { name: e.target.value })}
                 />
-                <Input
-                  className="col-span-2 h-7 text-xs"
-                  placeholder="e.g. RBC Indices"
-                  value={p.group ?? ''}
-                  onChange={(e) => update(idx, { group: e.target.value || null })}
+                <LoincCodeCombobox
+                  className="col-span-2"
+                  triggerSize="sm"
+                  value={p.loincCode}
+                  valueTitle={p.loincDisplayName}
+                  placeholder="Search LOINC…"
+                  onSelect={(loinc) =>
+                    update(idx, {
+                      loincCode: loinc?.loincCode ?? null,
+                      loincDisplayName: loinc?.displayName ?? null,
+                    })
+                  }
                 />
                 <LabUnitGroupPicker
                   className="col-span-2"
@@ -246,6 +256,15 @@ export function LabParameterBuilder({ value, onChange }: LabParameterBuilderProp
 
               {expanded && (
                 <div className="px-3 pb-3 pt-1 grid grid-cols-12 gap-2 text-xs">
+                  <div className="col-span-3">
+                    <label className="text-[10px] uppercase font-semibold text-muted-foreground">Section</label>
+                    <Input
+                      className="h-7 text-xs"
+                      placeholder="e.g. RBC Indices"
+                      value={p.group ?? ''}
+                      onChange={(e) => update(idx, { group: e.target.value || null })}
+                    />
+                  </div>
                   <div className="col-span-2">
                     <label className="text-[10px] uppercase font-semibold text-muted-foreground">Code</label>
                     <Input
@@ -268,7 +287,7 @@ export function LabParameterBuilder({ value, onChange }: LabParameterBuilderProp
                       />
                     </div>
                   )}
-                  <div className="col-span-9">
+                  <div className="col-span-6">
                     <label className="text-[10px] uppercase font-semibold text-muted-foreground">Notes / footnote (printed below the parameter on the report)</label>
                     <Input
                       className="h-7 text-xs"
