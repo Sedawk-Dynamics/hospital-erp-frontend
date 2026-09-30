@@ -270,7 +270,9 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
   const splitIsEditable = ['submitted', 'under_review', 'query_raised', 'response_submitted', 'resubmitted'].includes(claim.status);
   const canEditSplit = billIsFinalized && splitIsEditable;
   const billTotal = Number(claim.bill?.totalAmount ?? 0);
-  const amountAlreadyPaid = Number(claim.bill?.amountPaid ?? 0);
+  // Total bill payments include TPA settlements. Only patient-originated
+  // collections reduce the amount that the front desk should request.
+  const amountAlreadyPaid = Number(claim.bill?.patientPaidAmount ?? 0);
   const splitPatientValue = Number(splitPatientAmount);
   const frontDeskDue = Number.isFinite(splitPatientValue)
     ? Math.max(0, splitPatientValue - amountAlreadyPaid)
