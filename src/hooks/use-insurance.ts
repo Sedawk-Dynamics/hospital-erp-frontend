@@ -170,6 +170,7 @@ export interface InsuranceClaimBill {
   insuranceCoveredAmount?: InsuranceMoney;
   patientPayableAmount?: InsuranceMoney;
   amountPaid?: InsuranceMoney;
+  patientPaidAmount?: InsuranceMoney;
   balanceDue?: InsuranceMoney;
   taxableValue?: InsuranceMoney;
   cgstAmount?: InsuranceMoney;
