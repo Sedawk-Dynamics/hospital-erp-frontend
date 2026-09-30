@@ -15,7 +15,21 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { useQuery } from '@tanstack/react-query';
+import { apiGet } from '@/lib/api';
 import type { UserListItem, RoleOption } from '@/hooks/use-users';
+
+interface DepartmentOption {
+  id: string;
+  name: string;
+}
 
 // ============================================================
 // Schema
@@ -29,6 +43,12 @@ const userFormSchema = z
     phone: z.string().optional(),
     password: z.string().optional(),
     roleIds: z.array(z.string()).min(1, 'At least one role is required'),
+    departmentId: z.string().optional(),
+    specialization: z.string().optional(),
+    qualifications: z.string().optional(),
+    licenseNumber: z.string().optional(),
+    experienceYears: z.string().optional(),
+    hprId: z.string().optional(),
   })
   .refine(
     (data) => {
@@ -39,6 +59,32 @@ const userFormSchema = z
   );
 
 type UserFormData = z.infer<typeof userFormSchema>;
+
+const DOCTOR_FIELDS: {
+  name: keyof UserFormData;
+  label: string;
+  placeholder: string;
+  type: 'text' | 'number';
+}[] = [
+  { name: 'specialization', label: 'Specialization', placeholder: 'e.g. Interventional Cardiology', type: 'text' },
+  { name: 'qualifications', label: 'Qualifications', placeholder: 'e.g. MBBS, MD', type: 'text' },
+  { name: 'experienceYears', label: 'Experience (years)', placeholder: 'e.g. 8', type: 'number' },
+  { name: 'licenseNumber', label: 'License Number', placeholder: 'Medical council license', type: 'text' },
+];
+
+
+const HPR_ROLES = [
+  'doctor',
+  'radiologist',
+  'nurse',
+  'nurse_admin',
+  'pharmacist',
+  'pharmacy_admin',
+  'lab_technician',
+  'lab_supervisor',
+  'blood_bank_staff',
+  'radiology_admin',
+];
 
 // ============================================================
 // Props
@@ -83,10 +129,43 @@ export function UserFormDialog({
       phone: '',
       password: '',
       roleIds: [],
+      departmentId: '',
+      specialization: '',
+      qualifications: '',
+      licenseNumber: '',
+      experienceYears: '',
+      hprId: '',
     },
   });
 
   const selectedRoleIds = watch('roleIds');
+
+  // Show the doctor profile fields only when the "doctor" role is selected.
+  const doctorRole = roles.find((r) => r.name === 'doctor');
+  const isDoctorSelected =
+    !!doctorRole && (selectedRoleIds ?? []).includes(doctorRole.id);
+
+  // HPR ID applies to any clinical professional — show it when a selected role
+  // is in HPR_ROLES.
+  const selectedRoleNames = (selectedRoleIds ?? [])
+    .map((id) => roles.find((r) => r.id === id)?.name)
+    .filter(Boolean) as string[];
+  const isClinicalSelected = selectedRoleNames.some((n) => HPR_ROLES.includes(n));
+
+  // Departments for the current hospital — populate the Department dropdown.
+  // Only fetched when the doctor section is shown.
+  const { data: departments = [] } = useQuery({
+    queryKey: ['infrastructure', 'departments'],
+    queryFn: async () => {
+      const res = await apiGet<DepartmentOption[]>('/infrastructure/departments', {
+        params: { limit: 100 },
+      });
+      return res.data;
+    },
+    enabled: open && isDoctorSelected,
+  });
+
+  const departmentId = watch('departmentId');
 
   // Reset form when dialog opens/closes or user changes
   useEffect(() => {
@@ -99,6 +178,15 @@ export function UserFormDialog({
           phone: user.phone || '',
           password: '',
           roleIds: user.userRoles.map((ur) => ur.role.id),
+          departmentId: user.doctorProfile?.departmentId ?? '',
+          specialization: user.doctorProfile?.specialization ?? '',
+          qualifications: user.doctorProfile?.qualifications ?? '',
+          licenseNumber: user.doctorProfile?.licenseNumber ?? '',
+          experienceYears:
+            user.doctorProfile?.experienceYears != null
+              ? String(user.doctorProfile.experienceYears)
+              : '',
+          hprId: user.hprId ?? '',
         });
       } else {
         reset({
@@ -108,13 +196,18 @@ export function UserFormDialog({
           phone: '',
           password: '',
           roleIds: [],
+          departmentId: '',
+          specialization: '',
+          qualifications: '',
+          licenseNumber: '',
+          experienceYears: '',
+          hprId: '',
         });
       }
     }
   }, [open, user, reset]);
 
   const handleFormSubmit = (data: UserFormData) => {
-    // Validate password for create mode
     if (!isEditMode && (!data.password || data.password.length < 8)) {
       return;
     }
@@ -229,6 +322,61 @@ export function UserFormDialog({
               <p className="text-xs text-destructive">{errors.roleIds.message}</p>
             )}
           </div>
+
+          {isClinicalSelected && (
+            <div className="space-y-1.5">
+              <Label htmlFor="hprId">HPR ID (optional)</Label>
+              <Input
+                id="hprId"
+                {...register('hprId')}
+                placeholder="ABDM Healthcare Professional Registry ID"
+              />
+            </div>
+          )}
+
+          {/* Doctor-only profile fields — shown only when "doctor" role selected */}
+          {isDoctorSelected && (
+            <div className="space-y-4 rounded-md border p-3">
+              <p className="text-sm font-medium">Doctor Profile Details</p>
+
+              {/* Department — dropdown of this hospital's departments; stores the id */}
+              <div className="space-y-1.5">
+                <Label htmlFor="departmentId">Department</Label>
+                <Select
+                  value={departmentId || undefined}
+                  onValueChange={(v) =>
+                    setValue('departmentId', v ?? '', { shouldValidate: true })
+                  }
+                >
+                  <SelectTrigger id="departmentId">
+                    <SelectValue placeholder="Select a department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {departments.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {DOCTOR_FIELDS.map((field) => (
+                  <div key={field.name} className="space-y-1.5">
+                    <Label htmlFor={field.name}>{field.label}</Label>
+                    <Input
+                      id={field.name}
+                      type={field.type}
+                      {...(field.type === 'number' ? { min: 0 } : {})}
+                      {...register(field.name)}
+                      placeholder={field.placeholder}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <DialogFooter>
             <Button

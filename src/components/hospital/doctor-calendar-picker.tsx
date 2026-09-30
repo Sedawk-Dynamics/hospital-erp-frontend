@@ -137,7 +137,10 @@ export function DoctorCalendarPicker({
     toDate,
     limit: 500,
   });
-  const appointments = appointmentsResp?.data ?? [];
+  const appointments = (appointmentsResp?.data ?? []).filter(
+  (a) => a.status !== 'cancelled' && a.status !== 'no_show',
+);
+
 
   // Slots for the currently-selected day.
   const { data: slotsData, isLoading: slotsLoading } = useAvailableSlots(

@@ -11,11 +11,19 @@ export interface UserListItem {
   firstName: string;
   lastName: string;
   phone: string | null;
+  hprId: string | null;
   isActive: boolean;
   is2faEnabled: boolean;
   createdAt: string;
   updatedAt: string;
   userRoles: Array<{ role: { id: string; name: string } }>;
+  doctorProfile?: {
+    departmentId: string | null;
+    specialization: string | null;
+    qualifications: string | null;
+    licenseNumber: string | null;
+    experienceYears: number | null;
+  } | null;
 }
 
 export interface RoleOption {
@@ -108,6 +116,17 @@ export function useUserStats() {
 // Mutation Hooks
 // ============================================================
 
+// Doctor-only profile fields — sent when creating/updating a user with the
+// doctor role. All optional; backend creates/updates the DoctorProfile.
+// NOTE: hprId is NOT here — it's a top-level User field (all clinical roles).
+export interface DoctorProfileInput {
+  departmentId?: string;
+  specialization?: string;
+  qualifications?: string;
+  licenseNumber?: string;
+  experienceYears?: number;
+}
+
 export function useCreateUser() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -118,6 +137,8 @@ export function useCreateUser() {
       lastName: string;
       phone?: string;
       roleIds: string[];
+      hprId?: string;
+      doctorProfile?: DoctorProfileInput;
     }) => {
       const response = await apiPost<UserListItem>('/users', data);
       return response.data;
@@ -142,6 +163,8 @@ export function useUpdateUser() {
       email?: string;
       isActive?: boolean;
       roleIds?: string[];
+      hprId?: string;
+      doctorProfile?: DoctorProfileInput;
     }) => {
       const response = await apiPut<UserListItem>(`/users/${id}`, data);
       return response.data;

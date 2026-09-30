@@ -37,6 +37,8 @@ export interface IpBill {
   insuranceCoveredAmount: number | string;
   patientPayableAmount: number | string;
   amountPaid: number | string;
+  /** Patient/front-desk tender only; excludes TPA/insurer remittances. */
+  patientPaidAmount?: number | string;
   balanceDue: number | string;
   /**
    * What the counter can collect against THIS bill right now. `balanceDue` is
@@ -166,6 +168,40 @@ export function useTransferToTpa() {
         { policyId: v.policyId, newPolicy: v.newPolicy },
       )).data,
     onSuccess: invalidate,
+  });
+}
+
+export interface ChangeBillingToTpaResult {
+  admission: { id: string; billingCategory: 'insurance'; status: string };
+  policy: {
+    id: string;
+    policyNumber: string;
+    insurer?: { name: string } | null;
+    tpa?: { name: string } | null;
+  };
+  claim?: IpClaim | null;
+  connected: boolean;
+}
+
+/**
+ * Billing-counter correction for an admission initially booked as cash/package.
+ * Unlike the legacy transfer action this does not finalise the running IP bill;
+ * it changes the category and joins the existing auto-synchronised TPA flow.
+ */
+export function useChangeBillingToTpa() {
+  const invalidate = useIpBillingInvalidate();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: Pick<TransferToTpaInput, 'admissionId' | 'policyId'>) =>
+      (await apiPost<ChangeBillingToTpaResult>(
+        `/billing/admissions/${v.admissionId}/change-to-tpa`,
+        v.policyId ? { policyId: v.policyId } : {},
+      )).data,
+    onSuccess: () => {
+      invalidate();
+      qc.invalidateQueries({ queryKey: ['patient-policies'] });
+      qc.invalidateQueries({ queryKey: ['insurance'] });
+    },
   });
 }
 

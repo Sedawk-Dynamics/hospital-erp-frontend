@@ -1,4 +1,7 @@
-FROM node:20-alpine AS base
+# @zxing/library 0.22+ declares Node 24 as its supported build/runtime floor.
+# Keep the container aligned with local/CI so npm does not install an
+# unsupported dependency graph during a production build.
+FROM node:24-alpine AS base
 WORKDIR /app
 
 FROM base AS deps

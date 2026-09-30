@@ -86,6 +86,7 @@ export interface MyHospital {
   email: string | null;
   website: string | null;
   licenseNumber: string | null;
+  hfrId: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -223,6 +224,7 @@ export interface DoctorProfile {
   specialization: string;
   qualification: string;
   licenseNumber: string;
+  hprId?: string | null;
   consultationFee: number;
   availableDays: string[];
   availableSlots: { start: string; end: string }[];

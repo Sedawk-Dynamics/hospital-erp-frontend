@@ -87,7 +87,10 @@ export default function DoctorSchedulePage() {
     toDate,
     limit: 500,
   });
-  const appointments = appointmentsResp?.data ?? [];
+  const appointments = (appointmentsResp?.data ?? []).filter(
+  (a) => a.status !== 'cancelled' && a.status !== 'no_show',
+);
+
 
   const navigate = (dir: -1 | 0 | 1) => {
     if (dir === 0) {

@@ -14,14 +14,16 @@ import { useForm } from 'react-hook-form';
 
 const results = { current: [] as unknown[] };
 const fetching = { current: false };
-vi.mock('@/hooks/use-icd', () => ({
-  useIcdSearch: () => ({ data: results.current, isFetching: fetching.current }),
+const fetchSnomedMap = vi.fn();
+vi.mock('@/hooks/use-snomed', () => ({
+  useSnomedSearch: () => ({ data: results.current, isFetching: fetching.current }),
+  fetchSnomedMap: (...args: unknown[]) => fetchSnomedMap(...args),
 }));
 
 import { DiagnosisNameField } from './diagnosis-name-field';
 
-const R509 = { id: '1', code: 'R50.9', title: 'Fever, unspecified', category: 'General symptoms and signs' };
-const R50 = { id: '2', code: 'R50', title: 'Fever of other and unknown origin', category: 'General symptoms and signs' };
+const FEVER = { conceptId: '386661006', term: 'Fever, unspecified' };
+const FEVER_ORIGIN = { conceptId: '7520000', term: 'Fever of other and unknown origin' };
 
 // The component takes `form: any` (the whole pad does), so the harness holds
 // it loosely too rather than fighting RHF's generics in a test.
@@ -37,29 +39,38 @@ const values = () =>
 
 beforeEach(() => {
   vi.clearAllMocks();
-  results.current = [R509, R50];
+  results.current = [FEVER, FEVER_ORIGIN];
   fetching.current = false;
+  fetchSnomedMap.mockResolvedValue({
+    snomedCode: FEVER.conceptId,
+    status: 'resolved',
+    icdCodes: ['R50.9'],
+  });
   formRef = null;
 });
 
 describe('typing a diagnosis by name', () => {
-  it('offers ICD-10 matches with their codes', async () => {
+  it('offers SNOMED diagnosis matches without exposing backend codes', async () => {
     render(<Harness />);
     await userEvent.type(screen.getByPlaceholderText(/Start typing Diagnosis/i), 'fever');
 
-    await waitFor(() => expect(screen.getByText('R50.9')).toBeInTheDocument());
-    expect(screen.getByText('Fever, unspecified')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(FEVER.term)).toBeInTheDocument());
+    expect(screen.queryByText(FEVER.conceptId)).not.toBeInTheDocument();
   });
 
   it('fills BOTH the name and the code when one is picked', async () => {
     // The whole point: the code was staying empty.
     render(<Harness />);
     await userEvent.type(screen.getByPlaceholderText(/Start typing Diagnosis/i), 'fever');
-    await waitFor(() => expect(screen.getByText('R50.9')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(FEVER.term)).toBeInTheDocument());
 
-    await userEvent.click(screen.getByText('Fever, unspecified'));
+    await userEvent.click(screen.getByText(FEVER.term));
 
-    expect(values()).toMatchObject({ icdCode: 'R50.9', diagnosisName: 'Fever, unspecified' });
+    await waitFor(() => expect(values()).toMatchObject({
+      icdCode: 'R50.9',
+      diagnosisName: FEVER.term,
+    }));
+    expect(fetchSnomedMap).toHaveBeenCalledWith(FEVER.conceptId);
   });
 
   it('keeps free text that matches nothing, rather than forcing a code', async () => {
@@ -75,18 +86,18 @@ describe('typing a diagnosis by name', () => {
   it('does not search on a single character', async () => {
     render(<Harness />);
     await userEvent.type(screen.getByPlaceholderText(/Start typing Diagnosis/i), 'f');
-    expect(screen.queryByText('R50.9')).not.toBeInTheDocument();
+    expect(screen.queryByText(FEVER.term)).not.toBeInTheDocument();
   });
 
   it('takes the first match on Enter', async () => {
     render(<Harness />);
     const input = screen.getByPlaceholderText(/Start typing Diagnosis/i);
     await userEvent.type(input, 'fever');
-    await waitFor(() => expect(screen.getByText('R50.9')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(FEVER.term)).toBeInTheDocument());
 
     await userEvent.type(input, '{Enter}');
 
-    expect(values()).toMatchObject({ icdCode: 'R50.9' });
+    await waitFor(() => expect(values()).toMatchObject({ icdCode: 'R50.9' }));
   });
 
   it('never lets Enter submit the prescription', async () => {
@@ -109,11 +120,11 @@ describe('typing a diagnosis by name', () => {
     render(<Harness />);
     const input = screen.getByPlaceholderText(/Start typing Diagnosis/i);
     await userEvent.type(input, 'fever');
-    await waitFor(() => expect(screen.getByText('R50.9')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(FEVER.term)).toBeInTheDocument());
 
     await userEvent.type(input, '{Escape}');
 
-    await waitFor(() => expect(screen.queryByText('R50.9')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText(FEVER.term)).not.toBeInTheDocument());
     expect(values()).toMatchObject({ diagnosisName: 'fever', icdCode: '' });
   });
 
@@ -130,14 +141,14 @@ describe('typing a diagnosis by name', () => {
         </div>,
       );
       await userEvent.type(screen.getByPlaceholderText(/Start typing Diagnosis/i), 'fever');
-      await waitFor(() => expect(screen.getByText('R50.9')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText(FEVER.term)).toBeInTheDocument());
 
       // Found by a screen query (which searches the whole document) but NOT
       // inside the container that would clip it.
       expect(container.querySelector('[data-testid="clipper"]')).not.toContainElement(
-        screen.getByText('R50.9'),
+        screen.getByText(FEVER.term),
       );
-      expect(document.body).toContainElement(screen.getByText('R50.9'));
+      expect(document.body).toContainElement(screen.getByText(FEVER.term));
     });
 
     it('pins the list to the input it belongs to', async () => {
@@ -147,9 +158,9 @@ describe('typing a diagnosis by name', () => {
       vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(rect as DOMRect);
       render(<Harness />);
       await userEvent.type(screen.getByPlaceholderText(/Start typing Diagnosis/i), 'fever');
-      await waitFor(() => expect(screen.getByText('R50.9')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText(FEVER.term)).toBeInTheDocument());
 
-      const list = screen.getByText('R50.9').closest('div.fixed') as HTMLElement;
+      const list = screen.getByText(FEVER.term).closest('div.fixed') as HTMLElement;
       expect(list).toBeTruthy();
       expect(list.style.left).toBe('64px');
       expect(list.style.width).toBe('320px');

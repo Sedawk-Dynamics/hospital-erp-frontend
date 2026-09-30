@@ -86,8 +86,25 @@ export default function UserAccessConfigPage() {
     phone?: string;
     password?: string;
     roleIds: string[];
+    departmentId?: string;
+    specialization?: string;
+    qualifications?: string;
+    licenseNumber?: string;
+    experienceYears?: string;
+    hprId?: string;
   }) => {
     try {
+      // HPR ID is a top-level User field (all clinical roles). Doctor profile
+      // payload holds only doctor-specific fields. experienceYears comes from
+      // the form as a string; convert to a number.
+      const hprId = data.hprId || undefined;
+      const doctorProfile = {
+        departmentId: data.departmentId || undefined,
+        specialization: data.specialization || undefined,
+        qualifications: data.qualifications || undefined,
+        licenseNumber: data.licenseNumber || undefined,
+        experienceYears: data.experienceYears ? Number(data.experienceYears) : undefined,
+      };
       if (editingUser) {
         await updateUser.mutateAsync({
           id: editingUser.id,
@@ -96,6 +113,8 @@ export default function UserAccessConfigPage() {
           email: data.email,
           phone: data.phone,
           roleIds: data.roleIds,
+          hprId,
+          doctorProfile,
         });
         toast.success('User updated successfully');
       } else {
@@ -106,6 +125,8 @@ export default function UserAccessConfigPage() {
           lastName: data.lastName,
           phone: data.phone,
           roleIds: data.roleIds,
+          hprId,
+          doctorProfile,
         });
         toast.success('User created successfully');
       }

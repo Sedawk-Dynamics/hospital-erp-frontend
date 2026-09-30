@@ -80,6 +80,15 @@ export function IpBillingTab({ focusAdmissionId }: { focusAdmissionId?: string |
   // (the endpoint ensures each active admission has its running IP bill).
   const { data, isLoading } = useIpAdmissions(search || undefined);
   const all = useMemo(() => data ?? [], [data]);
+  // Keep an open detail dialog on the latest query row. Payment and TPA actions
+  // invalidate this list; using the fresh object makes the new patient due and
+  // status visible immediately without forcing the cashier to close/reopen it.
+  const activeDetailBill = useMemo(
+    () => detailBill
+      ? all.find((item) => item.admissionId === detailBill.admissionId) ?? detailBill
+      : null,
+    [all, detailBill],
+  );
   const readyCount = useMemo(
     () => all.filter((b) => b.admission?.dischargeReady).length,
     [all],
@@ -248,6 +257,17 @@ export function IpBillingTab({ focusAdmissionId }: { focusAdmissionId?: string |
                             <ShieldCheck className="h-3.5 w-3.5" /> {liveClaim ? 'With TPA' : 'Connected to TPA'}
                           </span>
                         )}
+                        {!isInsurance(cat) && b.admission?.status !== 'discharged' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 gap-1 text-[11px] border-purple-300 text-purple-700"
+                            onClick={() => setDetailBill(b)}
+                            title="Change this admission from direct billing to TPA / insurance"
+                          >
+                            <ShieldCheck className="h-3 w-3" /> Change to TPA
+                          </Button>
+                        )}
                         {refundable > 0 && (
                           <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px] border-emerald-300 text-emerald-700"
                             onClick={() => setDetailBill(b)} title="Return the unused deposit to the patient">
@@ -283,7 +303,7 @@ export function IpBillingTab({ focusAdmissionId }: { focusAdmissionId?: string |
                             title={
                               outstandingOf(b) > 0
                                 ? `${money(outstandingOf(b))} still outstanding — collect it first, or use the override`
-                                : 'Bill is settled — complete the discharge and free the bed'
+                                : 'Patient share is settled — complete discharge while any TPA balance stays open'
                             }
                           >
                             <LogOut className="h-3 w-3" />
@@ -331,10 +351,11 @@ export function IpBillingTab({ focusAdmissionId }: { focusAdmissionId?: string |
         </div>
       )}
       <p className="text-[11px] text-muted-foreground">
-        Every admitted IP patient shows here from day one — one <strong>consolidated bill</strong> that builds up as charges are posted. The <strong>deposit</strong> is cut from the running balance, and its unused part can be <strong>returned</strong> to the patient (e.g. when insurance covers the charges in full). Insurance / corporate patients are <strong>auto-connected to the TPA</strong> at booking — the claim is raised and kept in sync as charges accrue (no manual transfer). Click <strong>Manage</strong> to post charges, apply the deposit, discount, collect &amp; record TPA settlements.
+        Every admitted IP patient shows here from day one — one <strong>consolidated bill</strong> that builds up as charges are posted. The <strong>deposit</strong> is cut from the running balance, and its unused part can be <strong>returned</strong> to the patient (e.g. when insurance covers the charges in full). Insurance / corporate patients are <strong>auto-connected to the TPA</strong>; a cash or package admission can be corrected with <strong>Change to TPA</strong>. The claim is then raised and kept in sync as charges accrue. Click <strong>Manage</strong> to post charges, apply the deposit, discount, collect &amp; record TPA settlements.
       </p>
 
       <IpBillingDetailDialog bill={detailBill} open={!!detailBill} onOpenChange={(o) => { if (!o) { setDetailBill(null); refresh(); } }} />
+      <IpBillingDetailDialog bill={activeDetailBill} open={!!detailBill} onOpenChange={(o) => { if (!o) setDetailBill(null); }} />
 
       {/* IP / Emergency / Day Care bills open the SAME screen as OP, so the
           counter learns one billing surface. `admissionId` is what enables
@@ -466,8 +487,8 @@ function ClearAndDischargeDialog({
           </div>
           <p className={cn('mt-1 text-[11px]', blocked ? 'text-amber-700' : 'text-emerald-700')}>
             {blocked
-              ? 'The bill is not settled. Collect the balance first — or record an override below.'
-              : 'The bill is fully settled. This patient is clear to leave.'}
+              ? 'The patient share is not settled. Collect it first — or use an audited emergency override.'
+              : 'The patient share is settled. Any remaining TPA settlement stays open separately.'}
           </p>
         </div>
 

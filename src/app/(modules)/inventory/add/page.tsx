@@ -25,7 +25,8 @@ export default function AddToStoragePage() {
           </h1>
           <p className="text-xs text-muted-foreground">
             Add one product or many — medicines and supplies alike. Leave quantity blank to just
-            register a product, or fill it to receive stock. Scan, paste, or upload an invoice.
+            register a product, or fill it to receive stock. Define the primary unit, per-pack count,
+            and smallest unit; primary-unit prices are converted for billing. Scan, paste, or upload an invoice.
           </p>
         </div>
       </div>

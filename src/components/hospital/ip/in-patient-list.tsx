@@ -76,6 +76,7 @@ import { usePermissions } from '@/hooks/use-permissions';
 import { useGlobalPatientSearch, useProvisionLocalPatient } from '@/hooks/use-hospital';
 import { useAuthStore } from '@/stores/auth-store';
 import { fullName } from '@/lib/person-name';
+import { useInsuranceCases } from '@/hooks/use-insurance-workflow';
 
 // Generating a bill or collecting advance are billing actions. Gate on the
 // real billing:create permission so the billing / cash counter (front desk,
@@ -323,12 +324,15 @@ function AdmissionDialog({
         // Doctor optional now — omit when not chosen.
         doctorId: selectedDoctorId || undefined,
         admissionType,
-        // No bed/ward at registration — assigned later from the IP workspace.
         admissionDate,
         expectedDischargeDate: expectedDischarge || undefined,
         admissionReason: admissionReason || undefined,
         depositAmount: depositAmount ? parseFloat(depositAmount) : 0,
         billingCategory,
+        // Ward/bed picked in the admit form (IP only). Omit when empty —
+        // an empty string fails the backend's UUID validation.
+        wardId: selectedWardId || undefined,
+        bedId: selectedBedId || undefined,
       });
       return admissionRes.data;
     },
@@ -805,6 +809,53 @@ function AdmissionDialog({
                   </SelectContent>
                 </Select>
               </div>
+
+              {admissionType === 'ip' && (
+                <>
+              <div className="grid gap-1.5">
+                <Label>Ward</Label>
+                <Select value={selectedWardId} onValueChange={(v) => setSelectedWardId(v ?? '')}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select ward" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {wards.map((w) => {
+                      const avail = availabilityByWard.get(w.id)?.available;
+                      return (
+                        <SelectItem key={w.id} value={w.id}>
+                          {w.name}
+                          {avail != null ? ` (${avail} free)` : ''}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid gap-1.5">
+                <Label>Bed</Label>
+                <Select
+                  value={selectedBedId}
+                  onValueChange={(v) => setSelectedBedId(v ?? '')}
+                  disabled={!selectedWardId}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={selectedWardId ? 'Select bed' : 'Select ward first'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {beds.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        Bed {b.bedNumber}{b.bedType ? ` · ${b.bedType}` : ''}
+                      </SelectItem>
+                    ))}
+                    {selectedWardId && beds.length === 0 && (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">No available beds</div>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+                </>
+              )}
             </div>
 
             {/* Reason */}
@@ -1141,8 +1192,12 @@ function DischargeDialog({
 
   const [dischargeDate, setDischargeDate] = useState(toInputDateStr());
   const [notes, setNotes] = useState('');
+  const [payerCaseId, setPayerCaseId] = useState('');
+  const [releaseUndertaking, setReleaseUndertaking] = useState('');
   // G5 (2.1): the discharge response carries the assembled final-bill summary.
   const [summary, setSummary] = useState<DischargeBillingSummary | null>(null);
+  const payerCasesQuery = useInsuranceCases({ admissionId: admission.id, limit: 50 });
+  const activePayerCases = (payerCasesQuery.data?.data ?? []).filter((item) => !['closed', 'cancelled'].includes(item.status));
 
   useEffect(() => { if (open) setSummary(null); }, [open]);
 
@@ -1168,13 +1223,14 @@ function DischargeDialog({
   const dischargeMutation = useMutation({
     // `force` skips BOTH discharge gates (published summary + cleared bill) and
     // the server requires a reason for it — the discharge notes are that reason.
-    mutationFn: async (opts?: { force?: boolean }) =>
+    mutationFn: async (opts?: { force?: boolean; payerCaseId?: string; releaseUndertaking?: string }) =>
       (await apiPatch<{ dischargeBilling?: DischargeBillingSummary | null }>(
         `/clinical/admissions/${admission.id}/discharge`,
         {
           dischargeDate,
           notes: notes || undefined,
           ...(opts?.force ? { force: true, reason: notes.trim() } : {}),
+          ...(opts?.payerCaseId ? { payerCaseId: opts.payerCaseId, releaseUndertaking: opts.releaseUndertaking } : {}),
         },
       )).data?.dischargeBilling ?? null,
     onSuccess: (billing) => {
@@ -1316,6 +1372,24 @@ function DischargeDialog({
                   rows={2}
                 />
               </div>
+
+              {activePayerCases.length > 0 && (
+                <div className="grid gap-3 rounded-lg border border-blue-200 bg-blue-50/60 p-3">
+                  <div>
+                    <p className="text-sm font-medium text-blue-900">Payer settlement may remain open</p>
+                    <p className="text-xs text-blue-800">Select the linked payer case and record the release undertaking when the final bill is awaiting insurer, corporate, or scheme settlement. The patient share must still be paid in full before discharge; this selection only keeps the payer claim active.</p>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label>Insurance / payer case</Label>
+                    <Select value={payerCaseId || null} onValueChange={(value) => value && setPayerCaseId(value as string)}>
+                      <SelectTrigger className="w-full bg-background"><SelectValue placeholder="Only needed for pending payer balance" /></SelectTrigger>
+                      <SelectContent>{activePayerCases.map((item) => <SelectItem key={item.id} value={item.id}>{item.caseNumber} · {item.settlementMode} · {item.status.replace(/([A-Z])/g, ' $1')}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  {payerCaseId && <div className="grid gap-1.5"><Label>Release undertaking *</Label><Textarea rows={3} value={releaseUndertaking} onChange={(event) => setReleaseUndertaking(event.target.value)} placeholder="Patient/authorized attendant acknowledges that payer adjudication and settlement will continue after physical discharge." /></div>}
+                  {payerCaseId && <Link href={`/insurance/cases/${payerCaseId}`} target="_blank" className="text-xs font-medium text-primary hover:underline">Open payer case <ExternalLink className="ml-1 inline size-3" /></Link>}
+                </div>
+              )}
             </div>
           )
         )}
@@ -1358,7 +1432,13 @@ function DischargeDialog({
               </Button>
               <Button
                 variant="destructive"
-                onClick={() => dischargeMutation.mutate({})}
+                onClick={() => {
+                  if (payerCaseId && releaseUndertaking.trim().length < 5) {
+                    toast.error('Enter the payer-case release undertaking');
+                    return;
+                  }
+                  dischargeMutation.mutate({ payerCaseId: payerCaseId || undefined, releaseUndertaking: payerCaseId ? releaseUndertaking.trim() : undefined });
+                }}
                 disabled={dischargeMutation.isPending}
               >
                 {dischargeMutation.isPending ? 'Discharging...' : 'Confirm Discharge'}

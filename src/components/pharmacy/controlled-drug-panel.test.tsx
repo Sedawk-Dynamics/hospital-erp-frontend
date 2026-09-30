@@ -53,6 +53,10 @@ describe('cartNeedsWitness', () => {
     expect(cartNeedsWitness([TRAMADOL])).toBe(false);
     expect(cartNeedsWitness([line()])).toBe(false);
   });
+
+  it('also requires a witness for the legacy isNarcotic flag', () => {
+    expect(cartNeedsWitness([line({ drugName: 'Legacy narcotic', isNarcotic: true })])).toBe(true);
+  });
 });
 
 describe('ControlledDrugPanel', () => {
@@ -103,5 +107,11 @@ describe('ControlledDrugPanel', () => {
   it('marks a vault line as safe custody', () => {
     render(<ControlledDrugPanel {...base} lines={[MORPHINE]} />);
     expect(screen.getByText(/safe custody, needs a witness/i)).toBeInTheDocument();
+  });
+
+  it('requires only a prescription and register entry for a pharmacy sale', () => {
+    render(<ControlledDrugPanel {...base} lines={[MORPHINE]} hasRx requireWitness={false} />);
+    expect(screen.getByText(/prescription \+ NDPS register entry/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /witness/i })).not.toBeInTheDocument();
   });
 });

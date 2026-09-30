@@ -31,6 +31,7 @@ const hospitalInfoSchema = z.object({
   email: z.email('Invalid email').optional().or(z.literal('')),
   website: z.string().optional(),
   licenseNumber: z.string().optional(),
+  hfrId: z.string().optional(),
 });
 
 type HospitalInfoForm = z.infer<typeof hospitalInfoSchema>;
@@ -67,6 +68,7 @@ export default function HospitalInfoPage() {
       email: '',
       website: '',
       licenseNumber: '',
+      hfrId: '',
     },
   });
 
@@ -83,6 +85,7 @@ export default function HospitalInfoPage() {
         email: hospital.email || '',
         website: hospital.website || '',
         licenseNumber: hospital.licenseNumber || '',
+        hfrId: hospital.hfrId || '',
       });
     }
   }, [hospital, reset]);
@@ -249,6 +252,16 @@ export default function HospitalInfoPage() {
                 id="licenseNumber"
                 {...register('licenseNumber')}
                 placeholder="Enter license number"
+              />
+            </div>
+
+            {/* HFR ID (ABDM Health Facility Registry) */}
+            <div className="space-y-1.5">
+              <Label htmlFor="hfrId">HFR ID (optional)</Label>
+              <Input
+                id="hfrId"
+                {...register('hfrId')}
+                placeholder="ABDM Health Facility Registry ID"
               />
             </div>
 

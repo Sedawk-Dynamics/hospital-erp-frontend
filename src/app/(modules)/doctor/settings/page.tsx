@@ -175,6 +175,7 @@ export default function DoctorSettingsPage() {
                     <InfoRow label="Specialization" value={doctorProfile?.specialization || '-'} />
                     <InfoRow label="Qualification" value={doctorProfile?.qualification || '-'} />
                     <InfoRow label="License Number" value={doctorProfile?.licenseNumber || '-'} />
+                    <InfoRow label="HPR ID" value={doctorProfile?.hprId || '-'} />
                     <InfoRow
                       label="Consultation Fee"
                       value={doctorProfile?.consultationFee ? `Rs. ${doctorProfile.consultationFee}` : '-'}

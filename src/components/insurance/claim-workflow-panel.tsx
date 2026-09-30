@@ -1,0 +1,116 @@
+'use client';
+
+import { useState } from 'react';
+import { Download, Plus, Send, WalletCards } from 'lucide-react';
+import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
+import type { InsuranceClaim } from '@/hooks/use-insurance';
+import {
+  downloadClaimDossier,
+  useCreateClaimAdjustment,
+  useDecideClaimWriteOff,
+  useQueueInsuranceExchange,
+  useRaiseClaimQuery,
+  useRecordClaimSettlement,
+  useRequestClaimWriteOff,
+  useRespondClaimQuery,
+  useResolveClaimQuery,
+} from '@/hooks/use-insurance-workflow';
+import { cn } from '@/lib/utils';
+
+type Action = 'query' | 'response' | 'settlement' | 'writeoff' | 'adjustment' | 'exchange' | null;
+const today = new Date().toISOString().slice(0, 10);
+const money = (value?: number | null) => `₹${Number(value ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+
+export function ClaimWorkflowPanel({ claim }: { claim: InsuranceClaim }) {
+  const raiseQuery = useRaiseClaimQuery();
+  const respondQuery = useRespondClaimQuery();
+  const resolveQuery = useResolveClaimQuery();
+  const settle = useRecordClaimSettlement();
+  const requestWriteOff = useRequestClaimWriteOff();
+  const decideWriteOff = useDecideClaimWriteOff();
+  const createAdjustment = useCreateClaimAdjustment();
+  const queueExchange = useQueueInsuranceExchange();
+  const [action, setAction] = useState<Action>(null);
+  const [selectedQueryId, setSelectedQueryId] = useState('');
+  const [query, setQuery] = useState({ queryReference: '', subject: '', queryText: '', responseHours: '24' });
+  const [responseText, setResponseText] = useState('');
+  const [settlement, setSettlement] = useState({ grossApprovedAmount: String(claim.approvedAmount ?? claim.claimAmount), grossPaidAmount: '', tdsAmount: '0', tdsSection: '', tdsRate: '', disallowedAmount: '0', disallowanceReason: '', netPaidAmount: '', paymentReference: '', bankReference: '', bankStatementDate: '', tdsCertificateNumber: '', tdsCertificateDate: '', settlementDate: today, notes: '' });
+  const [writeOff, setWriteOff] = useState({ amount: '', reason: '' });
+  const [adjustment, setAdjustment] = useState({ adjustmentType: 'supplementaryPayment' as 'supplementaryPayment' | 'creditNote' | 'debitNote', amount: '', reference: '', reason: '', effectiveDate: today });
+  const [exchange, setExchange] = useState({ channel: 'nhcx' as 'portal' | 'email' | 'nhcx' | 'api' | 'manual', messageType: 'Claim', transactionId: '', payload: '{}' });
+
+  function fail(error: unknown, fallback: string) {
+    const message = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+    toast.error(message ?? fallback);
+  }
+
+  const queries = claim.queries ?? [];
+  const settlements = claim.settlements ?? [];
+  const writeOffs = claim.writeOffs ?? [];
+  const adjustments = claim.adjustments ?? [];
+  const audit = claim.auditEvents ?? [];
+  const settlementAllowed = ['approved', 'partially_approved', 'partially_settled', 'settled'].includes(claim.status);
+  const queryAllowed = claim.status === 'under_review';
+
+  async function saveQuery() {
+    if (!query.subject || !query.queryText) return toast.error('Query subject and text are required');
+    try { await raiseQuery.mutateAsync({ claimId: claim.id, queryReference: query.queryReference || undefined, subject: query.subject, queryText: query.queryText, responseHours: Number(query.responseHours || 24) }); toast.success('Payer query recorded and response SLA started'); setAction(null); } catch (error) { fail(error, 'Query could not be recorded'); }
+  }
+
+  async function saveSettlement() {
+    if (!settlement.grossPaidAmount || !settlement.settlementDate) return toast.error('Gross paid amount and settlement date are required');
+    try {
+      await settle.mutateAsync({ claimId: claim.id, grossApprovedAmount: Number(settlement.grossApprovedAmount), grossPaidAmount: Number(settlement.grossPaidAmount), tdsAmount: Number(settlement.tdsAmount || 0), tdsSection: settlement.tdsSection || undefined, tdsRate: settlement.tdsRate ? Number(settlement.tdsRate) : undefined, disallowedAmount: Number(settlement.disallowedAmount || 0), disallowanceReason: settlement.disallowanceReason || undefined, netPaidAmount: Math.max(0, Number(settlement.grossPaidAmount) - Number(settlement.tdsAmount || 0)), paymentReference: settlement.paymentReference || undefined, bankReference: settlement.bankReference || undefined, bankStatementDate: settlement.bankStatementDate || undefined, tdsCertificateNumber: settlement.tdsCertificateNumber || undefined, tdsCertificateDate: settlement.tdsCertificateDate || undefined, settlementDate: settlement.settlementDate, notes: settlement.notes || undefined });
+      toast.success('Settlement recorded and TDS moved to receivable'); setAction(null);
+    } catch (error) { fail(error, 'Settlement could not be recorded'); }
+  }
+
+  return <Card>
+    <CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle>Claim Operations</CardTitle><CardDescription>Payer queries, financial closure and immutable audit controls.</CardDescription></div><div className="flex gap-2"><Button variant="outline" size="sm" onClick={async () => { try { await downloadClaimDossier(claim.id, claim.claimNumber); toast.success('Claim dossier downloaded'); } catch (error) { fail(error, 'Dossier export failed'); } }}><Download className="mr-1.5 size-4" /> Dossier</Button><Button variant="outline" size="sm" onClick={() => setAction('exchange')}><Send className="mr-1.5 size-4" /> Exchange</Button></div></div></CardHeader>
+    <CardContent>
+      <Tabs defaultValue="queries"><TabsList className="flex h-auto flex-wrap"><TabsTrigger value="queries">Queries ({queries.filter((item) => item.status !== 'resolved').length})</TabsTrigger><TabsTrigger value="settlement">Settlement</TabsTrigger><TabsTrigger value="adjustments">Write-offs & adjustments</TabsTrigger><TabsTrigger value="audit">Audit</TabsTrigger></TabsList>
+        <TabsContent value="queries" className="mt-4 space-y-3">
+          <Button size="sm" onClick={() => setAction('query')} disabled={!queryAllowed}><Plus className="mr-1.5 size-4" /> Record payer query</Button>
+          {!queryAllowed && claim.status === 'submitted' && <p className="text-xs text-on-surface-variant">Proceed to Under Review before recording a payer query.</p>}
+          {queries.length ? queries.map((item) => (
+            <div key={item.id} className={cn('rounded-md border p-3', item.status === 'open' && new Date(item.responseDueAt) < new Date() && 'border-rose-300 bg-rose-50')}>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div><div className="font-medium">{item.subject}</div><div className="text-sm text-on-surface-variant">{item.queryText}</div><div className="mt-1 text-xs">Due {new Date(item.responseDueAt).toLocaleString('en-IN')} · {item.queryReference ?? 'No payer ref'}</div></div>
+                <Badge variant="outline" className="capitalize">{item.status.replace(/([A-Z])/g, ' $1')}</Badge>
+              </div>
+              {item.responseText && <div className="mt-3 rounded-md bg-muted p-2 text-sm"><span className="font-medium">Response:</span> {item.responseText}</div>}
+              <div className="mt-2 flex justify-end gap-2">
+                {item.status === 'open' && <Button size="sm" variant="outline" onClick={() => { setSelectedQueryId(item.id); setResponseText(''); setAction('response'); }}>Respond</Button>}
+                {item.status === 'responseSubmitted' && <Button size="sm" variant="outline" onClick={() => resolveQuery.mutate(item.id, { onSuccess: () => toast.success('Query resolved'), onError: (error) => fail(error, 'Could not resolve query') })}>Mark resolved</Button>}
+              </div>
+            </div>
+          )) : <Empty text="No payer queries recorded." />}
+        </TabsContent>
+        <TabsContent value="settlement" className="mt-4 space-y-3"><div className="grid gap-3 sm:grid-cols-4"><Metric label="Approved" value={money(claim.approvedAmount)} /><Metric label="Gross recovered" value={money(claim.paidAmount)} /><Metric label="TDS receivable" value={money(claim.tdsReceivableAmount)} /><Metric label="Outstanding" value={money(claim.outstandingAmount)} /></div><Button size="sm" onClick={() => setAction('settlement')} disabled={!settlementAllowed}><WalletCards className="mr-1.5 size-4" /> Record settlement</Button>{!settlementAllowed && <p className="text-xs text-on-surface-variant">The claim must be approved before settlement.</p>}{settlements.length ? settlements.map((item) => <div key={item.id} className="grid gap-2 rounded-md border p-3 text-sm sm:grid-cols-6"><Metric label="Date" value={new Date(item.settlementDate).toLocaleDateString('en-IN')} /><Metric label="Gross paid" value={money(item.grossPaidAmount)} /><Metric label="TDS" value={money(item.tdsAmount)} /><Metric label="Net bank" value={money(item.netPaidAmount)} /><Metric label="Disallowed" value={money(item.disallowedAmount)} /><Metric label="Bank reference" value={item.bankReference ?? '—'} /></div>) : <Empty text="No settlements recorded." />}</TabsContent>
+        <TabsContent value="adjustments" className="mt-4 space-y-4"><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => setAction('writeoff')}>Request write-off</Button><Button size="sm" variant="outline" onClick={() => setAction('adjustment')}>Post-settlement adjustment</Button></div>{writeOffs.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm"><div><span className="font-medium">{money(item.amount)}</span> · {item.reason}</div><div className="flex items-center gap-2"><Badge variant="outline" className="capitalize">{item.status}</Badge>{item.status === 'pending' && <><Button size="sm" variant="ghost" onClick={() => decideWriteOff.mutate({ writeOffId: item.id, decision: 'approved' }, { onSuccess: () => toast.success('Write-off approved'), onError: (error) => fail(error, 'Decision failed') })}>Approve</Button><Button size="sm" variant="ghost" onClick={() => decideWriteOff.mutate({ writeOffId: item.id, decision: 'rejected' }, { onSuccess: () => toast.success('Write-off rejected'), onError: (error) => fail(error, 'Decision failed') })}>Reject</Button></>}</div></div>)}{adjustments.map((item) => <div key={item.id} className="rounded-md border p-3 text-sm"><span className="font-medium capitalize">{item.adjustmentType.replace(/([A-Z])/g, ' $1')}</span> · {money(item.amount)} · {item.reason}<div className="text-xs text-on-surface-variant">Effective {new Date(item.effectiveDate).toLocaleDateString('en-IN')} · {item.reference ?? 'No reference'}</div></div>)}</TabsContent>
+        <TabsContent value="audit" className="mt-4">{audit.length ? <div className="space-y-3 border-l-2 pl-4">{audit.map((item) => <div key={item.id}><div className="text-sm font-medium">{item.eventType.replaceAll('.', ' · ')}</div><div className="text-xs text-on-surface-variant">{new Date(item.occurredAt).toLocaleString('en-IN')}{item.fromStatus || item.toStatus ? ` · ${item.fromStatus ?? '—'} → ${item.toStatus ?? '—'}` : ''}</div></div>)}</div> : <Empty text="No workflow events recorded." />}</TabsContent>
+      </Tabs>
+    </CardContent>
+
+    <Dialog open={action === 'query'} onOpenChange={(value) => !value && setAction(null)}><DialogContent><DialogHeader><DialogTitle>Record payer query</DialogTitle></DialogHeader><Field label="Payer query reference" value={query.queryReference} onChange={(value) => setQuery({ ...query, queryReference: value })} /><Field label="Subject *" value={query.subject} onChange={(value) => setQuery({ ...query, subject: value })} /><div><Label>Query text *</Label><Textarea value={query.queryText} onChange={(event) => setQuery({ ...query, queryText: event.target.value })} /></div><Field label="Response SLA (hours)" type="number" value={query.responseHours} onChange={(value) => setQuery({ ...query, responseHours: value })} /><DialogFooter><Button onClick={saveQuery} disabled={raiseQuery.isPending}>Record query</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={action === 'response'} onOpenChange={(value) => !value && setAction(null)}><DialogContent><DialogHeader><DialogTitle>Submit query response</DialogTitle></DialogHeader><div><Label>Response *</Label><Textarea rows={5} value={responseText} onChange={(event) => setResponseText(event.target.value)} /></div><DialogFooter><Button onClick={async () => { if (responseText.trim().length < 3) return toast.error('Response is required'); try { await respondQuery.mutateAsync({ queryId: selectedQueryId, responseText }); toast.success('Response submitted'); setAction(null); } catch (error) { fail(error, 'Response failed'); } }} disabled={respondQuery.isPending}>Submit response</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={action === 'settlement'} onOpenChange={(value) => !value && setAction(null)}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl"><DialogHeader><DialogTitle>Record claim settlement</DialogTitle></DialogHeader><div className="grid gap-3 sm:grid-cols-2"><Field label="Gross approved *" type="number" value={settlement.grossApprovedAmount} onChange={(value) => setSettlement({ ...settlement, grossApprovedAmount: value })} /><Field label="Gross paid *" type="number" value={settlement.grossPaidAmount} onChange={(value) => setSettlement({ ...settlement, grossPaidAmount: value })} /><Field label="TDS amount" type="number" value={settlement.tdsAmount} onChange={(value) => setSettlement({ ...settlement, tdsAmount: value })} /><div><Label>Net bank receipt</Label><Input type="number" readOnly value={Math.max(0, Number(settlement.grossPaidAmount || 0) - Number(settlement.tdsAmount || 0))} /></div><Field label="TDS section" value={settlement.tdsSection} onChange={(value) => setSettlement({ ...settlement, tdsSection: value })} /><Field label="TDS rate %" type="number" value={settlement.tdsRate} onChange={(value) => setSettlement({ ...settlement, tdsRate: value })} /><Field label="Disallowed amount" type="number" value={settlement.disallowedAmount} onChange={(value) => setSettlement({ ...settlement, disallowedAmount: value })} /><Field label="Disallowance reason" value={settlement.disallowanceReason} onChange={(value) => setSettlement({ ...settlement, disallowanceReason: value })} /><Field label="Payment reference" value={settlement.paymentReference} onChange={(value) => setSettlement({ ...settlement, paymentReference: value })} /><Field label="Bank reference" value={settlement.bankReference} onChange={(value) => setSettlement({ ...settlement, bankReference: value })} /><Field label="Bank statement date" type="date" value={settlement.bankStatementDate} onChange={(value) => setSettlement({ ...settlement, bankStatementDate: value })} /><Field label="Settlement date *" type="date" value={settlement.settlementDate} onChange={(value) => setSettlement({ ...settlement, settlementDate: value })} /><Field label="TDS certificate number" value={settlement.tdsCertificateNumber} onChange={(value) => setSettlement({ ...settlement, tdsCertificateNumber: value })} /><Field label="TDS certificate date" type="date" value={settlement.tdsCertificateDate} onChange={(value) => setSettlement({ ...settlement, tdsCertificateDate: value })} /></div><DialogFooter><Button onClick={saveSettlement} disabled={settle.isPending}>Record settlement</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={action === 'writeoff'} onOpenChange={(value) => !value && setAction(null)}><DialogContent><DialogHeader><DialogTitle>Request claim write-off</DialogTitle></DialogHeader><Field label="Amount *" type="number" value={writeOff.amount} onChange={(value) => setWriteOff({ ...writeOff, amount: value })} /><div><Label>Reason *</Label><Textarea value={writeOff.reason} onChange={(event) => setWriteOff({ ...writeOff, reason: event.target.value })} /></div><DialogFooter><Button onClick={async () => { if (!writeOff.amount || writeOff.reason.trim().length < 5) return toast.error('Amount and reason are required'); try { await requestWriteOff.mutateAsync({ claimId: claim.id, amount: Number(writeOff.amount), reason: writeOff.reason }); toast.success('Write-off sent for approval'); setAction(null); } catch (error) { fail(error, 'Write-off request failed'); } }} disabled={requestWriteOff.isPending}>Request approval</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={action === 'adjustment'} onOpenChange={(value) => !value && setAction(null)}><DialogContent><DialogHeader><DialogTitle>Post-settlement adjustment</DialogTitle></DialogHeader><Choice label="Adjustment type" value={adjustment.adjustmentType} onChange={(value) => setAdjustment({ ...adjustment, adjustmentType: value as typeof adjustment.adjustmentType })} options={['supplementaryPayment', 'creditNote', 'debitNote']} /><Field label="Amount *" type="number" value={adjustment.amount} onChange={(value) => setAdjustment({ ...adjustment, amount: value })} /><Field label="Reference" value={adjustment.reference} onChange={(value) => setAdjustment({ ...adjustment, reference: value })} /><Field label="Effective date" type="date" value={adjustment.effectiveDate} onChange={(value) => setAdjustment({ ...adjustment, effectiveDate: value })} /><div><Label>Reason *</Label><Textarea value={adjustment.reason} onChange={(event) => setAdjustment({ ...adjustment, reason: event.target.value })} /></div><DialogFooter><Button onClick={async () => { if (!adjustment.amount || adjustment.reason.trim().length < 3) return toast.error('Amount and reason are required'); try { await createAdjustment.mutateAsync({ claimId: claim.id, ...adjustment, amount: Number(adjustment.amount) }); toast.success('Immutable adjustment recorded'); setAction(null); } catch (error) { fail(error, 'Adjustment failed'); } }} disabled={createAdjustment.isPending}>Record adjustment</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={action === 'exchange'} onOpenChange={(value) => !value && setAction(null)}><DialogContent><DialogHeader><DialogTitle>Queue payer exchange</DialogTitle></DialogHeader><Choice label="Channel" value={exchange.channel} onChange={(value) => setExchange({ ...exchange, channel: value as typeof exchange.channel })} options={['nhcx', 'api', 'portal', 'email', 'manual']} /><Field label="Message type" value={exchange.messageType} onChange={(value) => setExchange({ ...exchange, messageType: value })} /><Field label="Transaction ID (optional)" value={exchange.transactionId} onChange={(value) => setExchange({ ...exchange, transactionId: value })} /><div><Label>JSON payload</Label><Textarea rows={8} className="font-mono text-xs" value={exchange.payload} onChange={(event) => setExchange({ ...exchange, payload: event.target.value })} /></div><DialogFooter><Button onClick={async () => { try { const payload: unknown = JSON.parse(exchange.payload); await queueExchange.mutateAsync({ claimId: claim.id, channel: exchange.channel, messageType: exchange.messageType, transactionId: exchange.transactionId || undefined, payload }); toast.success('Exchange queued'); setAction(null); } catch (error) { if (error instanceof SyntaxError) toast.error('Payload must be valid JSON'); else fail(error, 'Exchange could not be queued'); } }} disabled={queueExchange.isPending}>Queue exchange</Button></DialogFooter></DialogContent></Dialog>
+  </Card>;
+}
+
+function Metric({ label, value }: { label: string; value: string }) { return <div><div className="text-xs text-on-surface-variant">{label}</div><div className="font-semibold">{value}</div></div>; }
+function Empty({ text }: { text: string }) { return <div className="rounded-md border border-dashed p-5 text-center text-sm text-on-surface-variant">{text}</div>; }
+function Field({ label, value, onChange, type = 'text' }: { label: string; value: string; onChange: (value: string) => void; type?: string }) { return <div><Label>{label}</Label><Input type={type} value={value} onChange={(event) => onChange(event.target.value)} /></div>; }
+function Choice({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[] }) { return <div><Label>{label}</Label><Select value={value} onValueChange={(next) => next && onChange(next as string)}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{options.map((option) => <SelectItem key={option} value={option}>{option.replace(/([A-Z])/g, ' $1')}</SelectItem>)}</SelectContent></Select></div>; }

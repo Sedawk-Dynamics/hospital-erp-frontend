@@ -15,11 +15,12 @@
 
 import { NdpsGuard } from '@/components/pharmacy/ndps-guard';
 import { useState, useRef } from 'react';
-import { ShieldCheck, PackagePlus, ArrowLeftRight, Syringe, Trash2, CalendarClock, Download, FileText, Search, Upload } from 'lucide-react';
+import { ShieldCheck, PackagePlus, ArrowLeftRight, Syringe, Trash2, CalendarClock, Download, FileText, Search, Upload, Archive } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
@@ -35,11 +36,14 @@ import { downloadCsv } from '@/lib/csv';
 import { useFormulary } from '@/hooks/use-pharmacy';
 import { DrugStockLabel } from '@/components/shared/drug-stock-label';
 import { useUsersList } from '@/hooks/use-users';
+import { useAuthStore } from '@/stores/auth-store';
+import { WitnessCosignDialog } from '@/components/pharmacy/witness-cosign-dialog';
 import { usePatientSearch } from '@/hooks/use-hospital';
 import {
   useNdpsLocations, useNdpsStockByLocation, useNdpsRegister, useNdpsDailyBalances,
   useNdpsReceiveConsignment, useNdpsConsumption, useNdpsDisposal,
   useNdpsRunDailyClose, useNdpsVerifyDaily, useNdpsUploadEvidence, useNdpsCreateLocation,
+  useNdpsPatientResiduals, useDestroyNdpsPatientResidual, type NdpsPatientResidual,
 } from '@/hooks/use-ndps';
 
 type DrugOpt = { id: string; label: string };
@@ -389,6 +393,173 @@ export function DisposalDialog({ open, onOpenChange }: { open: boolean; onOpenCh
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ── Patient residual worklist ───────────────────────────────
+// Opened residuals are not stock and never return to a sellable balance. A
+// bedside quarantine lands here until pharmacy completes witnessed disposal.
+export function PatientResidualsPanel() {
+  const [showHistory, setShowHistory] = useState(false);
+  const residualsQ = useNdpsPatientResiduals({ status: showHistory ? 'all' : 'quarantined' });
+  const destroy = useDestroyNdpsPatientResidual();
+  const [selected, setSelected] = useState<NdpsPatientResidual | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [witnessOpen, setWitnessOpen] = useState(false);
+  const [form, setForm] = useState({ disposalMethod: '', referenceNumber: '', notes: '' });
+  const { data: users } = useUsersList({ isActive: 'true', limit: 200 });
+  const currentUserId = useAuthStore((state) => state.user?.id) ?? null;
+  const witnessOptions = (users?.data ?? [])
+    .filter((user) => user.id !== currentUserId)
+    .map((user) => ({
+      id: user.id,
+      name: `${user.firstName} ${user.lastName ?? ''}`.trim(),
+      role: user.userRoles?.[0]?.role?.name ?? null,
+    }));
+  const rows = residualsQ.data?.items ?? [];
+
+  const begin = (row: NdpsPatientResidual) => {
+    setSelected(row);
+    setForm({ disposalMethod: '', referenceNumber: '', notes: '' });
+    setDetailsOpen(true);
+  };
+  const requestWitness = () => {
+    if (!form.disposalMethod.trim()) return toast.error('Enter the destruction method.');
+    if (!form.referenceNumber.trim()) return toast.error('Enter the destruction memo/reference number.');
+    setDetailsOpen(false);
+    setWitnessOpen(true);
+  };
+  const confirm = async (witnessedById: string, witnessPassword: string) => {
+    if (!selected) return;
+    try {
+      await destroy.mutateAsync({
+        id: selected.id,
+        disposalMethod: form.disposalMethod.trim(),
+        referenceNumber: form.referenceNumber.trim(),
+        witnessedById,
+        witnessPassword,
+        notes: form.notes.trim() || undefined,
+      });
+      toast.success(`${selected.drug.name} residual destroyed and reconciled`);
+      setWitnessOpen(false);
+      setSelected(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Residual destruction failed');
+    }
+  };
+
+  return (
+    <div className="space-y-3 rounded-xl border bg-card p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="flex items-start gap-2">
+          <Archive className="mt-0.5 h-4 w-4 text-amber-700" />
+          <div>
+            <h3 className="text-sm font-semibold">Patient residual disposal</h3>
+            <p className="text-xs text-muted-foreground">Sealed remnants recorded during eMAR administration, awaiting witnessed destruction.</p>
+          </div>
+        </div>
+        <Button size="sm" variant="ghost" onClick={() => setShowHistory((current) => !current)}>
+          {showHistory ? 'Pending only' : 'Show history'}
+        </Button>
+      </div>
+
+      {residualsQ.isLoading ? (
+        <Skeleton className="h-28 w-full" />
+      ) : rows.length === 0 ? (
+        <div className="rounded-lg border border-dashed p-5 text-center text-xs text-muted-foreground">
+          {showHistory ? 'No patient residual records.' : 'No quarantined patient residuals are awaiting destruction.'}
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Patient</TableHead>
+                <TableHead>Drug / batch</TableHead>
+                <TableHead>Given</TableHead>
+                <TableHead>Residual</TableHead>
+                <TableHead>Instruction</TableHead>
+                <TableHead>Custody</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow key={row.id}>
+                  <TableCell>
+                    <span className="block text-sm font-medium">{row.patient.name}</span>
+                    <span className="text-xs text-muted-foreground">{row.patient.mrn}</span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="block text-sm font-medium">{row.drug.name} {row.drug.strength ?? ''}</span>
+                    <span className="text-xs text-muted-foreground">Batch {row.batch.number}</span>
+                  </TableCell>
+                  <TableCell>{Number(row.administeredQuantity)} {row.quantityUnit}</TableCell>
+                  <TableCell className="font-semibold text-red-700">{Number(row.residualQuantity)} {row.quantityUnit}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className={row.residualHandling === 'pending_destruction' ? 'border-red-200 text-red-700' : 'border-amber-200 text-amber-700'}>
+                      {row.residualHandling === 'pending_destruction' ? 'Destroy requested' : 'Sealed quarantine'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <span className="block text-xs">{row.quarantineLocation ?? row.location.name}</span>
+                    <span className="text-[10px] text-muted-foreground">since {formatDateTime(row.quarantinedAt ?? row.administeredAt)}</span>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className={row.status === 'destroyed' ? 'border-emerald-200 text-emerald-700' : 'border-amber-200 text-amber-700'}>
+                      {row.status === 'destroyed' ? 'Destroyed' : row.status === 'fully_administered' ? 'No residual' : 'Quarantined'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {row.status === 'quarantined' ? (
+                      <Button size="sm" variant="destructive" onClick={() => begin(row)}>
+                        <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Destroy
+                      </Button>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">{row.destroyedAt ? formatDateTime(row.destroyedAt) : 'Complete'}</span>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Prepare patient residual destruction</DialogTitle>
+            <DialogDescription>
+              {selected ? `${selected.patient.name} · ${selected.drug.name} · ${Number(selected.residualQuantity)} ${selected.quantityUnit}` : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1"><Label>Approved destruction method *</Label><Input value={form.disposalMethod} onChange={(event) => setForm((current) => ({ ...current, disposalMethod: event.target.value }))} placeholder="Method used after rendering contents irretrievable" /></div>
+            <div className="space-y-1"><Label>Destruction memo / reference *</Label><Input value={form.referenceNumber} onChange={(event) => setForm((current) => ({ ...current, referenceNumber: event.target.value }))} placeholder="Committee memo / register reference" /></div>
+            <div className="space-y-1"><Label>Notes</Label><Textarea rows={2} value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} /></div>
+            <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+              The opened container already left usable stock at administration. This action records destruction of its remaining contents and will not deduct another container.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDetailsOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={requestWitness}>Continue to witness</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <WitnessCosignDialog
+        open={witnessOpen}
+        onOpenChange={setWitnessOpen}
+        title="Witness final destruction"
+        description="The witness must observe destruction of the sealed patient residual and enter their own password."
+        witnessOptions={witnessOptions}
+        busy={destroy.isPending}
+        onConfirm={confirm}
+      />
+    </div>
   );
 }
 

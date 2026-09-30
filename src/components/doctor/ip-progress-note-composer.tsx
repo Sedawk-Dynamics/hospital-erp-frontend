@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { NotebookPen, Loader2, Stethoscope, Pill, Link2, Activity } from 'lucide-react';
+import { NotebookPen, Loader2, Stethoscope, Pill, Link2, Activity, Pin, MapPinned } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
@@ -21,14 +21,14 @@ import { useCreateProgressNote, type SoapSectionPayload,
 } from '@/hooks/use-doctor';
 import { useRecordDoctorVisit } from '@/hooks/use-ip-ledger';
 import { DoctorMentionPicker } from '@/components/doctor/doctor-mention-picker';
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
+  DropdownMenuItem, DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
+import { DISCHARGE_SECTIONS } from '@/components/doctor/discharge-pin-editor';
 import { useAuthStore } from '@/stores/auth-store';
 import { AtSign } from 'lucide-react';
 
-// IP progress note = a doctor's daily round / visit note that accumulates into
-// the admission's running clinical log. It is DELIBERATELY different from an OP
-// consultation note: it is round-focused (progress since last review), it never
-// auto-archives (the admission log must persist), and it can optionally post the
-// visit fee at the same time — "adding a visit" and "writing the note" are one act.
 
 const CONDITIONS = [
   { value: 'improving', label: 'Improving', tone: 'bg-emerald-100 text-emerald-700' },
@@ -38,7 +38,22 @@ const CONDITIONS = [
   { value: 'critical', label: 'Critical', tone: 'bg-red-100 text-red-700' },
 ] as const;
 
+const SOAP_META = {
+  subjective: { label: 'Subjective', hint: 'Overnight events, complaints, how the patient feels' },
+  objective:  { label: 'Objective', hint: "Examination findings, today's vitals, device/line checks" },
+  assessment: { label: 'Assessment', hint: 'Clinical impression / progress' },
+  plan:       { label: 'Plan', hint: "Today's plan, order changes, next steps" },
+} as const;
+
 const free = (t: string): SoapSectionPayload | null => (t.trim() ? { free: t.trim() } : null);
+
+interface PartPin {
+  content: string;                        // the part's text (or condition label)
+  showToPatient: boolean;                 // the checkbox
+  section: DischargeSectionOption | null; // pinned section (null = not pinned)
+}
+
+
 
 export function IpProgressNoteComposer({
   open,
@@ -55,27 +70,27 @@ export function IpProgressNoteComposer({
   onCreated?: () => void;
   defaultBillVisit?: boolean;
 }) {
+  const emptyParts = (): Record<PinKey, PartPin> => ({
+    condition:  { content: '', showToPatient: false, section: null },
+    subjective: { content: '', showToPatient: false, section: null },
+    objective:  { content: '', showToPatient: false, section: null },
+    assessment: { content: '', showToPatient: false, section: null },
+    plan:       { content: '', showToPatient: false, section: null },
+  });
+  const [parts, setParts] = useState<Record<PinKey, PartPin>>(emptyParts);
+  const updatePart = (key: PinKey, patch: Partial<PartPin>) =>setParts((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
   const createNote = useCreateProgressNote();
   const recordVisit = useRecordDoctorVisit(admissionId);
   const currentUserId = useAuthStore((s) => s.user?.id);
 
   const [mentions, setMentions] = useState<string[]>([]);
   const [condition, setCondition] = useState<GeneralCondition>('stable');
-  const [subjective, setSubjective] = useState('');
-  const [objective, setObjective] = useState('');
-  const [assessment, setAssessment] = useState('');
-  const [plan, setPlan] = useState('');
   const [billVisit, setBillVisit] = useState(defaultBillVisit);
-  // Write a prescription as part of this round, rather than hunting for one the
-  // doctor already wrote elsewhere. It is saved first and the note is linked to
-  // it, so the medicines and the reasoning behind them stay together.
   const [writeRx, setWriteRx] = useState(false);
   const [medicines, setMedicines] = useState<MedicineFormData[]>([]);
   const [rxNotes, setRxNotes] = useState('');
   const qc = useQueryClient();
 
-  // Bind the note to the patient's active IP visit (the ProgressNote row needs a
-  // visitId; admissionId flags it as an IP running-log note).
   const { data: visits } = useQuery({
     queryKey: ['ip-note-visit', patientId],
     queryFn: async () =>
@@ -90,26 +105,25 @@ export function IpProgressNoteComposer({
   );
 
   const reset = () => {
-    setCondition('stable'); setSubjective(''); setObjective('');
-    setAssessment(''); setPlan(''); setBillVisit(defaultBillVisit);
+    setCondition('stable'); setBillVisit(defaultBillVisit);
     setWriteRx(false); setMedicines([]); setRxNotes('');
     setMentions([]);
+    setParts(emptyParts());
   };
 
-  // A ward round where nothing changed is still a real, billable visit: the
-  // doctor saw the patient and recorded their condition. The status selector at
-  // the top is always set, so it alone is enough to save the round — the SOAP
-  // prose and the prescription are both optional. (Requiring prose only ever
-  // produced invented text or no note at all.)
-
+  
   const buildContent = () => {
-    const condLabel = CONDITIONS.find((c) => c.value === condition)?.label ?? condition;
-    const parts = [`[Progress: ${condLabel}]`];
-    if (subjective.trim()) parts.push(`S (Subjective): ${subjective.trim()}`);
-    if (objective.trim()) parts.push(`O (Objective): ${objective.trim()}`);
-    if (assessment.trim()) parts.push(`A (Assessment): ${assessment.trim()}`);
-    if (plan.trim()) parts.push(`P (Plan): ${plan.trim()}`);
-    return parts.join('\n');
+    const conditionLabel = CONDITIONS.find((c) => c.value === condition)?.label ?? condition;
+    const lines = [`[Progress: ${conditionLabel}]`];
+    const s = parts.subjective.content.trim();
+    const o = parts.objective.content.trim();
+    const a = parts.assessment.content.trim();
+    const p = parts.plan.content.trim();
+    if (s) lines.push(`S (Subjective): ${s}`);
+    if (o) lines.push(`O (Objective): ${o}`);
+    if (a) lines.push(`A (Assessment): ${a}`);
+    if (p) lines.push(`P (Plan): ${p}`);
+    return lines.join('\n');
   };
 
   const submit = async () => {
@@ -119,10 +133,6 @@ export function IpProgressNoteComposer({
     if (writeRx && rxItems.length === 0) {
       return toast.error('Add at least one medicine, or turn the prescription off.');
     }
-
-    // The prescription is written FIRST, because the note carries its id. If it
-    // fails nothing is saved and the dialog stays exactly as it is \u2014 the doctor
-    // keeps everything they typed and can retry or turn the prescription off.
     let newPrescriptionId: string | undefined;
     if (rxItems.length > 0) {
       try {
@@ -147,6 +157,17 @@ export function IpProgressNoteComposer({
       }
     }
 
+    const conditionLabel = CONDITIONS.find((c) => c.value === condition)?.label ?? condition;
+    const contentFor = (k: PinKey) => (k === 'condition' ? conditionLabel : parts[k].content.trim());
+
+    const pins = (Object.keys(parts) as PinKey[])
+      .filter((k) => parts[k].section && contentFor(k))
+      .map((k) => ({
+        dischargeSection: parts[k].section!.key,
+        content: contentFor(k),
+        showToPatient: parts[k].showToPatient,
+      }));
+
     try {
       await createNote.mutateAsync({
         patientId,
@@ -155,13 +176,12 @@ export function IpProgressNoteComposer({
         prescriptionId: newPrescriptionId,
         noteType: 'general',
         content: buildContent(),
-        // Also sent structured, not just baked into the content line, so the
-        // timeline and discharge summary can read a trend rather than parse prose.
         generalCondition: condition,
-        subjective: free(subjective),
-        objective: free(objective),
-        assessment: free(assessment),
-        plan: free(plan),
+        subjective: free(parts.subjective.content),
+        objective: free(parts.objective.content),
+        assessment: free(parts.assessment.content),
+        plan: free(parts.plan.content),
+        pins:pins.length?pins:undefined,
         mentionedUserIds: mentions.length ? mentions : undefined,
       });
       if (mentions.length) {
@@ -170,7 +190,7 @@ export function IpProgressNoteComposer({
       // "Adding a visit" optionally also posts the doctor's visit fee to the IP bill.
       if (billVisit) {
         try {
-          const res = await recordVisit.mutateAsync({ review: assessment.trim() || plan.trim() || undefined });
+          const res = await recordVisit.mutateAsync({ review: parts.assessment.content.trim() || parts.plan.content.trim() || undefined });
           const fee = Number((res as { fee?: number })?.fee ?? 0);
           toast.success(fee > 0 ? `Visit note saved · visit billed ₹${fee.toFixed(2)}` : 'Visit note saved · visit logged (no fee configured)');
         } catch {
@@ -194,11 +214,7 @@ export function IpProgressNoteComposer({
   const busy = createNote.isPending || recordVisit.isPending;
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!busy) { onOpenChange(o); if (!o) reset(); } }}>
-      {/* Wide + tall: the note now carries a full medicine table alongside the
-          SOAP grid, and both need room. Header and footer stay fixed; only the
-          body scrolls, so Save is always reachable. */}
-      <DialogContent className="flex h-[94vh] w-[96vw] max-w-[88rem] flex-col gap-0 overflow-hidden p-0 sm:max-w-[88rem]">
+    <Dialog open={open} onOpenChange={(o) => { if (!busy) { onOpenChange(o); if (!o) reset(); } }}>      <DialogContent className="flex h-[94vh] w-[96vw] max-w-[88rem] flex-col gap-0 overflow-hidden p-0 sm:max-w-[88rem]">
         <DialogHeader className="shrink-0 border-b bg-muted/30 px-5 py-4 pr-14">
           <DialogTitle className="flex items-center gap-2 text-base">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
@@ -213,12 +229,27 @@ export function IpProgressNoteComposer({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
+        <div className="min-h-0 flex-1  space-y-5 overflow-y-auto px-5 py-4">
           {/* Condition / progress */}
+          
           <div>
-            <Label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              <Activity className="h-3.5 w-3.5" /> Condition since last review
-            </Label>
+            <div className="mb-1.5 flex gap-2">
+              <Label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <div className='flex gap-10 items-center justify-center'>
+                  <div className='flex gap-2 items-center justify-center'>
+                  <Activity className="h-3.5 w-3.5" /> Condition since last review
+                  </div>
+                <PartActions inline
+                  pinned={parts.condition.section}
+                  handlepinned={(s) => updatePart('condition', { section: s })}
+                  handlepinnedNUll={() => updatePart('condition', { section: null })}
+                  showToPatient={parts.condition.showToPatient}
+                  onShowToPatient={(v) => updatePart('condition', { showToPatient: v })} />
+                </div>
+                
+              </Label>
+              
+            </div>
             <div className="flex flex-wrap gap-1.5">
               {CONDITIONS.map((c) => (
                 <button
@@ -236,20 +267,24 @@ export function IpProgressNoteComposer({
             </div>
           </div>
 
-          {/* SOAP — two columns on wider screens to use the space. */}
           <div>
             <Label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Round note (SOAP)</Label>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <SoapField label="Subjective" hint="Overnight events, complaints, how the patient feels" value={subjective} onChange={setSubjective} />
-              <SoapField label="Objective" hint="Examination findings, today's vitals, device/line checks" value={objective} onChange={setObjective} />
-              <SoapField label="Assessment" hint="Clinical impression / progress" value={assessment} onChange={setAssessment} />
-              <SoapField label="Plan" hint="Today's plan, order changes, next steps" value={plan} onChange={setPlan} />
+              {(['subjective', 'objective', 'assessment', 'plan'] as const).map((k) => (
+                <SoapField key={k}
+                  label={SOAP_META[k].label} hint={SOAP_META[k].hint}
+                  value={parts[k].content}
+                  onChange={(v) => updatePart(k, { content: v })}
+                  pinned={parts[k].section}
+                  handlepinned={(s) => updatePart(k, { section: s })}
+                  handlepinnedNUll={() => updatePart(k, { section: null })}
+                  showToPatient={parts[k].showToPatient}
+                  onShowToPatient={(v) => updatePart(k, { showToPatient: v })} />
+              ))}
             </div>
           </div>
 
           <div className="grid gap-3 lg:grid-cols-2">
-            {/* Tag / @mention other doctors — they get a notification and can
-                open this patient + note. */}
             <div>
               <Label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 <AtSign className="h-3.5 w-3.5" /> Tag doctors <span className="font-normal normal-case">· optional</span>
@@ -266,10 +301,6 @@ export function IpProgressNoteComposer({
               <span className="pl-6 text-[11px] text-muted-foreground">Flows into the discharge summary&apos;s hospital course automatically — no need to pin.</span>
             </label>
           </div>
-
-          {/* Write a prescription as part of this round. This used to be a picker
-              over prescriptions written elsewhere, which meant leaving the note
-              to write one and coming back to link it. */}
           <div className="rounded-xl border border-primary/25 bg-primary/[0.04] p-3.5">
             <label className="flex cursor-pointer items-center gap-2">
               <input
@@ -331,14 +362,115 @@ export function IpProgressNoteComposer({
   );
 }
 
-function SoapField({ label, hint, value, onChange }: { label: string; hint: string; value: string; onChange: (v: string) => void }) {
+
+
+
+
+
+
+
+
+
+
+
+
+function SoapField({ label, hint, value, onChange, pinned, handlepinned, handlepinnedNUll, showToPatient, onShowToPatient }: {
+  label: string;
+  hint: string;
+  value: string;
+  onChange: (v: string) => void;
+  pinned: DischargeSectionOption | null;
+  handlepinned?: (s: DischargeSectionOption) => void;
+  handlepinnedNUll?: () => void;
+  showToPatient?: boolean;
+  onShowToPatient?: (v: boolean) => void;
+}) {
   return (
-    <div className="rounded-lg border bg-surface-container-lowest p-2.5">
+    <div className="flex h-full flex-col rounded-lg border bg-surface-container-lowest p-2.5">
       <Label className="mb-1 block text-xs">
         <span className="font-semibold text-foreground">{label}</span>
         <span className="ml-1.5 font-normal text-muted-foreground">— {hint}</span>
       </Label>
       <Textarea value={value} onChange={(e) => onChange(e.target.value)} rows={6} className="resize-none border-0 bg-transparent p-0 text-sm shadow-none focus-visible:ring-0" placeholder={`${label}…`} />
+      <PartActions pinned={pinned} handlepinned={handlepinned} handlepinnedNUll={handlepinnedNUll} showToPatient={showToPatient} onShowToPatient={onShowToPatient} />
+    </div>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+type DischargeSectionOption = (typeof DISCHARGE_SECTIONS)[number];
+type PinKey = 'condition' | 'subjective' | 'objective' | 'assessment' | 'plan';
+
+function PartActions({ inline = false, pinned, handlepinned, handlepinnedNUll, showToPatient = false, onShowToPatient }: {
+  inline?: boolean;
+  pinned: DischargeSectionOption | null;
+  handlepinned?: (s: DischargeSectionOption) => void;
+  handlepinnedNUll?: () => void;
+  showToPatient?: boolean;
+  onShowToPatient?: (v: boolean) => void;
+}) {
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-3',
+        inline ? 'shrink-0 justify-center' : 'mt-auto justify-between border-t pt-2',
+      )}
+    >
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          className={cn(
+            'flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors',
+            pinned
+              ? 'border-primary/30 bg-primary/10 text-primary'
+              : 'text-muted-foreground hover:bg-muted/50',
+          )}
+        >
+          <Pin className="h-3 w-3" />
+          {pinned ? `Pinned · ${pinned.label}` : 'Pin'}
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-48">
+          <div className="px-2 py-1 text-[11px] font-medium text-muted-foreground">Pin to section</div>
+          <DropdownMenuSeparator />
+          {DISCHARGE_SECTIONS.map((s) => (
+            <DropdownMenuItem
+              key={s.key}
+              className="text-xs"
+              onClick={() => handlepinned?.(s)}
+            >
+              {s.label}
+            </DropdownMenuItem>
+          ))}
+          {pinned && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                variant="destructive"
+                className="text-xs"
+                onClick={handlepinnedNUll}
+              >
+                Unpin
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
+        <input type="checkbox" className="h-3.5 w-3.5 accent-primary" checked={showToPatient} onChange={(e) => onShowToPatient?.(e.target.checked)} />
+        Show to patient
+      </label>
     </div>
   );
 }

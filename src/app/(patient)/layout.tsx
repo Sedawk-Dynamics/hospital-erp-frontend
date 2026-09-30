@@ -31,6 +31,7 @@ import {
   TestTube,
   User,
   Heart,
+  ShieldCheck,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { NotificationBell } from '@/components/layout/notification-bell';
@@ -53,6 +54,7 @@ const NAV_ITEMS = [
   { label: 'My Documents', href: '/patient-portal/documents', icon: Folder },
   { label: 'Follow-Ups', href: '/patient-portal/follow-ups', icon: CalendarDays },
   { label: 'Bills & Payments', href: '/patient-portal/billing', icon: FileText },
+  { label: 'Insurance & Claims', href: '/patient-portal/insurance', icon: ShieldCheck },
   { label: 'My Profile', href: '/patient-portal/profile', icon: User },
   { label: 'Settings', href: '/patient-portal/settings', icon: Settings },
 ];

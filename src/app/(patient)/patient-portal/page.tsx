@@ -15,6 +15,7 @@ import {
   Stethoscope,
   ArrowRight,
   BedDouble,
+  ShieldCheck,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { usePatientProfileStore } from '@/stores/patient-profile-store';
@@ -176,6 +177,7 @@ export default function PatientPortalHome() {
     { label: 'Hospitalizations', href: '/patient-portal/admissions', icon: BedDouble },
     { label: 'Follow-Ups', href: '/patient-portal/follow-ups', icon: CalendarDays },
     { label: 'Bills', href: '/patient-portal/billing', icon: CreditCard },
+    { label: 'Insurance', href: '/patient-portal/insurance', icon: ShieldCheck },
   ];
 
   return (

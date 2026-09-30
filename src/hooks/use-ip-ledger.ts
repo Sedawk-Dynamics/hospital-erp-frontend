@@ -84,6 +84,7 @@ export interface AddIpChargeInput {
   description: string;
   quantity?: number;
   unitPrice: number;
+  discount?: number;
   taxRate?: number;
   serviceTariffId?: string;
   notes?: string;
@@ -97,6 +98,9 @@ export function useAddIpCharge(admissionId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ipLedgerKeys.detail(admissionId) });
       qc.invalidateQueries({ queryKey: ipLedgerKeys.activity(admissionId) });
+      qc.invalidateQueries({ queryKey: ['hospital', 'bill'] });
+      qc.invalidateQueries({ queryKey: ['hospital', 'bills'] });
+      qc.invalidateQueries({ queryKey: ['hospital', 'ip-bills'] });
     },
   });
 }

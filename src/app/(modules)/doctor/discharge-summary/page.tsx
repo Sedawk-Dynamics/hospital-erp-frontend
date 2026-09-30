@@ -16,7 +16,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useAiStatus, useGenerateDischargeNarrative } from '@/hooks/use-ai';
 import { useSeedOnChange } from '@/hooks/use-seed-on-change';
 import { formatDate, toInputDateStr } from '@/lib/date-utils';
-import { cn } from '@/lib/utils';
+import { cn, getApiErrorMessage } from '@/lib/utils';
 import { FOLLOW_UP_PRESETS, dateAfterInterval } from '@/lib/follow-up';
 import { AdmissionStatusBadge } from '@/components/shared/admission-status-badge';
 import { Input } from '@/components/ui/input';
@@ -121,6 +121,8 @@ export default function DischargeSummaryPage() {
     data: generatedSummary,
     isLoading: generatingSum,
     isError: generateError,
+    error: generateSummaryError,
+    refetch: retryGeneration,
   } = useGenerateDischargeSummary(selectedAdmissionId ?? '');
 
   const updateMutation = useUpdateDischargeSummary();
@@ -250,6 +252,10 @@ export default function DischargeSummaryPage() {
       const res = await apiPost<any>(`/mrd/discharge-summary/${summaryData.id}/refresh`);
       if (res.data) {
         setSummaryData(res.data);
+        setDiagnosesSummary(res.data.diagnosesSummary ?? '');
+        setProceduresSummary(res.data.proceduresSummary ?? '');
+        setLabResultsSummary(res.data.labResultsSummary ?? '');
+        setMedicationReconciliation(res.data.medicationReconciliation ?? '');
         toast.success('Refreshed from pinned notes & source data');
       }
     } catch {
@@ -298,10 +304,7 @@ export default function DischargeSummaryPage() {
     if (!summaryData) return;
     try {
       const published = await publishMutation.mutateAsync(summaryData.id);
-      if (published) setSummaryData(published);
-      // Publishing is the clinical sign-off only. The patient keeps their bed
-      // until Front Desk / Billing clears the final bill and discharges them.
-      toast.success(
+      if (published) setSummaryData(published);      toast.success(
         published?.dischargeReady
           ? 'Discharge summary published — sent to Billing for bill clearance & discharge'
           : 'Discharge summary published — patient notified via portal & email',
@@ -333,10 +336,17 @@ export default function DischargeSummaryPage() {
             <ArrowLeft className="h-4 w-4" /> Back to Admissions
           </Button>
           <div className="flex flex-col items-center justify-center py-16">
-            <p className="text-sm text-destructive">Failed to generate discharge summary.</p>
-            <Button variant="outline" size="sm" className="mt-3" onClick={handleBack}>
-              Go Back
-            </Button>
+            <p className="max-w-xl text-center text-sm text-destructive">
+              {getApiErrorMessage(generateSummaryError, 'Failed to generate discharge summary.')}
+            </p>
+            <div className="mt-3 flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => void retryGeneration()}>
+                <RefreshCw className="h-3.5 w-3.5" /> Try Again
+              </Button>
+              <Button variant="ghost" size="sm" onClick={handleBack}>
+                Go Back
+              </Button>
+            </div>
           </div>
         </div>
       );

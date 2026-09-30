@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Settings, Building2, Users, ShieldCheck } from 'lucide-react';
+import { Settings, Building2, Users, ShieldCheck, Landmark, FileCog } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 
 const ENTRIES = [
@@ -22,6 +22,18 @@ const ENTRIES = [
     title: 'Patient Policies',
     description: 'Assign policies to patients — multiple per patient is supported.',
     icon: ShieldCheck,
+  },
+  {
+    href: '/insurance/payers',
+    title: 'Corporate & Government Payers',
+    description: 'Maintain corporate credit payers and government scheme identities.',
+    icon: Landmark,
+  },
+  {
+    href: '/insurance/contracts',
+    title: 'Contracts & Tariffs',
+    description: 'Configure negotiated rates, packages, document rules and non-payables.',
+    icon: FileCog,
   },
 ];
 

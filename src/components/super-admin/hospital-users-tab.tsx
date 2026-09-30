@@ -153,6 +153,7 @@ export function HospitalUsersTab({ tenantId }: HospitalUsersTabProps) {
   const mapToUserListItem = (user: PlatformUser) => ({
     ...user,
     is2faEnabled: user.is2faEnabled ?? false,
+    hprId: (user as { hprId?: string | null }).hprId ?? null,
   });
 
   // Map TenantRole to RoleOption shape
