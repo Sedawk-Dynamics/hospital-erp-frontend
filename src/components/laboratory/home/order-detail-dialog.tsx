@@ -253,14 +253,19 @@ export function OrderReportPanel({
   };
 
   const onApprove = async () => {
-    if (!report) return;
     try {
-      await publish.mutateAsync({ id: report.id, notify: true });
+      const target = report ?? (await submit.mutateAsync({ orderId: order.id, notify: true }));
+      if (!target) {
+        toast.error('Failed to create report for approval');
+        return;
+      }
+      await publish.mutateAsync({ id: target.id, notify: true });
       toast.success('Report approved and published to patient');
     } catch (err) {
       toast.error(getApiErrorMessage(err, 'Failed to publish report'));
     }
   };
+
 
   return (
     <section className="space-y-2">
@@ -329,8 +334,9 @@ export function OrderReportPanel({
               </Button>
             )}
             {/* Tech can submit / re-submit while the report is still in a
-                tech-editable state (no report, draft, or sent back). */}
-            {canResubmit && (
+                tech-editable state (no report, draft, or sent back).
+                Supervisors never do this self-handoff — they approve directly. */}
+            {canResubmit && !canApprove && (
               <Button
                 size="sm"
                 onClick={onSubmit}
@@ -346,22 +352,25 @@ export function OrderReportPanel({
                     : 'Submit for Approval'}
               </Button>
             )}
-            {/* The lab admin's two-sided decision. Only shown when the report is
-                in review, so technicians never see either button. Refusing used
-                to have no button at all: a report that was wrong could only be
-                published or left in the queue. */}
-            {isAwaitingApproval && canApprove && report && (
+            {/* The lab admin's two-sided decision: Request to fix / Approve &
+                Publish. Shown to supervisors whenever the report isn't already
+                published and there's something to act on — no "submit to self"
+                step first. Technicians never see either button. Send back needs
+                an existing report row, so it only renders once one exists. */}
+            {canApprove && !isPublished && (report || canSubmit) && (
               <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setSendBackOpen(true)}
-                  disabled={reject.isPending}
-                  className="gap-1 border-amber-200 text-amber-800 hover:bg-amber-50"
-                >
-                  <Undo2 className="size-3.5" />
-                  Send back
-                </Button>
+                {report && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setSendBackOpen(true)}
+                    disabled={reject.isPending}
+                    className="gap-1 border-amber-200 text-amber-800 hover:bg-amber-50"
+                  >
+                    <Undo2 className="size-3.5" />
+                    Send back
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   onClick={onApprove}

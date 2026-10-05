@@ -202,10 +202,6 @@ export function TestReportTab({
       toast.error(getApiErrorMessage(err, 'Failed to publish'));
     }
   };
-
-  // The queue used to be a read-only list: to approve anything the supervisor
-  // had to leave it, find the order on another tab, open it and scroll. The
-  // decision now happens where the work is.
   const cols = 5 + (canApprove || isReviewView ? 1 : 0);
 
   return (

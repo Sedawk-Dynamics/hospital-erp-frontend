@@ -22,6 +22,15 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   useCompleteLabOrderItem,
   useEnterResults,
@@ -81,19 +90,14 @@ export function TestItemRow({
   const enterResults = useEnterResults();
   const verifyResult = useVerifyResults();
   const fileRef = useRef<HTMLInputElement>(null);
-
+  const [fixOpen, setFixOpen] = useState(false);
+  const [fixReason, setFixReason] = useState<string>('');
+  const [fixResultId, setFixResultId] = useState<string | null>(null);
   const isDone = item.status === 'completed';
   const isCancelled = item.status === 'cancelled';
-
-  // A done test is normally read-only. "Edit" re-opens the entry controls so a
-  // technician can fix an upload/result — but only while the report is still
-  // unfinalized. Once the supervisor finalizes, editing is locked entirely.
   const [editing, setEditing] = useState(false);
   const isEditable = !isCancelled && (!isDone || (editing && !reportFinalized));
-
   const canMarkDone = isEditable && attachments.length > 0;
-
-  // Existing LabResult rows for this item (eager-loaded by useLabOrder).
   const existingResults = item.labResults ?? [];
 
   // Default the active mode based on what's already captured for this item:
@@ -284,22 +288,10 @@ export function TestItemRow({
     }
   };
 
-  const onVerifyResult = async (
-    id: string,
-    action: 'approve' | 'request_correction',
-  ) => {
-    let notes: string | undefined;
-    if (action === 'request_correction') {
-      const input = window.prompt('Reason / requested correction?');
-      if (input == null) return;
-      notes = input.trim() || undefined;
-    }
-    try {
-      await verifyResult.mutateAsync({ id, action, correctionNotes: notes });
-      toast.success(action === 'approve' ? 'Result approved' : 'Correction requested');
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Failed');
-    }
+  const openFixDialog = (id: string) => {
+    setFixResultId(id);
+    setFixReason('');
+    setFixOpen(true);
   };
 
   const updateRow = (idx: number, patch: Partial<Row>) =>
@@ -478,10 +470,11 @@ export function TestItemRow({
                       </div>
                       {canApprove && (
                         <div className="flex gap-1 shrink-0">
-                          {/* A not-yet-approved value is still a plain entry: fix
-                              it by editing it in the grid below and saving — no
-                              reason, no "correction". Only offer Approve here. */}
-                          {r.status !== 'approved' && (
+                          {/* Per-result approval removed — the supervisor no longer
+                              approves value-by-value. Approval happens once at the
+                              report level ("Submit for approval"). Each result only
+                              offers "Request to fix" to bounce it back for correction. */}
+                          {/* {r.status !== 'approved' && (
                             <Button
                               size="sm"
                               variant="outline"
@@ -491,22 +484,16 @@ export function TestItemRow({
                             >
                               Approve
                             </Button>
-                          )}
-                          {/* "Request fix" logs a reasoned correction/amendment.
-                              That only makes sense once a value is APPROVED — an
-                              approved result is a signed record, so changing it
-                              is an amendment, not a routine edit. */}
-                          {r.status === 'approved' && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-6 px-2 text-[10px]"
-                              disabled={verifyResult.isPending}
-                              onClick={() => onVerifyResult(r.id, 'request_correction')}
-                            >
-                              Request fix
-                            </Button>
-                          )}
+                          )} */}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[10px]"
+                            disabled={verifyResult.isPending}
+                            onClick={() => openFixDialog(r.id)}
+                          >
+                            Request to fix
+                          </Button>
                         </div>
                       )}
                     </li>
@@ -623,6 +610,54 @@ export function TestItemRow({
       {((isDone && !editing) || isCancelled) && attachments.length > 0 && (
         <AttachmentList attachments={attachments} canDelete={false} />
       )}
+
+      {/* Request-to-fix modal — replaces the old window.prompt. Opens when the
+          supervisor clicks "Request to fix" on a result; collects a reason and
+          sends it as the correction note. Local state (fixOpen / fixReason /
+          fixResultId) is wired up separately. */}
+      <Dialog open={fixOpen} onOpenChange={setFixOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Request a correction</DialogTitle>
+            <DialogDescription>
+              Send this result back to the technician for correction. Add a short
+              reason so they know what to fix.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={fixReason}
+            onChange={(e) => setFixReason(e.target.value)}
+            placeholder="Reason / requested correction…"
+            className="min-h-22.5 text-sm"
+            autoFocus
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFixOpen(false)} disabled={verifyResult.isPending}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!fixReason.trim() || !fixResultId || verifyResult.isPending}
+              onClick={async () => {
+                if (!fixResultId) return;
+                try {
+                  await verifyResult.mutateAsync({
+                    id: fixResultId,
+                    action: 'request_correction',
+                    correctionNotes: fixReason.trim(),
+                  });
+                  toast.success('Correction requested');
+                  setFixOpen(false);
+                  setFixReason('');
+                } catch (e) {
+                  toast.error(getApiErrorMessage(e, 'Could not request the correction'));
+                }
+              }}
+            >
+              {verifyResult.isPending ? 'Sending…' : 'Request fix'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
