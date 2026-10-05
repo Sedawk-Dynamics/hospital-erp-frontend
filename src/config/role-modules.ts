@@ -86,7 +86,7 @@ const ROLE_MODULE_MAP: Record<string, ModuleKey[]> = {
   nurse_admin: ['nurse-admin'],
 
   // Front desk → hospital (OP/IP, billing, appointments)
-  front_desk: ['hospital'],
+  front_desk: ['hospital','insurance'],
 
   // Billing & finance → hospital (billing, transactions, credit settlement)
   billing_admin: ['hospital'],

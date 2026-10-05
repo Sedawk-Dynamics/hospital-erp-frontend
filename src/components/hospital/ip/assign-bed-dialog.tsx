@@ -60,7 +60,6 @@ export function AssignBedDialog({
   const [bedId, setBedId] = useState('');
   const assign = useAssignAdmissionBed();
 
-  // Only wards on the chosen floor are selectable.
   const wardOptions = useMemo(
     () => (wards ?? []).filter((w) => !floorId || w.floorId === floorId),
     [wards, floorId],
