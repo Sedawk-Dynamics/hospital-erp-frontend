@@ -409,13 +409,3 @@ export function OrderReportPanel({
     </section>
   );
 }
-
-// Per-test row: hosts the two report-generation modes for this single test.
-//   Tab "Upload File" — file picker + Mark Done. Mark Done is the fast path:
-//     the backend treats the uploaded file as the report, and once every
-//     item on the order is marked done it auto-publishes the LabReport.
-//   Tab "Add Details" — structured parameter rows (auto-prefilled from the
-//     test catalog's normalRange/unit). Save Results creates LabResult rows
-//     which the order-level Generate Report button rolls up into a branded
-//     LabReport snapshot.
-
