@@ -813,10 +813,34 @@ function AdmissionDialog({
               {admissionType === 'ip' && (
                 <>
               <div className="grid gap-1.5">
-                <Label>Ward</Label>
-                <Select value={selectedWardId} onValueChange={(v) => setSelectedWardId(v ?? '')}>
+                <Label>Floor</Label>
+                <Select value={selectedFloorId} onValueChange={(v) => setSelectedFloorId(v ?? '')}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select ward" />
+                    <SelectValue placeholder="Select floor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {floors.map((f) => (
+                      <SelectItem key={f.id} value={f.id}>
+                        {f.name}
+                        {f.level != null ? ` · Level ${f.level}` : ''}
+                      </SelectItem>
+                    ))}
+                    {floors.length === 0 && (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">No floors configured</div>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid gap-1.5">
+                <Label>Ward</Label>
+                <Select
+                  value={selectedWardId}
+                  onValueChange={(v) => setSelectedWardId(v ?? '')}
+                  disabled={!selectedFloorId}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={selectedFloorId ? 'Select ward' : 'Select floor first'} />
                   </SelectTrigger>
                   <SelectContent>
                     {wards.map((w) => {

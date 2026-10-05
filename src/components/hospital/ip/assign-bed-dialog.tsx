@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useWards, useBeds, useAssignAdmissionBed } from '@/hooks/use-clinical';
+import { useWards, useBeds, useFloors, useAssignAdmissionBed } from '@/hooks/use-clinical';
 import { getApiErrorMessage } from '@/lib/utils';
 
 /**
@@ -53,14 +53,27 @@ export function AssignBedDialog({
   currentBedNumber,
   onSuccess,
 }: AssignBedDialogProps) {
+  const { data: floors } = useFloors();
   const { data: wards } = useWards();
+  const [floorId, setFloorId] = useState('');
   const [wardId, setWardId] = useState('');
   const [bedId, setBedId] = useState('');
   const assign = useAssignAdmissionBed();
 
+  // Only wards on the chosen floor are selectable.
+  const wardOptions = useMemo(
+    () => (wards ?? []).filter((w) => !floorId || w.floorId === floorId),
+    [wards, floorId],
+  );
+
   // Only free beds in the chosen ward are assignable.
   const { data: beds } = useBeds(wardId ? { wardId, status: 'available' } : undefined);
   const bedOptions = useMemo(() => beds ?? [], [beds]);
+
+  // Picking a new floor invalidates the previously-chosen ward (and bed).
+  useEffect(() => {
+    setWardId('');
+  }, [floorId]);
 
   // Picking a new ward invalidates the previously-chosen bed.
   useEffect(() => {
@@ -68,6 +81,7 @@ export function AssignBedDialog({
   }, [wardId]);
 
   const reset = () => {
+    setFloorId('');
     setWardId('');
     setBedId('');
   };
@@ -122,18 +136,41 @@ export function AssignBedDialog({
 
         <div className="grid gap-4 py-1">
           <div className="grid gap-1.5">
-            <Label>Target Ward *</Label>
-            <Select value={wardId} onValueChange={(v) => setWardId(v ?? '')}>
+            <Label>Target Floor *</Label>
+            <Select value={floorId} onValueChange={(v) => setFloorId(v ?? '')}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select ward" />
+                <SelectValue placeholder="Select floor" />
               </SelectTrigger>
               <SelectContent>
-                {(wards ?? []).map((w) => (
+                {(floors ?? []).map((f) => (
+                  <SelectItem key={f.id} value={f.id}>
+                    {f.name}
+                    {f.level != null ? ` · Level ${f.level}` : ''}
+                  </SelectItem>
+                ))}
+                {(floors ?? []).length === 0 && (
+                  <div className="px-3 py-2 text-sm text-muted-foreground">No floors configured</div>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid gap-1.5">
+            <Label>Target Ward *</Label>
+            <Select value={wardId} onValueChange={(v) => setWardId(v ?? '')} disabled={!floorId}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder={floorId ? 'Select ward' : 'Select floor first'} />
+              </SelectTrigger>
+              <SelectContent>
+                {wardOptions.map((w) => (
                   <SelectItem key={w.id} value={w.id}>
                     {w.name}
                     {w.availableBeds != null ? ` (${w.availableBeds} free)` : ''}
                   </SelectItem>
                 ))}
+                {floorId && wardOptions.length === 0 && (
+                  <div className="px-3 py-2 text-sm text-muted-foreground">No wards on this floor</div>
+                )}
               </SelectContent>
             </Select>
           </div>
