@@ -25,7 +25,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/lib/date-utils';
 import { apiPut } from '@/lib/api';
 import { useProgressNotes, type ProgressNote, type ProgressNotePinEntry } from '@/hooks/use-doctor';
@@ -43,6 +42,47 @@ const DISCHARGE_SECTIONS: Array<{
   { key: 'advice', label: 'Advice' },
   { key: 'general', label: 'General' },
 ];
+
+// Human labels for the ProgressNoteType enum.
+const NOTE_TYPE_LABELS: Record<string, string> = {
+  daily_soap_round: 'Daily SOAP Round',
+  post_op_note: 'Post-Op Note',
+  procedure_note: 'Procedure Note',
+  consultation_note: 'Consultation Note',
+  op_clinic_visit: 'OP Clinic Visit',
+};
+
+// Parse a note's content into its structured parts so the card can render the
+// SOAP markers as tags instead of inline prefixes.
+//   - `[Progress: X]`      → condition tag
+//   - `S (Subjective): …`  → { tag: 'S', label: 'Subjective', text }
+//   - anything else        → a plain line
+type ParsedSection = { tag: string; label: string; text: string };
+function parseNoteContent(content?: string): {
+  condition: string | null;
+  sections: ParsedSection[];
+  other: string[];
+} {
+  const raw = (content ?? '').replace(/\*\*/g, '');
+  const lines = raw.split('\n').map((l) => l.trim()).filter(Boolean);
+  let condition: string | null = null;
+  const sections: ParsedSection[] = [];
+  const other: string[] = [];
+  for (const line of lines) {
+    const prog = line.match(/^\[Progress:\s*(.+?)\]$/i);
+    if (prog) {
+      condition = prog[1];
+      continue;
+    }
+    const soap = line.match(/^([SOAP])\s*\(([^)]*)\):\s*(.*)$/);
+    if (soap) {
+      sections.push({ tag: soap[1], label: soap[2], text: soap[3] });
+      continue;
+    }
+    other.push(line);
+  }
+  return { condition, sections, other };
+}
 
 function pinTextFromNote(note: ProgressNote): string {
   const raw = (note.content ?? '').replace(/\*\*/g, '').trim();
@@ -89,6 +129,16 @@ function NoteEntry({
     ? `Dr. ${note.doctor.user.firstName} ${note.doctor.user.lastName ?? ''}`.trim()
     : 'Attending';
 
+  const typeLabel = note.noteType
+    ? NOTE_TYPE_LABELS[note.noteType] ?? note.noteType
+    : null;
+  const parsed = useMemo(() => parseNoteContent(note.content), [note.content]);
+  // Short one-liner shown while collapsed so the card hints at its contents.
+  const previewText = useMemo(
+    () => parsed.sections.map((s) => s.text).join(' · ') || parsed.other.join(' '),
+    [parsed],
+  );
+
   const removePin = async (pinId: string) => {
     setRemovingPinId(pinId);
     try {
@@ -111,9 +161,19 @@ function NoteEntry({
   return (
     <div className="rounded-lg bg-surface-container-lowest shadow-sanctuary p-2.5 space-y-1.5">
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 space-y-1">
+          {/* Title + type + hospital day */}
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[11px] font-semibold">{formatDateTime(note.createdAt)}</span>
+            {typeLabel && (
+              <span className="inline-flex items-center rounded-full bg-primary/10 text-primary px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider">
+                {typeLabel}
+              </span>
+            )}
+            {note.hospitalDay != null && (
+              <span className="inline-flex items-center rounded-full bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider">
+                Day {note.hospitalDay}
+              </span>
+            )}
             {isSigned && (
               <span className="inline-flex items-center gap-0.5 text-[9px] text-primary">
                 <Lock className="h-2 w-2" />
@@ -121,7 +181,17 @@ function NoteEntry({
               </span>
             )}
           </div>
-          <p className="text-[10px] text-muted-foreground truncate flex items-center gap-1">
+          {/* Title + date-time on one row */}
+          <div className="flex items-center  gap-2 flex-wrap">
+            {note.noteTitle && (
+              <span className="text-xs font-semibold text-foreground truncate">{note.noteTitle}</span>
+            )}
+            <span className="text-[10px] font-medium text-muted-foreground">
+              {formatDateTime(note.createdAt)}
+            </span>
+          </div>
+          {/* Author on the next line */}
+          <p className="text-[10px] text-muted-foreground flex items-center gap-1">
             <Stethoscope className="h-2.5 w-2.5" />
             {doctor}
           </p>
@@ -166,16 +236,64 @@ function NoteEntry({
         </div>
       )}
 
-      {/* Content preview */}
-      {note.content && (
-        <p
-          className={cn(
-            'text-[11px] text-on-surface-variant whitespace-pre-line leading-snug',
-            !expanded && 'line-clamp-2',
+      {/* Full note body — only when expanded (chevron down). Collapsed shows
+          just the header + pin badges. */}
+      {expanded && (
+        <div className="space-y-1.5 pt-0.5">
+          {/* Condition tag */}
+          {parsed.condition && (
+            <div>
+              <span className="inline-flex items-center rounded-full bg-emerald-100 text-emerald-800 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider">
+                {parsed.condition}
+              </span>
+            </div>
           )}
-        >
-          {note.content.replace(/\*\*/g, '')}
-        </p>
+
+          {/* SOAP sections — the marker (S/O/A/P + label) is a tag, kept
+              visually distinct from the actual note text beside it. */}
+          {parsed.sections.length > 0 && (
+            <div className="space-y-1.5">
+              {parsed.sections.map((sec, i) => (
+                <div key={i} className="flex items-start gap-1.5">
+                  <span
+                    className="mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-md bg-primary/10 text-primary px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider"
+                    title={sec.label}
+                  >
+                    <span className="font-bold">{sec.tag}</span>
+                    <span className="hidden sm:inline">· {sec.label}</span>
+                  </span>
+                  <p className="flex-1 text-[11px] text-on-surface-variant whitespace-pre-line leading-snug">
+                    {sec.text}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Any non-SOAP free text */}
+          {parsed.other.length > 0 && (
+            <p className="text-[11px] text-on-surface-variant whitespace-pre-line leading-snug">
+              {parsed.other.join('\n')}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Collapsed preview — a hint of the contents so the card reads as
+          "has details", with the condition tag + a clamped one-liner. */}
+      {!expanded && (parsed.condition || previewText) && (
+        <div className="flex items-center gap-1.5">
+          {parsed.condition && (
+            <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-100 text-emerald-800 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider">
+              {parsed.condition}
+            </span>
+          )}
+          {previewText && (
+            <p className="flex-1 min-w-0 truncate text-[11px] text-on-surface-variant leading-snug">
+              {previewText}
+            </p>
+          )}
+        </div>
       )}
 
       {/* <div className="flex items-center justify-between pt-1">

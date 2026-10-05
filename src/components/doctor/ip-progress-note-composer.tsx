@@ -9,7 +9,11 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import { apiGet, apiPost } from '@/lib/api';
@@ -44,6 +48,18 @@ const SOAP_META = {
   assessment: { label: 'Assessment', hint: 'Clinical impression / progress' },
   plan:       { label: 'Plan', hint: "Today's plan, order changes, next steps" },
 } as const;
+
+// Note-type options — `label` is shown in the UI, `value` is the
+// ProgressNoteType enum stored on the note.
+const NOTE_TYPES = [
+  { label: 'Daily SOAP Round', value: 'daily_soap_round' },
+  { label: 'Post-Op Note', value: 'post_op_note' },
+  { label: 'Procedure Note', value: 'procedure_note' },
+  { label: 'Consultation Note', value: 'consultation_note' },
+  { label: 'OP Clinic Visit', value: 'op_clinic_visit' },
+] as const;
+
+type NoteTypeValue = (typeof NOTE_TYPES)[number]['value'];
 
 const free = (t: string): SoapSectionPayload | null => (t.trim() ? { free: t.trim() } : null);
 
@@ -84,6 +100,8 @@ export function IpProgressNoteComposer({
   const currentUserId = useAuthStore((s) => s.user?.id);
 
   const [mentions, setMentions] = useState<string[]>([]);
+  const [noteType, setNoteType] = useState<NoteTypeValue>('daily_soap_round');
+  const [noteTitle, setNoteTitle] = useState('');
   const [condition, setCondition] = useState<GeneralCondition>('stable');
   const [billVisit, setBillVisit] = useState(defaultBillVisit);
   const [writeRx, setWriteRx] = useState(false);
@@ -174,7 +192,8 @@ export function IpProgressNoteComposer({
         visitId,
         admissionId,
         prescriptionId: newPrescriptionId,
-        noteType: 'general',
+        noteType: noteType,
+        noteTitle: noteTitle,
         content: buildContent(),
         generalCondition: condition,
         subjective: free(parts.subjective.content),
@@ -264,6 +283,33 @@ export function IpProgressNoteComposer({
                   {c.label}
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <div className="flex-1">
+              <Label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Note type</Label>
+              <Select value={noteType} onValueChange={(v) => v && setNoteType(v as NoteTypeValue)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select note type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {NOTE_TYPES.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex-1">
+              <Label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Note title</Label>
+              <Input
+                value={noteTitle}
+                onChange={(e) => setNoteTitle(e.target.value)}
+                placeholder="e.g. Morning round — Day 2"
+                maxLength={200}
+              />
             </div>
           </div>
 

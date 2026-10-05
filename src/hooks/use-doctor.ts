@@ -63,6 +63,8 @@ export interface ProgressNote {
   visitId?: string;
   admissionId?: string;
   noteType?: string;
+  noteTitle?: string | null;
+  hospitalDay?: number | null;
   content?: string;
   impressions?: string | null;
   discussions?: string | null;
@@ -614,6 +616,7 @@ export interface CreateProgressNoteInput {
   pins?: Array<{ dischargeSection: ProgressNotePinEntry['dischargeSection']; content: string }>;
   // @mentioned doctors (User ids) — they get a notification linking to the patient.
   mentionedUserIds?: string[];
+  noteTitle?:string;
 }
 
 export interface UpdateProgressNoteInput extends Partial<CreateProgressNoteInput> {
