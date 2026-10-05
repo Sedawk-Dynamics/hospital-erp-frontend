@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { useIpAdmissions } from '@/hooks/use-ip-billing';
 import { AdmissionTypeBadge, ADMISSION_TYPE_OPTIONS, type AdmissionType } from '@/components/shared/admission-type-badge';
 import { AdmissionDoctorControl } from '@/components/shared/admission-doctor-control';
 import {
@@ -160,7 +161,6 @@ function AdmissionDialog({
   // When ticked (new-patient mode), save a provisional (TEMP-) record instead of
   // admitting — every field is optional.
   const [isTemporary, setIsTemporary] = useState(false);
-
 
   // Form state
   const [patientSearch, setPatientSearch] = useState('');
@@ -1624,6 +1624,10 @@ function RowActionsMenu({
   const [connectTempOpen, setConnectTempOpen] = useState(false);
 
   const canBill = useCanBillToHospital();
+  // Resolve THIS stay's bill (draft or finalized) so Generate Bill shows the
+  // same bill as ready-to-discharge instead of the draft-only patient lookup.
+  const { data: ipBills } = useIpAdmissions();
+  const stayBill = ipBills?.find((b) => b.admissionId === admission.id) ?? null;
   const isActive = admission.status === 'admitted';
   // Provisional (TEMP-) patient → offer Register / Connect right here.
   const isTemp = isTemporaryPatient(admission.patient);
@@ -1690,7 +1694,7 @@ function RowActionsMenu({
               )}
               <DropdownMenuItem onClick={() => setBillOpen(true)}>
                 <Receipt className="mr-2 h-4 w-4" />
-                Generate Final Bill
+                {stayBill && stayBill.status !== 'draft' ? 'Edit Bill' : 'Generate Bill'}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setSummaryOpen(true)}>
                 <PieChart className="mr-2 h-4 w-4" />
@@ -1757,10 +1761,13 @@ function RowActionsMenu({
         <>
           {/* Final settlement bill — auto-pulls room + all clinical charges. */}
           <BillGeneratorDialog
-            open={billOpen}
-            onOpenChange={setBillOpen}
-            initialPatient={billingPatient}
-          />
+          open={billOpen}
+          onOpenChange={setBillOpen}
+          initialPatient={billingPatient}
+          initialBillId={stayBill?.id ?? null}
+          admissionId={admission.id}
+        />
+
           {/* Advance / deposit collection against the admitted patient. */}
           <AdvancePaymentDialog
             open={advanceOpen}

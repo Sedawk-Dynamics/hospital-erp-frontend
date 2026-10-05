@@ -277,7 +277,8 @@ export function IpBillingTab({ focusAdmissionId }: { focusAdmissionId?: string |
                         {/* Printable bill — available at any time, not only
                             once the stay is settled. Reads as an interim bill
                             while the patient is still admitted. */}
-                        <Button
+                        {b.status!== 'draft' && (
+                          <Button
                           size="sm"
                           variant="outline"
                           className="h-7 gap-1 text-[11px]"
@@ -287,10 +288,9 @@ export function IpBillingTab({ focusAdmissionId }: { focusAdmissionId?: string |
                         >
                           <Printer className="h-3 w-3" /> Bill
                         </Button>
-                        {/* The counter completes the discharge — the doctor's
-                            published summary only marks the patient ready. The
-                            server re-checks the balance, so this button is a
-                            convenience gate, not the security boundary. */}
+                        )}
+                        
+                      
                         {b.admission?.dischargeReady && b.status !== 'draft' && (
                           <Button
                             size="sm"
@@ -367,10 +367,6 @@ export function IpBillingTab({ focusAdmissionId }: { focusAdmissionId?: string |
           if (!o) {
             setManageBill(null);
             setAutoOpened(true);
-            // Finalizing / editing runs through the shared bill screen, whose own
-            // hooks invalidate the generic bills key — not the IP worklist key.
-            // Re-pull the IP list on close so Collect Payment / Edit Bill appear
-            // without a manual refresh.
             refresh();
           }
         }}

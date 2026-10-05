@@ -163,11 +163,11 @@ function BillGeneratorBody({
   } | null>(
     initialPatient
       ? {
-          id: initialPatient.id,
-          firstName: initialPatient.firstName,
-          lastName: initialPatient.lastName,
-          mrn: initialPatient.mrn,
-        }
+        id: initialPatient.id,
+        firstName: initialPatient.firstName,
+        lastName: initialPatient.lastName,
+        mrn: initialPatient.mrn,
+      }
       : null,
   );
   const [billId] = useState<string | null>(initialBillId);
@@ -175,37 +175,37 @@ function BillGeneratorBody({
 
   return (
     <>
-        {step === 'pickPatient' && (
-          <PatientPickerStep
-            search={patientSearch}
-            onSearch={setPatientSearch}
-            onPick={(p) => {
-              setPatient(p);
-              setStep('compose');
-            }}
-          />
-        )}
+      {step === 'pickPatient' && (
+        <PatientPickerStep
+          search={patientSearch}
+          onSearch={setPatientSearch}
+          onPick={(p) => {
+            setPatient(p);
+            setStep('compose');
+          }}
+        />
+      )}
 
-        {step === 'compose' && patient && (
-          <ComposeStep
-            patient={patient}
-            initialBillId={billId}
-            admissionId={admissionId}
-            onClose={onClose}
-            onFinalized={(id) => {
-              toast.success('Bill finalized');
-              onBillFinalized?.(id);
-              onClose();
-            }}
-          />
-        )}
+      {step === 'compose' && patient && (
+        <ComposeStep
+          patient={patient}
+          initialBillId={billId}
+          admissionId={admissionId}
+          onClose={onClose}
+          onFinalized={(id) => {
+            toast.success('Bill finalized');
+            onBillFinalized?.(id);
+            onClose();
+          }}
+        />
+      )}
 
-        {step === 'compose' && !patient && billId && (
-          <ResolveBillPatient
-            billId={billId}
-            onResolved={(p) => setPatient(p)}
-          />
-        )}
+      {step === 'compose' && !patient && billId && (
+        <ResolveBillPatient
+          billId={billId}
+          onResolved={(p) => setPatient(p)}
+        />
+      )}
     </>
   );
 }
@@ -346,13 +346,7 @@ function ComposeStep({
 
   const createBillRequestedRef = useRef(false);
   useEffect(() => {
-    // Only kick off auto-create when the search has settled, there's no
-    // existing draft and we haven't already requested one in this session.
     if (effectiveBillId) return;
-    // NEVER auto-create for a stay. createBill makes a plain OP bill with no
-    // admissionId, which would sit outside the admission's ledger and split the
-    // stay across two bills. An admission always arrives with its running bill
-    // (getIpAdmissionsForBilling ensures one), so this is a guard, not a path.
     if (admissionId) return;
     if (!existingBills) return;
     if (existingBills.data && existingBills.data.length > 0) return;
