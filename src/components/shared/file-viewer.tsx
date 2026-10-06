@@ -39,7 +39,7 @@ import {
   isImageMime,
   isPdfMime,
 } from '@/hooks/use-imaging-attachments';
-import { useDicomAttachmentViewer } from '@/hooks/use-dicom';
+import { useDicomAttachmentPreview, useDicomAttachmentViewer } from '@/hooks/use-dicom';
 import { is } from 'date-fns/locale';
 
 // Shape that any attachment (lab or imaging) can be cast to before
@@ -195,7 +195,8 @@ function InlineRenderer({ file, url, onOpenFull }: { file: ViewableFile; url: st
   const isVideo = isVideoMime(file.mimeType);
   const isAudio = file.mimeType?.startsWith('audio/');
   const isDicom = isDicomFile({ fileName: file.fileName, mimeType: file.mimeType });
-  const dicomViewer=useDicomAttachmentViewer(file.id,isDicom);
+  const preview = useDicomAttachmentPreview(file.id, isDicom);
+  const dicomViewer = useDicomAttachmentViewer(file.id, isDicom);
   const viewerUrl = dicomViewer.data?.viewerUrl ?? '';
   const isText =
     file.mimeType === 'text/plain' ||
@@ -218,7 +219,7 @@ function InlineRenderer({ file, url, onOpenFull }: { file: ViewableFile; url: st
       <img
         src={url}
         alt={file.fileName}
-        className="mx-auto max-h-[480px] object-contain"
+        className="mx-auto max-h-120 object-contain"
       />
     );
   }
@@ -227,7 +228,7 @@ function InlineRenderer({ file, url, onOpenFull }: { file: ViewableFile; url: st
       <video
         controls
         src={url}
-        className="mx-auto max-h-[480px] w-full bg-black"
+        className="mx-auto max-h-120 w-full bg-black"
       />
     );
   }
@@ -239,28 +240,9 @@ function InlineRenderer({ file, url, onOpenFull }: { file: ViewableFile; url: st
     );
   }
   if (isDicom) {
-    if (dicomViewer.isLoading) {
-      return <div className="flex h-[70vh] min-h-125 w-full items-center justify-center gap-2 bg-black text-zinc-300 text-sm"><Loader2 className="size-5 animate-spin" /> Loading viewer…</div>;
-    }
-    if (!viewerUrl) {
-      // no PACS / not archived → keep the click-to-open card as fallback
-      return (
-        <button type="button" onClick={onOpenFull} className="flex h-[70vh] min-h-125 w-full flex-col items-center justify-center gap-2 bg-zinc-950 text-zinc-300 hover:bg-zinc-900">
-          <ScanLine className="size-10 text-zinc-400" />
-          <span className="text-sm font-medium">DICOM study</span>
-          <span className="flex items-center gap-1 text-xs text-zinc-400"><Maximize2 className="size-3.5" /> Open viewer</span>
-        </button>
-      );
-    }
-    return (
-      <iframe
-        src={viewerUrl}
-        title={file.fileName}
-        className="h-[70vh] min-h-125 w-full bg-black"
-        style={{ border: 0 }}
-        allow="fullscreen"
-      />
-    );
+    if (preview.isLoading) return <div className="flex h-[70vh] min-h-125 w-full items-center justify-center gap-2 bg-black text-zinc-300"><Loader2 className="size-5 animate-spin" /> Loading preview…</div>;
+    if (preview.url) return <img src={preview.url} alt={file.fileName} className="max-h-[70vh] min-h-125 w-full object-contain bg-black" />;
+    return (<button onClick={onOpenFull}>DICOM study · Open viewer</button>);
   }
   if (isText) {
     return <TextRenderer url={url} />;

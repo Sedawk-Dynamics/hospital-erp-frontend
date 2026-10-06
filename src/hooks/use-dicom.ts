@@ -1,5 +1,6 @@
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPost } from '@/lib/api';
+import { apiGet, apiPost, apiClient } from '@/lib/api';
 
 // ============================================================
 // Types
@@ -159,6 +160,41 @@ export function useDicomAttachmentViewer(attachmentId: string | null, enabled: b
     refetchOnWindowFocus: false,
     retry: false,
   });
+}
+
+/**
+ * Fetch a single-frame PNG preview of a DICOM attachment (rendered by Orthanc)
+ * and expose it as a blob object URL for an <img>. The endpoint needs the Bearer
+ * header, so a plain <img src> can't hit it — we fetch the blob via the authed
+ * client and make an object URL (revoked on change/unmount).
+ */
+export function useDicomAttachmentPreview(attachmentId: string | null, enabled: boolean) {
+  const query = useQuery({
+    queryKey: ['dicom', 'attachment-preview', attachmentId],
+    queryFn: async () => {
+      const res = await apiClient.get(`/imaging/dicom/attachment/${attachmentId}/preview`, {
+        responseType: 'blob',
+      });
+      return res.data as Blob;
+    },
+    enabled: enabled && !!attachmentId,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!query.data) {
+      setUrl(null);
+      return;
+    }
+    const objectUrl = URL.createObjectURL(query.data);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [query.data]);
+
+  return { url, isLoading: query.isLoading, isError: query.isError };
 }
 
 /**
