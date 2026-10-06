@@ -14,7 +14,11 @@ export const DISCHARGE_SECTIONS: Array<{
   key: ProgressNotePinEntry['dischargeSection'];
   label: string;
 }> = [
+  { key: 'chief_complaint', label: 'Chief Complaint' },
+  { key: 'examination', label: 'Examination' },
+  { key: 'investigation', label: 'Investigation' },
   { key: 'diagnosis', label: 'Diagnosis' },
+  { key: 'impression', label: 'Impression' },
   { key: 'hospital_course', label: 'Hospital Course' },
   { key: 'procedure', label: 'Procedure' },
   { key: 'medication', label: 'Medication' },
@@ -49,7 +53,7 @@ export function DischargePinEditor({ value, onChange }: DischargePinEditorProps)
             className="h-8 rounded-md border bg-background px-2 text-xs shrink-0"
           >
             {DISCHARGE_SECTIONS.map((ds) => (
-              <option key={ds.key} value={ds.key}>
+              <option className='h-20 overflow-y-auto text-ellipsis' key={ds.key} value={ds.key}>
                 {ds.label}
               </option>
             ))}

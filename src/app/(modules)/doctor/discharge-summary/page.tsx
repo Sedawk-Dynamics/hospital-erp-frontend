@@ -86,6 +86,10 @@ export default function DischargeSummaryPage() {
   const [showPreview, setShowPreview] = useState(false);
 
   // Local form fields
+  const [chiefComplaint, setChiefComplaint] = useState<string>('');
+  const [examination, setExamination] = useState<string>('');
+  const [investigation, setInvestigation] = useState<string>('');
+  const [impression, setImpression] = useState<string>('');
   const [diagnosesSummary, setDiagnosesSummary] = useState('');
   const [proceduresSummary, setProceduresSummary] = useState('');
   const [labResultsSummary, setLabResultsSummary] = useState('');
@@ -153,6 +157,10 @@ export default function DischargeSummaryPage() {
   useSeedOnChange(generatedSummary ? selectedAdmissionId : null, () => {
     if (!generatedSummary) return;
     setSummaryData(generatedSummary);
+    setChiefComplaint(generatedSummary.chiefComplaint ?? '');
+    setExamination(generatedSummary.examination ?? '');
+    setInvestigation(generatedSummary.investigation ?? '');
+    setImpression(generatedSummary.impression ?? '');
     setDiagnosesSummary(generatedSummary.diagnosesSummary ?? '');
     setProceduresSummary(generatedSummary.proceduresSummary ?? '');
     setLabResultsSummary(generatedSummary.labResultsSummary ?? '');
@@ -191,6 +199,10 @@ export default function DischargeSummaryPage() {
         diagnosesSummary,
         proceduresSummary,
         labResultsSummary,
+        chiefComplaint,
+        examination,
+        investigation,
+        impression,
         medicationReconciliation,
         dischargeInstructions,
         followUpDate: followUpDate || undefined,
@@ -207,7 +219,10 @@ export default function DischargeSummaryPage() {
     }
   }, [
     summaryData, updateMutation, diagnosesSummary, proceduresSummary,
-    labResultsSummary, medicationReconciliation, dischargeInstructions,
+    labResultsSummary, chiefComplaint,
+        examination,
+        investigation,
+        impression,medicationReconciliation, dischargeInstructions,
     followUpDate, followUpAfterValue, followUpAfterUnit, followUpInstructions,
   ]);
 
@@ -252,6 +267,10 @@ export default function DischargeSummaryPage() {
       const res = await apiPost<any>(`/mrd/discharge-summary/${summaryData.id}/refresh`);
       if (res.data) {
         setSummaryData(res.data);
+        setChiefComplaint(res.data.chiefComplaint ?? '');
+        setExamination(res.data.examination ?? '');
+        setInvestigation(res.data.investigation ?? '');
+        setImpression(res.data.impression ?? '');
         setDiagnosesSummary(res.data.diagnosesSummary ?? '');
         setProceduresSummary(res.data.proceduresSummary ?? '');
         setLabResultsSummary(res.data.labResultsSummary ?? '');
@@ -271,11 +290,14 @@ export default function DischargeSummaryPage() {
       const result = await aiNarrativeMutation.mutateAsync(summaryData.id);
       const s = result?.suggestions;
       if (s) {
-        // 80/20: AI fills the narrative sections; structured diagnoses/labs/meds
-        // stay as the exact DB-derived text. Doctor reviews before signing.
+
         if (s.proceduresSummary) setProceduresSummary(s.proceduresSummary);
         if (s.dischargeInstructions) setDischargeInstructions(s.dischargeInstructions);
         if (s.followUpInstructions) setFollowUpInstructions(s.followUpInstructions);
+        if (s.chiefComplaint) setChiefComplaint(s.chiefComplaint);
+        if (s.examination) setExamination(s.examination);
+        if (s.investigation) setInvestigation(s.investigation);
+        if (s.impression) setImpression(s.impression);
         toast.success('AI drafted the narrative — review and edit before signing');
       }
     } catch (err: any) {
@@ -304,7 +326,7 @@ export default function DischargeSummaryPage() {
     if (!summaryData) return;
     try {
       const published = await publishMutation.mutateAsync(summaryData.id);
-      if (published) setSummaryData(published);      toast.success(
+      if (published) setSummaryData(published); toast.success(
         published?.dischargeReady
           ? 'Discharge summary published — sent to Billing for bill clearance & discharge'
           : 'Discharge summary published — patient notified via portal & email',
@@ -446,307 +468,375 @@ export default function DischargeSummaryPage() {
 
           {/* RIGHT: existing summary editor */}
           <div className="space-y-4 min-w-0">
-        {/* Editable Sections */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          {/* Diagnoses Summary */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">Diagnoses Summary</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Textarea
-                value={diagnosesSummary}
-                onChange={(e) => setDiagnosesSummary(e.target.value)}
-                placeholder="Diagnoses summary..."
-                rows={4}
-                disabled={isReadOnly}
-                className="resize-none"
-              />
-            </CardContent>
-          </Card>
+            {/* Editable Sections */}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              {/* Chief Complaint */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold">Chief Complaint</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Textarea
+                    value={chiefComplaint}
+                    onChange={(e) => setChiefComplaint(e.target.value)}
+                    placeholder="Presenting complaint / reason for admission..."
+                    rows={4}
+                    disabled={isReadOnly}
+                    className="resize-none"
+                  />
+                </CardContent>
+              </Card>
 
-          {/* Procedures Summary */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">Procedures Summary</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Textarea
-                value={proceduresSummary}
-                onChange={(e) => setProceduresSummary(e.target.value)}
-                placeholder="Procedures summary..."
-                rows={4}
-                disabled={isReadOnly}
-                className="resize-none"
-              />
-            </CardContent>
-          </Card>
+              {/* Examination */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold">Examination</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Textarea
+                    value={examination}
+                    onChange={(e) => setExamination(e.target.value)}
+                    placeholder="Clinical examination findings..."
+                    rows={4}
+                    disabled={isReadOnly}
+                    className="resize-none"
+                  />
+                </CardContent>
+              </Card>
 
-          {/* Lab Results Summary */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">Lab Results Summary</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Textarea
-                value={labResultsSummary}
-                onChange={(e) => setLabResultsSummary(e.target.value)}
-                placeholder="Key lab results..."
-                rows={4}
-                disabled={isReadOnly}
-                className="resize-none"
-              />
-            </CardContent>
-          </Card>
+              {/* Investigation */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold">Investigation</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Textarea
+                    value={investigation}
+                    onChange={(e) => setInvestigation(e.target.value)}
+                    placeholder="Significant investigations and findings..."
+                    rows={4}
+                    disabled={isReadOnly}
+                    className="resize-none"
+                  />
+                </CardContent>
+              </Card>
 
-          {/* Medication Reconciliation */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">Medication Reconciliation</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Textarea
-                value={medicationReconciliation}
-                onChange={(e) => setMedicationReconciliation(e.target.value)}
-                placeholder="Medications on discharge..."
-                rows={4}
-                disabled={isReadOnly}
-                className="resize-none"
-              />
-            </CardContent>
-          </Card>
-        </div>
+              {/* Diagnoses Summary */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold">Diagnoses Summary</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Textarea
+                    value={diagnosesSummary}
+                    onChange={(e) => setDiagnosesSummary(e.target.value)}
+                    placeholder="Diagnoses summary..."
+                    rows={4}
+                    disabled={isReadOnly}
+                    className="resize-none"
+                  />
+                </CardContent>
+              </Card>
 
-        {/* Discharge Instructions — full width */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Discharge Instructions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              value={dischargeInstructions}
-              onChange={(e) => setDischargeInstructions(e.target.value)}
-              placeholder="Instructions for the patient after discharge..."
-              rows={5}
-              disabled={isReadOnly}
-              className="resize-none"
-            />
-          </CardContent>
-        </Card>
+              {/* Impression */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold">Impression</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Textarea
+                    value={impression}
+                    onChange={(e) => setImpression(e.target.value)}
+                    placeholder="Clinical impression..."
+                    rows={4}
+                    disabled={isReadOnly}
+                    className="resize-none"
+                  />
+                </CardContent>
+              </Card>
 
-        {/* Follow-up */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Follow-up</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div>
-              <Label className="text-xs text-muted-foreground mb-1">
-                Next review — an interval, or a specific date
-              </Label>
-              {/* The same one-tap intervals the prescription pad offers.
+              {/* Procedures Summary */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold">Procedures Summary</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Textarea
+                    value={proceduresSummary}
+                    onChange={(e) => setProceduresSummary(e.target.value)}
+                    placeholder="Procedures summary..."
+                    rows={4}
+                    disabled={isReadOnly}
+                    className="resize-none"
+                  />
+                </CardContent>
+              </Card>
+
+              {/* Lab Results Summary */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold">Lab Results Summary</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Textarea
+                    value={labResultsSummary}
+                    onChange={(e) => setLabResultsSummary(e.target.value)}
+                    placeholder="Key lab results..."
+                    rows={4}
+                    disabled={isReadOnly}
+                    className="resize-none"
+                  />
+                </CardContent>
+              </Card>
+
+              {/* Medication Reconciliation */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold">Medication Reconciliation</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Textarea
+                    value={medicationReconciliation}
+                    onChange={(e) => setMedicationReconciliation(e.target.value)}
+                    placeholder="Medications on discharge..."
+                    rows={4}
+                    disabled={isReadOnly}
+                    className="resize-none"
+                  />
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Discharge Instructions — full width */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold">Discharge Instructions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Textarea
+                  value={dischargeInstructions}
+                  onChange={(e) => setDischargeInstructions(e.target.value)}
+                  placeholder="Instructions for the patient after discharge..."
+                  rows={5}
+                  disabled={isReadOnly}
+                  className="resize-none"
+                />
+              </CardContent>
+            </Card>
+
+            {/* Follow-up */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold">Follow-up</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1">
+                    Next review — an interval, or a specific date
+                  </Label>
+                  {/* The same one-tap intervals the prescription pad offers.
                   Signing a discharge, the doctor thinks "review in two weeks" —
                   not "the 2nd of September". Making them convert that in their
                   head, at the point the patient is leaving, is where the wrong
                   date gets typed. */}
-              {!isReadOnly && (
-                <div className="mb-2 flex flex-wrap gap-1.5">
-                  {FOLLOW_UP_PRESETS.map((preset) => {
-                    const isActive =
-                      followUpAfterValue === String(preset.value) &&
-                      followUpAfterUnit === preset.unit;
-                    return (
-                      <button
-                        key={preset.label}
-                        type="button"
-                        onClick={() => {
-                          // Records the interval itself. Resolving it to a day
-                          // here is what turned "review in three months" into a
-                          // date the patient reads as an appointment.
-                          setFollowUpAfterValue(String(preset.value));
-                          setFollowUpAfterUnit(preset.unit);
-                          setFollowUpDate('');
+                  {!isReadOnly && (
+                    <div className="mb-2 flex flex-wrap gap-1.5">
+                      {FOLLOW_UP_PRESETS.map((preset) => {
+                        const isActive =
+                          followUpAfterValue === String(preset.value) &&
+                          followUpAfterUnit === preset.unit;
+                        return (
+                          <button
+                            key={preset.label}
+                            type="button"
+                            onClick={() => {
+                              // Records the interval itself. Resolving it to a day
+                              // here is what turned "review in three months" into a
+                              // date the patient reads as an appointment.
+                              setFollowUpAfterValue(String(preset.value));
+                              setFollowUpAfterUnit(preset.unit);
+                              setFollowUpDate('');
+                            }}
+                            className={cn(
+                              'rounded-full border px-3 py-1.5 text-xs font-medium transition-all',
+                              isActive
+                                ? 'border-secondary/30 bg-secondary/10 text-secondary ring-1 ring-secondary/30'
+                                : 'border-transparent bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground',
+                            )}
+                          >
+                            {preset.label}
+                          </button>
+                        );
+                      })}
+                      {(followUpDate || followUpAfterValue) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFollowUpDate('');
+                            setFollowUpAfterValue('');
+                          }}
+                          className="rounded-full px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="relative">
+                      <Calendar className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        type="date"
+                        value={followUpDate}
+                        onChange={(e) => {
+                          setFollowUpDate(e.target.value);
+                          // A named day and "after 3 months" are two different
+                          // promises; only one can be on the summary.
+                          if (e.target.value) setFollowUpAfterValue('');
                         }}
-                        className={cn(
-                          'rounded-full border px-3 py-1.5 text-xs font-medium transition-all',
-                          isActive
-                            ? 'border-secondary/30 bg-secondary/10 text-secondary ring-1 ring-secondary/30'
-                            : 'border-transparent bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground',
-                        )}
-                      >
-                        {preset.label}
-                      </button>
-                    );
-                  })}
-                  {(followUpDate || followUpAfterValue) && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFollowUpDate('');
-                        setFollowUpAfterValue('');
-                      }}
-                      className="rounded-full px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
-                    >
-                      Clear
-                    </button>
+                        disabled={isReadOnly}
+                        className="pl-8"
+                      />
+                    </div>
+                  </div>
+                  {followUpAfterValue && (
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Reviewed after {followUpAfterValue} {followUpAfterUnit} — no fixed date.
+                      {' '}Roughly {new Date(dateAfterInterval(followUpAfterValue, followUpAfterUnit)).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}.
+                    </p>
+                  )}
+                  {/* When a real day is named, spell it out — that is what lets the
+                  doctor catch one that landed on a Sunday or a holiday. */}
+                  {followUpDate && (
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      {new Date(followUpDate).toLocaleDateString('en-IN', {
+                        weekday: 'long',
+                        day: 'numeric',
+                        month: 'long',
+                        year: 'numeric',
+                      })}
+                    </p>
                   )}
                 </div>
-              )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="relative">
-                  <Calendar className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    type="date"
-                    value={followUpDate}
-                    onChange={(e) => {
-                      setFollowUpDate(e.target.value);
-                      // A named day and "after 3 months" are two different
-                      // promises; only one can be on the summary.
-                      if (e.target.value) setFollowUpAfterValue('');
-                    }}
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1">Follow-up Instructions</Label>
+                  <Textarea
+                    value={followUpInstructions}
+                    onChange={(e) => setFollowUpInstructions(e.target.value)}
+                    placeholder="Follow-up instructions for the patient..."
+                    rows={3}
                     disabled={isReadOnly}
-                    className="pl-8"
+                    className="resize-none"
                   />
                 </div>
-              </div>
-              {followUpAfterValue && (
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  Reviewed after {followUpAfterValue} {followUpAfterUnit} — no fixed date.
-                  {' '}Roughly {new Date(dateAfterInterval(followUpAfterValue, followUpAfterUnit)).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}.
-                </p>
-              )}
-              {/* When a real day is named, spell it out — that is what lets the
-                  doctor catch one that landed on a Sunday or a holiday. */}
-              {followUpDate && (
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  {new Date(followUpDate).toLocaleDateString('en-IN', {
-                    weekday: 'long',
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric',
-                  })}
-                </p>
-              )}
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground mb-1">Follow-up Instructions</Label>
-              <Textarea
-                value={followUpInstructions}
-                onChange={(e) => setFollowUpInstructions(e.target.value)}
-                placeholder="Follow-up instructions for the patient..."
-                rows={3}
-                disabled={isReadOnly}
-                className="resize-none"
-              />
-            </div>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
 
-        {/* Action Buttons */}
-        <div className="flex items-center justify-between print:hidden">
-          <div className="flex items-center gap-2">
-            <StatusBadge status={summaryData.status} />
-            {summaryData.signedAt && summaryData.signer && (
-              <span className="text-xs text-muted-foreground">
-                Signed by {summaryData.signer.firstName} {summaryData.signer.lastName} on {formatDate(summaryData.signedAt)}
-                {summaryData.eSignatureUrl?.startsWith('typed:') && (
-                  <>
-                    {' — attested as '}
-                    <em className="not-italic font-medium">
-                      &ldquo;{summaryData.eSignatureUrl.replace(/^typed:/, '')}&rdquo;
-                    </em>
-                  </>
+            {/* Action Buttons */}
+            <div className="flex items-center justify-between print:hidden">
+              <div className="flex items-center gap-2">
+                <StatusBadge status={summaryData.status} />
+                {summaryData.signedAt && summaryData.signer && (
+                  <span className="text-xs text-muted-foreground">
+                    Signed by {summaryData.signer.firstName} {summaryData.signer.lastName} on {formatDate(summaryData.signedAt)}
+                    {summaryData.eSignatureUrl?.startsWith('typed:') && (
+                      <>
+                        {' — attested as '}
+                        <em className="not-italic font-medium">
+                          &ldquo;{summaryData.eSignatureUrl.replace(/^typed:/, '')}&rdquo;
+                        </em>
+                      </>
+                    )}
+                  </span>
                 )}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {summaryData.status === 'draft' && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRefresh}
-                disabled={isRefreshing}
-                className="gap-1.5"
-                title="Regenerate summary from pinned notes, diagnoses, labs, and prescriptions"
-              >
-                <RefreshCw className={cn('h-3.5 w-3.5', isRefreshing && 'animate-spin')} />
-                {isRefreshing ? 'Refreshing...' : 'Refresh from Notes'}
-              </Button>
-            )}
+              </div>
+              <div className="flex items-center gap-2">
+                {summaryData.status === 'draft' && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRefresh}
+                    disabled={isRefreshing}
+                    className="gap-1.5"
+                    title="Regenerate summary from pinned notes, diagnoses, labs, and prescriptions"
+                  >
+                    <RefreshCw className={cn('h-3.5 w-3.5', isRefreshing && 'animate-spin')} />
+                    {isRefreshing ? 'Refreshing...' : 'Refresh from Notes'}
+                  </Button>
+                )}
 
-            {summaryData.status === 'draft' && aiStatus?.features.dischargeAi && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleAiGenerate}
-                disabled={aiNarrativeMutation.isPending}
-                className="gap-1.5 border-primary/40 text-primary hover:bg-primary/5"
-                title="Use AI to draft the hospital course, discharge instructions and follow-up from the admission data"
-              >
-                <Sparkles className={cn('h-3.5 w-3.5', aiNarrativeMutation.isPending && 'animate-pulse')} />
-                {aiNarrativeMutation.isPending ? 'Generating...' : 'Generate with AI'}
-              </Button>
-            )}
+                {summaryData.status === 'draft' && aiStatus?.features.dischargeAi && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAiGenerate}
+                    disabled={aiNarrativeMutation.isPending}
+                    className="gap-1.5 border-primary/40 text-primary hover:bg-primary/5"
+                    title="Use AI to draft the hospital course, discharge instructions and follow-up from the admission data"
+                  >
+                    <Sparkles className={cn('h-3.5 w-3.5', aiNarrativeMutation.isPending && 'animate-pulse')} />
+                    {aiNarrativeMutation.isPending ? 'Generating...' : 'Generate with AI'}
+                  </Button>
+                )}
 
-            {!isReadOnly && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSaveDraft}
-                disabled={updateMutation.isPending}
-                className="gap-1.5"
-              >
-                <Save className="h-3.5 w-3.5" />
-                {updateMutation.isPending ? 'Saving...' : 'Save Draft'}
-              </Button>
-            )}
+                {!isReadOnly && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSaveDraft}
+                    disabled={updateMutation.isPending}
+                    className="gap-1.5"
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                    {updateMutation.isPending ? 'Saving...' : 'Save Draft'}
+                  </Button>
+                )}
 
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowPreview(true)}
-              className="gap-1.5"
-              title="Open the full, fully-detailed discharge document — print or download as PDF"
-            >
-              <FileText className="h-3.5 w-3.5" />
-              Full Summary &amp; Print
-            </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowPreview(true)}
+                  className="gap-1.5"
+                  title="Open the full, fully-detailed discharge document — print or download as PDF"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  Full Summary &amp; Print
+                </Button>
 
-            {summaryData.status !== 'draft' && (
-              <Button variant="outline" size="sm" onClick={handleDownloadPdf} className="gap-1.5">
-                <Download className="h-3.5 w-3.5" />
-                PDF
-              </Button>
-            )}
+                {summaryData.status !== 'draft' && (
+                  <Button variant="outline" size="sm" onClick={handleDownloadPdf} className="gap-1.5">
+                    <Download className="h-3.5 w-3.5" />
+                    PDF
+                  </Button>
+                )}
 
-            {summaryData.status === 'draft' && (
-              <Button
-                variant="default"
-                size="sm"
-                onClick={requestSign}
-                disabled={signMutation.isPending}
-                className="gap-1.5"
-              >
-                <PenLine className="h-3.5 w-3.5" />
-                {signMutation.isPending ? 'Signing...' : 'Sign & Finalize'}
-              </Button>
-            )}
+                {summaryData.status === 'draft' && (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={requestSign}
+                    disabled={signMutation.isPending}
+                    className="gap-1.5"
+                  >
+                    <PenLine className="h-3.5 w-3.5" />
+                    {signMutation.isPending ? 'Signing...' : 'Sign & Finalize'}
+                  </Button>
+                )}
 
-            {summaryData.status === 'finalized' && (
-              <Button
-                variant="default"
-                size="sm"
-                onClick={handlePublish}
-                disabled={publishMutation.isPending}
-                className="gap-1.5"
-              >
-                <Send className="h-3.5 w-3.5" />
-                {publishMutation.isPending ? 'Publishing...' : 'Publish'}
-              </Button>
-            )}
-          </div>
-        </div>
+                {summaryData.status === 'finalized' && (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={handlePublish}
+                    disabled={publishMutation.isPending}
+                    className="gap-1.5"
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                    {publishMutation.isPending ? 'Publishing...' : 'Publish'}
+                  </Button>
+                )}
+              </div>
+            </div>
 
           </div>{/* /RIGHT */}
         </div>{/* /split */}

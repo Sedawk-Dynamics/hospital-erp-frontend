@@ -487,13 +487,13 @@ function PartActions({ inline = false, pinned, handlepinned, handlepinnedNUll, s
           <Pin className="h-3 w-3" />
           {pinned ? `Pinned · ${pinned.label}` : 'Pin'}
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-48">
+        <DropdownMenuContent align="start" className="w-48 h-50 overflow-y-auto">
           <div className="px-2 py-1 text-[11px] font-medium text-muted-foreground">Pin to section</div>
           <DropdownMenuSeparator />
           {DISCHARGE_SECTIONS.map((s) => (
             <DropdownMenuItem
               key={s.key}
-              className="text-xs"
+              className="text-xs "
               onClick={() => handlepinned?.(s)}
             >
               {s.label}

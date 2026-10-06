@@ -33,6 +33,56 @@ function Prose({ text }: { text?: string | null }) {
   return <p className="whitespace-pre-wrap">{text.trim()}</p>;
 }
 
+// Parse the AI day-wise hospital course. Any text before the first day header
+// is the overview; each day is a header line `Day <n> | <title> | <type>`
+// followed by that day's summary lines.
+function parseDayBlocks(text: string): {
+  preamble: string;
+  blocks: Array<{ day: string; title: string; type: string; body: string }>;
+} {
+  const blocks: Array<{ day: string; title: string; type: string; body: string }> = [];
+  const preambleLines: string[] = [];
+  let current: { day: string; title: string; type: string; body: string[] } | null = null;
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    const m = /^Day\b\s*([^|]*)\|([^|]*)\|(.*)$/i.exec(line);
+    if (m) {
+      if (current) blocks.push({ ...current, body: current.body.join('\n').trim() });
+      current = { day: `Day ${m[1].trim()}`.replace(/\s+/g, ' ').trim(), title: m[2].trim(), type: m[3].trim(), body: [] };
+    } else if (current) {
+      current.body.push(raw);
+    } else {
+      preambleLines.push(raw);
+    }
+  }
+  if (current) blocks.push({ ...current, body: current.body.join('\n').trim() });
+  return { preamble: preambleLines.join('\n').trim(), blocks };
+}
+
+function HospitalCourse({ text }: { text: string }) {
+  const { preamble, blocks } = parseDayBlocks(text);
+  // No recognisable day headers → fall back to plain prose.
+  if (blocks.length === 0) return <Prose text={text} />;
+  const clean = (v: string) => (v && v !== '-' ? v : '');
+  return (
+    <div className="space-y-2.5">
+      {preamble && <p className="whitespace-pre-wrap">{preamble}</p>}
+      {blocks.map((b, i) => (
+        <div key={i} className="break-inside-avoid">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <span className="text-[11.5px] font-bold" style={{ color: 'var(--brand)' }}>{b.day}</span>
+            {clean(b.title) && <span className="text-[11.5px] font-semibold text-[#1a2332]">· {b.title}</span>}
+            {clean(b.type) && (
+              <span className="text-[10px] font-medium text-[#6b7280]">· {b.type}</span>
+            )}
+          </div>
+          {b.body && <p className="mt-0.5 whitespace-pre-wrap pl-0.5">{b.body}</p>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Table({ head, rows }: { head: string[]; rows: (string | number | null)[][] }) {
   return (
     <div className="overflow-x-auto">
@@ -159,6 +209,49 @@ export const DischargeSummaryDocument = forwardRef<HTMLDivElement, { doc: Discha
           </Section>
         )}
 
+        {/* Chief Complaint — the doctor's pinned/AI section, plus the admission
+            reason from the visit when present. */}
+        {(doc.sections.chiefComplaint?.trim() || doc.admission.chiefComplaint || doc.admission.reason) && (
+          <Section title="Chief Complaint">
+            <Prose
+              text={[doc.sections.chiefComplaint, doc.admission.chiefComplaint, doc.admission.reason]
+                .filter(Boolean)
+                .join('\n')}
+            />
+          </Section>
+        )}
+
+        {/* Examination */}
+        {doc.sections.examination?.trim() && (
+          <Section title="Examination">
+            <Prose text={doc.sections.examination} />
+          </Section>
+        )}
+
+        {/* Vitals */}
+        {(doc.vitals.admission || doc.vitals.discharge) && (
+          <Section title="Vital Signs">
+            <Table
+              head={['At', 'BP', 'Pulse', 'Temp', 'RR', 'SpO₂', 'Weight']}
+              rows={[vitalCells(doc.vitals.admission, 'On admission'), vitalCells(doc.vitals.discharge, 'At discharge')]}
+            />
+          </Section>
+        )}
+
+        {/* Allergies */}
+        {doc.allergies.length > 0 && (
+          <Section title="Allergies">
+            <Table head={['Allergen', 'Reaction']} rows={doc.allergies.map((a) => [a.allergen, a.reaction])} />
+          </Section>
+        )}
+
+        {/* Investigation — the doctor's pinned/AI narrative (labs table is below). */}
+        {doc.sections.investigation?.trim() && (
+          <Section title="Investigation">
+            <Prose text={doc.sections.investigation} />
+          </Section>
+        )}
+
         {/* Diagnoses */}
         <Section title="Diagnosis">
           {doc.sections.diagnosesText && doc.sections.diagnosesText.trim() ? (
@@ -170,27 +263,10 @@ export const DischargeSummaryDocument = forwardRef<HTMLDivElement, { doc: Discha
           )}
         </Section>
 
-        {/* Allergies */}
-        {doc.allergies.length > 0 && (
-          <Section title="Allergies">
-            <Table head={['Allergen', 'Reaction']} rows={doc.allergies.map((a) => [a.allergen, a.reaction])} />
-          </Section>
-        )}
-
-        {/* Presenting complaint */}
-        {(doc.admission.chiefComplaint || doc.admission.reason) && (
-          <Section title="Presenting Complaint / Reason for Admission">
-            <Prose text={[doc.admission.chiefComplaint, doc.admission.reason].filter(Boolean).join('\n')} />
-          </Section>
-        )}
-
-        {/* Vitals */}
-        {(doc.vitals.admission || doc.vitals.discharge) && (
-          <Section title="Vital Signs">
-            <Table
-              head={['At', 'BP', 'Pulse', 'Temp', 'RR', 'SpO₂', 'Weight']}
-              rows={[vitalCells(doc.vitals.admission, 'On admission'), vitalCells(doc.vitals.discharge, 'At discharge')]}
-            />
+        {/* Impression */}
+        {doc.sections.impression?.trim() && (
+          <Section title="Impression">
+            <Prose text={doc.sections.impression} />
           </Section>
         )}
 
@@ -207,13 +283,13 @@ export const DischargeSummaryDocument = forwardRef<HTMLDivElement, { doc: Discha
         {/* Hospital course */}
         {doc.sections.hospitalCourse && (
           <Section title="Hospital Course & Treatment">
-            <Prose text={doc.sections.hospitalCourse} />
+            <HospitalCourse text={doc.sections.hospitalCourse} />
           </Section>
         )}
 
-        {/* Investigations */}
+        {/* Lab Results */}
         {(doc.sections.keyLabs || doc.sections.labResults || doc.imaging.length > 0) && (
-          <Section title="Investigations">
+          <Section title="Lab Results">
             {doc.sections.keyLabs && (
               <>
                 <p className="mb-0.5 text-[11px] font-bold text-[#0f5049]">Significant / Abnormal Labs</p>

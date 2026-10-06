@@ -243,6 +243,10 @@ export interface DischargeNarrativeSuggestions {
     proceduresSummary: string;
     dischargeInstructions: string;
     followUpInstructions: string;
+    chiefComplaint: string;
+    examination: string;
+    investigation: string;
+    impression: string;
   };
   note: string;
 }

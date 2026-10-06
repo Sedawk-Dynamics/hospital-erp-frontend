@@ -1421,6 +1421,10 @@ export interface DischargeSummary {
   dischargeReady?: boolean;
   admissionDate?: string;
   dischargeDate?: string;
+  chiefComplaint?: string;
+  examination?: string;
+  investigation?: string;
+  impression?: string;
   diagnosesSummary?: string;
   proceduresSummary?: string;
   labResultsSummary?: string;
@@ -1509,7 +1513,11 @@ export interface DischargeDocument {
   sections: {
     /** Free text on the header column, incl. "general" pins. */
     headerNotes: string | null;
+    chiefComplaint: string | null;
+    examination: string | null;
+    investigation: string | null;
     diagnosesText: string | null;
+    impression: string | null;
     hospitalCourse: string | null;
     keyLabs: string | null;
     labResults: string | null;
@@ -1537,6 +1545,10 @@ export function useUpdateDischargeSummary() {
   return useMutation({
     mutationFn: async ({ id, ...data }: {
       id: string;
+      chiefComplaint?: string;
+      examination?: string;
+      investigation?: string;
+      impression?: string;
       diagnosesSummary?: string;
       proceduresSummary?: string;
       labResultsSummary?: string;
