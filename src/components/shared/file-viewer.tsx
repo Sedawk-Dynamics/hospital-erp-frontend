@@ -25,7 +25,7 @@
 import { useEffect, useState } from 'react';
 import {
   Download, FileText, FileImage, FileVideo, FileAudio,
-  FileCode, ScanLine, X, Maximize2, FileQuestion,
+  FileCode, ScanLine, X, Maximize2, FileQuestion, Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -240,12 +240,12 @@ function InlineRenderer({ file, url, onOpenFull }: { file: ViewableFile; url: st
   }
   if (isDicom) {
     if (dicomViewer.isLoading) {
-      return <div className="flex h-60 w-full items-center justify-center bg-black text-zinc-300 text-sm">Loading viewer…</div>;
+      return <div className="flex h-[70vh] min-h-125 w-full items-center justify-center gap-2 bg-black text-zinc-300 text-sm"><Loader2 className="size-5 animate-spin" /> Loading viewer…</div>;
     }
     if (!viewerUrl) {
       // no PACS / not archived → keep the click-to-open card as fallback
       return (
-        <button type="button" onClick={onOpenFull} className="flex h-60 w-full flex-col items-center justify-center gap-2 bg-zinc-950 text-zinc-300 hover:bg-zinc-900">
+        <button type="button" onClick={onOpenFull} className="flex h-[70vh] min-h-125 w-full flex-col items-center justify-center gap-2 bg-zinc-950 text-zinc-300 hover:bg-zinc-900">
           <ScanLine className="size-10 text-zinc-400" />
           <span className="text-sm font-medium">DICOM study</span>
           <span className="flex items-center gap-1 text-xs text-zinc-400"><Maximize2 className="size-3.5" /> Open viewer</span>
@@ -256,7 +256,7 @@ function InlineRenderer({ file, url, onOpenFull }: { file: ViewableFile; url: st
       <iframe
         src={viewerUrl}
         title={file.fileName}
-        className="h-60 w-full bg-black"
+        className="h-[70vh] min-h-125 w-full bg-black"
         style={{ border: 0 }}
         allow="fullscreen"
       />
