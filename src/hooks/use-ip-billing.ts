@@ -463,11 +463,20 @@ export interface AdmissionBillDocument {
   generatedAt: string;
 }
 
-export function useAdmissionBillDocument(admissionId: string | null, enabled = true) {
+export function useAdmissionBillDocument(
+  admissionId: string | null,
+  enabled = true,
+  summary = false,
+) {
   return useQuery({
-    queryKey: ['admission-bill-document', admissionId],
+    queryKey: ['admission-bill-document', admissionId, summary],
     queryFn: async () =>
-      (await apiGet<AdmissionBillDocument>(`/billing/admissions/${admissionId}/bill-document`)).data,
+      (
+        await apiGet<AdmissionBillDocument>(
+          `/billing/admissions/${admissionId}/bill-document`,
+          summary ? { params: { summary: true } } : undefined,
+        )
+      ).data,
     enabled: !!admissionId && enabled,
     // The bill must reflect charges posted a moment ago, never a cached copy.
     staleTime: 0,

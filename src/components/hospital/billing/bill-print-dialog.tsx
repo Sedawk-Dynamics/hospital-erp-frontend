@@ -51,8 +51,14 @@ export function BillPrintDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { data: doc, isLoading, error } = useAdmissionBillDocument(admissionId, open);
   const [downloading, setDownloading] = useState(false);
+  // Detailed (every line) vs summarised (category headings + totals only).
+  const [view, setView] = useState<'detailed' | 'summary'>('detailed');
+  const { data: doc, isLoading, error } = useAdmissionBillDocument(
+    admissionId,
+    open,
+    view === 'summary',
+  );
 
   // Size the dialog to the paper it is previewing. The document renders at the
   // template's real page width (595.28pt for A4), so a fixed dialog width either
@@ -96,6 +102,31 @@ export function BillPrintDialog({
         </DialogHeader>
 
         <div className="no-print flex items-center justify-end gap-2 print:hidden">
+          {/* Detailed ⇄ Summarised view switch. */}
+          <div className="mr-auto inline-flex rounded-md border border-border p-0.5">
+            <button
+              type="button"
+              onClick={() => setView('detailed')}
+              className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                view === 'detailed'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Detailed
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('summary')}
+              className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                view === 'summary'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Summarised
+            </button>
+          </div>
           <Button
             variant="outline"
             size="sm"
