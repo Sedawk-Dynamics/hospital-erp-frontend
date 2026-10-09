@@ -1959,7 +1959,7 @@ function PharmacyPOS() {
               <Button
                 variant="outline"
                 className="flex-1"
-                disabled={cart.length === 0}
+                disabled={cart.length === 0 || billGenerated}
                 onClick={handleSaveDraft}
               >
                 Save Draft
@@ -1967,7 +1967,7 @@ function PharmacyPOS() {
             )}
             <Button
               className="flex-1"
-              disabled={!canCreateBill || createSale.isPending || dispenseIp.isPending}
+              disabled={!canCreateBill || createSale.isPending || dispenseIp.isPending || billGenerated}
               onClick={handleCreateBill}
             >
               {isIp
