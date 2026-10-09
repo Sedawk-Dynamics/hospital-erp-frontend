@@ -1,16 +1,5 @@
 'use client';
 
-// Detailed (fullscreen) DICOM view used by clinical surfaces.
-//
-// Routing rule the product wants:
-//   • Preview tile  → in-house DicomRenderer / RadiologyViewer (fast, no PACS)
-//   • Detailed view → Orthanc PACS, rendered by the bundled OHIF viewer
-//
-// This component implements the detailed view. It asks the backend to resolve
-// (and lazily archive, if needed) the attachment into the PACS, then embeds the
-// OHIF viewer over DICOMweb. When no PACS is configured, the file isn't a DICOM
-// study, or resolution fails, it falls back to the in-house RadiologyViewer so
-// the file is always viewable.
 
 import { Loader2, Download, ExternalLink, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';

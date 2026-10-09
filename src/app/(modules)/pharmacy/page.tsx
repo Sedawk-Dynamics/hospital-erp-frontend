@@ -30,7 +30,7 @@ import { NumberInput } from '@/components/ui/number-input';
 import { Button } from '@/components/ui/button';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
-import { apiGet } from '@/lib/api';
+import { apiGet, apiPost } from '@/lib/api';
 import { toast } from 'sonner';
 import { formatDate, formatTime24, toInputDateStr } from '@/lib/date-utils';
 import { calcQuantityFromStrings } from '@/lib/dosage-calc';
@@ -257,6 +257,12 @@ function PharmacyPOS() {
 
   // --- Cart + payment state ---
   const [cart, setCart] = useState<CartItem[]>([]);
+  // Payment is step two: true once the OP bill has been generated, which is what
+  // reveals the tender panel. Reset whenever the cart/patient is cleared.
+  const [billGenerated, setBillGenerated] = useState(false);
+  // The just-generated (unpaid) OP bill — id + balance, used to settle it in the
+  // Pay Bill step via POST /billing/payments.
+  const [generatedBill, setGeneratedBill] = useState<{ id: string; balanceDue: number } | null>(null);
   const [paymentMode, setPaymentMode] = useState<string>('Cash');
   const [amountTendered, setAmountTendered] = useState<string>('');
   // G2: bill-level discount applied on top of any per-item discounts.
@@ -771,8 +777,6 @@ function PharmacyPOS() {
 
   // Bills the whole cart as one invoice, then opens the printable receipt.
   const runSale = async () => {
-    // IP prescription: dispense straight to the patient's hospital IP ledger — no
-    // counter sale, ₹0 collected here. Uses the prescription's own lines (FEFO).
     if (isIp && activePrescriptionId) {
       try {
         await dispenseIp.mutateAsync({
@@ -841,11 +845,6 @@ function PharmacyPOS() {
         }
       }
 
-      // Dispensing less than the doctor prescribed was passing on a passive
-      // grey note beside the line. The pharmacist could bill 1 against a
-      // prescribed 2 without ever saying so — and the patient walks out short
-      // of a course of treatment. Name both numbers and make it an explicit
-      // acknowledgement.
       const short = cart
         .filter((c) => c.rxQuantity != null && baseQtyOf(c) < (c.rxQuantity ?? 0))
         .map((c) => ({
@@ -870,21 +869,6 @@ function PharmacyPOS() {
         if (!proceed) return;
       }
 
-      // Build the tender line(s). Both modes go through payments[] so Insurance
-      // (and any future mode) works uniformly; the backend trims change and
-      // settles the bill. Split mode = one line per tender; single mode = one
-      // line for the chosen method at the tendered (or full) amount.
-      const tenderLines: PharmacyTenderInput[] = splitMode
-        ? tenders
-            .filter((t) => Number(t.amount) > 0)
-            .map((t) => ({ method: PAYMENT_METHOD_MAP[t.method] ?? 'cash', amount: Number(t.amount) }))
-        : (() => {
-            const amt = amountTendered ? Math.min(tenderedNum, payable) : payable;
-            return amt > 0
-              ? [{ method: PAYMENT_METHOD_MAP[paymentMode] ?? 'cash', amount: amt }]
-              : [];
-          })();
-
       const payload: CreatePharmacySaleInput = {
         // Omitted for walk-in — backend bills it to the tenant Walk-in customer.
         patientId: selectedPatient?.id,
@@ -900,21 +884,28 @@ function PharmacyPOS() {
           discountPercent: c.discount || undefined,
           nonReturnable: c.nonReturnable || undefined,
         })),
+        // Generate the bill UNPAID: with no payments, the backend otherwise
+        // falls back to pay-in-full. amountPaid: 0 forces a pending balance so
+        // the tender is collected in the separate Pay Bill step.
+        amountPaid: 0,
       };
       if (billDiscPctNum > 0) payload.billDiscountPercent = billDiscPctNum;
-      if (tenderLines.length) payload.payments = tenderLines;
       const sale = await createSale.mutateAsync(payload);
-      toast.success(`Bill ${sale.bill.billNumber} created`);
+      // Bill is now generated (unpaid) — reveal the payment step and remember the
+      // bill so Pay Bill can settle it.
+      setBillGenerated(true);
+      setGeneratedBill({ id: sale.bill.id, balanceDue: Number(sale.bill.balanceDue) });
       setReceiptSale(sale);
-      setReceiptOpen(true);
-      setCart([]);
-      setAmountTendered('');
+      toast.success(`Bill ${sale.bill.billNumber} created`);
+      /* setReceiptOpen(true);
+ */
+      /* setAmountTendered(''); */
       setBillDiscPct('');
       setSplitMode(false);
       setTenders([{ id: 'tender-1', method: 'Cash', amount: '' }]);
-      setActivePrescriptionId(null);
-      setExternalRx(null);
-      clearPatient();
+      /* setActivePrescriptionId(null); */
+      /* setExternalRx(null); */
+      /* clearPatient(); */
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to create bill';
       toast.error(message);
@@ -933,6 +924,44 @@ function PharmacyPOS() {
     if (!cartHasAllBatches) return toast.error('Please select a batch for each medicine');
 
     await runSale();
+  };
+
+  // Step two (OP): collect payment against the already-generated bill via
+  // POST /billing/payments — it does NOT create another bill.
+  const BILLING_PAYMENT_METHOD_MAP: Record<string, string> = {
+    Cash: 'cash',
+    Card: 'credit_card',
+    UPI: 'upi',
+    'Bank Transfer': 'bank_transfer',
+    Insurance: 'insurance',
+    Advance: 'other',
+  };
+  const handlePayBill = async () => {
+    if (!generatedBill) return toast.error('No bill to pay');
+    // Pay the tendered amount, capped at the balance; blank = full balance.
+    const amount = amountTendered
+      ? Math.min(Number(amountTendered), generatedBill.balanceDue)
+      : generatedBill.balanceDue;
+    if (!(amount > 0)) return toast.error('Enter a valid payment amount');
+    try {
+      await apiPost('/billing/payments', {
+        billId: generatedBill.id,
+        amount,
+        paymentMethod: BILLING_PAYMENT_METHOD_MAP[paymentMode] ?? 'other',
+      });
+      toast.success('Payment recorded');
+      // Reset the counter for the next sale.
+      setBillGenerated(false);
+      setGeneratedBill(null);
+      setAmountTendered('');
+      setReceiptOpen(true);
+      setCart([]);
+      setActivePrescriptionId(null);
+      setExternalRx(null);
+      clearPatient();
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, 'Could not record the payment'));
+    }
   };
 
   const handleSaveDraft = async () => {
@@ -1761,8 +1790,8 @@ function PharmacyPOS() {
             </div>
           )}
 
-          {/* Payment — single mode, or G7 split across multiple tenders */}
-          {!isIp && (
+          {/* Payment — single mode, or G7 split across multiple tenders. */}
+          {false && !isIp && (
           <div>
             <div className="mb-2 flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Payment</p>
@@ -1950,6 +1979,44 @@ function PharmacyPOS() {
                   : 'Generate Bill'}
             </Button>
           </div>
+
+          {/* Payment step — shown only after the OP bill has been generated. */}
+          {billGenerated && !isIp && (
+            <div className="mt-3 space-y-3 rounded-md border border-border p-3">
+              <p className="text-xs text-muted-foreground">Payment</p>
+              <div className="flex flex-wrap gap-2">
+                {paymentModes.map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setPaymentMode(mode)}
+                    className={cn(
+                      'rounded-full border px-3 py-1 text-xs transition-colors',
+                      paymentMode === mode
+                        ? 'border-primary/40 bg-primary/10 text-primary'
+                        : 'border-border text-muted-foreground hover:bg-muted/50',
+                    )}
+                  >
+                    {mode}
+                  </button>
+                ))}
+              </div>
+              <div>
+                <p className="mb-1 text-xs text-muted-foreground">Amount Tendered</p>
+                <Input
+                  type="number"
+                  min={0}
+                  placeholder={`Default: ₹${fmt(payable)} (full)`}
+                  value={amountTendered}
+                  onChange={(e) => setAmountTendered(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+              <Button className="w-full" onClick={handlePayBill}>
+                Pay Bill
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
