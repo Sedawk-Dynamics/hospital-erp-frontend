@@ -77,7 +77,7 @@ export function BillPrintDialog({
     if (!admissionId) return;
     setDownloading(true);
     try {
-      await openAdmissionBillPdf(admissionId);
+      await openAdmissionBillPdf(admissionId, view === 'summary');
     } catch {
       toast.error('Could not generate the bill PDF');
     } finally {

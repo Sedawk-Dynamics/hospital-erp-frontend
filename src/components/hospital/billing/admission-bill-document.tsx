@@ -451,12 +451,31 @@ export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: Admis
                     // so React saw an unkeyed list of group blocks here.
                     <Fragment key={g.category}>
                       <tr style={{ backgroundColor: soft }}>
-                        <td
-                          colSpan={chargeColumns.length}
-                          style={{ ...bodyCellStyle(theme), fontWeight: 700 }}
-                        >
-                          {g.label}
-                        </td>
+                        {/* Summarised bill: a category carries no line detail, so
+                            the amount goes on this heading row and the separate
+                            total row below is dropped. The columns in between get
+                            a dash rather than being left blank. */}
+                        {g.lines.length === 0 ? (
+                          chargeColumns.map(([label, align], i) => (
+                            <td
+                              key={label}
+                              style={{ ...bodyCellStyle(theme), textAlign: align, fontWeight: 700 }}
+                            >
+                              {i === 0
+                                ? g.label
+                                : i === chargeColumns.length - 1
+                                  ? fmtMoney(g.total)
+                                  : '—'}
+                            </td>
+                          ))
+                        ) : (
+                          <td
+                            colSpan={chargeColumns.length}
+                            style={{ ...bodyCellStyle(theme), fontWeight: 700 }}
+                          >
+                            {g.label}
+                          </td>
+                        )}
                       </tr>
                       {g.lines.map((l, i) => (
                         <tr
@@ -524,6 +543,7 @@ export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: Admis
                           <td style={{ ...bodyCellStyle(theme), textAlign: 'right' }}>{fmtMoney(l.totalAmount)}</td>
                         </tr>
                       ))}
+                      {g.lines.length > 0 && (
                       <tr>
                         <td
                           colSpan={showTax ? 4 : chargeColumns.length - 1}
@@ -560,6 +580,7 @@ export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: Admis
                           {fmtMoney(g.total)}
                         </td>
                       </tr>
+                      )}
                     </Fragment>
                   ))}
                 </tbody>
