@@ -109,6 +109,52 @@ export function useUploadImagingAttachment() {
   });
 }
 
+export interface UploadDicomFolderInput {
+  requestId: string;
+  files: File[];
+  category?: ImagingAttachmentCategory;
+  imagingResultId?: string;
+  description?: string;
+}
+
+// Upload a whole DICOM study (a folder of slice files) in one request. All
+// slices go to Orthanc as one study; the backend returns the created rows.
+export function useUploadDicomFolder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: UploadDicomFolderInput) => {
+      const formData = new FormData();
+      // Field name must match the backend's multer array: `files`.
+      input.files.forEach((f) => formData.append('files', f));
+      if (input.category) formData.append('category', input.category);
+      if (input.imagingResultId) formData.append('imagingResultId', input.imagingResultId);
+      if (input.description) formData.append('description', input.description);
+
+      const { data } = await apiClient.post(
+        `/imaging/requests/${input.requestId}/attachments/dicom-folder`,
+        formData,
+        {
+          // Axios infers the multipart boundary — explicit Content-Type breaks it.
+          headers: { 'Content-Type': undefined as any },
+        },
+      );
+      return (data as { data: unknown }).data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: imagingAttachmentKeys.byRequest(variables.requestId),
+      });
+      if (variables.imagingResultId) {
+        queryClient.invalidateQueries({
+          queryKey: imagingAttachmentKeys.byResult(variables.imagingResultId),
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: imagingKeys.requests.all });
+      queryClient.invalidateQueries({ queryKey: imagingKeys.results.all });
+    },
+  });
+}
+
 export function useUpdateImagingAttachment() {
   const queryClient = useQueryClient();
   return useMutation({

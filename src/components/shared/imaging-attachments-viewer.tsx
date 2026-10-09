@@ -20,6 +20,7 @@ import {
   type ImagingAttachmentCategory,
   formatFileSize,
   useUploadImagingAttachment,
+  useUploadDicomFolder,
   useDeleteImagingAttachment,
   useUpdateImagingAttachment,
 } from '@/hooks/use-imaging-attachments';
@@ -76,10 +77,36 @@ export function ImagingAttachmentsViewer({
   });
   const [previewing, setPreviewing] = useState<ImagingAttachment | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // DICOM studies arrive as a FOLDER of slice files — a separate directory input
+  // backs the "Upload Folder" button shown only for the DICOM category.
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   const upload = useUploadImagingAttachment();
+  const uploadFolder = useUploadDicomFolder();
   const remove = useDeleteImagingAttachment();
   const update = useUpdateImagingAttachment();
+
+  // Upload a whole DICOM study — the browser already expanded the folder into
+  // its individual slice files, so we just send them all as one request.
+  const handleFolder = async (fileList: FileList) => {
+    if (!requestId) return;
+    const files = Array.from(fileList);
+    if (files.length === 0) return;
+    try {
+      await uploadFolder.mutateAsync({
+        requestId,
+        files,
+        category: 'dicom',
+        imagingResultId: resultId,
+        description: description || undefined,
+      });
+      toast.success(`Uploaded ${files.length} DICOM file(s)`);
+      setDescription('');
+      if (folderInputRef.current) folderInputRef.current.value = '';
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Folder upload failed');
+    }
+  };
 
   const handleFile = async (file: File) => {
     if (!requestId) return;
@@ -176,6 +203,33 @@ export function ImagingAttachmentsViewer({
               <Upload className="size-3.5" />
               {upload.isPending ? 'Uploading…' : 'Upload File'}
             </Button>
+            {/* DICOM studies are a folder of slices — offer a folder upload only
+                for the DICOM category. UI only for now. */}
+            {category === 'dicom' && (
+              <>
+                <input
+                  ref={folderInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  accept=".dcm,.dicom"
+                  {...({ webkitdirectory: '', directory: '' } as Record<string, string>)}
+                  onChange={(e) => {
+                    if (e.target.files) handleFolder(e.target.files);
+                  }}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => folderInputRef.current?.click()}
+                  disabled={uploadFolder.isPending}
+                  className="gap-1.5"
+                >
+                  <Upload className="size-3.5" />
+                  {uploadFolder.isPending ? 'Uploading…' : 'Upload Folder'}
+                </Button>
+              </>
+            )}
             <p className="text-[10px] text-muted-foreground">
               PDF, JPG, PNG, DICOM (.dcm), MP4, WebM — max 100 MB
             </p>
