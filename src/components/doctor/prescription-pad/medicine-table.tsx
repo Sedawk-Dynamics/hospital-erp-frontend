@@ -5,6 +5,7 @@ import { Search, Pill, AlertTriangle, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { cn } from '@/lib/utils';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useFormularySearch, useAllergyCheck, type FormularyDrug } from '@/hooks/use-doctor';
@@ -279,9 +280,14 @@ function MedCard({ index, med, patientId, onUpdate, onUpdateMany, onRemove }: {
             </select>
           </Field>
           <Field label="Route">
-            <select className={selectCls} value={med.route || 'oral'} onChange={(e) => onUpdate(index, 'route', e.target.value)}>
-              {ROUTE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-            </select>
+            <SearchableSelect
+              size="sm"
+              options={[...ROUTE_OPTIONS]}
+              value={med.route || 'oral'}
+              onChange={(v) => onUpdate(index, 'route', v ?? 'oral')}
+              placeholder="Route"
+              searchPlaceholder="Search route…"
+            />
           </Field>
           <Field label="Duration">
             <div className="flex items-center gap-1">

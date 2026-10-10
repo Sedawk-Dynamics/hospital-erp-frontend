@@ -50,12 +50,28 @@ export type MealRelation = (typeof MEAL_OPTIONS)[number];
 export const DURATION_UNITS = ['days', 'weeks', 'months'] as const;
 
 export const ROUTE_OPTIONS = [
-  { value: 'oral', label: 'Oral' },
-  { value: 'iv', label: 'IV' },
-  { value: 'im', label: 'IM' },
-  { value: 'topical', label: 'Topical' },
-  { value: 'sublingual', label: 'Sublingual' },
-  { value: 'inhalation', label: 'Inhalation' },
+  { value: 'oral', label: 'Oral (PO)' },
+  { value: 'intravenous', label: 'Intravenous (IV)' },
+  { value: 'intramuscular', label: 'Intramuscular (IM)' },
+  { value: 'topical', label: 'Topical (TOP)' },
+  { value: 'sublingual', label: 'Sublingual (SL)' },
+  { value: 'inhalation', label: 'Inhalation (INH)' },
+  { value: 'buccal', label: 'Buccal' },
+  { value: 'rectal', label: 'Rectal (PR)' },
+  { value: 'vaginal', label: 'Vaginal (PV)' },
+  { value: 'ophthalmic', label: 'Ophthalmic (OPH)' },
+  { value: 'otic', label: 'Otic (OTIC)' },
+  { value: 'intranasal', label: 'Intranasal (IN)' },
+  { value: 'intradermal', label: 'Intradermal (ID)' },
+  { value: 'intrathecal', label: 'Intrathecal (IT)' },
+  { value: 'epidural', label: 'Epidural (EP)' },
+  { value: 'intra_articular', label: 'Intra-articular (IA)' },
+  { value: 'intraperitoneal', label: 'Intraperitoneal (IPER)' },
+  { value: 'enteral_tube', label: 'Enteral tube (NG/PEG)' },
+  { value: 'transdermal', label: 'Transdermal (TD)' },
+  { value: 'intravenous_infusion', label: 'Intravenous infusion' },
+  { value: 'intraosseous', label: 'Intraosseous (IO)' },
+  { value: 'intravitreal', label: 'Intravitreal' },
   { value: 'other', label: 'Other' },
 ] as const;
 
@@ -305,21 +321,16 @@ export function parseFrequencyToSchedule(frequency: string) {
   return result;
 }
 
-/** Build duration string like "5 days" */
 export function encodeDuration(value: string, unit: string): string {
   return `${value} ${unit}`;
 }
 
-/** Get dose form label for badge (e.g. "tablet" → "Tab") */
 export function getDosageFormBadge(dosageForm?: string): string {
   if (!dosageForm) return '';
   return DOSAGE_FORM_LABELS[dosageForm.toLowerCase()] || dosageForm;
 }
 
-/**
- * Short per-intake unit label for the Dose field, derived from the dosage form.
- * Tablets/capsules count in pieces; liquids in ml; etc. Falls back to "unit".
- */
+
 const DOSE_UNIT_LABELS: Record<string, string> = {
   tablet: 'tab',
   capsule: 'cap',
@@ -338,8 +349,6 @@ export function getDoseUnitLabel(dosageForm?: string): string {
   if (!dosageForm) return 'unit';
   return DOSE_UNIT_LABELS[dosageForm.toLowerCase()] || 'unit';
 }
-
-// ── Default values ─────────────────────────────────────────
 
 export const defaultMedicine: MedicineFormData = {
   drugId: '',
