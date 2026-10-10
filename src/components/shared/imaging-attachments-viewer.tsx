@@ -187,7 +187,7 @@ export function ImagingAttachmentsViewer({
               ref={fileInputRef}
               type="file"
               className="hidden"
-              accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp,.tif,.tiff,.dcm,.dicom,.mp4,.webm,.mov,.doc,.docx"
+              accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp,.tif,.tiff,.dcm,.dicom,.zip,.mp4,.webm,.mov,.doc,.docx"
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (f) handleFile(f);
