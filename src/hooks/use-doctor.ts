@@ -65,6 +65,9 @@ export interface ProgressNote {
   noteType?: string;
   noteTitle?: string | null;
   hospitalDay?: number | null;
+  // Doctor-entered hospital day + date/time (independent of createdAt).
+  noteDay?: number | null;
+  noteAt?: string | null;
   content?: string;
   impressions?: string | null;
   discussions?: string | null;
@@ -617,6 +620,10 @@ export interface CreateProgressNoteInput {
   // @mentioned doctors (User ids) — they get a notification linking to the patient.
   mentionedUserIds?: string[];
   noteTitle?:string;
+  /** Hospital day this note is for (Day 1 = admission day). */
+  noteDay?: number | null;
+  /** Doctor-entered date + time for the note ("YYYY-MM-DDTHH:MM", local). */
+  noteAt?: string | null;
 }
 
 export interface UpdateProgressNoteInput extends Partial<CreateProgressNoteInput> {

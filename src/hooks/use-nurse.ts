@@ -521,6 +521,11 @@ export function useRecordVitals() {
       heightCm?: number;
       bloodSugar?: number;
       notes?: string;
+      // Optional link to the progress note this reading was recorded with.
+      progressNoteId?: string;
+      // Doctor flags when recording vitals with a progress note.
+      pinnedDischargeSection?: string | null;
+      showToPatient?: boolean;
     }) => {
       const res = await apiPost<Vital>('/clinical/vitals', data);
       return res;

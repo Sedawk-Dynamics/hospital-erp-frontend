@@ -49,6 +49,7 @@ import {
   Wind,
   X,
   FolderOpen,
+  ListOrdered,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -105,6 +106,7 @@ import { LabOrderDialog } from '@/components/doctor/lab-order-dialog';
 import { ImagingRequestDialog } from '@/components/doctor/imaging-request-dialog';
 import { IpLedgerPanel, IpActivityLog } from '@/components/shared/ip-ledger-panel';
 import { IpProgressNoteComposer } from '@/components/doctor/ip-progress-note-composer';
+import { ProgressionView } from '@/components/doctor/progress-notes/progression-view';
 import { useAuthStore } from '@/stores/auth-store';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
@@ -923,16 +925,14 @@ const noteSnippet = (p: ParsedNote): string =>
   p.fallback ?? p.sections.map((s) => `${s.key}: ${s.text}`).join('   ·   ');
 
 function ProgressNotesPanel({ admissionId, visitId, patientId, role, admissionDate }: { admissionId: string; visitId?: string; patientId: string; role: WorkspaceRole; admissionDate?: string }) {
-  // An admission reuses the same Visit as the pre-admission OP encounter, so
-  // fetching by that visitId surfaces BOTH the OP notes recorded before the IP
-  // request and the IP round notes — the OP case details are no longer hidden.
-  // Fall back to admissionId for older rows without a resolvable visit.
   const { data, isLoading, refetch } = useProgressNotes(
     visitId ? { visitId, limit: 100 } : { admissionId, limit: 100 },
   );
   // IP running log — this admission's notes, newest first.
   const ipNotes = useMemo<ProgressNote[]>(() => data?.data ?? [], [data]);
   const [composerOpen, setComposerOpen] = useState(false);
+  // How the notes are laid out: a flat chronological list, or grouped by day.
+  const [view, setView] = useState<'progression' | 'byDay'>('progression');
   const [openNote, setOpenNote] = useState<ProgressNote | null>(null);
 
   // ── Filters (scoped to this panel only) ─────────────────────
@@ -1023,10 +1023,33 @@ function ProgressNotesPanel({ admissionId, visitId, patientId, role, admissionDa
           </h2>
           <p className="text-[11px] text-muted-foreground">Running clinical log for the whole admission — a note per visit / round.</p>
         </div>
-        {role === 'doctor' && (
-          <Button size="sm" variant="outline" className="h-7 shrink-0 gap-1 text-xs" onClick={() => setComposerOpen(true)}>
-            <Plus className="h-3 w-3" /> Add visit note
-          </Button>
+        {ipNotes.length > 0 && (
+          <div className="flex shrink-0 items-center gap-1.5">
+            {/* View toggle: flat chronological list vs grouped by day. */}
+            <div className="flex items-center gap-0.5 rounded-lg border border-outline-variant/40 bg-surface-container-low/40 p-0.5">
+              <Button
+                size="sm"
+                variant={view === 'progression' ? 'default' : 'ghost'}
+                className="h-6 gap-1 px-2 text-[11px]"
+                onClick={() => setView('progression')}
+              >
+                <ListOrdered className="h-3 w-3" /> Progression view
+              </Button>
+              <Button
+                size="sm"
+                variant={view === 'byDay' ? 'default' : 'ghost'}
+                className="h-6 gap-1 px-2 text-[11px]"
+                onClick={() => setView('byDay')}
+              >
+                <CalendarDays className="h-3 w-3" /> Clubbed by day
+              </Button>
+            </div>
+            {role === 'doctor' && (
+              <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setComposerOpen(true)}>
+                <Plus className="h-3 w-3" /> Add visit note
+              </Button>
+            )}
+          </div>
         )}
       </div>
 
@@ -1122,6 +1145,8 @@ function ProgressNotesPanel({ admissionId, visitId, patientId, role, admissionDa
             <X className="h-3 w-3" /> Clear filters
           </Button>
         </div>
+      ) : view === 'progression' ? (
+        <ProgressionView notes={filtered} />
       ) : (
         <div className="space-y-2">
           {groupedDays.map((g) => {
