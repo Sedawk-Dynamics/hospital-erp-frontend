@@ -1,8 +1,14 @@
 'use client';
+import { useMemo, useState } from 'react';
 import { Clock, User } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { cn } from '@/lib/utils';
 import type { ProgressNote } from '@/hooks/use-doctor';
+
+type SoapKey = (typeof SOAP_PARTS)[number]['key'];
+type SoapFilter = 'all' | SoapKey;
 
 const SOAP_PARTS = [
   { key: 'subjective', label: 'S', hint: 'Subjective' },
@@ -31,17 +37,71 @@ function formatDateTime(value?: string | null): string {
 }
 
 export function ProgressionView({ notes }: { notes: ProgressNote[] }) {
-  const ordered = [...notes].sort(
-    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  const [dayFilter, setDayFilter] = useState<string>('all');
+  const [soapFilter, setSoapFilter] = useState<SoapFilter>('all');
+
+  const ordered = useMemo(
+    () => [...notes].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
+    [notes],
   );
+
+  const dayOptions = useMemo(() => {
+    const seen = new Set<number>();
+    for (const n of notes) {
+      const d = n.noteDay ?? n.hospitalDay ?? null;
+      if (d != null) seen.add(d);
+    }
+    return Array.from(seen)
+      .sort((a, b) => a - b)
+      .map((d) => ({ value: String(d), label: `Day ${d}` }));
+  }, [notes]);
+
+  const visible = dayFilter === 'all'
+    ? ordered
+    : ordered.filter((n) => String(n.noteDay ?? n.hospitalDay ?? '') === dayFilter);
+
+  const shownParts = soapFilter === 'all' ? SOAP_PARTS : SOAP_PARTS.filter((p) => p.key === soapFilter);
+
   return (
-    <div className="space-y-2">
-      {ordered.map((n) => {
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-outline-variant/40 bg-surface-container-low/40 p-2">
+        <div className="w-40">
+          <SearchableSelect
+            size="sm"
+            options={[{ value: 'all', label: 'All days' }, ...dayOptions]}
+            value={dayFilter}
+            onChange={(v) => setDayFilter(v ?? 'all')}
+            placeholder="All days"
+            searchPlaceholder="Search day…"
+          />
+        </div>
+        <div className="flex items-center gap-0.5 rounded-lg border border-outline-variant/40 p-0.5">
+          {([
+            { key: 'all', label: 'ALL 4 Categories' },
+            { key: 'subjective', label: 'Subjective (S)' },
+            { key: 'objective', label: 'Objective (O)' },
+            { key: 'assessment', label: 'Assessment (A)' },
+            { key: 'plan', label: 'Plan (P)' },
+          ] as const).map((o) => (
+            <Button
+              key={o.key}
+              size="sm"
+              type="button"
+              variant={soapFilter === o.key ? 'default' : 'ghost'}
+              className="h-6 px-2 text-[11px] font-semibold"
+              onClick={() => setSoapFilter(o.key)}
+            >
+              {o.label}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      {visible.map((n) => {
         const day = n.noteDay ?? n.hospitalDay ?? null;
         const when = formatDateTime(n.noteAt ?? n.createdAt);
         return (
           <div key={n.id} className="overflow-hidden rounded-lg border border-outline-variant/40 bg-card">
-            {/* Heading bar — tinted so each note reads as a distinct block. */}
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-outline-variant/40 bg-primary px-3 py-2">
               {day != null && (
                 <span className="rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-bold text-white">
@@ -64,8 +124,13 @@ export function ProgressionView({ notes }: { notes: ProgressNote[] }) {
               )}
             </div>
 
-            <div className="grid gap-2 p-3 sm:grid-cols-2 xl:grid-cols-4">
-              {SOAP_PARTS.map((p) => {
+            <div
+              className={cn(
+                'grid gap-2 p-3',
+                shownParts.length === 1 ? 'grid-cols-1' : 'sm:grid-cols-2 xl:grid-cols-4',
+              )}
+            >
+              {shownParts.map((p) => {
                 const text = n[p.key]?.free?.trim();
                 return (
                   <div key={p.key} className="rounded-md border border-outline-variant/30 bg-surface-container-low/40 p-2">

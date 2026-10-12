@@ -107,6 +107,7 @@ import { ImagingRequestDialog } from '@/components/doctor/imaging-request-dialog
 import { IpLedgerPanel, IpActivityLog } from '@/components/shared/ip-ledger-panel';
 import { IpProgressNoteComposer } from '@/components/doctor/ip-progress-note-composer';
 import { ProgressionView } from '@/components/doctor/progress-notes/progression-view';
+import { ClubbedByDayView } from '@/components/doctor/progress-notes/clubbed-by-day-view';
 import { useAuthStore } from '@/stores/auth-store';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
@@ -1148,74 +1149,7 @@ function ProgressNotesPanel({ admissionId, visitId, patientId, role, admissionDa
       ) : view === 'progression' ? (
         <ProgressionView notes={filtered} />
       ) : (
-        <div className="space-y-2">
-          {groupedDays.map((g) => {
-            const open = isDayOpen(g.key);
-            return (
-              <div key={g.key} className="overflow-hidden rounded-lg border border-outline-variant/40">
-                {/* Day header — click to expand/collapse the notes under it */}
-                <button
-                  type="button"
-                  onClick={() => toggleDay(g.key)}
-                  className="flex w-full items-center justify-between gap-2 bg-surface-container-low/60 px-3 py-2 text-left transition-colors hover:bg-surface-container-high"
-                >
-                  <span className="flex items-center gap-2">
-                    <CalendarDays className="h-3.5 w-3.5 text-primary" />
-                    <span className="text-xs font-bold text-foreground">
-                      {g.dayNumber != null ? `Day ${g.dayNumber}` : formatDate(g.date)}
-                    </span>
-                    {g.dayNumber != null && (
-                      <span className="text-[10px] text-muted-foreground">{formatDate(g.date)}</span>
-                    )}
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-                      {g.notes.length} note{g.notes.length !== 1 ? 's' : ''}
-                    </span>
-                    <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', open && 'rotate-180')} />
-                  </span>
-                </button>
-
-                {open && (
-                  <ul className="space-y-2 p-2">
-                    {g.notes.map((n) => {
-                      const parsed = parseProgressNote(n.content ?? '');
-                      return (
-                        <li key={n.id}>
-                          <button
-                            type="button"
-                            onClick={() => setOpenNote(n)}
-                            className="group w-full rounded-md border bg-card px-3 py-2 text-left text-xs transition-colors hover:border-primary/40 hover:bg-surface-container-high"
-                          >
-                            <div className="mb-1 flex items-center justify-between gap-2">
-                              <span className="flex items-center gap-1.5 font-medium text-foreground">
-                                {drLabel(n)}
-                                {parsed.progress && (
-                                  <span className={cn('rounded-full px-2 py-0.5 text-[9px] font-semibold', parsed.tone)}>{parsed.progress}</span>
-                                )}
-                                {n.status === 'finalized' && (
-                                  <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">Signed</Badge>
-                                )}
-                              </span>
-                              <span className="flex items-center gap-1 text-[10px] text-muted-foreground shrink-0">
-                                <Clock className="h-3 w-3" />
-                                {formatTime(n.createdAt)}
-                                <ChevronRight className="h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-100" />
-                              </span>
-                            </div>
-                            <p className="line-clamp-2 text-muted-foreground">
-                              {noteSnippet(parsed) || '—'}
-                            </p>
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <ClubbedByDayView notes={filtered} />
       )}
 
       <ProgressNoteDetailDialog note={openNote} onClose={() => setOpenNote(null)} />
