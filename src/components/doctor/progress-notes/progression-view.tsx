@@ -5,19 +5,20 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { cn } from '@/lib/utils';
-import type { ProgressNote } from '@/hooks/use-doctor';
+import type { ProgressNote, Vital } from '@/hooks/use-doctor';
+import { NoteVitals } from './note-vitals';
 
 type SoapKey = (typeof SOAP_PARTS)[number]['key'];
 type SoapFilter = 'all' | SoapKey;
 
-const SOAP_PARTS = [
+export const SOAP_PARTS = [
   { key: 'subjective', label: 'S', hint: 'Subjective' },
   { key: 'objective', label: 'O', hint: 'Objective' },
   { key: 'assessment', label: 'A', hint: 'Assessment' },
   { key: 'plan', label: 'P', hint: 'Plan' },
 ] as const;
 
-function doctorName(n: ProgressNote): string {
+export function doctorName(n: ProgressNote): string {
   const u = n.doctor?.user;
   const full = `${u?.firstName ?? ''} ${u?.lastName ?? ''}`.trim();
   return full ? `Dr. ${full}` : 'Doctor';
@@ -36,7 +37,13 @@ function formatDateTime(value?: string | null): string {
   });
 }
 
-export function ProgressionView({ notes }: { notes: ProgressNote[] }) {
+export function ProgressionView({
+  notes,
+  vitalsByNote,
+}: {
+  notes: ProgressNote[];
+  vitalsByNote?: Map<string, Vital>;
+}) {
   const [dayFilter, setDayFilter] = useState<string>('all');
   const [soapFilter, setSoapFilter] = useState<SoapFilter>('all');
 
@@ -64,40 +71,56 @@ export function ProgressionView({ notes }: { notes: ProgressNote[] }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-outline-variant/40 bg-surface-container-low/40 p-2">
-        <div className="w-40">
-          <SearchableSelect
-            size="sm"
-            options={[{ value: 'all', label: 'All days' }, ...dayOptions]}
-            value={dayFilter}
-            onChange={(v) => setDayFilter(v ?? 'all')}
-            placeholder="All days"
-            searchPlaceholder="Search day…"
-          />
-        </div>
-        <div className="flex items-center gap-0.5 rounded-lg border border-outline-variant/40 p-0.5">
-          {([
-            { key: 'all', label: 'ALL 4 Categories' },
-            { key: 'subjective', label: 'Subjective (S)' },
-            { key: 'objective', label: 'Objective (O)' },
-            { key: 'assessment', label: 'Assessment (A)' },
-            { key: 'plan', label: 'Plan (P)' },
-          ] as const).map((o) => (
-            <Button
-              key={o.key}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-outline-variant/40 bg-surface-container-low/40 p-2">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Day</span>
+          <div className="w-36">
+            <SearchableSelect
               size="sm"
-              type="button"
-              variant={soapFilter === o.key ? 'default' : 'ghost'}
-              className="h-6 px-2 text-[11px] font-semibold"
-              onClick={() => setSoapFilter(o.key)}
-            >
-              {o.label}
-            </Button>
-          ))}
+              options={[{ value: 'all', label: 'All days' }, ...dayOptions]}
+              value={dayFilter}
+              onChange={(v) => setDayFilter(v ?? 'all')}
+              placeholder="All days"
+              searchPlaceholder="Search day…"
+            />
+          </div>
         </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Section</span>
+          <div className="flex items-center gap-0.5 rounded-lg border border-outline-variant/40 p-0.5">
+            {([
+              { key: 'all', label: 'All 4 Categories' },
+              { key: 'subjective', label: 'Subjective (S)' },
+              { key: 'objective', label: 'Objective (O)' },
+              { key: 'assessment', label: 'Assessment (A)' },
+              { key: 'plan', label: 'Plan (P)' },
+            ] as const).map((o) => (
+              <Button
+                key={o.key}
+                size="sm"
+                type="button"
+                variant={soapFilter === o.key ? 'default' : 'ghost'}
+                className="h-6 px-2 text-[11px] font-semibold"
+                onClick={() => setSoapFilter(o.key)}
+              >
+                {o.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+        <span className="ml-auto text-[10px] text-muted-foreground">
+          {visible.length} note{visible.length !== 1 ? 's' : ''}
+        </span>
       </div>
 
-      {visible.map((n) => {
+      {visible.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-outline-variant/50 py-6 text-center">
+          <p className="text-xs text-muted-foreground">
+            No notes for {dayFilter === 'all' ? 'this admission' : `Day ${dayFilter}`}.
+          </p>
+        </div>
+      ) : (
+        visible.map((n) => {
         const day = n.noteDay ?? n.hospitalDay ?? null;
         const when = formatDateTime(n.noteAt ?? n.createdAt);
         return (
@@ -138,20 +161,24 @@ export function ProgressionView({ notes }: { notes: ProgressNote[] }) {
                       <span className="flex h-4 w-4 items-center justify-center rounded bg-primary/15 text-[9px] font-bold text-primary">
                         {p.label}
                       </span>
-                      <span className="text-xs font-bold  tracking-wide text-foreground">
+                      <span className="text-xs font-bold tracking-wide text-foreground">
                         {p.hint}
                       </span>
                     </div>
                     <p className={cn('whitespace-pre-wrap text-xs', text ? 'text-foreground' : 'text-muted-foreground')}>
                       {text || '—'}
                     </p>
+                    {p.key === 'objective' && vitalsByNote?.get(n.id) && (
+                      <NoteVitals vital={vitalsByNote.get(n.id)!} />
+                    )}
                   </div>
                 );
               })}
             </div>
           </div>
         );
-      })}
+        })
+      )}
     </div>
   );
 }

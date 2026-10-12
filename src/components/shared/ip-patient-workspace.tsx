@@ -99,7 +99,7 @@ import {
   buildNdpsPatientDose,
 } from '@/components/emar/ndps-dose-fields';
 import { PrnDoseHistoryCard, latestAdministeredPrnByItem } from '@/components/emar/prn-dose-history';
-import { useProgressNotes, useLabOrders, useImagingRequests, usePatientDetail, type ProgressNote } from '@/hooks/use-doctor';
+import { useProgressNotes, useLabOrders, useImagingRequests, usePatientDetail, usePatientVitals as usePatientVitalsForNotes, type ProgressNote, type Vital as DoctorVital } from '@/hooks/use-doctor';
 import { LabOrderDetailDialog } from '@/components/shared/lab-order-detail-dialog';
 import { IpPrescriptionDialog } from '@/components/doctor/ip-prescription-dialog';
 import { LabOrderDialog } from '@/components/doctor/lab-order-dialog';
@@ -931,6 +931,16 @@ function ProgressNotesPanel({ admissionId, visitId, patientId, role, admissionDa
   );
   // IP running log — this admission's notes, newest first.
   const ipNotes = useMemo<ProgressNote[]>(() => data?.data ?? [], [data]);
+  // Vitals recorded alongside notes — matched to their note via progressNoteId
+  // so each note can surface its reading in the Objective section.
+  const { data: patientVitals } = usePatientVitalsForNotes(patientId);
+  const vitalsByNote = useMemo(() => {
+    const map = new Map<string, DoctorVital>();
+    for (const v of patientVitals ?? []) {
+      if (v.progressNoteId) map.set(v.progressNoteId, v);
+    }
+    return map;
+  }, [patientVitals]);
   const [composerOpen, setComposerOpen] = useState(false);
   // How the notes are laid out: a flat chronological list, or grouped by day.
   const [view, setView] = useState<'progression' | 'byDay'>('progression');
@@ -1147,9 +1157,9 @@ function ProgressNotesPanel({ admissionId, visitId, patientId, role, admissionDa
           </Button>
         </div>
       ) : view === 'progression' ? (
-        <ProgressionView notes={filtered} />
+        <ProgressionView notes={filtered} vitalsByNote={vitalsByNote} />
       ) : (
-        <ClubbedByDayView notes={filtered} />
+        <ClubbedByDayView notes={filtered} vitalsByNote={vitalsByNote} />
       )}
 
       <ProgressNoteDetailDialog note={openNote} onClose={() => setOpenNote(null)} />

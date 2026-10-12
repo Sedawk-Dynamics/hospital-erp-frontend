@@ -3,8 +3,9 @@
 import { CalendarDays, Clock, User } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import type { ProgressNote } from '@/hooks/use-doctor';
-import { doctorName,SOAP_PARTS } from './progress-note-card';
+import type { ProgressNote, Vital } from '@/hooks/use-doctor';
+import { NoteVitals } from './note-vitals';
+import { SOAP_PARTS,doctorName } from './progression-view';
 
 function noteDate(n: ProgressNote): Date {
   return new Date(n.noteAt ?? n.createdAt);
@@ -52,8 +53,21 @@ function groupByDay(notes: ProgressNote[]): DayGroup[] {
   return ordered;
 }
 
-export function ClubbedByDayView({ notes }: { notes: ProgressNote[] }) {
+export function ClubbedByDayView({
+  notes,
+  vitalsByNote,
+}: {
+  notes: ProgressNote[];
+  vitalsByNote?: Map<string, Vital>;
+}) {
   const days = groupByDay(notes);
+  if (days.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-outline-variant/50 py-6 text-center">
+        <p className="text-xs text-muted-foreground">No progress notes to group yet.</p>
+      </div>
+    );
+  }
   return (
     <div className="space-y-3">
       {days.map((g) => (
@@ -110,6 +124,9 @@ export function ClubbedByDayView({ notes }: { notes: ProgressNote[] }) {
                         <p className={cn('whitespace-pre-wrap text-xs', text ? 'text-foreground' : 'text-muted-foreground')}>
                           {text || '—'}
                         </p>
+                        {p.key === 'objective' && vitalsByNote?.get(n.id) && (
+                          <NoteVitals vital={vitalsByNote.get(n.id)!} />
+                        )}
                       </div>
                     );
                   })}

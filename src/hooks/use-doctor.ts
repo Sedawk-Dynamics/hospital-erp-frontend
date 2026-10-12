@@ -167,6 +167,9 @@ export interface Vital {
   bloodSugar?: number;
   notes?: string;
   recordedBy?: string;
+  // Set when the reading was captured alongside a progress note.
+  progressNoteId?: string | null;
+  recordedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
