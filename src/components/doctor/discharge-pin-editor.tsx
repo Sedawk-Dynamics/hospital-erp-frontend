@@ -25,6 +25,7 @@ export const DISCHARGE_SECTIONS: Array<{
   { key: 'follow_up', label: 'Follow-up' },
   { key: 'advice', label: 'Advice' },
   { key: 'general', label: 'General' },
+  { key:'vitals',label:'Vitals'},
 ];
 
 export interface DischargePinEditorProps {

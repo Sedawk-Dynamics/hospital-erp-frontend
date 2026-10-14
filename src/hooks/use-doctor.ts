@@ -46,7 +46,8 @@ export interface ProgressNotePinEntry {
     | 'chief_complaint'
     | 'examination'
     | 'investigation'
-    | 'impression';
+    | 'impression'
+    | 'vitals';
   content: string;
   createdAt: string;
 }
@@ -1438,6 +1439,8 @@ export interface DischargeSummary {
   diagnosesSummary?: string;
   proceduresSummary?: string;
   labResultsSummary?: string;
+  vitalsSummary?: string;
+  radiologySummary?: string;
   medicationReconciliation?: string;
   dischargeInstructions?: string;
   followUpDate?: string;
@@ -1562,6 +1565,8 @@ export function useUpdateDischargeSummary() {
       diagnosesSummary?: string;
       proceduresSummary?: string;
       labResultsSummary?: string;
+      vitalsSummary?: string;
+      radiologySummary?: string;
       medicationReconciliation?: string;
       dischargeInstructions?: string;
       followUpDate?: string;

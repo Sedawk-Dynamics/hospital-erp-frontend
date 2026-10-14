@@ -287,20 +287,12 @@ export const DischargeSummaryDocument = forwardRef<HTMLDivElement, { doc: Discha
           </Section>
         )}
 
-        {/* Lab Results */}
-        {(doc.sections.keyLabs || doc.sections.labResults || doc.imaging.length > 0) && (
+        {/* Lab Results — the grouped summary already lists each test's count and
+            its abnormal values, so no separate "Significant / Abnormal" block. */}
+        {(doc.sections.labResults || doc.imaging.length > 0) && (
           <Section title="Lab Results">
-            {doc.sections.keyLabs && (
-              <>
-                <p className="mb-0.5 text-[11px] font-bold text-[#0f5049]">Significant / Abnormal Labs</p>
-                <Prose text={doc.sections.keyLabs} />
-              </>
-            )}
             {doc.sections.labResults && (
-              <>
-                <p className="mb-0.5 mt-2 text-[11px] font-bold text-[#0f5049]">All Lab Results</p>
-                <Prose text={doc.sections.labResults} />
-              </>
+              <Prose text={doc.sections.labResults} />
             )}
             {doc.imaging.length > 0 && (
               <>
