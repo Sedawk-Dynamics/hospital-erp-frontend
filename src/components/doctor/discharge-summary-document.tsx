@@ -108,14 +108,17 @@ function Table({ head, rows }: { head: string[]; rows: (string | number | null)[
   );
 }
 
-const vitalCells = (v: DischargeVitalRow | null, label: string): (string | null)[] => [
-  label,
-  v?.bp ?? null,
-  v?.pulse != null ? String(v.pulse) : null,
-  v?.temp != null ? `${v.temp}°C` : null,
-  v?.rr != null ? String(v.rr) : null,
-  v?.spo2 != null ? `${v.spo2}%` : null,
-  v?.weight != null ? `${v.weight} kg` : null,
+const vitalCells = (v: DischargeVitalRow): (string | null)[] => [
+  fmtDateTime(v.at),
+  v.bp ?? null,
+  v.pulse != null ? String(v.pulse) : null,
+  v.temp != null ? `${v.temp}°C` : null,
+  v.rr != null ? String(v.rr) : null,
+  v.spo2 != null ? `${v.spo2}%` : null,
+  v.weight != null ? `${v.weight} kg` : null,
+  v.height != null ? `${v.height} cm` : null,
+  v.bmi != null ? String(v.bmi) : null,
+  v.sugar != null ? String(v.sugar) : null,
 ];
 
 export const DischargeSummaryDocument = forwardRef<HTMLDivElement, { doc: DischargeDocument }>(
@@ -228,12 +231,12 @@ export const DischargeSummaryDocument = forwardRef<HTMLDivElement, { doc: Discha
           </Section>
         )}
 
-        {/* Vitals */}
-        {(doc.vitals.admission || doc.vitals.discharge) && (
+        {/* Vitals — one dated row per pinned reading, all 9 vitals. */}
+        {doc.vitals.length > 0 && (
           <Section title="Vital Signs">
             <Table
-              head={['At', 'BP', 'Pulse', 'Temp', 'RR', 'SpO₂', 'Weight']}
-              rows={[vitalCells(doc.vitals.admission, 'On admission'), vitalCells(doc.vitals.discharge, 'At discharge')]}
+              head={['Date/Time', 'BP', 'Pulse', 'Temp', 'RR', 'SpO₂', 'Weight', 'Height', 'BMI', 'Sugar']}
+              rows={doc.vitals.map((v) => vitalCells(v))}
             />
           </Section>
         )}
@@ -289,20 +292,17 @@ export const DischargeSummaryDocument = forwardRef<HTMLDivElement, { doc: Discha
 
         {/* Lab Results — the grouped summary already lists each test's count and
             its abnormal values, so no separate "Significant / Abnormal" block. */}
-        {(doc.sections.labResults || doc.imaging.length > 0) && (
+        {doc.sections.labResults && (
           <Section title="Lab Results">
-            {doc.sections.labResults && (
-              <Prose text={doc.sections.labResults} />
-            )}
-            {doc.imaging.length > 0 && (
-              <>
-                <p className="mb-0.5 mt-2 text-[11px] font-bold text-[#0f5049]">Imaging</p>
-                <Table
-                  head={['Study', 'Indication', 'Impression', 'Date']}
-                  rows={doc.imaging.map((im) => [im.study, im.indication, im.impression, fmtDate(im.date)])}
-                />
-              </>
-            )}
+            <Prose text={doc.sections.labResults} />
+          </Section>
+        )}
+
+        {/* Radiology / Imaging — the stored, doctor-reviewed text (not a live
+            imaging re-query), so the printout equals what was signed. */}
+        {doc.sections.radiologyText && (
+          <Section title="Radiology / Imaging">
+            <Prose text={doc.sections.radiologyText} />
           </Section>
         )}
 

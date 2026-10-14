@@ -1520,7 +1520,7 @@ export interface DischargeDocument {
   admission: { admissionDate: string | null; dischargeDate: string | null; lengthOfStayDays: number | null; ward: string | null; bed: string | null; reason: string | null; chiefComplaint: string | null; attendingDoctor: string; specialization: string | null };
   allergies: Array<{ allergen: string; reaction: string | null }>;
   diagnoses: Array<{ name: string; type: string; icdCode: string | null }>;
-  vitals: { admission: DischargeVitalRow | null; discharge: DischargeVitalRow | null };
+  vitals: DischargeVitalRow[];
   procedures: Array<{ name: string; type: string | null; date: string | null; status: string; surgeon: string | null }>;
   imaging: Array<{ study: string; indication: string | null; impression: string | null; date: string | null }>;
   sections: {
@@ -1534,6 +1534,7 @@ export interface DischargeDocument {
     hospitalCourse: string | null;
     keyLabs: string | null;
     labResults: string | null;
+    radiologyText: string | null;
     medicationsText: string | null;
     dischargeInstructions: string | null;
     followUpDate: string | null;
