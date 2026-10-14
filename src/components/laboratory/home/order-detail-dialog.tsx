@@ -110,7 +110,8 @@ export function OrderDetailDialog({
       <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            Order #{liveOrder.id.slice(0, 8)} — {liveOrder.patient.firstName} {liveOrder.patient.lastName}
+            Order #{liveOrder.id.slice(0, 8)}
+            {liveOrder.patient ? ` — ${liveOrder.patient.firstName} ${liveOrder.patient.lastName ?? ''}`.trimEnd() : ''}
           </DialogTitle>
           <DialogDescription className="flex items-center gap-2">
             <StatusBadge status={liveOrder.status} reportStatus={liveOrder.labReport?.status} />
@@ -397,7 +398,7 @@ export function OrderReportPanel({
         onOpenChange={setSendBackOpen}
         submitting={reject.isPending}
         subject={{
-          title: `${order.patient.firstName} ${order.patient.lastName ?? ''}`.trim(),
+          title: `${order.patient?.firstName ?? ''} ${order.patient?.lastName ?? ''}`.trim() || `Order ${order.id.slice(0, 8)}`,
           sublabel: `Order ${order.id.slice(0, 8)} · ${order.labOrderItems?.length ?? 0} test(s)`,
         }}
         onConfirm={async (reason) => {
