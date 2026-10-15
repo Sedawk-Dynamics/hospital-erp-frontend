@@ -49,10 +49,15 @@ import type { Appointment } from '@/types';
  *
  * Lifecycle covered here:
  *   pending_payment → Collect Payment (mints the front-desk bill)
- *   booked          → Confirm, or Collect ₹X & Confirm when payment is due
- *   confirmed       → Check In
+ *   booked          → Confirm (verify doctor availability; no payment) — and,
+ *                     independently, Collect Payment whenever a balance is due
+ *   confirmed       → Check In (Collect Payment stays available until paid)
  *   checked_in      → waiting for the doctor (they start the consultation)
  * plus View details / Reschedule / Cancel / Mark no-show on every live row.
+ *
+ * Confirm and payment are deliberately DECOUPLED: a patient who booked from the
+ * portal can be confirmed before they travel, and the fee is taken at the
+ * counter on arrival. Collecting money never auto-confirms the slot.
  */
 
 /** Minimal row shape both screens can satisfy. */
@@ -113,10 +118,6 @@ export function AppointmentRowActions({
   const status = apt.status;
   const patient = apt.patient ?? null;
 
-  /** Payment was deferred to the counter and money is still outstanding. */
-  const needsPayment =
-    apt.paymentInfo?.paymentStatus === 'pay_at_frontdesk' && apt.paymentInfo.balanceDue > 0;
-
   /**
    * Anything the counter can still take money for: a live appointment that has
    * an outstanding balance, or none at all because no bill was ever raised.
@@ -144,12 +145,8 @@ export function AppointmentRowActions({
     }
   };
 
-  /** Confirm, but collect the outstanding fee first when one is due. */
+  /** Confirm the slot. Independent of payment — the fee is collected separately. */
   const handleConfirm = () => {
-    if (needsPayment) {
-      setCollectTarget(apt as unknown as Appointment);
-      return;
-    }
     advance('confirmed', 'Appointment confirmed');
   };
 
@@ -227,7 +224,7 @@ export function AppointmentRowActions({
         {/* ── Primary step for the current status ── */}
         {/* Collect is offered on any live row with money outstanding, whatever
             step the patient is at — including one with no bill yet. */}
-        {canCollect && status !== 'booked' && (
+        {canCollect  && (
           <Button
             size="sm"
             className="gap-1.5 bg-amber-600 text-xs text-white hover:bg-amber-700"
@@ -244,27 +241,22 @@ export function AppointmentRowActions({
           </Button>
         )}
 
+        {/* Confirm is a standalone front-desk decision — it verifies the doctor
+            is available and accepts the slot, independent of payment. Collecting
+            the fee is the separate amber button above. A portal-booked patient
+            can be confirmed BEFORE they travel, and cash is taken when they
+            arrive. */}
         {status === 'booked' && (
           <Button
             size="sm"
-            variant={canCollect ? 'default' : 'outline'}
-            className={cn('gap-1.5 text-xs', canCollect && 'bg-amber-600 text-white hover:bg-amber-700')}
-            disabled={updateStatus.isPending || paymentPending}
-            onClick={canCollect ? beginPayment : handleConfirm}
-            title={canCollect ? 'Collect the consultation fee, then confirm' : undefined}
+            variant="outline"
+            className="gap-1.5 text-xs"
+            disabled={updateStatus.isPending}
+            onClick={handleConfirm}
+            title="Confirm the slot (doctor available). Collect the fee separately."
           >
-            {paymentPending ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : canCollect ? (
-              <Banknote className="h-3.5 w-3.5" />
-            ) : (
-              <ShieldCheck className="h-3.5 w-3.5" />
-            )}
-            {needsPayment
-              ? `Collect ₹${apt.paymentInfo!.balanceDue.toLocaleString('en-IN')} & Confirm`
-              : canCollect
-                ? 'Collect & Confirm'
-                : 'Confirm'}
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Confirm
           </Button>
         )}
 
