@@ -1,6 +1,12 @@
 services:
   frontend:
-    build: .
+    build:
+      context: .
+      # NEXT_PUBLIC_* is inlined into the client bundle at BUILD time, so the
+      # backend URL must be passed as a build arg — a runtime `environment:`
+      # value is too late and leaves the Dockerfile's default baked in.
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api/v1}
     container_name: hospital-erp-frontend
     restart: unless-stopped
     ports:
