@@ -39,6 +39,7 @@ import {
 import { cn } from '@/lib/utils';
 import { apiPost, apiPatch, apiGet } from '@/lib/api';
 import type { Patient, Appointment, DoctorProfile } from '@/types';
+import { EmergencyIntakeDialog, type EmergencyIntakeDetails } from './emergency-intake-dialog';
 
 // ============================================================
 // Schemas
@@ -187,13 +188,9 @@ export function FrontDeskRegisterDialog({
   const [patientQuery, setPatientQuery] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [showPatientDropdown, setShowPatientDropdown] = useState(false);
-
-  // When ticked, the patient is saved as a provisional (TEMP-) record — every
-  // field is optional and no appointment is booked.
   const [isTemporary, setIsTemporary] = useState(false);
-  // Phone is the account key. As the number is typed we look it up: if an
-  // account holder already owns it, this patient is added under them (pick a
-  // relationship); if not, a new account is auto-created on save.
+  const [emergencyOpen, setEmergencyOpen] = useState(false);
+  const [emergencyDetails, setEmergencyDetails] = useState<EmergencyIntakeDetails | null>(null);
   const [matchedUser, setMatchedUser] = useState<AccountHolder | null>(null);
   const [phoneLookupLoading, setPhoneLookupLoading] = useState(false);
   const [existingProfiles, setExistingProfiles] = useState<ExistingProfile[]>([]);
@@ -341,6 +338,8 @@ export function FrontDeskRegisterDialog({
       setPaymentReference('');
       setIsSubmitting(false);
       setIsTemporary(false);
+      setEmergencyOpen(false);
+      setEmergencyDetails(null);
       setMatchedUser(null);
       setPhoneLookupLoading(false);
       setExistingProfiles([]);
@@ -496,12 +495,10 @@ export function FrontDeskRegisterDialog({
     }
   };
 
-  // Quick "Save as Temporary" — create a provisional (TEMP-) patient from whatever
-  // has been entered so far, without booking an appointment. It can be registered
-  // in place or connected to an existing record later from the Patients page.
   const [savingTemp, setSavingTemp] = useState(false);
   const handleSaveAsTemporary = async () => {
     const v = watchPatient();
+    if (!emergencyDetails) { setEmergencyOpen(true); return; }
     try {
       setSavingTemp(true);
       const resp = await apiPost<Patient>('/patients/temporary', {
@@ -515,9 +512,7 @@ export function FrontDeskRegisterDialog({
         city: v.city?.trim() || undefined,
         state: v.state?.trim() || undefined,
         zipCode: v.zipCode?.trim() || undefined,
-        // The attender this record belongs under. Sent only when the number
-        // resolved to a real account — the server never mints one for a
-        // temporary patient.
+        emergency:emergencyDetails ?? undefined,
         userId: matchedUser?.id ?? undefined,
         relationship: matchedUser ? (v.relationship || 'other') : undefined,
       });
@@ -694,6 +689,7 @@ export function FrontDeskRegisterDialog({
   const hasConsultationFee = consultationFee > 0;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto backdrop-blur-sm bg-background/95">
         <DialogHeader>
@@ -897,7 +893,14 @@ export function FrontDeskRegisterDialog({
                   <input
                     type="checkbox"
                     checked={isTemporary}
-                    onChange={(e) => setIsTemporary(e.target.checked)}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setIsTemporary(checked);
+                      // Ticking Temporary opens the emergency-intake modal;
+                      // unticking discards whatever was captured.
+                      if (checked) setEmergencyOpen(true);
+                      else setEmergencyDetails(null);
+                    }}
                     className="mt-0.5 h-4 w-4 rounded border-input accent-primary cursor-pointer"
                   />
                   <div>
@@ -1089,7 +1092,7 @@ export function FrontDeskRegisterDialog({
                       disabled={savingTemp}
                     >
                       {savingTemp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
-                      Create Temporary Patient
+                      Admit Patient
                     </Button>
                   ) : (
                     <Button type="submit" className="gap-2" disabled={isSubmitting}>
@@ -1484,6 +1487,13 @@ export function FrontDeskRegisterDialog({
         )}
       </DialogContent>
     </Dialog>
+
+    <EmergencyIntakeDialog
+      open={emergencyOpen}
+      setOpen={setEmergencyOpen}
+      onSave={(details) => setEmergencyDetails(details)}
+    />
+    </>
   );
 }
 

@@ -124,6 +124,7 @@ import { VitalValue } from '@/components/shared/vital-value';
 import { formatTemperature, temperatureIn, temperatureUnitLabel, temperatureValue } from '@/lib/vitals-temperature';
 import { useTemperatureUnit } from '@/stores/temperature-unit-store';
 import { fullName } from '@/lib/person-name';
+import FastTrackPanel from './fast-track-panel';
 
 // Hooks here return raw `ApiResponse<T>` — pull out the inner payload safely.
 function unwrapList<T>(value: unknown): T[] {
@@ -1643,6 +1644,15 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
           {canSee('charting') && (
             <TabsTrigger value="charting">Nursing Charting</TabsTrigger>
           )}
+          {canSee('fastTrack') && (
+            <TabsTrigger value="fastTrack">Fast Track Codes</TabsTrigger>
+          )}
+          {canSee('medicoLegal') && (
+            <TabsTrigger value="charting">Medico Legal & Injury Canvas</TabsTrigger>
+          )}
+          {canSee('intoxicationExam') && (
+            <TabsTrigger value="charting">Intoxication Exam (Form 39)</TabsTrigger>
+          )}
           {canSee('progress') && (
             <TabsTrigger value="progress">Progress Notes</TabsTrigger>
           )}
@@ -1669,6 +1679,9 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
                 <ProgressNotesPanel admissionId={admissionId} visitId={admission.visitId} patientId={patientId} role={role} admissionDate={admission.admissionDate} />
               )}
             </div>
+          )}
+          {canSee('fastTrackCodes') && (
+            <FastTrackPanel admissionId={admissionId} visitId={admission.visitId} patientId={patientId} role={role} />
           )}
           {/* Without the clinical panels the counter's Overview would be blank,
               so point it at the two things it actually came for. */}
@@ -1712,9 +1725,6 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
         {canSee('progress') && (
         <TabsContent value="progress" className="pt-4 space-y-4">
           <ProgressNotesPanel admissionId={admissionId} visitId={admission.visitId} patientId={patientId} role={role} />
-          {/* Referral letters, outside scans and old reports the patient
-              uploaded from their portal — they belong beside the notes, which
-              is where a clinician looks for them. */}
           <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4">
             <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
               <FolderOpen className="h-4 w-4 text-primary" /> Miscellaneous Files
@@ -1729,14 +1739,6 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
             <OrdersPanel admissionId={admissionId} patientId={patientId} role={role} />
           </TabsContent>
         )}
-
-        {/* Dynamic patient forms, bound to this admission — the same catalogue
-            the nurse fills for an OP appointment, now reachable for IP /
-            emergency / day-care stays without leaving the workspace.
-            For doctors this renders only the forms nursing has actually
-            filled — patient forms are nursing documentation, so a doctor
-            reads the record rather than a catalogue of blanks they cannot
-            complete. The server denies the role as well. */}
         <TabsContent value="forms" className="pt-4">
           <PatientFormsPanel
             patientId={patientId}
@@ -1757,6 +1759,11 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
         <TabsContent value="ledger" className="pt-4">
           <IpLedgerPanel admissionId={admissionId} patientId={patientId} role={role} />
         </TabsContent>
+
+        <TabsContent value="fastTrack" className="pt-4">
+          <FastTrackPanel admissionId={admissionId} visitId={admission.visitId} patientId={patientId} role={role} />
+        </TabsContent>
+
 
         <TabsContent value="activity" className="pt-4">
           <IpActivityLog admissionId={admissionId} />
