@@ -18,7 +18,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 #     --build-arg NEXT_PUBLIC_API_URL=https://api.cenaps.in/api/v1 \
 #     --build-arg NEXT_PUBLIC_RAZORPAY_KEY_ID=rzp_live_xxx ...
 # (On PaaS platforms, set these as build-time env vars instead.)
-ARG NEXT_PUBLIC_API_URL=https://trms-backend-dev-vz4mu5-b0ba91-82-29-166-148.traefik.me
+ARG NEXT_PUBLIC_API_URL=https://trms-backend-dev-vz4mu5-b0ba91-82-29-166-148.traefik.me/api/v1
 ARG NEXT_PUBLIC_APP_NAME="Hospital ERP"
 ARG NEXT_PUBLIC_RAZORPAY_KEY_ID=
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
