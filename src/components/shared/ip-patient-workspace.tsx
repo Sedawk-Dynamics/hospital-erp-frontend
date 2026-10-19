@@ -125,6 +125,7 @@ import { formatTemperature, temperatureIn, temperatureUnitLabel, temperatureValu
 import { useTemperatureUnit } from '@/stores/temperature-unit-store';
 import { fullName } from '@/lib/person-name';
 import FastTrackPanel from './fast-track-panel';
+import MedicoLegalPanel from './medico-legal-panel';
 
 // Hooks here return raw `ApiResponse<T>` — pull out the inner payload safely.
 function unwrapList<T>(value: unknown): T[] {
@@ -1648,7 +1649,7 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
             <TabsTrigger value="fastTrack">Fast Track Codes</TabsTrigger>
           )}
           {canSee('medicoLegal') && (
-            <TabsTrigger value="charting">Medico Legal & Injury Canvas</TabsTrigger>
+            <TabsTrigger value="medicoLegal">Medico Legal & Injury Canvas</TabsTrigger>
           )}
           {canSee('intoxicationExam') && (
             <TabsTrigger value="charting">Intoxication Exam (Form 39)</TabsTrigger>
@@ -1683,8 +1684,7 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
           {canSee('fastTrackCodes') && (
             <FastTrackPanel admissionId={admissionId} visitId={admission.visitId} patientId={patientId} role={role} />
           )}
-          {/* Without the clinical panels the counter's Overview would be blank,
-              so point it at the two things it actually came for. */}
+
           {allowedTabs && (
             <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">
               This patient&rsquo;s clinical record is with the ward. Use{' '}
@@ -1763,6 +1763,11 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
         <TabsContent value="fastTrack" className="pt-4">
           <FastTrackPanel admissionId={admissionId} visitId={admission.visitId} patientId={patientId} role={role} />
         </TabsContent>
+
+        <TabsContent value="medicoLegal" className="pt-4">
+          <MedicoLegalPanel />
+        </TabsContent>
+
 
 
         <TabsContent value="activity" className="pt-4">
