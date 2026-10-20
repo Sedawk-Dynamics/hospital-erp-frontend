@@ -77,7 +77,7 @@ export default function MedicoLegalPanelDialog({ open, setOpen, onSave }: Medico
   const [itemText,setItemText]=useState<string>("");
   const [injuryDraft, setInjuryDraft] = useState<Injury>(EMPTY_INJURY);
 
-  const medicoLegalForm=useForm<addMedicoLegalInput>({resolver:zodResolver(addMedicoLegalSchema),defaultValues:{
+  const medicoLegalForm=useForm<addMedicoLegalInput>({resolver:zodResolver(addMedicoLegalSchema) as never,defaultValues:{
     isMlc:false,
     mlcSerialNumber:"",
     policeStation:"",
