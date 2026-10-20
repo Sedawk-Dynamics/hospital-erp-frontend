@@ -10,6 +10,7 @@ import MedicoLegalPanelDialog from './medico-legal-panel-dialog';
 import MedicoLegalRecordCard from './medico-legal-record-card';
 import { addMedicoLegalInput } from '@/lib/schema/medico-legal-schema';
 import { useAddMedicoLegal, useMedicoLegalRecords } from '@/hooks/use-medico-legal';
+import { useAuth } from '@/hooks/use-auth';
 
 interface MedicoLegalPanelProps {
   admissionId: string;
@@ -20,6 +21,10 @@ interface MedicoLegalPanelProps {
 export default function MedicoLegalPanel({ admissionId, patientId, visitId }: MedicoLegalPanelProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const addMedicoLegal = useAddMedicoLegal();
+  const {user}=useAuth();
+  const roleSlug = (user?.role?.slug ?? user?.role?.name ?? '').toLowerCase();
+  const isDoctor=roleSlug==="doctor";
+  const isNurse=roleSlug==="nurse";
   const { data: records, isLoading } = useMedicoLegalRecords(admissionId);
   const hasRecords = (records?.length ?? 0) > 0;
 
@@ -53,7 +58,7 @@ export default function MedicoLegalPanel({ admissionId, patientId, visitId }: Me
             Flag the case as medico-legal (MLC) and record police intimation details.
           </p>
         </div>
-        {hasRecords && addButton}
+        {(hasRecords && isDoctor) && addButton}
       </div>
 
       {isLoading ? (
@@ -67,7 +72,7 @@ export default function MedicoLegalPanel({ admissionId, patientId, visitId }: Me
           ))}
         </div>
       ) : (
-        <div className="flex justify-center py-6">{addButton}</div>
+        <div className="flex justify-center py-6">{isDoctor && addButton}</div>
       )}
 
       <MedicoLegalPanelDialog open={dialogOpen} setOpen={setDialogOpen} onSave={handleSubmit} />
