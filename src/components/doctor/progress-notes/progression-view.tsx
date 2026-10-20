@@ -122,7 +122,7 @@ export function ProgressionView({
       ) : (
         visible.map((n) => {
         const day = n.noteDay ?? n.hospitalDay ?? null;
-        const when = formatDateTime(n.noteAt ?? n.createdAt);
+        const when = formatDateTime(n.createdAt);
         return (
           <div key={n.id} className="overflow-hidden rounded-lg border border-outline-variant/40 bg-card">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-outline-variant/40 bg-primary px-3 py-2">
