@@ -126,6 +126,7 @@ import { useTemperatureUnit } from '@/stores/temperature-unit-store';
 import { fullName } from '@/lib/person-name';
 import FastTrackPanel from './fast-track-panel';
 import MedicoLegalPanel from './medico-legal-panel';
+import IntoxicationExamPanel from './intoxication-exam-panel';
 
 // Hooks here return raw `ApiResponse<T>` — pull out the inner payload safely.
 function unwrapList<T>(value: unknown): T[] {
@@ -1649,7 +1650,7 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
             <TabsTrigger value="medicoLegal">Medico Legal & Injury Canvas</TabsTrigger>
           )}
           {canSee('intoxicationExam') && (
-            <TabsTrigger value="charting">Intoxication Exam (Form 39)</TabsTrigger>
+            <TabsTrigger value="intoxicationExam">Intoxication Exam (Form 39)</TabsTrigger>
           )}
           {canSee('progress') && (
             <TabsTrigger value="progress">Progress Notes</TabsTrigger>
@@ -1758,6 +1759,9 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
           <MedicoLegalPanel admissionId={admissionId} visitId={admission.visitId} patientId={patientId} />
         </TabsContent>
 
+        <TabsContent value="intoxicationExam" className="pt-4">
+          <IntoxicationExamPanel admissionId={admissionId} visitId={admission.visitId} patientId={patientId} />
+        </TabsContent>
 
 
         <TabsContent value="activity" className="pt-4">
