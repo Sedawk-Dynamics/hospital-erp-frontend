@@ -1662,14 +1662,10 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
           <TabsTrigger value="patient">Patient Info</TabsTrigger>
         </TabsList>
 
-        {/* Overview embeds the same clinical panels the tabs above expose.
-            Hiding the tabs while leaving these here would have achieved
-            nothing — the counter would still land on the medication round and
-            the progress notes the moment the page opened. */}
-        <TabsContent value="overview" className="space-y-4 pt-4">
+        <TabsContent value="overview" className="space-y-4 pt-4 ">
           {canSee('emar') && <EmarTodayPanel admissionId={admissionId} role={role} />}
           {(canSee('prescriptions') || canSee('progress')) && (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-1">
               {canSee('prescriptions') && (
                 <PrescriptionsPanel admissionId={admissionId} patientId={patientId} role={role} onNewRx={onNewRx} />
               )}
@@ -1678,10 +1674,7 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
               )}
             </div>
           )}
-          {canSee('fastTrackCodes') && (
-            <FastTrackPanel admissionId={admissionId} visitId={admission.visitId} patientId={patientId} role={role} />
-          )}
-
+          
           {allowedTabs && (
             <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">
               This patient&rsquo;s clinical record is with the ward. Use{' '}
@@ -1762,7 +1755,7 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
         </TabsContent>
 
         <TabsContent value="medicoLegal" className="pt-4">
-          <MedicoLegalPanel />
+          <MedicoLegalPanel admissionId={admissionId} visitId={admission.visitId} patientId={patientId} />
         </TabsContent>
 
 

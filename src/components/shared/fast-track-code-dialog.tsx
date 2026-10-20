@@ -132,7 +132,6 @@ export function FastTrackCodeDialog({ open, setOpen, onSave }: FastTrackCodeDial
 
   const submit = handleSubmit((data) => {
     const { code, ...details } = data;
-    // Validation guarantees a real code here (never '').
     onSave({ code: code as FastTrackCode, details });
     setOpen(false);
   });

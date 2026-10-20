@@ -20,6 +20,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Plus, X } from 'lucide-react';
+import { useForm } from 'react-hook-form';
+import { addMedicoLegalInput, addMedicoLegalSchema } from '@/lib/schema/medico-legal-schema';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { AddMedicoLegalInput } from '@/hooks/use-medico-legal';
 
 const NATURE_OPTIONS = [
   'Abrasion',
@@ -60,46 +64,73 @@ interface MedicoLegalPanelDialogProps {
   onSave?: (values: any) => void;
 }
 
-const MLC_FIELDS: { id: string; label: string; placeholder?: string; type?: string }[] = [
-  { id: 'ml-serial', label: 'Unique MLC Serial Number', placeholder: 'e.g. MLC/2026/0142' },
-  { id: 'ml-station', label: 'Police Station Jurisdiction', placeholder: 'e.g. Sector 20 PS' },
-  { id: 'ml-io', label: 'Investigating Officer (IO) Name & Buckle', placeholder: 'e.g. SI R. Sharma · Buckle 4471' },
-  { id: 'ml-receipt', label: 'Signed Receipt Acknowledgment No.', placeholder: 'e.g. ACK-8831' },
-  { id: 'ml-intimation', label: 'Police Intimation Dispatched Time', type: 'datetime-local' },
-  { id: 'ml-arrival', label: 'IO Arrival at Casualty Time', type: 'datetime-local' },
+const MLC_FIELDS: { id: string; name: keyof AddMedicoLegalInput; label: string; placeholder?: string; type?: string }[] = [
+  { id: 'ml-serial', name: 'mlcSerialNumber', label: 'Unique MLC Serial Number', placeholder: 'e.g. MLC/2026/0142' },
+  { id: 'ml-station', name: 'policeStation', label: 'Police Station Jurisdiction', placeholder: 'e.g. Sector 20 PS' },
+  { id: 'ml-io', name: 'investigatingOfficer', label: 'Investigating Officer (IO) Name & Buckle', placeholder: 'e.g. SI R. Sharma · Buckle 4471' },
+  { id: 'ml-receipt', name: 'receiptAckNo', label: 'Signed Receipt Acknowledgment No.', placeholder: 'e.g. ACK-8831' },
+  { id: 'ml-intimation', name: 'policeIntimationAt', label: 'Police Intimation Dispatched Time', type: 'datetime-local' },
+  { id: 'ml-arrival', name: 'ioArrivalAt', label: 'IO Arrival at Casualty Time', type: 'datetime-local' },
 ];
 
 export default function MedicoLegalPanelDialog({ open, setOpen, onSave }: MedicoLegalPanelDialogProps) {
-    const [isMLC,setIsMlc]=useState<boolean>(false);
-  const [itemText, setItemText] = useState('');
-  const [items, setItems] = useState<string[]>([]);
+  const [itemText,setItemText]=useState<string>("");
+  const [injuryDraft, setInjuryDraft] = useState<Injury>(EMPTY_INJURY);
+
+  const medicoLegalForm=useForm<addMedicoLegalInput>({resolver:zodResolver(addMedicoLegalSchema),defaultValues:{
+    isMlc:false,
+    mlcSerialNumber:"",
+    policeStation:"",
+    investigatingOfficer:"",
+    policeIntimationAt:"",
+    ioArrivalAt:"",
+    receiptAckNo:"",
+    items:[],
+    injuries:[]
+  }});
+
+  // Live values driven by the form (replace the old local state).
+  const isMlc = medicoLegalForm.watch('isMlc');
+  const items = medicoLegalForm.watch('items');
+  const injuries = medicoLegalForm.watch('injuries');
 
   const addItem = () => {
     const value = itemText.trim();
     if (!value) return;
-    setItems((prev) => [...prev, value]);
+    medicoLegalForm.setValue('items',[...medicoLegalForm.getValues('items'),value]);
     setItemText('');
   };
 
   const removeItem = (index: number) => {
-    setItems((prev) => prev.filter((_, i) => i !== index));
-  };
+  medicoLegalForm.setValue('items', medicoLegalForm.getValues('items').filter((_, i) => i !== index));
+};
 
-  const [injuryDraft, setInjuryDraft] = useState<Injury>(EMPTY_INJURY);
-  const [injuries, setInjuries] = useState<Injury[]>([]);
 
   const setDraft = (patch: Partial<Injury>) => setInjuryDraft((prev) => ({ ...prev, ...patch }));
 
-  const addInjury = () => {
-    if (!injuryDraft.bodySite.trim()) return; // body site is required
-    setInjuries((prev) => [...prev, { ...injuryDraft, bodySite: injuryDraft.bodySite.trim() }]);
-    setInjuryDraft(EMPTY_INJURY);
-  };
+const addInjury = () => {
+  if (!injuryDraft.bodySite.trim()) return;
+  medicoLegalForm.setValue('injuries', [
+    ...medicoLegalForm.getValues('injuries'),
+    {
+      bodySite: injuryDraft.bodySite.trim(),
+      nature: injuryDraft.nature || undefined,
+      length: injuryDraft.length === '' ? undefined : Number(injuryDraft.length),
+      width: injuryDraft.width === '' ? undefined : Number(injuryDraft.width),
+    },
+  ]);
+  setInjuryDraft(EMPTY_INJURY);
+};
 
   const removeInjury = (index: number) => {
-    setInjuries((prev) => prev.filter((_, i) => i !== index));
-  };
+  medicoLegalForm.setValue('injuries', medicoLegalForm.getValues('injuries').filter((_, i) => i !== index));
+};
 
+const onsubmit=(data:addMedicoLegalInput)=>{
+  onSave?.(data);
+  setOpen(false);
+  medicoLegalForm.reset();
+}
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="sm:max-w-6xl max-h-[90vh] overflow-y-auto">
@@ -110,23 +141,23 @@ export default function MedicoLegalPanelDialog({ open, setOpen, onSave }: Medico
           </DialogDescription>
         </DialogHeader>
 
-        <form className="space-y-4">
+        <form onSubmit={medicoLegalForm.handleSubmit(onsubmit)} className="space-y-4">
           {/* Master toggle */}
           <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-outline-variant/40 bg-surface-container-low px-3 py-2">
             <input
               type="checkbox"
-              onClick={()=>setIsMlc(!isMLC)}
+              {...medicoLegalForm.register('isMlc')}
               className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
             />
             <span className="text-sm font-medium text-on-surface">Flag as Medico-Legal (MLC)</span>
           </label>
 
-          {isMLC && (
+          {isMlc && (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               {MLC_FIELDS.map((f) => (
                 <div key={f.id} className="space-y-1.5">
                   <Label htmlFor={f.id}>{f.label}</Label>
-                  <Input id={f.id} type={f.type ?? 'text'} placeholder={f.placeholder} />
+                  <Input id={f.id} type={f.type ?? 'text'} placeholder={f.placeholder} {...medicoLegalForm.register(f.name as keyof addMedicoLegalInput)} />
                 </div>
               ))}
             </div>
