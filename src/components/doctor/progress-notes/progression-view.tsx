@@ -40,9 +40,11 @@ function formatDateTime(value?: string | null): string {
 export function ProgressionView({
   notes,
   vitalsByNote,
+  admissionDate,
 }: {
   notes: ProgressNote[];
   vitalsByNote?: Map<string, Vital>;
+  admissionDate?: string | null;
 }) {
   const [dayFilter, setDayFilter] = useState<string>('all');
   const [soapFilter, setSoapFilter] = useState<SoapFilter>('all');
@@ -53,15 +55,16 @@ export function ProgressionView({
   );
 
   const dayOptions = useMemo(() => {
-    const seen = new Set<number>();
-    for (const n of notes) {
-      const d = n.noteDay ?? n.hospitalDay ?? null;
-      if (d != null) seen.add(d);
-    }
-    return Array.from(seen)
-      .sort((a, b) => a - b)
-      .map((d) => ({ value: String(d), label: `Day ${d}` }));
-  }, [notes]);
+    if (!admissionDate) return [];
+    const start = new Date(admissionDate).setHours(0, 0, 0, 0);
+    const totalDays = Math.max(1, Math.floor((Date.now() - start) / 86400000) + 1);
+    return Array.from({ length: totalDays }, (_, i) => ({
+      value: String(i + 1),
+      label: `Day ${i + 1}`,
+    }));
+  }, [admissionDate]);
+
+
 
   const visible = dayFilter === 'all'
     ? ordered

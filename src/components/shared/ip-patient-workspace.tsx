@@ -931,10 +931,7 @@ function ProgressNotesPanel({ admissionId, visitId, patientId, role, admissionDa
   const { data, isLoading, refetch } = useProgressNotes(
     visitId ? { visitId, limit: 100 } : { admissionId, limit: 100 },
   );
-  // IP running log — this admission's notes, newest first.
   const ipNotes = useMemo<ProgressNote[]>(() => data?.data ?? [], [data]);
-  // Vitals recorded alongside notes — matched to their note via progressNoteId
-  // so each note can surface its reading in the Objective section.
   const { data: patientVitals } = usePatientVitalsForNotes(patientId);
   const vitalsByNote = useMemo(() => {
     const map = new Map<string, DoctorVital>();
@@ -1159,7 +1156,7 @@ function ProgressNotesPanel({ admissionId, visitId, patientId, role, admissionDa
           </Button>
         </div>
       ) : view === 'progression' ? (
-        <ProgressionView notes={filtered} vitalsByNote={vitalsByNote} />
+        <ProgressionView notes={filtered} vitalsByNote={vitalsByNote} admissionDate={admissionDate} />
       ) : (
         <ClubbedByDayView notes={filtered} vitalsByNote={vitalsByNote} />
       )}
@@ -1724,7 +1721,7 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
 
         {canSee('progress') && (
         <TabsContent value="progress" className="pt-4 space-y-4">
-          <ProgressNotesPanel admissionId={admissionId} visitId={admission.visitId} patientId={patientId} role={role} />
+          <ProgressNotesPanel admissionId={admissionId} visitId={admission.visitId} patientId={patientId} role={role} admissionDate={admission.admissionDate} />
           <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4">
             <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
               <FolderOpen className="h-4 w-4 text-primary" /> Miscellaneous Files
