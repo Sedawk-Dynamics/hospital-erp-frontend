@@ -22,16 +22,7 @@ import {
 import { QtyCell } from '@/components/doctor/prescription-qty-cell';
 import { StockTypeBadge } from '@/components/shared/stock-type-badge';
 
-/**
- * Shared, controlled medicine capture — the same M-A-N dose / frequency / timing
- * / duration / auto-Qty the OP prescription pad uses, so the IP flow writes
- * medicines identically (and the auto-computed Qty reaches the pharmacy).
- *
- * Each medicine is a responsive CARD with a wrapping field grid (2 cols on
- * mobile → 6 on desktop) — no fixed-width table, no horizontal scroll box.
- * Operates on a plain MedicineFormData[] + onChange, so it works outside
- * react-hook-form.
- */
+
 export function MedicineTable({
   medicines,
   onChange,
@@ -43,7 +34,7 @@ export function MedicineTable({
 }) {
   const [drugSearch, setDrugSearch] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
-  const debouncedSearch = useDebounce(drugSearch, 300);
+  const debouncedSearch = useDebounce(drugSearch, 100);
   const { data: formularyResults } = useFormularySearch(debouncedSearch);
 
   const filteredResults = (formularyResults ?? []).filter(
