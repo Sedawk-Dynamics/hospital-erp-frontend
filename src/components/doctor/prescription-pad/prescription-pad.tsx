@@ -1222,7 +1222,7 @@ function MedicationsSection({ form, patientId }: { form: any; patientId: string 
 
   const [drugSearch, setDrugSearch] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
-  const debouncedSearch = useDebounce(drugSearch, 300);
+  const debouncedSearch = useDebounce(drugSearch, 100);
   const { data: formularyResults } = useFormularySearch(debouncedSearch);
 
   // A drug already on the prescription used to be filtered OUT of the search
