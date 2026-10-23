@@ -5,7 +5,16 @@ import { apiGet, apiPost } from '@/lib/api';
 // Types
 // ============================================================
 
-export type FastTrackCode = 'code_red_trauma' | 'code_stemi' | 'code_stroke' | 'code_sepsis';
+export type FastTrackCode =
+  | 'code_red_trauma'
+  | 'code_stemi'
+  | 'code_stroke'
+  | 'code_sepsis'
+  | 'red'
+  | 'orange'
+  | 'yellow'
+  | 'green'
+  | 'black';
 
 export interface FastTrackCodeRecord {
   id: string;

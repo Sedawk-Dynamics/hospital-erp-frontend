@@ -8,7 +8,12 @@ export const FAST_TRACK_CODES = [
   'code_sepsis',
 ] as const;
 
-export type FastTrackCode = (typeof FAST_TRACK_CODES)[number];
+/** Simple colour codes — they only capture a free-text note. */
+export const COLOUR_FAST_TRACK_CODES = ['red', 'orange', 'yellow', 'green', 'black'] as const;
+
+export type FastTrackCode =
+  | (typeof FAST_TRACK_CODES)[number]
+  | (typeof COLOUR_FAST_TRACK_CODES)[number];
 
 const optionalNumber = z.preprocess(
   (v) => (v === '' || v === null || v === undefined ? undefined : Number(v)),
@@ -62,11 +67,26 @@ export const sepsisSchema = z.object({
   crystalloidDone: z.boolean(),
 });
 
+
+// Colour codes only capture an optional free-text note.
+export const redSchema = z.object({ code: z.literal('red'), notes: z.string().trim().optional() });
+export const orangeSchema = z.object({ code: z.literal('orange'), notes: z.string().trim().optional() });
+export const yellowSchema = z.object({ code: z.literal('yellow'), notes: z.string().trim().optional() });
+export const greenSchema = z.object({ code: z.literal('green'), notes: z.string().trim().optional() });
+export const blackSchema = z.object({ code: z.literal('black'), notes: z.string().trim().optional() });
+
 export const fastTrackCodeSchema = z.discriminatedUnion('code', [
   traumaSchema,
   stemiSchema,
   strokeSchema,
   sepsisSchema,
+  redSchema,
+  orangeSchema,
+  yellowSchema,
+  greenSchema,
+  blackSchema,
 ]);
 
 export type FastTrackCodeFormValues = z.infer<typeof fastTrackCodeSchema>;
+
+

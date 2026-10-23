@@ -18,11 +18,16 @@ interface FastTrackPanelProps {
   role: string;
 }
 
-const CODE_META: Record<FastTrackCode, { label: string; emoji: string; badge: string; bar: string }> = {
+export const CODE_META: Record<FastTrackCode, { label: string; emoji: string; badge: string; bar: string }> = {
   code_red_trauma: { label: 'Code Red — Trauma', emoji: '🔴', badge: 'bg-red-50 text-red-700 border-red-200', bar: 'bg-red-500' },
   code_stemi: { label: 'Code STEMI', emoji: '🫀', badge: 'bg-green-50 text-green-700 border-green-200', bar: 'bg-green-500' },
   code_stroke: { label: 'Code Stroke', emoji: '🧠', badge: 'bg-violet-50 text-violet-700 border-violet-200', bar: 'bg-violet-500' },
   code_sepsis: { label: 'Code Sepsis', emoji: '🦠', badge: 'bg-amber-50 text-amber-700 border-amber-200', bar: 'bg-amber-500' },
+  red: { label: 'Code Red', emoji: '🔴', badge: 'bg-red-50 text-red-700 border-red-200', bar: 'bg-red-500' },
+  orange: { label: 'Code Orange', emoji: '🟠', badge: 'bg-orange-50 text-orange-700 border-orange-200', bar: 'bg-orange-500' },
+  yellow: { label: 'Code Yellow', emoji: '🟡', badge: 'bg-yellow-50 text-yellow-700 border-yellow-200', bar: 'bg-yellow-500' },
+  green: { label: 'Code Green', emoji: '🟢', badge: 'bg-green-50 text-green-700 border-green-200', bar: 'bg-green-500' },
+  black: { label: 'Code Black', emoji: '⚫', badge: 'bg-gray-100 text-gray-800 border-gray-300', bar: 'bg-gray-800' },
 };
 
 interface DetailField {
@@ -83,6 +88,13 @@ function fields(rec: FastTrackCodeRecord): DetailField[] {
         { label: 'Antibiotics', value: d.antibioticsGiven ? 'Given' : 'Not given' },
         { label: 'Crystalloid', value: d.crystalloidDone ? 'Done' : 'Not done' },
       ];
+    case 'red':
+    case 'orange':
+    case 'yellow':
+    case 'green':
+    case 'black':
+      // Colour codes only carry an optional note.
+      return d.notes ? [{ label: 'Note', value: d.notes, wide: true }] : [];
     default:
       return [];
   }
@@ -190,3 +202,13 @@ export default function FastTrackPanel({ admissionId, visitId, patientId }: Fast
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+

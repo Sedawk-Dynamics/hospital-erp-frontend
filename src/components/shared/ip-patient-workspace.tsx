@@ -107,9 +107,10 @@ import { VitalValue } from '@/components/shared/vital-value';
 import { formatTemperature, temperatureIn, temperatureUnitLabel, temperatureValue } from '@/lib/vitals-temperature';
 import { useTemperatureUnit } from '@/stores/temperature-unit-store';
 import { fullName } from '@/lib/person-name';
-import FastTrackPanel from './fast-track-panel';
+import FastTrackPanel, { CODE_META as FAST_TRACK_META } from './fast-track-panel';
 import MedicoLegalPanel from './medico-legal-panel';
 import IntoxicationExamPanel from './intoxication-exam-panel';
+import { useFastTrackCodes } from '@/hooks/use-fast-track';
 
 // Hooks here return raw `ApiResponse<T>` — pull out the inner payload safely.
 function unwrapList<T>(value: unknown): T[] {
@@ -230,7 +231,9 @@ function HeaderStrip({
   const [assignBedOpen, setAssignBedOpen] = useState(false);
   const { data: emergency } = useEmergencyRegistration(admission.patientId);
   const triage = emergency?.priority ? TRIAGE_META[emergency.priority] : undefined;
-
+  const { data: fastTrack } = useFastTrackCodes(admission.id);
+  const fastTrackCode = fastTrack?.[0]?.code ?? null;
+  const fastTrackMeta = fastTrackCode ? FAST_TRACK_META[fastTrackCode] : undefined;
   return (
     <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4">
       <div className="flex items-start gap-3">
@@ -264,6 +267,17 @@ function HeaderStrip({
                   title={emergency?.chiefComplaint ? `Emergency: ${emergency.chiefComplaint}` : 'Emergency triage priority'}
                 >
                   Intake Code - {triage.label}
+                </Badge>
+              </span>
+            )}
+            {fastTrackMeta && (
+              <span className="inline-flex items-center gap-1.5">
+                <Badge
+                  variant="outline"
+                  className={`font-semibold ${fastTrackMeta.badge}`}
+                  title="Active fast-track emergency protocol"
+                >
+                  {fastTrackMeta.emoji} Fast Track Code - {fastTrackMeta.label}
                 </Badge>
               </span>
             )}

@@ -29,7 +29,16 @@ export const FAST_TRACK_CODE_OPTIONS: { value: string; label: string }[] = [
   { value: 'code_stemi', label: 'Code STEMI' },
   { value: 'code_stroke', label: 'Code Stroke' },
   { value: 'code_sepsis', label: 'Code Sepsis' },
+  { value: 'red', label: 'Red' },
+  { value: 'orange', label: 'Orange' },
+  { value: 'yellow', label: 'Yellow' },
+  { value: 'green', label: 'Green' },
+  { value: 'black', label: 'Black' },
 ];
+
+/** Colour codes capture only an optional free-text note. */
+const COLOUR_CODES = ['red', 'orange', 'yellow', 'green', 'black'] as const;
+const isColourCode = (code: string): boolean => (COLOUR_CODES as readonly string[]).includes(code);
 
 /** eFAST ultrasound windows and their allowed findings (order as specified). */
 const EFAST_WINDOWS: { key: string; label: string; options: string[] }[] = [
@@ -76,6 +85,8 @@ type FastTrackFormValues = {
   bloodCulturesDrawn: boolean;
   antibioticsGiven: boolean;
   crystalloidDone: boolean;
+  // colour codes
+  notes: string;
 };
 
 const DEFAULTS: FastTrackFormValues = {
@@ -103,6 +114,7 @@ const DEFAULTS: FastTrackFormValues = {
   bloodCulturesDrawn: false,
   antibioticsGiven: false,
   crystalloidDone: false,
+  notes: '',
 };
 
 const nowTime = () =>
@@ -422,6 +434,14 @@ export function FastTrackCodeDialog({ open, setOpen, onSave }: FastTrackCodeDial
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {/* ── Colour codes (Red / Orange / Yellow / Green / Black) ── */}
+          {isColourCode(code) && (
+            <div className="space-y-1.5">
+              <Label htmlFor="ft-notes">Add Note (optional)</Label>
+              <Input id="ft-notes" placeholder="Add a note for this code" {...register('notes')} />
             </div>
           )}
         </form>
