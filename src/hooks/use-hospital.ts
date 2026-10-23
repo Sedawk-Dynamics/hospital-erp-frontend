@@ -20,6 +20,8 @@ export const hospitalKeys = {
     ['hospital', 'patient-search', query] as const,
   patient: (id: string) =>
     ['hospital', 'patient', id] as const,
+  emergencyRegistration: (id: string) =>
+    ['hospital', 'emergency-registration', id] as const,
   patientDirectory: (params?: Record<string, unknown>) =>
     ['hospital', 'patient-directory', params] as const,
   bills: (params?: Record<string, unknown>) =>
@@ -257,6 +259,39 @@ export function usePatient(id: string) {
       return response.data ?? null;
     },
     enabled: !!id,
+  });
+}
+
+/** Emergency-registration details captured when a patient arrives via Emergency. */
+export interface EmergencyRegistration {
+  id: string;
+  tenantId: string;
+  patientId: string;
+  visitId: string | null;
+  priority: string;
+  chiefComplaint: string;
+  broughtBy: string;
+  informantName: string;
+  contactPhone: string;
+  relationship: string | null;
+  ambulanceNumber: string | null;
+  policeBadgeStation: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** The latest emergency-registration record for a patient (null if none). */
+export function useEmergencyRegistration(patientId: string) {
+  return useQuery({
+    queryKey: hospitalKeys.emergencyRegistration(patientId),
+    queryFn: async () => {
+      const response = await apiGet<EmergencyRegistration | null>(
+        `/patients/${patientId}/emergency-registration`,
+      );
+      return response.data ?? null;
+    },
+    enabled: !!patientId,
   });
 }
 

@@ -1,22 +1,5 @@
 'use client';
 
-// IPPatientWorkspace
-// ──────────────────────────────────────────────────────────────────────────
-// Single shared "in-patient detail" view used by:
-//   • /doctor/ip/[admissionId]
-//   • /nurse/ip/[admissionId]
-//   • /hospital/ip/[admissionId]
-//
-// Brings together the moving parts of an IP stay so doctors, nurses and admin
-// staff can land on one URL and see everything tied to that admission:
-// overview, vitals (nurses record from /nurse/charting; doctors capture inline),
-// today's eMAR doses, active prescriptions, progress notes, lab + imaging
-// orders, and patient demographics.
-//
-// Action buttons are role-aware: doctors get prescription / discharge-summary
-// quick links, nurses get charting + eMAR shortcuts, admin gets transfer/
-// discharge. Anyone can deep-link out to the dedicated pages with the
-// admissionId / patientId pre-filled.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -25,6 +8,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   BedDouble,
+  Siren,
   Calendar,
   CalendarDays,
   ChevronDown,
@@ -74,8 +58,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
-// Base-UI Button doesn't support `asChild`; use the `render` prop with a Link
-// element so prefetching + accessibility on the underlying anchor still apply.
 type LinkButtonProps = React.ComponentProps<typeof Button> & { href: string };
 function LinkButton({ href, children, ...props }: LinkButtonProps) {
   return (
@@ -87,6 +69,7 @@ function LinkButton({ href, children, ...props }: LinkButtonProps) {
 import { formatDate, formatDateTime, formatTime } from '@/lib/date-utils';
 
 import { useAdmissionDetail, usePatientVitals, useLatestVitals, useActivePrescriptions, useNursingNotes } from '@/hooks/use-nurse';
+import { useEmergencyRegistration } from '@/hooks/use-hospital';
 import {
   useEmarSchedules,
   useNdpsPrescriptionItemContext,
@@ -146,24 +129,6 @@ function unwrapOne<T>(value: unknown): T | undefined {
 // ── Roles ──────────────────────────────────────────────────────────────────
 
 export type WorkspaceRole = 'doctor' | 'nurse' | 'admin';
-
-// ── Which tabs a counter role has any business in ──────────────────────────
-//
-// The workspace is mounted per module, and the Hospital module passes
-// role="admin" for EVERYONE in it — hospital admin, billing admin, cashier and
-// front desk alike. So the front desk got the full clinical record: eMAR,
-// prescriptions, nursing charting, progress notes and clinical orders, none of
-// which they act on.
-//
-// The module prop cannot answer this, because it describes the module rather
-// than the person. The gate below reads the signed-in user's ACTUAL role.
-//
-// Front desk and cashier keep everything their job needs — who is in the bed,
-// the money, the paperwork, the audit trail — and lose the clinical record they
-// only ever browsed.
-//
-// OFF-SWITCH: delete a role from COUNTER_ROLES and it goes back to seeing
-// every tab. Roles affected: front_desk, cashier. Nobody else changes.
 const COUNTER_ROLES = new Set(['front_desk', 'cashier']);
 
 /** Tabs a counter role keeps. Everything absent from this list is clinical. */
@@ -176,15 +141,8 @@ const COUNTER_TABS = new Set([
   'patient',
 ]);
 
-/**
- * Decide the visible tab set for the signed-in user.
- *
- * Returns null when every tab is allowed, so the common case costs nothing and
- * the caller can skip filtering entirely.
- */
+
 export function visibleWorkspaceTabs(roles: string[]): Set<string> | null {
-  // A user who is ALSO an admin or a doctor keeps the full view — the
-  // restriction is about the counter job, not about punishing a second role.
   if (roles.some((r) => r === 'admin' || r === 'super_admin' || r === 'doctor')) return null;
   if (!roles.some((r) => COUNTER_ROLES.has(r))) return null;
   return COUNTER_TABS;
@@ -225,10 +183,6 @@ function localDateTimeIso(date: string, time: string): string {
   return new Date(`${date}T${time}:00`).toISOString();
 }
 
-// A fourth copy of the ranges lived here and disagreed with the others again
-// (fever at 38.5 not 38, SpO2 at 95 not 94). All of them now come from
-// lib/vitals-ranges, so a reading cannot be abnormal on one screen and normal
-// on the next.
 function bpAbnormal(s?: number, d?: number) {
   return (
     isValueAbnormal('bloodPressureSystolic', s) ||
@@ -242,7 +196,21 @@ function defaultBackHref(role: WorkspaceRole): string {
   return '/hospital/ip';
 }
 
+
+
+
+
+
+
 // ── Sub-panels ─────────────────────────────────────────────────────────────
+
+// ESI triage priority → label + colour for the emergency-registration badge.
+const TRIAGE_META: Record<string, { label: string; className: string }> = {
+  resuscitation: { label: 'P1 · Resuscitation', className: 'border-red-500 bg-red-500/10 text-red-600' },
+  emergent: { label: 'P2 · Emergent', className: 'border-orange-500 bg-orange-500/10 text-orange-600' },
+  urgent: { label: 'P3 · Urgent', className: 'border-yellow-500 bg-yellow-500/10 text-yellow-700' },
+  non_urgent: { label: 'P4 · Non-urgent', className: 'border-green-500 bg-green-500/10 text-green-600' },
+};
 
 function HeaderStrip({
   admission,
@@ -260,6 +228,8 @@ function HeaderStrip({
   const age = calcAge(patient?.dateOfBirth);
   const initials = `${patient?.firstName?.[0] ?? ''}${patient?.lastName?.[0] ?? ''}`.toUpperCase();
   const [assignBedOpen, setAssignBedOpen] = useState(false);
+  const { data: emergency } = useEmergencyRegistration(admission.patientId);
+  const triage = emergency?.priority ? TRIAGE_META[emergency.priority] : undefined;
 
   return (
     <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4">
@@ -277,6 +247,7 @@ function HeaderStrip({
             <h1 className="flex items-center gap-2 text-lg font-bold text-foreground">
               {patient?.firstName} {patient?.lastName}
             </h1>
+            
             <span className="text-xs text-muted-foreground">
               {patient?.mrn ? `MRN ${patient.mrn}` : ''}
               {patient?.gender ? ` · ${patient.gender.toUpperCase()}` : ''}
@@ -284,6 +255,18 @@ function HeaderStrip({
               {patient?.phone ? ` · ${patient.phone}` : ''}
               {patient?.bloodGroup ? ` · ${patient.bloodGroup}` : ''}
             </span>
+
+            {triage && (
+              <span className="inline-flex items-center gap-1.5">
+                <Badge
+                  variant="outline"
+                  className={`font-semibold ${triage.className}`}
+                  title={emergency?.chiefComplaint ? `Emergency: ${emergency.chiefComplaint}` : 'Emergency triage priority'}
+                >
+                  Intake Code - {triage.label}
+                </Badge>
+              </span>
+            )}
           </div>
 
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -305,10 +288,6 @@ function HeaderStrip({
                 </button>
               )}
             </span>
-            {/* The consultant. Nullable so an emergency admission can be opened
-                before one is named — and settable here, because until now
-                nothing could name one afterwards and the stay stayed on
-                nobody's list. */}
             <span className="inline-flex items-center gap-1">
               <Stethoscope className="h-3.5 w-3.5" />
               <AdmissionDoctorControl
@@ -493,10 +472,6 @@ function LatestVitalsStrip({ patientId, role, admissionId }: { patientId: string
         </div>
       )}
 
-      {/* Same blind spot as the OPD consultation card: Vital.notes is what the
-          nurse wrote while taking the reading, and it was stored and returned
-          but never shown. The IP strip is where the doctor looks on a ward
-          round, so it belongs here too. */}
       {latest?.notes && (
         <div className="mt-2 rounded-lg bg-surface-container-low px-3 py-2">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -1573,6 +1548,63 @@ function PatientPanel({ patientId }: { patientId: string }) {
   );
 }
 
+/** Humanise an enum-style value, e.g. "cat_108" → "Cat 108". */
+function humanise(value?: string | null) {
+  if (!value) return '—';
+  return value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Emergency-registration details — only renders if the patient has a record. */
+function EmergencyDetailsSection({ patientId }: { patientId: string }) {
+  const { data: emergency } = useEmergencyRegistration(patientId);
+  if (!emergency) return null;
+
+  const triage = emergency.priority ? TRIAGE_META[emergency.priority] : undefined;
+
+  return (
+    <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4">
+      <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
+        <Siren className="h-4 w-4 text-primary" />
+        Emergency Details
+      </h2>
+      <Separator className="mb-2" />
+      <div className="flex items-center justify-between py-1.5 text-xs">
+        <span className="text-muted-foreground">Intake Code</span>
+        {triage ? (
+          <Badge variant="outline" className={`font-semibold ${triage.className}`}>
+            {triage.label}
+          </Badge>
+        ) : (
+          <span className="text-right font-medium text-foreground">{humanise(emergency.priority)}</span>
+        )}
+      </div>
+      <PatientRow label="Chief complaint" value={emergency.chiefComplaint} />
+      <PatientRow label="Brought by" value={humanise(emergency.broughtBy)} />
+      <PatientRow label="Informant / escort" value={emergency.informantName} />
+      <PatientRow label="Contact phone" value={emergency.contactPhone} />
+      <PatientRow label="Relationship" value={emergency.relationship} />
+      <PatientRow label="Ambulance number" value={emergency.ambulanceNumber} />
+      <PatientRow label="Police badge / station" value={emergency.policeBadgeStation} />
+    </div>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // ── Main ───────────────────────────────────────────────────────────────────
 
 export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPatientWorkspaceProps) {
@@ -1626,9 +1658,6 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
         />
       )}
       <HeaderStrip admission={admission} role={role} backHref={back} onNewRx={onNewRx} />
-      {/* Above everything else on the bedside record: whoever opens this — the
-          doctor prescribing or the nurse administering — sees the allergies
-          before they see anything they could act on. */}
       <PatientSafetyBanner patientId={patientId} />
       <LatestVitalsStrip patientId={patientId} role={role} admissionId={admissionId} />
 
@@ -1686,9 +1715,6 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
           )}
         </TabsContent>
 
-        {/* Panes are gated as well as triggers. A hidden trigger still leaves
-            a reachable tab value, and the clinical record should not be one
-            crafted URL away. */}
         {canSee('emar') && (
           <TabsContent value="emar" className="pt-4">
             <EmarTodayPanel admissionId={admissionId} role={role} />
@@ -1769,7 +1795,10 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
         </TabsContent>
 
         <TabsContent value="patient" className="pt-4">
-          <PatientPanel patientId={patientId} />
+          <div className="space-y-4">
+            <PatientPanel patientId={patientId} />
+            <EmergencyDetailsSection patientId={patientId} />
+          </div>
         </TabsContent>
       </Tabs>
     </div>

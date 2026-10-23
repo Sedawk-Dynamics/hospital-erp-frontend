@@ -34,10 +34,10 @@ export type { EmergencyIntakeDetails } from '../../lib/schema/emergency-intake-s
 
 /** ESI triage priority options. */
 const PRIORITY_OPTIONS: { value: string; label: string }[] = [
-  { value: 'red', label: '🔴 RED · Priority 1 – Resuscitation' },
-  { value: 'orange', label: '🟠 ORANGE · Priority 2 – Emergent (<15 min)' },
-  { value: 'yellow', label: '🟡 YELLOW · Priority 3 – Urgent (<60 min)' },
-  { value: 'green', label: '🟢 GREEN · Priority 4 – Non-urgent' },
+  { value: 'resuscitation', label: '🔴 Priority 1 – Resuscitation' },
+  { value: 'emergent', label: '🟠 Priority 2 – Emergent (<15 min)' },
+  { value: 'urgent', label: '🟡 Priority 3 – Urgent (<60 min)' },
+  { value: 'non_urgent', label: '🟢 Priority 4 – Non-urgent' },
 ];
 
 /** Who/what brought the patient in. */
