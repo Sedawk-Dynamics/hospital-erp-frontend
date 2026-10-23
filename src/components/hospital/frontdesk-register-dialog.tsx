@@ -10,7 +10,7 @@ import { toInputDateStr, formatDate, getCurrentISTTime, isToday } from '@/lib/da
 import {
   UserPlus, Search, Loader2, UserRound, Clock,
   CreditCard, Banknote, Smartphone, Building2,
-  ChevronLeft, CheckCircle2, ArrowRight, 
+  ChevronLeft, CheckCircle2, ArrowRight, Download,
 } from 'lucide-react';
 
 import {
@@ -365,6 +365,23 @@ export function FrontDeskRegisterDialog({
     }
   }, [open, resetPatientForm, initialMode]);
 
+  const handleClick=()=>{
+    if (!registeredHere) {
+      setPatientValue('relationship', 'self');
+      setPatientValue('firstName', matchedUser?.firstName ?? '');
+      if (matchedUser?.lastName) setPatientValue('lastName', matchedUser?.lastName);
+      const profile = matchedUser?.patients?.[0];
+      if (profile) {
+        if (profile.dateOfBirth) setPatientValue('dateOfBirth', profile.dateOfBirth.slice(0, 10));
+        if (profile.gender) setPatientValue('gender', profile.gender as 'male' | 'female' | 'other');
+        const addr = [profile.addressLine1, profile.addressLine2].filter(Boolean).join(', ');
+        if (addr) setPatientValue('address', addr);
+      }
+    } else if (!watchPatient('relationship') || watchPatient('relationship') === 'self') {
+      setPatientValue('relationship', 'child');
+    }
+  }
+
   useEffect(() => {
     if (mode !== 'new') {
       setMatchedUser(null);
@@ -375,6 +392,9 @@ export function FrontDeskRegisterDialog({
     if (digits.length < 7) {
       setMatchedUser(null);
       setPhoneLookupLoading(false);
+      // Phone fully cleared → wipe the form (including any details fetched from a
+      // matched account) so the next entry starts clean.
+      if (normalized === '') resetPatientForm();
       return;
     }
     let cancelled = false;
@@ -395,27 +415,13 @@ export function FrontDeskRegisterDialog({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [phoneValue, mode]);
+  }, [phoneValue, mode, resetPatientForm]);
 
 
   useEffect(() => {
     if (!matchedUser) {
       setExistingProfiles([]);
       return;
-    }
-    if (!registeredHere) {
-      setPatientValue('relationship', 'self');
-      setPatientValue('firstName', matchedUser.firstName ?? '');
-      if (matchedUser.lastName) setPatientValue('lastName', matchedUser.lastName);
-      const profile = matchedUser.patients?.[0];
-      if (profile) {
-        if (profile.dateOfBirth) setPatientValue('dateOfBirth', profile.dateOfBirth.slice(0, 10));
-        if (profile.gender) setPatientValue('gender', profile.gender as 'male' | 'female' | 'other');
-        const addr = [profile.addressLine1, profile.addressLine2].filter(Boolean).join(', ');
-        if (addr) setPatientValue('address', addr);
-      }
-    } else if (!watchPatient('relationship') || watchPatient('relationship') === 'self') {
-      setPatientValue('relationship', 'child');
     }
     let cancelled = false;
     (async () => {
@@ -430,7 +436,6 @@ export function FrontDeskRegisterDialog({
       }
     })();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchedUser, registeredHere]);
 
   // Clear slot when doctor or date changes
@@ -970,10 +975,22 @@ export function FrontDeskRegisterDialog({
                               <p className="text-[11px] text-on-surface-variant">
                                 {registeredHere
                                   ? 'The new patient will be added under this account'
-                                  : 'Account exists but is not registered at this hospital yet — details prefilled, review and register'}
+                                  : 'Account exists but is not registered at this hospital yet'}
                                 {matchedUser.phone ? ` · ${matchedUser.phone}` : ''}
                               </p>
                             </div>
+                            {!registeredHere && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="shrink-0 gap-1.5"
+                                onClick={handleClick}
+                              >
+                                <Download className="h-3.5 w-3.5" />
+                                Fetch Details
+                              </Button>
+                            )}
                           </div>
 
                           {/* Relationship selector only applies when adding a NEW
