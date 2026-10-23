@@ -38,6 +38,7 @@ import {
 } from '@/hooks/use-hospital';
 import { cn } from '@/lib/utils';
 import { apiPost, apiPatch, apiGet } from '@/lib/api';
+import { useAuthStore } from '@/stores/auth-store';
 import type { Patient, Appointment, DoctorProfile } from '@/types';
 import { EmergencyIntakeDialog, type EmergencyIntakeDetails } from './emergency-intake-dialog';
 
@@ -85,6 +86,17 @@ type AccountHolder = {
   tenantId: string;
   tenant?: { id: string; name: string; slug: string } | null;
   _count?: { patients: number };
+  // Patient profiles under this account (across hospitals); used to tell whether
+  // the account already has a patient registered in the CURRENT hospital.
+  patients?: {
+    id: string;
+    tenantId: string;
+    mrn?: string | null;
+    dateOfBirth?: string | null;
+    gender?: string | null;
+    addressLine1?: string | null;
+    addressLine2?: string | null;
+  }[];
 };
 
 type ExistingProfile = {
@@ -194,6 +206,12 @@ export function FrontDeskRegisterDialog({
   const [matchedUser, setMatchedUser] = useState<AccountHolder | null>(null);
   const [phoneLookupLoading, setPhoneLookupLoading] = useState(false);
   const [existingProfiles, setExistingProfiles] = useState<ExistingProfile[]>([]);
+
+  // Current hospital. An account can exist (and be registered at other hospitals)
+  // without having a patient profile here — that's the "exists, not registered
+  // here" case the register flow handles specially.
+  const currentTenantId = useAuthStore((s) => s.user?.tenantId);
+  const registeredHere = !!matchedUser?.patients?.some((p) => p.tenantId === currentTenantId);
   const [profilesLoading, setProfilesLoading] = useState(false);
 
   // Appointment state
@@ -347,14 +365,6 @@ export function FrontDeskRegisterDialog({
     }
   }, [open, resetPatientForm, initialMode]);
 
-  // Phone → account-holder lookup. Strip formatting so the number matches
-  // however it was typed, then look up whoever owns it (debounced while typing).
-  //
-  // Runs for temporary patients too. The number on an emergency form is usually
-  // the attender's — the relative who brought the patient in — and skipping the
-  // lookup here is why registering under an existing attender posted no linkage
-  // to their account. Skipped only for the walk-in "existing patient" path,
-  // where the patient has already been chosen.
   useEffect(() => {
     if (mode !== 'new') {
       setMatchedUser(null);
@@ -387,15 +397,24 @@ export function FrontDeskRegisterDialog({
     };
   }, [phoneValue, mode]);
 
-  // When a number resolves to an existing account holder, default the
-  // relationship to "child" (the common case — a dependent registered under an
-  // earner's number) and load the profiles already under that account.
+
   useEffect(() => {
     if (!matchedUser) {
       setExistingProfiles([]);
       return;
     }
-    if (!watchPatient('relationship') || watchPatient('relationship') === 'self') {
+    if (!registeredHere) {
+      setPatientValue('relationship', 'self');
+      setPatientValue('firstName', matchedUser.firstName ?? '');
+      if (matchedUser.lastName) setPatientValue('lastName', matchedUser.lastName);
+      const profile = matchedUser.patients?.[0];
+      if (profile) {
+        if (profile.dateOfBirth) setPatientValue('dateOfBirth', profile.dateOfBirth.slice(0, 10));
+        if (profile.gender) setPatientValue('gender', profile.gender as 'male' | 'female' | 'other');
+        const addr = [profile.addressLine1, profile.addressLine2].filter(Boolean).join(', ');
+        if (addr) setPatientValue('address', addr);
+      }
+    } else if (!watchPatient('relationship') || watchPatient('relationship') === 'self') {
       setPatientValue('relationship', 'child');
     }
     let cancelled = false;
@@ -412,7 +431,7 @@ export function FrontDeskRegisterDialog({
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchedUser]);
+  }, [matchedUser, registeredHere]);
 
   // Clear slot when doctor or date changes
   useEffect(() => {
@@ -949,31 +968,38 @@ export function FrontDeskRegisterDialog({
                                 {[matchedUser.firstName, matchedUser.lastName].filter(Boolean).join(' ')}
                               </p>
                               <p className="text-[11px] text-on-surface-variant">
-                                The new patient will be added under this account
+                                {registeredHere
+                                  ? 'The new patient will be added under this account'
+                                  : 'Account exists but is not registered at this hospital yet — details prefilled, review and register'}
                                 {matchedUser.phone ? ` · ${matchedUser.phone}` : ''}
                               </p>
                             </div>
                           </div>
 
-                          {/* Relationship of the new patient to the account holder */}
-                          <div className="space-y-1.5">
-                            <Label className="text-xs">Relationship to account holder *</Label>
-                            <Select
-                              value={relationshipValue}
-                              onValueChange={(v: string | null) => {
-                                if (v) setPatientValue('relationship', v as PatientFormData['relationship']);
-                              }}
-                            >
-                              <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Select relationship" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {RELATIONSHIPS.filter((r) => r.value !== 'self').map((r) => (
-                                  <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
+                          {/* Relationship selector only applies when adding a NEW
+                              family member to an account already active here. When
+                              the account holder isn't registered here, we register
+                              them as self (prefilled), so no relationship is asked. */}
+                          {registeredHere && (
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">Relationship to account holder *</Label>
+                              <Select
+                                value={relationshipValue}
+                                onValueChange={(v: string | null) => {
+                                  if (v) setPatientValue('relationship', v as PatientFormData['relationship']);
+                                }}
+                              >
+                                <SelectTrigger className="w-full">
+                                  <SelectValue placeholder="Select relationship" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {RELATIONSHIPS.filter((r) => r.value !== 'self').map((r) => (
+                                    <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
 
                           {/* Family members already under this account */}
                           {profilesLoading ? (
