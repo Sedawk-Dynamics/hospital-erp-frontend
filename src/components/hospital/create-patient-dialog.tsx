@@ -169,6 +169,7 @@ export function CreatePatientDialog({
   const [globalHit, setGlobalHit] = useState<
     { hospitals: { name: string }[]; count: number; people: number } | null
   >(null);
+  
   const checkGlobalPatient = async () => {
     const phone = watch('phone')?.trim();
     const abha = watch('abhaNumber')?.trim();

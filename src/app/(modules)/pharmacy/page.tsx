@@ -654,9 +654,7 @@ function PharmacyPOS() {
     setCart((prev) => prev.filter((c) => c.rowKey !== rowKey));
   };
 
-  // Margin-based discount policy (separate module) — a visual refinement that
-  // caps the per-line discount based on the item's profit margin. Read once; the
-  // cap is applied locally so there is no round-trip per keystroke.
+
   const { data: discountPolicy } = useEffectiveDiscountPolicy();
   const capForItem = (item: CartItem): number | null => {
     if (!discountPolicy?.enabled) return null;
@@ -1084,32 +1082,6 @@ function PharmacyPOS() {
               <X className="inline h-3 w-3" />
             </button>
           )}
-        </div>
-
-        {/* Outside (paper) prescription — the path for a walk-in holding an Rx
-            written elsewhere. Available with or without a patient selected,
-            because most people presenting one are not registered here. */}
-        <div className="flex items-center gap-1">
-          <Button
-            variant={externalRx ? 'secondary' : 'outline'}
-            size="sm"
-            onClick={() => setOutsideRxOpen(true)}
-          >
-            <FileText className="h-4 w-4 mr-1.5" />
-            {externalRx
-              ? `Outside Rx: ${externalRx.prescriberName}${externalRx.prescriberRegNo ? ` (${externalRx.prescriberRegNo})` : ''}`
-              : 'Outside Prescription'}
-          </Button>
-          {externalRx && (
-            <button
-              type="button"
-              onClick={() => setExternalRx(null)}
-              className="text-xs text-muted-foreground hover:text-destructive"
-              aria-label="Clear outside prescription"
-            >
-              <X className="inline h-3 w-3" />
-            </button>
-          )}
           {prescriptionPickerOpen && selectedPatient && (
             <div className="absolute top-full left-0 z-50 mt-1 w-[420px] rounded-lg border bg-popover shadow-lg overflow-hidden">
               <div className="px-3 py-2 border-b bg-muted/30 flex items-center justify-between">
@@ -1183,6 +1155,29 @@ function PharmacyPOS() {
                 )}
               </div>
             </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1">
+          <Button
+            variant={externalRx ? 'secondary' : 'outline'}
+            size="sm"
+            onClick={() => setOutsideRxOpen(true)}
+          >
+            <FileText className="h-4 w-4 mr-1.5" />
+            {externalRx
+              ? `Outside Rx: ${externalRx.prescriberName}${externalRx.prescriberRegNo ? ` (${externalRx.prescriberRegNo})` : ''}`
+              : 'Outside Prescription'}
+          </Button>
+          {externalRx && (
+            <button
+              type="button"
+              onClick={() => setExternalRx(null)}
+              className="text-xs text-muted-foreground hover:text-destructive"
+              aria-label="Clear outside prescription"
+            >
+              <X className="inline h-3 w-3" />
+            </button>
           )}
         </div>
 

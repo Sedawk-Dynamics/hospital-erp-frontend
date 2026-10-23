@@ -393,7 +393,10 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
                   <>
                     <Button
                       onClick={() => {
-                        setApprovedAmount(String(claim.claimAmount));
+                        // Approving "in full" means the full COVERED amount (claim
+                        // − deductible − co-pay), never the gross claim — the payer
+                        // can't cover the patient's deductible/co-pay.
+                        setApprovedAmount(String(claim.coveredAmount ?? claim.claimAmount));
                         setApproveOpen(true);
                       }}
                       variant="outline"
@@ -625,7 +628,7 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ id: stri
           <DialogHeader>
             <DialogTitle>Partial Approval</DialogTitle>
           </DialogHeader>
-          <Label>Approved Amount (₹) — less than ₹{Number(claim.claimAmount).toLocaleString('en-IN')}</Label>
+          <Label>Approved Amount (₹) — up to ₹{Number(claim.coveredAmount ?? claim.claimAmount).toLocaleString('en-IN')} </Label>
           <Input
             type="number"
             value={approvedAmount}
