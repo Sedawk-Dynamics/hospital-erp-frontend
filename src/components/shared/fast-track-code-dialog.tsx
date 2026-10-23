@@ -40,7 +40,29 @@ export const FAST_TRACK_CODE_OPTIONS: { value: string; label: string }[] = [
 const COLOUR_CODES = ['red', 'orange', 'yellow', 'green', 'black'] as const;
 const isColourCode = (code: string): boolean => (COLOUR_CODES as readonly string[]).includes(code);
 
-/** eFAST ultrasound windows and their allowed findings (order as specified). */
+
+const FIELD_UNITS: Record<string, string> = {
+  ecgTime: 'min',
+  balloonTime: 'min',
+  ctTime: 'min',
+  lkwWindow: 'hr',
+  bloodGlucose: 'mg/dL',
+  serumLactate: 'mmol/L',
+};
+
+function attachUnits(details: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(details)) {
+    const units = FIELD_UNITS[key];
+    if (units && val !== '' && val !== null && val !== undefined) {
+      out[key] = { value: Number(val), units };
+    } else {
+      out[key] = val;
+    }
+  }
+  return out;
+}
+
 const EFAST_WINDOWS: { key: string; label: string; options: string[] }[] = [
   { key: 'ruq', label: 'RUQ (Morison Pouch)', options: ['+ Free Fluid', 'Negative'] },
   { key: 'luq', label: 'LUQ (Splenorenal)', options: ['Negative', '+ Free Fluid'] },
@@ -53,9 +75,6 @@ const EFAST_WINDOWS: { key: string; label: string; options: string[] }[] = [
   },
 ];
 
-// Superset of every code's fields — the single RHF form holds this shape, and
-// zodResolver(fastTrackCodeSchema) validates/narrows it to the selected code.
-// Number inputs are kept as strings (what <Input> yields); zod coerces them.
 type FastTrackFormValues = {
   code: '' | FastTrackCode;
   // trauma
@@ -137,14 +156,13 @@ export function FastTrackCodeDialog({ open, setOpen, onSave }: FastTrackCodeDial
   const txaGiven = watch('txaGiven');
   const txaGivenAt = watch('txaGivenAt');
 
-  // Reset the form whenever the dialog is closed so it never reopens dirty.
   useEffect(() => {
     if (!open) fastTrackForm.reset(DEFAULTS);
   }, [open, fastTrackForm]);
 
   const submit = handleSubmit((data) => {
     const { code, ...details } = data;
-    onSave({ code: code as FastTrackCode, details });
+    onSave({ code: code as FastTrackCode, details: attachUnits(details) });
     setOpen(false);
   });
 

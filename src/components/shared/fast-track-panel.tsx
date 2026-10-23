@@ -36,6 +36,12 @@ interface DetailField {
   wide?: boolean;
 }
 
+function measure(v: any, fallbackUnit: string): string {
+  if (v === null || v === undefined || v === '') return '—';
+  if (typeof v === 'object' && 'value' in v) return `${v.value} ${v.unit ?? fallbackUnit}`;
+  return `${v} ${fallbackUnit}`;
+}
+
 function fields(rec: FastTrackCodeRecord): DetailField[] {
   const d = rec.details as Record<string, any>;
   switch (rec.code) {
@@ -57,8 +63,8 @@ function fields(rec: FastTrackCodeRecord): DetailField[] {
       ];
     case 'code_stemi':
       return [
-        { label: 'Door-to-ECG', value: `${d.ecgTime ?? '—'} min` },
-        { label: 'Door-to-Balloon', value: `${d.balloonTime ?? '—'} min` },
+        { label: 'Door-to-ECG', value: measure(d.ecgTime, 'min') },
+        { label: 'Door-to-Balloon', value: measure(d.balloonTime, 'min') },
         { label: 'Infarct Territory', value: d.infarctTerritory || '—' },
         {
           label: 'DAPT',
@@ -71,10 +77,10 @@ function fields(rec: FastTrackCodeRecord): DetailField[] {
       ];
     case 'code_stroke':
       return [
-        { label: 'Door-to-CT', value: `${d.ctTime ?? '—'} min` },
-        { label: 'LKW Window', value: `${d.lkwWindow ?? '—'} hr` },
+        { label: 'Door-to-CT', value: measure(d.ctTime, 'min') },
+        { label: 'LKW Window', value: measure(d.lkwWindow, 'hr') },
         { label: 'NIHSS', value: `${d.nihssScore ?? '—'}` },
-        { label: 'Blood Glucose', value: `${d.bloodGlucose ?? '—'} mg/dL` },
+        { label: 'Blood Glucose', value: measure(d.bloodGlucose, 'mg/dL') },
         {
           label: 'FAST Screen',
           wide: true,
@@ -83,7 +89,7 @@ function fields(rec: FastTrackCodeRecord): DetailField[] {
       ];
     case 'code_sepsis':
       return [
-        { label: 'Serum Lactate', value: `${d.serumLactate ?? '—'} mmol/L` },
+        { label: 'Serum Lactate', value: measure(d.serumLactate, 'mmol/L') },
         { label: 'Blood Cultures', value: d.bloodCulturesDrawn ? 'Done' : 'Not done' },
         { label: 'Antibiotics', value: d.antibioticsGiven ? 'Given' : 'Not given' },
         { label: 'Crystalloid', value: d.crystalloidDone ? 'Done' : 'Not done' },
@@ -202,6 +208,43 @@ export default function FastTrackPanel({ admissionId, visitId, patientId }: Fast
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
