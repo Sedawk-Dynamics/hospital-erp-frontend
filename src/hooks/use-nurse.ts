@@ -521,6 +521,9 @@ export function useRecordVitals() {
       heightCm?: number;
       bloodSugar?: number;
       notes?: string;
+      // Nurse intake chief complaint — stamped on the resolved/created visit by
+      // the backend. Optional; sent alongside vitals at OPD intake.
+      nurseChiefComplaint?: string;
       // Optional link to the progress note this reading was recorded with.
       progressNoteId?: string;
       // Doctor flags when recording vitals with a progress note.
