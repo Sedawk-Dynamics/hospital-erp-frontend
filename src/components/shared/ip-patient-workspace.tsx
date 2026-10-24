@@ -111,6 +111,7 @@ import FastTrackPanel, { CODE_META as FAST_TRACK_META } from './fast-track-panel
 import MedicoLegalPanel from './medico-legal-panel';
 import IntoxicationExamPanel from './intoxication-exam-panel';
 import { useFastTrackCodes } from '@/hooks/use-fast-track';
+import ImagingOrderDetailDialog from './imaging-order-detail-dialog';
 
 // Hooks here return raw `ApiResponse<T>` — pull out the inner payload safely.
 function unwrapList<T>(value: unknown): T[] {
@@ -1312,12 +1313,11 @@ function OrdersPanel({ admissionId, patientId, role }: { admissionId: string; pa
   const { data: imagingData, isLoading: imgLoading } = useImagingRequests({ patientId, limit: 10 });
 
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
+  const [openImagingId, setOpenImagingId] = useState<string|null>(null);
   const [labOpen, setLabOpen] = useState(false);
   const [imgOpen, setImgOpen] = useState(false);
   const canOrder = role === 'doctor';
 
-  // Resolve the patient's active IP visit — the lab / imaging order dialogs bind
-  // the order to a visit.
   const { data: visitData } = useQuery({
     queryKey: ['ipws-active-visit', patientId],
     queryFn: async () => (await apiGet<Array<{ id: string; visitType: string }>>('/clinical/visits', { params: { patientId, status: 'active', limit: 5 } })).data ?? [],
@@ -1328,10 +1328,6 @@ function OrdersPanel({ admissionId, patientId, role }: { admissionId: string; pa
   const labs = labData?.data ?? [];
   const imaging = imagingData?.data ?? [];
 
-  // Surface any lab order with at least one attachment so clinicians can spot
-  // a reportable file at a glance. The list endpoint ships a tenant-scoped
-  // `_count.attachments` for the badge; we fall back to the array length if
-  // the full attachment list is hydrated.
   const attachmentCount = (o: any): number =>
     typeof o?._count?.attachments === 'number'
       ? o._count.attachments
@@ -1418,18 +1414,28 @@ function OrdersPanel({ admissionId, patientId, role }: { admissionId: string; pa
         ) : (
           <ul className="space-y-1.5 text-xs">
             {imaging.slice(0, 8).map((r) => (
-              <li key={r.id} className="flex items-center justify-between rounded border bg-card px-2 py-1.5">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium text-foreground">
-                    {r.imagingType || '—'}{r.bodyPart ? ` · ${r.bodyPart}` : ''}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">{formatDate(r.createdAt)}</p>
-                </div>
-                <Badge variant="outline" className="text-[10px] capitalize">{r.status}</Badge>
+              <li key={r.id}>
+                <button
+                  type="button"
+                  onClick={() => setOpenImagingId(r.id)}
+                  className="flex w-full items-center justify-between gap-2 rounded border bg-card px-2 py-1.5 text-left hover:bg-muted/50"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium text-foreground">
+                      {r.imagingType || '—'}{r.bodyPart ? ` · ${r.bodyPart}` : ''}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">{formatDate(r.createdAt)}</p>
+                  </div>
+                  <Badge variant="outline" className="text-[10px] capitalize">{r.status}</Badge>
+                </button>
               </li>
             ))}
           </ul>
         )}
+        <ImagingOrderDetailDialog
+          orderId={openImagingId ?? ''}
+          setOpen={(open) => !open && setOpenImagingId(null)}
+        />
       </div>
 
       {canOrder && (

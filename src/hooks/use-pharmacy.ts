@@ -2226,7 +2226,7 @@ export function useDispenseIpPrescription() {
       ...body
     }: {
       prescriptionId: string;
-      batches?: Array<{ itemId: string; drugBatchId: string }>;
+      batches?: Array<{ itemId: string; drugBatchId: string;quantity:number}>;
     }) => (await apiPost(`/pharmacy/queue/${prescriptionId}/dispense-ip`, body)).data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['prescriptions', 'queue'] });

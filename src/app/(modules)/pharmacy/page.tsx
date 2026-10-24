@@ -781,7 +781,7 @@ function PharmacyPOS() {
           prescriptionId: activePrescriptionId,
           batches: cart.flatMap((item) =>
             item.prescriptionItemId && item.batchId
-              ? [{ itemId: item.prescriptionItemId, drugBatchId: item.batchId }]
+              ? [{ itemId: item.prescriptionItemId, drugBatchId: item.batchId,quantity:baseQtyOf(item) }]
               : [],
           ),
         });
