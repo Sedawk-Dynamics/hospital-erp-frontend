@@ -143,7 +143,7 @@ export default function ClaimsListPage() {
     }
     setBillLoading(true);
     apiClient
-      .get(`/billing/bills`, { params: { patientId: form.patientId, limit: 50 } })
+      .get(`/billing`, { params: { patientId: form.patientId, limit: 50 } })
       .then((res) => setBills((res.data?.data as BillSummary[]) ?? []))
       .catch(() => setBills([]))
       .finally(() => setBillLoading(false));
@@ -153,7 +153,7 @@ export default function ClaimsListPage() {
     if (calc?.split && !form.claimAmount) {
       setForm((f) => ({ ...f, claimAmount: String(calc.split.claimAmount) }));
     }
-  }, [calc]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [calc]); 
 
   async function handleCreate() {
     if (!form.policyId && !form.insuranceCaseId) return toast.error('Pick a policy or payer case');

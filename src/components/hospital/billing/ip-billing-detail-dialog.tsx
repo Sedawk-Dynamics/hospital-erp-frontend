@@ -294,12 +294,7 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
                 ))}
               </div>
             )}
-            {/* Nothing to collect once the deposit already clears the balance —
-                offering "Collect payment" there let the desk take cash on top of
-                a deposit that had settled the bill (a double charge), and the
-                "from advance" route 400'd on the same already-covered bill. When
-                the after-deposit balance is ₹0, point them at the Deposit section
-                (apply / return) instead of a payment they should not take. */}
+
             {n(ledger?.totals.balanceAfterDeposit ?? bill.balanceDue) > 0 ? (
               <Button
                 size="sm"
@@ -324,13 +319,6 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
             )}
           </div>
         </div>
-
-        {/* Deposit — cut from the bill as it builds; return the unused part */}
-        {/* Rendered whenever there is an admission, not only when money is on
-            file. Hiding it on zero meant a desk that had just taken ₹10,000 —
-            into the advance, which this panel could not see — got no deposit
-            section at all, no balance, and no way to return it. An empty state
-            that says "nothing held" is information; a missing panel is not. */}
         {!!admissionId && (
           <div className="rounded-xl border border-teal-300 bg-teal-50/40 p-3">
             <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
@@ -343,10 +331,6 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
               <Stat label="Balance after deposit" value={money(ledger?.totals?.balanceAfterDeposit)} className="text-amber-700" />
               <Stat label="Refundable" value={money(ledger?.totals?.refundable)} className="text-emerald-700" />
             </div>
-            {/* Money reaches a patient through two counters — a deposit taken
-                against the stay, and an advance taken at the front desk. The
-                desk uses the second one, so saying which is which stops the
-                figure looking wrong to whoever collected it. */}
             {(n(ledger?.totals?.depositOnFile) > 0 || n(ledger?.totals?.advanceOnFile) > 0) && (
               <p className="mt-1.5 text-[11px] text-muted-foreground">
                 {n(ledger?.totals?.depositOnFile) > 0 && (
@@ -375,7 +359,7 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
                 Apply to bill
               </Button>
               <Button size="sm" className="h-8 gap-1.5 bg-emerald-600 hover:bg-emerald-700" onClick={doRefundDeposit}
-                disabled={refundDeposit.isPending || n(ledger?.totals?.refundable) <= 0}
+                disabled={refundDeposit.isPending || n(ledger?.totals?.refundable) <= 0 || bill?.status === "draft"}
                 title="Return what is left over to the patient (e.g. insurance covered the charges)">
                 {refundDeposit.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />}
                 Return to patient

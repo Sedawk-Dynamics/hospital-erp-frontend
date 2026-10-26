@@ -41,6 +41,7 @@ import {
   ShieldOff,
   MessageSquare,
   type LucideIcon,
+  Calculator,
 } from 'lucide-react';
 import type { ModuleKey } from '@/stores/module-store';
 
@@ -202,6 +203,7 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       // missing. This is its entry point.
       { label: 'OT Kits', href: '/doctor/ot-kits', icon: Package },
       { label: 'CDSS Alerts', href: '/doctor/cdss', icon: Activity },
+      { label: 'Calculators', href: '/doctor/calculators', icon: Calculator },
       { label: 'AI Assistant', href: '/doctor/ai-assistant', icon: Sparkles },
       { label: 'Settings', href: '/doctor/settings', icon: Settings },
     ],
