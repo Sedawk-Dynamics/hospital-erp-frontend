@@ -57,8 +57,6 @@ export interface FieldDef {
 export const BASIC_FIELDS: FieldDef[] = [
   { key: 'name', label: 'Calculator name *', type: 'text', placeholder: 'e.g. "BMI Calculator"', span: 'sm:col-span-2' },
   { key: 'department', label: 'Department', type: 'select', options: DEPARTMENTS, span: 'sm:col-span-2' },
-  { key: 'category', label: 'Category', type: 'text', placeholder: 'e.g. "Clinical Risk & Dosing"', span: 'sm:col-span-2' },
-  { key: 'guidelineReference', label: 'Guideline reference', type: 'text', placeholder: 'e.g. "ICMR"', span: 'sm:col-span-2' },
   { key: 'resultUnit', label: 'Result unit', type: 'text', placeholder: 'e.g. "kg/m²", "points"', span: 'sm:col-span-2' },
   { key: 'resultDecimals', label: 'Result decimals', type: 'number', min: '0', max: '6', span: 'sm:col-span-2' },
   { key: 'description', label: 'Description', type: 'textarea', placeholder: 'What does this calculator do?', span: 'sm:col-span-4' },

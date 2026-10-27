@@ -25,6 +25,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
 import type { UserListItem, RoleOption } from '@/hooks/use-users';
+import { DOCTOR_SPECIALTIES, specialtyLabel } from '@/lib/constants/doctor-specialties';
 
 interface DepartmentOption {
   id: string;
@@ -45,6 +46,7 @@ const userFormSchema = z
     roleIds: z.array(z.string()).min(1, 'At least one role is required'),
     departmentId: z.string().optional(),
     specialization: z.string().optional(),
+    specialty: z.string().optional(),
     qualifications: z.string().optional(),
     licenseNumber: z.string().optional(),
     experienceYears: z.string().optional(),
@@ -66,7 +68,6 @@ const DOCTOR_FIELDS: {
   placeholder: string;
   type: 'text' | 'number';
 }[] = [
-  { name: 'specialization', label: 'Specialization', placeholder: 'e.g. Interventional Cardiology', type: 'text' },
   { name: 'qualifications', label: 'Qualifications', placeholder: 'e.g. MBBS, MD', type: 'text' },
   { name: 'experienceYears', label: 'Experience (years)', placeholder: 'e.g. 8', type: 'number' },
   { name: 'licenseNumber', label: 'License Number', placeholder: 'Medical council license', type: 'text' },
@@ -131,6 +132,7 @@ export function UserFormDialog({
       roleIds: [],
       departmentId: '',
       specialization: '',
+      specialty: '',
       qualifications: '',
       licenseNumber: '',
       experienceYears: '',
@@ -166,6 +168,7 @@ export function UserFormDialog({
   });
 
   const departmentId = watch('departmentId');
+  const specialty = watch('specialty');
 
   // Reset form when dialog opens/closes or user changes
   useEffect(() => {
@@ -180,6 +183,7 @@ export function UserFormDialog({
           roleIds: user.userRoles.map((ur) => ur.role.id),
           departmentId: user.doctorProfile?.departmentId ?? '',
           specialization: user.doctorProfile?.specialization ?? '',
+          specialty: user.doctorProfile?.specialty ?? '',
           qualifications: user.doctorProfile?.qualifications ?? '',
           licenseNumber: user.doctorProfile?.licenseNumber ?? '',
           experienceYears:
@@ -198,6 +202,7 @@ export function UserFormDialog({
           roleIds: [],
           departmentId: '',
           specialization: '',
+          specialty: '',
           qualifications: '',
           licenseNumber: '',
           experienceYears: '',
@@ -227,14 +232,13 @@ export function UserFormDialog({
     }
   };
 
-  // Filter out super_admin and patient from assignable roles
   const assignableRoles = roles.filter(
     (r) => r.name !== 'super_admin' && r.name !== 'patient',
   );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-4xl max-h-[70vh] overflow-y-auto" >
         <DialogHeader>
           <DialogTitle>{isEditMode ? 'Edit User' : 'Add New User'}</DialogTitle>
           <DialogDescription>
@@ -339,29 +343,54 @@ export function UserFormDialog({
             <div className="space-y-4 rounded-md border p-3">
               <p className="text-sm font-medium">Doctor Profile Details</p>
 
-              {/* Department — dropdown of this hospital's departments; stores the id */}
-              <div className="space-y-1.5">
-                <Label htmlFor="departmentId">Department</Label>
-                <Select
-                  value={departmentId || undefined}
-                  onValueChange={(v) =>
-                    setValue('departmentId', v ?? '', { shouldValidate: true })
-                  }
-                >
-                  <SelectTrigger id="departmentId">
-                    <SelectValue placeholder="Select a department" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {departments.map((d) => (
-                      <SelectItem key={d.id} value={d.id}>
-                        {d.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              {/* Department + Specialization side by side, each half width */}
+              <div className="grid grid-cols-2 gap-3">
+                {/* Department — dropdown of this hospital's departments; stores the id */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="departmentId">Department</Label>
+                  <Select
+                    value={departmentId || undefined}
+                    onValueChange={(v) =>
+                      setValue('departmentId', v ?? '', { shouldValidate: true })
+                    }
+                  >
+                    <SelectTrigger id="departmentId" className="w-full">
+                      <SelectValue placeholder="Select a department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {departments.map((d) => (
+                        <SelectItem key={d.id} value={d.id}>
+                          {d.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="specialty">Specialization</Label>
+                  <Select
+                    value={specialty || undefined}
+                    onValueChange={(v) => {
+                      setValue('specialty', v ?? '', { shouldValidate: true });
+                      setValue('specialization', specialtyLabel(v), { shouldValidate: true });
+                    }}
+                  >
+                    <SelectTrigger id="specialty" className="w-full">
+                      <SelectValue placeholder="Select a specialization" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-40 overflow-y-auto">
+                      {DOCTOR_SPECIALTIES.map((s) => (
+                        <SelectItem key={s.value} value={s.value}>
+                          {s.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 {DOCTOR_FIELDS.map((field) => (
                   <div key={field.name} className="space-y-1.5">
                     <Label htmlFor={field.name}>{field.label}</Label>
@@ -405,3 +434,92 @@ export function UserFormDialog({
     </Dialog>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

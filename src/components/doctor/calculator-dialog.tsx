@@ -17,8 +17,10 @@ import VariablesStep from './calculator/variables-step';
 import FormulaBandsStep from './calculator/formula-bands-step';
 import CalculatorPreview from './calculator/calculator-preview';
 import { FormProvider, useForm, type Resolver } from 'react-hook-form';
+import { toast } from 'sonner';
 import { type CalculatorFormValues, calculatorSchema } from '@/lib/schema/calculator-schema';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useCreateCalculator, type CreateCalculatorInput } from '@/hooks/use-calculator';
 
 interface Props {
   open: boolean;
@@ -34,9 +36,7 @@ const STEPS = [
 const DEFAULT_VALUES: CalculatorFormValues = {
   name: '',
   department: 'all',
-  category: '',
   description: '',
-  guidelineReference: '',
   resultUnit: '',
   resultDecimals: 2,
   expression: '',
@@ -55,6 +55,8 @@ export default function CalculatorDialog({ open, onOpenChange }: Props) {
     mode: 'onChange',
   });
 
+  const createCalculator = useCreateCalculator();
+
   const name = methods.watch('name');
   const expression = methods.watch('expression');
 
@@ -66,9 +68,25 @@ export default function CalculatorDialog({ open, onOpenChange }: Props) {
     onOpenChange(next);
   };
 
-  const onSubmit = (values: CalculatorFormValues) => {
-    console.log('calculator payload', values);
-    handleOpenChange(false);
+  const onSubmit = async (values: CalculatorFormValues) => {
+    const payload: CreateCalculatorInput = {
+      name: values.name,
+      description: values.description || undefined,
+      expression: values.expression,
+      resultUnit: values.resultUnit || undefined,
+      resultDecimals: values.resultDecimals,
+      specialties: values.department && values.department !== 'all' ? [values.department] : [],
+      scope: 'personal',
+      variables: values.variables,
+      bands: values.bands,
+    };
+    try {
+      await createCalculator.mutateAsync(payload);
+      toast.success('Calculator created');
+      handleOpenChange(false);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Failed to create calculator');
+    }
   };
 
   const isLast = step === STEPS.length - 1;
@@ -84,7 +102,7 @@ export default function CalculatorDialog({ open, onOpenChange }: Props) {
         </DialogHeader>
 
         <FormProvider {...methods}>
-          <form onSubmit={methods.handleSubmit(onSubmit)}>
+        <form onSubmit={methods.handleSubmit(onSubmit)}>
         <div className="flex items-center gap-2 pb-2">
           {STEPS.map((s, i) => (
             <div key={s.title} className="flex items-center gap-2">
@@ -131,8 +149,8 @@ export default function CalculatorDialog({ open, onOpenChange }: Props) {
               Cancel
             </Button>
             {isLast ? (
-              <Button type="submit" disabled={!canCreate}>
-                Create calculator
+              <Button type="submit" disabled={!canCreate || createCalculator.isPending}>
+                {createCalculator.isPending ? 'Creating…' : 'Create calculator'}
               </Button>
             ) : (
               <Button type="button" disabled={!canNext} onClick={() => setStep((s) => s + 1)}>

@@ -88,6 +88,7 @@ export default function UserAccessConfigPage() {
     roleIds: string[];
     departmentId?: string;
     specialization?: string;
+    specialty?: string;
     qualifications?: string;
     licenseNumber?: string;
     experienceYears?: string;
@@ -101,6 +102,7 @@ export default function UserAccessConfigPage() {
       const doctorProfile = {
         departmentId: data.departmentId || undefined,
         specialization: data.specialization || undefined,
+        specialty: data.specialty || undefined,
         qualifications: data.qualifications || undefined,
         licenseNumber: data.licenseNumber || undefined,
         experienceYears: data.experienceYears ? Number(data.experienceYears) : undefined,

@@ -232,6 +232,11 @@ export const consultationCompletionSchema = z.object({
   // form draft so toggle state survives back-navigation / reload.
   pinnedSections: z.array(z.enum(CONSULTATION_PIN_SECTIONS)).default([]),
   pins: z.array(dischargePinSchema).default([]),
+
+  // Specialty-specific answers — a flat map of fieldId → value, merged from
+  // the hardcoded base fields (SPECIALTY_FIELDS), any DB/custom fields and
+  // per-patient ad-hoc fields. Persisted as one Json blob on the consultation.
+  specialtyData: z.record(z.string(), z.any()).default({}),
 });
 
 export type ConsultationFormData = z.infer<typeof consultationCompletionSchema>;
@@ -388,4 +393,5 @@ export const defaultFormValues: ConsultationFormData = {
   investigationsSummary: '',
   pinnedSections: [],
   pins: [],
+  specialtyData: {},
 };

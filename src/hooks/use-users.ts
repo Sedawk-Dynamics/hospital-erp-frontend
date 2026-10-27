@@ -20,6 +20,7 @@ export interface UserListItem {
   doctorProfile?: {
     departmentId: string | null;
     specialization: string | null;
+    specialty: string | null;
     qualifications: string | null;
     licenseNumber: string | null;
     experienceYears: number | null;
@@ -122,6 +123,7 @@ export function useUserStats() {
 export interface DoctorProfileInput {
   departmentId?: string;
   specialization?: string;
+  specialty?: string;
   qualifications?: string;
   licenseNumber?: string;
   experienceYears?: number;

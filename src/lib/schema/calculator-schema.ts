@@ -44,9 +44,7 @@ export const calculatorBandSchema = z.object({
 export const calculatorBasicInfoSchema = z.object({
   name: z.string().trim().min(1, 'Calculator name is required'),
   department: z.enum(CALCULATOR_DEPARTMENTS).default('all'),
-  category: z.string().trim().optional(),
   description: z.string().trim().optional(),
-  guidelineReference: z.string().trim().optional(),
   resultUnit: z.string().trim().optional(),
   resultDecimals: z.preprocess(
     (v) => (v === '' || v === null || v === undefined ? 2 : Number(v)),

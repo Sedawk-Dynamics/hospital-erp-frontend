@@ -10,10 +10,12 @@ import {
   Stethoscope, Search, Plus, Trash2, Pill, AlertTriangle,
   GripVertical, FlaskConical, ClipboardList, StickyNote,
   UserCheck, CalendarDays, Eye,
-  Printer, CheckCircle2, RotateCcw, ChevronDown,
+  Printer, CheckCircle2, RotateCcw, ChevronDown, ChevronRight, ListChecks,
   Clock, Eye as ObservationIcon, Pin, Activity,
 } from 'lucide-react';
-import { useFormularySearch, useAllergyCheck, usePatientVitals, usePatientDiagnoses, usePrescriptions, useProgressNotes, type FormularyDrug } from '@/hooks/use-doctor';
+import { useFormularySearch, useAllergyCheck, usePatientVitals, usePatientDiagnoses, usePrescriptions, useProgressNotes, useDoctorProfile, type FormularyDrug } from '@/hooks/use-doctor';
+import { StepSpecialtyFields } from '@/components/doctor/consultation-completion/step-specialty-fields';
+import { SPECIALTY_FIELDS } from '@/lib/constants/specialty-fields';
 import { useLatestVitals } from '@/hooks/use-nurse';
 import { RecordVitalsDialog } from '@/components/shared/record-vitals-dialog';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -189,15 +191,20 @@ export function PrescriptionPad({
           : defaultFormValues.physicalObservations,
       investigationsSummary: (seed as any)?.investigationsSummary ?? '',
       pinnedSections: seedPinnedSections,
-      // Drop the legacy bulk pins from prefill — the consultation summary
-      // is now driven by per-section toggles, which are composed back into
-      // pin rows on submit.
       pins: defaultFormValues.pins,
     },
   });
 
   const { register, watch, setValue, formState: { errors } } = form;
   const { submitConsultation, isSubmitting, error: submitError, currentStep } = useConsultationCompletion();
+
+  // Specialty-specific fields for the logged-in doctor. Shown as a gated final
+  // section: the doctor clicks "Next" to reveal them before finishing.
+  const { data: doctorProfile } = useDoctorProfile();
+  const specialtyFields =
+    (doctorProfile?.specialty && SPECIALTY_FIELDS[doctorProfile.specialty as keyof typeof SPECIALTY_FIELDS]) || [];
+  const hasSpecialtyFields = specialtyFields.length > 0;
+  const [showSpecialty, setShowSpecialty] = useState(false);
 
   // Persist form state to localStorage (debounced) so the draft survives
   // Back navigation, remounts, and accidental tab closes.
@@ -920,6 +927,17 @@ export function PrescriptionPad({
               pinnedSections={pinnedSections}
               form={form}
             />
+
+            {/* Specialty-specific fields — revealed via "Next" before finishing. */}
+            {hasSpecialtyFields && showSpecialty && (
+              <div id="specialty-section" className="rounded-xl border p-4">
+                <div className="mb-3 flex items-center gap-2">
+                  <ListChecks className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-semibold">Specialty Details</h3>
+                </div>
+                <StepSpecialtyFields form={form} specialty={doctorProfile?.specialty} />
+              </div>
+            )}
         </div>
       </div>
 
@@ -947,15 +965,33 @@ export function PrescriptionPad({
           <Printer className="h-3.5 w-3.5 mr-1.5" />
           Print
         </Button>
-        <Button
-          size="sm"
-          className="gap-1.5 bg-primary hover:bg-primary/90 min-w-[160px]"
-          onClick={handleFinish}
-          disabled={isSubmitting}
-        >
-          <CheckCircle2 className="h-4 w-4" />
-          {isSubmitting ? 'Saving...' : editMode ? 'Save Changes' : 'Finish Prescription'}
-        </Button>
+        {hasSpecialtyFields && !showSpecialty ? (
+          <Button
+            size="sm"
+            className="gap-1.5 bg-primary hover:bg-primary/90 min-w-[160px]"
+            onClick={() => {
+              setShowSpecialty(true);
+              // let it render, then scroll the section into view
+              setTimeout(() => {
+                document.getElementById('specialty-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }, 50);
+            }}
+            disabled={isSubmitting}
+          >
+            Next
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            className="gap-1.5 bg-primary hover:bg-primary/90 min-w-[160px]"
+            onClick={handleFinish}
+            disabled={isSubmitting}
+          >
+            <CheckCircle2 className="h-4 w-4" />
+            {isSubmitting ? 'Saving...' : editMode ? 'Save Changes' : 'Finish Prescription'}
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -2124,3 +2160,21 @@ function ConsultationSummaryPreview({
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

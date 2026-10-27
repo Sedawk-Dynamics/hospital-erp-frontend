@@ -211,6 +211,11 @@ export function useConsultationCompletion() {
           assessment: soap.assessment,
           plan: soap.plan,
           impressions: formData.impression || null,
+          // Specialty-specific answers → stored as Json on the ProgressNote.
+          specialtyData:
+            formData.specialtyData && Object.keys(formData.specialtyData).length > 0
+              ? formData.specialtyData
+              : undefined,
           pins: cleanPins.length > 0 ? cleanPins : undefined,
           // weightKgAtEntry was previously sourced from the doctor's own vitals
           // input. Vitals are now nurse-only, so we omit it here. The progress
