@@ -7,40 +7,7 @@ import {
   type CalculatorVariable,
 } from '@/lib/schema/calculator-schema';
 
-export const DEPARTMENTS = [
-  { value: 'all', label: 'All (global)' },
-  { value: 'cardiology', label: 'Cardiology' },
-  { value: 'nephrology', label: 'Nephrology' },
-  { value: 'neurology', label: 'Neurology' },
-  { value: 'pediatrics', label: 'Pediatrics' },
-  { value: 'general_medicine', label: 'General Medicine' },
-  { value: 'orthopedics', label: 'Orthopedics' },
-  { value: 'gynecology', label: 'Gynecology' },
-];
-
 // ── Basic details ────────────────────────────────────────────────────────
-export interface CalculatorForm {
-  name: string;
-  department: string;
-  category: string;
-  description: string;
-  guidelineReference: string;
-  resultUnit: string;
-  resultDecimals: string;
-  expression: string;
-}
-
-export const EMPTY_FORM: CalculatorForm = {
-  name: '',
-  department: 'all',
-  category: '',
-  description: '',
-  guidelineReference: '',
-  resultUnit: '',
-  resultDecimals: '2',
-  expression: '',
-};
-
 export type FieldType = 'text' | 'textarea' | 'number' | 'select';
 
 export interface FieldDef {
@@ -56,9 +23,8 @@ export interface FieldDef {
 
 export const BASIC_FIELDS: FieldDef[] = [
   { key: 'name', label: 'Calculator name *', type: 'text', placeholder: 'e.g. "BMI Calculator"', span: 'sm:col-span-2' },
-  { key: 'department', label: 'Department', type: 'select', options: DEPARTMENTS, span: 'sm:col-span-2' },
-  { key: 'resultUnit', label: 'Result unit', type: 'text', placeholder: 'e.g. "kg/m²", "points"', span: 'sm:col-span-2' },
-  { key: 'resultDecimals', label: 'Result decimals', type: 'number', min: '0', max: '6', span: 'sm:col-span-2' },
+  { key: 'resultUnit', label: 'Result unit', type: 'text', placeholder: 'e.g. "kg/m²", "points"', span: 'sm:col-span-1' },
+  { key: 'resultDecimals', label: 'Result decimals', type: 'number', min: '0', max: '6', span: 'sm:col-span-1' },
   { key: 'description', label: 'Description', type: 'textarea', placeholder: 'What does this calculator do?', span: 'sm:col-span-4' },
 ];
 

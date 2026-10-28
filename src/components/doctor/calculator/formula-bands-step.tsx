@@ -86,7 +86,6 @@ export default function FormulaBandsStep() {
                 size="sm"
                 className="gap-1.5 text-rose-600 hover:text-rose-700"
                 onClick={() => remove(index)}
-                disabled={fields.length === 1}
               >
                 <Trash2 className="size-4" /> Remove
               </Button>

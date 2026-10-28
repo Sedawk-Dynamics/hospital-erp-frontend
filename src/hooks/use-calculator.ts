@@ -36,7 +36,6 @@ export interface Calculator {
   expression: string;
   resultUnit?: string | null;
   resultDecimals: number;
-  specialties: string[];
   variables: CalculatorVariable[];
   bands: CalculatorBand[];
   scope: CalculatorScope;
@@ -73,7 +72,6 @@ export interface CreateCalculatorInput {
   expression: string;
   resultUnit?: string;
   resultDecimals?: number;
-  specialties?: string[];
   scope?: CalculatorScope;
   variables: CalculatorVariable[];
   bands?: CalculatorBand[];

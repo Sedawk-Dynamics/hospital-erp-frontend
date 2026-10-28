@@ -1,7 +1,6 @@
 'use client';
 
-import { useState } from 'react';
-
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -11,7 +10,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-
 import BasicDetailsStep from './calculator/basic-details-step';
 import VariablesStep from './calculator/variables-step';
 import FormulaBandsStep from './calculator/formula-bands-step';
@@ -20,11 +18,17 @@ import { FormProvider, useForm, type Resolver } from 'react-hook-form';
 import { toast } from 'sonner';
 import { type CalculatorFormValues, calculatorSchema } from '@/lib/schema/calculator-schema';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useCreateCalculator, type CreateCalculatorInput } from '@/hooks/use-calculator';
+import {
+  useCreateCalculator,
+  useUpdateCalculator,
+  type Calculator,
+  type CreateCalculatorInput,
+} from '@/hooks/use-calculator';
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  calculator?: Calculator | null;
 }
 
 const STEPS = [
@@ -32,10 +36,8 @@ const STEPS = [
   { title: 'Variables & formula', subtitle: 'The inputs, the expression and how to read the result.' },
 ];
 
-// Starting form values. One blank variable, no bands.
 const DEFAULT_VALUES: CalculatorFormValues = {
   name: '',
-  department: 'all',
   description: '',
   resultUnit: '',
   resultDecimals: 2,
@@ -46,7 +48,7 @@ const DEFAULT_VALUES: CalculatorFormValues = {
   bands: [],
 };
 
-export default function CalculatorDialog({ open, onOpenChange }: Props) {
+export default function CalculatorDialog({ open, onOpenChange, calculator }: Props) {
   const [step, setStep] = useState(0);
 
   const methods = useForm<CalculatorFormValues>({
@@ -56,6 +58,26 @@ export default function CalculatorDialog({ open, onOpenChange }: Props) {
   });
 
   const createCalculator = useCreateCalculator();
+  const updateCalculator = useUpdateCalculator();
+  const isEdit = !!calculator;
+
+  useEffect(() => {
+    if (!open) return;
+    setStep(0);
+    methods.reset(
+      calculator
+        ? {
+            name: calculator.name,
+            description: calculator.description ?? '',
+            resultUnit: calculator.resultUnit ?? '',
+            resultDecimals: calculator.resultDecimals,
+            expression: calculator.expression,
+            variables: calculator.variables,
+            bands: calculator.bands,
+          }
+        : DEFAULT_VALUES,
+    );
+  }, [open, calculator, methods]);
 
   const name = methods.watch('name');
   const expression = methods.watch('expression');
@@ -75,29 +97,34 @@ export default function CalculatorDialog({ open, onOpenChange }: Props) {
       expression: values.expression,
       resultUnit: values.resultUnit || undefined,
       resultDecimals: values.resultDecimals,
-      specialties: values.department && values.department !== 'all' ? [values.department] : [],
       scope: 'personal',
       variables: values.variables,
       bands: values.bands,
     };
     try {
-      await createCalculator.mutateAsync(payload);
-      toast.success('Calculator created');
+      if (calculator) {
+        await updateCalculator.mutateAsync({ id: calculator.id, ...payload });
+        toast.success('Calculator updated');
+      } else {
+        await createCalculator.mutateAsync(payload);
+        toast.success('Calculator created');
+      }
       handleOpenChange(false);
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Failed to create calculator');
+      toast.error(err?.response?.data?.message || 'Failed to save calculator');
     }
   };
 
+  const isSaving = createCalculator.isPending || updateCalculator.isPending;
   const isLast = step === STEPS.length - 1;
   const canNext = step === 0 ? (name ?? '').trim().length > 0 : true;
   const canCreate = (name ?? '').trim().length > 0 && (expression ?? '').trim().length > 0;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-7xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className={`${step===1?'sm:max-w-5xl':'sm:max-x-3xl'} max-h-[90vh] overflow-y-auto`}>
         <DialogHeader>
-          <DialogTitle>New Calculator</DialogTitle>
+          <DialogTitle>{isEdit ? 'Edit Calculator' : 'New Calculator'}</DialogTitle>
           <DialogDescription>{STEPS[step].subtitle}</DialogDescription>
         </DialogHeader>
 
@@ -149,11 +176,17 @@ export default function CalculatorDialog({ open, onOpenChange }: Props) {
               Cancel
             </Button>
             {isLast ? (
-              <Button type="submit" disabled={!canCreate || createCalculator.isPending}>
-                {createCalculator.isPending ? 'Creating…' : 'Create calculator'}
+              <Button key="submit" type="submit" disabled={!canCreate || isSaving}>
+                {isSaving
+                  ? isEdit
+                    ? 'Saving…'
+                    : 'Creating…'
+                  : isEdit
+                    ? 'Save changes'
+                    : 'Create calculator'}
               </Button>
             ) : (
-              <Button type="button" disabled={!canNext} onClick={() => setStep((s) => s + 1)}>
+              <Button key="button" type="button" disabled={!canNext} onClick={() => setStep((s) => s + 1)}>
                 Next
               </Button>
             )}

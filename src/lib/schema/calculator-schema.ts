@@ -1,17 +1,6 @@
 import { z } from 'zod/v4';
 
 
-export const CALCULATOR_DEPARTMENTS = [
-  'all',
-  'cardiology',
-  'nephrology',
-  'neurology',
-  'pediatrics',
-  'general_medicine',
-  'orthopedics',
-  'gynecology',
-] as const;
-
 export const BAND_COLORS = ['emerald', 'amber', 'rose', 'sky', 'gray'] as const;
 
 const optionalNumber = z.preprocess(
@@ -43,7 +32,6 @@ export const calculatorBandSchema = z.object({
 
 export const calculatorBasicInfoSchema = z.object({
   name: z.string().trim().min(1, 'Calculator name is required'),
-  department: z.enum(CALCULATOR_DEPARTMENTS).default('all'),
   description: z.string().trim().optional(),
   resultUnit: z.string().trim().optional(),
   resultDecimals: z.preprocess(
