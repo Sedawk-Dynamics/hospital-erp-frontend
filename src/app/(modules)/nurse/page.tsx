@@ -67,6 +67,7 @@ import { formatTemperature } from '@/lib/vitals-temperature';
 import { abnormalDirection, isValueAbnormal } from '@/lib/vitals-ranges';
 import { useTemperatureUnitStore } from '@/stores/temperature-unit-store';
 import { fullName, initials } from '@/lib/person-name';
+import NurseHandoverBanner from '@/components/nurse/nurse-handover-banner';
 
 // ── Shift Detection ───────────────────────────────────────
 //
@@ -1310,10 +1311,9 @@ export default function NurseDashboardPage() {
         hasShiftAssignments={myAssignedAdmissionIds.size > 0}
       />
 
-      {/* Auto-populated handover plan from nurse_admin's roster-driven bulk
-          handover. Shows incoming patients ("from Nurse X") and outgoing
-          ("you handed off to Nurse Y") so the nurse never has to ask. */}
       <AdminHandoverBanner />
+      <NurseHandoverBanner shiftType={prevShift} shiftDate={today} />
+
 
       {/* Critical Alerts Banner */}
       <CriticalAlertsBanner
@@ -1464,3 +1464,16 @@ export default function NurseDashboardPage() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+

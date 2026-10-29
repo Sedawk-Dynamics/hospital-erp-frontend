@@ -41,6 +41,7 @@ import {
 import { useCreateHandover } from '@/hooks/use-nurse';
 import { NursePicker } from '@/components/nurse-admin/nurse-picker';
 import { cn } from '@/lib/utils';
+import HandoverNotes from '@/components/nurse-admin/handover-notes';
 
 const SHIFTS: Array<{ value: ShiftType; label: string }> = [
   { value: 'morning', label: 'Morning' },
@@ -542,6 +543,8 @@ export default function NurseAdminHandoverPage() {
           )}
         </div>
       </div>
+      <HandoverNotes/>
+
     </div>
   );
 }
@@ -813,3 +816,33 @@ function NurseDetailPanel({
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

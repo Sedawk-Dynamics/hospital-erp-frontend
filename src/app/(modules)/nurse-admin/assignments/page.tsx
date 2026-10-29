@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { useNurseAdmissions, type NurseAdmission } from '@/hooks/use-nurse';
-import { useUsersList, type UserListItem } from '@/hooks/use-users';
+import { type UserListItem } from '@/hooks/use-users';
 import {
   useNurseAssignments,
   useCreateNurseAssignment,
@@ -34,6 +34,7 @@ import {
 } from '@/hooks/use-nurse-assignments';
 import { NursePicker } from '@/components/nurse-admin/nurse-picker';
 import { fullName } from '@/lib/person-name';
+import { useDutyRosters } from '@/hooks/use-duty-rosters';
 
 const SHIFTS: Array<{ value: ShiftType; label: string; hours: string }> = [
   { value: 'morning', label: 'Morning', hours: '07:00 – 15:00' },
@@ -50,6 +51,10 @@ const SHIFT_LABEL: Record<ShiftType, string> = {
 
 const todayIso = () => format(new Date(), 'yyyy-MM-dd');
 
+// A rostered nurse option for the picker: a UserListItem plus the ward the
+// roster row put them on, so each row can filter to its patient's ward.
+type NurseOption = UserListItem & { wardId: string | null };
+
 export default function NurseAdminAssignmentsPage() {
   const [shiftDate, setShiftDate] = useState<string>(todayIso());
   const [shiftType, setShiftType] = useState<ShiftType>('morning');
@@ -63,10 +68,6 @@ export default function NurseAdminAssignmentsPage() {
   });
   const admissions = extractList<NurseAdmission>(admissionsRes);
 
-  // Fetch ALL active assignments for the admitted patients — not just the selected
-  // shift/date. The shift filter only drives the *new assignment* action; the
-  // "currently assigned nurse" column needs to show whoever is on the patient
-  // right now regardless of which shift the admin happens to be filtering on.
   const { data: assignmentsRes, isLoading: assignmentsLoading } = useNurseAssignments({
     status: 'active',
     ...(wardId !== 'all' ? { wardId } : {}),
@@ -91,16 +92,34 @@ export default function NurseAdminAssignmentsPage() {
     return map;
   }, [assignments]);
 
-  const { data: usersRes, isLoading: usersLoading } = useUsersList({
-    limit: 500,
-    isActive: 'true',
-  });
-  const nurseUsers = useMemo(() => {
-    const items = (usersRes?.data ?? []) as UserListItem[];
-    return items.filter((u) =>
-      u.userRoles.some((ur) => /^nurse(_|$)/i.test(ur.role.name)),
-    );
-  }, [usersRes]);
+
+  const { data: rosterRes, isLoading: usersLoading } = useDutyRosters({
+  fromDate: shiftDate,
+  toDate: shiftDate,
+  shiftType,
+  role: 'nurse',
+  status: 'published',
+  limit: 500,
+});
+
+const nurseUsers = useMemo<NurseOption[]>(() => {
+  const seen = new Map<string, NurseOption>();
+  for (const r of rosterRes?.items ?? []) {
+    const u = r.staff?.user;
+    if (!u?.id) continue;
+    const key = `${u.id}-${r.wardId ?? 'none'}`;
+    if (seen.has(key)) continue;
+    seen.set(key, {
+      id: u.id,
+      firstName: u.firstName,
+      lastName: u.lastName,
+      wardId: r.wardId,                             // keep for ward filter
+      userRoles: [{ role: { name: 'nurse' } }],     // satisfy NursePicker rolesShown
+    } as unknown as NurseOption);
+  }
+  return Array.from(seen.values());
+}, [rosterRes]);
+
 
   const wards = useMemo(() => {
     const map = new Map<string, string>();
@@ -126,9 +145,6 @@ export default function NurseAdminAssignmentsPage() {
     });
   }, [admissions, search]);
 
-  // "Needs coverage" = no assignment at all on the *currently selected* shift.
-  // The badge is about staffing the chosen shift, not whether the patient has
-  // any nurse at all (they might have one on a different shift).
   const unassignedCount = useMemo(() => {
     return filteredAdmissions.filter((a) => {
       const list = assignmentsByAdmission.get(a.id) ?? [];
@@ -192,7 +208,8 @@ export default function NurseAdminAssignmentsPage() {
         <CardHeader>
           <CardTitle className="text-base">Assign for shift</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-4">
+        <CardContent
+         className="grid gap-3 md:grid-cols-4">
           <div>
             <label className="text-xs font-medium text-muted-foreground">Shift date</label>
             <Input
@@ -330,7 +347,7 @@ function AssignmentRow({
   activeAssignments: NurseAssignment[];
   sameSlotAssignment: NurseAssignment | null;
   shiftLabel: string;
-  nurseOptions: UserListItem[];
+  nurseOptions: NurseOption[];
   nurseOptionsLoading: boolean;
   onAssign: (nurseId: string) => void;
   onUnassign: (assignmentId: string) => void;
@@ -342,6 +359,18 @@ function AssignmentRow({
   const doctor = admission.doctor?.user
     ? `Dr. ${fullName(admission.doctor.user)}`
     : '—';
+
+  // Only nurses rostered to this patient's ward. If the patient has no ward,
+  // fall back to every rostered nurse. De-dupe by id for display, since a
+  // nurse can be rostered to more than one ward.
+  const wardNurses = useMemo(() => {
+    const list = admission.ward?.id
+      ? nurseOptions.filter((n) => n.wardId === admission.ward!.id)
+      : nurseOptions;
+    const seen = new Map<string, NurseOption>();
+    for (const n of list) if (!seen.has(n.id)) seen.set(n.id, n);
+    return Array.from(seen.values());
+  }, [nurseOptions, admission.ward?.id]);
 
   return (
     <TableRow>
@@ -396,7 +425,7 @@ function AssignmentRow({
         ) : (
           <div className="flex items-center gap-2">
             <NursePicker
-              users={nurseOptions}
+              users={wardNurses}
               value={picked}
               onChange={(id) => setPicked(id)}
               placeholder={nurseOptionsLoading ? 'Loading…' : 'Pick a nurse'}
@@ -423,9 +452,7 @@ function AssignmentRow({
   );
 }
 
-// `shiftDate` from the API is an ISO string like "2026-05-09T00:00:00.000Z"
-// (or just a date for `@db.Date` columns). Compare on the YYYY-MM-DD prefix
-// so timezone offsets on the wire don't break filter equality.
+
 function isSameYmd(apiDate: string, ymd: string): boolean {
   if (!apiDate) return false;
   return apiDate.slice(0, 10) === ymd;
@@ -446,3 +473,74 @@ function extractList<T>(res: any): T[] {
   if (Array.isArray(res?.items)) return res.items as T[];
   return [];
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
