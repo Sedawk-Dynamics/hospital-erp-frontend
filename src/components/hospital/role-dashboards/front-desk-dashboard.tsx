@@ -412,9 +412,9 @@ const QRDialog = ({
           >
             <QRGeneration text={text} />
           </div>
-          <p className="max-w-full break-all text-center font-label text-xs text-on-surface-variant">
+          {/* <p className="max-w-full break-all text-center font-label text-xs text-on-surface-variant">
             {text}
-          </p>
+          </p> */}
         </div>
 
         <Button onClick={handleQrDownload} className="w-full gap-2">
