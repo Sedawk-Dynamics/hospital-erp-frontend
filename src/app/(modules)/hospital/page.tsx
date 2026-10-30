@@ -155,6 +155,7 @@ function OPHomeDashboard() {
             <UserPlus className="h-4 w-4 mr-1.5" />
             Register Patient
           </Button>
+          
         </div>
       </div>
 
