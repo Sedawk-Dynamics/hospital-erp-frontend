@@ -349,7 +349,7 @@ export default function HospitalInfoPage() {
       <QRDialog
         open={open}
         onOpenChange={setOpen}
-        text={`https://trms-frontend-dev-agcqh8-fc1e92-82-29-166-148.traefik.me/register?tenantSlug=${hospital?.slug}`}
+        text={`https://trms-frontend-dev-agcqh8-fc1e92-82-29-166-148.traefik.me/download/app.apk?tenantSlug=${hospital?.slug}`}
         hospitalName={hospital?.name}
       />
     </div>
