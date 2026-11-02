@@ -4,6 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { BedDouble, ChevronRight, Stethoscope, MapPin } from 'lucide-react';
 import { apiGet } from '@/lib/api';
+import { usePatientProfileStore } from '@/stores/patient-profile-store';
+import { se } from 'date-fns/locale';
 
 interface AdmissionListItem {
   id: string;
@@ -39,9 +41,10 @@ function StatusPill({ status }: { status: string }) {
 }
 
 export default function AdmissionsListPage() {
+  const { selectedProfileId } = usePatientProfileStore();
   const { data, isLoading } = useQuery({
-    queryKey: ['patient', 'admissions'],
-    queryFn: async () => (await apiGet<AdmissionListItem[]>('/patient-portal/admissions')).data ?? [],
+    queryKey: ['patient', 'admissions', selectedProfileId],
+    queryFn: async () => (await apiGet<AdmissionListItem[]>('/patient-portal/admissions', { params: selectedProfileId ? { profileId: selectedProfileId } : {} })).data ?? [],
   });
   const admissions = data ?? [];
 

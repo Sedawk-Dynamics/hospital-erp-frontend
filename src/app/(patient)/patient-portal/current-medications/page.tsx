@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Pill } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import { HospitalFilter } from '../_components/hospital-filter';
+import { usePatientProfileStore } from '@/stores/patient-profile-store';
 
 interface DerivedMed {
   itemId: string;
@@ -32,12 +33,13 @@ interface ManualMed {
 
 export default function CurrentMedicationsPage() {
   const [hospitalFilter, setHospitalFilter] = useState('');
-
+  const { selectedProfileId } = usePatientProfileStore();
   const { data, isLoading } = useQuery({
-    queryKey: ['patient', 'current-medications', hospitalFilter],
+    queryKey: ['patient', 'current-medications', hospitalFilter, selectedProfileId],
     queryFn: async () => {
       const params: Record<string, unknown> = {};
       if (hospitalFilter) params.tenantId = hospitalFilter;
+      if (selectedProfileId) params.profileId = selectedProfileId;
       const res = await apiGet<{ derived: DerivedMed[]; manual: ManualMed[] }>(
         '/patient-portal/current-medications',
         { params },

@@ -104,7 +104,7 @@ export default function PatientSettingsPage() {
 
 function ProfileSection() {
   const { user } = useAuthStore();
-
+  
   return (
     <SanctuarySection icon={User} title="Profile Information">
       <div className="grid gap-4 sm:grid-cols-2">

@@ -20,6 +20,7 @@ import { useForm } from 'react-hook-form';
 import { profileEditSchema, ProfileEditValues } from '@/lib/schema/profile-edit-schema';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useUpdatePatientProfile } from '@/hooks/use-patient-profile';
+import { usePatientProfileStore } from '@/stores/patient-profile-store';
 
 interface PatientProfile {
   id: string; firstName: string; lastName: string; email?: string;
@@ -29,11 +30,12 @@ interface PatientProfile {
 }
 
 export default function PatientProfilePage() {
+  const { selectedProfileId } = usePatientProfileStore();
   const { user } = useAuthStore();
   const [editOpen,setEditOpen] = useState<boolean>(false);
 
   const { data: patient, isLoading } = useQuery({
-    queryKey: ['patient', 'profile'],
+    queryKey: ['patient', 'profile', selectedProfileId],
     queryFn: async () => {
       const res = await apiGet<{
         id: string; firstName: string; lastName: string; email?: string;
@@ -41,7 +43,9 @@ export default function PatientProfilePage() {
         addressLine1?: string; city?: string; state?: string;
         emergencyContacts?: Array<{ name: string; phone: string; relationship: string }>;
         mrn?: string;
-      }>('/patient-portal/profile');
+      }>('/patient-portal/profile', {
+        params: selectedProfileId ? { profileId: selectedProfileId } : {},
+      });
       return res.data;
     },
     enabled: !!user?.email,
@@ -234,7 +238,15 @@ function EditProfileDialog({
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="phone">Phone</Label>
-            <Input {...patientDetails.register('phone')} id="phone"  />
+            <Input
+              id="phone"
+              value={patient?.phone ?? ''}
+              disabled
+              readOnly
+            />
+            <p className="font-label text-xs text-on-surface-variant">
+              Phone number can&apos;t be changed here.
+            </p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="dateOfBirth">Date of Birth</Label>

@@ -8,6 +8,7 @@ import apiClient from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { getApiErrorMessage } from '@/lib/utils';
+import { usePatientProfileStore } from '@/stores/patient-profile-store';
 
 interface DocumentEntry {
   id: string;
@@ -27,13 +28,16 @@ export default function MyDocumentsPage() {
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [docType, setDocType] = useState('external_report');
+  const { selectedProfileId } = usePatientProfileStore();
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
 
   const { data, isLoading, error: listError } = useQuery({
-    queryKey: ['patient', 'documents'],
+    queryKey: ['patient', 'documents', selectedProfileId],
     queryFn: async () => {
-      const res = await apiGet<DocumentEntry[]>('/patient-portal/documents');
+      const res = await apiGet<DocumentEntry[]>('/patient-portal/documents', {
+        params: selectedProfileId ? { profileId: selectedProfileId } : {},
+      });
       return res.data ?? [];
     },
   });
@@ -47,6 +51,7 @@ export default function MyDocumentsPage() {
       if (notes) fd.append('notes', notes);
       const res = await apiClient.post('/patient-portal/documents', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
+        params: selectedProfileId ? { profileId: selectedProfileId } : {},
       });
       return res.data;
     },
@@ -67,7 +72,7 @@ export default function MyDocumentsPage() {
 
   const remove = useMutation({
     mutationFn: async (id: string) => {
-      await apiDelete(`/patient-portal/documents/${id}`);
+      await apiDelete(`/patient-portal/documents/${id}`, { params: selectedProfileId ? { profileId: selectedProfileId } : {} });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['patient', 'documents'] }),
     // Upload already reports failure inline (`uploadErrorMsg`); delete said
@@ -228,3 +233,105 @@ export default function MyDocumentsPage() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

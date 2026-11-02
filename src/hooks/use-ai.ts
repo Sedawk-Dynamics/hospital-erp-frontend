@@ -185,6 +185,28 @@ export function usePatientAiChat() {
   });
 }
 
+export interface PatientSummaryResponse {
+  summary: string;
+  model: string;
+  provider: string;
+  patient: { id: string; name: string; mrn: string; age: number | null; gender: string | null; bloodGroup: string | null };
+  counts: Record<string, number>;
+}
+
+// Prefetched patient briefing shown when the doctor opens the AI assistant.
+// Pass `enabled` so it only fires once the panel is actually open.
+export function usePatientAiSummary(patientId: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ['ai', 'patient-summary', patientId],
+    queryFn: async () => {
+      const res = await apiGet<PatientSummaryResponse>(`/ai/patient/${patientId}/summary`);
+      return res.data;
+    },
+    enabled: enabled && !!patientId,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 export interface BloodReportAnalysis {
   score: number;
   severity: 'normal' | 'mild' | 'moderate' | 'severe';

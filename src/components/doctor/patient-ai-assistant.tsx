@@ -1,14 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import {
   useAiStatus,
   usePatientAiChat,
   useBloodReportAnalysis,
+  usePatientAiSummary,
   type AiChatTurn,
   type BloodReportAnalysis,
 } from '@/hooks/use-ai';
+import { Loader2 } from 'lucide-react';
 import { AiChatPanel, type AiChatMessage } from '@/components/ai/ai-chat-panel';
 import { Sparkles, FileText, ListChecks, Activity, ImageOff, Bot } from 'lucide-react';
 
@@ -72,8 +74,23 @@ export function PatientAiAssistant({
   const { data: status } = useAiStatus();
   const chat = usePatientAiChat();
   const bloodReport = useBloodReportAnalysis();
+  // Prefetch the briefing as soon as the assistant is shown.
+  const summary = usePatientAiSummary(patientId, !!patientId);
 
   const [messages, setMessages] = useState<AiChatMessage[]>([]);
+
+  // Drop the prefetched briefing in as the first assistant message (once), so
+  // it renders like any other message and is carried in the chat history.
+  const summaryInserted = useRef(false);
+  useEffect(() => {
+    if (summary.data && !summaryInserted.current) {
+      summaryInserted.current = true;
+      setMessages((prev) =>
+        prev.length === 0 ? [{ role: 'assistant', content: summary.data!.summary }] : prev,
+      );
+    }
+  }, [summary.data]);
+
   const history: AiChatTurn[] = messages
     .filter((m) => !m.extra)
     .map((m) => ({ role: m.role, content: m.content }));
@@ -145,10 +162,17 @@ export function PatientAiAssistant({
         <div className="px-4">
           <Sparkles className="mx-auto h-7 w-7 text-primary" />
           <p className="mt-2 text-sm font-medium">Patient AI Assistant</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Ask about {patientName ?? 'this patient'}&apos;s history, labs, medications or next
-            steps. Grounded in the record — radiology images are not interpreted.
-          </p>
+          {summary.isLoading || summary.isFetching ? (
+            <p className="mt-3 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Preparing {patientName ?? 'patient'} summary…
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Ask about {patientName ?? 'this patient'}&apos;s history, labs, medications or next
+              steps. Grounded in the record — radiology images are not interpreted.
+            </p>
+          )}
         </div>
       }
       quickActions={[
@@ -181,3 +205,118 @@ export function PatientAiAssistant({
     />
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -257,9 +257,10 @@ function TopBar({
 
       {/* UC2: in-context patient AI assistant — opens as a right-side chat panel
           so the doctor keeps the consultation in view while asking the assistant. */}
-      <Sheet open={aiOpen} onOpenChange={setAiOpen}>
+      <Sheet open={aiOpen} onOpenChange={setAiOpen} modal={false}>
         <SheetContent
           side="right"
+          showOverlay={false}
           className="flex w-full flex-col gap-0 p-0 sm:max-w-md"
         >
           <SheetHeader className="shrink-0 border-b border-outline-variant/40 p-4 pr-12 pb-3">
