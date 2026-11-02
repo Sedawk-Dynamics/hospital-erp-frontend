@@ -23,7 +23,6 @@ function normalizeRole(slug?: string | null): string {
   return n;
 }
 
-// Role → (label, three starter prompts) shown as quick actions + hint.
 const ROLE_HINTS: Record<string, { label: string; prompts: string[] }> = {
   super_admin: { label: 'Super Admin', prompts: ['How do I onboard a new hospital?', 'How do I change the AI model?', 'How do I add an ICD code?'] },
   admin: { label: 'Hospital Admin', prompts: ['How do I create a user and assign a role?', 'How many patients registered this month?', "What is today's total revenue?"] },
@@ -51,10 +50,6 @@ const DEFAULT_HINT = {
   prompts: ['How do I add a patient?', 'How many patients registered this month?', 'How many beds are available right now?'],
 };
 
-// UC3 (Level 1): floating platform-wide support assistant. Read-only and
-// ROLE-AWARE — answers how-to questions and aggregate questions about the
-// user's OWN organisation, tailored to the signed-in user's role. Rendered
-// globally in the modules layout; self-hides when the feature is off.
 export function SupportAssistantWidget() {
   const { data: status } = useAiStatus();
   const user = useAuthStore((s) => s.user);

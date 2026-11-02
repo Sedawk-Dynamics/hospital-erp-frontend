@@ -1,13 +1,36 @@
 'use client';
 
-import { User, Mail, Phone, MapPin, Calendar, Shield } from 'lucide-react';
+import { User, Mail, Phone, MapPin, Calendar, Shield, Pencil } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
 import { formatDate } from '@/lib/date-utils';
+import { useState } from 'react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
+import { useForm } from 'react-hook-form';
+import { profileEditSchema, ProfileEditValues } from '@/lib/schema/profile-edit-schema';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useUpdatePatientProfile } from '@/hooks/use-patient-profile';
+
+interface PatientProfile {
+  id: string; firstName: string; lastName: string; email?: string;
+  phone?: string; gender?: string; dateOfBirth?: string; bloodGroup?: string;
+  addressLine1?: string; city?: string; state?: string;
+  mrn?: string;
+}
 
 export default function PatientProfilePage() {
   const { user } = useAuthStore();
+  const [editOpen,setEditOpen] = useState<boolean>(false);
 
   const { data: patient, isLoading } = useQuery({
     queryKey: ['patient', 'profile'],
@@ -33,18 +56,29 @@ export default function PatientProfilePage() {
   }
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 ">
       {/* Header */}
-      <div>
-        <p className="font-label text-xs uppercase tracking-[0.2em] text-on-surface-variant mb-2">
-          Account
-        </p>
-        <h1 className="font-headline text-3xl font-extrabold text-on-surface tracking-tight">
-          My Profile
-        </h1>
-        <p className="font-label text-sm text-on-surface-variant mt-1.5">
-          Your personal information and emergency contacts
-        </p>
+      <div className="flex flex-row items-center justify-between gap-4">
+        <div>
+          <p className="font-label text-xs uppercase tracking-[0.2em] text-on-surface-variant mb-2">
+            Account
+          </p>
+          <h1 className="font-headline text-3xl font-extrabold text-on-surface tracking-tight">
+            My Profile
+          </h1>
+          <p className="font-label text-sm text-on-surface-variant mt-1.5">
+            Your personal information and emergency contacts
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setEditOpen(true)}
+          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 font-label text-sm font-bold text-on-primary shadow-sanctuary transition-colors hover:bg-primary/90 shrink-0"
+        >
+          <Pencil className="h-4 w-4" />
+          Edit Profile
+        </button>
       </div>
 
       {/* Basic Info */}
@@ -128,6 +162,136 @@ export default function PatientProfilePage() {
         </a>
         .
       </p>
+
+      <EditProfileDialog
+        open={editOpen}
+        patient={patient}
+        onClose={() => setEditOpen(false)}
+      />
     </div>
   );
 }
+
+function EditProfileDialog({
+  open,
+  patient,
+  onClose,
+}: {
+  open: boolean;
+  patient?: PatientProfile;
+  onClose: () => void;
+}) {
+  const updateProfile = useUpdatePatientProfile();
+
+  const patientDetails=useForm<ProfileEditValues>({resolver:zodResolver(profileEditSchema),
+    defaultValues: {
+      firstName: patient?.firstName ?? '',
+      lastName: patient?.lastName ?? '',
+      email: patient?.email ?? '',
+      phone: patient?.phone ?? '',
+      dateOfBirth: patient?.dateOfBirth ?? '',
+      gender: (patient?.gender as ProfileEditValues['gender']) ?? '',
+      bloodGroup: patient?.bloodGroup ?? '',
+      addressLine1: patient?.addressLine1 ?? '',
+      city: patient?.city ?? '',
+      state: patient?.state ?? '',
+    },
+  });
+
+
+  const onsubmit=async (data: ProfileEditValues) => {
+    if(!patient?.id)  return;
+    const payload = Object.fromEntries(
+    Object.entries(data).filter(([, v]) => v !== ''),
+    );
+    try {
+    await updateProfile.mutateAsync({ id: patient.id, data: payload });
+    onClose();
+  } catch (error) {
+      console.error(error);
+    }
+  }
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit Profile</DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={patientDetails.handleSubmit(onsubmit)}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="firstName">First Name</Label>
+            <Input {...patientDetails.register('firstName')} id="firstName"  />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="lastName">Last Name</Label>
+            <Input {...patientDetails.register('lastName')} id="lastName"  />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="email">Email</Label>
+            <Input {...patientDetails.register('email')}   id="email" type="email"  />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="phone">Phone</Label>
+            <Input {...patientDetails.register('phone')} id="phone"  />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="dateOfBirth">Date of Birth</Label>
+            <Input
+              {...patientDetails.register('dateOfBirth')}
+              id="dateOfBirth"
+              type="date"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="gender">Gender</Label>
+            <select
+              {...patientDetails.register('gender')}
+              id="gender"
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <option value="">Select</option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="bloodGroup">Blood Group</Label>
+            <Input {...patientDetails.register('bloodGroup')} id="bloodGroup"   />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="addressLine1">Address</Label>
+            <Input {...patientDetails.register('addressLine1')} id="addressLine1" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="city">City</Label>
+            <Input {...patientDetails.register('city')} id="city"  />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="state">State</Label>
+            <Input {...patientDetails.register('state')} id="state" />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={updateProfile.isPending}>
+            {updateProfile.isPending ? 'Saving…' : 'Save Changes'}
+          </Button>
+        </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+
+
+
+
+
+

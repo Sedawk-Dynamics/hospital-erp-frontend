@@ -241,12 +241,7 @@ export function AppointmentRowActions({
           </Button>
         )}
 
-        {/* Confirm is a standalone front-desk decision — it verifies the doctor
-            is available and accepts the slot, independent of payment. Collecting
-            the fee is the separate amber button above. A portal-booked patient
-            can be confirmed BEFORE they travel, and cash is taken when they
-            arrive. */}
-        {status === 'booked' && (
+        {['booked', 'pending_payment'].includes(status) && (
           <Button
             size="sm"
             variant="outline"
@@ -273,11 +268,6 @@ export function AppointmentRowActions({
           </Button>
         )}
 
-        {/* No counter action for checked_in / in_consultation — the doctor
-            drives those steps, and the Status column's progression already
-            shows where the patient is. */}
-
-        {/* ── Overflow: always available ── */}
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -303,7 +293,7 @@ export function AppointmentRowActions({
               </DropdownMenuItem>
             )}
 
-            {status === 'booked' && (
+            {['booked', 'pending_payment'].includes(status) && (
               <DropdownMenuItem onClick={handleConfirm}>
                 <CheckCircle2 className="mr-2 h-4 w-4" />
                 Confirm
