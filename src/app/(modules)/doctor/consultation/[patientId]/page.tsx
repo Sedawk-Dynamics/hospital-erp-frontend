@@ -102,6 +102,7 @@ function calculateAge(dob: string): string {
 
 function TopBar({
   patient,
+  visitId,
   onBack,
   onOrderLab,
   onOrderImaging,
@@ -111,6 +112,7 @@ function TopBar({
   onCancelEdit,
 }: {
   patient: Patient;
+  visitId?:string | null;
   onBack: () => void;
   onOrderLab: () => void;
   onOrderImaging: () => void;
@@ -274,6 +276,7 @@ function TopBar({
           <PatientAiAssistant
             patientId={patient.id}
             patientName={patientName}
+            visitId={visitId ?? undefined}
             className="min-h-0 flex-1 p-4 pt-3"
             scrollClassName="min-h-0"
           />
@@ -1090,6 +1093,7 @@ export default function PatientConsultationPage({
     <div className="min-h-screen bg-background">
       <TopBar
         patient={patient}
+        visitId={activeVisitId ?? appointmentId ?? undefined}
         onBack={() => router.back()}
         onOrderLab={guardedOrderLab}
         onOrderImaging={guardedOrderImaging}

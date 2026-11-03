@@ -114,6 +114,8 @@ export default function DoctorAiAssistantPage() {
           </div>
           <CardContent className="p-10">
             <PatientAiAssistant
+              // No consultation on this page, so scope the saved chat to the patient.
+              visitId={`patient:${selected.id}`}
               patientId={selected.id}
               patientName={selected.name}
               scrollClassName="h-[calc(100vh-26rem)] min-h-[320px]"

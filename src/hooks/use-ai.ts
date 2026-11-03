@@ -191,6 +191,11 @@ export interface PatientSummaryResponse {
   provider: string;
   patient: { id: string; name: string; mrn: string; age: number | null; gender: string | null; bloodGroup: string | null };
   counts: Record<string, number>;
+  alerts: {
+    allergies: string[];
+    abnormalLabs: string[];
+    abnormalVitals: string[];
+  };
 }
 
 // Prefetched patient briefing shown when the doctor opens the AI assistant.
@@ -204,6 +209,21 @@ export function usePatientAiSummary(patientId: string | undefined, enabled: bool
     },
     enabled: enabled && !!patientId,
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+// Cheap change-stamp for the patient's clinical record. Polled while the
+// assistant is open so the summary can auto-refresh when data changes mid-session.
+export function usePatientContextVersion(patientId: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ['ai', 'context-version', patientId],
+    queryFn: async () => {
+      const res = await apiGet<{ version: string }>(`/ai/patient/${patientId}/context-version`);
+      return res.data.version;
+    },
+    enabled: enabled && !!patientId,
+    refetchInterval: 60_000, // poll every 60s while the panel is open
+    refetchIntervalInBackground: false,
   });
 }
 

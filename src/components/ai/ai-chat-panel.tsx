@@ -12,6 +12,10 @@ export interface AiChatMessage {
   content: string;
   /** Optional rich node rendered under the assistant text (e.g. a score card). */
   extra?: ReactNode;
+  /** Keep this bubble out of the chat history sent to the model (e.g. a score card). */
+  excludeFromHistory?: boolean;
+  /** Marks special messages so their `extra` can be rebuilt after reload from storage. */
+  kind?: 'summary' | 'blood-report';
 }
 
 export interface AiQuickAction {

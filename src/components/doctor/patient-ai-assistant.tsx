@@ -7,12 +7,26 @@ import {
   usePatientAiChat,
   useBloodReportAnalysis,
   usePatientAiSummary,
+  usePatientContextVersion,
   type AiChatTurn,
   type BloodReportAnalysis,
 } from '@/hooks/use-ai';
 import { Loader2 } from 'lucide-react';
 import { AiChatPanel, type AiChatMessage } from '@/components/ai/ai-chat-panel';
-import { Sparkles, FileText, ListChecks, Activity, ImageOff, Bot } from 'lucide-react';
+import {
+  Sparkles,
+  ListChecks,
+  Activity,
+  ImageOff,
+  Bot,
+  AlertTriangle,
+  ShieldAlert,
+  HeartPulse,
+  FlaskConical,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import type { PatientSummaryResponse } from '@/hooks/use-ai';
+import { usePatientAiChatStore } from '@/stores/patient-ai-chat-store';
 
 function ScoreCard({ data }: { data: BloodReportAnalysis }) {
   const color =
@@ -55,44 +69,166 @@ function ScoreCard({ data }: { data: BloodReportAnalysis }) {
   );
 }
 
+// Critical items pulled as structured data (not from the model's prose), shown
+// as fixed red badges so the doctor can never miss an allergy or abnormal value.
+function AlertBadges({ alerts }: { alerts: PatientSummaryResponse['alerts'] }) {
+  const groups: Array<{ label: string; icon: LucideIcon; items: string[] }> = [
+    { label: 'Allergies', icon: ShieldAlert, items: alerts.allergies },
+    { label: 'Abnormal vitals', icon: HeartPulse, items: alerts.abnormalVitals },
+    { label: 'Abnormal labs', icon: FlaskConical, items: alerts.abnormalLabs },
+  ].filter((g) => g.items.length > 0);
+
+  if (groups.length === 0) return null;
+
+  const total = groups.reduce((n, g) => n + g.items.length, 0);
+
+  return (
+    <div className="mt-2.5 overflow-hidden rounded-xl border border-error/25 bg-error/[0.04] shadow-sm">
+      {/* Header strip */}
+      <div className="flex items-center gap-2 border-b border-error/15 bg-error/10 px-3 py-2">
+        <AlertTriangle className="h-4 w-4 shrink-0 text-error" />
+        <span className="text-xs font-bold uppercase tracking-wider text-error">
+          Clinical alerts
+        </span>
+        <span className="ml-auto rounded-full bg-error px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+          {total}
+        </span>
+      </div>
+
+      {/* Grouped rows */}
+      <div className="divide-y divide-error/10">
+        {groups.map((g) => {
+          const Icon = g.icon;
+          return (
+            <div key={g.label} className="flex items-start gap-2.5 px-3 py-2">
+              <Icon className="mt-0.5 h-4 w-4 shrink-0 text-error/70" />
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-error/70">
+                  {g.label}
+                </p>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {g.items.map((item, i) => (
+                    <span
+                      key={`${g.label}-${i}`}
+                      className="inline-flex items-center gap-1 rounded-md bg-error/10 px-2 py-1 text-xs font-semibold text-error ring-1 ring-inset ring-error/20"
+                    >
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-error" />
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 interface PatientAiAssistantProps {
   patientId: string;
   patientName?: string;
   className?: string;
   scrollClassName?: string;
+  visitId?: string | null;
 }
-
-// UC2 (Level 1): conversational AI assistant grounded in one patient's record.
-// Text-only — radiology image diagnosis is intentionally a disabled "coming
-// soon" affordance per the MVP scope.
 export function PatientAiAssistant({
   patientId,
   patientName,
   className,
   scrollClassName,
+  visitId,
 }: PatientAiAssistantProps) {
   const { data: status } = useAiStatus();
+  const { getMessages, setMessages: persistMessages } = usePatientAiChatStore();
   const chat = usePatientAiChat();
   const bloodReport = useBloodReportAnalysis();
-  // Prefetch the briefing as soon as the assistant is shown.
   const summary = usePatientAiSummary(patientId, !!patientId);
-
+  const contextVersion = usePatientContextVersion(patientId, !!patientId);
   const [messages, setMessages] = useState<AiChatMessage[]>([]);
-
-  // Drop the prefetched briefing in as the first assistant message (once), so
-  // it renders like any other message and is carried in the chat history.
   const summaryInserted = useRef(false);
+  const lastVersion = useRef<string | undefined>(undefined);
+  const wasRefreshed = useRef(false);
+
   useEffect(() => {
-    if (summary.data && !summaryInserted.current) {
-      summaryInserted.current = true;
-      setMessages((prev) =>
-        prev.length === 0 ? [{ role: 'assistant', content: summary.data!.summary }] : prev,
-      );
+    const v = contextVersion.data;
+    if (!v) return;
+    if (lastVersion.current && lastVersion.current !== v) {
+      wasRefreshed.current = true; // mark so the updated summary carries a heading
+      void summary.refetch();
     }
+    lastVersion.current = v;
+  }, [contextVersion.data]);
+
+  useEffect(() => {
+    if (!summary.data) return;
+    setMessages((prev) => {
+      const idx = prev.findIndex((m) => m.kind === 'summary');
+      if (idx === -1) return prev; // not inserted yet — the init effect handles it
+      const heading = wasRefreshed.current
+        ? '🔄 **Updated summary** — the record changed, so this briefing was refreshed.\n\n'
+        : '';
+      wasRefreshed.current = false;
+      const next = [...prev];
+      next[idx] = {
+        ...next[idx],
+        content: heading + summary.data!.summary,
+        extra: <AlertBadges alerts={summary.data!.alerts} />,
+      };
+      return next;
+    });
   }, [summary.data]);
 
+  useEffect(() => {
+    if (!visitId || messages.length === 0) return;
+    persistMessages(
+      visitId,
+      messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+        excludeFromHistory: m.excludeFromHistory,
+        kind: m.kind,
+      })),
+    );
+  }, [messages, visitId, persistMessages]);
+
+
+  useEffect(() => {
+    if (summaryInserted.current || !visitId) return;
+    if (!summary.data && summary.isFetching) return;
+
+    const saved = getMessages(visitId);
+    if (saved.length > 0) {
+      summaryInserted.current = true;
+      setMessages(
+        saved.map((m) => ({
+          role: m.role,
+          content: m.content,
+          excludeFromHistory: m.excludeFromHistory,
+          kind: m.kind,
+          extra:
+            m.kind === 'summary' && summary.data ? (
+              <AlertBadges alerts={summary.data.alerts} />
+            ) : undefined,
+        })),
+      );
+    } else if (summary.data) {
+      summaryInserted.current = true;
+      setMessages([
+        {
+          role: 'assistant',
+          content: summary.data.summary,
+          kind: 'summary',
+          // Red alert badges render right under the summary text.
+          extra: <AlertBadges alerts={summary.data.alerts} />,
+        },
+      ]);
+    }
+  }, [visitId, summary.data, summary.isFetching, getMessages]);
+
   const history: AiChatTurn[] = messages
-    .filter((m) => !m.extra)
+    .filter((m) => !m.excludeFromHistory)
     .map((m) => ({ role: m.role, content: m.content }));
 
   const pending = chat.isPending || bloodReport.isPending;
@@ -123,6 +259,8 @@ export function PatientAiAssistant({
           role: 'assistant',
           content: `Blood report analysis (score ${res.score}/100, ${res.severity}):`,
           extra: <ScoreCard data={res} />,
+          excludeFromHistory: true,
+          kind: 'blood-report',
         },
       ]);
     } catch (err: any) {
@@ -177,11 +315,6 @@ export function PatientAiAssistant({
       }
       quickActions={[
         {
-          label: 'Summarise history',
-          icon: <FileText className="h-3 w-3" />,
-          onClick: () => send("Summarise this patient's history and current clinical status."),
-        },
-        {
           label: 'Analyse blood report',
           icon: <Activity className="h-3 w-3" />,
           onClick: analyseBloodReport,
@@ -205,6 +338,30 @@ export function PatientAiAssistant({
     />
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
