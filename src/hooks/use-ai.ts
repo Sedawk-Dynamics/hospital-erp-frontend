@@ -222,8 +222,8 @@ export function usePatientContextVersion(patientId: string | undefined, enabled:
       return res.data.version;
     },
     enabled: enabled && !!patientId,
-    refetchInterval: 60_000, // poll every 60s while the panel is open
-    refetchIntervalInBackground: false,
+    refetchInterval: 40_000, // poll every 40s while the panel is open
+    refetchIntervalInBackground: true, // keep polling even when the tab is unfocused
   });
 }
 

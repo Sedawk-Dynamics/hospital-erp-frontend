@@ -152,33 +152,36 @@ export function PatientAiAssistant({
   const wasRefreshed = useRef(false);
 
   useEffect(() => {
-    const v = contextVersion.data;
-    if (!v) return;
-    if (lastVersion.current && lastVersion.current !== v) {
-      wasRefreshed.current = true; // mark so the updated summary carries a heading
-      void summary.refetch();
-    }
-    lastVersion.current = v;
-  }, [contextVersion.data]);
+  const current = contextVersion.data;
+  if (!current) return;                 // version not loaded yet
+  if (summary.isFetching) return;       // a refetch already running
+  const latestSummary = messages.findLast((m) => m.kind === 'summary');
+  if (!latestSummary?.version) return;  
+  if (latestSummary.version !== current) {
+    wasRefreshed.current = true;
+    void summary.refetch();
+  }
+}, [contextVersion.data, messages, summary.isFetching]);
+
 
   useEffect(() => {
-    if (!summary.data) return;
-    setMessages((prev) => {
-      const idx = prev.findIndex((m) => m.kind === 'summary');
-      if (idx === -1) return prev; // not inserted yet — the init effect handles it
-      const heading = wasRefreshed.current
-        ? '🔄 **Updated summary** — the record changed, so this briefing was refreshed.\n\n'
-        : '';
-      wasRefreshed.current = false;
-      const next = [...prev];
-      next[idx] = {
-        ...next[idx],
-        content: heading + summary.data!.summary,
-        extra: <AlertBadges alerts={summary.data!.alerts} />,
-      };
-      return next;
-    });
-  }, [summary.data]);
+  if (!summary.data) return;
+  if (!wasRefreshed.current) return;    
+  wasRefreshed.current = false;
+  setMessages((prev) => [
+    ...prev,                        
+    {
+      role: 'assistant',
+      content:
+        '🔄 **Updated summary** — the record changed, so this briefing was refreshed.\n\n' +
+        summary.data!.summary,
+      kind: 'summary',
+      version: contextVersion.data,     // stamp new version
+      extra: <AlertBadges alerts={summary.data!.alerts} />,
+    },
+  ]);
+}, [summary.data]);
+
 
   useEffect(() => {
     if (!visitId || messages.length === 0) return;
@@ -189,6 +192,7 @@ export function PatientAiAssistant({
         content: m.content,
         excludeFromHistory: m.excludeFromHistory,
         kind: m.kind,
+        version: m.version,
       })),
     );
   }, [messages, visitId, persistMessages]);
@@ -207,6 +211,7 @@ export function PatientAiAssistant({
           content: m.content,
           excludeFromHistory: m.excludeFromHistory,
           kind: m.kind,
+          version: m.version,
           extra:
             m.kind === 'summary' && summary.data ? (
               <AlertBadges alerts={summary.data.alerts} />
@@ -220,7 +225,7 @@ export function PatientAiAssistant({
           role: 'assistant',
           content: summary.data.summary,
           kind: 'summary',
-          // Red alert badges render right under the summary text.
+          version: contextVersion.data,
           extra: <AlertBadges alerts={summary.data.alerts} />,
         },
       ]);

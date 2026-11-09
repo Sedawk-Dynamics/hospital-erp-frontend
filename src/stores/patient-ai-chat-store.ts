@@ -6,6 +6,8 @@ export interface StoredAiMessage {
   content: string;
   excludeFromHistory?: boolean;
   kind?: 'summary' | 'blood-report';
+  version?:string;
+  
 }
 
 interface PatientAiChatState {

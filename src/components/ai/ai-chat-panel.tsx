@@ -16,6 +16,7 @@ export interface AiChatMessage {
   excludeFromHistory?: boolean;
   /** Marks special messages so their `extra` can be rebuilt after reload from storage. */
   kind?: 'summary' | 'blood-report';
+  version?: string;
 }
 
 export interface AiQuickAction {
