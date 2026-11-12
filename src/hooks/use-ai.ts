@@ -166,10 +166,17 @@ export function useResetAiConfig() {
 // UC2: Patient AI chatbot for the doctor
 // ============================================================
 
+export interface AiSource {
+  n: number;
+  label: string;
+  url: string;
+}
+
 export interface PatientChatResponse {
   reply: string;
   model: string;
   provider: string;
+  sources?: AiSource[];
   context: {
     patient: { id: string; name: string; mrn: string; age: number | null; gender: string | null; bloodGroup: string | null };
     counts: Record<string, number>;
@@ -196,6 +203,7 @@ export interface PatientSummaryResponse {
     abnormalLabs: string[];
     abnormalVitals: string[];
   };
+  sources?: AiSource[];
 }
 
 // Prefetched patient briefing shown when the doctor opens the AI assistant.

@@ -3,14 +3,19 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
+import apiClient from '@/lib/api-client';
 
-/**
- * Renders an assistant/AI message as Markdown — headings, bold, italics,
- * ordered/unordered lists, tables, code, blockquotes and links — styled to
- * match the design system. Used inside chat bubbles, so spacing is compact and
- * the first/last block margins are collapsed to keep the bubble tight. No
- * `prose` plugin dependency; every element is styled explicitly.
- */
+
+async function openCdssSource(href: string) {
+  const [rawPath, hash] = href.split('#');
+  // Strip the API base so apiClient's baseURL isn't doubled up.
+  const apiPath = rawPath.replace(/^.*\/api\/v1/, '');
+  const res = await apiClient.get(apiPath, { responseType: 'blob' });
+  const blobUrl = URL.createObjectURL(res.data as Blob);
+  window.open(hash ? `${blobUrl}#${hash}` : blobUrl, '_blank', 'noopener,noreferrer');
+}
+
+
 export function MarkdownMessage({ content, className }: { content: string; className?: string }) {
   return (
     <div
@@ -34,11 +39,25 @@ export function MarkdownMessage({ content, className }: { content: string; class
           li: ({ children }) => <li className="pl-0.5 [&>ul]:mt-1 [&>ol]:mt-1">{children}</li>,
           strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
           em: ({ children }) => <em className="italic">{children}</em>,
-          a: ({ children, href }) => (
-            <a href={href} target="_blank" rel="noreferrer" className="font-medium text-primary underline underline-offset-2 hover:opacity-80">
-              {children}
-            </a>
-          ),
+          a: ({ children, href }) => {
+            // CDSS guideline citations need an authed blob fetch, not a raw link.
+            if (href && href.includes('/ai/cdss/source/')) {
+              return (
+                <button
+                  type="button"
+                  onClick={() => openCdssSource(href)}
+                  className="font-medium text-primary underline underline-offset-2 hover:opacity-80"
+                >
+                  {children}
+                </button>
+              );
+            }
+            return (
+              <a href={href} target="_blank" rel="noreferrer" className="font-medium text-primary underline underline-offset-2 hover:opacity-80">
+                {children}
+              </a>
+            );
+          },
           hr: () => <hr className="my-3 border-foreground/10" />,
           blockquote: ({ children }) => (
             <blockquote className="my-2 border-l-2 border-primary/40 pl-3 italic text-muted-foreground">{children}</blockquote>

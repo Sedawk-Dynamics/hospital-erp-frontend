@@ -10,6 +10,7 @@ import {
   usePatientContextVersion,
   type AiChatTurn,
   type BloodReportAnalysis,
+  type AiSource,
 } from '@/hooks/use-ai';
 import { Loader2 } from 'lucide-react';
 import { AiChatPanel, type AiChatMessage } from '@/components/ai/ai-chat-panel';
@@ -27,6 +28,23 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import type { PatientSummaryResponse } from '@/hooks/use-ai';
 import { usePatientAiChatStore } from '@/stores/patient-ai-chat-store';
+
+/**
+ * Replace the AI's inline `[[n]]` citation markers with Markdown links to the
+ * matching guideline source. MarkdownMessage renders these; a custom `a` handler
+ * there detects the cdss-source href and fetches the PDF with auth (blob).
+ */
+function linkifySources(reply: string, sources?: AiSource[]): string {
+  if (!sources?.length) return reply;
+  // The model cites either [[1]] or (often) collapses to [1] — match both,
+  // and render the source's label as the clickable link text.
+  return reply.replace(/\[\[?(\d+)\]\]?/g, (full, num) => {
+    const s = sources.find((x) => x.n === Number(num));
+    if (!s) return full;
+    const label = s.label.replace(/[[\]]/g, ''); // strip brackets so markdown link text stays valid
+    return `[${label}](${s.url})`;
+  });
+}
 
 function ScoreCard({ data }: { data: BloodReportAnalysis }) {
   const color =
@@ -174,7 +192,7 @@ export function PatientAiAssistant({
       role: 'assistant',
       content:
         '🔄 **Updated summary** — the record changed, so this briefing was refreshed.\n\n' +
-        summary.data!.summary,
+        linkifySources(summary.data!.summary, summary.data!.sources),
       kind: 'summary',
       version: contextVersion.data,     // stamp new version
       extra: <AlertBadges alerts={summary.data!.alerts} />,
@@ -223,7 +241,7 @@ export function PatientAiAssistant({
       setMessages([
         {
           role: 'assistant',
-          content: summary.data.summary,
+          content: linkifySources(summary.data.summary, summary.data.sources),
           kind: 'summary',
           version: contextVersion.data,
           extra: <AlertBadges alerts={summary.data.alerts} />,
@@ -242,7 +260,10 @@ export function PatientAiAssistant({
     setMessages((prev) => [...prev, { role: 'user', content: text }]);
     try {
       const res = await chat.mutateAsync({ patientId, message: text, history });
-      setMessages((prev) => [...prev, { role: 'assistant', content: res.reply }]);
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: linkifySources(res.reply, res.sources) },
+      ]);
     } catch (err: any) {
       setMessages((prev) => [
         ...prev,
