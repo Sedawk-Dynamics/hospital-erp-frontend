@@ -88,6 +88,7 @@ import { RecordVitalsDialog } from '@/components/shared/record-vitals-dialog';
 import type { Patient, Appointment } from '@/types';
 import { fullName } from '@/lib/person-name';
 import { object } from 'zod';
+import { useTranscribe } from '@/hooks/use-transcribe';
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -938,7 +939,7 @@ export default function PatientConsultationPage({
   const appointmentId = searchParams.get('appointmentId');
   const [isrecording,setIsRecording]=useState<boolean>(false);
   const [audioUrl,setAudioUrl]=useState<string>('');
-
+  const [transcript,setTranscript]=useState<string>('');
   const [clinicalOpen, setClinicalOpen] = useState(false);
   const [activeClinical, setActiveClinical] = useState<
     'medications' | 'history' | 'investigations' | 'drugs' | 'files' | null
@@ -947,7 +948,6 @@ export default function PatientConsultationPage({
   const [imagingDialogOpen, setImagingDialogOpen] = useState(false);
   const [admissionRequestOpen, setAdmissionRequestOpen] = useState(false);
   const [amendmentOpen, setAmendmentOpen] = useState(false);
-
   const mediaRecorderRef=useRef<MediaRecorder | null>(null);
   const audioChunkRef=useRef<Blob[]>([])
 
@@ -955,6 +955,8 @@ export default function PatientConsultationPage({
     setActiveClinical(key);
     setClinicalOpen(true);
   };
+
+  const {mutateAsync:transcribe,isPending}=useTranscribe();
 
   const { data: patient, isLoading: patientLoading } = usePatientDetail(patientId);
 
@@ -1152,10 +1154,16 @@ export default function PatientConsultationPage({
         }
       }
       
-      audioRecorder.onstop=()=>{
+      audioRecorder.onstop=async()=>{
         const audioBlob=new Blob(audioChunkRef.current,{type:'audio/webm'});
-        const url=URL.createObjectURL(audioBlob);
-        setAudioUrl(url)
+        setAudioUrl(URL.createObjectURL(audioBlob));
+        try {
+          const text=await transcribe({audio:audioBlob});
+          setTranscript(text);
+        } catch (err) {
+          console.error('Transcription failed', err);
+          toast.error('Transcription failed');
+        }
       }
 
       audioRecorder.start();
@@ -1192,18 +1200,34 @@ export default function PatientConsultationPage({
       />
 
 
-      {audioUrl && (
-        <div className="flex items-center gap-3 px-4 py-2 lg:px-6">
-          <audio controls src={audioUrl} className="w-full max-w-md" />
-          <a
-            href={audioUrl}
-            download="recording.webm"
-            className="text-xs text-primary underline whitespace-nowrap"
-          >
-            Download
-          </a>
+      {/* {audioUrl && (
+        <div className="space-y-2 px-4 py-2 lg:px-6">
+          <div className="flex items-center gap-3">
+            <audio controls src={audioUrl} className="w-full max-w-md" />
+            <a
+              href={audioUrl}
+              download="recording.webm"
+              className="text-xs text-primary underline whitespace-nowrap"
+            >
+              Download
+            </a>
+          </div>
+          {isPending && (
+            <p className="text-xs text-muted-foreground">Transcribing…</p>
+          )}
+          {!isPending && transcript && (
+            <div className="max-w-2xl space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">Transcript</p>
+              <p className="rounded-md border bg-muted/40 p-2 text-sm whitespace-pre-wrap">
+                {transcript}
+              </p>
+            </div>
+          )}
+          {!isPending && !transcript && (
+            <p className="text-xs text-muted-foreground">No transcript returned.</p>
+          )}
         </div>
-      )}
+      )} */}
 
       <div className="px-4 py-4 lg:px-6">
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
