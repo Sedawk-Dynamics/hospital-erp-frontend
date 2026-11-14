@@ -28,6 +28,8 @@ import {
   Heart,
   History,
   Loader2,
+  Mic,
+  Square,
   Pill,
   Printer,
   Stethoscope,
@@ -85,6 +87,7 @@ import type { Vital } from '@/hooks/use-vital-history';
 import { RecordVitalsDialog } from '@/components/shared/record-vitals-dialog';
 import type { Patient, Appointment } from '@/types';
 import { fullName } from '@/lib/person-name';
+import { object } from 'zod';
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -110,6 +113,10 @@ function TopBar({
   canOrder,
   isEditing,
   onCancelEdit,
+  isRecording,
+  handleStartRecording,
+  handleStopRecording,
+
 }: {
   patient: Patient;
   visitId?:string | null;
@@ -120,6 +127,10 @@ function TopBar({
   canOrder: boolean;
   isEditing: boolean;
   onCancelEdit?: () => void;
+  isRecording:boolean;
+  handleStartRecording:()=>void,
+  handleStopRecording:()=>void
+
 }) {
   const initials =
     `${patient.firstName?.[0] ?? ''}${patient.lastName?.[0] ?? ''}`.toUpperCase() || 'P';
@@ -200,6 +211,35 @@ function TopBar({
           Cancel edit
         </Button>
       )}
+      {!isRecording ? (
+        <Button
+          variant="outline"
+          size="sm"
+          className="group h-8 gap-1.5 text-xs font-medium border-red-500/40 text-red-600 transition-colors hover:border-red-500/60 hover:bg-red-500/10 hover:text-red-600 dark:text-red-400 dark:hover:text-red-400"
+          onClick={handleStartRecording}
+          disabled={!canOrder}
+        >
+          <Mic className="h-3.5 w-3.5 transition-transform group-hover:scale-110" />
+          Start Recording
+        </Button>
+      ) : (
+        <Button
+          size="sm"
+          className="group h-8 gap-2 text-xs font-medium bg-red-600 text-white shadow-sm transition-colors hover:bg-red-700"
+          onClick={handleStopRecording}
+        >
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-white" />
+          </span>
+          <span className="group-hover:hidden">Recording…</span>
+          <span className="hidden items-center gap-1.5 group-hover:inline-flex">
+            <Square className="h-3 w-3 fill-current" />
+            Stop
+          </span>
+        </Button>
+      )}
+
       <Button
         variant="outline"
         size="sm"
@@ -877,6 +917,10 @@ function ClinicalCard({
 }
 
 
+
+
+
+
 // ── Main page ─────────────────────────────────────────────────────────
 
 export default function PatientConsultationPage({
@@ -892,6 +936,8 @@ export default function PatientConsultationPage({
   const summaryRef = useRef<HTMLDivElement | null>(null);
   const searchParams = useSearchParams();
   const appointmentId = searchParams.get('appointmentId');
+  const [isrecording,setIsRecording]=useState<boolean>(false);
+  const [audioUrl,setAudioUrl]=useState<string>('');
 
   const [clinicalOpen, setClinicalOpen] = useState(false);
   const [activeClinical, setActiveClinical] = useState<
@@ -901,6 +947,9 @@ export default function PatientConsultationPage({
   const [imagingDialogOpen, setImagingDialogOpen] = useState(false);
   const [admissionRequestOpen, setAdmissionRequestOpen] = useState(false);
   const [amendmentOpen, setAmendmentOpen] = useState(false);
+
+  const mediaRecorderRef=useRef<MediaRecorder | null>(null);
+  const audioChunkRef=useRef<Blob[]>([])
 
   const openClinical = (key: 'medications' | 'history' | 'investigations' | 'drugs' | 'files') => {
     setActiveClinical(key);
@@ -1089,9 +1138,48 @@ export default function PatientConsultationPage({
     setEditRequested(false);
   };
 
+
+  const handleStartRecording=async()=>{
+    audioChunkRef.current=[];
+    try {
+      const microphoneAccess=await navigator.mediaDevices.getUserMedia({audio:true});
+      const audioRecorder=new MediaRecorder(microphoneAccess);
+      mediaRecorderRef.current=audioRecorder;
+
+      audioRecorder.ondataavailable=(e)=>{
+        if(e.data.size>0){
+          audioChunkRef.current.push(e.data);
+        }
+      }
+      
+      audioRecorder.onstop=()=>{
+        const audioBlob=new Blob(audioChunkRef.current,{type:'audio/webm'});
+        const url=URL.createObjectURL(audioBlob);
+        setAudioUrl(url)
+      }
+
+      audioRecorder.start();
+      setIsRecording(true);
+    } catch (error) {
+      console.error('Error accessing microphone', error)
+      toast.error('Microphone access denied')
+    }
+  }
+
+  const handleStopRecording=async()=>{
+    if(mediaRecorderRef.current && isrecording){
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(a=>a.stop());
+      setIsRecording(false);
+    }
+  }
+  
   return (
     <div className="min-h-screen bg-background">
       <TopBar
+        isRecording={isrecording}
+        handleStartRecording={handleStartRecording}
+        handleStopRecording={handleStopRecording}
         patient={patient}
         visitId={activeVisitId ?? appointmentId ?? undefined}
         onBack={() => router.back()}
@@ -1103,12 +1191,23 @@ export default function PatientConsultationPage({
         onCancelEdit={isEditing ? cancelEdit : undefined}
       />
 
+
+      {audioUrl && (
+        <div className="flex items-center gap-3 px-4 py-2 lg:px-6">
+          <audio controls src={audioUrl} className="w-full max-w-md" />
+          <a
+            href={audioUrl}
+            download="recording.webm"
+            className="text-xs text-primary underline whitespace-nowrap"
+          >
+            Download
+          </a>
+        </div>
+      )}
+
       <div className="px-4 py-4 lg:px-6">
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-          {/* ── Main column (80%) ─────────────────────────────────── */}
           <div className="space-y-4 min-w-0 lg:col-span-4">
-            {/* Allergies + family disorders — on screen from the moment the
-                consultation opens, not buried in a history sub-tab. */}
             <PatientSafetyBanner patientId={patient.id} />
 
             {/* Banners */}
@@ -1433,3 +1532,46 @@ export default function PatientConsultationPage({
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
