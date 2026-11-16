@@ -215,38 +215,43 @@ function TopBar({
           Cancel edit
         </Button>
       )}
+      {/* AI voice scribe — one consistent premium gradient button across all
+          three states (idle / recording / transcribing). Only the icon + label
+          change; the shape, size, gradient and sheen stay identical. */}
       {isProcessing ? (
         <Button
           size="sm"
-          className="h-8 gap-1.5 text-xs font-medium bg-primary text-primary-foreground shadow-sm hover:bg-primary disabled:opacity-100"
           disabled
+          className="group relative h-8 gap-1.5 overflow-hidden rounded-lg border border-white/20 bg-gradient-to-r from-violet-600 via-fuchsia-600 to-indigo-600 bg-[length:200%_100%] px-3 text-xs font-semibold text-white shadow-md shadow-fuchsia-500/20 disabled:opacity-100"
         >
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          Transcribing…
+          <span className="relative">Transcribing…</span>
         </Button>
       ) : !isRecording ? (
         <Button
-          variant="outline"
           size="sm"
-          className="group h-8 gap-1.5 text-xs font-medium border-red-500/40 text-red-600 transition-colors hover:border-red-500/60 hover:bg-red-500/10 hover:text-red-600 dark:text-red-400 dark:hover:text-red-400"
           onClick={handleStartRecording}
           disabled={!canOrder}
+          className="group relative h-8 gap-1.5 overflow-hidden rounded-lg border border-white/20 bg-gradient-to-r from-violet-600 via-fuchsia-600 to-indigo-600 bg-[length:200%_100%] bg-left px-3 text-xs font-semibold text-white shadow-md shadow-fuchsia-500/20 transition-[background-position,box-shadow] duration-500 hover:bg-right hover:shadow-lg hover:shadow-fuchsia-500/40 disabled:opacity-50"
         >
-          <Mic className="h-3.5 w-3.5 transition-transform group-hover:scale-110" />
-          Start Recording
+          {/* sheen sweep on hover */}
+          <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/30 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+          <Sparkles className="h-3.5 w-3.5 transition-transform group-hover:scale-110 group-hover:rotate-12" />
+          <span className="relative">Start Recording</span>
+          <Mic className="h-3 w-3 opacity-90 transition-transform group-hover:scale-110" />
         </Button>
       ) : (
         <Button
           size="sm"
-          className="group h-8 gap-2 text-xs font-medium bg-red-600 text-white shadow-sm transition-colors hover:bg-red-700"
           onClick={handleStopRecording}
+          className="group relative h-8 gap-1.5 overflow-hidden rounded-lg border border-white/20 bg-gradient-to-r from-violet-600 via-fuchsia-600 to-indigo-600 bg-[length:200%_100%] px-3 text-xs font-semibold text-white shadow-md shadow-fuchsia-500/30"
         >
           <span className="relative flex h-2 w-2">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-white" />
           </span>
-          <span className="group-hover:hidden">Recording…</span>
-          <span className="hidden items-center gap-1.5 group-hover:inline-flex">
+          <span className="relative group-hover:hidden">Recording…</span>
+          <span className="relative hidden items-center gap-1.5 group-hover:inline-flex">
             <Square className="h-3 w-3 fill-current" />
             Stop
           </span>
