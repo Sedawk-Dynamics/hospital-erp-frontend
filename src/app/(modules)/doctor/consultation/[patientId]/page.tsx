@@ -222,7 +222,7 @@ function TopBar({
         <Button
           size="sm"
           disabled
-          className="group relative h-8 gap-1.5 overflow-hidden rounded-lg border border-white/20 bg-gradient-to-r from-violet-600 via-fuchsia-600 to-indigo-600 bg-[length:200%_100%] px-3 text-xs font-semibold text-white shadow-md shadow-fuchsia-500/20 disabled:opacity-100"
+          className="group relative h-8 gap-1.5 overflow-hidden rounded-lg border border-white/20 bg-gradient-to-r from-emerald-500 via-teal-500 to-green-600 bg-[length:200%_100%] px-3 text-xs font-semibold text-white shadow-md shadow-emerald-500/30 disabled:opacity-100"
         >
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
           <span className="relative">Transcribing…</span>
@@ -232,7 +232,7 @@ function TopBar({
           size="sm"
           onClick={handleStartRecording}
           disabled={!canOrder}
-          className="group relative h-8 gap-1.5 overflow-hidden rounded-lg border border-white/20 bg-gradient-to-r from-violet-600 via-fuchsia-600 to-indigo-600 bg-[length:200%_100%] bg-left px-3 text-xs font-semibold text-white shadow-md shadow-fuchsia-500/20 transition-[background-position,box-shadow] duration-500 hover:bg-right hover:shadow-lg hover:shadow-fuchsia-500/40 disabled:opacity-50"
+          className="group relative h-8 gap-1.5 overflow-hidden rounded-lg border border-white/20 bg-gradient-to-r from-emerald-500 via-teal-500 to-green-600 bg-[length:200%_100%] bg-left px-3 text-xs font-semibold text-white shadow-md shadow-emerald-500/30 transition-[background-position,box-shadow] duration-500 hover:bg-right hover:shadow-lg hover:shadow-emerald-500/50 disabled:opacity-50"
         >
           {/* sheen sweep on hover */}
           <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/30 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
@@ -244,7 +244,7 @@ function TopBar({
         <Button
           size="sm"
           onClick={handleStopRecording}
-          className="group relative h-8 gap-1.5 overflow-hidden rounded-lg border border-white/20 bg-gradient-to-r from-violet-600 via-fuchsia-600 to-indigo-600 bg-[length:200%_100%] px-3 text-xs font-semibold text-white shadow-md shadow-fuchsia-500/30"
+          className="group relative h-8 gap-1.5 overflow-hidden rounded-lg border border-white/20 bg-gradient-to-r from-emerald-500 via-teal-500 to-green-600 bg-[length:200%_100%] px-3 text-xs font-semibold text-white shadow-md shadow-emerald-500/40"
         >
           <span className="relative flex h-2 w-2">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
