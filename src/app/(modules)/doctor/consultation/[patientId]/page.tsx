@@ -89,6 +89,7 @@ import type { Patient, Appointment } from '@/types';
 import { fullName } from '@/lib/person-name';
 import { object } from 'zod';
 import { useTranscribe } from '@/hooks/use-transcribe';
+import { TranscriptSections } from '@/components/doctor/prescription-pad/prescription-pad';
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -115,6 +116,7 @@ function TopBar({
   isEditing,
   onCancelEdit,
   isRecording,
+  isProcessing,
   handleStartRecording,
   handleStopRecording,
 
@@ -129,6 +131,7 @@ function TopBar({
   isEditing: boolean;
   onCancelEdit?: () => void;
   isRecording:boolean;
+  isProcessing:boolean;
   handleStartRecording:()=>void,
   handleStopRecording:()=>void
 
@@ -212,7 +215,16 @@ function TopBar({
           Cancel edit
         </Button>
       )}
-      {!isRecording ? (
+      {isProcessing ? (
+        <Button
+          size="sm"
+          className="h-8 gap-1.5 text-xs font-medium bg-primary text-primary-foreground shadow-sm hover:bg-primary disabled:opacity-100"
+          disabled
+        >
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Transcribing…
+        </Button>
+      ) : !isRecording ? (
         <Button
           variant="outline"
           size="sm"
@@ -939,7 +951,7 @@ export default function PatientConsultationPage({
   const appointmentId = searchParams.get('appointmentId');
   const [isrecording,setIsRecording]=useState<boolean>(false);
   const [audioUrl,setAudioUrl]=useState<string>('');
-  const [transcript,setTranscript]=useState<string>('');
+  const [transcript,setTranscript]=useState<TranscriptSections | null>(null);
   const [clinicalOpen, setClinicalOpen] = useState(false);
   const [activeClinical, setActiveClinical] = useState<
     'medications' | 'history' | 'investigations' | 'drugs' | 'files' | null
@@ -1156,12 +1168,15 @@ export default function PatientConsultationPage({
       
       audioRecorder.onstop=async()=>{
         const audioBlob=new Blob(audioChunkRef.current,{type:'audio/webm'});
+        console.log('[rec] onstop — blob size:', audioBlob.size, 'type:', audioBlob.type);
         setAudioUrl(URL.createObjectURL(audioBlob));
         try {
+          console.log('[rec] sending to /transcribe…');
           const text=await transcribe({audio:audioBlob});
+          console.log('[rec] transcribe response:', text);
           setTranscript(text);
         } catch (err) {
-          console.error('Transcription failed', err);
+          console.error('[rec] Transcription failed', err);
           toast.error('Transcription failed');
         }
       }
@@ -1186,6 +1201,7 @@ export default function PatientConsultationPage({
     <div className="min-h-screen bg-background">
       <TopBar
         isRecording={isrecording}
+        isProcessing={isPending}
         handleStartRecording={handleStartRecording}
         handleStopRecording={handleStopRecording}
         patient={patient}
@@ -1370,6 +1386,7 @@ export default function PatientConsultationPage({
                   <div className="px-5 py-4">
                     <PrescriptionPad
                       key={isEditing ? `edit-${prefill?.visitId}` : 'new'}
+                      transcript={transcript?transcript:null}
                       patientId={patient.id}
                       patientName={fullName(patient, 'Patient')}
                       patientAge={patient.dateOfBirth ? calculateAge(patient.dateOfBirth) : undefined}

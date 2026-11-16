@@ -74,6 +74,15 @@ export function clearConsultationDraft(appointmentId: string, visitId?: string):
   }
 }
 
+export interface TranscriptSections {
+    chiefComplaint: string;
+    generalExamination: string;
+    investigationsSummary: string;
+    impression: string;
+    advice: string;
+    referralNotes: string;
+}
+
 interface PrescriptionPadProps {
   patientId: string;
   patientName: string;
@@ -97,6 +106,7 @@ interface PrescriptionPadProps {
     progressNoteId?: string;
     prescriptionId?: string;
   };
+  transcript?:TranscriptSections | null
 }
 
 export function PrescriptionPad({
@@ -114,6 +124,7 @@ export function PrescriptionPad({
   hideHeader,
   initialValues,
   editMode,
+  transcript,
 }: PrescriptionPadProps) {
   const [tempUnit] = useTemperatureUnit();
   // Draft key — persists in-progress form state across navigation so the
@@ -198,8 +209,20 @@ export function PrescriptionPad({
   const { register, watch, setValue, formState: { errors } } = form;
   const { submitConsultation, isSubmitting, error: submitError, currentStep } = useConsultationCompletion();
 
-  // Specialty-specific fields for the logged-in doctor. Shown as a gated final
-  // section: the doctor clicks "Next" to reveal them before finishing.
+  // Seed the form from the AI voice transcript. The text boxes are uncontrolled
+  // (register), so per-field setValue updates state without re-painting them
+  // (needed a manual refresh). form.reset re-renders and fills them live. We
+  // merge with current values and skip empty AI fields so nothing typed is lost.
+  useEffect(() => {
+    if (!transcript) return;
+    const filled = Object.fromEntries(
+      Object.entries(transcript).filter(([, v]) => typeof v === 'string' && v.trim()),
+    );
+    if (Object.keys(filled).length === 0) return;
+    form.reset({ ...form.getValues(), ...filled }, { keepDefaultValues: true });
+  }, [transcript, form]);
+
+
   const { data: doctorProfile } = useDoctorProfile();
   const specialtyFields =
     (doctorProfile?.specialty && SPECIALTY_FIELDS[doctorProfile.specialty as keyof typeof SPECIALTY_FIELDS]) || [];
@@ -525,9 +548,7 @@ export function PrescriptionPad({
                 </div>
               }
             >
-              {/* What the nurse was told at intake. Sits ABOVE the box so the
-                  doctor reads it before writing their own framing. "Use this"
-                  copies it in to be rewritten; the nurse's record is untouched. */}
+
               <NurseIntakeComplaint
                 visitId={visitId ?? editMode?.visitId}
                 currentValue={watch('chiefComplaint') ?? ''}
@@ -688,22 +709,6 @@ export function PrescriptionPad({
                     className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-none"
                   />
                 </div>
-                {/* <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-medium text-muted-foreground">Systemic Examination</label>
-                    <VoiceInputButton
-                      value={watch('systemicExamination') ?? ''}
-                      onChange={(v) => setValue('systemicExamination', v, { shouldDirty: true })}
-                      fieldLabel="Systemic Examination"
-                    />
-                  </div>
-                  <textarea
-                    {...register('systemicExamination')}
-                    placeholder="CVS, RS, P/A, CNS findings..."
-                    rows={3}
-                    className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-none"
-                  />
-                </div> */}
               </div>
             </PadSection>
 

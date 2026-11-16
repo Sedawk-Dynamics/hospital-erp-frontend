@@ -1,5 +1,6 @@
 import { useMutation } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
+import type { TranscriptSections } from '@/components/doctor/prescription-pad/prescription-pad';
 
 // Audio → text for the doctor consultation voice recording. The browser records
 // webm/opus (MediaRecorder); we post the blob as multipart to POST /transcribe,
@@ -18,10 +19,12 @@ export function useTranscribe() {
       const formData = new FormData();
       formData.append('audio', audio, fileName);
 
+      console.log('[hook] POST /transcribe — blob:', audio.size, audio.type);
       const { data } = await apiClient.post('/transcribe', formData, {
         headers: { 'Content-Type': undefined as any },
       });
-      return (data as { data: string }).data;
+      console.log('[hook] raw response from /transcribe:', data);
+      return (data as { data: TranscriptSections }).data;
     },
   });
 }
