@@ -321,7 +321,7 @@ function TopBar({
         <SheetContent
           side="right"
           showOverlay={false}
-          className="flex w-full flex-col gap-0 p-0 sm:max-w-md"
+          className="flex w-full flex-col gap-0 p-0 data-[side=right]:sm:max-w-3xl"
         >
           <SheetHeader className="shrink-0 border-b border-outline-variant/40 p-4 pr-12 pb-3">
             <SheetTitle className="flex items-center gap-2 text-base">

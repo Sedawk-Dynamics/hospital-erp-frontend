@@ -226,8 +226,8 @@ export function usePatientContextVersion(patientId: string | undefined, enabled:
   return useQuery({
     queryKey: ['ai', 'context-version', patientId],
     queryFn: async () => {
-      const res = await apiGet<{ version: string }>(`/ai/patient/${patientId}/context-version`);
-      return res.data.version;
+      const res = await apiGet<{ version: { version: string } }>(`/ai/patient/${patientId}/context-version`);
+      return res.data.version.version;
     },
     enabled: enabled && !!patientId,
     refetchInterval: 40_000, // poll every 40s while the panel is open
