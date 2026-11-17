@@ -315,11 +315,19 @@ export function PatientAiAssistant({
   }
 
   return (
+    <div className={cn('flex min-h-0 flex-col', className)}>
+      {summary.isFetching && messages.length > 0 && (
+        <div className="flex items-center gap-2 border-b border-outline-variant/40 px-4 py-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+          Updating summary — the record changed…
+        </div>
+      )}
     <AiChatPanel
-      className={className}
+      className="min-h-0 flex-1"
       scrollClassName={scrollClassName}
       messages={messages}
       onSend={send}
+      disabled={summary.isFetching || chat.isPending}
       pending={pending}
       placeholder={`Ask about ${patientName ?? 'this patient'}…`}
       emptyState={
@@ -362,6 +370,7 @@ export function PatientAiAssistant({
       ]}
       footerNote="AI decision support — verify before acting. Images are not analysed."
     />
+    </div>
   );
 }
 
