@@ -185,7 +185,7 @@ export interface PatientChatResponse {
 
 export function usePatientAiChat() {
   return useMutation({
-    mutationFn: async (data: { patientId: string; message: string; history?: AiChatTurn[] }) => {
+    mutationFn: async (data: { patientId: string; message: string; history?: AiChatTurn[]; visitId?: string | null }) => {
       const res = await apiPost<PatientChatResponse>('/ai/patient/chat', data);
       return res.data;
     },
@@ -208,11 +208,16 @@ export interface PatientSummaryResponse {
 
 // Prefetched patient briefing shown when the doctor opens the AI assistant.
 // Pass `enabled` so it only fires once the panel is actually open.
-export function usePatientAiSummary(patientId: string | undefined, enabled: boolean) {
+export function usePatientAiSummary(
+  patientId: string | undefined,
+  enabled: boolean,
+  visitId?: string | null,
+) {
   return useQuery({
-    queryKey: ['ai', 'patient-summary', patientId],
+    queryKey: ['ai', 'patient-summary', patientId, visitId ?? null],
     queryFn: async () => {
-      const res = await apiGet<PatientSummaryResponse>(`/ai/patient/${patientId}/summary`);
+      const qs = visitId ? `?visitId=${encodeURIComponent(visitId)}` : '';
+      const res = await apiGet<PatientSummaryResponse>(`/ai/patient/${patientId}/summary${qs}`);
       return res.data;
     },
     enabled: enabled && !!patientId,

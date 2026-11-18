@@ -1001,11 +1001,7 @@ export default function PatientConsultationPage({
   const isInConsultation = appointment?.status === 'in_consultation';
   const isCompleted = appointment?.status === 'completed';
 
-  // Lab + imaging orders need a visit row. Visits historically only got
-  // created when the doctor finished writing the SOAP note, which left the
-  // "Order Lab" / "Order Imaging" buttons disabled for the entire
-  // consultation. Eagerly ensure a visit exists as soon as the appointment
-  // is in_consultation so the buttons work from the start.
+
   useEffect(() => {
     if (!appointmentId || !isInConsultation || activeVisitId) return;
     let cancelled = false;
@@ -1065,15 +1061,8 @@ export default function PatientConsultationPage({
   });
   const prefill = prefillResponse?.prefill;
   const prefillReason = prefillResponse?.reason;
-  // Distinguish "fetch in flight" from "fetch finished but server has nothing"
-  // — the old `!prefill` check conflated the two and hung the form forever.
   const prefillIsLoading = isEditing && (prefillLoading || (prefillFetching && !prefillResponse));
   const prefillUnavailable = isEditing && !prefillIsLoading && !prefill;
-
-  // Progress note for the active visit — drives the amendment-history link,
-  // session-checklist badges, and (after the appointment is completed) the
-  // Consultation Summary panel + sign action. Falls back to the most recent
-  // note for this patient when the active visit hasn't been resolved yet.
   const { data: recentNotes } = useProgressNotes(
     activeVisitId ? { visitId: activeVisitId, limit: 1 } : { patientId, limit: 1 },
   );
@@ -1210,7 +1199,7 @@ export default function PatientConsultationPage({
         handleStartRecording={handleStartRecording}
         handleStopRecording={handleStopRecording}
         patient={patient}
-        visitId={activeVisitId ?? appointmentId ?? undefined}
+        visitId={activeVisitId ?? undefined}
         onBack={() => router.back()}
         onOrderLab={guardedOrderLab}
         onOrderImaging={guardedOrderImaging}

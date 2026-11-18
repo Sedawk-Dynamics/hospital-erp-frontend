@@ -190,7 +190,7 @@ export function PatientAiAssistant({
   const { getMessages, setMessages: persistMessages } = usePatientAiChatStore();
   const chat = usePatientAiChat();
   const bloodReport = useBloodReportAnalysis();
-  const summary = usePatientAiSummary(patientId, !!patientId);
+  const summary = usePatientAiSummary(patientId, !!patientId, visitId);
   const contextVersion = usePatientContextVersion(patientId, !!patientId);
   const [messages, setMessages] = useState<AiChatMessage[]>([]);
   const summaryInserted = useRef(false);
@@ -293,7 +293,7 @@ export function PatientAiAssistant({
   const send = async (text: string) => {
     setMessages((prev) => [...prev, { role: 'user', content: text }]);
     try {
-      const res = await chat.mutateAsync({ patientId, message: text, history });
+      const res = await chat.mutateAsync({ patientId, message: text, history, visitId });
       setMessages((prev) => [
         ...prev,
         { role: 'assistant', content: linkifySources(res.reply, res.sources) },
