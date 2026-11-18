@@ -15,8 +15,12 @@ export interface AiChatMessage {
   /** Keep this bubble out of the chat history sent to the model (e.g. a score card). */
   excludeFromHistory?: boolean;
   /** Marks special messages so their `extra` can be rebuilt after reload from storage. */
-  kind?: 'summary' | 'blood-report';
+  kind?: 'summary' | 'blood-report' | 'imaging';
   version?: string;
+  /** Imaging analysis: base64 PNG data URLs, persisted so the frames survive reload. */
+  images?: string[];
+  /** Imaging analysis: the model's text read, kept separate so images render first. */
+  summary?: string;
 }
 
 export interface AiQuickAction {

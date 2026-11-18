@@ -5,9 +5,10 @@ export interface StoredAiMessage {
   role: 'user' | 'assistant';
   content: string;
   excludeFromHistory?: boolean;
-  kind?: 'summary' | 'blood-report';
+  kind?: 'summary' | 'blood-report' | 'imaging';
   version?:string;
-  
+  images?: string[];
+  summary?: string;
 }
 
 interface PatientAiChatState {

@@ -11,9 +11,11 @@ import {
   type AiChatTurn,
   type BloodReportAnalysis,
   type AiSource,
+  useImagingReportAnalysis,
 } from '@/hooks/use-ai';
 import { Loader2 } from 'lucide-react';
 import { AiChatPanel, type AiChatMessage } from '@/components/ai/ai-chat-panel';
+import { MarkdownMessage } from '@/components/ai/markdown-message';
 import {
   Sparkles,
   ListChecks,
@@ -28,6 +30,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import type { PatientSummaryResponse } from '@/hooks/use-ai';
 import { usePatientAiChatStore } from '@/stores/patient-ai-chat-store';
+import { useImagingAnalytics } from '@/hooks/use-imaging';
 
 /**
  * Replace the AI's inline `[[n]]` citation markers with Markdown links to the
@@ -87,8 +90,32 @@ function ScoreCard({ data }: { data: BloodReportAnalysis }) {
   );
 }
 
-// Critical items pulled as structured data (not from the model's prose), shown
-// as fixed red badges so the doctor can never miss an allergy or abnormal value.
+
+// The AI imaging read: shows the rendered X-ray frame(s) FIRST (so the doctor
+// sees what the model looked at), then the analysis text below.
+function ImagingResult({ images, summary }: { images: string[]; summary: string }) {
+  return (
+    <div className="space-y-2.5">
+      {images?.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {images.map((src, i) => (
+            <a key={i} href={src} target="_blank" rel="noopener noreferrer" className="block">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={src}
+                alt={`X-ray frame ${i + 1}`}
+                className="h-auto w-full rounded-lg border border-foreground/10 object-contain bg-black"
+              />
+            </a>
+          ))}
+        </div>
+      )}
+      {summary && <MarkdownMessage content={summary} />}
+    </div>
+  );
+}
+
+
 function AlertBadges({ alerts }: { alerts: PatientSummaryResponse['alerts'] }) {
   const groups: Array<{ label: string; icon: LucideIcon; items: string[] }> = [
     { label: 'Allergies', icon: ShieldAlert, items: alerts.allergies },
@@ -159,6 +186,7 @@ export function PatientAiAssistant({
   visitId,
 }: PatientAiAssistantProps) {
   const { data: status } = useAiStatus();
+  const imaging=useImagingReportAnalysis();
   const { getMessages, setMessages: persistMessages } = usePatientAiChatStore();
   const chat = usePatientAiChat();
   const bloodReport = useBloodReportAnalysis();
@@ -211,6 +239,8 @@ export function PatientAiAssistant({
         excludeFromHistory: m.excludeFromHistory,
         kind: m.kind,
         version: m.version,
+        images: m.images,
+        summary: m.summary,
       })),
     );
   }, [messages, visitId, persistMessages]);
@@ -230,9 +260,13 @@ export function PatientAiAssistant({
           excludeFromHistory: m.excludeFromHistory,
           kind: m.kind,
           version: m.version,
+          images: m.images,
+          summary: m.summary,
           extra:
             m.kind === 'summary' && summary.data ? (
               <AlertBadges alerts={summary.data.alerts} />
+            ) : m.kind === 'imaging' ? (
+              <ImagingResult images={m.images ?? []} summary={m.summary ?? ''} />
             ) : undefined,
         })),
       );
@@ -254,7 +288,7 @@ export function PatientAiAssistant({
     .filter((m) => !m.excludeFromHistory)
     .map((m) => ({ role: m.role, content: m.content }));
 
-  const pending = chat.isPending || bloodReport.isPending;
+  const pending = chat.isPending || bloodReport.isPending || imaging.isPending;
 
   const send = async (text: string) => {
     setMessages((prev) => [...prev, { role: 'user', content: text }]);
@@ -314,6 +348,33 @@ export function PatientAiAssistant({
     );
   }
 
+  const analyseImagingReport = async () => {
+    setMessages((prev) => [...prev, { role: 'user', content: 'Analyse the latest X-ray imaging.' }]);
+    try {
+      const res = await imaging.mutateAsync({ patientId });
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: '',
+          kind: 'imaging',
+          images: res.images,
+          summary: res.summary,
+          extra: <ImagingResult images={res.images} summary={res.summary} />,
+          excludeFromHistory: true,
+        },
+      ]);
+    } catch (err: any) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: err?.response?.data?.message ?? 'No X-ray imaging available to analyse.',
+        },
+      ]);
+    }
+  };
+
   return (
     <div className={cn('flex min-h-0 flex-col', className)}>
       {summary.isFetching && messages.length > 0 && (
@@ -361,11 +422,10 @@ export function PatientAiAssistant({
           onClick: () => send('Based on the record, what investigations or next steps would you suggest?'),
         },
         {
-          label: 'Analyse imaging',
+          label: 'Analyse imaging report',
           icon: <ImageOff className="h-3 w-3" />,
-          onClick: () => {},
-          disabled: true,
-          title: 'Radiology image diagnosis — coming soon',
+          onClick: analyseImagingReport,
+          title: 'Analyse the latest X-ray with AI (decision support only)',
         },
       ]}
       footerNote="AI decision support — verify before acting. Images are not analysed."

@@ -253,6 +253,28 @@ export function useBloodReportAnalysis() {
   });
 }
 
+// Imaging (X-ray) report analysis. patientId is a URL param; tenant comes from
+// the auth token server-side. Returns the model's text read of the study.
+export interface ImagingReportAnalysis {
+  summary: string;
+  /** Base64 PNG data URLs of the rendered X-ray frames, for display in the UI. */
+  images: string[];
+  imageCount: number;
+  modality?: string;
+}
+
+export function useImagingReportAnalysis() {
+  return useMutation({
+    mutationFn: async (data: { patientId: string }) => {
+      const res = await apiPost<ImagingReportAnalysis>(
+        `/ai/patient/${data.patientId}/analyse-imaging`,
+        {},
+      );
+      return res.data;
+    },
+  });
+}
+
 // ============================================================
 // UC3: Platform-wide support chatbot (read-only)
 // ============================================================
