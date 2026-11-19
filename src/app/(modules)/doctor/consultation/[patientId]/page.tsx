@@ -988,10 +988,17 @@ export default function PatientConsultationPage({
 
   const queryClient = useQueryClient();
   const { data: activeVisitId } = useQuery({
-    queryKey: ['doctor', 'active-visit', patientId],
+    queryKey: ['doctor', 'active-visit', patientId, appointmentId ?? null],
     queryFn: async () => {
+      // Resolve the visit tied to THIS appointment, not just "any active visit"
+      // for the patient — otherwise an old, never-closed visit (visits stay
+      // 'active' after the appointment is marked completed) would win, and the
+      // AI/context would read the wrong consultation.
+      const params = appointmentId
+        ? { appointmentId, status: 'active', limit: 1 }
+        : { patientId, status: 'active', limit: 1 };
       const response = await apiGet<Array<{ id: string; status?: string }>>('/clinical/visits', {
-        params: { patientId, status: 'active', limit: 1 },
+        params,
       });
       return response.data?.[0]?.id ?? null;
     },
