@@ -247,10 +247,11 @@ export function PatientAiAssistant({
 
 
   useEffect(() => {
-    if (summaryInserted.current || !visitId) return;
+    if (summaryInserted.current) return;
     if (!summary.data && summary.isFetching) return;
 
-    const saved = getMessages(visitId);
+    // With a real visit, restore that visit's saved thread if one exists.
+    const saved = visitId ? getMessages(visitId) : [];
     if (saved.length > 0) {
       summaryInserted.current = true;
       setMessages(
@@ -271,6 +272,8 @@ export function PatientAiAssistant({
         })),
       );
     } else if (summary.data) {
+      // No saved thread (or no visit created yet): seed the patient-level
+      // history summary so the doctor can read it before entering anything.
       summaryInserted.current = true;
       setMessages([
         {
