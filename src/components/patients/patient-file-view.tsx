@@ -37,16 +37,43 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
-import { formatDate, formatDateTime } from '@/lib/date-utils';
+import { formatDate, formatDateTime, formatAge } from '@/lib/date-utils';
 import { usePatientFile, type PatientFile } from '@/hooks/use-patient-file';
 import { resolveAttachmentUrl } from '@/hooks/use-lab-attachments';
 
 const inr = (n: number) => `₹${Number(n ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-function age(dob: string | null): string {
-  if (!dob) return '—';
-  const years = Math.floor((Date.now() - new Date(dob).getTime()) / (365.25 * 24 * 3600 * 1000));
-  return Number.isFinite(years) && years >= 0 ? `${years}y` : '—';
+// Years, or months/days for an infant (gap 329).
+const age = (dob: string | null): string => formatAge(dob);
+
+// What was booked, not just new/revisit — a follow-up showed as "Scheduled · New"
+// (gap 333). Older rows without a consultation type fall back to the visit type.
+const CONSULTATION_LABELS: Record<string, string> = {
+  consultation: 'Consultation',
+  follow_up: 'Follow-up',
+  procedure: 'Procedure',
+  emergency: 'Emergency',
+  telemedicine: 'Telemedicine',
+};
+function consultationKind(consultationType?: string | null, visitType?: string | null): string | null {
+  return consultationType && consultationType !== 'consultation'
+    ? CONSULTATION_LABELS[consultationType] ?? consultationType.replace(/_/g, ' ')
+    : visitType === 'revisit'
+      ? 'Revisit'
+      : visitType === 'new'
+        ? 'New'
+        : null;
+}
+function appointmentKind(a: { type: string; visitType: string | null; consultationType?: string | null }): string {
+  const booked = a.type === 'walk_in' ? 'Walk-in' : 'Scheduled';
+  return [booked, consultationKind(a.consultationType, a.visitType)].filter(Boolean).join(' · ');
+}
+// Gap 333: Visit.visitType is only op/ip, so a booked follow-up's visit read
+// "Op". The kind comes from the appointment it was opened from — the same rule
+// as the Appointments table, so the two rows agree ("OP · Follow-up").
+function visitKind(v: { type: string; consultationType?: string | null; appointmentVisitType?: string | null }): string {
+  const setting = v.type ? v.type.toUpperCase() : null;
+  return [setting, consultationKind(v.consultationType, v.appointmentVisitType)].filter(Boolean).join(' · ') || '—';
 }
 
 const SEVERITY_CLASS: Record<string, string> = {
@@ -357,7 +384,7 @@ function EncountersTab({ file }: { file: PatientFile }) {
           head={['Date', 'Type', 'Chief complaint', 'Doctor', 'Diagnoses', 'Status']}
           rows={file.visits.map((v) => [
             formatDate(v.date),
-            v.type ?? '—',
+            visitKind(v),
             v.chiefComplaint ?? '—',
             v.doctor ?? '—',
             String(v.diagnosisCount),
@@ -372,7 +399,7 @@ function EncountersTab({ file }: { file: PatientFile }) {
           rows={file.appointments.map((a) => [
             formatDate(a.date),
             a.doctor ?? '—',
-            [a.type, a.visitType].filter(Boolean).join(' · ') || '—',
+            appointmentKind(a) || '—',
             a.status,
           ])}
         />

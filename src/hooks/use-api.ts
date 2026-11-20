@@ -23,6 +23,10 @@ export interface DashboardStats {
     todayRevenue: number;
     pendingBills: number;
     totalRevenue: number;
+    /** Advances received today — held money, shown apart from revenue. */
+    todayAdvances?: number;
+    /** The IST day the two money tiles cover (gap item 360). */
+    moneyDate?: string;
   };
   bedStats: {
     total: number;

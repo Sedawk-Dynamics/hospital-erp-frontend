@@ -82,6 +82,51 @@ export interface OTRequest {
   otName?: string | null;
   createdAt: string;
   updatedAt: string;
+  // ── Detail-only (GET /ot-requests/:id) — gaps 352/354 ──────────────────
+  /** What Complete will post to the stay; null when no price is configured. */
+  chargePreview?: {
+    amount: number;
+    source: 'manual' | 'tariff' | 'tariff_match';
+    label: string;
+    /** Gap 352: one entry per bill line Complete will post (components, or one). */
+    lines?: Array<{ component: 'procedure' | 'theatre' | 'surgeon' | 'anaesthesia' | 'assistant'; label: string; amount: number }>;
+    /** An explicit ₹0 price — posted as a labelled "no charge" line. */
+    noCharge?: boolean;
+  } | null;
+  /** Set when chargePreview is null: says plainly that nothing will be billed. */
+  chargePreviewMessage?: string | null;
+  /** Charges actually posted to bills for this surgery. */
+  postedCharges?: Array<{
+    billId: string; billNumber: string | null; status: string; amount: number;
+    /** Gap 352: the individual posted lines (theatre / surgeon / anaesthesia / no charge). */
+    lines?: Array<{ description: string; amount: number }>;
+  }>;
+  postedAmount?: number;
+  /** Returned by the Complete call: what was (or was not) posted. */
+  billing?: { posted: boolean; amount: number; billNumber: string | null; message: string };
+}
+
+/** One clash the server found for a proposed slot (gap 351). */
+export interface OtConflict {
+  kind: 'theatre' | 'surgeon' | 'anaesthetist' | 'patient' | 'doctor_availability';
+  message: string;
+  otRequestId?: string;
+}
+
+type ApiErrorShape = {
+  response?: { status?: number; data?: { code?: string; message?: string; details?: { conflicts?: OtConflict[] } } };
+};
+
+/** The machine-readable code the OT endpoints attach to rule failures. */
+export function otErrorCode(err: unknown): string | undefined {
+  return (err as ApiErrorShape)?.response?.data?.code;
+}
+
+/** Conflicts from a 409 OT_CONFLICT response, or null for any other error. */
+export function otConflictsFromError(err: unknown): OtConflict[] | null {
+  const data = (err as ApiErrorShape)?.response?.data;
+  if (data?.code !== 'OT_CONFLICT') return null;
+  return data.details?.conflicts ?? [];
 }
 
 interface PaginationMeta {
@@ -175,6 +220,8 @@ export interface CreateOTInput {
    */
   preferredDate?: string;
   preferredTime?: string;
+  /** Book despite the clashes the server listed (gap 351). */
+  overrideConflicts?: boolean;
 }
 
 export function useCreateOTRequest() {
@@ -219,6 +266,8 @@ export interface ScheduleOTInput {
    * with this reason and must accept before the surgery can start.
    */
   rescheduleReason?: string;
+  /** Book despite the clashes the server listed (gap 351). */
+  overrideConflicts?: boolean;
 }
 
 export function useScheduleOT() {
@@ -280,6 +329,9 @@ export interface UpdateOTInput {
   anaesthetistId?: string;
   surgeryType?: string;
   speciality?: string;
+  overrideConflicts?: boolean;
+  /** Start / complete before the scheduled date, confirmed by the user (gap 354). */
+  confirmEarly?: boolean;
 }
 
 export function useUpdateOTRequest() {
@@ -377,7 +429,15 @@ export interface OTAnalytics {
     durationMinutes?: number | null;
     billingAmount: number | null;
     billingStatus: string | null;
+    /** Posted to bills (gap 353) — billingAmount is only the planned charge. */
+    billedAmount?: number;
   }>;
+  /** Theatres in the master (gap 353). */
+  theatreCount?: number;
+  /** Non-cancelled cases in the window with no theatre assigned. */
+  unassignedTheatreCount?: number;
+  /** Sum of OT charges actually posted to bills. */
+  billedTotal?: number;
 }
 
 export function useOTAnalytics(params?: OTAnalyticsParams) {

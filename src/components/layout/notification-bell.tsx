@@ -137,6 +137,7 @@ export function NotificationBell({ variant = 'plain' }: { variant?: 'module' | '
                   </span>
                   <span className="mt-1 block text-[10px] text-muted-foreground/70">
                     {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
+                    {(n.duplicateCount ?? 1) > 1 && ` · repeated ${n.duplicateCount}×`}
                   </span>
                 </span>
               </button>

@@ -71,7 +71,11 @@ export default function OTReportsPage() {
   // Key rates / revenue (derived).
   const completionRate = totals.total ? Math.round((totals.completed / totals.total) * 100) : 0;
   const cancellationRate = totals.total ? Math.round((totals.cancelled / totals.total) * 100) : 0;
-  const totalRevenue = surgeryList.reduce((sum, s) => sum + (s.billingAmount ?? 0), 0);
+  // Gap 353: "billed" is what was actually posted to bills, not the planned
+  // charge typed on the surgery.
+  const totalRevenue = data?.billedTotal ?? surgeryList.reduce((sum, s) => sum + (s.billedAmount ?? 0), 0);
+  const theatreCount = data?.theatreCount ?? otUtilization.length;
+  const unassigned = data?.unassignedTheatreCount ?? 0;
   const avgStartDelay = data?.avgStartDelayMin ?? 0;
   const delaySamples = data?.startDelaySampleSize ?? 0;
 
@@ -91,7 +95,8 @@ export default function OTReportsPage() {
         StartTime: s.scheduledStartTime ?? '',
         DurationMin: s.durationMinutes ?? '',
         Status: statusLabel(s.status),
-        BillingAmount: s.billingAmount ?? '',
+        PlannedCharge: s.billingAmount ?? '',
+        Billed: s.billedAmount ?? 0,
         BillingStatus: s.billingStatus ?? '',
       })),
     );
@@ -114,7 +119,7 @@ export default function OTReportsPage() {
           <Input id="to" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </div>
         <div className="text-xs text-muted-foreground">
-          Showing {formatDate(fromDate)} – {formatDate(toDate)}
+          Surgeries scheduled {formatDate(fromDate)} – {formatDate(toDate)} (IST, both days included)
         </div>
       </div>
 
@@ -170,6 +175,7 @@ export default function OTReportsPage() {
             <p className="text-xs text-muted-foreground">Total billed</p>
           </div>
           <p className="font-headline text-2xl font-extrabold mt-1">{rupees(totalRevenue)}</p>
+          <p className="text-[10px] text-muted-foreground">OT charges posted to patient bills</p>
         </div>
       </div>
 
@@ -222,13 +228,20 @@ export default function OTReportsPage() {
           <div className="px-5 py-3 border-b flex items-center gap-2">
             <Activity className="h-4 w-4 text-blue-600" />
             <h2 className="font-headline text-base font-bold">OT Utilization</h2>
-            <span className="ml-2 text-xs text-muted-foreground">{otUtilization.length} theaters</span>
+            <span className="ml-2 text-xs text-muted-foreground">
+              {theatreCount} theater{theatreCount === 1 ? '' : 's'}
+              {unassigned > 0 ? ` · ${unassigned} case${unassigned === 1 ? '' : 's'} with no theater` : ''}
+            </span>
           </div>
           {isLoading ? (
             <div className="p-4"><Skeleton className="h-24 w-full" /></div>
           ) : otUtilization.length === 0 ? (
             <div className="p-6">
-              <EmptyState icon={Activity} title="No data" description="No OT bookings in this window." />
+              <EmptyState
+                icon={Activity}
+                title="No theaters"
+                description="No operating theaters are configured. Add one in OT Settings."
+              />
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -319,7 +332,7 @@ export default function OTReportsPage() {
                       )}
                     </td>
                     <td className="px-4 py-2 text-xs">{s.surgeonName}</td>
-                    <td className="px-4 py-2 text-xs">{s.otName ?? '-'}</td>
+                    <td className="px-4 py-2 text-xs">{s.otName ?? <span className="text-amber-700">No theater</span>}</td>
                     <td className="px-4 py-2 text-xs text-muted-foreground">
                       {s.scheduledDate ? formatDate(s.scheduledDate) : '-'}
                       {s.scheduledStartTime && ` · ${s.scheduledStartTime}`}
@@ -330,7 +343,13 @@ export default function OTReportsPage() {
                       </Badge>
                     </td>
                     <td className="px-4 py-2 text-right text-xs">
-                      {s.billingAmount != null ? rupees(s.billingAmount) : <span className="text-muted-foreground">-</span>}
+                      {(s.billedAmount ?? 0) > 0 ? (
+                        rupees(s.billedAmount ?? 0)
+                      ) : s.billingAmount != null ? (
+                        <span className="text-muted-foreground">{rupees(s.billingAmount)} not posted</span>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
                       {s.billingStatus && (
                         <div className="text-muted-foreground">{s.billingStatus}</div>
                       )}
@@ -343,10 +362,9 @@ export default function OTReportsPage() {
         )}
       </div>
 
-      {/* Unused / placeholder secondary tile for design balance */}
       <div className="text-xs text-muted-foreground flex items-center gap-1.5">
-        <IndianRupee className="h-3.5 w-3.5" /> Billing totals shown per surgery; aggregate revenue is available in
-        Hospital → Billing → Transactions.
+        <IndianRupee className="h-3.5 w-3.5" /> Billed = OT charges posted to patient bills (cancelled bills excluded).
+        A planned charge that was never posted shows as &quot;not posted&quot;.
       </div>
     </div>
   );

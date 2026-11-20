@@ -140,7 +140,20 @@ function ModalitiesSection() {
                     <td className="px-4 py-3 text-right">
                       {Number(t.basePrice).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
                     </td>
-                    <td className="px-4 py-3 text-right">{Number(t.gstRatePercent ?? 0).toFixed(2)}</td>
+                    {/* Gap item 358: the seeded 0% was a column default, not a
+                        decision. With no treatment and no approval, say so
+                        rather than print 0.00 as if a rate had been set. */}
+                    <td className="px-4 py-3 text-right">
+                      {!t.gstApproved && !t.gstTreatment && Number(t.gstRatePercent ?? 0) === 0 ? (
+                        <span className="text-xs text-amber-700" title="No GST rate or treatment has been set or approved for this modality">
+                          GST not set
+                        </span>
+                      ) : t.gstTreatment && t.gstTreatment !== 'taxable' ? (
+                        <span className="text-xs">{t.gstTreatment.replace(/_/g, ' ')}{t.gstApproved ? '' : ' (not approved)'}</span>
+                      ) : (
+                        `${Number(t.gstRatePercent ?? 0).toFixed(2)}${t.gstApproved ? '' : ' (not approved)'}`
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <Badge variant="outline" className={cn(
                         t.isActive ? 'bg-green-50 text-green-700 border-green-300' : 'bg-zinc-100 text-zinc-600',

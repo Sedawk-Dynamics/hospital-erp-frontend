@@ -15,6 +15,8 @@ export interface AppNotification {
   referenceType?: string | null;
   referenceId?: string | null;
   createdAt: string;
+  /** How many stored copies the server collapsed into this one (gap 295). */
+  duplicateCount?: number;
 }
 
 const KEYS = {

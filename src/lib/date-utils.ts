@@ -224,3 +224,53 @@ export function toInputDateStr(date?: Date | string): string {
   const p = getISTParts(d);
   return `${p.year}-${pad(p.month)}-${pad(p.day)}`;
 }
+
+// ============================================================
+// Age (gap 329)
+// ============================================================
+
+/** Whole IST calendar date of a value, as yyyy-MM-dd ('' when unparseable). */
+function istYmd(date: Date | string): string {
+  // A bare yyyy-MM-dd is already a calendar date — don't shift it through UTC.
+  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+  const d = parseDate(date);
+  if (!d) return '';
+  const p = getISTParts(d);
+  return `${p.year}-${pad(p.month)}-${pad(p.day)}`;
+}
+
+/** True when a date (e.g. a date of birth) is after today in IST. Today is not. */
+export function isFutureDate(date: Date | string | null | undefined): boolean {
+  if (!date) return false;
+  const ymd = istYmd(date);
+  return !!ymd && ymd > getCurrentISTDate();
+}
+
+/**
+ * Age from a date of birth: years for anyone a year or older, months under a
+ * year, days under a month — "0 days" for a baby born today. '—' when there is
+ * no DOB, or one in the future (which is a data-entry error, not an age).
+ */
+export function formatAge(dob: Date | string | null | undefined, now: Date = new Date()): string {
+  if (!dob) return '—';
+  const birth = istYmd(dob);
+  if (!birth) return '—';
+  const p = getISTParts(now);
+  const today = `${p.year}-${pad(p.month)}-${pad(p.day)}`;
+  if (birth > today) return '—';
+
+  const [by, bm, bd] = birth.split('-').map(Number);
+  let months = (p.year - by) * 12 + (p.month - bm);
+  if (p.day < bd) months -= 1;
+
+  if (months >= 12) {
+    const years = Math.floor(months / 12);
+    return `${years} yr${years === 1 ? '' : 's'}`;
+  }
+  if (months >= 1) return `${months} mo`;
+
+  const days = Math.round(
+    (Date.UTC(p.year, p.month - 1, p.day) - Date.UTC(by, bm - 1, bd)) / 86_400_000,
+  );
+  return `${days} day${days === 1 ? '' : 's'}`;
+}

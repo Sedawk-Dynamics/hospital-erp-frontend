@@ -44,6 +44,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { formatDate } from '@/lib/date-utils';
+import { formatINR } from '@/lib/money';
 import { cn } from '@/lib/utils';
 import { useDebounce } from '@/hooks/use-debounce';
 import { usePatientSearch } from '@/hooks/use-hospital';
@@ -313,13 +314,11 @@ export default function PreAuthPage() {
                         {p.policy?.policyNumber}
                       </div>
                     </TableCell>
+                    {/* Gap 289: the shared formatter — the API sends Decimals as
+                        strings, and "123456.78".toLocaleString() is a no-op. */}
+                    <TableCell>{formatINR(p.estimatedCost)}</TableCell>
                     <TableCell>
-                      ₹{(p.estimatedCost ?? 0).toLocaleString('en-IN')}
-                    </TableCell>
-                    <TableCell>
-                      {p.approvedAmount != null
-                        ? `₹${Number(p.approvedAmount).toLocaleString('en-IN')}`
-                        : '—'}
+                      {p.approvedAmount != null ? formatINR(p.approvedAmount) : '—'}
                     </TableCell>
                     <TableCell>
                       {p.validFrom && p.validTo

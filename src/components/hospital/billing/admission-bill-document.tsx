@@ -36,10 +36,11 @@ const fmtDateTime = (v?: string | null) =>
   v
     ? new Date(v).toLocaleString('en-IN', {
         day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+        timeZone: 'Asia/Kolkata', // hospital time regardless of the viewer's clock (gap 342)
       })
     : '—';
 const fmtDate = (v?: string | null) =>
-  v ? new Date(v).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+  v ? new Date(v).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '—';
 const dash = (v?: string | number | null) =>
   v === null || v === undefined || v === '' ? '—' : String(v);
 
@@ -128,7 +129,13 @@ export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: Admis
       if (gst.invoiceNumbers.length) {
         info.push([`${gst.documentLabel ?? 'Invoice'} No.`, gst.invoiceNumbers.join(', ')]);
       }
-      if (gst.supplierGstin) info.push(['GSTIN (Hospital)', gst.supplierGstin]);
+      // Gap #311: the server's caption ("not verified…" / SANDBOX) travels with the number.
+      if (gst.supplierGstin) {
+        info.push([
+          'GSTIN (Hospital)',
+          gst.supplierGstinCaption ? `${gst.supplierGstin} (${gst.supplierGstinCaption})` : gst.supplierGstin,
+        ]);
+      }
       // A patient with a GSTIN is being billed as a business — it is what lets
       // them claim the credit, so it belongs on the paper.
       if (gst.recipientGstin) info.push(['GSTIN (Patient)', gst.recipientGstin]);

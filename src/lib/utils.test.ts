@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getApiErrorMessage, formatRoleName } from './utils';
+import { getApiErrorMessage, formatRoleName, staffRoles } from './utils';
 
 function axiosError(data: unknown, message = 'Request failed with status code 400') {
   return Object.assign(new Error(message), { response: { data } });
@@ -60,5 +60,15 @@ describe('getApiErrorMessage', () => {
 describe('formatRoleName', () => {
   it('title-cases a snake_case role', () => {
     expect(formatRoleName('billing_admin')).toBe('Billing Admin');
+  });
+});
+
+describe('role labels and staff roles (gap 305)', () => {
+  it('keeps acronyms upper-case', () => {
+    expect(formatRoleName('hr_staff')).toBe('HR Staff');
+  });
+  it('excludes patient and super_admin from staff roles', () => {
+    const names = staffRoles([{ name: 'admin' }, { name: 'patient' }, { name: 'super_admin' }, { name: 'hr_staff' }]).map((r) => r.name);
+    expect(names).toEqual(['admin', 'hr_staff']);
   });
 });

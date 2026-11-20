@@ -15,6 +15,7 @@ import {
 import { Check, X, Stethoscope } from 'lucide-react';
 import { toast } from 'sonner';
 import { fullName } from '@/lib/person-name';
+import { NewLeaveDialog, useCanManageHr } from '../_components/hr-create-dialogs';
 
 const STATUS_TONE: Record<LeaveStatus, string> = {
   pending: 'bg-amber-100 text-amber-700 border-amber-200',
@@ -44,6 +45,7 @@ export default function HrLeavesPage() {
   const { data, isLoading } = useLeaves({ status: status || undefined, limit: 100 });
   const approve = useApproveLeave();
   const reject = useRejectLeave();
+  const canManage = useCanManageHr();
 
   const rows = (data?.data ?? []) as Array<{
     id: string;
@@ -66,11 +68,14 @@ export default function HrLeavesPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold font-headline">Leave Requests</h1>
-        <p className="text-sm text-on-surface-variant">
-          Approve or reject staff leave requests — staff are auto-notified.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold font-headline">Leave Requests</h1>
+          <p className="text-sm text-on-surface-variant">
+            Approve or reject staff leave requests — staff are auto-notified.
+          </p>
+        </div>
+        {canManage && <NewLeaveDialog />}
       </div>
 
       <Card>

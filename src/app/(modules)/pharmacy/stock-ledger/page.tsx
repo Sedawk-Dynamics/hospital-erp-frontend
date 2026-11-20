@@ -17,20 +17,54 @@ import { cn } from '@/lib/utils';
 import { formatDateTimeAmPm, toInputDateStr } from '@/lib/date-utils';
 import { useStockLedger, type StockLedgerMovement } from '@/hooks/use-pharmacy';
 
+// 349: every movement the log records — sales and transfers included.
 const MOVEMENT_LABEL: Record<StockLedgerMovement, string> = {
   receipt: 'Stock In',
-  dispense: 'Dispense / Sale',
+  sale: 'Counter Sale',
+  sale_cancel: 'Sale Cancelled',
+  dispense: 'Dispense',
   patient_return: 'Patient Return',
-  vendor_return: 'Vendor Return',
   counter_return: 'Counter Return',
+  vendor_return: 'Vendor Return',
+  adjustment: 'Adjustment',
+  transfer_out: 'Transfer Out',
+  transfer_in: 'Transfer In',
+  ward_issue: 'Ward Issue',
+  ward_return: 'Ward Return',
+  indent_issue: 'IP Indent Issue',
+  indent_return: 'IP Return to Stock',
+  ot_issue: 'OT Kit Issue',
+  ot_return: 'OT Kit Return',
+  hold: 'Pre-pack Hold',
+  hold_release: 'Hold Released',
+  ndps: 'NDPS Consumption',
 };
 
+const IN_BADGE = 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20';
+const OUT_BADGE = 'bg-blue-500/10 text-blue-700 border-blue-500/20';
+const RETURN_BADGE = 'bg-amber-500/10 text-amber-700 border-amber-500/20';
+const OTHER_BADGE = 'bg-purple-500/10 text-purple-700 border-purple-500/20';
+
 const MOVEMENT_BADGE: Record<StockLedgerMovement, string> = {
-  receipt: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20',
-  dispense: 'bg-blue-500/10 text-blue-700 border-blue-500/20',
-  patient_return: 'bg-amber-500/10 text-amber-700 border-amber-500/20',
-  vendor_return: 'bg-purple-500/10 text-purple-700 border-purple-500/20',
+  receipt: IN_BADGE,
+  transfer_in: IN_BADGE,
+  sale: OUT_BADGE,
+  dispense: OUT_BADGE,
+  transfer_out: OUT_BADGE,
+  ward_issue: OUT_BADGE,
+  indent_issue: OUT_BADGE,
+  ot_issue: OUT_BADGE,
+  ndps: OUT_BADGE,
+  hold: OUT_BADGE,
+  sale_cancel: RETURN_BADGE,
+  patient_return: RETURN_BADGE,
   counter_return: 'bg-teal-500/10 text-teal-700 border-teal-500/20',
+  ward_return: RETURN_BADGE,
+  indent_return: RETURN_BADGE,
+  ot_return: RETURN_BADGE,
+  hold_release: RETURN_BADGE,
+  vendor_return: OTHER_BADGE,
+  adjustment: OTHER_BADGE,
 };
 
 function StockLedgerPageInner() {
@@ -49,6 +83,7 @@ function StockLedgerPageInner() {
   });
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.limit)) : 1;
+  const showBalance = !!data?.entries.some((e) => e.balance != null);
 
   return (
     <div className="space-y-4 animate-fade-in-up">
@@ -59,7 +94,7 @@ function StockLedgerPageInner() {
             Stock Ledger
           </h1>
           <p className="text-xs text-muted-foreground">
-            Batch-wise movement register — every receipt, dispense and return in the period.
+            Batch-wise movement register — every receipt, sale, transfer, return and adjustment in the period.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => refetch()}>
@@ -78,12 +113,26 @@ function StockLedgerPageInner() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <StatTile label="Opening stock" value={data?.summary.openingStock ?? '—'} icon={Boxes} tone="teal" />
         <StatTile label="Received (in period)" value={data?.summary.totalReceived ?? '—'} icon={ArrowDownToLine} tone="emerald" />
         <StatTile label="Dispensed / sold" value={data?.summary.totalDispensed ?? '—'} icon={ArrowUpFromLine} tone="blue" />
         <StatTile label="Returned (restocked)" value={data?.summary.totalReturned ?? '—'} icon={Undo2} tone="amber" />
-        <StatTile label="Closing stock (live)" value={data?.summary.closingStock ?? '—'} icon={Boxes} tone="teal" />
+        <StatTile label="Closing stock" value={data?.summary.closingStock ?? '—'} icon={Boxes} tone="teal" />
       </div>
+
+      {/* 349: the closing is anchored on live stock; say so, and say when part of
+          the period predates the movement log. */}
+      {data && (
+        <p className="text-xs text-muted-foreground">
+          Opening + in − out = closing. Live stock now: {data.summary.liveStock} unit(s)
+          {data.summary.expiredOnHand > 0 ? ` (${data.summary.expiredOnHand} expired, not yet written off)` : ''}.
+          {data.summary.reconstructedBefore && (
+            <> Movements before {formatDateTimeAmPm(data.summary.reconstructedBefore)} are rebuilt from bills, receipts and
+              returns; transfers and adjustments from that time are not itemised and sit in the opening balance.</>
+          )}
+        </p>
+      )}
 
       <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary">
         {isLoading ? (
@@ -94,7 +143,7 @@ function StockLedgerPageInner() {
           <EmptyState
             icon={BookOpenText}
             title="No stock movements"
-            description="Receipts, dispenses and returns in the selected period will appear here."
+            description="Receipts, sales, transfers, returns and adjustments in the selected period will appear here."
           />
         ) : (
           <>
@@ -107,18 +156,21 @@ function StockLedgerPageInner() {
                   <TableHead>Batch</TableHead>
                   <TableHead className="text-right">In</TableHead>
                   <TableHead className="text-right">Out</TableHead>
+                  {showBalance && <TableHead className="text-right">Balance</TableHead>}
                   <TableHead>Party</TableHead>
+                  {/* Gap 347: who sold / dispensed / received each movement. */}
+                  <TableHead>By</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {data.entries.map((e) => (
-                  <TableRow key={`${e.movementType}-${e.referenceId}`}>
+                  <TableRow key={e.id ?? `${e.movementType}-${e.referenceId}`}>
                     <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                       {formatDateTimeAmPm(e.date)}
                     </TableCell>
                     <TableCell>
-                      <Badge className={cn('text-xs', MOVEMENT_BADGE[e.movementType])}>
-                        {MOVEMENT_LABEL[e.movementType]}
+                      <Badge className={cn('text-xs', MOVEMENT_BADGE[e.movementType] ?? OTHER_BADGE)}>
+                        {MOVEMENT_LABEL[e.movementType] ?? e.movementType}
                       </Badge>
                     </TableCell>
                     <TableCell className="font-medium text-sm">{e.drugName}</TableCell>
@@ -129,7 +181,11 @@ function StockLedgerPageInner() {
                     <TableCell className="text-right text-sm text-red-700 font-semibold">
                       {e.quantityOut > 0 ? `−${e.quantityOut}` : ''}
                     </TableCell>
+                    {showBalance && (
+                      <TableCell className="text-right text-sm font-medium">{e.balance ?? ''}</TableCell>
+                    )}
                     <TableCell className="text-xs text-muted-foreground">{e.party ?? '-'}</TableCell>
+                    <TableCell className="text-xs whitespace-nowrap">{e.by ?? '-'}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

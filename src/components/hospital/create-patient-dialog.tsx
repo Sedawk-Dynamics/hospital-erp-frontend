@@ -28,6 +28,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { apiGet, apiPost } from '@/lib/api';
 import type { Patient } from '@/types';
+import { getCurrentISTDate, isFutureDate, formatAge } from '@/lib/date-utils';
 
 // ============================================================
 // Schema
@@ -38,7 +39,8 @@ const createPatientSchema = z.object({
   firstName: z.string().min(1, 'First name is required').max(100),
   lastName: z.string().min(1, 'Last name is required').max(100),
   gender: z.enum(['male', 'female', 'other'], { error: 'Gender is required' }),
-  dateOfBirth: z.string().optional(),
+  // Gap 329: no future DOB (today is fine — a newborn).
+  dateOfBirth: z.string().optional().refine((v) => !v || !isFutureDate(v), 'Date of birth cannot be in the future'),
   phone: z
     .string()
     .min(1, 'Phone number is required')
@@ -438,12 +440,23 @@ export function CreatePatientDialog({
                 )}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="cp-dob">Date of Birth</Label>
+                <Label htmlFor="cp-dob">
+                  Date of Birth
+                  {watch('dateOfBirth') && formatAge(watch('dateOfBirth')) !== '—' && (
+                    <span className="ml-1.5 font-normal text-muted-foreground">
+                      ({formatAge(watch('dateOfBirth'))})
+                    </span>
+                  )}
+                </Label>
                 <Input
                   id="cp-dob"
                   type="date"
+                  max={getCurrentISTDate()}
                   {...register('dateOfBirth')}
                 />
+                {errors.dateOfBirth && (
+                  <p className="text-xs text-destructive">{errors.dateOfBirth.message}</p>
+                )}
               </div>
             </div>
 

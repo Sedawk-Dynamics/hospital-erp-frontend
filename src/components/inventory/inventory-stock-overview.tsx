@@ -64,7 +64,11 @@ export function InventoryStockOverview() {
     {
       label: 'Stock value',
       value: money(combined.stockValue),
-      sub: combined.valueAtRisk > 0 ? `${money(combined.valueAtRisk)} at risk` : 'on-hand value',
+      // Gap 301: say which basis and when, so the figure can be compared with reports.
+      sub: `${combined.valueAtRisk > 0 ? `${money(combined.valueAtRisk)} at risk · ` : ''}at purchase cost${
+        data.valuation?.asOf ? ` · ${new Date(data.valuation.asOf).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}` : ''
+      }`,
+      title: data.valuation?.basisLabel,
       icon: Wallet,
       tone: 'text-foreground font-mono',
       iconTone: 'text-primary/40',
@@ -79,6 +83,7 @@ export function InventoryStockOverview() {
           <div
             key={c.label}
             className="flex items-center justify-between rounded-xl bg-surface-container-lowest p-4 shadow-sanctuary"
+            title={'title' in c ? c.title : undefined}
           >
             <div className="min-w-0">
               <p className="truncate text-xs text-muted-foreground">{c.label}</p>

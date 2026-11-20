@@ -2,10 +2,8 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { BarChart3, Filter, Download } from 'lucide-react';
+import { BarChart3, Download, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -16,27 +14,27 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { formatDate } from '@/lib/date-utils';
+import { formatINR } from '@/lib/money';
+import { InsuranceReportFilters, amountRateBasis } from '@/components/insurance/insurance-report-filters';
 import {
   useClaimsSummaryReport,
   useApprovalRateReport,
   useAgingReport,
   useOutstandingReport,
-  useInsurers,
-  useTpas,
   type ReportFilters,
+  type PayerGroup,
 } from '@/hooks/use-insurance';
 
+function rate(value: number | null | undefined) {
+  // null = nothing decided yet; "—" rather than a misleading 0% (gap 290).
+  return value === null || value === undefined ? '—' : `${value}%`;
+}
+
+// Gap 289: the shared formatter (₹1,23,456.78). CSV keeps plain numbers.
 function inr(value: number | null | undefined) {
   if (value === null || value === undefined) return '—';
-  return `₹${Number(value).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+  return formatINR(value);
 }
 
 type CsvCell = string | number | null | undefined;
@@ -55,8 +53,6 @@ function downloadCsv(filename: string, rows: CsvCell[][]) {
 
 export default function InsuranceReportsPage() {
   const [filters, setFilters] = useState<ReportFilters>({});
-  const { data: insurers } = useInsurers({ isActive: true, limit: 100 });
-  const { data: tpas } = useTpas({ isActive: true, limit: 100 });
 
   const summary = useClaimsSummaryReport(filters);
   const approval = useApprovalRateReport(filters);
@@ -72,71 +68,8 @@ export default function InsuranceReportsPage() {
         </p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="size-4 text-primary" /> Filters
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <div>
-            <Label>From</Label>
-            <Input
-              type="date"
-              value={filters.fromDate ?? ''}
-              onChange={(e) => setFilters({ ...filters, fromDate: e.target.value || undefined })}
-            />
-          </div>
-          <div>
-            <Label>To</Label>
-            <Input
-              type="date"
-              value={filters.toDate ?? ''}
-              onChange={(e) => setFilters({ ...filters, toDate: e.target.value || undefined })}
-            />
-          </div>
-          <div>
-            <Label>Insurer</Label>
-            <Select
-              value={filters.insurerId ?? null}
-              onValueChange={(v) =>
-                setFilters({ ...filters, insurerId: (v as string) || undefined })
-              }
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="All insurers" />
-              </SelectTrigger>
-              <SelectContent>
-                {insurers?.data?.map((i) => (
-                  <SelectItem key={i.id} value={i.id}>
-                    {i.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>TPA</Label>
-            <Select
-              value={filters.tpaId ?? null}
-              onValueChange={(v) =>
-                setFilters({ ...filters, tpaId: (v as string) || undefined })
-              }
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="All TPAs" />
-              </SelectTrigger>
-              <SelectContent>
-                {tpas?.data?.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Gap 290: the same filter bar (and the same backend filter) as the dashboard. */}
+      <InsuranceReportFilters filters={filters} onChange={setFilters} />
 
       <Tabs defaultValue="summary" className="space-y-4">
         <TabsList>
@@ -154,7 +87,9 @@ export default function InsuranceReportsPage() {
                 <CardTitle className="flex items-center gap-2">
                   <BarChart3 className="size-4 text-primary" /> Claims Summary
                 </CardTitle>
-                <CardDescription>By claim status</CardDescription>
+                <CardDescription>
+                  By claim status. {summary.data?.definitions?.totals}
+                </CardDescription>
               </div>
               <Button
                 variant="outline"
@@ -177,7 +112,11 @@ export default function InsuranceReportsPage() {
                 <Tile label="Claimed" value={inr(summary.data?.total.claimed)} />
                 <Tile label="Approved" value={inr(summary.data?.total.approved)} />
                 <Tile label="Paid" value={inr(summary.data?.total.paid)} />
-                <Tile label="Outstanding" value={inr(summary.data?.total.outstanding)} />
+                <Tile
+                  label="Outstanding"
+                  value={inr(summary.data?.total.outstanding)}
+                  hint={summary.data?.definitions?.outstanding}
+                />
               </div>
               <Table>
                 <TableHeader>
@@ -192,9 +131,15 @@ export default function InsuranceReportsPage() {
                 <TableBody>
                   {summary.data?.byStatus?.length ? (
                     summary.data.byStatus.map((r) => (
-                      <TableRow key={r.status}>
+                      <TableRow
+                        key={r.status}
+                        className={r.excludedFromTotals ? 'text-on-surface-variant' : undefined}
+                      >
                         <TableCell className="font-medium">
                           {r.status.replace(/_/g, ' ')}
+                          {r.excludedFromTotals && (
+                            <span className="ml-1 text-[10px] uppercase">(not in totals)</span>
+                          )}
                         </TableCell>
                         <TableCell>{r.count}</TableCell>
                         <TableCell>{inr(r.claimed)}</TableCell>
@@ -221,20 +166,27 @@ export default function InsuranceReportsPage() {
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
                 <CardTitle>Approval Rate</CardTitle>
-                <CardDescription>By insurer</CardDescription>
+                <CardDescription>By payer (payer case first, then policy)</CardDescription>
               </div>
               <Button
                 variant="outline"
                 onClick={() => {
                   const rows: CsvCell[][] = [
-                    ['Insurer', 'Total', 'Approved', 'Rejected', 'Rate %', 'Claimed', 'Approved Amt'],
+                    [
+                      'Payer', 'Total', 'Decided', 'Approved', 'Rejected', 'Rate by count %',
+                      'Rate by amount %', 'Decided claimed amt', 'Decided approved amt', 'Claimed', 'Approved Amt',
+                    ],
                     ...(approval.data?.byInsurer ?? []).map(
                       (r): CsvCell[] => [
                         r.insurerName,
                         r.total,
+                        r.decided,
                         r.approved,
                         r.rejected,
                         r.approvalRate,
+                        r.amountApprovalRate,
+                        r.decidedClaimedAmount,
+                        r.decidedApprovedAmount,
                         r.claimedAmount,
                         r.approvedAmount,
                       ],
@@ -247,23 +199,42 @@ export default function InsuranceReportsPage() {
               </Button>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                <Tile label="Total" value={approval.data?.overall.total ?? 0} />
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+                <Tile label="Decided" value={approval.data?.overall.decided ?? 0} />
                 <Tile label="Approved" value={approval.data?.overall.approved ?? 0} />
                 <Tile label="Rejected" value={approval.data?.overall.rejected ?? 0} />
+                {/* Gap 290: two written definitions, shown separately. */}
                 <Tile
-                  label="Approval Rate"
-                  value={`${approval.data?.overall.approvalRate ?? 0}%`}
+                  label="Approval rate (by count)"
+                  value={rate(approval.data?.overall.approvalRate)}
+                  hint={approval.data?.definitions?.approvalRate}
+                  sub={
+                    approval.data
+                      ? `${approval.data.overall.approved} approved ÷ ${approval.data.overall.decided ?? 0} decided`
+                      : undefined
+                  }
+                />
+                <Tile
+                  label="Approval rate (by amount)"
+                  value={rate(approval.data?.overall.amountApprovalRate)}
+                  hint={approval.data?.definitions?.amountApprovalRate}
+                  sub={amountRateBasis(
+                    approval.data?.overall.decidedApprovedAmount,
+                    approval.data?.overall.decidedClaimedAmount,
+                    inr,
+                  )}
                 />
               </div>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Insurer</TableHead>
+                    <TableHead>Payer</TableHead>
                     <TableHead>Total</TableHead>
+                    <TableHead>Decided</TableHead>
                     <TableHead>Approved</TableHead>
                     <TableHead>Rejected</TableHead>
-                    <TableHead>Rate</TableHead>
+                    <TableHead title={approval.data?.definitions?.approvalRate}>Rate (count)</TableHead>
+                    <TableHead title={approval.data?.definitions?.amountApprovalRate}>Rate (amount)</TableHead>
                     <TableHead>Claimed</TableHead>
                     <TableHead>Approved Amount</TableHead>
                   </TableRow>
@@ -271,19 +242,27 @@ export default function InsuranceReportsPage() {
                 <TableBody>
                   {approval.data?.byInsurer?.length ? (
                     approval.data.byInsurer.map((r) => (
-                      <TableRow key={r.insurerId}>
-                        <TableCell className="font-medium">{r.insurerName}</TableCell>
+                      <TableRow key={r.insurerId ?? 'payer-missing'}>
+                        <TableCell className={r.insurerId ? 'font-medium' : 'font-medium text-amber-700'}>
+                          {r.insurerName}
+                        </TableCell>
                         <TableCell>{r.total}</TableCell>
+                        <TableCell>{r.decided ?? '—'}</TableCell>
                         <TableCell>{r.approved}</TableCell>
                         <TableCell>{r.rejected}</TableCell>
-                        <TableCell>{r.approvalRate}%</TableCell>
+                        <TableCell>{rate(r.approvalRate)}</TableCell>
+                        <TableCell
+                          title={amountRateBasis(r.decidedApprovedAmount, r.decidedClaimedAmount, inr)}
+                        >
+                          {rate(r.amountApprovalRate)}
+                        </TableCell>
                         <TableCell>{inr(r.claimedAmount)}</TableCell>
                         <TableCell>{inr(r.approvedAmount)}</TableCell>
                       </TableRow>
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center text-on-surface-variant">
+                      <TableCell colSpan={9} className="text-center text-on-surface-variant">
                         No data for these filters.
                       </TableCell>
                     </TableRow>
@@ -299,7 +278,11 @@ export default function InsuranceReportsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Aging Report</CardTitle>
-              <CardDescription>Open claims grouped by submission age</CardDescription>
+              <CardDescription>
+                Live claims grouped by submission age. Amount = outstanding on approved claims plus the
+                claimed amount of claims awaiting a decision; cancelled, rejected and replaced claims are
+                left out.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -311,15 +294,16 @@ export default function InsuranceReportsPage() {
                   />
                 )) ?? null}
               </div>
+              <PayerTable title="By payer" groups={aging.data?.byPayer} />
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Bucket</TableHead>
                     <TableHead>Claim</TableHead>
                     <TableHead>Patient</TableHead>
-                    <TableHead>Insurer</TableHead>
+                    <TableHead>Payer</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Outstanding</TableHead>
+                    <TableHead>Amount awaited</TableHead>
                     <TableHead>Submitted</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -339,7 +323,9 @@ export default function InsuranceReportsPage() {
                         <TableCell>
                           {c.patient.firstName} {c.patient.lastName ?? ''}
                         </TableCell>
-                        <TableCell>{c.insurer.name}</TableCell>
+                        <TableCell>
+                          {c.insurer?.name ?? <span className="text-amber-700">Payer missing</span>}
+                        </TableCell>
                         <TableCell>{c.status.replace(/_/g, ' ')}</TableCell>
                         <TableCell>{inr(c.outstandingAmount)}</TableCell>
                         <TableCell>{formatDate(c.submissionDate)}</TableCell>
@@ -365,7 +351,9 @@ export default function InsuranceReportsPage() {
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
                 <CardTitle>Outstanding Claims</CardTitle>
-                <CardDescription>Approved but not yet fully paid</CardDescription>
+                <CardDescription title={outstanding.data?.definitions?.outstanding}>
+                  Approved but not yet fully paid: approved − received − write-offs
+                </CardDescription>
               </div>
               <div className="text-right">
                 <div className="text-xs text-on-surface-variant">Total outstanding</div>
@@ -374,13 +362,14 @@ export default function InsuranceReportsPage() {
                 </div>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              <PayerTable title="By payer" groups={outstanding.data?.byPayer} />
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Claim</TableHead>
                     <TableHead>Patient</TableHead>
-                    <TableHead>Insurer</TableHead>
+                    <TableHead>Payer</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Claimed</TableHead>
                     <TableHead>Approved</TableHead>
@@ -404,7 +393,9 @@ export default function InsuranceReportsPage() {
                         <TableCell>
                           {c.patient?.firstName} {c.patient?.lastName ?? ''}
                         </TableCell>
-                        <TableCell>{c.policy?.insurer?.name ?? '—'}</TableCell>
+                        <TableCell>
+                          {c.insurer?.name ?? <span className="text-amber-700">Payer missing</span>}
+                        </TableCell>
                         <TableCell>{c.status.replace(/_/g, ' ')}</TableCell>
                         <TableCell>{inr(c.claimAmount)}</TableCell>
                         <TableCell>{inr(c.approvedAmount)}</TableCell>
@@ -434,11 +425,59 @@ export default function InsuranceReportsPage() {
   );
 }
 
-function Tile({ label, value }: { label: string; value: React.ReactNode }) {
+function Tile({
+  label,
+  value,
+  hint,
+  sub,
+}: {
+  label: string;
+  value: React.ReactNode;
+  hint?: string;
+  /** Numerator ÷ denominator behind a rate (gap 290). */
+  sub?: string;
+}) {
   return (
-    <div className="rounded-xl border bg-surface-container-lowest px-4 py-3">
-      <div className="text-[10px] uppercase tracking-wider text-on-surface-variant">{label}</div>
+    <div className="rounded-xl border bg-surface-container-lowest px-4 py-3" title={hint}>
+      <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-on-surface-variant">
+        {label}
+        {hint && <Info className="size-3" aria-label={hint} />}
+      </div>
       <div className="text-lg font-bold font-headline">{value}</div>
+      {sub && <div className="text-[10px] text-on-surface-variant">{sub}</div>}
     </div>
+  );
+}
+
+/** Per-payer totals; claims with no payer get their own row so the total adds up (gap 292). */
+function PayerTable({ title, groups }: { title: string; groups?: PayerGroup[] }) {
+  if (!groups?.length) return null;
+  const total = groups.reduce((sum, g) => sum + g.amount, 0);
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>{title}</TableHead>
+          <TableHead>Claims</TableHead>
+          <TableHead>Amount</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {groups.map((g) => (
+          <TableRow key={g.payerId ?? 'payer-missing'}>
+            <TableCell className={g.payerId ? 'font-medium' : 'font-medium text-amber-700'}>
+              {g.payerName}
+            </TableCell>
+            <TableCell>{g.count}</TableCell>
+            <TableCell>{inr(g.amount)}</TableCell>
+          </TableRow>
+        ))}
+        <TableRow>
+          <TableCell className="font-bold">Total</TableCell>
+          <TableCell className="font-bold">{groups.reduce((sum, g) => sum + g.count, 0)}</TableCell>
+          <TableCell className="font-bold">{inr(Math.round(total * 100) / 100)}</TableCell>
+        </TableRow>
+      </TableBody>
+    </Table>
   );
 }

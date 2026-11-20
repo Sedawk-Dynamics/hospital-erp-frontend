@@ -1,6 +1,6 @@
 'use client';
 
-import { use } from 'react';
+import { use, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -14,6 +14,21 @@ export default function HospitalFormBuilderPage(props: { params: Promise<{ id: s
   const { data, isLoading } = useHospitalFormDetail(id);
   const updateForm = useUpdateHospitalForm(id);
   const form = data?.data;
+  // Gap 304: a stable `initial` — a fresh object every render re-hydrated the
+  // builder (wiping local edits) and made its dirty/live status unreliable.
+  const initial = useMemo(
+    () =>
+      form
+        ? {
+            name: form.name,
+            description: form.description ?? undefined,
+            category: form.category,
+            schema: form.schema,
+            isPublished: form.isPublished,
+          }
+        : undefined,
+    [form],
+  );
 
   if (isLoading) {
     return (
@@ -62,13 +77,7 @@ export default function HospitalFormBuilderPage(props: { params: Promise<{ id: s
 
       <FormBuilder
         publishLabelMode="hospital"
-        initial={{
-          name: form.name,
-          description: form.description ?? undefined,
-          category: form.category,
-          schema: form.schema,
-          isPublished: form.isPublished,
-        }}
+        initial={initial}
         isSaving={updateForm.isPending}
         onSave={async (payload) => {
           if (form.archivedAt) {

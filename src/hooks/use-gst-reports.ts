@@ -108,8 +108,28 @@ function useReport<T>(name: string, path: string, query: GstReportQuery, enabled
 
 // ── Group A — filing ───────────────────────────────────────────────────────
 
+/**
+ * Total turnover, the taxable part and the exempt part — three figures, each
+ * under its own name (gap item 278).
+ */
+export interface TurnoverSummary {
+  lines: number;
+  totalTurnover: number;
+  taxableValue: number;
+  exemptNilNonGst: number;
+  unclassifiedValue: number;
+  cgstAmount: number;
+  sgstAmount: number;
+  igstAmount: number;
+  cessAmount: number;
+  taxAmount: number;
+  invoiceValue: number;
+}
+
 export const useSalesRegister = (q: GstReportQuery, on = true) =>
-  useReport<{ period: GstPeriod; rows: SalesLine[] }>('sales-register', '/gst/reports/sales-register', q, on);
+  useReport<{ period: GstPeriod; rows: SalesLine[]; summary?: TurnoverSummary }>(
+    'sales-register', '/gst/reports/sales-register', q, on,
+  );
 
 export interface RateSummaryRow extends TaxTotals {
   treatment: string;
@@ -122,6 +142,7 @@ export const useRateSummary = (q: GstReportQuery, on = true) =>
     byRate: RateSummaryRow[];
     byDepartment: Array<TaxTotals & { department: string; byRate: RateSummaryRow[] }>;
     totals: TaxTotals;
+    turnover?: TurnoverSummary;
     /** Rates in the period the law did not recognise. Filing gets rejected. */
     illegalRates: {
       lines: number;
@@ -150,6 +171,9 @@ export const useB2bRegister = (q: GstReportQuery, on = true) =>
       placeOfSupplyStateCode: string | null; isInterState: boolean; patientName: string | null;
     }>;
     totals: TaxTotals;
+    taxableTotals?: TaxTotals;
+    exemptTotals?: TaxTotals;
+    turnover?: TurnoverSummary;
   }>('b2b-register', '/gst/reports/b2b-register', q, on);
 
 export const useB2cSummary = (q: GstReportQuery, on = true) =>
@@ -161,9 +185,13 @@ export const useB2cSummary = (q: GstReportQuery, on = true) =>
     }>;
     summary: Array<TaxTotals & {
       placeOfSupplyStateCode: string | null; ratePercent: number; isInterState: boolean;
+      treatment?: string; treatmentLabel?: string;
     }>;
     threshold: number;
     totals: TaxTotals;
+    taxableTotals?: TaxTotals;
+    exemptTotals?: TaxTotals;
+    turnover?: TurnoverSummary;
   }>('b2c-summary', '/gst/reports/b2c-summary', q, on);
 
 export interface CreditNoteRow {
@@ -188,6 +216,9 @@ export interface CreditNoteRow {
   issuedBy: string | null;
   withinTimeLimit: boolean;
   reportable: boolean;
+  noteType?: string;
+  /** False for the cancellation of a voided sale already gone from A-1. */
+  originalInRegister?: boolean;
 }
 export const useCreditNoteRegister = (q: GstReportQuery, on = true) =>
   useReport<{
@@ -200,6 +231,7 @@ export const useCreditNoteRegister = (q: GstReportQuery, on = true) =>
       b2c: { count: number; taxableValue: number; taxAmount: number };
       outsideTimeLimit: number;
       notReportable: number;
+      originalNotInRegister?: number;
     };
   }>('credit-notes', '/gst/reports/credit-notes', q, on);
 
@@ -220,8 +252,11 @@ export const useGstr1 = (q: GstReportQuery, on = true) =>
     tables: {
       b2b: TaxTotals;
       b2c: TaxTotals;
-      exemptTurnover: { exempt: number; nilRated: number; nonGst: number; total: number };
-      creditNotes: { count: number; taxableValue: number; taxAmount: number; notReportable: number; outsideTimeLimit: number };
+      exemptTurnover: { exempt: number; nilRated: number; nonGst: number; total: number; notesNetted?: number };
+      creditNotes: {
+        count: number; taxableValue: number; taxAmount: number; notReportable: number; outsideTimeLimit: number;
+        excluded?: NoteExclusions;
+      };
       advances: {
         received: { count: number; amount: number; taxableValue: number; taxAmount: number };
         adjusted: { count: number; amount: number };
@@ -233,8 +268,36 @@ export const useGstr1 = (q: GstReportQuery, on = true) =>
       taxable: { taxableValue: number; taxAmount: number; agrees: boolean };
       register: { taxableValue: number; taxAmount: number; agrees: boolean };
       unclassifiedLines: number;
+      /** GSTR-1 (4 + 5/7 + 9B) against GSTR-3B 3.1(a) — gap item 274. */
+      gstr3b?: {
+        gstr1TaxableValue: number; gstr1TaxAmount: number;
+        gstr3bTaxableValue: number; gstr3bTaxAmount: number;
+        taxableValue: number; taxAmount: number; agrees: boolean;
+      };
     };
+    creditNotesApplied?: AppliedNote[];
   }>('gstr1', '/gst/reports/gstr1', q, on);
+
+export interface NoteExclusions {
+  total: number;
+  outsideTimeLimit: number;
+  originalNotInRegister: number;
+}
+
+/** A credit/debit note netted into a return, for drill-down from its total. */
+export interface AppliedNote {
+  id: string;
+  creditNoteNumber: string;
+  noteType: string;
+  issueDate: string;
+  againstInvoiceNumber: string | null;
+  patientName: string | null;
+  taxableValue: number;
+  taxAmount: number;
+  totalAmount?: number;
+  taxableSide?: number;
+  exemptValue?: number;
+}
 
 export const useGstr3b = (q: GstReportQuery, on = true) =>
   useReport<{
@@ -246,6 +309,11 @@ export const useGstr3b = (q: GstReportQuery, on = true) =>
     netTaxPayable: number;
     creditCarriedForward: number;
     creditNotesExcluded: number;
+    /** Only this count is a section 34 warning (gap item 275). */
+    creditNotesOutsideTimeLimit?: number;
+    creditNotesOriginalNotInRegister?: number;
+    creditNotesApplied?: AppliedNote[];
+    payableByHead?: { igst: number; cgst: number; sgst: number };
   }>('gstr3b', '/gst/reports/gstr3b', q, on);
 
 export const useGstr1Json = (q: GstReportQuery, on = true) =>
@@ -282,14 +350,20 @@ export const usePurchaseRegister = (q: GstReportQuery, on = true) =>
       invoiceNumber: string | null; invoiceDate: string | null; drugName: string;
       hsnCode: string | null; batchNumber: string; quantity: number; freeQuantity: number;
       taxableValue: number; gstRatePercent: number | null; taxAmount: number; landingTotal: number;
+      /** Gap 271: the split as stored on the stock-in (CGST + SGST, or IGST). */
+      cgstAmount: number; sgstAmount: number; igstAmount: number;
+      itcEligibility?: string; itcBlockedReason?: string | null;
     }>;
   }>('purchase-register', '/gst/reports/purchase-register', q, on);
+
+/** CGST / SGST / IGST, kept apart because the credit ledgers are (gap 271). */
+export type TaxHeads = { cgstAmount: number; sgstAmount: number; igstAmount: number };
 
 export const useItcSummary = (q: GstReportQuery, on = true) =>
   useReport<{
     period: GstPeriod;
-    byRate: Array<{ ratePercent: number | null; count: number; taxableValue: number; taxAmount: number; landingTotal: number }>;
-    bySupplier: Array<{ supplierId: string | null; supplierName: string | null; supplierGstin: string | null; count: number; taxableValue: number; taxAmount: number; landingTotal: number }>;
+    byRate: Array<{ ratePercent: number | null; count: number; taxableValue: number; taxAmount: number; landingTotal: number } & TaxHeads>;
+    bySupplier: Array<{ supplierId: string | null; supplierName: string | null; supplierGstin: string | null; count: number; taxableValue: number; taxAmount: number; landingTotal: number } & TaxHeads>;
     totals: {
       count: number; taxableValue: number; taxAmount: number; landingTotal: number;
       cgstAmount: number; sgstAmount: number; igstAmount: number;
@@ -312,6 +386,8 @@ export const useItcReversal = (q: GstReportQuery, on = true) =>
     working: Array<{ step: string; label: string; amount: number; source: string }>;
     exemptRatioPercent: number;
     creditAvailable: number;
+    totalInputTax?: number;
+    blockedCredit?: { total: number; purchases: number; fromSuppliersWithoutGstin: number };
     reversal: { total: number; d1: number; d2: number };
     netCreditAvailable: number;
     notes: string[];
@@ -337,6 +413,22 @@ export const usePurchaseReturns = (q: GstReportQuery, on = true) =>
       supplierCreditNoteNumber: string | null; supplierCreditAmount: number | null;
       purchaseInvoiceNumber: string | null;
       taxableValue: number; gstRatePercent: number | null; taxToReverse: number;
+      /** Gap 273: the purchase-tax split stored on the return. */
+      cgstAmount: number; sgstAmount: number; igstAmount: number;
+    }>;
+    /** Gap 273: damaged / expired pharmacy stock written off, with the credit to reverse. */
+    pharmacyWriteOffs?: Array<{
+      writeOffId: string; date: string; writeOffType: string; drugName: string;
+      batchNumber: string | null; quantity: number; reason: string | null;
+      purchaseInvoiceNumber: string | null; taxableValue: number; gstRatePercent: number | null;
+      cgstAmount: number; sgstAmount: number; igstAmount: number; taxToReverse: number;
+    }>;
+    /** Expired pharmacy batches still on the shelf. */
+    expiredPharmacyBatches?: Array<{
+      batchId: string; date: string | null; drugName: string; supplierName: string | null;
+      batchNumber: string | null; expiryDate: string | null; quantity: number;
+      purchaseInvoiceNumber: string | null; taxableValue: number; gstRatePercent: number | null;
+      cgstAmount: number; sgstAmount: number; igstAmount: number; taxToReverse: number;
     }>;
     expiryWriteOffs: Array<{
       transactionId: string; date: string; itemName: string; supplierName: string | null;
@@ -345,6 +437,12 @@ export const usePurchaseReturns = (q: GstReportQuery, on = true) =>
     totals: {
       returns: number; returnedValue: number; taxToReverse: number;
       withoutSupplierCreditNote: number; expiryWriteOffs: number; expiredValue: number;
+      returnCgst?: number; returnSgst?: number; returnIgst?: number;
+      expiredPharmacyBatches?: number; expiredPharmacyValue?: number; expiredPharmacyTaxToReverse?: number;
+      pharmacyWriteOffs?: number; pharmacyWriteOffValue?: number; pharmacyWriteOffTaxToReverse?: number;
+      pharmacyWriteOffCgst?: number; pharmacyWriteOffSgst?: number; pharmacyWriteOffIgst?: number;
+      /** Returns + pharmacy write-offs + expired pharmacy stock (gap 273). */
+      totalTaxToReverse?: number;
     };
     notes: string[];
   }>('purchase-returns', '/gst/reports/purchase-returns', q, on);
@@ -371,12 +469,40 @@ export interface FiledPeriod {
    */
   lockedAt: string | null;
   lockedBy: string | null;
+  /** 'filed_locked' or 'filed_open' (re-opened). Filing locks — gap item 281. */
+  status?: 'filed_locked' | 'filed_open';
   note: string | null;
+  outwardTaxableValue?: number;
   outwardTax: number;
   netTaxPayable: number;
   exemptTurnover: number;
   reconciled: boolean;
+  /** Gap 281: snapshots kept (the original is 1), reopens, and the last reopen's reason. */
+  versions?: number;
+  reopenCount?: number;
+  lastReopenReason?: string | null;
+  history?: FiledPeriodEvent[];
 }
+
+/**
+ * Gap 281: one entry in a filed period's trail — the original filing
+ * (version 1), a reopen with its reason, a correction (version 2, 3 …) or a
+ * re-lock. The original snapshot is never replaced.
+ */
+export interface FiledPeriodEvent {
+  id: string;
+  action: 'filed' | 'unlocked' | 'refiled' | 'locked' | string;
+  version: number | null;
+  reason: string | null;
+  at: string;
+  by: string | null;
+  figures: FiledHeadline | null;
+}
+
+/** Roles that may reopen or correct a filed period — mirrors the backend (gap 281). */
+export const GST_AMENDMENT_ROLES = ['super_admin', 'admin', 'billing_admin'] as const;
+export const canAmendFiledPeriod = (roles: readonly string[] | null | undefined) =>
+  (roles ?? []).some((r) => (GST_AMENDMENT_ROLES as readonly string[]).includes(r));
 
 export const filedPeriodsKey = ['gst-report', 'filed-periods'] as const;
 
@@ -415,9 +541,27 @@ export interface FiledPeriodDetail {
   filedAt: string;
   filedBy: string | null;
   note: string | null;
+  lockedAt?: string | null;
+  lockedBy?: string | null;
+  status?: 'filed_locked' | 'filed_open';
+  filed?: FiledHeadline;
   snapshot: FiledSnapshot;
   drift: { outwardTaxAsFiled: number; outwardTaxNow: number; difference: number; moved: boolean };
   notes: string[];
+  /** Gap 281: every snapshot and every reopen / correction, oldest first. */
+  history?: FiledPeriodEvent[];
+  versions?: number;
+  latestCorrection?: { version: number; at: string; reason: string | null; figures: FiledHeadline } | null;
+}
+
+/** The headline "as filed" figures — the same ones C-6 and A-13 show. */
+export interface FiledHeadline {
+  outwardTaxableValue: number;
+  outwardTax: number;
+  netTaxPayable: number;
+  exemptTurnover: number;
+  reconciled: boolean;
+  capturedAt: string | null;
 }
 
 export function useFiledPeriod(id: string | null) {
@@ -431,9 +575,14 @@ export function useFiledPeriod(id: string | null) {
 export function useFilePeriod() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (body: { from: string; to: string; note?: string | null; sixDigit?: boolean }) =>
-      (await apiPost<{ id: string; returnPeriod: string }>('/gst/reports/filed-periods', body)).data,
-    onSuccess: () => qc.invalidateQueries({ queryKey: filedPeriodsKey }),
+    // Gap 281: `reason` is required when the period was filed before — the
+    // server stores the correction as a new version and keeps the original.
+    mutationFn: async (body: { from: string; to: string; note?: string | null; sixDigit?: boolean; reason?: string | null }) =>
+      (await apiPost<{ id: string; returnPeriod: string; status?: string; version?: number; correction?: boolean }>(
+        '/gst/reports/filed-periods', body,
+      )).data,
+    // A-13 reads the same snapshot, so it refreshes too.
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['gst-report'] }),
   });
 }
 
@@ -536,6 +685,8 @@ export const useDailyCollection = (q: GstReportQuery, on = true) =>
     period: GstPeriod;
     byDay: Array<{ day: string; collected: number; taxCollected: number; count: number }>;
     byMethod: Array<{ method: string; collected: number; taxCollected: number; count: number }>;
+    /** Every tender, card = credit + debit card (gap item 280). */
+    byMode?: Array<{ mode: string; collected: number; taxCollected: number; count: number }>;
     byCounter: Array<{ counter: string; collected: number; taxCollected: number; count: number }>;
     byCashier: Array<{ cashier: string; collected: number; taxCollected: number; count: number }>;
     totals: { count: number; collected: number; taxCollected: number };
@@ -578,9 +729,39 @@ export const useRateOverrides = (q: GstReportQuery, on = true) =>
       rateSource: string | null; raisedBy: string | null;
     }>;
     byPerson: Array<{ person: string; lines: number; taxCharged: number; value: number }>;
-    totals: { linesChecked: number; overrides: number; taxCharged: number; value: number };
+    itemChanges?: ItemRateChange[];
+    itemVsMaster?: ItemVsMaster[];
+    billedVsItem?: Array<{
+      billNumber: string; invoiceNumber: string | null; billDate: string; description: string;
+      itemType: string; itemId: string; billedRate: number; itemRate: number;
+      billedTreatment: string | null; itemTreatment: string | null; taxAmount: number;
+      rateSource: string | null; raisedBy: string | null;
+    }>;
+    totals: {
+      linesChecked: number; overrides: number; taxCharged: number; value: number;
+      itemChanges?: number; itemVsMaster?: number; billedVsItem?: number;
+    };
     notes: string[];
   }>('rate-overrides', '/gst/reports/rate-overrides', q, on);
+
+/** One logged change to an item's GST rate, HSN/SAC or treatment (gap item 279). */
+export interface ItemRateChange {
+  id: string; changedAt: string; changedBy: string | null;
+  itemType: string; itemId: string; itemName: string | null;
+  previousRate: number | null; newRate: number | null;
+  previousCode: string | null; newCode: string | null;
+  previousTreatment: string | null; newTreatment: string | null;
+  action: string; reason: string | null;
+}
+
+export interface ItemVsMaster {
+  itemType: string; itemId: string; itemName: string; code: string | null; masterCode: string;
+  itemRate: number; masterRate: number; itemTreatment: string | null; masterTreatment: string | null;
+  approved: boolean;
+}
+
+type LineCounts = { count: number; taxCharged: number; value: number };
+type OutOfStep = Array<{ billNumber: string | null; billDate: string | null; description: string; ratePercent: number; taxAmount: number }>;
 
 export const useSeriesContinuity = (q: GstReportQuery, on = true) =>
   useReport<{
@@ -617,22 +798,29 @@ export const useRateChangeImpact = (q: GstReportQuery, on = true) =>
         description: string; ratePercent: number; taxAmount: number;
       }>;
     }>;
-    totals: { changes: number; linesAffected: number; outOfStep: number };
+    itemChanges?: Array<ItemRateChange & { linesBefore: LineCounts; linesAfter: LineCounts; outOfStep: OutOfStep }>;
+    itemVsMaster?: ItemVsMaster[];
+    totals: { changes: number; linesAffected: number; outOfStep: number; itemChanges?: number; itemVsMaster?: number };
     notes: string[];
   }>('rate-changes', '/gst/reports/rate-changes', q, on);
+
+export interface CancelledInvoiceRow {
+  billId: string; billNumber: string; invoiceNumber: string | null;
+  billDate: string; cancelledAt: string; cancelledBy: string | null;
+  reason: string | null; patientName: string | null; mrn: string | null;
+  totalAmount: number; taxAmount: number;
+  taxableValue: number; cgstAmount: number; sgstAmount: number; igstAmount: number;
+  /** Gap 268: 'credit_note' when the voided bill was zeroed and the note holds the value. */
+  valueSource?: 'bill' | 'credit_note';
+  creditNotes: Array<{ creditNoteNumber: string; noteType?: string; taxableValue?: number; taxAmount: number; totalAmount: number }>;
+  unreversed: boolean;
+}
 
 export const useCancelledInvoices = (q: GstReportQuery, on = true) =>
   useReport<{
     period: GstPeriod;
-    rows: Array<{
-      billId: string; billNumber: string; invoiceNumber: string | null;
-      billDate: string; cancelledAt: string; cancelledBy: string | null;
-      reason: string | null; patientName: string | null; mrn: string | null;
-      totalAmount: number; taxAmount: number;
-      creditNotes: Array<{ creditNoteNumber: string; taxAmount: number; totalAmount: number }>;
-      unreversed: boolean;
-    }>;
-    totals: { count: number; taxAmount: number; totalAmount: number; unreversed: number };
+    rows: CancelledInvoiceRow[];
+    totals: { count: number; taxableValue: number; taxAmount: number; totalAmount: number; unreversed: number };
   }>('cancelled-invoices', '/gst/reports/cancelled-invoices', q, on);
 
 // ── The annual return ──────────────────────────────────────────────────────
@@ -669,9 +857,29 @@ export const useGstr9 = (financialYear: string | undefined, on = true) =>
       grossOutward: number; taxableTurnover: number; exemptTurnover: number;
       totalTurnover: number; exemptRatioPercent: number;
     };
-    documents: { invoices: number; lines: number; creditNotes: number; purchases: number };
+    documents: { invoices: number; lines: number; creditNotes: number; purchases: number; creditNotesExcluded?: number };
+    /** Table 4 against the monthly returns, head by head (gap item 312). */
+    monthlyCheck?: {
+      label: string;
+      annual: Record<'taxableValue' | 'cgstAmount' | 'sgstAmount' | 'igstAmount', number>;
+      sumOfMonths: Record<'taxableValue' | 'cgstAmount' | 'sgstAmount' | 'igstAmount', number>;
+      difference: Record<'taxableValue' | 'cgstAmount' | 'sgstAmount' | 'igstAmount', number>;
+      agrees: boolean;
+      months: Array<{ month: string; taxableValue: number; cgstAmount: number; sgstAmount: number; igstAmount: number; taxAmount: number }>;
+      filed: { months: number; taxableValue?: number; cgstAmount?: number; sgstAmount?: number; igstAmount?: number };
+      cgstSgstGap: number;
+    };
     rateWise: RateSummaryRow[];
-    reconciliation: { registerTaxableValue: number; registerTaxAmount: number; partsTaxableValue: number; agrees: boolean };
+    reconciliation: {
+      registerTaxableValue: number; registerTaxAmount: number; partsTaxableValue: number; agrees: boolean;
+      /** 4I/4J/5H/5I, reported beside the gross check rather than inside it (gap 277). */
+      notesTaxableValue?: number;
+    };
+    /** Table 5 (net of 5H/5I) against the months' 3.1(c) + 3.1(e) (gap 277). */
+    table5Check?: {
+      label: string; annual: number; sumOfMonths: number; difference: number; agrees: boolean;
+      months: Array<{ month: string; taxableValue: number }>;
+    };
     notes: string[];
   }>('gstr9', '/gst/reports/gstr9', { financialYear }, on);
 
@@ -713,15 +921,27 @@ export const useDailyLiability = (q: GstReportQuery, on = true) =>
       bills: number; lines: number; taxableValue: number; exemptValue: number;
       cgstAmount: number; sgstAmount: number; igstAmount: number; taxAmount: number;
     };
+    /** Gross, credit notes and net per rate; net = GSTR-3B 3.1(a) (gap item 276). */
+    byRate?: Array<{ ratePercent: number; gross: LiabilityHeads; creditNotes: LiabilityHeads; net: LiabilityHeads }>;
+    liability?: {
+      gross: LiabilityHeads; creditNotes: LiabilityHeads; net: LiabilityHeads;
+      gstr3bOutwardTax: number; agreesWithGstr3b: boolean; notesApplied: number;
+      notesExcluded: NoteExclusions;
+    };
     note: string;
   }>('daily-liability', '/gst/reports/daily-liability', q, on);
+
+export interface LiabilityHeads {
+  taxableValue: number; cgstAmount: number; sgstAmount: number; igstAmount: number; taxAmount: number;
+}
 
 /** Lock a filed period, or open it again. */
 export function useSetPeriodLock() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, locked }: { id: string; locked: boolean }) =>
-      (await apiPatch(`/gst/reports/filed-periods/${id}/lock`, { locked })).data,
+    // Gap 281: reopening needs a correction reason (and an amendment role).
+    mutationFn: async ({ id, locked, reason }: { id: string; locked: boolean; reason?: string | null }) =>
+      (await apiPatch(`/gst/reports/filed-periods/${id}/lock`, { locked, reason: reason ?? null })).data,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['gst-report'] });
       qc.invalidateQueries({ queryKey: ['gst-filed-periods'] });
@@ -849,7 +1069,12 @@ export const useGstr1Amendments = (q: { returnPeriod?: string }, on = true) =>
     };
     periods: Array<{
       returnPeriod: string; filedAt: string; locked: boolean;
+      status?: 'filed_locked' | 'filed_open'; filed?: FiledHeadline;
       comparable: boolean; amendments: number; note: string;
+      /** Gap 281: what the diff is against — the original filing, or a later return's declaration. */
+      baseline?: { kind: 'original' | 'declared'; inPeriod: string | null };
+      /** Gap 281: reopens, corrections and re-locks of this period. */
+      corrections?: Array<{ action: string; version: number | null; reason: string | null; at: string; by?: string | null }>;
     }>;
     rows: AmendmentRow[];
     note: string;

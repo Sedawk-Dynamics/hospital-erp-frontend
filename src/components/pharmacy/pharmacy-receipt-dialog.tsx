@@ -1,11 +1,11 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Printer, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { formatDateTime } from '@/lib/date-utils';
-import type { PharmacySale } from '@/hooks/use-pharmacy';
+import type { PharmacyCreditNote, PharmacySale } from '@/hooks/use-pharmacy';
 import { amountInWords as inWords } from '@/lib/amount-in-words';
 
 const num = (n: number | string | null | undefined): number => {
@@ -36,16 +36,38 @@ function ageFromDob(dob: string | null): string {
   return years > 0 ? `${years}y` : '';
 }
 
+// G-7: why a credit note was raised, in the counter's words.
+const CREDIT_REASON_LABELS: Record<string, string> = {
+  cancellation: 'Invoice cancelled',
+  sales_return: 'Goods returned',
+  post_supply_discount: 'Discount after sale',
+  reversal: 'Reversal',
+  correction: 'Correction',
+};
+
 export function PharmacyReceiptDialog({
   sale,
   open,
   onOpenChange,
+  initialCreditNoteId,
 }: {
   sale: PharmacySale | null;
   open: boolean;
   onOpenChange: (next: boolean) => void;
+  /** G-7: open straight on this credit note (e.g. from a return). */
+  initialCreditNoteId?: string | null;
 }) {
   const printRef = useRef<HTMLDivElement>(null);
+  // G-7: which document is on screen - the invoice, or one of its credit
+  // notes. A cancelled sale opens on its credit note: the invoice it voided
+  // has no lines left, and reprinting it as a Tax Invoice was the bug.
+  const [picked, setPicked] = useState<{ billId: string; view: string } | null>(null);
+  const notes = sale?.creditNotes ?? [];
+  const defaultView =
+    (initialCreditNoteId && notes.some((n) => n.id === initialCreditNoteId) ? initialCreditNoteId : null) ??
+    (sale?.bill.status === 'cancelled' && notes.length ? notes[notes.length - 1].id : 'invoice');
+  const view = picked && picked.billId === sale?.bill.id ? picked.view : defaultView;
+  const activeNote = view === 'invoice' ? null : (notes.find((n) => n.id === view) ?? null);
 
   const handlePrint = () => {
     if (!printRef.current) return;
@@ -53,7 +75,7 @@ export function PharmacyReceiptDialog({
     const win = window.open('', '_blank', 'width=420,height=800');
     if (!win) return;
     win.document.write(
-      `<!DOCTYPE html><html><head><title>${sale?.bill.billNumber ?? 'Invoice'}</title>${printStyles}</head><body>${html}</body></html>`,
+      `<!DOCTYPE html><html><head><title>${activeNote?.creditNoteNumber ?? sale?.bill.billNumber ?? 'Invoice'}</title>${printStyles}</head><body>${html}</body></html>`,
     );
     win.document.close();
     win.focus();
@@ -85,7 +107,9 @@ export function PharmacyReceiptDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md max-h-[92vh] overflow-y-auto p-0">
         <div className="flex items-center justify-between border-b bg-surface-container-low px-4 py-2 sticky top-0 z-10">
-          <p className="text-sm font-medium">Invoice {bill?.billNumber}</p>
+          <p className="text-sm font-medium">
+            {activeNote ? `Credit Note ${activeNote.creditNoteNumber}` : `Invoice ${bill?.billNumber ?? ''}`}
+          </p>
           <div className="flex items-center gap-2">
             <Button size="sm" onClick={handlePrint} disabled={!bill}>
               <Printer className="size-3.5" /> Print / Save PDF
@@ -96,7 +120,41 @@ export function PharmacyReceiptDialog({
           </div>
         </div>
 
-        {bill && (
+        {bill && notes.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 border-b px-4 py-2">
+            <Button
+              size="sm"
+              variant={view === 'invoice' ? 'default' : 'outline'}
+              onClick={() => setPicked({ billId: bill.id, view: 'invoice' })}
+            >
+              Invoice
+            </Button>
+            {notes.map((n) => (
+              <Button
+                key={n.id}
+                size="sm"
+                variant={view === n.id ? 'default' : 'outline'}
+                onClick={() => setPicked({ billId: bill.id, view: n.id })}
+              >
+                Credit Note {n.creditNoteNumber}
+              </Button>
+            ))}
+          </div>
+        )}
+
+        {bill && sale && activeNote && (
+          <div className="p-4">
+            <div ref={printRef}>
+              <CreditNoteReceipt
+                note={activeNote}
+                sale={sale}
+                originalInvoiceNumber={sale.originalInvoiceNumber ?? invoiceNumber ?? bill.billNumber}
+              />
+            </div>
+          </div>
+        )}
+
+        {bill && sale && !activeNote && (
           <div className="p-4">
             <div ref={printRef}>
               <div className="receipt">
@@ -117,12 +175,21 @@ export function PharmacyReceiptDialog({
                   {gst?.supplierGstin && (
                     <p className="muted xs">
                       GSTIN: {gst.supplierGstin}
+                      {/* Gap #311: unverified / SANDBOX caption from the server. */}
+                      {gst.supplierGstinCaption ? ` (${gst.supplierGstinCaption})` : ''}
                       {gst.supplierStateName ? ` · ${gst.supplierStateName}` : ''}
                     </p>
                   )}
                 </div>
 
                 <div className="rule" />
+
+                {/* G-7: a voided invoice says so, and names the note that reversed it. */}
+                {bill.status === 'cancelled' && (
+                  <p className="center bold">
+                    CANCELLED{notes.length ? ` - see Credit Note ${notes.map((n) => n.creditNoteNumber).join(', ')}` : ''}
+                  </p>
+                )}
 
                 {/* Meta */}
                 <div className="meta">
@@ -165,6 +232,9 @@ export function PharmacyReceiptDialog({
                     </div>
                   </div>
                 )}
+
+                {/* G-4: Rule 46(e) - a B2B invoice names the registered buyer. */}
+                <BuyerBlock gst={gst} />
 
                 <div className="rule" />
 
@@ -315,9 +385,18 @@ export function PharmacyReceiptDialog({
                   <p className="muted xs">Tax: {gst.taxAmountInWords}</p>
                 ) : null}
 
+                {/* Gap 347: the receipt named nobody; the Dispensing Records
+                    tab already shows this pharmacist. */}
+                {sale.dispensedBy && (
+                  <p className="muted xs">
+                    Dispensed by <b>{sale.dispensedBy}</b>
+                  </p>
+                )}
+
                 <div className="rule" />
                 <p className="center muted xs">
-                  Qty is in individual units (tablets / caps / ml), not packs.
+                  {/* 345: each line names the unit it was sold in (strips, bottles, tablets). */}
+                  Qty is in base units; each line names the unit it was sold in.
                 </p>
                 <p className="center muted xs">
                   GST is inclusive in MRP. Goods once sold are returnable only per policy.
@@ -337,6 +416,152 @@ export function PharmacyReceiptDialog({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function BuyerBlock({ gst }: { gst: PharmacySale['gst'] }) {
+  if (!gst?.recipientGstin) return null;
+  return (
+    <div className="meta">
+      <div>
+        <span className="muted">Buyer:</span> <b>{gst.recipientLegalName ?? '—'}</b>
+        <div className="xs">GSTIN {gst.recipientGstin}</div>
+        {gst.recipientAddress && <div className="muted xs">{gst.recipientAddress}</div>}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * G-7: the Credit Note — its own number and date, the invoice it reverses,
+ * the reason, and the tax taken back split the same way the invoice charged
+ * it. Amounts are stored negative on the note; printed as positive credits.
+ */
+function CreditNoteReceipt({
+  note,
+  sale,
+  originalInvoiceNumber,
+}: {
+  note: PharmacyCreditNote;
+  sale: PharmacySale;
+  originalInvoiceNumber: string;
+}) {
+  const abs = (v: number | string | null | undefined) => Math.abs(num(v));
+  const hospital = sale.hospital;
+  const gst = sale.gst;
+  const isIgst = abs(note.igstAmount) > 0;
+  const patient = sale.bill.patient;
+  return (
+    <div className="receipt">
+      <div className="center">
+        <h1>{hospital?.name ?? 'Pharmacy'}</h1>
+        {(hospital?.address || hospital?.city) && (
+          <p className="muted">{[hospital?.address, hospital?.city, hospital?.state].filter(Boolean).join(', ')}</p>
+        )}
+        <p className="title">{note.noteType === 'debit' ? 'DEBIT NOTE' : 'CREDIT NOTE'}</p>
+        {gst?.supplierGstin && (
+          <p className="muted xs">
+            GSTIN: {gst.supplierGstin}
+            {gst.supplierGstinCaption ? ` (${gst.supplierGstinCaption})` : ''}
+            {gst.supplierStateName ? ` · ${gst.supplierStateName}` : ''}
+          </p>
+        )}
+      </div>
+      <div className="rule" />
+      <div className="meta">
+        <div>
+          <span className="muted">Credit Note No:</span> <b>{note.creditNoteNumber}</b>
+        </div>
+        <div>
+          <span className="muted">Date:</span> {formatDateTime(note.issueDate)}
+        </div>
+      </div>
+      <div className="meta">
+        <div>
+          <span className="muted">Against Invoice:</span> <b>{originalInvoiceNumber}</b>
+        </div>
+        <div>
+          <span className="muted">dated</span> {formatDateTime(sale.bill.billDate)}
+        </div>
+      </div>
+      <div className="meta">
+        <div>
+          <span className="muted">Reason:</span> {CREDIT_REASON_LABELS[note.reason] ?? note.reason}
+          {note.reasonNote ? ` — ${note.reasonNote}` : ''}
+        </div>
+      </div>
+      {patient && (
+        <div className="meta">
+          <div>
+            <span className="muted">Patient:</span>{' '}
+            <b>
+              {patient.firstName} {patient.lastName ?? ''}
+            </b>
+          </div>
+          <div>
+            <span className="muted">MRN:</span> {patient.mrn}
+          </div>
+        </div>
+      )}
+      <BuyerBlock gst={gst} />
+      <div className="rule" />
+      <table>
+        <thead>
+          <tr>
+            <th className="l">Item</th>
+            <th className="r">Qty</th>
+            <th className="r">Taxable</th>
+            <th className="r">GST</th>
+            <th className="r">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {note.items.map((it) => (
+            <tr key={it.id}>
+              <td className="l">
+                {it.description}
+                <div className="muted xs">
+                  {[
+                    it.hsnSacCode ? `HSN ${it.hsnSacCode}` : null,
+                    num(it.taxPercent) > 0 ? `GST ${num(it.taxPercent)}%` : (it.gstTreatment?.replace(/_/g, ' ') ?? null),
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </div>
+              </td>
+              <td className="r">{abs(it.quantity)}</td>
+              <td className="r">{abs(it.taxableValue).toFixed(2)}</td>
+              <td className="r">{abs(it.taxAmount).toFixed(2)}</td>
+              <td className="r">{abs(it.totalAmount).toFixed(2)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="rule" />
+      <div className="totals">
+        <Row label="Taxable Value" value={inr(abs(note.taxableValue))} muted />
+        {isIgst ? (
+          <Row label="IGST" value={inr(abs(note.igstAmount))} muted />
+        ) : (
+          <>
+            <Row label="CGST" value={inr(abs(note.cgstAmount))} muted />
+            <Row label="SGST" value={inr(abs(note.sgstAmount))} muted />
+          </>
+        )}
+        {abs(note.cessAmount) > 0 && <Row label="Cess" value={inr(abs(note.cessAmount))} muted />}
+        <Row label="Total tax reversed" value={inr(abs(note.taxAmount))} />
+        <div className="rule thin" />
+        <Row label="Total Credit" value={inr(abs(note.totalAmount))} bold />
+      </div>
+      <div className="rule" />
+      <p className="muted xs">{inWords(abs(note.totalAmount))}</p>
+      {!note.withinTimeLimit && (
+        <p className="center muted xs">
+          Issued after the section 34 time limit — the amount is refunded, but the tax cannot be reduced.
+        </p>
+      )}
+      <p className="center muted xs">This credit note reverses the supply on the invoice named above.</p>
+    </div>
   );
 }
 
@@ -366,6 +591,7 @@ const printStyles = `<style>
   h1 { font-size: 16px; margin: 0; }
   .title { font-weight: 700; letter-spacing: 0.05em; margin-top: 6px; font-size: 12px; }
   .center { text-align: center; }
+  .bold { font-weight: 700; }
   .muted { color: #6b7280; }
   .xs { font-size: 10px; }
   .rule { border-top: 1px dashed #9ca3af; margin: 8px 0; }

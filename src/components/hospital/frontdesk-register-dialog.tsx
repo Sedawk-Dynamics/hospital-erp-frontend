@@ -6,7 +6,7 @@ import { z } from 'zod/v4';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { toInputDateStr, formatDate, getCurrentISTTime, isToday } from '@/lib/date-utils';
+import { toInputDateStr, formatDate, getCurrentISTTime, getCurrentISTDate, isFutureDate, formatAge } from '@/lib/date-utils';
 import {
   UserPlus, Search, Loader2, UserRound, Clock,
   CreditCard, Banknote, Smartphone, Building2,
@@ -36,6 +36,7 @@ import {
   useDoctorsList,
   useAvailableSlots,
 } from '@/hooks/use-hospital';
+import { withPastFlag } from '@/lib/slots';
 import { cn } from '@/lib/utils';
 import { apiPost, apiPatch, apiGet } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
@@ -50,7 +51,8 @@ const patientSchema = z.object({
   firstName: z.string().min(1, 'First name is required').max(100),
   lastName: z.string().min(1, 'Last name is required').max(100),
   gender: z.enum(['male', 'female', 'other'], { error: 'Gender is required' }),
-  dateOfBirth: z.string().optional(),
+  // Gap 329: no future DOB (today is fine — a newborn).
+  dateOfBirth: z.string().optional().refine((v) => !v || !isFutureDate(v), 'Date of birth cannot be in the future'),
   phone: z
     .string()
     .min(1, 'Phone number is required')
@@ -132,6 +134,14 @@ const PAYMENT_MODES = [
 const NEEDS_REFERENCE = new Set(['upi', 'credit_card', 'debit_card', 'net_banking']);
 
 /** Shape returned by POST /appointments/:id/frontdesk-checkout */
+/** GET /appointments/charge-preview — what the bill will actually carry. */
+interface BookingChargePreview {
+  consultationFee: number;
+  followUp: { isFree: boolean; listFee: number; windowDays: number; previousVisitDate: string | null };
+  registration: { applies: boolean; label: string; totalAmount: number; reason: string };
+  total: number;
+}
+
 interface FrontdeskCheckoutResult {
   billId: string;
   billNumber: string;
@@ -297,13 +307,7 @@ export function FrontDeskRegisterDialog({
   );
 
   // Show all slots but mark past/booked status
-  const allSlots = slotsData?.slots ?? [];
-  const currentTime = getCurrentISTTime();
-  const isTodaySelected = isToday(appointmentDate);
-  const slots = allSlots.map((slot) => ({
-    ...slot,
-    isPast: isTodaySelected && slot.startTime < currentTime,
-  }));
+  const slots = withPastFlag(slotsData?.slots ?? [], appointmentDate, getCurrentISTDate(), getCurrentISTTime());
   const selectedDoctor = doctors.find((d) => d.id === selectedDoctorId);
 
   // Patient form
@@ -687,6 +691,9 @@ export function FrontDeskRegisterDialog({
         toast.success(
           `Booked${tokenPart} · ₹${checkout.amountPaid.toLocaleString('en-IN')} collected · Receipt ${checkout.receiptNumber ?? '—'}`,
         );
+      } else if (checkout && checkout.totalAmount <= 0) {
+        // Nothing owed (e.g. a waived follow-up) — say so, not "₹0 payable".
+        toast.success(`Booked${tokenPart} · Bill ${checkout.billNumber} · ₹0, nothing to collect`);
       } else if (checkout) {
         toast.success(
           `Booked${tokenPart} · Bill ${checkout.billNumber} raised · ₹${checkout.balanceDue.toLocaleString('en-IN')} payable at the counter`,
@@ -709,8 +716,34 @@ export function FrontDeskRegisterDialog({
   };
 
   const hasDoctorAndDate = !!selectedDoctorId && !!appointmentDate;
-  const consultationFee = Number(selectedDoctor?.consultationFee ?? 0);
-  const hasConsultationFee = consultationFee > 0;
+  const listFee = Number(selectedDoctor?.consultationFee ?? 0);
+
+  // Gap 331: the payment step showed the doctor's list fee ("Collect ₹500 &
+  // Book") for a follow-up that billing then waived to ₹0. Ask the server what
+  // the bill will carry — the same rules the bill is raised with.
+  const { data: preview, isFetching: previewLoading } = useQuery({
+    queryKey: ['appointments', 'charge-preview', selectedDoctorId, selectedPatient?.id ?? null, appointmentType],
+    queryFn: async () =>
+      (
+        await apiGet<BookingChargePreview>('/appointments/charge-preview', {
+          params: {
+            doctorId: selectedDoctorId,
+            patientId: selectedPatient?.id || undefined,
+            type: appointmentType,
+          },
+        })
+      ).data ?? null,
+    enabled: step === 2 && !!selectedDoctorId,
+    retry: false,
+  });
+  // Until the preview lands, fall back to what we know — never overstate a
+  // follow-up, whose consultation fee is always waived.
+  const consultationFee = preview
+    ? preview.consultationFee
+    : appointmentType === 'follow_up' ? 0 : listFee;
+  const amountDue = preview ? preview.total : consultationFee;
+  const isWaivedFollowUp = preview ? preview.followUp.isFree && listFee > 0 : appointmentType === 'follow_up' && listFee > 0;
+  const hasConsultationFee = listFee > 0;
 
   return (
     <>
@@ -1100,8 +1133,18 @@ export function FrontDeskRegisterDialog({
                       )}
                     </div>
                     <div className="space-y-1.5">
-                      <Label htmlFor="fd-dob">Date of Birth</Label>
-                      <Input id="fd-dob" type="date" {...register('dateOfBirth')} />
+                      <Label htmlFor="fd-dob">
+                        Date of Birth
+                        {watchPatient('dateOfBirth') && formatAge(watchPatient('dateOfBirth')) !== '—' && (
+                          <span className="ml-1.5 font-normal text-muted-foreground">
+                            ({formatAge(watchPatient('dateOfBirth'))})
+                          </span>
+                        )}
+                      </Label>
+                      <Input id="fd-dob" type="date" max={getCurrentISTDate()} {...register('dateOfBirth')} />
+                      {patientErrors.dateOfBirth && (
+                        <p className="text-xs text-destructive">{patientErrors.dateOfBirth.message}</p>
+                      )}
                     </div>
                   </div>
 
@@ -1384,12 +1427,39 @@ export function FrontDeskRegisterDialog({
                   <p className="font-semibold">{selectedSlot?.start} - {selectedSlot?.end}</p>
                 </div>
               </div>
-              {selectedDoctor?.consultationFee != null && selectedDoctor.consultationFee > 0 && (
-                <div className="flex items-center justify-between border-t border-surface-container pt-3">
-                  <p className="font-label text-sm text-on-surface-variant">Consultation Fee</p>
-                  <p className="font-headline text-xl font-bold text-primary">
-                    Rs.{selectedDoctor.consultationFee}
-                  </p>
+              {(hasConsultationFee || (preview?.registration.applies ?? false)) && (
+                <div className="space-y-1.5 border-t border-surface-container pt-3">
+                  <div className="flex items-center justify-between">
+                    <p className="font-label text-sm text-on-surface-variant">Consultation Fee</p>
+                    {isWaivedFollowUp ? (
+                      <p className="font-label text-sm font-bold text-emerald-700">
+                        <span className="mr-2 font-normal text-on-surface-variant line-through">
+                          ₹{listFee.toLocaleString('en-IN')}
+                        </span>
+                        ₹0 · Waived (Follow-up)
+                      </p>
+                    ) : (
+                      <p className="font-label text-sm font-bold">₹{consultationFee.toLocaleString('en-IN')}</p>
+                    )}
+                  </div>
+                  {preview?.registration.applies && (
+                    <div className="flex items-center justify-between">
+                      <p className="font-label text-sm text-on-surface-variant">{preview.registration.label}</p>
+                      <p className="font-label text-sm font-bold">
+                        ₹{preview.registration.totalAmount.toLocaleString('en-IN')}
+                      </p>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <p className="font-label text-sm font-semibold text-on-surface-variant">Total</p>
+                    <p className="font-headline text-xl font-bold text-primary">
+                      {previewLoading && !preview ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        `₹${amountDue.toLocaleString('en-IN')}`
+                      )}
+                    </p>
+                  </div>
                 </div>
               )}
             </div>
@@ -1519,8 +1589,8 @@ export function FrontDeskRegisterDialog({
                 ) : (
                   <>
                     <CheckCircle2 className="h-4 w-4" />
-                    {collectNow && consultationFee > 0
-                      ? `Collect ₹${consultationFee.toLocaleString('en-IN')} & Book`
+                    {collectNow && amountDue > 0
+                      ? `Collect ₹${amountDue.toLocaleString('en-IN')} & Book`
                       : 'Confirm & Book'}
                   </>
                 )}

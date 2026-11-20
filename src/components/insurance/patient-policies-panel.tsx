@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { formatDate } from '@/lib/date-utils';
+import { formatINR } from '@/lib/money';
 import { cn } from '@/lib/utils';
 import { usePoliciesByPatient, useVerifyPolicy } from '@/hooks/use-insurance';
 
@@ -62,7 +63,7 @@ export function PatientPoliciesPanel({ patientId }: { patientId: string }) {
                   <span className="text-on-surface-variant">· {p.insurer?.name ?? '—'}</span>
                 </div>
                 <div className="text-xs text-on-surface-variant">
-                  {p.planName ?? '—'} · ₹{(p.coverageAmount ?? 0).toLocaleString('en-IN')} cover ·{' '}
+                  {p.planName ?? '—'} · {formatINR(p.coverageAmount)} cover ·{' '}
                   {p.coPayPercent}% co-pay · valid {formatDate(p.validFrom)} →{' '}
                   {formatDate(p.validTo)}
                 </div>

@@ -316,6 +316,30 @@ export function useCreateRosterBulk() {
   });
 }
 
+// Gap 313: tenant HR settings — the roster week start day (0 = Sunday … 6 = Saturday).
+export interface HrSettings {
+  rosterWeekStartDay: number;
+}
+
+export function useHrSettings() {
+  return useQuery({
+    queryKey: ['hr', 'settings'],
+    queryFn: async () => (await apiGet<HrSettings>('/hr/settings')).data ?? { rosterWeekStartDay: 0 },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useUpdateHrSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (patch: HrSettings) => (await apiPut<HrSettings>('/hr/settings', patch)).data!,
+    onSuccess: (data) => {
+      qc.setQueryData(['hr', 'settings'], data);
+      qc.invalidateQueries({ queryKey: ['hr', 'settings'] });
+    },
+  });
+}
+
 export function usePublishRoster() {
   const qc = useQueryClient();
   return useMutation({

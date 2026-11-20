@@ -19,6 +19,7 @@ import { getApiErrorMessage } from '@/lib/utils';
 import { useCreateUnifiedStock } from '@/hooks/use-inventory';
 import { useUpdateFormularyItem, type FormularyItem } from '@/hooks/use-pharmacy';
 import { matchHsnGstRate, useHsnGstRates } from '@/hooks/use-drug-master';
+import { gstAfterHsnChange, gstDiffersFromHsn } from '@/lib/gst-rate';
 
 interface ProductFormState {
   name: string;
@@ -30,6 +31,7 @@ interface ProductFormState {
   hsnCode: string;
   gst: string;
   gstTreatment: string;
+  gstRateReason: string;
   sellingPrice: string;
   purchasePrice: string;
   openingStock: string;
@@ -47,6 +49,7 @@ const EMPTY: ProductFormState = {
   hsnCode: '',
   gst: '',
   gstTreatment: '',
+  gstRateReason: '',
   sellingPrice: '',
   purchasePrice: '',
   openingStock: '0',
@@ -65,6 +68,7 @@ function fromItem(item: FormularyItem): ProductFormState {
     hsnCode: item.hsnCode ?? '',
     gst: item.taxPercent != null ? String(item.taxPercent) : '',
     gstTreatment: item.gstTreatment ?? '',
+    gstRateReason: item.gstRateReason ?? '',
     sellingPrice: item.price != null ? String(item.price) : '',
     purchasePrice: '',
     openingStock: '0',
@@ -107,14 +111,22 @@ export function ProductFormDialog({
   const set = (field: keyof ProductFormState, value: string | boolean) =>
     setForm((current) => ({ ...current, [field]: value }));
 
+  // G-2: the HSN default fills a blank (or a value the previous HSN filled);
+  // it never overwrites a rate somebody typed.
   const setHsn = (value: string) => {
-    const hit = matchHsnGstRate(value, hsnRates);
+    const rateOf = (code: string) => {
+      const hit = matchHsnGstRate(code, hsnRates);
+      return hit ? String(hit.gstRate) : '';
+    };
     setForm((current) => ({
       ...current,
       hsnCode: value,
-      gst: hit ? String(hit.gstRate) : current.gst,
+      gst: gstAfterHsnChange(current.gst, rateOf(current.hsnCode), rateOf(value)),
     }));
   };
+  const hsnMatch = matchHsnGstRate(form.hsnCode, hsnRates);
+  const rateDiffers =
+    (!form.gstTreatment || form.gstTreatment === 'taxable') && gstDiffersFromHsn(form.gst, hsnMatch?.gstRate);
 
   const validate = () => {
     if (!form.name.trim()) return 'Product name is required';
@@ -125,6 +137,9 @@ export function ProductFormDialog({
     if (form.sellingPrice.trim() === '') return 'Selling price is required';
     if ((numberOrUndefined(form.gst) ?? -1) < 0 || (numberOrUndefined(form.gst) ?? 101) > 100) {
       return 'GST rate must be between 0 and 100';
+    }
+    if (rateDiffers && !form.gstRateReason.trim()) {
+      return `GST ${form.gst}% differs from the HSN rate of ${hsnMatch?.gstRate}% — enter a reason`;
     }
     if ((numberOrUndefined(form.sellingPrice) ?? -1) < 0) return 'Selling price cannot be negative';
     if ((intOrUndefined(form.packSize) ?? 0) < 1) return 'Pack size must be at least 1';
@@ -153,6 +168,7 @@ export function ProductFormDialog({
       hsnCode: form.hsnCode.trim(),
       taxPercent: numberOrUndefined(form.gst),
       gstTreatment: (form.gstTreatment || null) as FormularyItem['gstTreatment'],
+      ...(rateDiffers ? { gstRateReason: form.gstRateReason.trim() } : editing ? { gstRateReason: null } : {}),
       price: numberOrUndefined(form.sellingPrice),
       minStock: intOrUndefined(form.minStock),
       isReimbursable: false,
@@ -189,8 +205,6 @@ export function ProductFormDialog({
       toast.error(getApiErrorMessage(error, editing ? 'Failed to update product' : 'Failed to add product'));
     }
   };
-
-  const hsnMatch = matchHsnGstRate(form.hsnCode, hsnRates);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -263,8 +277,23 @@ export function ProductFormDialog({
               <div className="space-y-1.5">
                 <Label htmlFor="product-gst">GST % *</Label>
                 <Input id="product-gst" type="number" min={0} max={100} step="0.01" value={form.gst} onChange={(e) => set('gst', e.target.value)} />
+                {hsnMatch && <p className="text-[10px] text-muted-foreground">HSN default {hsnMatch.gstRate}%</p>}
               </div>
             </div>
+            {rateDiffers && (
+              <div className="space-y-1.5">
+                <Label htmlFor="product-gst-reason">
+                  Reason GST {form.gst}% differs from the HSN rate of {hsnMatch?.gstRate}% *
+                </Label>
+                <Input
+                  id="product-gst-reason"
+                  value={form.gstRateReason}
+                  maxLength={255}
+                  onChange={(e) => set('gstRateReason', e.target.value)}
+                  placeholder="Why this product's rate is not the HSN default"
+                />
+              </div>
+            )}
           </section>
 
           <section className="grid gap-3 rounded-xl border p-3">

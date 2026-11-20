@@ -201,6 +201,8 @@ export interface AvailableSlot {
   available: boolean;
   /** True when this slot overlaps an approved partial-hours leave. */
   onLeave?: boolean;
+  /** True when the slot has already ended in hospital time (IST). */
+  past?: boolean;
 }
 
 export interface AvailableSlotsResponse {
@@ -757,6 +759,24 @@ export function useFinalizeBill() {
 }
 
 /**
+ * G-4: put a registered buyer (GSTIN, legal name, address) on a bill before it
+ * is issued — that is what makes the invoice B2B. A blank GSTIN clears it.
+ */
+export function useSetBillBuyer() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...body }: { id: string; gstin: string | null; legalName: string | null; address: string | null }) => {
+      const response = await apiPatch<{ recipientGstin: string | null }>(`/billing/${id}/buyer`, body);
+      return response.data ?? null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bills'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bill'] });
+    },
+  });
+}
+
+/**
  * Undo an accidental finalize (pending → draft) so the counter can keep adding
  * items to the same bill. Server refuses once any payment/claim exists.
  */
@@ -852,6 +872,8 @@ export function useCreateAdvancePayment() {
   return useMutation({
     mutationFn: async (data: {
       patientId: string;
+      /** Collect against this admitted stay (gap item 335). */
+      admissionId?: string;
       amount: number;
       paymentMethod: BillingPaymentMethod;
       referenceNumber?: string;
@@ -1043,6 +1065,10 @@ export interface DayEndReport {
   byStatusBills: { generated: number; paid: number; pending: number; cancelled: number };
   payments: Array<{
     id: string;
+    /** The receipt document this row is (gap item 361). */
+    receiptNumber?: string | null;
+    /** Held money set against a bill: listed, not counted as takings. */
+    isAdjustment?: boolean;
     billNumber: string | null;
     patientName: string | null;
     amount: number;
@@ -1275,8 +1301,56 @@ export interface CreditSettlementRow {
   totalAdmissions: number;
   claimAmount: number;
   receivedAmount: number;
+  // One definition per figure, so the row reconciles (gap item 287).
+  adjustedAmount?: number;
+  disallowedAmount?: number;
+  writtenOffAmount?: number;
   outstandingAmount: number;
+  /**
+   * Gap 287: a payer's outstanding split by claim stage, with Insurance's own
+   * definitions — approved + awaiting + other = outstanding. Zero on self-pay rows.
+   */
+  approvedReceivableAmount?: number;
+  awaitingDecisionAmount?: number;
+  otherPayerAmount?: number;
   ageDays: number;
+}
+
+/** Gap 287: each Receivables headline figure opens the bills behind it. */
+export type ReceivableFigure =
+  | 'billed' | 'received' | 'adjusted' | 'disallowed' | 'writtenOff' | 'outstanding'
+  | 'approvedReceivable' | 'awaitingDecision' | 'otherPayer' | 'patientOutstanding';
+
+export interface ReceivableLine {
+  billId: string;
+  billNumber: string;
+  billDate: string;
+  patient: { id: string; firstName: string | null; lastName: string | null; mrn: string | null } | null;
+  providerKey: string;
+  providerType: 'insurance' | 'corporate' | 'patient';
+  providerName: string;
+  claimNumber: string | null;
+  claimStatus: string | null;
+  /** This line's contribution to the figure that was opened. */
+  amount: number;
+  ageDays: number;
+}
+
+export function useReceivableLines(
+  figure: ReceivableFigure | null,
+  params: { type?: 'insurance' | 'corporate' | 'patient'; search?: string },
+) {
+  return useQuery({
+    queryKey: ['hospital', 'credit-settlements', 'lines', figure, params],
+    enabled: !!figure,
+    queryFn: async () => {
+      const r = await apiGet<{ figure: ReceivableFigure; count: number; total: number; lines: ReceivableLine[] }>(
+        '/billing/credit-settlements/lines',
+        { params: { ...params, figure } },
+      );
+      return r.data ?? null;
+    },
+  });
 }
 
 export interface CreditSettlementResponse {
@@ -1289,6 +1363,21 @@ export interface CreditSettlementResponse {
     totalClaim: number;
     totalReceived: number;
     totalOutstanding: number;
+    totalAdjusted?: number;
+    totalDisallowed?: number;
+    totalWrittenOff?: number;
+    totalCancelled?: number;
+    cancelledCount?: number;
+    reconciliationDifference?: number;
+    // Gap 287: outstanding = patient + approved receivable + awaiting decision + other payer.
+    totalPatientOutstanding?: number;
+    totalPayerOutstanding?: number;
+    totalApprovedReceivable?: number;
+    totalAwaitingDecision?: number;
+    totalOtherPayer?: number;
+    payerReconciliationDifference?: number;
+    /** Insurance → Outstanding across all live claims, for the cross-check line. */
+    insuranceOutstanding?: number;
   };
 }
 
@@ -1316,6 +1405,8 @@ export function useCreditSettlementBills(providerId: string | null) {
         id: string; billNumber: string;
         patient?: { id: string; firstName: string; lastName: string; mrn: string };
         totalAmount: number; amountPaid: number; balanceDue: number;
+        /** The shared balance breakdown (gap item 286). */
+        balanceBreakdown?: { balance: number; totalOutstanding: number; insurerOutstanding: number } | null;
         createdAt: string; ageDays: number;
         insurer?: string | null; tpa?: string | null;
       }>>(`/billing/credit-settlements/${encodeURIComponent(providerId)}/bills`);
@@ -1402,7 +1493,7 @@ export interface ChargesResponse {
   };
 }
 
-export function usePatientCharges(params: { patientId: string; source?: ChargeSource; includeBilled?: boolean } | null) {
+export function usePatientCharges(params: { patientId: string; source?: ChargeSource; includeBilled?: boolean; admissionId?: string | null } | null) {
   return useQuery({
     queryKey: ['hospital', 'charges', params],
     queryFn: async () => {
@@ -1410,6 +1501,8 @@ export function usePatientCharges(params: { patientId: string; source?: ChargeSo
       const q: Record<string, unknown> = { patientId: params.patientId };
       if (params.source) q.source = params.source;
       if (params.includeBilled) q.includeBilled = 'true';
+      // A stay's bill reads only that stay's charges (gap item 339).
+      if (params.admissionId) q.admissionId = params.admissionId;
       const response = await apiGet<ChargesResponse>('/billing/charges', { params: q });
       return response.data ?? null;
     },

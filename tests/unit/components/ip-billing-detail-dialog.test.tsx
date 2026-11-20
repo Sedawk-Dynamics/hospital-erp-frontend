@@ -116,8 +116,8 @@ describe('IpBillingDetailDialog', () => {
     });
 
     const row = screen.getByText('Patient paid / patient due').parentElement;
-    expect(row).toHaveTextContent('₹1000.00 / ₹4900.00');
-    expect(row).not.toHaveTextContent('₹13000.00');
+    expect(row).toHaveTextContent('₹1,000.00 / ₹4,900.00');
+    expect(row).not.toHaveTextContent('₹13,000.00');
   });
 
   it('automatically follows full and partial claim approval amounts', async () => {
@@ -142,7 +142,7 @@ describe('IpBillingDetailDialog', () => {
     const payment = screen.getByPlaceholderText('TPA payment received (₹)');
 
     expect(payment).toHaveValue(8_000);
-    expect(screen.getByText(/Auto-filled from the approved outstanding amount/)).toHaveTextContent('₹8000.00');
+    expect(screen.getByText(/Auto-filled from the approved outstanding amount/)).toHaveTextContent('₹8,000.00');
 
     show({
       ...approvedBill,

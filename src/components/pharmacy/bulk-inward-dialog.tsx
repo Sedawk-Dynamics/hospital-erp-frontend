@@ -74,12 +74,14 @@ import {
 } from '@/hooks/use-pharmacy';
 import { useSuppliers, usePurchaseOrders, usePurchaseOrder, useReconcilePurchaseOrder, type PurchaseOrder } from '@/hooks/use-inventory';
 import { useHospitalBranding } from '@/hooks/use-hospital-branding';
+import { useGstProfile } from '@/hooks/use-gst-profile';
 import { useAiStatus } from '@/hooks/use-ai';
 import { useDrugMasterSearch, useHsnGstRates, matchHsnGstRate, type HsnGstRate } from '@/hooks/use-drug-master';
 import { VendorFormDialog } from '@/components/inventory/vendor-form-dialog';
 import { BarcodeScanner } from '@/components/shared/barcode-scanner';
 import { apiGet } from '@/lib/api';
 import { pluralizeUnit } from '@/lib/pharmacy-units';
+import { gstAfterHsnChange } from '@/lib/gst-rate';
 import {
   PACKAGING_UNITS,
   normalizePackagingUnit,
@@ -818,14 +820,13 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
     setLines((prev) =>
       prev.map((l) => {
         if (l.id !== id) return l;
-        const next = { ...l, hsnCode: value };
-        // HSN legally determines the GST rate, so whenever the entered HSN
-        // resolves to a known rate, set GST to it. An unrecognised / half-typed
-        // HSN resolves to nothing and leaves GST untouched, so a manually keyed
-        // rate for an HSN not in the master survives.
-        const newGst = gstForHsn(value);
-        if (newGst) next.gstPercent = newGst;
-        return next;
+        // G-2: the HSN default fills a blank (or a value the previous HSN
+        // filled); a rate keyed from the supplier's invoice is never replaced.
+        return {
+          ...l,
+          hsnCode: value,
+          gstPercent: gstAfterHsnChange(l.gstPercent ?? '', gstForHsn(l.hsnCode ?? ''), gstForHsn(value)),
+        };
       }),
     );
   // Imported/pasted rows should behave like typed ones: fill a blank GST from
@@ -1416,6 +1417,13 @@ export function BulkInwardPanel({ onClose }: { onClose: () => void }) {
     // earlier did not require them).
     if (blockingErrors > 0) {
       toast.error('Fix the highlighted issues before receiving stock');
+      return;
+    }
+    // G-9: the server refuses a registered supplier's receipt without its tax
+    // invoice — say so here before anything is posted.
+    const commitSupplier = suppliers.find((s) => s.id === supplierId) as { name?: string; gstNumber?: string | null } | undefined;
+    if (commitSupplier?.gstNumber?.trim() && (!invoiceNumber.trim() || !invoiceDate)) {
+      toast.error(`${commitSupplier.name ?? 'This supplier'} is GST-registered — enter the supplier invoice number and date.`);
       return;
     }
     // Build the reviewed payload from each draft line + its decision.
@@ -2091,6 +2099,14 @@ function EntryStep(props: {
     matched, decisions, setDecision, onPickCatalog, onUndoCatalog, onLineIdentity, reviewing,
   } = props;
   const money = (n: number) => `₹${n.toFixed(2)}`;
+  // G-10: the input tax heads follow the supplier's GSTIN state against the
+  // hospital's — IGST across a state line, CGST + SGST within one.
+  const { data: gstProfile } = useGstProfile();
+  const supplierRegistered = !!selectedSupplier?.gstNumber?.trim();
+  const supplierState = selectedSupplier?.gstNumber?.trim().slice(0, 2) ?? '';
+  const interState =
+    /^\d{2}$/.test(supplierState) && !!gstProfile?.stateCode && supplierState !== gstProfile.stateCode;
+  const half = Math.round((purchaseTotals.gst / 2) * 100) / 100;
 
   // Inputs and selects share the same filled, full-width treatment so every
   // field remains visually distinct even when a row wraps on a smaller screen.
@@ -2229,11 +2245,12 @@ function EntryStep(props: {
           )}
         </div>
         <div className="space-y-1.5">
-          <Label className="text-xs">Invoice No.</Label>
+          {/* G-9: a GST-registered supplier's tax invoice is what the input credit is claimed against. */}
+          <Label className="text-xs">Invoice No.{supplierRegistered && <span className="text-destructive"> *</span>}</Label>
           <Input className="h-9" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} placeholder="Supplier invoice no." />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-xs">Invoice Date</Label>
+          <Label className="text-xs">Invoice Date{supplierRegistered && <span className="text-destructive"> *</span>}</Label>
           <Input className="h-9" type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
         </div>
       </div>
@@ -2341,7 +2358,13 @@ function EntryStep(props: {
             )}
             <span>Net: <span className="font-semibold text-foreground">{money(purchaseTotals.net)}</span></span>
             {purchaseTotals.gst > 0 && (
-              <span>+ GST: <span className="font-medium text-foreground">{money(purchaseTotals.gst)}</span> = <span className="font-semibold text-foreground">{money(purchaseTotals.landing)}</span></span>
+              <span>+ GST: <span className="font-medium text-foreground">{money(purchaseTotals.gst)}</span>{' '}
+                <span className="text-muted-foreground">
+                  ({interState
+                    ? `IGST ${money(purchaseTotals.gst)} — inter-state supplier`
+                    : `CGST ${money(purchaseTotals.gst - half)} + SGST ${money(half)}`})
+                </span>{' '}
+                = <span className="font-semibold text-foreground">{money(purchaseTotals.landing)}</span></span>
             )}
           </div>
         )}

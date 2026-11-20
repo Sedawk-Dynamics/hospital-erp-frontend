@@ -53,7 +53,8 @@ describe('PrePackPage (OP pre-packing — Stock Hold)', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(<PrePackPage />);
     await userEvent.click(screen.getByRole('button', { name: /Collect/i }));
-    expect(collectMutate).toHaveBeenCalledWith({ id: 'h1', payments: [{ method: 'cash', amount: 50 }] });
+    // 344: the server sizes the cash payment to its own billed total.
+    expect(collectMutate).toHaveBeenCalledWith({ id: 'h1' });
   });
 
   it('opens the pre-pack dialog', async () => {

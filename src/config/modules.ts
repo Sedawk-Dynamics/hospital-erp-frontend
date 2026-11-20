@@ -179,8 +179,9 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
     baseRoute: '/counsellor',
     sidebarItems: [
       { label: 'Home', href: '/counsellor', icon: Home },
-      { label: 'Reports', href: '/counsellor/reports', icon: BarChart3 },
-      { label: 'Settings', href: '/counsellor/settings', icon: Settings },
+      // Reports and Settings are hidden until those pages are built — the links
+      // returned 404 (gap items 178, 179). next.config.ts redirects old
+      // bookmarks to /counsellor.
     ],
   },
 

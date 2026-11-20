@@ -17,10 +17,12 @@
 //                           since clone-* endpoints require admin.
 
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   Search, Plus, Pencil, Trash2, Beaker, RefreshCw,
-  CopyPlus, Download, Loader2, CheckCircle2, Eye, Ruler,
+  CopyPlus, Download, Loader2, CheckCircle2, Eye, Ruler, AlertTriangle,
 } from 'lucide-react';
+import { apiGet } from '@/lib/api';
 import { LabUnitsManager } from '@/components/laboratory/lab-units-manager';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
@@ -110,6 +112,51 @@ function LabSettingsPageInner() {
 // Test Catalog Section
 // ============================================================
 
+interface CatalogIssue {
+  kind: 'placeholder_text' | 'duplicate_name' | 'price_above_panel';
+  testIds: string[];
+  testNames: string[];
+  field?: string;
+  message: string;
+}
+
+const ISSUE_LABEL: Record<CatalogIssue['kind'], string> = {
+  placeholder_text: 'Placeholder text',
+  duplicate_name: 'Possible duplicate',
+  price_above_panel: 'Price check',
+};
+
+// Gap 369: review flags for the Lab Admin — placeholder text, near-duplicate
+// names, an analyte priced above a panel that includes it. Read-only: the
+// lab owner decides what to change.
+function CatalogReviewFlags() {
+  const { data } = useQuery({
+    queryKey: ['lab', 'tests', 'quality-flags'],
+    queryFn: async () => (await apiGet<CatalogIssue[]>('/lab/tests/quality-flags')).data ?? [],
+  });
+  const [open, setOpen] = useState(false);
+  if (!data || data.length === 0) return null;
+  return (
+    <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+      <button type="button" className="flex w-full items-center gap-2 text-left font-semibold" onClick={() => setOpen((o) => !o)}>
+        <AlertTriangle className="h-4 w-4" />
+        {data.length} catalogue item(s) need review
+        <span className="ml-auto font-normal underline">{open ? 'Hide' : 'Show'}</span>
+      </button>
+      {open && (
+        <ul className="mt-2 space-y-1">
+          {data.map((i, idx) => (
+            <li key={`${i.kind}-${i.testIds.join('-')}-${i.field ?? ''}-${idx}`}>
+              <Badge variant="outline" className="mr-2 border-amber-400 text-[10px]">{ISSUE_LABEL[i.kind]}</Badge>
+              {i.message}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function TestCatalogSection() {
   const { canEditCatalog } = useLabRole();
   const [search, setSearch] = useState('');
@@ -164,6 +211,8 @@ function TestCatalogSection() {
           </Dialog>
         )}
       </div>
+
+      {canEditCatalog && <CatalogReviewFlags />}
 
       {!canEditCatalog && (
         <p className="text-[11px] text-muted-foreground italic">

@@ -19,6 +19,7 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { useOTRequests, useUpdateOTRequest, useBillOtRequest, type OTRequest } from '@/hooks/use-ot';
 import { useAuthStore } from '@/stores/auth-store';
 import { fullName } from '@/lib/person-name';
+import { getApiErrorMessage } from '@/lib/utils';
 
 // Pushing an OT charge to the hospital bill creates/finalizes a bill and can
 // record payment — a billing action, so it's limited to hospital admins
@@ -63,7 +64,7 @@ export default function OTTransactionsPage() {
       { id: r.id },
       {
         onSuccess: () => toast.success(`Added to ${formatPatientName(r)}'s in-patient bill (ledger)`),
-        onError: (e: any) => toast.error(e?.message ?? 'Failed to add to ledger'),
+        onError: (e: unknown) => toast.error(getApiErrorMessage(e, 'Failed to add to ledger')),
         onSettled: () => setBillingId(null),
       },
     );
@@ -174,7 +175,14 @@ export default function OTTransactionsPage() {
                     <td className="px-4 py-2 text-muted-foreground text-xs">
                       {r.scheduledDate ? formatDate(r.scheduledDate) : '-'}
                     </td>
-                    <td className="px-4 py-2 text-right font-medium">{rupees(r.billingAmount)}</td>
+                    <td className="px-4 py-2 text-right font-medium">
+                      {(r.billingAmount ?? 0) > 0 ? (
+                        rupees(r.billingAmount)
+                      ) : (
+                        // Gap 352: no configured price means nothing is billed on Complete.
+                        <span className="text-xs font-normal text-amber-700">No price set — not billed</span>
+                      )}
+                    </td>
                     <td className="px-4 py-2">
                       <Badge variant="outline" className={`text-xs ${STATUS_COLOR[r.billingStatus ?? 'pending'] ?? ''}`}>
                         {r.billingStatus ?? 'pending'}
@@ -263,7 +271,7 @@ function BillingDialog({ request, onOpenChange }: { request: OTRequest; onOpenCh
           toast.success('OT charge set');
           onOpenChange(false);
         },
-        onError: (e: any) => toast.error(e?.message ?? 'Update failed'),
+        onError: (e: unknown) => toast.error(getApiErrorMessage(e, 'Update failed')),
       },
     );
   };

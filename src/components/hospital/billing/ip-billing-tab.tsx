@@ -17,6 +17,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { formatINR } from '@/lib/money';
+import { rowKeyOpen } from '@/components/hospital/billing/bill-balance';
 import { useIpAdmissions, useClearAndDischarge, type IpBill } from '@/hooks/use-ip-billing';
 import { IpBillingDetailDialog } from '@/components/hospital/billing/ip-billing-detail-dialog';
 import { BillPrintDialog } from '@/components/hospital/billing/bill-print-dialog';
@@ -33,7 +35,8 @@ import {
 // the TPA — no manual transfer. This is the single place for IP billing.
 
 const n = (v: number | string | null | undefined) => Number(v ?? 0);
-const money = (v: number | string | null | undefined) => `₹${n(v).toFixed(2)}`;
+// One formatter for money everywhere (gap item 289).
+const money = (v: number | string | null | undefined) => formatINR(n(v));
 const isInsurance = (cat?: string | null) => cat === 'insurance' || cat === 'corporate';
 
 const CLAIM_BADGE: Record<string, string> = {
@@ -171,7 +174,19 @@ export function IpBillingTab({ focusAdmissionId }: { focusAdmissionId?: string |
                 const dep = b.deposit;
                 const refundable = n(dep?.refundable);
                 return (
-                  <tr key={b.admissionId ?? b.id} className="border-t align-top">
+                  <tr
+                    key={b.admissionId ?? b.id}
+                    // The row opens the stay's bill; its buttons keep their
+                    // own actions (gap item 364).
+                    tabIndex={hasRealBill(b) ? 0 : undefined}
+                    aria-label={`Open bill for ${b.patient?.firstName ?? ''} ${b.patient?.lastName ?? ''}`.trim()}
+                    onClick={() => { if (hasRealBill(b)) setManageBill(b); }}
+                    onKeyDown={rowKeyOpen(() => { if (hasRealBill(b)) setManageBill(b); })}
+                    className={cn(
+                      'border-t align-top',
+                      hasRealBill(b) && 'cursor-pointer hover:bg-surface-container-low focus-visible:bg-surface-container-low focus-visible:outline-none',
+                    )}
+                  >
                     <td className="px-3 py-2">
                       <div className="font-medium">{b.patient?.firstName} {b.patient?.lastName}</div>
                       <div className="text-[11px] text-muted-foreground">{b.patient?.mrn}</div>
@@ -250,7 +265,7 @@ export function IpBillingTab({ focusAdmissionId }: { focusAdmissionId?: string |
                         <span className="text-muted-foreground">—</span>
                       )}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1.5">
                         {isInsurance(cat) && (
                           <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700" title="Insurance patient — auto-connected to the TPA at booking (no manual transfer)">

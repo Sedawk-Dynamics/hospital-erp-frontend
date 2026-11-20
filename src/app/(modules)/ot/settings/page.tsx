@@ -29,6 +29,7 @@ import {
 } from '@/hooks/use-ot';
 import { useAuthStore } from '@/stores/auth-store';
 import { useSeedOnChange } from '@/hooks/use-seed-on-change';
+import { OtTariffChargesCard } from '@/components/ot/ot-tariff-charges-card';
 
 // Adding / editing / deleting operation theaters is a hospital-admin action
 // (the backend enforces the same). Other OT users see theaters read-only.
@@ -196,6 +197,9 @@ export default function OTSettingsPage() {
       </div>
 
       <SchedulingPreferencesCard />
+
+      {/* Gap 352: zero-price and theatre/surgeon/anaesthesia OT charges. */}
+      <OtTariffChargesCard canEdit={isHospitalAdmin} />
 
       <TheaterDialog
         open={dialogOpen}

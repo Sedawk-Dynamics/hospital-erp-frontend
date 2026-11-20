@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { formatDate, toInputDateStr } from '@/lib/date-utils';
-import { ShoppingCart, ChevronLeft, ChevronRight, Building2 } from 'lucide-react';
+import { ShoppingCart, ChevronLeft, ChevronRight, Building2, Download } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -16,6 +16,8 @@ import { PageHeader } from '@/components/shared/page-header';
 import { EmptyState } from '@/components/shared/empty-state';
 import { apiGet } from '@/lib/api';
 import { useReorderHistoryReport, type PurchaseOrderStatus } from '@/hooks/use-inventory';
+import { downloadCsv } from '@/lib/csv';
+import { poItemsSummary, poLineLabel, poLineName } from '@/lib/po-items';
 
 const STATUS_LABELS: Record<string, string> = {
   draft: 'Draft', submitted: 'Submitted', approved: 'Approved',
@@ -35,6 +37,7 @@ function rupees(n: number) {
 }
 
 interface Supplier { id: string; name: string }
+
 
 export default function ReorderHistoryReportPage() {
   const today = new Date();
@@ -149,6 +152,31 @@ export default function ReorderHistoryReportPage() {
           {meta && (
             <span className="text-xs text-muted-foreground ml-2">{meta.total} total</span>
           )}
+          <Button
+            size="sm"
+            variant="outline"
+            className="ml-auto"
+            disabled={orders.length === 0}
+            onClick={() =>
+              downloadCsv(
+                `reorder-history-${fromDate}_${toDate}.csv`,
+                orders.flatMap((po) =>
+                  (po.items ?? []).map((it) => ({
+                    poNumber: po.orderNumber,
+                    orderDate: po.orderDate?.slice(0, 10) ?? '',
+                    supplier: po.supplier?.name ?? '',
+                    item: poLineName(it),
+                    quantityOrdered: it.quantityOrdered,
+                    quantityReceived: it.quantityReceived,
+                    unitPrice: it.unitPrice ?? '',
+                    status: STATUS_LABELS[po.status] ?? po.status,
+                  })),
+                ),
+              )
+            }
+          >
+            <Download className="h-3.5 w-3.5 mr-1" /> Export CSV
+          </Button>
         </div>
 
         {isLoading ? (
@@ -177,12 +205,21 @@ export default function ReorderHistoryReportPage() {
                     <td className="px-4 py-2 text-muted-foreground">{formatDate(po.orderDate)}</td>
                     <td className="px-4 py-2">{po.supplier?.name ?? '-'}</td>
                     <td className="px-4 py-2 text-xs">
-                      {po.items?.length ?? po._count?.items ?? 0} item(s)
-                      {po.items && po.items.length > 0 && (
-                        <div className="text-muted-foreground">
-                          {po.items.slice(0, 2).map((it) => `${it.inventoryItem?.itemName} × ${it.quantityOrdered}`).join(', ')}
-                          {po.items.length > 2 ? '...' : ''}
-                        </div>
+                      {/* Gap 302: "First item × qty and N more"; the full list
+                          is in the tooltip and the expand below (and the CSV). */}
+                      {po.items && po.items.length > 1 ? (
+                        <details title={po.items.map(poLineLabel).join('\n')}>
+                          <summary className="cursor-pointer select-none">
+                            {poItemsSummary(po.items)}
+                          </summary>
+                          <ul className="mt-1 space-y-0.5 text-muted-foreground">
+                            {po.items.map((it, i) => (
+                              <li key={it.id ?? i}>{poLineLabel(it)}</li>
+                            ))}
+                          </ul>
+                        </details>
+                      ) : (
+                        poItemsSummary(po.items, po._count?.items ?? 0)
                       )}
                     </td>
                     <td className="px-4 py-2 text-right">{po.totalAmount ? rupees(Number(po.totalAmount)) : '-'}</td>

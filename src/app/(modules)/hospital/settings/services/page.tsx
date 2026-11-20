@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod/v4';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -17,6 +17,8 @@ import {
   Loader2,
   Search,
   Package,
+  AlertTriangle,
+  X,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -94,6 +96,21 @@ export default function ServicesSettingsPage() {
 
   const debouncedSearch = useDebounce(search, 300);
 
+  // Gap 197: legacy /departments/:id links redirect here with ?department=:id.
+  // An unknown id used to land on this list silently; look it up and say so.
+  const searchParams = useSearchParams();
+  const linkedDeptId = searchParams.get('department');
+  const linkedDept = useQuery({
+    queryKey: [...QUERY_KEY, 'linked', linkedDeptId],
+    enabled: !!linkedDeptId,
+    retry: false,
+    queryFn: async () => (await apiGet<Department>(`/infrastructure/departments/${linkedDeptId}`)).data,
+  });
+  const linkedStatus = (linkedDept.error as { response?: { status?: number } } | null)?.response?.status;
+  const linkedNotFound = !!linkedDeptId && linkedDept.isError && (linkedStatus === 404 || linkedStatus === 400);
+  const highlightId = linkedDept.data?.id ?? null;
+  const clearLinkedDept = () => router.replace('/hospital/settings/services');
+
   const { data, isLoading } = useQuery({
     queryKey: [...QUERY_KEY, { search: debouncedSearch }],
     queryFn: async () => {
@@ -105,6 +122,11 @@ export default function ServicesSettingsPage() {
   });
 
   const departments = Array.isArray(data) ? data : [];
+
+  useEffect(() => {
+    if (!highlightId) return;
+    document.getElementById(`dept-row-${highlightId}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [highlightId, data]);
 
   const form = useForm<DepartmentForm>({
     resolver: zodResolver(departmentSchema),
@@ -241,6 +263,41 @@ export default function ServicesSettingsPage() {
         </Button>
       </div>
 
+      {/* Gap 197: the department a legacy link pointed at, or why it isn't here. */}
+      {linkedNotFound && (
+        <div role="alert" className="flex items-start justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <p className="font-label text-sm font-bold">Department not found — it may have been removed</p>
+              <p className="font-label text-xs">
+                The link you followed points to a department that does not exist in this hospital. All current departments are listed below.
+              </p>
+            </div>
+          </div>
+          <button onClick={clearLinkedDept} aria-label="Dismiss" className="rounded p-1 hover:bg-amber-100">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+      {!!linkedDeptId && linkedDept.isError && !linkedNotFound && (
+        <div role="alert" className="rounded-xl border border-error/30 bg-error-container px-4 py-3 font-label text-sm text-on-error-container">
+          Could not look up the linked department. Please try again.
+        </div>
+      )}
+      {linkedDept.data && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-2 font-label text-sm">
+          <span>
+            Showing department <b>{linkedDept.data.name}</b>
+            {!linkedDept.data.isActive && ' (inactive)'}
+            {!departments.some((d) => d.id === linkedDept.data?.id) && ' — not in the list for the current search'}
+          </span>
+          <button onClick={clearLinkedDept} aria-label="Clear" className="rounded p-1 hover:bg-primary/10">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Summary cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-4 border-l-4 border-l-primary">
@@ -323,7 +380,11 @@ export default function ServicesSettingsPage() {
             </TableHeader>
             <TableBody>
               {departments.map((dept) => (
-                <TableRow key={dept.id} className="group hover:bg-surface-container-low transition-colors">
+                <TableRow
+                  key={dept.id}
+                  id={`dept-row-${dept.id}`}
+                  className={`group hover:bg-surface-container-low transition-colors ${dept.id === highlightId ? 'bg-primary/10 ring-2 ring-inset ring-primary/40' : ''}`}
+                >
                   <TableCell className="font-label text-sm font-bold">
                     <div className="flex items-center gap-2">
                       <Stethoscope className="h-4 w-4 text-primary shrink-0" />

@@ -9,6 +9,7 @@
 // page (super-admin or hospital admin) owns the actual mutation call.
 
 import { useEffect, useMemo, useState } from 'react';
+import { formStatus, FORM_STATUS_CLASS } from './form-status';
 import {
   AlignLeft,
   ArrowDown,
@@ -194,6 +195,18 @@ export function FormBuilder({ initial, onSave, isSaving = false, publishLabelMod
     }
   }, [initial, publishLabelMode]);
 
+  // Gap 304: live status comes from the saved record (`initial`); local edits
+  // are "pending" until saved.
+  const savedPublished = initial?.isPublished ?? false;
+  const hasUnsavedEdits =
+    !!initial &&
+    (name !== (initial.name ?? '') ||
+      description !== (initial.description ?? '') ||
+      category !== (initial.category ?? 'other') ||
+      isPublished !== (initial.isPublished ?? (publishLabelMode === 'hospital')) ||
+      JSON.stringify(fields) !== JSON.stringify(initial.schema?.fields ?? []));
+  const liveStatus = formStatus({ isPublished: savedPublished }, hasUnsavedEdits);
+
   const selected = useMemo(() => fields.find((f) => f.id === selectedId) ?? null, [fields, selectedId]);
   const usedKeys = useMemo(() => new Set(fields.map((f) => f.key)), [fields]);
 
@@ -287,8 +300,13 @@ export function FormBuilder({ initial, onSave, isSaving = false, publishLabelMod
                 checked={isPublished}
                 onChange={(e) => setIsPublished(e.target.checked)}
               />
-              <span>{publishLabelMode === 'template' ? 'Publish to hospitals' : 'Published (visible to nurses)'}</span>
+              <span>{publishLabelMode === 'template' ? 'Publish to hospitals' : 'Publish (visible to nurses)'}</span>
             </label>
+            {initial && (
+              <span className="mt-1 text-[11px] text-muted-foreground" data-testid="form-live-status">
+                Live status: <span className={FORM_STATUS_CLASS[liveStatus.tone]}>{liveStatus.label}</span>
+              </span>
+            )}
           </div>
           <div className="md:col-span-12">
             <Label className="text-xs font-medium">Description</Label>

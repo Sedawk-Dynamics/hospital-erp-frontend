@@ -17,8 +17,9 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Heart, Users, AlertTriangle, Plus, Trash2, Save, Stethoscope, Loader2, FileText } from 'lucide-react';
+import { Heart, Users, AlertTriangle, Plus, Trash2, Save, Stethoscope, Loader2, FileText, Download, Printer } from 'lucide-react';
 import { apiGet, apiPut, apiPost, apiDelete } from '@/lib/api';
+import apiClient from '@/lib/api-client';
 import { toast } from 'sonner';
 
 /**
@@ -821,6 +822,20 @@ function DischargeSummariesTab({ patientId }: { patientId: string }) {
   );
 }
 
+async function downloadDischargePdf(id: string) {
+  try {
+    const res = await apiClient.get(`/mrd/discharge-summary/${id}/pdf`, { responseType: 'blob' });
+    const url = URL.createObjectURL(res.data as Blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `discharge-summary-${id}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch {
+    toast.error('Failed to download PDF');
+  }
+}
+
 /** Read-only render of the chosen summary, using the same document the
  *  discharge screen and the PDF are built from. */
 function DischargeSummaryViewer({ id, onClose }: { id: string; onClose: () => void }) {
@@ -838,6 +853,18 @@ function DischargeSummaryViewer({ id, onClose }: { id: string; onClose: () => vo
         <DialogHeader>
           <DialogTitle>Discharge summary</DialogTitle>
         </DialogHeader>
+        {/* Gap 363: a finalised summary must be downloadable/printable from
+            here too — the server PDF carries the hospital letterhead. */}
+        {data && data.meta.status !== 'draft' && (
+          <div className="no-print flex justify-end gap-2 print:hidden">
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => void downloadDischargePdf(id)}>
+              <Download className="h-3.5 w-3.5" /> Download PDF
+            </Button>
+            <Button size="sm" className="gap-1.5" onClick={() => window.print()}>
+              <Printer className="h-3.5 w-3.5" /> Print
+            </Button>
+          </div>
+        )}
         {isLoading || !data ? (
           <div className="flex items-center justify-center py-10">
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />

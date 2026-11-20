@@ -23,7 +23,75 @@ const ENTITY_TYPES = [
   { value: 'purchase_order', label: 'Purchase Order' },
   { value: 'supply_request', label: 'Supply Request' },
   { value: 'stock_transfer', label: 'Stock Transfer' },
+  // Pharmacy stock actions share this register (backend INVENTORY_ENTITY_TYPES).
+  { value: 'drug_batch', label: 'Drug Batch' },
+  { value: 'drug_return', label: 'Drug Return' },
+  { value: 'pharmacy_sale', label: 'Pharmacy Sale' },
+  { value: 'dispensing_record', label: 'Dispensing' },
+  { value: 'drug_formulary', label: 'Drug Master' },
+  { value: 'inward_invoice', label: 'Inward Invoice' },
 ];
+
+const inr = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+
+type StockSide = { qty?: unknown; value?: unknown };
+type StockMeta = StockSide & {
+  documentNumber?: unknown;
+  source?: { type?: unknown; id?: unknown } | null;
+  movementType?: unknown;
+  lines?: Array<{ batchNumber?: unknown; drugName?: unknown; qty?: unknown; value?: unknown }>;
+};
+
+/**
+ * Gap 303: one side (before or after) of the stock snapshot every stock action
+ * writes into old/newValues — quantity and value at purchase cost.
+ */
+function StockCell({ side }: { side: unknown }) {
+  const v = (side ?? {}) as StockSide;
+  if (typeof v.qty !== 'number' && typeof v.value !== 'number') {
+    return <span className="text-muted-foreground">—</span>;
+  }
+  return (
+    <div className="whitespace-nowrap">
+      <div className="font-medium">{typeof v.qty === 'number' ? v.qty : '—'}</div>
+      <div className="text-[11px] text-muted-foreground">{typeof v.value === 'number' ? inr(v.value) : '—'}</div>
+    </div>
+  );
+}
+
+/** Gap 303: the source record — PH-… bill, transfer no., PO, invoice, return. */
+function SourceCell({ meta }: { meta: unknown }) {
+  const m = (meta ?? {}) as StockMeta;
+  const doc = typeof m.documentNumber === 'string' && m.documentNumber ? m.documentNumber : null;
+  const type = typeof m.source?.type === 'string' ? m.source.type.replace(/_/g, ' ') : null;
+  const id = typeof m.source?.id === 'string' ? m.source.id : null;
+  if (!doc && !type) return <span className="text-muted-foreground">—</span>;
+  return (
+    <div>
+      {doc && <div className="font-mono text-[11px]">{doc}</div>}
+      {type && (
+        <div className="text-[10px] text-muted-foreground">
+          {type}
+          {!doc && id ? ` · ${id.slice(0, 8)}` : ''}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Per-batch breakdown when one action moved several batches (a multi-line sale). */
+function batchLines(oldV: unknown, newV: unknown): string | null {
+  const before = ((oldV ?? {}) as StockMeta).lines;
+  const after = ((newV ?? {}) as StockMeta).lines;
+  if (!Array.isArray(after) || after.length < 2) return null;
+  return after
+    .map((a, i) => {
+      const b = Array.isArray(before) ? before[i] : undefined;
+      const name = [a.drugName, a.batchNumber ? `batch ${a.batchNumber}` : null].filter(Boolean).join(' ');
+      return `${name || 'batch'}: ${b?.qty ?? '—'} → ${a.qty ?? '—'}`;
+    })
+    .join(' · ');
+}
 
 const ACTION_COLOR: Record<string, string> = {
   create: 'bg-emerald-100 text-emerald-700 border-emerald-300',
@@ -136,6 +204,9 @@ export default function InventoryAuditLogsPage() {
                   <th className="px-4 py-3">Action</th>
                   <th className="px-4 py-3">Entity</th>
                   <th className="px-4 py-3">Description</th>
+                  <th className="px-4 py-3 text-right">Before (qty / value)</th>
+                  <th className="px-4 py-3 text-right">After (qty / value)</th>
+                  <th className="px-4 py-3">Source</th>
                 </tr>
               </thead>
               <tbody>
@@ -158,7 +229,15 @@ export default function InventoryAuditLogsPage() {
                       {log.entityType}
                       <div className="font-mono text-[10px]">{log.entityId.slice(0, 8)}</div>
                     </td>
-                    <td className="px-4 py-2">{log.description ?? '-'}</td>
+                    <td className="px-4 py-2">
+                      {log.description ?? '-'}
+                      {batchLines(log.oldValues, log.newValues) && (
+                        <div className="text-[11px] text-muted-foreground">{batchLines(log.oldValues, log.newValues)}</div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-xs text-right"><StockCell side={log.oldValues} /></td>
+                    <td className="px-4 py-2 text-xs text-right"><StockCell side={log.newValues} /></td>
+                    <td className="px-4 py-2 text-xs"><SourceCell meta={log.newValues} /></td>
                   </tr>
                 ))}
               </tbody>

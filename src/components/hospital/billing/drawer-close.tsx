@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { NumberInput } from '@/components/ui/number-input';
 import { cn, getApiErrorMessage } from '@/lib/utils';
+import { formatINR } from '@/lib/money';
 import { formatDate, formatTime24 } from '@/lib/date-utils';
 import {
   useDrawerStatus,
@@ -31,7 +32,7 @@ import {
 /** Indian currency in circulation, largest first — how a till is counted. */
 const DENOMINATIONS = [500, 200, 100, 50, 20, 10, 5, 2, 1] as const;
 
-const fmt = (n: number) => `₹${(Number(n) || 0).toLocaleString('en-IN')}`;
+const fmt = (n: number) => formatINR(n);
 
 export function DrawerClose({ date }: { date: string }) {
   const [openingFloat, setOpeningFloat] = useState<number>(0);

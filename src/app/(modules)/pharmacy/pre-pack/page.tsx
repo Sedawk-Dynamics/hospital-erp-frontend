@@ -17,6 +17,7 @@ import {
   Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
 } from '@/components/ui/table';
 import { formatDateTime, formatDate } from '@/lib/date-utils';
+import { getApiErrorMessage } from '@/lib/utils';
 import {
   useFormulary, useBatchesByDrug, type FormularyItem, type DrugBatch,
   useStockHolds, usePrePackHold, useCollectHold, useReleaseHold,
@@ -99,7 +100,7 @@ function PrePackDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
       await prePack.mutateAsync({ patientId: patient?.id, items: lines.map((l) => ({ drugBatchId: l.drugBatchId, quantity: l.quantity })) });
       toast.success('Pre-packed — stock held off the sell pool');
       onOpenChange(false); setLines([]); setPatient(null); setPatientSearch('');
-    } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed'); }
+    } catch (e) { toast.error(getApiErrorMessage(e, 'Failed')); }
   };
 
   return (
@@ -151,13 +152,16 @@ function PrePackInner() {
   const onCollect = async (id: string, total: number) => {
     if (!window.confirm(`Collect & bill this pre-pack for ${fmt(total)} (cash)?`)) return;
     try {
-      await collect.mutateAsync({ id, payments: total > 0 ? [{ method: 'cash', amount: total }] : undefined });
+      // 344: no explicit tender — the server pays the sale in full at its own
+      // total. The hold's estimate could fall a few paise short of the billed
+      // total, and a short payment is now refused unless it is a credit sale.
+      await collect.mutateAsync({ id });
       toast.success('Collected & billed');
-    } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed'); }
+    } catch (e) { toast.error(getApiErrorMessage(e, 'Failed')); }
   };
   const onRelease = async (id: string) => {
     if (!window.confirm('Release this hold and return the stock to the pool?')) return;
-    try { await release.mutateAsync(id); toast.success('Released'); } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed'); }
+    try { await release.mutateAsync(id); toast.success('Released'); } catch (e) { toast.error(getApiErrorMessage(e, 'Failed')); }
   };
 
   return (

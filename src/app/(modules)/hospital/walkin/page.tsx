@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { toInputDateStr } from '@/lib/date-utils';
+import { toInputDateStr, getCurrentISTTime } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
@@ -65,6 +65,9 @@ function addMinutes(timeStr: string, mins: number): string {
   const [h, m] = timeStr.split(':').map(Number);
   const d = new Date();
   d.setHours(h, m + mins, 0, 0);
+  // Never wrap past midnight — 23:50 + 15 must not become 00:05, which reads
+  // as a slot that already ended.
+  if (h * 60 + m + mins >= 24 * 60) return '23:59';
   return formatHHMM(d);
 }
 
@@ -162,7 +165,9 @@ function WalkInDialog({ open, onOpenChange, doctors, doctorsLoading }: WalkInDia
 
     try {
       const now = new Date();
-      const startTime = formatHHMM(now);
+      // Hospital (IST) wall-clock time, matching the IST date below — the
+      // browser's own clock may be in another zone (gap 330).
+      const startTime = getCurrentISTTime();
       const endTime = addMinutes(startTime, 15);
       const appointmentDate = toInputDateStr(now);
 

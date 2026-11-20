@@ -48,7 +48,7 @@ import {
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
-import { cn } from '@/lib/utils';
+import { cn, getApiErrorMessage } from '@/lib/utils';
 import {
   useDispenseRecords,
   usePharmacySales,
@@ -68,6 +68,14 @@ const SALE_STATUS_BADGE: Record<PharmacySaleStatus, string> = {
   partially_paid: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
   pending: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
   cancelled: 'bg-red-500/10 text-red-600 border-red-500/20',
+};
+
+// 344: an unpaid counter bill is money the counter still has to collect.
+const SALE_STATUS_LABEL: Record<PharmacySaleStatus, string> = {
+  paid: 'paid',
+  partially_paid: 'part paid · to collect',
+  pending: 'to collect',
+  cancelled: 'cancelled',
 };
 
 // ============================================================
@@ -110,7 +118,7 @@ function CounterSalesTab() {
       setCancelTarget(null);
       setCancelReason('');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to cancel bill');
+      toast.error(getApiErrorMessage(err, 'Failed to cancel bill'));
     }
   };
 
@@ -169,8 +177,8 @@ function CounterSalesTab() {
           <SelectContent>
             <SelectItem value="all">All statuses</SelectItem>
             <SelectItem value="paid">Paid</SelectItem>
-            <SelectItem value="partially_paid">Partially paid</SelectItem>
-            <SelectItem value="pending">Pending</SelectItem>
+            <SelectItem value="partially_paid">Part paid · to collect</SelectItem>
+            <SelectItem value="pending">To collect</SelectItem>
             <SelectItem value="cancelled">Cancelled</SelectItem>
           </SelectContent>
         </Select>
@@ -250,8 +258,11 @@ function CounterSalesTab() {
                         {formatDateTimeAmPm(bill.billDate)}
                       </TableCell>
                       <TableCell className="text-center">
-                        <Badge className={SALE_STATUS_BADGE[bill.status]}>
-                          {bill.status.replace('_', ' ')}
+                        <Badge
+                          className={SALE_STATUS_BADGE[bill.status]}
+                          title={(bill as { creditReason?: string | null }).creditReason ? `On credit: ${(bill as { creditReason?: string | null }).creditReason}` : undefined}
+                        >
+                          {SALE_STATUS_LABEL[bill.status] ?? bill.status.replace('_', ' ')}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">

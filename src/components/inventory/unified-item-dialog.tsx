@@ -16,6 +16,7 @@ import {
 import { BarcodeScanner } from '@/components/shared/barcode-scanner';
 import { getApiErrorMessage } from '@/lib/utils';
 import { useHsnGstRates, matchHsnGstRate } from '@/hooks/use-drug-master';
+import { gstAfterHsnChange, gstDiffersFromHsn } from '@/lib/gst-rate';
 import {
   useCreateUnifiedStock,
   type InventoryCategory,
@@ -81,12 +82,14 @@ export function UnifiedItemForm({
     return hit ? String(hit.gstRate) : '';
   };
   const updateHsn = (value: string) => {
-    // HSN determines the GST rate — set GST whenever the HSN resolves to a known
-    // rate; an unrecognised / half-typed HSN leaves GST untouched.
-    const newGst = gstForHsn(value);
-    if (newGst) setGst(newGst);
+    // G-2: the HSN default fills a blank (or a value the previous HSN filled);
+    // it never overwrites a rate somebody typed.
+    setGst((current) => gstAfterHsnChange(current, gstForHsn(hsnCode), gstForHsn(value)));
     setHsnCode(value);
   };
+  const [gstRateReason, setGstRateReason] = useState('');
+  const hsnRateHit = matchHsnGstRate(hsnCode, hsnRates);
+  const rateDiffers = gstDiffersFromHsn(gst, hsnRateHit?.gstRate);
 
   const num = (v: string) => (v.trim() !== '' && !isNaN(Number(v)) ? Number(v) : undefined);
   const intNum = (v: string) => {
@@ -110,6 +113,7 @@ export function UnifiedItemForm({
     setPurchasePrice('');
     setSellingPrice('');
     setGst('');
+    setGstRateReason('');
     setInitialStock('0');
     setDescription('');
   };
@@ -154,6 +158,10 @@ export function UnifiedItemForm({
       toast.error('Product category is required');
       return null;
     }
+    if (rateDiffers && !gstRateReason.trim()) {
+      toast.error(`GST ${gst}% differs from the HSN rate of ${hsnRateHit?.gstRate}% — enter a reason`);
+      return null;
+    }
     // EVERY type takes the same path — a formulary row plus batches. A
     // consumable routed to the legacy inventory table would have no batches, and
     // the sale engine always dispenses from a batch, so it could never be billed
@@ -173,6 +181,7 @@ export function UnifiedItemForm({
         packSize: intNum(packSize),
         looseUnitLabel: unit.trim() || undefined,
         taxPercent: num(gst),
+        gstRateReason: rateDiffers ? gstRateReason.trim() : undefined,
         price: num(sellingPrice),
         minStock: intNum(reorder),
         hsnCode: hsnCode.trim() || undefined,
@@ -320,8 +329,15 @@ export function UnifiedItemForm({
         <div className="grid grid-cols-3 gap-3">
           <div>
             <Label className="text-xs">GST %</Label>
-            <Input type="number" min={0} step="0.01" value={gst} onChange={(e) => setGst(e.target.value)} placeholder="12" />
+            <Input type="number" min={0} step="0.01" value={gst} onChange={(e) => setGst(e.target.value)} placeholder={hsnRateHit ? String(hsnRateHit.gstRate) : 'e.g. 5'} />
+            {hsnRateHit && <p className="mt-0.5 text-[10px] text-muted-foreground">HSN default {hsnRateHit.gstRate}%</p>}
           </div>
+          {rateDiffers && (
+            <div className="col-span-2">
+              <Label className="text-xs">Reason GST {gst}% differs from HSN {hsnRateHit?.gstRate}% *</Label>
+              <Input value={gstRateReason} maxLength={255} onChange={(e) => setGstRateReason(e.target.value)} placeholder="Why this item's rate is not the HSN default" />
+            </div>
+          )}
           {!isMedicine && (
             <div>
               <Label className="text-xs">Initial stock</Label>

@@ -1,14 +1,15 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
 import { toInputDateStr } from '@/lib/date-utils';
+import { formatINR } from '@/lib/money';
+import { Download, Loader2 } from 'lucide-react';
 import {
-  BarChart3, Users, BedDouble, Shield, Calendar,
-  ArrowRightLeft, FileText, Download, Loader2,
-} from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+  reportCategories, allReports, type Row, type ReportColumn, type ReportConfig,
+} from './report-catalog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,352 +17,6 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type Row = Record<string, unknown>;
-
-interface ReportColumn {
-  /** Unique column id; also used as the dot-path when `get` is not supplied. */
-  key: string;
-  label: string;
-  align?: 'right';
-  /** Derive the cell from the whole row — for nested/composite values. */
-  get?: (row: Row) => unknown;
-}
-
-interface ReportConfig {
-  label: string;
-  endpoint: string;
-  /** Extra fixed query params merged into every request */
-  extraParams?: Record<string, string>;
-  /**
-   * Names the endpoint uses for the date window. Most list endpoints take
-   * fromDate/toDate; override where an endpoint differs.
-   */
-  dateParams?: { from: string; to: string };
-  /** Columns to display & export */
-  columns: ReportColumn[];
-}
-
-// ---------------------------------------------------------------------------
-// Shared cell getters
-//
-// The list endpoints return nested relations (patient {...}, doctor { user
-// {...} }), not flat `patientName` / `doctorName` strings. Reading them as flat
-// keys is why every report used to show "-" in the patient and doctor columns.
-// ---------------------------------------------------------------------------
-
-function nested(row: Row, path: string): Record<string, unknown> | undefined {
-  const v = path.split('.').reduce<unknown>(
-    (acc, k) => (acc && typeof acc === 'object' ? (acc as Row)[k] : undefined),
-    row,
-  );
-  return v && typeof v === 'object' ? (v as Record<string, unknown>) : undefined;
-}
-
-function fullName(o: Record<string, unknown> | undefined): string {
-  if (!o) return '-';
-  const name = `${o.firstName ?? ''} ${o.lastName ?? ''}`.trim();
-  return name || '-';
-}
-
-/** "Patient Name" from row.patient */
-const patientName = (row: Row) => fullName(nested(row, 'patient'));
-/** MRN/UHID from row.patient */
-const patientMrn = (row: Row) => (nested(row, 'patient')?.mrn as string) ?? '-';
-const patientPhone = (row: Row) => (nested(row, 'patient')?.phone as string) ?? '-';
-/** "Dr. First Last" from row.doctor.user */
-const doctorName = (row: Row) => {
-  const name = fullName(nested(row, 'doctor.user'));
-  return name === '-' ? '-' : `Dr. ${name}`;
-};
-const departmentName = (row: Row) =>
-  (nested(row, 'doctor.department')?.name as string) ?? '-';
-
-/** HH:mm out of a @db.Time() value like "1970-01-01T09:30:00.000Z" or "09:30" */
-const timeOnly = (value: unknown): string => {
-  if (typeof value !== 'string') return '-';
-  const m = value.match(/(\d{2}:\d{2})/);
-  return m ? m[1] : '-';
-};
-
-interface ReportCategory {
-  title: string;
-  icon: LucideIcon;
-  reports: ReportConfig[];
-}
-
-// ---------------------------------------------------------------------------
-// Report category definitions (connected to real endpoints)
-// ---------------------------------------------------------------------------
-
-const reportCategories: ReportCategory[] = [
-  {
-    title: 'OP Service Reports',
-    icon: BarChart3,
-    reports: [
-      {
-        label: 'OP Service Detailed',
-        endpoint: '/appointments',
-        columns: [
-          { key: 'mrn', label: 'UHID', get: patientMrn },
-          { key: 'patient', label: 'Patient', get: patientName },
-          { key: 'phone', label: 'Phone', get: patientPhone },
-          { key: 'doctor', label: 'Doctor', get: doctorName },
-          { key: 'department', label: 'Department', get: departmentName },
-          { key: 'appointmentDate', label: 'Date' },
-          { key: 'startTime', label: 'Time', get: (r) => timeOnly(r.startTime) },
-          { key: 'consultationType', label: 'Type' },
-          { key: 'status', label: 'Status' },
-          { key: 'billNumber', label: 'Bill #', get: (r) => nested(r, 'paymentInfo')?.billNumber ?? '-' },
-          {
-            key: 'amount',
-            label: 'Amount',
-            align: 'right',
-            get: (r) => nested(r, 'paymentInfo')?.totalAmount ?? 0,
-          },
-          {
-            key: 'balance',
-            label: 'Balance',
-            align: 'right',
-            get: (r) => nested(r, 'paymentInfo')?.balanceDue ?? 0,
-          },
-        ],
-      },
-      {
-        label: 'OP Service Overview',
-        endpoint: '/appointments',
-        columns: [
-          { key: 'mrn', label: 'UHID', get: patientMrn },
-          { key: 'patient', label: 'Patient', get: patientName },
-          { key: 'doctor', label: 'Doctor', get: doctorName },
-          { key: 'appointmentDate', label: 'Date' },
-          { key: 'visitType', label: 'Visit' },
-          { key: 'status', label: 'Status' },
-        ],
-      },
-      {
-        label: 'Consultation Wise',
-        endpoint: '/appointments',
-        columns: [
-          { key: 'doctor', label: 'Doctor', get: doctorName },
-          { key: 'department', label: 'Department', get: departmentName },
-          { key: 'mrn', label: 'UHID', get: patientMrn },
-          { key: 'patient', label: 'Patient', get: patientName },
-          { key: 'appointmentDate', label: 'Date' },
-          { key: 'consultationType', label: 'Type' },
-          { key: 'status', label: 'Status' },
-        ],
-      },
-    ],
-  },
-  {
-    title: 'IP Service Reports',
-    icon: BedDouble,
-    reports: [
-      {
-        label: 'IP Service Detailed',
-        endpoint: '/clinical/admissions',
-        columns: [
-          { key: 'mrn', label: 'UHID', get: patientMrn },
-          { key: 'patient', label: 'Patient', get: patientName },
-          { key: 'doctor', label: 'Consultant', get: doctorName },
-          { key: 'admissionDate', label: 'Admitted' },
-          { key: 'dischargeDate', label: 'Discharged' },
-          { key: 'ward', label: 'Ward', get: (r) => nested(r, 'ward')?.name ?? '-' },
-          { key: 'bed', label: 'Bed', get: (r) => nested(r, 'bed')?.bedNumber ?? '-' },
-          { key: 'status', label: 'Status' },
-        ],
-      },
-      {
-        label: 'IP Admission List',
-        endpoint: '/clinical/admissions',
-        extraParams: { status: 'admitted' },
-        columns: [
-          { key: 'mrn', label: 'UHID', get: patientMrn },
-          { key: 'patient', label: 'Patient', get: patientName },
-          { key: 'phone', label: 'Phone', get: patientPhone },
-          { key: 'doctor', label: 'Consultant', get: doctorName },
-          { key: 'admissionDate', label: 'Admitted' },
-          { key: 'ward', label: 'Ward', get: (r) => nested(r, 'ward')?.name ?? '-' },
-          { key: 'bed', label: 'Bed', get: (r) => nested(r, 'bed')?.bedNumber ?? '-' },
-        ],
-      },
-      {
-        label: 'IP Discharge List',
-        endpoint: '/clinical/admissions',
-        extraParams: { status: 'discharged' },
-        columns: [
-          { key: 'mrn', label: 'UHID', get: patientMrn },
-          { key: 'patient', label: 'Patient', get: patientName },
-          { key: 'doctor', label: 'Consultant', get: doctorName },
-          { key: 'admissionDate', label: 'Admitted' },
-          { key: 'dischargeDate', label: 'Discharged' },
-          { key: 'ward', label: 'Ward', get: (r) => nested(r, 'ward')?.name ?? '-' },
-        ],
-      },
-      {
-        label: 'IP Payment Due',
-        endpoint: '/billing',
-        extraParams: { billType: 'ip', status: 'pending' },
-        columns: [
-          { key: 'billNumber', label: 'Bill #' },
-          { key: 'mrn', label: 'UHID', get: patientMrn },
-          { key: 'patient', label: 'Patient', get: patientName },
-          { key: 'phone', label: 'Phone', get: patientPhone },
-          { key: 'ward', label: 'Ward', get: (r) => nested(r, 'admission.ward')?.name ?? '-' },
-          { key: 'totalAmount', label: 'Total', align: 'right' },
-          { key: 'amountPaid', label: 'Paid', align: 'right' },
-          { key: 'balanceDue', label: 'Balance', align: 'right' },
-        ],
-      },
-    ],
-  },
-  {
-    title: 'Insurance Reports',
-    icon: Shield,
-    reports: [
-      {
-        label: 'Insurance Patient Bill Report',
-        endpoint: '/insurance/claims',
-        columns: [
-          { key: 'claimNumber', label: 'Claim #' },
-          { key: 'patient', label: 'Patient', get: patientName },
-          { key: 'policyNumber', label: 'Policy #', get: (r) => nested(r, 'policy')?.policyNumber ?? '-' },
-          { key: 'billNumber', label: 'Bill #', get: (r) => nested(r, 'bill')?.billNumber ?? '-' },
-          { key: 'submissionDate', label: 'Date' },
-          { key: 'claimAmount', label: 'Claimed', align: 'right' },
-          { key: 'approvedAmount', label: 'Approved', align: 'right' },
-          { key: 'status', label: 'Status' },
-        ],
-      },
-    ],
-  },
-  {
-    title: 'Appointment Reports',
-    icon: Calendar,
-    reports: [
-      {
-        label: 'Patients Appointment',
-        endpoint: '/appointments',
-        columns: [
-          { key: 'mrn', label: 'UHID', get: patientMrn },
-          { key: 'patient', label: 'Patient', get: patientName },
-          { key: 'phone', label: 'Phone', get: patientPhone },
-          { key: 'doctor', label: 'Doctor', get: doctorName },
-          { key: 'appointmentDate', label: 'Date' },
-          { key: 'startTime', label: 'Time', get: (r) => timeOnly(r.startTime) },
-          { key: 'status', label: 'Status' },
-        ],
-      },
-      {
-        label: 'Doctors Appointment',
-        endpoint: '/appointments',
-        columns: [
-          { key: 'doctor', label: 'Doctor', get: doctorName },
-          { key: 'department', label: 'Department', get: departmentName },
-          { key: 'mrn', label: 'UHID', get: patientMrn },
-          { key: 'patient', label: 'Patient', get: patientName },
-          { key: 'appointmentDate', label: 'Date' },
-          { key: 'startTime', label: 'Time', get: (r) => timeOnly(r.startTime) },
-          { key: 'status', label: 'Status' },
-        ],
-      },
-      {
-        label: 'No Show Report',
-        endpoint: '/appointments',
-        extraParams: { status: 'no_show' },
-        columns: [
-          { key: 'mrn', label: 'UHID', get: patientMrn },
-          { key: 'patient', label: 'Patient', get: patientName },
-          { key: 'phone', label: 'Phone', get: patientPhone },
-          { key: 'doctor', label: 'Doctor', get: doctorName },
-          { key: 'appointmentDate', label: 'Date' },
-          { key: 'startTime', label: 'Time', get: (r) => timeOnly(r.startTime) },
-        ],
-      },
-    ],
-  },
-  {
-    title: 'Patient Reports',
-    icon: Users,
-    reports: [
-      {
-        label: 'Patient Demographics',
-        endpoint: '/patients',
-        columns: [
-          { key: 'mrn', label: 'UHID' },
-          { key: 'name', label: 'Patient', get: (r) => fullName(r) },
-          { key: 'gender', label: 'Gender' },
-          { key: 'dateOfBirth', label: 'DOB' },
-          { key: 'bloodGroup', label: 'Blood Group' },
-          { key: 'phone', label: 'Phone' },
-          { key: 'email', label: 'Email' },
-          { key: 'city', label: 'City' },
-          { key: 'createdAt', label: 'Registered' },
-        ],
-      },
-      {
-        label: 'Credit Settlement',
-        endpoint: '/billing',
-        extraParams: { status: 'partially_paid' },
-        columns: [
-          { key: 'billNumber', label: 'Bill #' },
-          { key: 'mrn', label: 'UHID', get: patientMrn },
-          { key: 'patient', label: 'Patient', get: patientName },
-          { key: 'phone', label: 'Phone', get: patientPhone },
-          { key: 'billDate', label: 'Bill Date' },
-          { key: 'totalAmount', label: 'Total', align: 'right' },
-          { key: 'amountPaid', label: 'Paid', align: 'right' },
-          { key: 'balanceDue', label: 'Outstanding', align: 'right' },
-        ],
-      },
-    ],
-  },
-  {
-    title: 'Referral Reports',
-    icon: ArrowRightLeft,
-    reports: [
-      {
-        label: 'Referral Report',
-        endpoint: '/appointments',
-        extraParams: { type: 'follow_up' },
-        columns: [
-          { key: 'mrn', label: 'UHID', get: patientMrn },
-          { key: 'patient', label: 'Patient', get: patientName },
-          { key: 'doctor', label: 'Doctor', get: doctorName },
-          { key: 'department', label: 'Department', get: departmentName },
-          { key: 'reason', label: 'Reason' },
-          { key: 'appointmentDate', label: 'Date' },
-          { key: 'status', label: 'Status' },
-        ],
-      },
-    ],
-  },
-  {
-    title: 'Tally / Collection Reports',
-    icon: FileText,
-    reports: [
-      {
-        label: 'Collection Report',
-        endpoint: '/billing/payments',
-        columns: [
-          { key: 'billNumber', label: 'Bill #', get: (r) => nested(r, 'bill')?.billNumber ?? '-' },
-          { key: 'mrn', label: 'UHID', get: patientMrn },
-          { key: 'patient', label: 'Patient', get: patientName },
-          { key: 'paymentMethod', label: 'Method' },
-          { key: 'transactionId', label: 'Txn / Ref' },
-          { key: 'paymentDate', label: 'Date' },
-          { key: 'amount', label: 'Amount', align: 'right' },
-          { key: 'status', label: 'Status' },
-        ],
-      },
-    ],
-  },
-];
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -391,14 +46,15 @@ function cellValue(row: Row, col: ReportColumn): unknown {
 }
 
 /** Format cell value for display */
-function formatCell(value: unknown): string {
+function formatCell(value: unknown, col?: ReportColumn): string {
+  if (col?.money) return value == null || value === '' ? '-' : formatINR(value as number | string);
   if (value == null) return '-';
   if (typeof value === 'number') return value.toLocaleString('en-IN');
   if (typeof value === 'string') {
     // If it looks like an ISO date, format it nicely
     if (/^\d{4}-\d{2}-\d{2}/.test(value)) {
       return new Date(value).toLocaleDateString('en-IN', {
-        day: '2-digit', month: 'short', year: 'numeric',
+        day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata',
       });
     }
     return value.replace(/_/g, ' ');
@@ -406,7 +62,19 @@ function formatCell(value: unknown): string {
   return String(value);
 }
 
-/** Build CSV string from rows + columns */
+/** Column totals for columns marked `total` (gap 334); null when none are. */
+function columnTotals(rows: Row[], columns: ReportColumn[]): Record<string, number> | null {
+  if (!columns.some((c) => c.total)) return null;
+  const totals: Record<string, number> = {};
+  for (const c of columns) {
+    if (!c.total) continue;
+    const sum = rows.reduce((s, row) => s + (Number(cellValue(row, c)) || 0), 0);
+    totals[c.key] = Math.round(sum * 100) / 100;
+  }
+  return totals;
+}
+
+/** Build CSV string from rows + columns. Money stays a plain number so it can be summed. */
 function buildCsv(rows: Row[], columns: ReportColumn[]): string {
   const header = columns.map((c) => `"${c.label}"`).join(',');
   const body = rows.map((row) =>
@@ -415,7 +83,11 @@ function buildCsv(rows: Row[], columns: ReportColumn[]): string {
       return `"${String(val ?? '').replace(/"/g, '""')}"`;
     }).join(','),
   );
-  return [header, ...body].join('\n');
+  const totals = columnTotals(rows, columns);
+  const footer = totals
+    ? [columns.map((c, i) => `"${c.key in totals ? totals[c.key] : i === 0 ? 'Total' : ''}"`).join(',')]
+    : [];
+  return [header, ...body, ...footer].join('\n');
 }
 
 function downloadCsv(csv: string, filename: string) {
@@ -473,6 +145,7 @@ function ReportViewerDialog({
   }
 
   const rows = data ?? [];
+  const totals = columnTotals(rows, report.columns);
 
   const handleGenerate = () => {
     if (!startDate || !endDate) {
@@ -506,6 +179,9 @@ function ReportViewerDialog({
       <DialogContent className="sm:max-w-3xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{report.label}</DialogTitle>
+          {report.note && (
+            <p className="font-label text-xs text-on-surface-variant">{report.note}</p>
+          )}
         </DialogHeader>
 
         {/* Date filters */}
@@ -584,13 +260,28 @@ function ReportViewerDialog({
                         key={col.key}
                         className={`px-4 py-3 whitespace-nowrap font-label text-sm ${col.align === 'right' ? 'text-right font-bold' : ''}`}
                       >
-                        {formatCell(cellValue(row, col))}
+                        {formatCell(cellValue(row, col), col)}
                       </td>
                     ))}
                   </tr>
                 ))
               )}
             </tbody>
+            {/* Gap 334: totals for summable columns (e.g. referral revenue). */}
+            {totals && shouldFetch && !isLoading && rows.length > 0 && (
+              <tfoot>
+                <tr className="border-t border-surface-container">
+                  {report.columns.map((col, i) => (
+                    <td
+                      key={col.key}
+                      className={`px-4 py-3 whitespace-nowrap font-label text-sm font-bold ${col.align === 'right' ? 'text-right' : ''}`}
+                    >
+                      {col.key in totals ? formatCell(totals[col.key], col) : i === 0 ? 'Total' : ''}
+                    </td>
+                  ))}
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
 
@@ -615,11 +306,29 @@ function ReportViewerDialog({
 // Reports Page
 // ---------------------------------------------------------------------------
 
+/**
+ * Opens the report named in `?report=` — the top-bar search links here
+ * (gap 367). Its own component so `useSearchParams` sits under a Suspense
+ * boundary, which a prerendered page needs.
+ */
+function OpenReportFromUrl({ onOpen }: { onOpen: (r: ReportConfig) => void }) {
+  const wanted = useSearchParams().get('report');
+  useEffect(() => {
+    if (!wanted) return;
+    const match = allReports.find((r) => r.label === wanted);
+    if (match) onOpen(match);
+  }, [wanted, onOpen]);
+  return null;
+}
+
 export default function ReportsPage() {
   const [activeReport, setActiveReport] = useState<ReportConfig | null>(null);
 
   return (
     <div className="space-y-6 animate-fade-in-up">
+      <Suspense fallback={null}>
+        <OpenReportFromUrl onOpen={setActiveReport} />
+      </Suspense>
       <h1 className="font-headline text-xl font-bold">Reports</h1>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">

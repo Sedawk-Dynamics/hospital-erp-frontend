@@ -97,6 +97,8 @@ import { apiGet } from '@/lib/api';
 
 import type { NurseAdmission, NursingNote, Prescription, Vital } from '@/hooks/use-nurse';
 import { AssignBedDialog } from '@/components/hospital/ip/assign-bed-dialog';
+import { StayActionsMenu } from '@/components/hospital/ip/in-patient-list';
+import type { Admission } from '@/types';
 import { AdmissionTypeBadge } from '@/components/shared/admission-type-badge';
 import { AdmissionDoctorControl } from '@/components/shared/admission-doctor-control';
 import { AdmissionTypeConvertButton } from '@/components/shared/admission-type-control';
@@ -378,11 +380,11 @@ function HeaderStrip({
               </LinkButton>
             </>
           )}
+          {/* The stay's real actions — collect advance, generate bill,
+              transfer, discharge. "Manage IP" only navigated back to the
+              list (gap item 343). */}
           {role === 'admin' && (
-            <LinkButton variant="outline" size="sm" className="gap-1.5" href={`/hospital/ip`}>
-              <BedDouble className="h-3.5 w-3.5" />
-              Manage IP
-            </LinkButton>
+            <StayActionsMenu admission={admission as unknown as Admission} />
           )}
         </div>
       </div>
@@ -1551,7 +1553,17 @@ function PatientPanel({ patientId }: { patientId: string }) {
       <PatientRow label="Phone" value={patient.phone} />
       <PatientRow label="Email" value={patient.email} />
       <PatientRow label="Blood group" value={patient.bloodGroup} />
-      <PatientRow label="Address" value={patient.address} />
+      {/* The patient record stores the address in parts (addressLine1, city, …);
+          `address` is only a form field, so this row was always blank (gap 341). */}
+      <PatientRow
+        label="Address"
+        value={
+          [patient.address ?? patient.addressLine1, patient.addressLine2, patient.city, patient.state, patient.postalCode]
+            .map((part) => (part ?? '').trim())
+            .filter(Boolean)
+            .join(', ') || 'No address on file'
+        }
+      />
       {patient.allergies && patient.allergies.length > 0 && (
         <div className="mt-2">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Allergies</p>

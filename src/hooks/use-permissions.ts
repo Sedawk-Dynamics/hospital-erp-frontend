@@ -13,7 +13,9 @@ export type PermissionModule =
   | 'progress_notes' | 'nursing_notes' | 'prescriptions' | 'lab_orders' | 'lab_reports'
   | 'imaging' | 'pharmacy' | 'inventory' | 'billing' | 'payments' | 'insurance'
   | 'blood_bank' | 'hr' | 'notifications' | 'tickets' | 'reports' | 'audit_logs' | 'compliance'
-  | 'forms';
+  | 'forms'
+  // Gap #200/#298: counselling sessions & referrals (Counsellor Home).
+  | 'counselling';
 
 interface PermissionDef {
   module: string;
@@ -30,7 +32,7 @@ const ALL_MODULES: PermissionModule[] = [
   'progress_notes', 'nursing_notes', 'prescriptions', 'lab_orders', 'lab_reports',
   'imaging', 'pharmacy', 'inventory', 'billing', 'payments', 'insurance',
   'blood_bank', 'hr', 'notifications', 'tickets', 'reports', 'audit_logs', 'compliance',
-  'forms',
+  'forms', 'counselling',
 ];
 
 const ALL_ACTIONS: PermissionAction[] = ['create', 'read', 'update', 'delete', 'export', 'approve'];
@@ -80,6 +82,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionDef[]> = {
     { module: 'compliance', action: 'create' }, { module: 'compliance', action: 'read' }, { module: 'compliance', action: 'update' }, { module: 'compliance', action: 'approve' },
     { module: 'reports', action: 'create' }, { module: 'reports', action: 'read' }, { module: 'reports', action: 'export' },
     { module: 'audit_logs', action: 'read' }, { module: 'audit_logs', action: 'export' },
+    { module: 'counselling', action: 'create' }, { module: 'counselling', action: 'read' }, { module: 'counselling', action: 'update' },
   ],
 
   doctor: [
@@ -189,6 +192,13 @@ export const ROLE_PERMISSIONS: Record<string, PermissionDef[]> = {
   hr_staff: [
     { module: 'hr', action: 'read' }, { module: 'hr', action: 'create' }, { module: 'hr', action: 'update' }, { module: 'hr', action: 'approve' }, { module: 'hr', action: 'export' },
     { module: 'users', action: 'read' }, { module: 'departments', action: 'read' }, { module: 'reports', action: 'read' },
+  ],
+
+  // Gap #200/#298: mirrors the backend counsellor role — Counsellor Home only,
+  // plus patients:read for the New Session patient picker.
+  counsellor: [
+    { module: 'counselling', action: 'read' }, { module: 'counselling', action: 'create' }, { module: 'counselling', action: 'update' },
+    { module: 'patients', action: 'read' },
   ],
 };
 

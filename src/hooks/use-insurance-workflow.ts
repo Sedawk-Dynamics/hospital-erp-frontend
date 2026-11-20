@@ -220,15 +220,20 @@ export interface PayerContract {
   nonPayableRules: Array<{ id: string; itemCode?: string | null; itemPattern?: string | null; reason: string; patientPayable: boolean; isActive: boolean }>;
 }
 
+type SlaPerson = { id: string; firstName: string; lastName?: string | null } | null;
+
 export interface SlaQueueItem extends PreAuthRequest {
   breached: boolean;
   alert: boolean;
   remainingMinutes?: number | null;
+  /** Who chases this request: its submitter, else the payer case's creator (gap 294). */
+  owner?: SlaPerson;
+  lastAction?: { label: string; at: string; by: SlaPerson } | null;
 }
 
 export interface WorkflowAnalytics {
   cases: { total: number; open: number; cashless: number; reimbursement: number };
-  sla: { preAuthDecisions: number; averageDecisionMinutes: number; breached: number; currentlyOverdue: number };
+  sla: { preAuthDecisions: number; averageDecisionMinutes: number | null; breached: number; currentlyOverdue: number };
   claims: { total: number; deniedOrPartial: number; denialRate: number; queriesOpen: number };
   leakage: { patientShare: number; disallowed: number; tdsReceivable: number; insurerDelayLiability: number };
 }

@@ -110,7 +110,11 @@ export interface PatientFile {
   visits: Array<{
     id: string;
     date: string;
+    /** op | ip — the encounter setting only. */
     type: string;
+    /** Gap 333: the linked appointment's booked kind (follow_up …) and new/revisit. */
+    consultationType?: string | null;
+    appointmentVisitType?: string | null;
     status: string;
     chiefComplaint: string | null;
     doctor: string | null;
@@ -133,6 +137,8 @@ export interface PatientFile {
     status: string;
     type: string;
     visitType: string | null;
+    /** consultation | follow_up | procedure … as booked (gap 333). */
+    consultationType?: string | null;
     doctor: string | null;
   }>;
   diagnoses: Array<{

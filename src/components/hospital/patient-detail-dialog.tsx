@@ -26,7 +26,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { usePatient, useUpdatePatient } from '@/hooks/use-hospital';
-import { formatDate, toInputDateStr } from '@/lib/date-utils';
+import { formatDate, toInputDateStr, getCurrentISTDate, isFutureDate } from '@/lib/date-utils';
 import { NursingFormsPanel } from '@/components/doctor/nursing-forms-panel';
 
 // ============================================================
@@ -37,7 +37,7 @@ const patientEditSchema = z.object({
   firstName: z.string().min(1, 'First name is required').max(100),
   lastName: z.string().min(1, 'Last name is required').max(100),
   gender: z.enum(['male', 'female', 'other'], { error: 'Gender is required' }),
-  dateOfBirth: z.string().optional(),
+  dateOfBirth: z.string().optional().refine((v) => !v || !isFutureDate(v), 'Date of birth cannot be in the future'), // gap 329
   phone: z
     .string()
     .min(1, 'Phone number is required')
@@ -334,7 +334,10 @@ export function PatientDetailDialog({
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="dateOfBirth" className="font-label">Date of Birth</Label>
-                      <Input id="dateOfBirth" type="date" {...register('dateOfBirth')} />
+                      <Input id="dateOfBirth" type="date" max={getCurrentISTDate()} {...register('dateOfBirth')} />
+                      {errors.dateOfBirth && (
+                        <p className="text-xs text-destructive">{errors.dateOfBirth.message}</p>
+                      )}
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="phone" className="font-label">Phone</Label>

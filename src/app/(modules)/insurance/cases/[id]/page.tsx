@@ -27,6 +27,7 @@ import {
   type InsuranceCaseStatus,
 } from '@/hooks/use-insurance-workflow';
 import { formatDate } from '@/lib/date-utils';
+import { formatINR } from '@/lib/money';
 
 const TRANSITIONS: Record<InsuranceCaseStatus, InsuranceCaseStatus[]> = {
   open: ['eligibilityPending', 'eligible', 'preAuthPending', 'admitted', 'cancelled'],
@@ -46,7 +47,8 @@ const TRANSITIONS: Record<InsuranceCaseStatus, InsuranceCaseStatus[]> = {
   cancelled: [],
 };
 
-const money = (value?: number | null) => `₹${Number(value ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+// Gap 289: one money formatter (₹1,23,456.78).
+const money = (value?: number | string | null) => formatINR(value);
 const show = (value: string) => value.replace(/([A-Z])/g, ' $1').replace(/^./, (letter) => letter.toUpperCase());
 
 type DialogKind = 'status' | 'eligibility' | 'policy' | 'preauth' | 'enhancement' | 'final' | 'emergency' | 'release' | null;

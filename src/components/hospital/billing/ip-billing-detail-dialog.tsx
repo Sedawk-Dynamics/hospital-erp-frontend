@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/number-input';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { formatINR } from '@/lib/money';
 import { IpLedgerPanel } from '@/components/shared/ip-ledger-panel';
 import { CollectBillPaymentDialog } from '@/components/hospital/billing/collect-bill-payment-dialog';
 import {
@@ -26,7 +27,8 @@ import { useAdmissionLedger } from '@/hooks/use-ip-ledger';
 import { formatDate } from '@/lib/date-utils';
 
 const n = (v: number | string | null | undefined) => Number(v ?? 0);
-const money = (v: number | string | null | undefined) => `₹${n(v).toFixed(2)}`;
+// One formatter for money everywhere (gap item 289).
+const money = (v: number | string | null | undefined) => formatINR(n(v));
 const isInsurance = (cat?: string | null) => cat === 'insurance' || cat === 'corporate';
 
 const CLAIM_BADGE: Record<string, string> = {

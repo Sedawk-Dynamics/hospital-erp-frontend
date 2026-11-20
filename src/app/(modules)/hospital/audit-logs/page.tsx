@@ -37,6 +37,8 @@ const ENTITY_TYPES = [
   { value: 'user', label: 'User' },
   { value: 'role', label: 'Role' },
   { value: 'dispensing_record', label: 'Pharmacy Dispense' },
+  // Gap #311: GSTIN changes and every GSTIN verification attempt.
+  { value: 'gst_registration', label: 'GST Registration' },
 ];
 
 const ACTION_COLOR: Record<string, string> = {

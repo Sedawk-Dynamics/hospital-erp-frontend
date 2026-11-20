@@ -17,7 +17,7 @@
 
 import { useState } from 'react';
 import {
-  Building2, ShieldCheck, User, Loader2, Search, ChevronRight,
+  Building2, ShieldCheck, User, Loader2, Search, ChevronRight, Info,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -33,11 +33,14 @@ import {
   useCreditSettlementList,
   useCreditSettlementBills,
   useSettleCredit,
+  useReceivableLines,
   type CreditSettlementRow,
+  type ReceivableFigure,
 } from '@/hooks/use-hospital';
 import { fullName } from '@/lib/person-name';
+import { formatINR } from '@/lib/money';
 
-const fmt = (n: number) => `₹${(Number(n) || 0).toLocaleString('en-IN')}`;
+const fmt = (n: number) => formatINR(n);
 
 const TYPES = [
   { key: 'all', label: 'All payers', icon: Building2 },
@@ -56,28 +59,165 @@ function ageTone(days: number): string {
   return 'bg-error-container text-on-error-container';
 }
 
+/**
+ * Gap 287: what each headline means. The approved / awaiting definitions are
+ * Insurance's own, so "Approved receivable" here is Insurance → Outstanding.
+ */
+const FIGURES: Record<ReceivableFigure, { label: string; hint: string }> = {
+  billed: { label: 'Billed to credit', hint: 'Bill total after concessions, for every open bill share still owed by someone.' },
+  received: { label: 'Received', hint: 'Money actually received against those shares (patient and insurer, net of refunds).' },
+  adjusted: { label: 'Advance adjusted', hint: 'Deposits / advances moved onto the bills.' },
+  disallowed: { label: 'Disallowed', hint: 'What the payer refused at settlement.' },
+  writtenOff: { label: 'Written off', hint: 'Approved claim write-offs.' },
+  outstanding: { label: 'Outstanding', hint: 'Billed − received − adjusted − disallowed − written off. Patient share + payer share.' },
+  patientOutstanding: { label: 'Patient share outstanding', hint: 'What patients still owe on their own share of open bills.' },
+  approvedReceivable: {
+    label: 'Approved receivable',
+    hint: 'Payer has approved the claim (in full or in part) and not yet paid: approved − received − write-offs per claim. The same definition and figure as Insurance → Outstanding.',
+  },
+  awaitingDecision: {
+    label: 'Awaiting payer decision',
+    hint: 'Claimed amount of claims still with the payer (submitted, under review, query raised or response sent). Not yet a receivable — Insurance → Outstanding leaves it out.',
+  },
+  otherPayer: {
+    label: 'Other payer balance',
+    hint: 'Payer share on open bills not explained by an approved or pending claim (e.g. a settled claim with a balance left on the bill, or a claim figure that differs from the bill share).',
+  },
+};
+
+type Drill = { figure: ReceivableFigure; title: string } | null;
+
+/** A figure in the reconciliation line that opens the bills behind it (gap 287). */
+function Fig({ f, value, onOpen }: { f: ReceivableFigure; value?: number; onOpen: (f: ReceivableFigure) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(f)}
+      title={FIGURES[f].hint}
+      className="font-semibold text-on-surface underline decoration-dotted underline-offset-2 hover:text-primary"
+    >
+      {fmt(value ?? 0)}
+    </button>
+  );
+}
+
 export function ReceivablesTab() {
   const [type, setType] = useState<PayerType>('all');
   const [search, setSearch] = useState('');
   const [drill, setDrill] = useState<CreditSettlementRow | null>(null);
+  const [figure, setFigure] = useState<Drill>(null);
 
-  const { data, isLoading } = useCreditSettlementList({
+  const filters = {
     ...(type === 'all' ? {} : { type }),
     ...(search.trim() ? { search: search.trim() } : {}),
-    limit: 100,
-  });
+  };
+  const { data, isLoading } = useCreditSettlementList({ ...filters, limit: 100 });
 
   const rows = data?.settlements ?? [];
   const stats = data?.stats;
+  const open = (f: ReceivableFigure) => setFigure({ figure: f, title: FIGURES[f].label });
+  const otherPayer = stats?.totalOtherPayer ?? 0;
+  const approvedVsInsurance =
+    stats?.insuranceOutstanding != null && stats?.totalApprovedReceivable != null
+      ? Math.round((stats.insuranceOutstanding - stats.totalApprovedReceivable) * 100) / 100
+      : null;
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Stat label="Payers" value={String(stats?.totalProviders ?? 0)} />
-        <Stat label="Billed to credit" value={fmt(stats?.totalClaim ?? 0)} />
-        <Stat label="Received" value={fmt(stats?.totalReceived ?? 0)} tone="ok" />
-        <Stat label="Outstanding" value={fmt(stats?.totalOutstanding ?? 0)} tone="error" strong />
+        <Stat label={FIGURES.billed.label} hint={FIGURES.billed.hint} value={fmt(stats?.totalClaim ?? 0)} onClick={() => open('billed')} />
+        <Stat label={FIGURES.received.label} hint={FIGURES.received.hint} value={fmt(stats?.totalReceived ?? 0)} tone="ok" onClick={() => open('received')} />
+        <Stat label={FIGURES.outstanding.label} hint={FIGURES.outstanding.hint} value={fmt(stats?.totalOutstanding ?? 0)} tone="error" strong onClick={() => open('outstanding')} />
       </div>
+
+      {/* Gap 287: the outstanding split by who owes it and where the claim
+          stands. "Approved receivable" uses Insurance's definition, so it is
+          the figure Insurance → Outstanding shows; "Awaiting decision" is kept
+          apart because the payer has not agreed to pay it yet. */}
+      <div className={cn('grid grid-cols-1 gap-3', otherPayer !== 0 ? 'sm:grid-cols-4' : 'sm:grid-cols-3')}>
+        <Stat
+          label={FIGURES.patientOutstanding.label}
+          hint={FIGURES.patientOutstanding.hint}
+          value={fmt(stats?.totalPatientOutstanding ?? 0)}
+          onClick={() => open('patientOutstanding')}
+        />
+        <Stat
+          label={FIGURES.approvedReceivable.label}
+          hint={FIGURES.approvedReceivable.hint}
+          value={fmt(stats?.totalApprovedReceivable ?? 0)}
+          tone="error"
+          sub="Payer approved, not yet paid"
+          onClick={() => open('approvedReceivable')}
+        />
+        <Stat
+          label={FIGURES.awaitingDecision.label}
+          hint={FIGURES.awaitingDecision.hint}
+          value={fmt(stats?.totalAwaitingDecision ?? 0)}
+          tone="warn"
+          sub="Claimed, payer yet to decide"
+          onClick={() => open('awaitingDecision')}
+        />
+        {otherPayer !== 0 && (
+          <Stat
+            label={FIGURES.otherPayer.label}
+            hint={FIGURES.otherPayer.hint}
+            value={fmt(otherPayer)}
+            onClick={() => open('otherPayer')}
+          />
+        )}
+      </div>
+
+      {/* Every figure has one definition on the server, so the totals tie out
+          to the rupee and the lines below show how (gap item 287). Each amount
+          opens the bills behind it. Cancelled bills are not receivables and
+          sit outside it. */}
+      {stats && (
+        <div className="space-y-1 rounded-lg border border-surface-container bg-surface-container-low px-3 py-2 font-label text-[11px] text-on-surface-variant">
+          <p>
+            Billed <Fig f="billed" value={stats.totalClaim} onOpen={open} /> − received <Fig f="received" value={stats.totalReceived} onOpen={open} />{' '}
+            − advance adjusted <Fig f="adjusted" value={stats.totalAdjusted} onOpen={open} /> − disallowed{' '}
+            <Fig f="disallowed" value={stats.totalDisallowed} onOpen={open} /> − written off <Fig f="writtenOff" value={stats.totalWrittenOff} onOpen={open} /> ={' '}
+            <strong className="text-on-surface">
+              outstanding <Fig f="outstanding" value={stats.totalOutstanding} onOpen={open} />
+            </strong>
+            {Math.abs(stats.reconciliationDifference ?? 0) >= 0.01 && (
+              <span className="ml-1 text-error">(difference {fmt(stats.reconciliationDifference ?? 0)})</span>
+            )}
+          </p>
+          <p>
+            Outstanding = patient share <Fig f="patientOutstanding" value={stats.totalPatientOutstanding} onOpen={open} /> + approved
+            receivable <Fig f="approvedReceivable" value={stats.totalApprovedReceivable} onOpen={open} /> + awaiting payer decision{' '}
+            <Fig f="awaitingDecision" value={stats.totalAwaitingDecision} onOpen={open} />
+            {otherPayer !== 0 && (
+              <>
+                {' '}+ other payer balance <Fig f="otherPayer" value={otherPayer} onOpen={open} />
+              </>
+            )}
+            {Math.abs(stats.payerReconciliationDifference ?? 0) >= 0.01 && (
+              <span className="ml-1 text-error">(difference {fmt(stats.payerReconciliationDifference ?? 0)})</span>
+            )}
+          </p>
+          {approvedVsInsurance != null && type !== 'patient' && (
+            <p>
+              {Math.abs(approvedVsInsurance) < 0.01 ? (
+                <>Approved receivable matches Insurance → Outstanding ({fmt(stats.insuranceOutstanding ?? 0)}).</>
+              ) : (
+                <>
+                  Insurance → Outstanding is {fmt(stats.insuranceOutstanding ?? 0)} across all live claims; the{' '}
+                  {fmt(approvedVsInsurance)} difference is on claims outside this view
+                  {type !== 'all' || search.trim() ? ' (payer filter or search applied)' : ' (their bill is no longer open)'}.
+                </>
+              )}
+            </p>
+          )}
+          {(stats.cancelledCount ?? 0) > 0 && (
+            <p>
+              Excluded: {stats.cancelledCount} cancelled bill{stats.cancelledCount === 1 ? '' : 's'} ({fmt(stats.totalCancelled ?? 0)}).
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         {TYPES.map((t) => (
@@ -112,76 +252,100 @@ export function ReceivablesTab() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-surface-container">
-                {['Payer', 'Type', 'Bills', 'Billed', 'Received', 'Outstanding', 'Oldest', ''].map(
-                  (h, i) => (
-                    <th
-                      key={h || i}
-                      className={cn(
-                        'px-4 pb-4 pt-5 font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest',
-                        i >= 2 && i <= 5 ? 'text-right' : 'text-left',
-                      )}
-                    >
-                      {h}
-                    </th>
-                  ),
-                )}
+                {[
+                  { h: 'Payer' },
+                  { h: 'Type' },
+                  { h: 'Bills', right: true },
+                  { h: 'Billed', right: true, hint: FIGURES.billed.hint },
+                  { h: 'Received', right: true, hint: FIGURES.received.hint },
+                  { h: 'Outstanding', right: true, hint: FIGURES.outstanding.hint },
+                  { h: 'Approved receivable', right: true, hint: FIGURES.approvedReceivable.hint },
+                  { h: 'Awaiting decision', right: true, hint: FIGURES.awaitingDecision.hint },
+                  { h: 'Oldest' },
+                  { h: '' },
+                ].map((c, i) => (
+                  <th
+                    key={c.h || i}
+                    title={c.hint}
+                    className={cn(
+                      'px-4 pb-4 pt-5 font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest',
+                      c.right ? 'text-right' : 'text-left',
+                    )}
+                  >
+                    {c.h}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-container/50">
               {isLoading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center">
+                  <td colSpan={10} className="px-4 py-10 text-center">
                     <Loader2 className="mx-auto h-5 w-5 animate-spin text-primary" />
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center font-label text-on-surface-variant">
+                  <td colSpan={10} className="px-4 py-10 text-center font-label text-on-surface-variant">
                     Nothing outstanding{type === 'all' ? '' : ` from ${type} payers`} — everything
                     billed has been collected.
                   </td>
                 </tr>
               ) : (
-                rows.map((r) => (
-                  <tr
-                    key={r.id}
-                    onClick={() => setDrill(r)}
-                    className="group cursor-pointer hover:bg-surface-container-low transition-colors"
-                  >
-                    <td className="px-4 py-3">
-                      <div className="font-medium">{r.providerName}</div>
-                      {r.providerContact && (
-                        <div className="font-label text-[10px] text-on-surface-variant">
-                          {r.providerContact}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant capitalize">
-                        {r.providerType}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">{r.totalAdmissions}</td>
-                    <td className="px-4 py-3 text-right">{fmt(r.claimAmount)}</td>
-                    <td className="px-4 py-3 text-right text-primary">{fmt(r.receivedAmount)}</td>
-                    <td className="px-4 py-3 text-right font-bold text-error">
-                      {fmt(r.outstandingAmount)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={cn(
-                          'rounded-full px-2 py-0.5 font-label text-[10px]',
-                          ageTone(r.ageDays),
+                rows.map((r) => {
+                  const isPayer = r.providerType !== 'patient';
+                  return (
+                    <tr
+                      key={r.id}
+                      onClick={() => setDrill(r)}
+                      className="group cursor-pointer hover:bg-surface-container-low transition-colors"
+                    >
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{r.providerName}</div>
+                        {r.providerContact && (
+                          <div className="font-label text-[10px] text-on-surface-variant">
+                            {r.providerContact}
+                          </div>
                         )}
-                      >
-                        {r.ageDays}d
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <ChevronRight className="ml-auto h-4 w-4 text-on-surface-variant opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant capitalize">
+                          {r.providerType}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">{r.totalAdmissions}</td>
+                      <td className="px-4 py-3 text-right">{fmt(r.claimAmount)}</td>
+                      <td className="px-4 py-3 text-right text-primary">{fmt(r.receivedAmount)}</td>
+                      <td className="px-4 py-3 text-right font-bold text-error">
+                        {fmt(r.outstandingAmount)}
+                        {isPayer && Math.abs(r.otherPayerAmount ?? 0) >= 0.01 && (
+                          <div className="font-label text-[10px] font-normal text-on-surface-variant" title={FIGURES.otherPayer.hint}>
+                            incl. {fmt(r.otherPayerAmount ?? 0)} other payer balance
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {isPayer ? fmt(r.approvedReceivableAmount ?? 0) : <span className="text-on-surface-variant">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-right text-on-surface-variant">
+                        {isPayer ? fmt(r.awaitingDecisionAmount ?? 0) : '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={cn(
+                            'rounded-full px-2 py-0.5 font-label text-[10px]',
+                            ageTone(r.ageDays),
+                          )}
+                        >
+                          {r.ageDays}d
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <ChevronRight className="ml-auto h-4 w-4 text-on-surface-variant opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -189,6 +353,7 @@ export function ReceivablesTab() {
       </div>
 
       <PayerBillsDialog payer={drill} onClose={() => setDrill(null)} />
+      <FigureBillsDialog drill={figure} filters={filters} onClose={() => setFigure(null)} />
     </div>
   );
 }
@@ -198,21 +363,24 @@ function Stat({
   value,
   tone,
   strong,
+  hint,
+  sub,
+  onClick,
 }: {
   label: string;
   value: string;
-  tone?: 'ok' | 'error';
+  tone?: 'ok' | 'error' | 'warn';
   strong?: boolean;
+  hint?: string;
+  sub?: string;
+  /** Opens the bills behind the figure (gap 287). */
+  onClick?: () => void;
 }) {
-  return (
-    <div
-      className={cn(
-        'bg-surface-container-lowest rounded-xl shadow-sanctuary p-4 border-l-4',
-        tone === 'error' ? 'border-error' : tone === 'ok' ? 'border-primary' : 'border-outline',
-      )}
-    >
-      <p className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
+  const body = (
+    <>
+      <p className="flex items-center gap-1 font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
         {label}
+        {hint && <Info className="h-3 w-3" aria-label={hint} />}
       </p>
       <p
         className={cn(
@@ -220,11 +388,127 @@ function Stat({
           strong ? 'text-xl' : 'text-lg',
           tone === 'error' && 'text-error',
           tone === 'ok' && 'text-primary',
+          tone === 'warn' && 'text-tertiary',
+          onClick && 'underline decoration-dotted underline-offset-4',
         )}
       >
         {value}
       </p>
+      {sub && <p className="font-label text-[10px] text-on-surface-variant">{sub}</p>}
+    </>
+  );
+  const cls = cn(
+    'bg-surface-container-lowest rounded-xl shadow-sanctuary p-4 border-l-4 text-left',
+    tone === 'error' ? 'border-error' : tone === 'ok' ? 'border-primary' : tone === 'warn' ? 'border-tertiary' : 'border-outline',
+  );
+  return onClick ? (
+    <button type="button" onClick={onClick} title={hint} className={cn(cls, 'transition-shadow hover:shadow-md')}>
+      {body}
+    </button>
+  ) : (
+    <div className={cls} title={hint}>
+      {body}
     </div>
+  );
+}
+
+/**
+ * Gap 287: the bills behind one headline figure, fetched with the same payer
+ * type and search as the list — so the dialog's total is the headline.
+ */
+function FigureBillsDialog({
+  drill,
+  filters,
+  onClose,
+}: {
+  drill: Drill;
+  filters: { type?: 'insurance' | 'corporate' | 'patient'; search?: string };
+  onClose: () => void;
+}) {
+  const { data, isLoading } = useReceivableLines(drill?.figure ?? null, filters);
+  const lines = data?.lines ?? [];
+
+  return (
+    <Dialog open={!!drill} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-4xl max-h-[88vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{drill?.title}</DialogTitle>
+          <DialogDescription>
+            {drill ? FIGURES[drill.figure].hint : ''}
+            {data ? ` ${data.count} bill share${data.count === 1 ? '' : 's'} · total ${fmt(data.total)}.` : ''}
+          </DialogDescription>
+        </DialogHeader>
+
+        {isLoading ? (
+          <div className="flex justify-center py-10">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          </div>
+        ) : lines.length === 0 ? (
+          <p className="py-8 text-center text-sm text-on-surface-variant">No bills behind this figure.</p>
+        ) : (
+          <div className="rounded-lg border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/40">
+                  {['Bill #', 'Patient', 'Owed by', 'Claim', 'Amount', 'Age'].map((h, i) => (
+                    <th
+                      key={h}
+                      className={cn(
+                        'px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground',
+                        i === 4 ? 'text-right' : 'text-left',
+                      )}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((l) => (
+                  <tr key={`${l.billId}:${l.providerKey}`} className="border-b last:border-b-0">
+                    <td className="px-3 py-2 font-mono text-xs">
+                      {l.billNumber}
+                      <div className="font-sans text-[10px] text-muted-foreground">{formatDate(l.billDate)}</div>
+                    </td>
+                    <td className="px-3 py-2">
+                      {l.patient ? fullName(l.patient) : '—'}
+                      {l.patient?.mrn && (
+                        <span className="ml-1.5 text-[10px] text-muted-foreground">{l.patient.mrn}</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {l.providerName}
+                      <div className="text-[10px] capitalize text-muted-foreground">{l.providerType}</div>
+                    </td>
+                    <td className="px-3 py-2 text-xs">
+                      {l.claimNumber ?? (l.providerType === 'patient' ? '—' : 'No claim no.')}
+                      {l.claimStatus && (
+                        <div className="text-[10px] capitalize text-muted-foreground">{l.claimStatus.replace(/_/g, ' ')}</div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right font-bold">{fmt(l.amount)}</td>
+                    <td className="px-3 py-2">
+                      <span className={cn('rounded-full px-2 py-0.5 text-[10px]', ageTone(l.ageDays))}>{l.ageDays}d</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t bg-muted/40 font-bold">
+                  <td className="px-3 py-2" colSpan={4}>Total</td>
+                  <td className="px-3 py-2 text-right">{fmt(data?.total ?? 0)}</td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -245,6 +529,12 @@ function PayerBillsDialog({
           <DialogTitle>{payer?.providerName}</DialogTitle>
           <DialogDescription>
             {payer ? `${fmt(payer.outstandingAmount)} outstanding across ${payer.totalAdmissions} bill${payer.totalAdmissions === 1 ? '' : 's'}` : ''}
+            {/* Gap 287: the same approved / awaiting split as the list. */}
+            {payer && payer.providerType !== 'patient'
+              ? ` — ${fmt(payer.approvedReceivableAmount ?? 0)} approved receivable, ${fmt(payer.awaitingDecisionAmount ?? 0)} awaiting payer decision${
+                  Math.abs(payer.otherPayerAmount ?? 0) >= 0.01 ? `, ${fmt(payer.otherPayerAmount ?? 0)} other` : ''
+                }`
+              : ''}
           </DialogDescription>
         </DialogHeader>
 
@@ -292,7 +582,13 @@ function PayerBillsDialog({
                     <td className="px-3 py-2 text-right">{fmt(b.totalAmount)}</td>
                     <td className="px-3 py-2 text-right text-primary">{fmt(b.amountPaid)}</td>
                     <td className="px-3 py-2 text-right font-bold text-error">
-                      {fmt(b.balanceDue)}
+                      {/* A payer is chasing everything still unpaid on the bill;
+                          a self-pay row only the patient's share (gap 287). */}
+                      {fmt(
+                        payer?.providerType === 'patient'
+                          ? (b.balanceBreakdown?.balance ?? b.balanceDue)
+                          : (b.balanceBreakdown?.totalOutstanding ?? b.balanceDue),
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <span className={cn('rounded-full px-2 py-0.5 text-[10px]', ageTone(b.ageDays))}>

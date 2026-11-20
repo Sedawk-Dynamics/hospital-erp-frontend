@@ -360,6 +360,8 @@ export interface BillDocumentGst {
   invoiceNumbers: string[];
   financialYear: string | null;
   supplierGstin: string | null;
+  /** Gap #311: "not verified with the GST portal" / SANDBOX label beside the hospital GSTIN. */
+  supplierGstinCaption?: string | null;
   supplierStateCode: string | null;
   supplierStateName: string | null;
   recipientGstin: string | null;

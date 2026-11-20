@@ -53,6 +53,7 @@ import {
   type FormTemplate,
 } from '@/hooks/use-forms';
 import { FormPreviewDialog } from '@/components/forms/form-preview-dialog';
+import { formStatus, FORM_STATUS_CLASS } from '@/components/forms/form-status';
 
 function categoryLabel(c: FormCategory): string {
   return FORM_CATEGORIES.find((x) => x.value === c)?.label ?? c;
@@ -217,11 +218,8 @@ export default function HospitalFormsSettingsPage() {
                       </Link>
                       <p className="text-[11px] text-muted-foreground">
                         {categoryLabel(f.category)} · v{f.version} ·{' '}
-                        {f.isPublished ? (
-                          <span className="text-primary font-semibold">Published</span>
-                        ) : (
-                          <span className="text-amber-700 font-semibold">Draft</span>
-                        )}{' '}
+                        {/* Gap 304: same status source as the builder. */}
+                        <span className={FORM_STATUS_CLASS[formStatus(f).tone]}>{formStatus(f).label}</span>{' '}
                         · {f._count?.submissions ?? 0} submission(s)
                         {f.template && (
                           <>

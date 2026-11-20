@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
-import { formatDate } from '@/lib/date-utils';
+import { formatDate, formatAge } from '@/lib/date-utils';
 import { usePatientDirectory, type PatientCategory } from '@/hooks/use-hospital';
 import {
   RegisterInPlaceDialog,
@@ -30,16 +30,8 @@ function fullName(p: Pick<Patient, 'firstName' | 'lastName'>): string {
   return `${p.firstName ?? ''} ${p.lastName ?? ''}`.trim() || '—';
 }
 
-function ageFromDob(dob?: string | null): string {
-  if (!dob) return '—';
-  const d = new Date(dob);
-  if (Number.isNaN(d.getTime())) return '—';
-  const now = new Date();
-  let age = now.getFullYear() - d.getFullYear();
-  const m = now.getMonth() - d.getMonth();
-  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
-  return age >= 0 ? `${age} yr` : '—';
-}
+// Years, or months/days for an infant (gap 329) — "—" only when there is no DOB.
+const ageFromDob = (dob?: string | null): string => formatAge(dob);
 
 function initials(p: Pick<Patient, 'firstName' | 'lastName'>): string {
   return `${p.firstName?.[0] ?? '?'}${p.lastName?.[0] ?? ''}`.toUpperCase();

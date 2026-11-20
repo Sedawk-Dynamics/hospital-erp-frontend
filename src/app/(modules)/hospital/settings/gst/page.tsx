@@ -14,7 +14,17 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, Save, ReceiptIndianRupee, ShieldCheck, TriangleAlert } from 'lucide-react';
+import {
+  ArrowLeft,
+  BadgeCheck,
+  Loader2,
+  RefreshCw,
+  Save,
+  ReceiptIndianRupee,
+  ShieldAlert,
+  ShieldCheck,
+  TriangleAlert,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -30,7 +40,12 @@ import { getApiErrorMessage } from '@/lib/utils';
 import {
   useGstProfile,
   useUpdateGstProfile,
+  useGstinVerificationProvider,
+  useVerifyGstin,
   EMPTY_GST_PROFILE,
+  SANDBOX_LABEL,
+  type GstinProviderInfo,
+  type GstinVerificationState,
   type GstProfile,
   type GstRegistrationType,
   type RoomUpgradeTreatment,
@@ -86,6 +101,187 @@ function Toggle({
         <span className="block text-[11px] text-muted-foreground">{hint}</span>
       </span>
     </label>
+  );
+}
+
+/** Loose legal-name comparison, mirroring the server's (case, punctuation, PVT/LTD). */
+function normaliseLegalName(name: string): string {
+  return name
+    .toUpperCase()
+    .replace(/&/g, ' AND ')
+    .replace(/[^A-Z0-9 ]+/g, ' ')
+    .replace(/\bPVT\b/g, 'PRIVATE')
+    .replace(/\bLTD\b/g, 'LIMITED')
+    .replace(/\bCO\b/g, 'COMPANY')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const fmtWhen = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+
+/** The precise reason a GSTIN is not verified, in words (gap #311). */
+function unverifiedReason(v: GstinVerificationState | null | undefined, provider: GstinProviderInfo | undefined): string {
+  switch (v?.status) {
+    case 'not_found':
+      return 'Not found on the GST portal';
+    case 'inactive':
+      return `Inactive — registration status is “${v.registrationStatus ?? 'unknown'}”`;
+    case 'error':
+      return v.lastError?.startsWith('Lookup failed') ? v.lastError : `Lookup failed: ${v.lastError ?? 'unknown error'}`;
+    case 'stale':
+      return `The last check was for a different GSTIN (${v.checkedGstin ?? '—'})`;
+    case 'unreadable':
+      return 'The verification record could not be read';
+    default:
+      return provider && !provider.configured ? 'Provider not configured' : 'Never checked with the GST provider';
+  }
+}
+
+/**
+ * Gap #311: Verify the SAVED GSTIN through the hospital's GST service provider
+ * and show what it said — or exactly why the number is still unverified.
+ * Reads the saved profile (not the form) so it can never show a verification
+ * for a number that is only typed, not saved.
+ */
+function GstinVerificationPanel({
+  gstinText,
+  legalNameText,
+}: {
+  gstinText: string;
+  legalNameText: string | null;
+}) {
+  const { data: saved } = useGstProfile();
+  const { data: provider } = useGstinVerificationProvider();
+  const verify = useVerifyGstin();
+  const [lastAttemptError, setLastAttemptError] = useState<string | null>(null);
+
+  const savedGstin = saved?.gstin ?? null;
+  if (!savedGstin) return null;
+
+  const v = saved?.gstinVerification;
+  const verified = !!saved?.gstinVerified;
+  const sandbox = !!v?.sandbox;
+  const unsaved = gstinText.trim().toUpperCase() !== savedGstin;
+  const nameMismatch =
+    !!v?.legalName &&
+    !!legalNameText?.trim() &&
+    v.status === 'verified' &&
+    normaliseLegalName(v.legalName) !== normaliseLegalName(legalNameText);
+
+  const onVerify = async () => {
+    setLastAttemptError(null);
+    try {
+      const out = await verify.mutateAsync(savedGstin);
+      if (out.result.status === 'verified') {
+        toast.success(out.result.sandbox ? `GSTIN verified — ${SANDBOX_LABEL}` : 'GSTIN verified with the GST portal.');
+      } else {
+        toast.error(`GSTIN not verified: ${out.result.error ?? out.result.status}`);
+      }
+    } catch (e) {
+      const msg = getApiErrorMessage(e, 'GSTIN verification failed.');
+      setLastAttemptError(msg);
+      toast.error(msg);
+    }
+  };
+
+  return (
+    <div className="mt-3 space-y-2 rounded-md border bg-background px-3 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          {verified ? (
+            <BadgeCheck className={`h-4 w-4 ${sandbox ? 'text-amber-600' : 'text-green-600'}`} />
+          ) : (
+            <ShieldAlert className="h-4 w-4 text-red-600" />
+          )}
+          {verified
+            ? sandbox
+              ? 'Verified by the SANDBOX provider'
+              : 'Verified with the GST portal'
+            : 'Not verified'}
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          className="gap-1.5"
+          onClick={onVerify}
+          disabled={verify.isPending || unsaved || (provider ? !provider.configured : false)}
+          title={
+            unsaved
+              ? 'Save the GSTIN first — only the saved number can be verified'
+              : provider && !provider.configured
+                ? provider.reason ?? 'Provider not configured'
+                : undefined
+          }
+        >
+          {verify.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+          {verified ? 'Re-verify' : 'Verify'}
+        </Button>
+      </div>
+
+      {sandbox && (
+        <p className="rounded border border-amber-400 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-900 dark:border-amber-600 dark:bg-amber-950/40 dark:text-amber-200">
+          {SANDBOX_LABEL}. For local testing only — reports and bills carry this label.
+        </p>
+      )}
+      {provider?.sandbox && !sandbox && provider.configured && (
+        <p className="text-[11px] font-semibold text-amber-800 dark:text-amber-300">
+          The configured provider is the SANDBOX — {SANDBOX_LABEL}.
+        </p>
+      )}
+
+      {verified && v ? (
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[12px]">
+          <dt className="text-muted-foreground">GSTIN checked</dt>
+          <dd className="font-mono">{v.checkedGstin}</dd>
+          <dt className="text-muted-foreground">Legal name</dt>
+          <dd>{v.legalName ?? '—'}</dd>
+          {v.tradeName ? (
+            <>
+              <dt className="text-muted-foreground">Trade name</dt>
+              <dd>{v.tradeName}</dd>
+            </>
+          ) : null}
+          <dt className="text-muted-foreground">Registration status</dt>
+          <dd>{v.registrationStatus ?? '—'}</dd>
+          <dt className="text-muted-foreground">Provider</dt>
+          <dd>{v.provider ?? '—'}</dd>
+          <dt className="text-muted-foreground">Checked</dt>
+          <dd>{fmtWhen(v.lastCheckedAt)}</dd>
+        </dl>
+      ) : (
+        <div className="space-y-0.5 text-[12px]">
+          <p className="text-red-700 dark:text-red-300">{unverifiedReason(v, provider)}</p>
+          {v?.lastCheckedAt ? (
+            <p className="text-muted-foreground">
+              Last checked {fmtWhen(v.lastCheckedAt)} via {v.provider ?? '—'}
+              {v.checkedGstin ? ` for ${v.checkedGstin}` : ''}.
+            </p>
+          ) : null}
+          {provider && !provider.configured ? (
+            <p className="text-muted-foreground">
+              Provider not configured ({provider.reason ?? 'no GST service provider on this server'}).
+              The GSTIN cannot be verified, so reports and bills keep showing it as not verified.
+            </p>
+          ) : null}
+        </div>
+      )}
+
+      {nameMismatch && (
+        <p className="flex items-start gap-1.5 text-[11px] text-amber-800 dark:text-amber-300">
+          <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          The legal name on the GST registration (“{v?.legalName}”) differs from the legal name
+          entered below (“{legalNameText}”). Correct the entered name to match the registration.
+        </p>
+      )}
+      {unsaved && (
+        <p className="text-[11px] text-muted-foreground">
+          The GSTIN above is not saved yet. Save it, then verify — changing the GSTIN clears the
+          previous verification.
+        </p>
+      )}
+      {lastAttemptError && <p className="text-[11px] text-red-700 dark:text-red-300">{lastAttemptError}</p>}
+    </div>
   );
 }
 
@@ -149,13 +345,49 @@ function GstForm({ initial }: { initial: GstProfile }) {
               <Input
                 value={gstinText}
                 onChange={(e) => setGstinText(e.target.value.toUpperCase())}
-                placeholder="27AAPFU0939F1ZV"
+                // Not a real-looking GSTIN: the old placeholder was the GST
+                // documentation's sample number, which then got saved (gap 311).
+                placeholder="15-character GSTIN"
                 maxLength={15}
                 className="font-mono uppercase"
               />
               <p className="mt-1 text-[11px] text-muted-foreground">
-                15 characters. The check digit is verified on save — a GSTIN that is one character
-                wrong looks right on an invoice and then matches nothing on the portal.
+                15 characters. Format, state code and check digit are checked on save, and the PAN
+                inside it must match the hospital PAN below. Those checks are not verification: use
+                Verify below to confirm the number through the hospital&apos;s GST service provider.
+                Until that succeeds, reports and bills show it as not verified.
+              </p>
+              {form.gstinChecks ? (
+                <p
+                  className={`mt-1 text-[11px] ${
+                    form.gstinChecks.looksLikeSample || form.gstinChecks.panMatches === false
+                      ? 'text-red-700'
+                      : 'text-muted-foreground'
+                  }`}
+                >
+                  {form.gstinChecks.looksLikeSample
+                    ? 'This looks like a sample or placeholder GSTIN — check the registration certificate.'
+                    : form.gstinChecks.panMatches === false
+                      ? 'The PAN inside this GSTIN does not match the hospital PAN.'
+                      : `Local checks passed: format, state code, check digit${
+                          form.gstinChecks.panMatches ? ', PAN' : ''
+                        }.`}
+                </p>
+              ) : null}
+              <GstinVerificationPanel gstinText={gstinText} legalNameText={form.legalName} />
+            </div>
+
+            <div className="sm:col-span-2">
+              <Label className="mb-1 block text-xs text-muted-foreground">Hospital PAN</Label>
+              <Input
+                value={form.pan ?? ''}
+                onChange={(e) => set('pan', e.target.value.toUpperCase() || null)}
+                placeholder="10-character PAN"
+                maxLength={10}
+                className="font-mono uppercase"
+              />
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Optional. When entered, characters 3–12 of the GSTIN must be this PAN.
               </p>
             </div>
 
@@ -256,18 +488,35 @@ function GstForm({ initial }: { initial: GstProfile }) {
             title="Report HSN and SAC at 6 digits"
             hint="Required above the reporting threshold. Below it, 4 digits is enough."
           />
+          {/* G-5: these switches RECORD that the law applies — they drive the
+              D-1/D-2/D-3 registers, which then list every invoice still owed
+              an IRN. They do not generate anything: there is no IRP or e-way
+              bill portal integration (no API credentials), so nobody should
+              read "on" as "our invoices are e-invoices". */}
           <Toggle
             checked={form.eInvoiceApplicable}
             onChange={(v) => set('eInvoiceApplicable', v)}
-            title="E-invoicing applies"
-            hint="Invoices must be registered on the portal and carry an IRN and QR code."
+            title="E-invoicing applies — IRN generation not available"
+            hint="Records the legal obligation only. This system does not register invoices on the IRP or print an IRN/QR."
           />
           <Toggle
             checked={form.eWayBillApplicable}
             onChange={(v) => set('eWayBillApplicable', v)}
-            title="E-way bills apply"
-            hint="Only where goods physically move above the threshold. Rare for a hospital."
+            title="E-way bills apply — generation not available"
+            hint="Records the obligation only. This system does not generate e-way bills. Rare for a hospital."
           />
+          {(form.eInvoiceApplicable || form.eWayBillApplicable) && (
+            <div
+              role="alert"
+              className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-[12px] text-red-900 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
+            >
+              <b>Not available in this system.</b> There is no e-invoice (IRP) or e-way bill portal
+              integration, so switching this on does not make invoices compliant. Invoices print
+              without an IRN or QR code and say so. Register B2B invoices
+              {form.eWayBillApplicable ? ' and generate e-way bills' : ''} on the government portal
+              yourself; report D-2 lists every invoice still without an IRN.
+            </div>
+          )}
 
           {/* The two numbers behind the switches. Here rather than in the
               reports for the same reason as the switches themselves: both have

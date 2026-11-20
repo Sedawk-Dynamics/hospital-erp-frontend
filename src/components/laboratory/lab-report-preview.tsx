@@ -14,7 +14,11 @@
 // schema with mock data.
 
 import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Eye, Printer, X } from 'lucide-react';
+import { apiGet } from '@/lib/api';
+import { useAuthStore } from '@/stores/auth-store';
+import type { HospitalBranding } from '@/hooks/use-hospital-branding';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
@@ -185,18 +189,52 @@ export function LabReportPreviewDialog({ open, onOpenChange, source }: LabReport
 // with the editor instead of in a dialog)
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * Gap 374: the preview header used a hard-coded "Sample Hospital, 123 Care
+ * Street … NABL Accredited" letterhead. It now reads the hospital's PDF-builder
+ * letterhead (the same one every printed document uses). Super admins author
+ * platform templates with no hospital, so they get a neutral placeholder.
+ */
+function useLabLetterhead() {
+  const { user } = useAuthStore();
+  const roles = user?.roles ?? (user?.role?.name ? [user.role.name] : []);
+  const isPlatform = roles.includes('super_admin');
+  const q = useQuery({
+    queryKey: ['hospital-branding', 'letterhead'],
+    queryFn: async () => (await apiGet<HospitalBranding>('/hospital-branding/letterhead')).data ?? null,
+    enabled: !!user && !isPlatform,
+    staleTime: 5 * 60_000,
+  });
+  return isPlatform ? null : q.data ?? null;
+}
+
+/** Header lines from the letterhead, honouring its show/hide toggles. NABL /
+ *  accreditation appears only when the hospital has set it. */
+export function letterheadLines(h: HospitalBranding | null) {
+  if (!h) return { name: "Your hospital's letterhead", address: '', contact: '' };
+  const sh = h.show;
+  const address = sh?.address === false ? '' : [h.addressLine1, h.addressLine2, h.city, h.state, h.pincode].filter(Boolean).join(' · ');
+  const contact = [
+    sh?.phone === false ? null : h.phone ? `Phone: ${h.phone}` : null,
+    sh?.email === false ? null : h.email,
+    sh?.accreditation === false ? null : h.accreditation,
+  ].filter(Boolean).join(' · ');
+  return { name: h.name, address, contact };
+}
+
 export function LabReportPreviewBody({ source }: { source: LabReportPreviewSource }) {
   const grouped = useMemo(() => groupParameters(source.parameters), [source.parameters]);
   const today = new Date();
+  const head = letterheadLines(useLabLetterhead());
 
   return (
     <div id="lab-preview-print-root" className="bg-white text-slate-900 rounded-lg shadow-md overflow-hidden border">
-      {/* Hospital header (mock) */}
+      {/* Hospital header — the hospital's own letterhead (gap 374) */}
       <div className="flex items-start justify-between gap-4 px-6 py-4 border-b-2 border-primary">
         <div>
-          <p className="text-lg font-bold tracking-tight text-primary">Sample Hospital</p>
-          <p className="text-[10px] text-slate-600">123 Care Street · City · State · 560001</p>
-          <p className="text-[10px] text-slate-600">Phone: +91 80-0000-0000 · NABL Accredited</p>
+          <p className="text-lg font-bold tracking-tight text-primary">{head.name}</p>
+          {head.address && <p className="text-[10px] text-slate-600">{head.address}</p>}
+          {head.contact && <p className="text-[10px] text-slate-600">{head.contact}</p>}
         </div>
         <div className="text-right">
           <p className="text-[10px] uppercase font-bold tracking-widest text-primary">Laboratory Report</p>

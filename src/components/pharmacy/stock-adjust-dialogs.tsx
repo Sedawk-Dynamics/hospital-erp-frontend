@@ -24,7 +24,7 @@ import {
   TableRow,
   TableCell,
 } from '@/components/ui/table';
-import { cn } from '@/lib/utils';
+import { cn, getApiErrorMessage } from '@/lib/utils';
 import { formatDateTime, toInputDateStr } from '@/lib/date-utils';
 import {
   useAdjustBatchStock,
@@ -48,6 +48,9 @@ export function AdjustStockDialog({
 }) {
   const [count, setCount] = useState('');
   const [reason, setReason] = useState('');
+  // G-12: a shortfall from damage / expiry is a write-off — the input GST on it
+  // has to be reversed. Blank = let the server decide from the reason.
+  const [writeOffType, setWriteOffType] = useState<'' | 'damaged' | 'expired' | 'other'>('');
   const adjust = useAdjustBatchStock();
 
   const system = batch?.quantityInStock ?? 0;
@@ -63,13 +66,18 @@ export function AdjustStockDialog({
         id: batch.id,
         physicalCount: counted,
         reason: reason.trim(),
+        writeOffType: delta != null && delta < 0 && writeOffType ? writeOffType : undefined,
       });
-      toast.success(`Stock adjusted ${res.from} → ${res.to} (${res.delta >= 0 ? '+' : ''}${res.delta})`);
+      toast.success(
+        `Stock adjusted ${res.from} → ${res.to} (${res.delta >= 0 ? '+' : ''}${res.delta})` +
+          (res.writeOff ? ` — written off, input GST to reverse ₹${res.writeOff.taxToReverse.toFixed(2)}` : ''),
+      );
       setCount('');
       setReason('');
+      setWriteOffType('');
       onOpenChange(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to adjust stock');
+      toast.error(getApiErrorMessage(err, 'Failed to adjust stock'));
     }
   }
 
@@ -80,6 +88,7 @@ export function AdjustStockDialog({
         if (!open) {
           setCount('');
           setReason('');
+          setWriteOffType('');
         }
         onOpenChange(open);
       }}
@@ -118,6 +127,25 @@ export function AdjustStockDialog({
             >
               Discrepancy: {delta > 0 ? '+' : ''}
               {delta} ({delta > 0 ? 'surplus found' : 'shortfall'})
+            </div>
+          )}
+          {delta != null && delta < 0 && (
+            <div className="space-y-1.5">
+              <Label htmlFor="writeOffType">Write-off</Label>
+              <select
+                id="writeOffType"
+                className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"
+                value={writeOffType}
+                onChange={(e) => setWriteOffType(e.target.value as typeof writeOffType)}
+              >
+                <option value="">Count correction (or decide from the reason)</option>
+                <option value="damaged">Damaged / broken — write off</option>
+                <option value="expired">Expired — write off</option>
+                <option value="other">Other write-off</option>
+              </select>
+              <p className="text-[11px] text-muted-foreground">
+                A write-off reverses the input GST claimed on these units (section 17(5)(h)).
+              </p>
             </div>
           )}
           <div className="space-y-1.5">

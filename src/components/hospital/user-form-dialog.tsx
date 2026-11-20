@@ -25,6 +25,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
 import type { UserListItem, RoleOption } from '@/hooks/use-users';
+import { formatRoleName, staffRoles } from '@/lib/utils';
 import { DOCTOR_SPECIALTIES, specialtyLabel } from '@/lib/constants/doctor-specialties';
 
 interface DepartmentOption {
@@ -232,9 +233,7 @@ export function UserFormDialog({
     }
   };
 
-  const assignableRoles = roles.filter(
-    (r) => r.name !== 'super_admin' && r.name !== 'patient',
-  );
+  const assignableRoles = staffRoles(roles);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -313,9 +312,7 @@ export function UserFormDialog({
                     onChange={() => toggleRole(role.id)}
                     className="h-4 w-4 rounded border-input accent-primary"
                   />
-                  <span className="capitalize">
-                    {role.name.replace(/_/g, ' ')}
-                  </span>
+                  <span>{formatRoleName(role.name)}</span>
                   <span className="text-xs text-muted-foreground ml-auto">
                     {role._count.userRoles} users
                   </span>
