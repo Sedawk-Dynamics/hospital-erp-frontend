@@ -47,6 +47,21 @@ function draftOf(t: ServiceTariff): Draft {
   };
 }
 
+/**
+ * Gap 352 (retest): the component total, or null when no component is set.
+ * When components are set the base price IS their total — the backend saves it
+ * that way — so the tariff list and the bill never show two different totals.
+ */
+export function componentTotal(d: Draft): number | null {
+  const set = COMPONENTS.map((c) => toNum(d[c.key])).filter((v): v is number => v !== null);
+  return set.length ? Math.round(set.reduce((s, v) => s + v, 0) * 100) / 100 : null;
+}
+
+/** The base price that will be saved: the component total when any is set. */
+function effectiveBase(d: Draft): number {
+  return componentTotal(d) ?? Number(d.basePrice);
+}
+
 /** What Complete will bill for this draft — mirrors the backend precedence. */
 export function otBillingSummary(d: Draft): string {
   const comps = COMPONENTS.map((c) => ({ label: c.label, v: toNum(d[c.key]) })).filter((c) => c.v !== null);
@@ -63,7 +78,9 @@ export function otBillingSummary(d: Draft): string {
 function invalid(d: Draft): string | null {
   for (const [k, v] of Object.entries(d)) {
     const n = toNum(v);
-    if (k === 'basePrice' && n === null) return 'Base price is required (0 = no charge).';
+    if (k === 'basePrice' && n === null && componentTotal(d) === null) {
+      return 'Base price is required (0 = no charge).';
+    }
     if (n !== null && (!Number.isFinite(n) || n < 0)) return 'Prices cannot be negative.';
   }
   return null;
@@ -95,7 +112,7 @@ export function OtTariffChargesCard({ canEdit }: { canEdit: boolean }) {
     update.mutate(
       {
         id: t.id,
-        basePrice: Number(d.basePrice),
+        basePrice: effectiveBase(d),
         otTheatreCharge: toNum(d.otTheatreCharge),
         otSurgeonCharge: toNum(d.otSurgeonCharge),
         otAnaesthesiaCharge: toNum(d.otAnaesthesiaCharge),
@@ -123,7 +140,7 @@ export function OtTariffChargesCard({ canEdit }: { canEdit: boolean }) {
         name: newName.trim(),
         code: newCode.trim(),
         category: 'surgery',
-        basePrice: Number(newDraft.basePrice),
+        basePrice: effectiveBase(newDraft),
         otTheatreCharge: toNum(newDraft.otTheatreCharge),
         otSurgeonCharge: toNum(newDraft.otSurgeonCharge),
         otAnaesthesiaCharge: toNum(newDraft.otAnaesthesiaCharge),
@@ -142,7 +159,7 @@ export function OtTariffChargesCard({ canEdit }: { canEdit: boolean }) {
     );
   };
 
-  const priceCell = (value: string, onChange: (v: string) => void, label: string) => (
+  const priceCell = (value: string, onChange: (v: string) => void, label: string, locked = false) => (
     <Input
       type="number"
       inputMode="decimal"
@@ -151,7 +168,8 @@ export function OtTariffChargesCard({ canEdit }: { canEdit: boolean }) {
       aria-label={label}
       placeholder="—"
       value={value}
-      disabled={!canEdit}
+      disabled={!canEdit || locked}
+      title={locked ? 'Set by the components — the base price is their total' : undefined}
       onChange={(e) => onChange(e.target.value)}
       className="h-8 w-24 text-right text-xs"
     />
@@ -168,8 +186,8 @@ export function OtTariffChargesCard({ canEdit }: { canEdit: boolean }) {
             <h2 className="font-headline text-lg font-bold">Surgery Tariffs &amp; OT Charges</h2>
             <p className="text-sm text-muted-foreground">
               What Complete posts to the patient&apos;s bill. Set theatre / surgeon / anaesthesia / assistant
-              charges to bill them as separate lines (they replace the base price); leave them blank to bill the
-              base price. ₹0 is an explicit no-charge procedure.
+              charges to bill them as separate lines; the base price then becomes their total. Leave them blank to
+              bill the base price as one line. ₹0 is an explicit no-charge procedure.
             </p>
           </div>
         </div>
@@ -196,7 +214,9 @@ export function OtTariffChargesCard({ canEdit }: { canEdit: boolean }) {
             <div className="flex flex-wrap items-end gap-3">
               <div>
                 <Label className="text-xs">Base price</Label>
-                {priceCell(newDraft.basePrice, (v) => setNewDraft({ ...newDraft, basePrice: v }), 'Base price')}
+                {componentTotal(newDraft) !== null
+                  ? priceCell(String(componentTotal(newDraft)), () => {}, 'Base price', true)
+                  : priceCell(newDraft.basePrice, (v) => setNewDraft({ ...newDraft, basePrice: v }), 'Base price')}
               </div>
               {COMPONENTS.map((c) => (
                 <div key={c.key}>
@@ -247,7 +267,11 @@ export function OtTariffChargesCard({ canEdit }: { canEdit: boolean }) {
                           {!t.isActive && <Badge variant="outline" className="ml-1 text-[9px]">inactive</Badge>}
                         </div>
                       </td>
-                      <td className="px-2 py-2 text-right">{priceCell(d.basePrice, (v) => set('basePrice', v), 'Base price')}</td>
+                      <td className="px-2 py-2 text-right">
+                        {componentTotal(d) !== null
+                          ? priceCell(String(componentTotal(d)), () => {}, 'Base price', true)
+                          : priceCell(d.basePrice, (v) => set('basePrice', v), 'Base price')}
+                      </td>
                       {COMPONENTS.map((c) => (
                         <td key={c.key} className="px-2 py-2 text-right">
                           {priceCell(d[c.key], (v) => set(c.key, v), `${c.label} charge`)}

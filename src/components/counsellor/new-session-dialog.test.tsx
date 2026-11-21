@@ -39,7 +39,7 @@ const onCreated = vi.fn();
 
 function renderDialog() {
   return render(
-    <NewSessionDialog open onOpenChange={onOpenChange} defaultDate="2026-11-21" onCreated={onCreated} />,
+    <NewSessionDialog open onOpenChange={onOpenChange} defaultDate="2030-01-15" onCreated={onCreated} />,
   );
 }
 
@@ -88,8 +88,9 @@ describe('New Counselling Session dialog', () => {
       patientId: 'pat-1',
       counsellorId: 'c-1',
       sessionType: 'pre_admission_financial',
-      // 10:00 IST on the page's day, whatever zone the test runner is in.
-      scheduledAt: '2026-11-21T04:30:00.000Z',
+      // 10:00 IST on the page's day, whatever zone the test runner is in. A fixed
+      // future day: on "today" the dialog defaults to the next quarter hour.
+      scheduledAt: '2030-01-15T04:30:00.000Z',
       notes: 'Package estimate',
       kind: 'session',
       referralSource: undefined,

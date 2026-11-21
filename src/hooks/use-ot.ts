@@ -102,6 +102,8 @@ export interface OTRequest {
     lines?: Array<{ description: string; amount: number }>;
   }>;
   postedAmount?: number;
+  /** Gap 352: true once any line is on a bill — a posted ₹0 no-charge line counts. */
+  isPosted?: boolean;
   /** Returned by the Complete call: what was (or was not) posted. */
   billing?: { posted: boolean; amount: number; billNumber: string | null; message: string };
 }
@@ -431,6 +433,12 @@ export interface OTAnalytics {
     billingStatus: string | null;
     /** Posted to bills (gap 353) — billingAmount is only the planned charge. */
     billedAmount?: number;
+    /** Gap 352: a posted ₹0 no-charge line still counts as billed. */
+    isPosted?: boolean;
+    postedNoCharge?: boolean;
+    /** What Complete will post for a case not on a bill yet (null = no price). */
+    plannedAmount?: number | null;
+    plannedNoCharge?: boolean;
   }>;
   /** Theatres in the master (gap 353). */
   theatreCount?: number;

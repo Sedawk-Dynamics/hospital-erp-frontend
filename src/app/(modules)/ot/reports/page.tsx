@@ -13,7 +13,8 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/shared/page-header';
 import { EmptyState } from '@/components/shared/empty-state';
-import { useOTAnalytics } from '@/hooks/use-ot';
+import { useOTAnalytics, type OTAnalytics } from '@/hooks/use-ot';
+import { otChargeState, otChargeText } from '@/lib/ot-charge';
 import { fullName } from '@/lib/person-name';
 
 // Minimal CSV serialiser + browser download (no dependency).
@@ -47,6 +48,16 @@ const STATUS_BADGE: Record<string, string> = {
 
 function rupees(n: number) {
   return `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+}
+
+/** Posted / planned facts for one report row (gap 352). */
+function otReportFacts(s: OTAnalytics['surgeryList'][number]) {
+  return {
+    isPosted: s.isPosted ?? (s.billedAmount ?? 0) > 0,
+    postedAmount: s.billedAmount ?? 0,
+    plannedAmount: s.plannedAmount ?? null,
+    plannedNoCharge: s.plannedNoCharge,
+  };
 }
 
 function statusLabel(s: string) {
@@ -95,8 +106,9 @@ export default function OTReportsPage() {
         StartTime: s.scheduledStartTime ?? '',
         DurationMin: s.durationMinutes ?? '',
         Status: statusLabel(s.status),
-        PlannedCharge: s.billingAmount ?? '',
+        PlannedCharge: s.isPosted ? '' : (s.plannedAmount ?? ''),
         Billed: s.billedAmount ?? 0,
+        Charge: otChargeText(otReportFacts(s)),
         BillingStatus: s.billingStatus ?? '',
       })),
     );
@@ -343,12 +355,11 @@ export default function OTReportsPage() {
                       </Badge>
                     </td>
                     <td className="px-4 py-2 text-right text-xs">
-                      {(s.billedAmount ?? 0) > 0 ? (
+                      {/* Gap 352 (retest): posted wins; a posted ₹0 line is "no charge (posted)", never "not posted". */}
+                      {otChargeState(otReportFacts(s)) === 'posted' ? (
                         rupees(s.billedAmount ?? 0)
-                      ) : s.billingAmount != null ? (
-                        <span className="text-muted-foreground">{rupees(s.billingAmount)} not posted</span>
                       ) : (
-                        <span className="text-muted-foreground">-</span>
+                        <span className="text-muted-foreground">{otChargeText(otReportFacts(s))}</span>
                       )}
                       {s.billingStatus && (
                         <div className="text-muted-foreground">{s.billingStatus}</div>

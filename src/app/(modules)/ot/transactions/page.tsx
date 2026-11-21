@@ -17,6 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/shared/page-header';
 import { EmptyState } from '@/components/shared/empty-state';
 import { useOTRequests, useUpdateOTRequest, useBillOtRequest, type OTRequest } from '@/hooks/use-ot';
+import { otBillingTotals, otChargeState, otChargeText } from '@/lib/ot-charge';
 import { useAuthStore } from '@/stores/auth-store';
 import { fullName } from '@/lib/person-name';
 import { getApiErrorMessage } from '@/lib/utils';
@@ -40,6 +41,18 @@ const STATUS_COLOR: Record<string, string> = {
 function rupees(n: number | null | undefined) {
   if (n == null) return '-';
   return `₹${Number(n).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+}
+
+/** Posted / planned facts for one OT row (gap 352). */
+function otRowFacts(r: OTRequest) {
+  return {
+    isPosted: r.isPosted,
+    postedAmount: r.postedAmount,
+    plannedAmount: r.chargePreview ? r.chargePreview.amount : null,
+    plannedNoCharge: r.chargePreview?.noCharge,
+    status: r.status,
+    billingStatus: r.billingStatus,
+  };
 }
 
 function formatPatientName(req: OTRequest): string {
@@ -74,21 +87,10 @@ export default function OTTransactionsPage() {
   const all = data?.data ?? [];
   const meta = data?.meta;
 
-  // Stats computed from the same payload (page-scoped, but reasonable for billing screen)
-  const stats = useMemo(() => {
-    return all.reduce(
-      (acc, r) => {
-        const status = (r.billingStatus ?? 'pending').toLowerCase();
-        const amt = r.billingAmount ?? 0;
-        acc.total += amt;
-        if (status === 'paid') acc.paid += amt;
-        if (status === 'pending' || status === 'partially_paid') acc.pending += amt;
-        if (status === 'cancelled') acc.cancelled += amt;
-        return acc;
-      },
-      { total: 0, paid: 0, pending: 0, cancelled: 0 },
-    );
-  }, [all]);
+  // Gap 352 (retest): tiles total what is POSTED to bills (the typed amount
+  // alone missed every tariff-priced case); planned-but-unposted money is its
+  // own tile. Page-scoped, like the table.
+  const stats = useMemo(() => otBillingTotals(all.map(otRowFacts)), [all]);
 
   return (
     <div className="space-y-5 animate-fade-in-up">
@@ -105,10 +107,10 @@ export default function OTTransactionsPage() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: 'Total Billed', value: stats.total, icon: IndianRupee, bg: 'bg-blue-50', color: 'text-blue-600' },
+          { label: 'Total Billed (posted)', value: stats.billed, icon: IndianRupee, bg: 'bg-blue-50', color: 'text-blue-600' },
           { label: 'Paid', value: stats.paid, icon: CheckCircle2, bg: 'bg-emerald-50', color: 'text-emerald-600' },
-          { label: 'Pending', value: stats.pending, icon: Clock, bg: 'bg-amber-50', color: 'text-amber-600' },
-          { label: 'Cancelled', value: stats.cancelled, icon: XCircle, bg: 'bg-red-50', color: 'text-red-600' },
+          { label: 'Pending payment', value: stats.pendingPayment, icon: Clock, bg: 'bg-amber-50', color: 'text-amber-600' },
+          { label: 'Not posted yet', value: stats.notPosted, icon: XCircle, bg: 'bg-slate-50', color: 'text-slate-600' },
         ].map((s) => (
           <div key={s.label} className={`rounded-xl shadow-sanctuary p-4 ${s.bg}`}>
             <div className="flex items-center gap-2">
@@ -176,17 +178,25 @@ export default function OTTransactionsPage() {
                       {r.scheduledDate ? formatDate(r.scheduledDate) : '-'}
                     </td>
                     <td className="px-4 py-2 text-right font-medium">
-                      {(r.billingAmount ?? 0) > 0 ? (
-                        rupees(r.billingAmount)
-                      ) : (
-                        // Gap 352: no configured price means nothing is billed on Complete.
-                        <span className="text-xs font-normal text-amber-700">No price set — not billed</span>
-                      )}
+                      {(() => {
+                        const state = otChargeState(otRowFacts(r));
+                        const tone =
+                          state === 'posted'
+                            ? ''
+                            : state === 'no_price'
+                              ? 'text-xs font-normal text-amber-700'
+                              : 'text-xs font-normal text-muted-foreground';
+                        return <span className={tone}>{otChargeText(otRowFacts(r))}</span>;
+                      })()}
                     </td>
                     <td className="px-4 py-2">
-                      <Badge variant="outline" className={`text-xs ${STATUS_COLOR[r.billingStatus ?? 'pending'] ?? ''}`}>
-                        {r.billingStatus ?? 'pending'}
-                      </Badge>
+                      {r.isPosted ? (
+                        <Badge variant="outline" className={`text-xs ${STATUS_COLOR[r.billingStatus ?? 'pending'] ?? ''}`}>
+                          {(r.billingStatus ?? 'pending').replace('_', ' ')}
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-xs text-muted-foreground">not billed</Badge>
+                      )}
                     </td>
                     <td className="px-4 py-2">
                       <Badge variant="outline" className="text-xs capitalize">
@@ -204,7 +214,7 @@ export default function OTTransactionsPage() {
                         >
                           <Pencil className="h-3.5 w-3.5 mr-1" /> Amount
                         </Button>
-                        {canBill && (r.billingAmount ?? 0) > 0 && r.billingStatus !== 'paid' && (
+                        {canBill && !r.isPosted && !!r.chargePreview && r.status !== 'cancelled' && (
                           <Button
                             size="sm"
                             variant="ghost"
