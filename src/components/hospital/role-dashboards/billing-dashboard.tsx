@@ -13,14 +13,17 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useFinalizeBill } from '@/hooks/use-hospital';
+import { formatINR } from '@/lib/money';
 
 interface BillItem {
   id: string;
   billNumber: string;
   patient?: { firstName: string; lastName: string; mrn: string };
-  total: number;
-  paidAmount: number;
-  balanceAmount: number;
+  // The API's names. The card used to read total / paidAmount / balanceAmount,
+  // which /billing never returns, so every row showed ₹0.00.
+  totalAmount?: number | string;
+  amountPaid?: number | string;
+  balanceDue?: number | string;
   status: string;
   createdAt: string;
 }
@@ -42,7 +45,10 @@ interface RefundRequest {
   createdAt: string;
 }
 
-const fmt = (n: number) => `₹${n.toLocaleString('en-IN')}`;
+// The summary call can come back without these totals (it returns a payment
+// list), which crashed the whole Billing dashboard on `undefined.toLocaleString`.
+// formatINR treats a missing value as ₹0.00.
+const fmt = (n: number | null | undefined) => formatINR(n);
 
 export function BillingDashboard() {
   const [search, setSearch] = useState('');
@@ -198,9 +204,9 @@ export function BillingDashboard() {
                     <td className="px-4 py-3 font-label text-[10px] text-on-surface-variant">
                       {formatDate(bill.createdAt)}
                     </td>
-                    <td className="px-4 py-3 text-right font-label text-sm font-bold">{fmt(bill.total)}</td>
-                    <td className="px-4 py-3 text-right font-label text-sm text-primary">{fmt(bill.paidAmount)}</td>
-                    <td className="px-4 py-3 text-right font-label text-sm text-error">{fmt(bill.balanceAmount)}</td>
+                    <td className="px-4 py-3 text-right font-label text-sm font-bold">{fmt(Number(bill.totalAmount ?? 0))}</td>
+                    <td className="px-4 py-3 text-right font-label text-sm text-primary">{fmt(Number(bill.amountPaid ?? 0))}</td>
+                    <td className="px-4 py-3 text-right font-label text-sm text-error">{fmt(Number(bill.balanceDue ?? 0))}</td>
                     <td className="px-4 py-3">
                       <span
                         className={cn(
