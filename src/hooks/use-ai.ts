@@ -185,7 +185,7 @@ export interface PatientChatResponse {
 
 export function usePatientAiChat() {
   return useMutation({
-    mutationFn: async (data: { patientId: string; message: string; history?: AiChatTurn[]; visitId?: string | null }) => {
+    mutationFn: async (data: { patientId: string; message: string; history?: AiChatTurn[]; visitId?: string | null; model?: string }) => {
       const res = await apiPost<PatientChatResponse>('/ai/patient/chat', data);
       return res.data;
     },
@@ -270,10 +270,10 @@ export interface ImagingReportAnalysis {
 
 export function useImagingReportAnalysis() {
   return useMutation({
-    mutationFn: async (data: { patientId: string }) => {
+    mutationFn: async (data: { patientId: string; model?: string }) => {
       const res = await apiPost<ImagingReportAnalysis>(
         `/ai/patient/${data.patientId}/analyse-imaging`,
-        {},
+        { model: data.model },
       );
       return res.data;
     },
