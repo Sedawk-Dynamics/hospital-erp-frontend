@@ -130,6 +130,9 @@ export interface ClaimQuery {
   responseText?: string | null;
   respondedAt?: string | null;
   resolvedAt?: string | null;
+  /** Gap 294: a stale query closed with a reason. */
+  closedAt?: string | null;
+  closeReason?: string | null;
 }
 
 export interface ClaimSettlement {
@@ -229,6 +232,8 @@ export interface SlaQueueItem extends PreAuthRequest {
   /** Who chases this request: its submitter, else the payer case's creator (gap 294). */
   owner?: SlaPerson;
   lastAction?: { label: string; at: string; by: SlaPerson } | null;
+  /** Gap 294: when / to whom this request escalates under the hospital's rule. */
+  escalation?: { targetRole: string; escalateAfterHours: number; dueAt: string | null; escalatedAt: string | null };
 }
 
 export interface WorkflowAnalytics {

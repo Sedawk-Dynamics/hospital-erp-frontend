@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPatch, apiPost } from '@/lib/api';
+import type { PortalIntegration } from '@/hooks/use-gst-portal';
 
 // ============================================================
 // The GST reports.
@@ -956,6 +957,8 @@ export function useSetPeriodLock() {
 // one of two opposite things — nothing was due, or nothing has been sent — and
 // the rows alone cannot say which.
 
+/** G-5 (gap #266): the portal integration's readiness, carried by D-1 / D-2 / D-3. */
+export type { PortalIntegration } from '@/hooks/use-gst-portal';
 export interface EInvoiceApplicability {
   applicable: boolean;
   /** Correction 14's wording. Never a turnover figure. */
@@ -988,6 +991,8 @@ export interface IrnRow {
 export const useEInvoiceRegister = (q: GstReportQuery & { status?: string }, on = true) =>
   useReport<{
     applicability: EInvoiceApplicability;
+    /** G-5 (gap #266): whether Generate / Retry / Cancel can work from this screen. */
+    integration?: PortalIntegration;
     summary: {
       required: number; registered: number; pending: number; failed: number;
       notSent: number; cancelled: number; totalValue: number; totalTax: number;
@@ -1000,6 +1005,8 @@ export const useEInvoiceRegister = (q: GstReportQuery & { status?: string }, on 
 export const useFailedIrn = (q: GstReportQuery, on = true) =>
   useReport<{
     applicability: EInvoiceApplicability;
+    /** G-5 (gap #266): whether Generate / Retry / Cancel can work from this screen. */
+    integration?: PortalIntegration;
     uploadDays: number;
     summary: {
       outstanding: number; rejected: number; neverSent: number;
@@ -1023,6 +1030,22 @@ export interface EwayRow {
   destination: string | null;
   ewayBillNumber: string | null;
   ewayBillDate: string | null;
+  /** G-5 (gap #266): 'not_generated' | 'pending' | 'generated' | 'failed' | 'cancelled'. */
+  ewayStatus?: string;
+  /** The portal's own words when it refused. */
+  ewayError?: string | null;
+  ewayAttemptedAt?: string | null;
+  ewayValidUpto?: string | null;
+  ewayCancelledAt?: string | null;
+  ewayCancelReason?: string | null;
+  /** The transport details last sent — Retry offers them again. */
+  ewayTransport?: {
+    transMode?: string;
+    distanceKm?: number;
+    vehicleNo?: string;
+    transporterId?: string;
+    transporterName?: string;
+  } | null;
   billRequired: boolean;
 }
 
@@ -1030,10 +1053,14 @@ export interface EwayRow {
 export const useEwayBills = (q: GstReportQuery, on = true) =>
   useReport<{
     applicability: EInvoiceApplicability;
+    /** G-5 (gap #266): whether Generate / Retry / Cancel can work from this screen. */
+    integration?: PortalIntegration;
     threshold: number;
     summary: {
       movements: number; aboveThreshold: number; withBill: number;
       missingBill: number; totalValue: number;
+      /** G-5 (gap #266). */
+      failed?: number; cancelled?: number;
     };
     rows: EwayRow[];
     note: string;

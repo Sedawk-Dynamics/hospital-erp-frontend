@@ -1470,6 +1470,13 @@ export interface PharmacyCreditNote {
   recipientGstin: string | null;
   placeOfSupplyStateCode: string | null;
   withinTimeLimit: boolean;
+  /** G-5 (gap #266): set once a B2B note is registered on the IRP. */
+  irn?: string | null;
+  irnAckNo?: string | null;
+  irnAckDate?: string | null;
+  irnQrPayload?: string | null;
+  irnStatus?: string | null;
+  irnCancelledAt?: string | null;
   items: Array<{
     id: string;
     description: string;
@@ -1797,6 +1804,13 @@ export interface ReturnReceipt {
     cessAmount: number | string;
     taxAmount: number | string;
     totalAmount: number | string;
+    /** G-5 (gap #266): set once a B2B note is registered on the IRP. */
+    irn?: string | null;
+    irnAckNo?: string | null;
+    irnAckDate?: string | null;
+    irnQrPayload?: string | null;
+    irnStatus?: string | null;
+    irnCancelledAt?: string | null;
   } | null;
   hospital: {
     name: string;

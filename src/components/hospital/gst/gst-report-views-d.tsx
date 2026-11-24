@@ -11,6 +11,7 @@ import {
 import type { EInvoiceApplicability, EwayRow, GstReportQuery, IrnRow } from '@/hooks/use-gst-reports';
 import * as R from '@/hooks/use-gst-reports';
 import { useStatDrill } from './gst-report-views';
+import { EwayRowAction, IntegrationBanner, IrnRowActions, ewayStatusOf } from './gst-einvoice-actions';
 
 // ============================================================
 // Group D — e-invoice and e-way bill.
@@ -82,7 +83,7 @@ const KIND_LABELS: Record<string, string> = {
   debit_note: 'Debit note',
 };
 
-function StatusChip({ status }: { status: string }) {
+function StatusChip({ status, label: override }: { status: string; label?: string }) {
   const tone =
     status === 'registered'
       ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
@@ -93,7 +94,7 @@ function StatusChip({ status }: { status: string }) {
           : status === 'cancelled'
             ? 'border-border bg-muted text-muted-foreground'
             : 'border-amber-300 bg-amber-50 text-amber-900';
-  const label = status === 'not_sent' ? 'Not sent' : titleCase(status);
+  const label = override ?? (status === 'not_sent' ? 'Not sent' : titleCase(status));
   return (
     <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[11px] font-medium ${tone}`}>
       {label}
@@ -158,6 +159,7 @@ export function EInvoiceRegisterView({ q }: { q: Q }) {
   return (
     <div className="space-y-4">
       {data?.applicability ? <Applicability a={data.applicability} /> : null}
+      <IntegrationBanner integration={data?.integration} what="IRN" />
       <StatStrip
         stats={d.wire([
           { label: 'Needed an IRN', value: String(s?.required ?? 0) },
@@ -180,8 +182,12 @@ export function EInvoiceRegisterView({ q }: { q: Q }) {
           disabled={!rows.length}
         />
       </div>
+      {/* G-5 (gap #266): screen-only action column — never exported. */}
       <ReportTable
-        columns={irnCols}
+        columns={[
+          ...irnCols,
+          { key: 'act', label: '', cell: (r) => <IrnRowActions row={r} integration={data?.integration} /> },
+        ]}
         rows={rows}
         empty="No B2B document in this period needed an IRN."
       />
@@ -244,6 +250,7 @@ export function FailedIrnView({ q }: { q: Q }) {
   return (
     <div className="space-y-4">
       {data?.applicability ? <Applicability a={data.applicability} /> : null}
+      <IntegrationBanner integration={data?.integration} what="IRN" />
       <StatStrip
         stats={d.wire([
           { label: 'Outstanding', value: String(s?.outstanding ?? 0), tone: (s?.outstanding ?? 0) > 0 ? 'bad' : 'good' },
@@ -266,7 +273,12 @@ export function FailedIrnView({ q }: { q: Q }) {
           disabled={!rows.length}
         />
       </div>
-      <ReportTable columns={cols} rows={rows} empty="Nothing is outstanding — every B2B document carries an IRN." />
+      {/* G-5 (gap #266): Generate / Retry beside the portal's reason — screen only, never exported. */}
+      <ReportTable
+        columns={[...cols, { key: 'act', label: '', cell: (r) => <IrnRowActions row={r} integration={data?.integration} /> }]}
+        rows={rows}
+        empty="Nothing is outstanding — every B2B document carries an IRN."
+      />
     </div>
   );
 }
@@ -294,7 +306,38 @@ const ewayCols: Column<EwayRow>[] = [
     csv: (r) => r.ewayBillNumber ?? '',
   },
   { key: 'ewbd', label: 'Bill date', cell: (r) => (r.ewayBillDate ? formatDate(r.ewayBillDate) : '—'), csv: (r) => (r.ewayBillDate ? formatDate(r.ewayBillDate) : '') },
+  {
+    // G-5 (gap #266): the portal state, with the portal's own words on a
+    // refusal and the reason on a cancellation.
+    key: 'ewst',
+    label: 'Status',
+    cell: (r) => {
+      const st = ewayStatusOf(r);
+      const detail = st === 'failed' ? r.ewayError : st === 'cancelled' ? r.ewayCancelReason : null;
+      return (
+        <div className="space-y-0.5">
+          <EwayStatusChip status={st} />
+          {detail ? <p className="max-w-[18rem] text-[11px] text-muted-foreground">{detail}</p> : null}
+          {st === 'failed' && r.ewayAttemptedAt ? (
+            <p className="text-[11px] text-muted-foreground">Last attempt {formatDate(r.ewayAttemptedAt)}</p>
+          ) : null}
+        </div>
+      );
+    },
+    csv: (r) => {
+      const st = ewayStatusOf(r);
+      const detail = st === 'failed' ? r.ewayError : st === 'cancelled' ? r.ewayCancelReason : null;
+      return detail ? `${st}: ${detail}` : st;
+    },
+  },
 ];
+
+function EwayStatusChip({ status }: { status: string }) {
+  if (status === 'not_generated') {
+    return <StatusChip status="not_sent" />;
+  }
+  return <StatusChip status={status === 'generated' ? 'registered' : status} label={status === 'generated' ? 'Generated' : undefined} />;
+}
 
 /**
  * D-3 — E-way Bill Register.
@@ -327,6 +370,7 @@ export function EwayBillView({ q }: { q: Q }) {
   return (
     <div className="space-y-4">
       {data?.applicability ? <Applicability a={data.applicability} /> : null}
+      <IntegrationBanner integration={data?.integration} what="E-way bill" />
       <StatStrip
         stats={d.wire([
           { label: 'Goods movements', value: String(s?.movements ?? 0), hint: 'Stock returned to a supplier' },
@@ -353,7 +397,10 @@ export function EwayBillView({ q }: { q: Q }) {
         />
       </div>
       <ReportTable
-        columns={ewayCols}
+        columns={[
+          ...ewayCols,
+          { key: 'act', label: '', cell: (r) => <EwayRowAction row={r} integration={data?.integration} /> },
+        ]}
         rows={rows}
         empty="No goods movement in this period crossed the consignment threshold."
       />

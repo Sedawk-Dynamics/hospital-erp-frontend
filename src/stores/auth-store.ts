@@ -38,7 +38,8 @@ interface AuthState {
   onboardingStatus: string | null;
 
   hydrate: () => void;
-  login: (email: string, password: string) => Promise<string | undefined>;
+  /** `twoFactorCode` is sent only when the account has 2FA on (gap 297). */
+  login: (email: string, password: string, twoFactorCode?: string) => Promise<string | undefined>;
   requestPhoneOtp: (phone: string) => Promise<{ isExistingUser: boolean }>;
   loginWithPhoneOtp: (input: {
     phone: string;
@@ -79,12 +80,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     });
   },
 
-  login: async (email: string, password: string) => {
+  login: async (email: string, password: string, twoFactorCode?: string) => {
     set({ isLoading: true });
     try {
       const { data } = await apiClient.post('/auth/login', {
         email,
         password,
+        ...(twoFactorCode ? { twoFactorCode } : {}),
       });
       const { accessToken, refreshToken, user, onboardingStatus } = data.data;
       setTokens(accessToken, refreshToken);

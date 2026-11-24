@@ -7,6 +7,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { formatDateTime } from '@/lib/date-utils';
 import type { PharmacyCreditNote, PharmacySale } from '@/hooks/use-pharmacy';
 import { amountInWords as inWords } from '@/lib/amount-in-words';
+import { CreditNoteIrnBlock } from './credit-note-irn';
 
 const num = (n: number | string | null | undefined): number => {
   if (n == null) return 0;
@@ -504,6 +505,8 @@ function CreditNoteReceipt({
         </div>
       )}
       <BuyerBlock gst={gst} />
+      {/* G-5 (gap #266): a B2B note registered on the IRP prints its IRN and QR. */}
+      <CreditNoteIrnBlock note={note} />
       <div className="rule" />
       <table>
         <thead>

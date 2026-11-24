@@ -139,6 +139,34 @@ describe('Login page', () => {
     });
   });
 
+  describe('two-factor sign-in (gap 297)', () => {
+    it('asks for the authenticator code when the account has 2FA on, then sends it', async () => {
+      const user = userEvent.setup();
+      mockLogin
+        .mockRejectedValueOnce({
+          response: { status: 400, data: { message: 'Two-factor authentication code is required', code: '2FA_REQUIRED' } },
+        })
+        .mockResolvedValueOnce('active');
+      render(<LoginPage />);
+      await showStaffForm(user);
+
+      await user.type(screen.getByLabelText(/email/i), 'doctor@hospital.com');
+      await user.type(screen.getByLabelText(/password/i), 'secret123');
+      await user.click(submitButton());
+
+      const codeField = await screen.findByLabelText(/two-factor code/i);
+      expect(toast.error).not.toHaveBeenCalled();
+      expect(submitButton()).toBeDisabled();
+
+      await user.type(codeField, '123456');
+      await user.click(submitButton());
+
+      await waitFor(() =>
+        expect(mockLogin).toHaveBeenLastCalledWith('doctor@hospital.com', 'secret123', '123456'),
+      );
+    });
+  });
+
   describe('patient sign-in', () => {
     it('asks for a phone number and sends a code', async () => {
       const user = userEvent.setup();

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, Users, Search } from 'lucide-react';
+import { Plus, Pencil, Trash2, Merge, Users, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +31,8 @@ import {
   useDeleteTpa,
   type TpaProvider,
 } from '@/hooks/use-insurance';
+import { useIsHospitalAdmin } from '@/hooks/use-insurance-admin';
+import { MergePayerDialog, type MergeCandidate } from '@/components/insurance/merge-payer-dialog';
 
 interface FormState {
   name: string;
@@ -59,6 +61,10 @@ export default function TpaPage() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
 
   const { data, isLoading } = useTpas({ search: search || undefined });
+  // Gap 293: merge needs every record to choose the one to keep, not just this page.
+  const { data: allRecords } = useTpas({ limit: 1000 });
+  const isHospitalAdmin = useIsHospitalAdmin();
+  const [merging, setMerging] = useState<MergeCandidate | null>(null);
   const createMut = useCreateTpa();
   const updateMut = useUpdateTpa();
   const deleteMut = useDeleteTpa();
@@ -185,11 +191,22 @@ export default function TpaPage() {
                     <TableCell>{t.phone ?? '—'}</TableCell>
                     <TableCell>
                       <Badge variant={t.isActive ? 'default' : 'outline'}>
-                        {t.isActive ? 'Active' : 'Inactive'}
+                        {t.mergedIntoId ? 'Merged' : t.isActive ? 'Active' : 'Inactive'}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1.5">
+                        {isHospitalAdmin && !t.mergedIntoId && (
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            title="Merge this duplicate into another TPA"
+                            aria-label="Merge duplicate"
+                            onClick={() => setMerging(t)}
+                          >
+                            <Merge className="size-3.5" />
+                          </Button>
+                        )}
                         <Button size="icon-sm" variant="ghost" onClick={() => openEdit(t)}>
                           <Pencil className="size-3.5" />
                         </Button>
@@ -308,6 +325,12 @@ export default function TpaPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <MergePayerDialog
+        kind="tpa"
+        duplicate={merging}
+        records={allRecords?.data ?? []}
+        onClose={() => setMerging(null)}
+      />
     </div>
   );
 }

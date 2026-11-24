@@ -3,13 +3,14 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   ArrowLeft, Mail, Phone, Shield, Calendar, CreditCard,
   Clock, CheckCircle2, XCircle, AlertTriangle, Receipt,
-  Loader2, ChevronRight, Building2, KeyRound, ShieldCheck, UserCog,
+  Loader2, ChevronRight, Building2, KeyRound, ShieldCheck, UserCog, RefreshCw,
 } from 'lucide-react';
+import { TwoFactorCard, PhoneChangeCard } from './_components/account-security';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -120,14 +121,22 @@ function ChangePasswordCard() {
 
 export default function MyAccountPage() {
   const router = useRouter();
-  const { user } = useAuthStore();
+  const { user, setUser } = useAuthStore();
+  const queryClient = useQueryClient();
   const selectedClinic = useClinicStore((s) => s.selectedClinic);
-  // Live profile; the page still renders from the cached user if this fails.
-  const { data: me } = useQuery({
+  // Live profile. If it fails the page still renders from the cached user, but
+  // says so and offers Retry (gap 297) — never a silent or blank page.
+  const {
+    data: me,
+    isError: meFailed,
+    isFetching: meFetching,
+    refetch: refetchMe,
+  } = useQuery({
     queryKey: ['auth', 'me'],
     queryFn: async () => (await apiGet<MeResponse>('/auth/me')).data ?? null,
     retry: false,
   });
+  const refreshMe = () => queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
   const { isAdmin } = usePermissions();
   const { data: subData, isLoading: subLoading } = useMySubscription();
   const { data: payments, isLoading: paymentsLoading } = usePaymentHistory();
@@ -162,6 +171,24 @@ export default function MyAccountPage() {
       </div>
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        {meFailed && (
+          <div
+            role="alert"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-error/20 bg-error/5 p-4"
+          >
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-error" />
+              <p className="font-label text-sm text-error">
+                Couldn&apos;t load your latest account details. What you see below may be out of date.
+              </p>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => refetchMe()} disabled={meFetching} className="gap-1.5">
+              <RefreshCw className={`h-3.5 w-3.5 ${meFetching ? 'animate-spin' : ''}`} />
+              Retry
+            </Button>
+          </div>
+        )}
+
         {/* Profile Card */}
         <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-6">
           <div className="flex items-center gap-4 mb-6">
@@ -221,9 +248,6 @@ export default function MyAccountPage() {
                 <p className="font-label text-[10px] text-on-surface-variant uppercase tracking-wider">Two-factor sign-in</p>
                 <p className="font-label text-sm font-medium">
                   {me ? (me.is2faEnabled ? 'On' : 'Off') : '-'}
-                  <span className="ml-2 font-normal text-on-surface-variant">
-                    Changing it from this page is not available yet.
-                  </span>
                 </p>
               </div>
             </div>
@@ -231,6 +255,20 @@ export default function MyAccountPage() {
         </div>
 
         <ChangePasswordCard />
+
+        {/* 2FA and phone change need the live profile; hidden until it loads. */}
+        {me && (
+          <>
+            <TwoFactorCard enabled={me.is2faEnabled} onChanged={refreshMe} />
+            <PhoneChangeCard
+              currentPhone={me.phone}
+              onChanged={(phone) => {
+                setUser({ ...user, phone });
+                refreshMe();
+              }}
+            />
+          </>
+        )}
 
         {/* Subscription Card */}
         <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-6">

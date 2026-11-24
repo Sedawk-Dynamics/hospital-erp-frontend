@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, CheckCircle2, Clock3, ExternalLink, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +11,10 @@ import { useSlaQueue, useWorkflowAnalytics } from '@/hooks/use-insurance-workflo
 import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/lib/date-utils';
 import { formatINR } from '@/lib/money';
+import { usePermissions } from '@/hooks/use-permissions';
+import { roleLabel } from '@/hooks/use-insurance-admin';
+import { SlaEscalationSettings } from '@/components/insurance/sla-escalation-settings';
+import { CloseStaleRequestDialog } from '@/components/insurance/close-stale-request-dialog';
 
 function duration(minutes?: number | null) {
   if (minutes == null) return '—';
@@ -38,6 +43,9 @@ export default function InsuranceSlaPage() {
   const items = queue.data ?? [];
   const overdue = items.filter((item) => item.breached).length;
   const warning = items.filter((item) => item.alert && !item.breached).length;
+  // Gap 294: closing a stale request is a decision-level action (insurance:approve).
+  const canClose = usePermissions().canAccess('insurance', 'approve');
+  const [closing, setClosing] = useState<{ id: string; requestNumber?: string | null } | null>(null);
 
   return (
     <div className="space-y-6">
@@ -67,16 +75,19 @@ export default function InsuranceSlaPage() {
                   <TableCell>{item.insuranceCase?.caseNumber ?? '—'}</TableCell>
                   <TableCell className="capitalize">{(item.requestType ?? 'initial').replace(/([A-Z])/g, ' $1')}</TableCell>
                   <TableCell>{formatINR(item.estimatedCost)}</TableCell>
-                  <TableCell><Badge variant="outline" className={cn(item.breached ? 'border-rose-300 text-rose-700' : item.alert ? 'border-amber-300 text-amber-700' : 'border-emerald-300 text-emerald-700')}>{item.breached ? 'Breached' : item.alert ? 'Escalate' : 'On track'}</Badge></TableCell>
+                  <TableCell><Badge variant="outline" className={cn(item.breached ? 'border-rose-300 text-rose-700' : item.alert ? 'border-amber-300 text-amber-700' : 'border-emerald-300 text-emerald-700')}>{item.breached ? 'Breached' : item.alert ? 'Escalate' : 'On track'}</Badge>{item.breached && item.escalation && (<div className="mt-1 text-[11px] text-on-surface-variant">{item.escalation.escalatedAt ? `Escalated to ${roleLabel(item.escalation.targetRole)} · ${formatDateTime(item.escalation.escalatedAt)}` : item.escalation.dueAt ? `Escalates to ${roleLabel(item.escalation.targetRole)} at ${formatDateTime(item.escalation.dueAt)}` : null}</div>)}</TableCell>
                   <TableCell>{personName(item.owner) ?? <span className="text-xs text-rose-700">Unassigned</span>}</TableCell>
                   <TableCell>{item.lastAction ? <div><div className="text-sm capitalize">{item.lastAction.label}</div><div className="text-xs text-on-surface-variant">{formatDateTime(item.lastAction.at)}{personName(item.lastAction.by) ? ` · ${personName(item.lastAction.by)}` : ''}</div></div> : <span className="text-xs text-on-surface-variant">No action yet</span>}</TableCell>
-                  <TableCell className="text-right">{item.insuranceCaseId ? <Link href={`/insurance/cases/${item.insuranceCaseId}`} className="inline-flex items-center gap-1 text-primary hover:underline">Open <ExternalLink className="size-3.5" /></Link> : '—'}</TableCell>
+                  <TableCell className="text-right"><div className="flex flex-col items-end gap-1">{item.insuranceCaseId ? <Link href={`/insurance/cases/${item.insuranceCaseId}`} className="inline-flex items-center gap-1 text-primary hover:underline">Open <ExternalLink className="size-3.5" /></Link> : <span>—</span>}{item.breached && canClose && <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setClosing({ id: item.id, requestNumber: item.requestNumber })}>Close with reason</Button>}</div></TableCell>
                 </TableRow>
               )) : <TableRow><TableCell colSpan={10} className="text-center text-on-surface-variant">No authorization decisions are pending.</TableCell></TableRow>}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+
+      <SlaEscalationSettings />
+      <CloseStaleRequestDialog request={closing} onClose={() => setClosing(null)} />
     </div>
   );
 }
