@@ -32,6 +32,20 @@ export const usePatientAiChatStore = create<PatientAiChatState>()(
           return { byVisit: next };
         }),
     }),
-    { name: 'patient-ai-chat' }, // localStorage key
+    {
+      name: 'patient-ai-chat', // localStorage key
+      partialize: (state) => ({
+        byVisit: Object.fromEntries(
+          Object.entries(state.byVisit).map(([visitId, messages]) => [
+            visitId,
+            messages.map(({ images, ...rest }) => rest),
+          ]),
+        ),
+      }),
+    },
   ),
 );
+
+
+
+

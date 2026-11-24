@@ -14,7 +14,7 @@ import {
   useImagingReportAnalysis,
 } from '@/hooks/use-ai';
 import { Loader2 } from 'lucide-react';
-import { AiChatPanel, type AiChatMessage } from '@/components/ai/ai-chat-panel';
+import { AiChatPanel, type AiChatMessage, type AiModelId } from '@/components/ai/ai-chat-panel';
 import { MarkdownMessage } from '@/components/ai/markdown-message';
 import {
   Sparkles,
@@ -193,6 +193,8 @@ export function PatientAiAssistant({
   const summary = usePatientAiSummary(patientId, !!patientId, visitId);
   const contextVersion = usePatientContextVersion(patientId, !!patientId);
   const [messages, setMessages] = useState<AiChatMessage[]>([]);
+  // Model chosen in the composer; summary uses the default (gemini) until changed.
+  const [chatModel, setChatModel] = useState<AiModelId>('gemini');
   const summaryInserted = useRef(false);
   const lastVersion = useRef<string | undefined>(undefined);
   const wasRefreshed = useRef(false);
@@ -296,7 +298,7 @@ export function PatientAiAssistant({
   const send = async (text: string) => {
     setMessages((prev) => [...prev, { role: 'user', content: text }]);
     try {
-      const res = await chat.mutateAsync({ patientId, message: text, history, visitId });
+      const res = await chat.mutateAsync({ patientId, message: text, history, visitId, model: chatModel });
       setMessages((prev) => [
         ...prev,
         { role: 'assistant', content: linkifySources(res.reply, res.sources) },
@@ -354,7 +356,7 @@ export function PatientAiAssistant({
   const analyseImagingReport = async () => {
     setMessages((prev) => [...prev, { role: 'user', content: 'Analyse the latest X-ray imaging.' }]);
     try {
-      const res = await imaging.mutateAsync({ patientId });
+      const res = await imaging.mutateAsync({ patientId, model: chatModel });
       setMessages((prev) => [
         ...prev,
         {
@@ -389,6 +391,8 @@ export function PatientAiAssistant({
     <AiChatPanel
       className="min-h-0 flex-1"
       scrollClassName={scrollClassName}
+      aiModel={chatModel}
+      onModelChange={setChatModel}
       messages={messages}
       onSend={send}
       disabled={summary.isFetching || chat.isPending}
