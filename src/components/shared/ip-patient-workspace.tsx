@@ -110,6 +110,7 @@ import { formatTemperature, temperatureIn, temperatureUnitLabel, temperatureValu
 import { useTemperatureUnit } from '@/stores/temperature-unit-store';
 import { fullName } from '@/lib/person-name';
 import FastTrackPanel, { CODE_META as FAST_TRACK_META } from './fast-track-panel';
+import IcuDetailPanel from './icu-detail-panel';
 import MedicoLegalPanel from './medico-legal-panel';
 import IntoxicationExamPanel from './intoxication-exam-panel';
 import { useFastTrackCodes } from '@/hooks/use-fast-track';
@@ -1704,6 +1705,9 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
           {canSee('charting') && (
             <TabsTrigger value="charting">Nursing Charting</TabsTrigger>
           )}
+          {canSee('icuDetails') && (
+            <TabsTrigger value="icu_details">ICU Details</TabsTrigger>
+          )}
           {canSee('fastTrack') && (
             <TabsTrigger value="fastTrack">Fast Track Codes</TabsTrigger>
           )}
@@ -1807,6 +1811,10 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
 
         <TabsContent value="ledger" className="pt-4">
           <IpLedgerPanel admissionId={admissionId} patientId={patientId} role={role} />
+        </TabsContent>
+
+        <TabsContent value="icu_details" className="pt-4">
+          <IcuDetailPanel admissionId={admissionId} visitId={admission.visitId} patientId={patientId} role={role} />
         </TabsContent>
 
         <TabsContent value="fastTrack" className="pt-4">
