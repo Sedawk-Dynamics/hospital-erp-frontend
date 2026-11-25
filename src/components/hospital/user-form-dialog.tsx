@@ -26,7 +26,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
 import type { UserListItem, RoleOption } from '@/hooks/use-users';
 import { formatRoleName, staffRoles } from '@/lib/utils';
-import { DOCTOR_SPECIALTIES, specialtyLabel } from '@/lib/constants/doctor-specialties';
+import { DOCTOR_SPECIALTIES, specialtyLabel } from '@/lib/constants/specialities/doctor-specialties';
 
 interface DepartmentOption {
   id: string;
