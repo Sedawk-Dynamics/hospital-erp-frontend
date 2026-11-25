@@ -58,6 +58,31 @@ describe('ReturnReceiptDialog (G3/G14 — printable return acknowledgement)', ()
     expect(screen.getByRole('button', { name: /print/i })).toBeEnabled();
   });
 
+  // G-5 (gap #266): a B2B credit note registered on the IRP prints its IRN + QR.
+  it('prints the IRN, ack and QR of a registered credit note, and flags a cancelled one', () => {
+    const creditNote = {
+      id: 'cn-1', creditNoteNumber: 'CN/26-27/0001', issueDate: '2026-11-24T06:00:00Z',
+      taxableValue: -400, cgstAmount: 0, sgstAmount: 0, igstAmount: -72, cessAmount: 0, taxAmount: -72, totalAmount: -472,
+      irn: 'a'.repeat(64), irnAckNo: '112010000000123', irnAckDate: '2026-11-24T06:05:00Z',
+      irnQrPayload: 'x.y.SANDBOX-NOT-SIGNED', irnStatus: 'registered', irnCancelledAt: null,
+    };
+    useReturnDetail.mockReturnValue({ data: { ...RETURN_DATA, invoiceNumber: 'INV/1', creditNote }, isLoading: false });
+    const { unmount } = render(<ReturnReceiptDialog returnId="ret-1" open onOpenChange={vi.fn()} />);
+    expect(screen.getByText('a'.repeat(64))).toBeInTheDocument();
+    expect(screen.getByText(/112010000000123/)).toBeInTheDocument();
+    // The QR itself (qrcode.react draws its modules as crisp-edged paths).
+    expect(document.body.querySelector('path[shape-rendering="crispEdges"]')).toBeTruthy();
+    expect(screen.getByText(/SANDBOX IRN/)).toBeInTheDocument();
+    unmount();
+
+    useReturnDetail.mockReturnValue({
+      data: { ...RETURN_DATA, invoiceNumber: 'INV/1', creditNote: { ...creditNote, irnStatus: 'cancelled', irnCancelledAt: '2026-11-24T08:00:00Z' } },
+      isLoading: false,
+    });
+    render(<ReturnReceiptDialog returnId="ret-1" open onOpenChange={vi.fn()} />);
+    expect(screen.getByText(/CANCELLED on the e-invoice portal/)).toBeInTheDocument();
+  });
+
   it('does not show a refund line when nothing was refunded', () => {
     useReturnDetail.mockReturnValue({
       data: { ...RETURN_DATA, return: { ...RETURN_DATA.return, refundAmount: 0, refund: null } },

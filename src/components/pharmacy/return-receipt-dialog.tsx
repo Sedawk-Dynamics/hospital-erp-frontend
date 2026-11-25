@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { formatDateTime } from '@/lib/date-utils';
 import { useReturnDetail } from '@/hooks/use-pharmacy';
+import { CreditNoteIrnBlock } from './credit-note-irn';
 
 const num = (n: number | string | null | undefined): number =>
   n == null ? 0 : typeof n === 'string' ? Number(n) : n;
@@ -99,6 +100,8 @@ export function ReturnReceiptDialog({
                 <>
                   <div className="row"><span className="muted">Credit Note No</span><span className="font-mono b">{data.creditNote.creditNoteNumber}</span></div>
                   <div className="row"><span className="muted">Against Invoice</span><span className="font-mono">{data.invoiceNumber ?? data.billNumber ?? '-'}</span></div>
+                  {/* G-5 (gap #266): a B2B note registered on the IRP prints its IRN and QR. */}
+                  <CreditNoteIrnBlock note={data.creditNote} />
                 </>
               )}
               <div className="row"><span className="muted">Return ID</span><span className="font-mono">{r.id.slice(0, 8).toUpperCase()}</span></div>

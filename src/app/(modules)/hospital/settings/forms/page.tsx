@@ -53,7 +53,8 @@ import {
   type FormTemplate,
 } from '@/hooks/use-forms';
 import { FormPreviewDialog } from '@/components/forms/form-preview-dialog';
-import { formStatus, FORM_STATUS_CLASS } from '@/components/forms/form-status';
+import { hospitalFormStatus, FORM_STATUS_CLASS } from '@/components/forms/form-status';
+import { Badge } from '@/components/ui/badge';
 
 function categoryLabel(c: FormCategory): string {
   return FORM_CATEGORIES.find((x) => x.value === c)?.label ?? c;
@@ -85,6 +86,7 @@ export default function HospitalFormsSettingsPage() {
   } | null>(null);
 
   function openPreview(item: HospitalForm | FormTemplate) {
+    // Hospital forms preview the published version — what nurses see.
     setPreview({
       name: item.name,
       description: item.description,
@@ -207,19 +209,30 @@ export default function HospitalFormsSettingsPage() {
               </p>
             ) : (
               <ul className="divide-y">
-                {filterByName(active.data?.data ?? []).map((f) => (
+                {filterByName(active.data?.data ?? []).map((f) => {
+                  // Gap 304: the API's derived status — the builder shows the same one.
+                  const st = hospitalFormStatus(f);
+                  const liveVersion = f.publishedVersion ?? (f.isPublished ? f.version : null);
+                  return (
                   <li key={f.id} className="flex items-center gap-3 py-2.5">
                     <div className="flex-1 min-w-0">
-                      <Link
-                        href={`/hospital/settings/forms/${f.id}`}
-                        className="font-semibold text-sm text-foreground hover:text-primary"
-                      >
-                        {f.name}
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/hospital/settings/forms/${f.id}`}
+                          className="font-semibold text-sm text-foreground hover:text-primary"
+                        >
+                          {f.name}
+                        </Link>
+                        {f.hasUnpublishedChanges && (
+                          <Badge variant="secondary" data-testid="unpublished-changes-badge">
+                            Unpublished changes
+                          </Badge>
+                        )}
+                      </div>
                       <p className="text-[11px] text-muted-foreground">
-                        {categoryLabel(f.category)} · v{f.version} ·{' '}
-                        {/* Gap 304: same status source as the builder. */}
-                        <span className={FORM_STATUS_CLASS[formStatus(f).tone]}>{formStatus(f).label}</span>{' '}
+                        {categoryLabel(f.category)} ·{' '}
+                        {liveVersion != null ? `v${liveVersion}` : 'not yet published'} ·{' '}
+                        <span className={FORM_STATUS_CLASS[st.tone]} data-testid="form-list-status">{st.label}</span>{' '}
                         · {f._count?.submissions ?? 0} submission(s)
                         {f.template && (
                           <>
@@ -269,7 +282,8 @@ export default function HospitalFormsSettingsPage() {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
           </div>

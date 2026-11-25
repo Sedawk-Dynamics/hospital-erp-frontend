@@ -11,7 +11,7 @@
 // does today: no tax on anything, every document a Bill of Supply.
 // ============================================================
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import {
@@ -50,6 +50,8 @@ import {
   type GstRegistrationType,
   type RoomUpgradeTreatment,
 } from '@/hooks/use-gst-profile';
+import { useGstPortalStatus } from '@/hooks/use-gst-portal';
+import { GstPortalSettingsCard, ReadinessChip } from '@/components/hospital/gst/gst-portal-settings';
 
 const REGISTRATION_TYPES: { value: GstRegistrationType; label: string }[] = [
   { value: 'regular', label: 'Regular' },
@@ -82,22 +84,34 @@ function Toggle({
   onChange,
   title,
   hint,
+  disabled,
+  badge,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
   title: string;
   hint: string;
+  disabled?: boolean;
+  badge?: ReactNode;
 }) {
   return (
-    <label className="flex items-start gap-2 rounded-md border bg-background px-3 py-2">
+    <label
+      className={`flex items-start gap-2 rounded-md border bg-background px-3 py-2 ${
+        disabled ? 'cursor-not-allowed opacity-70' : ''
+      }`}
+    >
       <input
         type="checkbox"
         checked={checked}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
         className="mt-0.5 h-4 w-4 accent-primary"
       />
-      <span>
-        <span className="text-sm font-medium">{title}</span>
+      <span className="flex-1">
+        <span className="flex flex-wrap items-center gap-2 text-sm font-medium">
+          {title}
+          {badge}
+        </span>
         <span className="block text-[11px] text-muted-foreground">{hint}</span>
       </span>
     </label>
@@ -289,13 +303,26 @@ function GstForm({ initial }: { initial: GstProfile }) {
   const update = useUpdateGstProfile();
   const [form, setForm] = useState<GstProfile>(initial);
   const [gstinText, setGstinText] = useState(initial.gstin ?? '');
+  // G-5 (gap #266): a switch can be ON only while its integration is READY.
+  // Until the status has loaded — or when it cannot be read — both count as
+  // not available, so nothing is ever shown as active by default.
+  const { data: portal } = useGstPortalStatus();
+  const eInvoiceReady = !!portal?.einvoice.ready;
+  const eWayReady = !!portal?.eway.ready;
+  const eInvoiceOn = form.eInvoiceApplicable && eInvoiceReady;
+  const eWayOn = form.eWayBillApplicable && eWayReady;
 
   const set = <K extends keyof GstProfile>(k: K, v: GstProfile[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
   const onSave = async () => {
     try {
-      const saved = await update.mutateAsync({ ...form, gstin: gstinText.trim() || null });
+      const payload: Partial<GstProfile> = { ...form, gstin: gstinText.trim() || null };
+      // A switch that is not available is not sent: the stored value is left
+      // exactly as it is rather than silently flipped either way.
+      if (!eInvoiceReady) delete payload.eInvoiceApplicable;
+      if (!eWayReady) delete payload.eWayBillApplicable;
+      const saved = await update.mutateAsync(payload);
       setForm(saved);
       setGstinText(saved.gstin ?? '');
       toast.success('GST registration saved.');
@@ -488,35 +515,46 @@ function GstForm({ initial }: { initial: GstProfile }) {
             title="Report HSN and SAC at 6 digits"
             hint="Required above the reporting threshold. Below it, 4 digits is enough."
           />
-          {/* G-5: these switches RECORD that the law applies — they drive the
-              D-1/D-2/D-3 registers, which then list every invoice still owed
-              an IRN. They do not generate anything: there is no IRP or e-way
-              bill portal integration (no API credentials), so nobody should
-              read "on" as "our invoices are e-invoices". */}
+          {/* G-5 (gap #266): each switch is live only while its integration
+              is ready — a GSP configured on the server and this hospital's
+              portal login saved below. Otherwise it is disabled and reads
+              "Not available", and the server refuses to turn it on. */}
           <Toggle
-            checked={form.eInvoiceApplicable}
+            checked={eInvoiceOn}
+            disabled={!eInvoiceReady}
             onChange={(v) => set('eInvoiceApplicable', v)}
-            title="E-invoicing applies — IRN generation not available"
-            hint="Records the legal obligation only. This system does not register invoices on the IRP or print an IRN/QR."
+            title="E-invoicing applies"
+            badge={<ReadinessChip ready={eInvoiceReady} />}
+            hint={
+              eInvoiceReady
+                ? 'B2B invoices are sent to the IRP for an IRN; the IRN, acknowledgement and signed QR print on the invoice. Generate, retry and cancel from reports D-1 / D-2.'
+                : `Not available: ${portal?.einvoice.reason ?? 'the e-invoice integration status is not known'}.`
+            }
           />
+          {form.eInvoiceApplicable && !eInvoiceReady ? (
+            <p className="pl-1 text-[11px] text-amber-800 dark:text-amber-300">
+              The saved setting says e-invoicing applies, but it is inactive: no IRN can be generated until the
+              integration is ready. Report D-2 lists every B2B invoice still without an IRN.
+            </p>
+          ) : null}
           <Toggle
-            checked={form.eWayBillApplicable}
+            checked={eWayOn}
+            disabled={!eWayReady}
             onChange={(v) => set('eWayBillApplicable', v)}
-            title="E-way bills apply — generation not available"
-            hint="Records the obligation only. This system does not generate e-way bills. Rare for a hospital."
+            title="E-way bills apply"
+            badge={<ReadinessChip ready={eWayReady} />}
+            hint={
+              eWayReady
+                ? 'Stock returned to a supplier above the threshold gets an e-way bill from report D-3. Rare for a hospital.'
+                : `Not available: ${portal?.eway.reason ?? 'the e-way bill integration status is not known'}.`
+            }
           />
-          {(form.eInvoiceApplicable || form.eWayBillApplicable) && (
-            <div
-              role="alert"
-              className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-[12px] text-red-900 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
-            >
-              <b>Not available in this system.</b> There is no e-invoice (IRP) or e-way bill portal
-              integration, so switching this on does not make invoices compliant. Invoices print
-              without an IRN or QR code and say so. Register B2B invoices
-              {form.eWayBillApplicable ? ' and generate e-way bills' : ''} on the government portal
-              yourself; report D-2 lists every invoice still without an IRN.
-            </div>
-          )}
+          {form.eWayBillApplicable && !eWayReady ? (
+            <p className="pl-1 text-[11px] text-amber-800 dark:text-amber-300">
+              The saved setting says e-way bills apply, but it is inactive: none can be generated until the integration
+              is ready.
+            </p>
+          ) : null}
 
           {/* The two numbers behind the switches. Here rather than in the
               reports for the same reason as the switches themselves: both have
@@ -524,7 +562,7 @@ function GstForm({ initial }: { initial: GstProfile }) {
               lying the day the rule changes rather than the day this hospital
               does. Shown only when the switch above them is on, so a hospital
               outside the regime is not asked a question it cannot answer. */}
-          {form.eInvoiceApplicable ? (
+          {eInvoiceOn ? (
             <div className="pl-1">
               <Label className="mb-1 block text-xs text-muted-foreground">
                 Days to register an invoice
@@ -544,7 +582,7 @@ function GstForm({ initial }: { initial: GstProfile }) {
             </div>
           ) : null}
 
-          {form.eWayBillApplicable ? (
+          {eWayOn ? (
             <div className="pl-1">
               <Label className="mb-1 block text-xs text-muted-foreground">
                 Consignment value needing an e-way bill
@@ -563,6 +601,8 @@ function GstForm({ initial }: { initial: GstProfile }) {
           ) : null}
         </CardContent>
       </Card>
+
+      <GstPortalSettingsCard />
 
       <Card>
         <CardHeader className="pb-2">

@@ -9,7 +9,7 @@
 // page (super-admin or hospital admin) owns the actual mutation call.
 
 import { useEffect, useMemo, useState } from 'react';
-import { formStatus, FORM_STATUS_CLASS } from './form-status';
+import { formStatus, FORM_STATUS_CLASS, type FormStatus } from './form-status';
 import {
   AlignLeft,
   ArrowDown,
@@ -30,6 +30,8 @@ import {
   Minus,
   Plus,
   Save,
+  Send,
+  Undo2,
   TextCursorInput,
   Timer,
   ToggleLeft,
@@ -172,9 +174,39 @@ interface FormBuilderProps {
   // Distinguishes "Publish" semantics: super-admin templates default to draft;
   // hospital forms default to published.
   publishLabelMode?: 'template' | 'hospital';
+  /**
+   * Gap 304 — hospital forms keep a draft separate from the version nurses
+   * see. When given, the publish checkbox is replaced by the server-derived
+   * status and explicit Save draft / Publish / Discard actions. `initial`
+   * should then carry the draft schema when one exists.
+   */
+  publication?: FormPublicationControls;
 }
 
-export function FormBuilder({ initial, onSave, isSaving = false, publishLabelMode = 'hospital' }: FormBuilderProps) {
+export interface FormPublicationControls {
+  /** Status from the API — the same one the forms list shows. */
+  status: FormStatus;
+  /** Version nurses currently fill; null until first published. */
+  publishedVersion: number | null;
+  hasUnpublishedChanges: boolean;
+  /** Save the current editor state and publish it in one step. */
+  onPublish: (payload: FormBuilderSavePayload) => void | Promise<void>;
+  onDiscardDraft?: () => void | Promise<void>;
+  isPublishing?: boolean;
+  isDiscarding?: boolean;
+  /** Archived forms are read-only. */
+  disabled?: boolean;
+}
+
+export type FormBuilderSavePayload = Parameters<FormBuilderProps['onSave']>[0];
+
+export function FormBuilder({
+  initial,
+  onSave,
+  isSaving = false,
+  publishLabelMode = 'hospital',
+  publication,
+}: FormBuilderProps) {
   const [name, setName] = useState(initial?.name ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [category, setCategory] = useState<FormCategory>(initial?.category ?? 'other');
@@ -245,20 +277,40 @@ export function FormBuilder({ initial, onSave, isSaving = false, publishLabelMod
     });
   }
 
-  function handleSave() {
+  function buildPayload(): FormBuilderSavePayload | null {
     if (!name.trim()) {
       // Defer toast wiring to parent; just bail.
       alert('Please give the form a name');
-      return;
+      return null;
     }
-    onSave({
+    return {
       name: name.trim(),
       description: description.trim() || null,
       category,
       schema: { fields, version: initial?.schema?.version ?? 1 },
       isPublished,
-    });
+    };
   }
+
+  function handleSave() {
+    const payload = buildPayload();
+    if (payload) onSave(payload);
+  }
+
+  function handlePublish() {
+    const payload = buildPayload();
+    if (payload && publication) publication.onPublish(payload);
+  }
+
+  // Only the field schema is versioned. Nothing to publish when the live
+  // version already matches the editor's fields.
+  const fieldsDirty =
+    !!initial && JSON.stringify(fields) !== JSON.stringify(initial.schema?.fields ?? []);
+  const canPublish =
+    !!publication &&
+    !publication.disabled &&
+    (publication.publishedVersion == null || publication.hasUnpublishedChanges || fieldsDirty);
+  const busy = isSaving || !!publication?.isPublishing || !!publication?.isDiscarding;
 
   return (
     <div className="space-y-4">
@@ -291,6 +343,20 @@ export function FormBuilder({ initial, onSave, isSaving = false, publishLabelMod
               </SelectContent>
             </Select>
           </div>
+          {publication ? (
+            <div className="md:col-span-3 flex flex-col" data-testid="form-publication">
+              <Label className="text-xs font-medium">Status</Label>
+              <span className="mt-2 text-sm" data-testid="form-live-status">
+                <span className={FORM_STATUS_CLASS[publication.status.tone]}>{publication.status.label}</span>
+              </span>
+              <span className="mt-0.5 text-[11px] text-muted-foreground">
+                {publication.publishedVersion != null
+                  ? `Nurses see v${publication.publishedVersion}`
+                  : 'Not visible to nurses until published'}
+                {hasUnsavedEdits && ' · unsaved edits'}
+              </span>
+            </div>
+          ) : (
           <div className="md:col-span-3 flex flex-col">
             <Label className="text-xs font-medium">Status</Label>
             <label className="mt-3 inline-flex items-center gap-2 text-sm cursor-pointer">
@@ -308,6 +374,7 @@ export function FormBuilder({ initial, onSave, isSaving = false, publishLabelMod
               </span>
             )}
           </div>
+          )}
           <div className="md:col-span-12">
             <Label className="text-xs font-medium">Description</Label>
             <Textarea
@@ -319,12 +386,48 @@ export function FormBuilder({ initial, onSave, isSaving = false, publishLabelMod
             />
           </div>
         </div>
-        <div className="flex justify-end">
-          <Button onClick={handleSave} disabled={isSaving} className="gap-1.5">
-            <Save className="h-4 w-4" />
-            {isSaving ? 'Saving…' : 'Save'}
-          </Button>
-        </div>
+        {publication ? (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {publication.hasUnpublishedChanges && publication.onDiscardDraft && (
+              <Button
+                variant="ghost"
+                onClick={() => publication.onDiscardDraft?.()}
+                disabled={busy || publication.disabled}
+                className="gap-1.5"
+              >
+                <Undo2 className="h-4 w-4" />
+                {publication.isDiscarding ? 'Discarding…' : 'Discard unpublished changes'}
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              onClick={handleSave}
+              disabled={busy || publication.disabled}
+              className="gap-1.5"
+            >
+              <Save className="h-4 w-4" />
+              {isSaving ? 'Saving…' : 'Save draft'}
+            </Button>
+            <Button onClick={handlePublish} disabled={busy || !canPublish} className="gap-1.5">
+              <Send className="h-4 w-4" />
+              {publication.isPublishing
+                ? 'Publishing…'
+                : publication.publishedVersion != null
+                  ? `Publish as v${publication.publishedVersion + 1}`
+                  : 'Publish'}
+            </Button>
+            <p className="basis-full text-right text-[11px] text-muted-foreground">
+              Field changes reach nurses only when published. Name, category and description apply on save.
+            </p>
+          </div>
+        ) : (
+          <div className="flex justify-end">
+            <Button onClick={handleSave} disabled={isSaving} className="gap-1.5">
+              <Save className="h-4 w-4" />
+              {isSaving ? 'Saving…' : 'Save'}
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Builder + Preview tabs */}

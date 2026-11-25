@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, Building2, Search } from 'lucide-react';
+import { Plus, Pencil, Trash2, Merge, Building2, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +31,8 @@ import {
   useDeleteInsurer,
   type Insurer,
 } from '@/hooks/use-insurance';
+import { useIsHospitalAdmin } from '@/hooks/use-insurance-admin';
+import { MergePayerDialog, type MergeCandidate } from '@/components/insurance/merge-payer-dialog';
 
 interface FormState {
   name: string;
@@ -59,6 +61,10 @@ export default function InsurersPage() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
 
   const { data, isLoading } = useInsurers({ search: search || undefined });
+  // Gap 293: merge needs every record to choose the one to keep, not just this page.
+  const { data: allRecords } = useInsurers({ limit: 1000 });
+  const isHospitalAdmin = useIsHospitalAdmin();
+  const [merging, setMerging] = useState<MergeCandidate | null>(null);
   const createMut = useCreateInsurer();
   const updateMut = useUpdateInsurer();
   const deleteMut = useDeleteInsurer();
@@ -188,11 +194,22 @@ export default function InsurersPage() {
                     <TableCell>{i.phone ?? '—'}</TableCell>
                     <TableCell>
                       <Badge variant={i.isActive ? 'default' : 'outline'}>
-                        {i.isActive ? 'Active' : 'Inactive'}
+                        {i.mergedIntoId ? 'Merged' : i.isActive ? 'Active' : 'Inactive'}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1.5">
+                        {isHospitalAdmin && !i.mergedIntoId && (
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            title="Merge this duplicate into another insurer"
+                            aria-label="Merge duplicate"
+                            onClick={() => setMerging(i)}
+                          >
+                            <Merge className="size-3.5" />
+                          </Button>
+                        )}
                         <Button size="icon-sm" variant="ghost" onClick={() => openEdit(i)}>
                           <Pencil className="size-3.5" />
                         </Button>
@@ -311,6 +328,12 @@ export default function InsurersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <MergePayerDialog
+        kind="insurer"
+        duplicate={merging}
+        records={allRecords?.data ?? []}
+        onClose={() => setMerging(null)}
+      />
     </div>
   );
 }

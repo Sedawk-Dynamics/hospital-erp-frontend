@@ -48,6 +48,9 @@ export interface Insurer {
   stateCode?: string | null;
   isActive: boolean;
   createdAt: string;
+  /** Gap 293: set when this record was merged into another (and deactivated). */
+  mergedIntoId?: string | null;
+  mergedAt?: string | null;
 }
 
 export interface TpaProvider {
@@ -70,6 +73,9 @@ export interface TpaProvider {
   stateCode?: string | null;
   isActive: boolean;
   createdAt: string;
+  /** Gap 293: set when this record was merged into another (and deactivated). */
+  mergedIntoId?: string | null;
+  mergedAt?: string | null;
 }
 
 export type CommunicationType = 'email' | 'phone' | 'portal' | 'letter';
@@ -239,7 +245,7 @@ export interface InsuranceClaim {
   } | null;
   bill?: InsuranceClaimBill;
   preAuth?: PreAuthRequest | null;
-  queries?: Array<{ id: string; queryReference?: string | null; subject: string; queryText: string; status: string; raisedAt: string; responseDueAt: string; responseText?: string | null; respondedAt?: string | null; resolvedAt?: string | null }>;
+  queries?: Array<{ id: string; queryReference?: string | null; subject: string; queryText: string; status: string; raisedAt: string; responseDueAt: string; responseText?: string | null; respondedAt?: string | null; resolvedAt?: string | null; closedAt?: string | null; closeReason?: string | null }>;
   settlements?: Array<{ id: string; grossApprovedAmount: number; grossPaidAmount: number; tdsAmount: number; tdsSection?: string | null; tdsRate?: number | null; disallowedAmount: number; disallowanceReason?: string | null; netPaidAmount: number; paymentReference?: string | null; bankReference?: string | null; settlementDate: string; notes?: string | null }>;
   writeOffs?: Array<{ id: string; amount: number; reason: string; status: string; decisionNote?: string | null; createdAt: string }>;
   adjustments?: Array<{ id: string; adjustmentType: string; amount: number; reference?: string | null; reason: string; effectiveDate: string }>;
