@@ -1,0 +1,472 @@
+import type { SpecialtyCategories, SpecialtyCategoryLabels } from './types';
+
+export const oncology: SpecialtyCategories = {
+  staging_biomarkers: [
+    {
+      heading: 'Primary Diagnosis & Histopathology',
+      inputs: [
+        {
+          key: 'primarySite',
+          label: 'Primary Site Template (ICD-O-3)',
+          type: 'select',
+          options: [
+            'Breast',
+            'Lung — NSCLC',
+            'Lung — SCLC',
+            'Colorectal',
+            'Stomach',
+            'Esophagus',
+            'Liver (HCC)',
+            'Pancreas',
+            'Prostate',
+            'Ovary',
+            'Cervix',
+            'Endometrium',
+            'Head & Neck',
+            'Oral Cavity',
+            'Urinary Bladder',
+            'Kidney (RCC)',
+            'Thyroid',
+            'CNS / Brain',
+            'Lymphoma',
+            'Leukemia',
+            'Sarcoma',
+            'Other',
+          ],
+        },
+        { key: 'workingDiagnosis', label: 'Working Clinical Diagnosis', type: 'text' },
+        { key: 'histopathSubtype', label: 'Histopathology Subtype', type: 'text' },
+        {
+          key: 'histologicGrade',
+          label: 'Histologic Grade',
+          type: 'select',
+          options: [
+            'GX',
+            'G1 Well Diff',
+            'G2 Moderately Diff',
+            'G3 Poorly Diff',
+            'G4 Undifferentiated',
+          ],
+        },
+        { key: 'biopsyDate', label: 'Biopsy / HPE Date', type: 'datetime' },
+        { key: 'icd10Topography', label: 'ICD-10 / Topography Code', type: 'text' },
+        {
+          key: 'lvi',
+          label: 'Lymphovascular Invasion (LVI)',
+          type: 'select',
+          options: ['Absent', 'Present', 'Indeterminate'],
+        },
+        {
+          key: 'pni',
+          label: 'Perineural Invasion (PNI)',
+          type: 'select',
+          options: ['Absent', 'Present', 'Indeterminate'],
+        },
+        { key: 'ki67', label: 'Ki-67 Index', type: 'number', unit: '%' },
+      ],
+    },
+    {
+      heading: 'AJCC 8th Edition TNM Staging',
+      inputs: [
+        {
+          key: 'clinicalT',
+          label: 'Clinical T (cT)',
+          type: 'select',
+          options: ['TX', 'T0', 'Tis', 'T1', 'T2', 'T3', 'T4'],
+        },
+        {
+          key: 'clinicalN',
+          label: 'Clinical N (cN)',
+          type: 'select',
+          options: ['NX', 'N0', 'N1', 'N2', 'N3'],
+        },
+        {
+          key: 'clinicalM',
+          label: 'Clinical M (cM)',
+          type: 'select',
+          options: ['M0', 'M1'],
+        },
+        {
+          key: 'pathPrefix',
+          label: 'Path Prefix',
+          type: 'select',
+          options: ['pTNM', 'ypTNM'],
+        },
+        {
+          key: 'pathologicalT',
+          label: 'Pathological T',
+          type: 'select',
+          options: ['TX', 'T0', 'Tis', 'T1', 'T2', 'T3', 'T4'],
+        },
+        {
+          key: 'pathologicalN',
+          label: 'Pathological N',
+          type: 'select',
+          options: ['NX', 'N0', 'N1', 'N2', 'N3'],
+        },
+        {
+          key: 'pathologicalM',
+          label: 'Pathological M',
+          type: 'select',
+          options: ['M0', 'M1'],
+        },
+        {
+          key: 'ajccStageGroup',
+          label: 'AJCC Stage Group',
+          type: 'select',
+          options: ['Stage 0', 'Stage I', 'Stage II', 'Stage III', 'Stage IV'],
+          auto: true,
+        },
+      ],
+    },
+    {
+      heading: 'Performance Status (ECOG & Karnofsky)',
+      inputs: [
+        {
+          key: 'ecog',
+          label: 'ECOG / Zubrod Score',
+          type: 'select',
+          options: ['ECOG 0', 'ECOG 1', 'ECOG 2', 'ECOG 3', 'ECOG 4'],
+        },
+        {
+          key: 'kps',
+          label: 'Karnofsky Performance Scale',
+          type: 'select',
+          unit: '%',
+          options: ['100', '90', '80', '70', '60', '50', '40', '30', '20', '10'],
+        },
+      ],
+    },
+    {
+      heading: 'Molecular, Genomic & IHC Biomarker Panel',
+      inputs: [
+        {
+          key: 'biomarkerPanel',
+          label: 'Biomarkers',
+          type: 'table',
+          columns: [
+            { key: 'biomarker', label: 'Biomarker', type: 'text' },
+            {
+              key: 'assay',
+              label: 'Assay',
+              type: 'select',
+              options: ['NGS Panel', 'IHC', 'FISH-ISH', 'RT-PCR', 'Sanger-PCR'],
+            },
+            {
+              key: 'status',
+              label: 'Status',
+              type: 'select',
+              options: [
+                'Not Tested',
+                'Pending',
+                'Negative-Wild-Type',
+                'Positive-Actionable',
+                'Equivocal-VUS',
+              ],
+            },
+            { key: 'variantScore', label: 'Variant / Score', type: 'text' },
+            { key: 'matchedTherapy', label: 'Matched Clinical Therapy', type: 'text' },
+          ],
+        },
+      ],
+    },
+  ],
+  chemo_bsa_dosing: [
+    {
+      heading: 'Anthropometrics, BSA & Calvert Carboplatin Parameters',
+      inputs: [
+        { key: 'height', label: 'Height', type: 'number', unit: 'cm' },
+        { key: 'weight', label: 'Weight', type: 'number', unit: 'kg' },
+        {
+          key: 'bsaFormula',
+          label: 'BSA Formula',
+          type: 'select',
+          options: ['Mosteller', 'Du Bois'],
+        },
+        { key: 'serumCreatinine', label: 'S. Creatinine', type: 'number', unit: 'mg/dL' },
+        {
+          key: 'carboplatinAuc',
+          label: 'Carboplatin Target AUC',
+          type: 'select',
+          options: ['AUC 2 (Weekly)', 'AUC 4', 'AUC 5 (Standard q3w)', 'AUC 6'],
+        },
+        { key: 'capBsa2', label: 'Cap BSA at 2.0 m²', type: 'checkbox' },
+        { key: 'activeBsa', label: 'Active BSA', type: 'number', unit: 'm²', auto: true },
+      ],
+    },
+    {
+      heading: 'Regimen Selection & Calculated Drug Dosing Sheet',
+      inputs: [
+        {
+          key: 'chemoProtocol',
+          label: 'Chemotherapy Protocol',
+          type: 'select',
+          options: [
+            'FOLFOX',
+            'FOLFIRI',
+            'AC-T',
+            'TCH',
+            'CHOP / R-CHOP',
+            'Carboplatin-Paclitaxel',
+            'Cisplatin-Etoposide',
+            'Gemcitabine-Cisplatin',
+            'Other',
+          ],
+        },
+        {
+          key: 'activeCycle',
+          label: 'Active Cycle',
+          type: 'select',
+          options: ['Cycle 1', 'Cycle 2', 'Cycle 3', 'Cycle 4', 'Cycle 5', 'Cycle 6'],
+        },
+        {
+          key: 'drugDosing',
+          label: 'Drug Dosing',
+          type: 'table',
+          columns: [
+            { key: 'agent', label: 'Agent', type: 'text' },
+            {
+              key: 'doseMod',
+              label: 'Dose Mod (%)',
+              type: 'select',
+              options: ['100', '80', '75', '50', '0 (Hold)'],
+            },
+            { key: 'dose', label: 'Dose', type: 'text' },
+            { key: 'schedule', label: 'Schedule', type: 'text' },
+            { key: 'diluent', label: 'Diluent', type: 'text' },
+          ],
+        },
+      ],
+    },
+    {
+      heading: 'Pre-Medication & Hydration Orders',
+      inputs: [
+        {
+          key: 'preMedications',
+          label: 'Pre-medication Checklist',
+          type: 'multiselect',
+          options: [
+            'Ondansetron',
+            'Dexamethasone',
+            'Pheniramine / Diphenhydramine',
+            'Pantoprazole / Ranitidine',
+            'Pre-hydration (NS)',
+            'Aprepitant',
+            'Paracetamol',
+          ],
+        },
+      ],
+    },
+    {
+      heading: 'Cycle Schedule & Adherence',
+      inputs: [
+        {
+          key: 'cycleSchedule',
+          label: 'Cycles',
+          type: 'table',
+          columns: [
+            { key: 'plannedDate', label: 'Planned Date', type: 'datetime' },
+            {
+              key: 'status',
+              label: 'Status',
+              type: 'select',
+              options: [
+                'Scheduled',
+                'Authorized',
+                'Completed',
+                'Dose Reduced',
+                'Delayed',
+                'Held',
+              ],
+            },
+            { key: 'clinicalNote', label: 'Clinical Note', type: 'text' },
+          ],
+        },
+      ],
+    },
+  ],
+  prechemo_labs_toxicity: [
+    {
+      heading: 'Pre-Chemotherapy Hematology, Organ Function & Viral Screen',
+      inputs: [
+        { key: 'labDate', label: 'Lab Date', type: 'datetime' },
+        { key: 'anc', label: 'ANC', type: 'number', unit: '/µL' },
+        { key: 'platelets', label: 'Platelets', type: 'number', unit: '/µL' },
+        { key: 'hemoglobin', label: 'Hemoglobin', type: 'number', unit: 'g/dL' },
+        { key: 'totalBilirubin', label: 'Total Bilirubin', type: 'number', unit: 'mg/dL' },
+        { key: 'astSgot', label: 'AST / SGOT', type: 'number', unit: 'U/L' },
+        { key: 'altSgpt', label: 'ALT / SGPT', type: 'number', unit: 'U/L' },
+        { key: 'preChemoCreatinine', label: 'S. Creatinine', type: 'number', unit: 'mg/dL' },
+        { key: 'baselineLvef', label: 'Baseline Echo LVEF', type: 'number', unit: '%' },
+        {
+          key: 'hbsag',
+          label: 'HBsAg',
+          type: 'select',
+          options: ['Non-Reactive', 'Reactive', 'Pending'],
+        },
+        {
+          key: 'antiHcv',
+          label: 'Anti-HCV',
+          type: 'select',
+          options: ['Non-Reactive', 'Reactive', 'Pending'],
+        },
+        {
+          key: 'hiv',
+          label: 'HIV I & II',
+          type: 'select',
+          options: ['Non-Reactive', 'Reactive', 'Pending'],
+        },
+      ],
+    },
+    {
+      heading: 'CTCAE v5.0 Toxicity Grading & Dose Modification',
+      inputs: [
+        {
+          key: 'ctcaeToxicity',
+          label: 'Adverse Events',
+          type: 'table',
+          columns: [
+            { key: 'ctcaeTerm', label: 'CTCAE Term', type: 'text' },
+            {
+              key: 'ctcaeGrade',
+              label: 'Grade',
+              type: 'select',
+              options: ['G0', 'G1', 'G2', 'G3', 'G4'],
+            },
+            {
+              key: 'doseAction',
+              label: 'Dose Action',
+              type: 'select',
+              options: ['Maintain 100%', 'Reduce to 75%', 'Hold'],
+            },
+            { key: 'management', label: 'Management', type: 'text' },
+          ],
+        },
+      ],
+    },
+  ],
+  tumor_board_surgery_rt: [
+    {
+      heading: 'Multidisciplinary Tumor Board (MDT) Consensus',
+      inputs: [
+        { key: 'mdtDate', label: 'MDT Date', type: 'datetime' },
+        {
+          key: 'treatmentIntent',
+          label: 'Treatment Intent',
+          type: 'select',
+          options: [
+            'Curative-Multimodality',
+            'Neoadjuvant',
+            'Adjuvant',
+            'Definitive Concurrent Chemoradiation',
+            'Palliative',
+          ],
+        },
+        { key: 'treatmentSequence', label: 'Multimodality Treatment Sequence', type: 'text' },
+        { key: 'medOncPlan', label: 'Medical Oncology Plan', type: 'textarea' },
+        { key: 'surgOncPlan', label: 'Surgical Oncology Plan', type: 'textarea' },
+        { key: 'radOncPlan', label: 'Radiation Oncology Plan', type: 'textarea' },
+      ],
+    },
+    {
+      heading: 'Surgical Oncology & Pathology Summary',
+      inputs: [
+        { key: 'operativeProcedure', label: 'Operative Procedure', type: 'text' },
+        { key: 'surgeryDate', label: 'Surgery Date', type: 'datetime' },
+        {
+          key: 'resectionMargin',
+          label: 'Resection Margin',
+          type: 'select',
+          options: [
+            'Pending-Planned',
+            'R0 Negative',
+            'R1 Microscopic',
+            'R2 Macroscopic',
+            'Not Applicable',
+          ],
+        },
+        { key: 'nodesPositive', label: 'Nodes Positive', type: 'number' },
+        { key: 'nodesExamined', label: 'Nodes Examined', type: 'number' },
+        {
+          key: 'pathologicResponse',
+          label: 'Pathologic Response',
+          type: 'select',
+          options: [
+            'Pending Surgery',
+            'pCR',
+            'Major Response',
+            'Partial Response',
+            'Residual Disease',
+            'Upfront Surgery',
+          ],
+        },
+      ],
+    },
+    {
+      heading: 'Radiation Oncology Prescription',
+      inputs: [
+        {
+          key: 'rtTechnique',
+          label: 'Technique',
+          type: 'select',
+          options: [
+            'IMRT-VMAT',
+            '3D-CRT',
+            'SBRT-SRS',
+            'Brachytherapy',
+            'Palliative EBRT',
+          ],
+        },
+        { key: 'radiosensitizer', label: 'Concurrent Systemic Radiosensitizer', type: 'text' },
+        { key: 'targetVolume', label: 'Target Volume (PTV / Nodal Regions)', type: 'text' },
+        { key: 'totalDose', label: 'Total Dose', type: 'number', unit: 'Gy' },
+        { key: 'plannedFractions', label: 'Planned Fractions', type: 'number' },
+        { key: 'deliveredFractions', label: 'Delivered Fractions', type: 'number' },
+        { key: 'bedEqd2', label: 'BED10 / EQD2', type: 'text', auto: true },
+      ],
+    },
+    {
+      heading: 'Disease Response (RECIST 1.1), Tumor Markers & Follow-Up Plan',
+      inputs: [
+        {
+          key: 'recistResponse',
+          label: 'RECIST 1.1 Response',
+          type: 'select',
+          options: ['CR', 'PR', 'SD', 'PD', 'Not Evaluable'],
+        },
+        {
+          key: 'tumorMarker',
+          label: 'Serial Tumor Marker',
+          type: 'select',
+          options: [
+            'CA 15-3',
+            'CEA',
+            'CA-125',
+            'CA 19-9',
+            'PSA',
+            'AFP',
+            'LDH',
+            'Beta-hCG',
+          ],
+        },
+        { key: 'baselineMarkerValue', label: 'Baseline Marker Value', type: 'text' },
+        { key: 'latestMarkerValue', label: 'Latest Marker Value', type: 'text' },
+        {
+          key: 'restagingImaging',
+          label: 'Restaging Imaging Summary (CT/PET-CT/MRI)',
+          type: 'text',
+        },
+        { key: 'painScore', label: 'Pain Score (NRS)', type: 'number', min: 0, max: 10 },
+        { key: 'analgesiaSupportive', label: 'Analgesia / Supportive Care', type: 'text' },
+        { key: 'followUpPlan', label: 'Next Follow-Up & Surveillance Plan', type: 'text' },
+      ],
+    },
+  ],
+};
+
+export const oncologyLabels: SpecialtyCategoryLabels = {
+  staging_biomarkers: 'Staging & Biomarkers',
+  chemo_bsa_dosing: 'Chemotherapy & BSA Dosing',
+  prechemo_labs_toxicity: 'Pre-Chemo Labs & Toxicity',
+  tumor_board_surgery_rt: 'Tumor Board, Surgery & RT',
+};
