@@ -6,6 +6,7 @@ import {
   ShoppingCart, Plus, PackageCheck, X, Ban, Truck, Phone, Search, Printer,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { NumberInput } from '@/components/ui/number-input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -163,7 +164,7 @@ export default function PurchaseOrdersPage() {
                         </TableCell>
                         <TableCell className="text-right">{po._count?.items ?? po.items?.length ?? 0}</TableCell>
                         <TableCell className="text-right">
-                          {po.totalAmount ? `₹${Number(po.totalAmount).toFixed(2)}` : '-'}
+                          {po.totalAmount ? inr(po.totalAmount) : '-'}
                         </TableCell>
                         <TableCell className="text-center">
                           <Badge className={statusCls}>{STATUS_LABEL[po.status] ?? po.status}</Badge>
@@ -602,6 +603,9 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
   const [recvPrice, setRecvPrice] = useState<Record<string, number>>({});
   // Per-drug-line batch details captured at receipt (creates a real DrugBatch).
   const [recvBatch, setRecvBatch] = useState<Record<string, { batchNumber: string; expiryDate: string }>>({});
+  // G-9/G-10: the supplier's tax invoice and the GST rate per received line.
+  const [recvInvoice, setRecvInvoice] = useState({ number: '', date: '' });
+  const [recvGst, setRecvGst] = useState<Record<string, number>>({});
   const setBatch = (poItemId: string, patch: Partial<{ batchNumber: string; expiryDate: string }>) =>
     setRecvBatch((prev) => {
       const cur = prev[poItemId] ?? { batchNumber: '', expiryDate: '' };
@@ -736,19 +740,31 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
           unitPrice,
           batchNumber: b.batchNumber.trim(),
           expiryDate: b.expiryDate,
+          gstPercent: recvGst[i.id],
         });
       } else {
-        lines.push({ purchaseOrderItemId: i.id, quantityReceived: qty, unitPrice });
+        lines.push({ purchaseOrderItemId: i.id, quantityReceived: qty, unitPrice, gstPercent: recvGst[i.id] });
       }
     }
     if (lines.length === 0) { toast.error('Enter received qty'); return; }
+    if (data.supplier?.gstNumber && (!recvInvoice.number.trim() || !recvInvoice.date)) {
+      toast.error(`${data.supplier.name} is GST-registered — enter the supplier invoice number and date.`);
+      return;
+    }
     try {
-      await receive.mutateAsync({ id, items: lines });
+      await receive.mutateAsync({
+        id,
+        items: lines,
+        invoiceNumber: recvInvoice.number.trim() || undefined,
+        invoiceDate: recvInvoice.date || undefined,
+      });
       toast.success('Items received & stock updated');
       setRecvMap({});
       setRecvPrice({});
       setRecvBatch({});
-    } catch (err) { toast.error((err as Error).message); }
+      setRecvGst({});
+      setRecvInvoice({ number: '', date: '' });
+    } catch (err) { toast.error(getApiErrorMessage(err, 'Could not receive the stock')); }
   };
 
   return (
@@ -833,6 +849,34 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
                 </div>
               );
             })()}
+
+            {/* G-9: the supplier's own tax invoice for this delivery (not the PO number). */}
+            {(data.status === 'approved' || data.status === 'partially_delivered') && (
+              <div className="grid gap-3 rounded-xl border p-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">
+                    Supplier invoice no.{data.supplier?.gstNumber && <span className="text-destructive"> *</span>}
+                  </Label>
+                  <Input
+                    className="h-9"
+                    value={recvInvoice.number}
+                    onChange={(e) => setRecvInvoice({ ...recvInvoice, number: e.target.value })}
+                    placeholder="As printed on the supplier's invoice"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">
+                    Supplier invoice date{data.supplier?.gstNumber && <span className="text-destructive"> *</span>}
+                  </Label>
+                  <Input
+                    className="h-9"
+                    type="date"
+                    value={recvInvoice.date}
+                    onChange={(e) => setRecvInvoice({ ...recvInvoice, date: e.target.value })}
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Line items */}
             <div className="overflow-hidden rounded-xl border">
@@ -922,6 +966,25 @@ function PoDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
                                     }}
                                     placeholder="Unit ₹ (purchase)"
                                     title="Purchase price per unit"
+                                    className="h-8 w-full text-xs"
+                                  />
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    max={100}
+                                    step="0.01"
+                                    value={recvGst[it.id] ?? ''}
+                                    onChange={(e) => {
+                                      const v = e.target.value === '' ? undefined : Math.max(0, Math.min(100, Number(e.target.value)));
+                                      setRecvGst((prev) => {
+                                        const next = { ...prev };
+                                        if (v === undefined) delete next[it.id];
+                                        else next[it.id] = v;
+                                        return next;
+                                      });
+                                    }}
+                                    placeholder="GST % (invoice)"
+                                    title="GST rate on the supplier's invoice — split into CGST/SGST or IGST by the supplier's state"
                                     className="h-8 w-full text-xs"
                                   />
                                   {isDrug && (

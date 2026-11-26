@@ -93,6 +93,8 @@ export default function DischargeSummaryPage() {
   const [diagnosesSummary, setDiagnosesSummary] = useState('');
   const [proceduresSummary, setProceduresSummary] = useState('');
   const [labResultsSummary, setLabResultsSummary] = useState('');
+  const [vitalsSummary, setVitalsSummary] = useState('');
+  const [radiologySummary, setRadiologySummary] = useState('');
   const [medicationReconciliation, setMedicationReconciliation] = useState('');
   const [dischargeInstructions, setDischargeInstructions] = useState('');
   const [followUpDate, setFollowUpDate] = useState('');
@@ -164,6 +166,8 @@ export default function DischargeSummaryPage() {
     setDiagnosesSummary(generatedSummary.diagnosesSummary ?? '');
     setProceduresSummary(generatedSummary.proceduresSummary ?? '');
     setLabResultsSummary(generatedSummary.labResultsSummary ?? '');
+    setVitalsSummary(generatedSummary.vitalsSummary ?? '');
+    setRadiologySummary(generatedSummary.radiologySummary ?? '');
     setMedicationReconciliation(generatedSummary.medicationReconciliation ?? '');
     setDischargeInstructions(generatedSummary.dischargeInstructions ?? '');
     setFollowUpDate(generatedSummary.followUpDate ? toInputDateStr(generatedSummary.followUpDate) : '');
@@ -199,6 +203,8 @@ export default function DischargeSummaryPage() {
         diagnosesSummary,
         proceduresSummary,
         labResultsSummary,
+        vitalsSummary,
+        radiologySummary,
         chiefComplaint,
         examination,
         investigation,
@@ -219,7 +225,7 @@ export default function DischargeSummaryPage() {
     }
   }, [
     summaryData, updateMutation, diagnosesSummary, proceduresSummary,
-    labResultsSummary, chiefComplaint,
+    labResultsSummary, vitalsSummary, radiologySummary, chiefComplaint,
         examination,
         investigation,
         impression,medicationReconciliation, dischargeInstructions,
@@ -274,6 +280,8 @@ export default function DischargeSummaryPage() {
         setDiagnosesSummary(res.data.diagnosesSummary ?? '');
         setProceduresSummary(res.data.proceduresSummary ?? '');
         setLabResultsSummary(res.data.labResultsSummary ?? '');
+        setVitalsSummary(res.data.vitalsSummary ?? '');
+        setRadiologySummary(res.data.radiologySummary ?? '');
         setMedicationReconciliation(res.data.medicationReconciliation ?? '');
         toast.success('Refreshed from pinned notes & source data');
       }
@@ -589,6 +597,40 @@ export default function DischargeSummaryPage() {
                 </CardContent>
               </Card>
 
+              {/* Vitals — pinned from progress-note readings; one line per reading */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold">Vitals</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Textarea
+                    value={vitalsSummary}
+                    onChange={(e) => setVitalsSummary(e.target.value)}
+                    placeholder="Vitals pinned from progress notes..."
+                    rows={4}
+                    disabled={isReadOnly}
+                    className="resize-none"
+                  />
+                </CardContent>
+              </Card>
+
+              {/* Radiology / Imaging — pulled from imaging reports on Sync */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold">Radiology / Imaging</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Textarea
+                    value={radiologySummary}
+                    onChange={(e) => setRadiologySummary(e.target.value)}
+                    placeholder="Imaging studies and findings..."
+                    rows={4}
+                    disabled={isReadOnly}
+                    className="resize-none"
+                  />
+                </CardContent>
+              </Card>
+
               {/* Medication Reconciliation */}
               <Card>
                 <CardHeader className="pb-2">
@@ -758,10 +800,10 @@ export default function DischargeSummaryPage() {
                     onClick={handleRefresh}
                     disabled={isRefreshing}
                     className="gap-1.5"
-                    title="Regenerate summary from pinned notes, diagnoses, labs, and prescriptions"
+                    title="Pull the latest labs, diagnoses, medications, and pinned notes from records into this summary"
                   >
                     <RefreshCw className={cn('h-3.5 w-3.5', isRefreshing && 'animate-spin')} />
-                    {isRefreshing ? 'Refreshing...' : 'Refresh from Notes'}
+                    {isRefreshing ? 'Syncing...' : 'Sync Latest Data'}
                   </Button>
                 )}
 

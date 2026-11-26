@@ -63,6 +63,8 @@ export default function CdssDashboardPage() {
   const acknowledge = useAcknowledgeCdssAlert();
   const override = useOverrideCdssAlert();
 
+  console.log(data);
+
   const handleAcknowledge = (alert: CdssAlert) => {
     acknowledge.mutate(
       { alertId: alert.id },

@@ -39,8 +39,19 @@ export interface ServiceTariff {
    * worse than none.
    */
   gstApproved?: boolean;
+  /** G-3: the day the classification applies from (null = always). */
+  gstEffectiveFrom?: string | null;
   /** Imaging tariffs only — the modality this study runs on. */
   modality?: ImagingModality | null;
+  /**
+   * Gap 352: OT component charges (surgery/procedure tariffs). When any is set,
+   * completing a case bills one line per component INSTEAD of basePrice.
+   * null = not configured; 0 is a real price.
+   */
+  otTheatreCharge?: number | string | null;
+  otSurgeonCharge?: number | string | null;
+  otAnaesthesiaCharge?: number | string | null;
+  otAssistantCharge?: number | string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -86,8 +97,21 @@ export interface CreateTariffInput {
   sacCode?: string | null;
   gstTreatment?: 'taxable' | 'exempt' | 'nil_rated' | 'non_gst' | 'zero_rated' | null;
   isCosmetic?: boolean;
+  /** G-3: YYYY-MM-DD the classification applies from; null clears it. */
+  gstEffectiveFrom?: string | null;
+  /** G-3: why the classification changed — kept in the rate-change log. */
+  gstChangeReason?: string;
   isActive?: boolean;
   modality?: ImagingModality | null;
+  /**
+   * Gap 352: OT component charges (surgery/procedure tariffs). When any is set,
+   * completing a case bills one line per component INSTEAD of basePrice.
+   * null = not configured; 0 is a real price.
+   */
+  otTheatreCharge?: number | null;
+  otSurgeonCharge?: number | null;
+  otAnaesthesiaCharge?: number | null;
+  otAssistantCharge?: number | null;
 }
 
 export function useCreateServiceTariff() {
@@ -121,8 +145,21 @@ export interface UpdateTariffInput {
   sacCode?: string | null;
   gstTreatment?: 'taxable' | 'exempt' | 'nil_rated' | 'non_gst' | 'zero_rated' | null;
   isCosmetic?: boolean;
+  /** G-3: YYYY-MM-DD the classification applies from; null clears it. */
+  gstEffectiveFrom?: string | null;
+  /** G-3: why the classification changed — kept in the rate-change log. */
+  gstChangeReason?: string;
   isActive?: boolean;
   modality?: ImagingModality | null;
+  /**
+   * Gap 352: OT component charges (surgery/procedure tariffs). When any is set,
+   * completing a case bills one line per component INSTEAD of basePrice.
+   * null = not configured; 0 is a real price.
+   */
+  otTheatreCharge?: number | null;
+  otSurgeonCharge?: number | null;
+  otAnaesthesiaCharge?: number | null;
+  otAssistantCharge?: number | null;
 }
 
 export function useUpdateServiceTariff() {

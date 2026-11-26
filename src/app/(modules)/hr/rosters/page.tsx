@@ -5,19 +5,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useRosters, usePublishRoster } from '@/hooks/use-hr';
-import { CheckCircle2 } from 'lucide-react';
-
-function startOfWeek(d: Date) {
-  const date = new Date(d);
-  date.setDate(date.getDate() - date.getDay());
-  date.setHours(0, 0, 0, 0);
-  return date;
-}
-
-function fmtDate(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
+import { useRosters, usePublishRoster, useHrSettings, useUpdateHrSettings } from '@/hooks/use-hr';
+import { CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { toast } from 'sonner';
+import { getApiErrorMessage } from '@/lib/utils';
+import {
+  addDays, fromLocalYmd, startOfWeek, toLocalYmd, weekDays, weekHeading, WEEKDAY_NAMES,
+} from '../_components/roster-week';
+import { AddShiftDialog, useCanManageHr } from '../_components/hr-create-dialogs';
 
 const SHIFT_TONE: Record<string, string> = {
   morning: 'bg-amber-50 text-amber-700 border-amber-200',
@@ -27,11 +22,20 @@ const SHIFT_TONE: Record<string, string> = {
 };
 
 export default function HrRostersPage() {
-  const [weekStart] = useState(() => startOfWeek(new Date()));
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekStart.getDate() + 6);
+  // Gap 313: the week starts on the tenant's HR "roster week start day"
+  // (default Sunday). `anchor` is any date inside the shown week, so a change
+  // of setting re-anchors the same week; prev/next move it by 7 days.
+  const { data: hrSettings } = useHrSettings();
+  const updateHrSettings = useUpdateHrSettings();
+  const weekStartDay = hrSettings?.rosterWeekStartDay ?? 0;
+  const [anchor, setAnchor] = useState(() => new Date());
+  const weekStart = startOfWeek(anchor, weekStartDay);
+  // One list of local-date keys drives the query, the columns and the heading.
+  const days = weekDays(weekStart);
+  const canManage = useCanManageHr();
+  const today = toLocalYmd(new Date());
 
-  const { data, isLoading } = useRosters({ fromDate: fmtDate(weekStart), toDate: fmtDate(weekEnd), limit: 200 });
+  const { data, isLoading } = useRosters({ fromDate: days[0], toDate: days[6], limit: 200 });
   const publish = usePublishRoster();
 
   const rows = (data?.data ?? []) as Array<{
@@ -56,20 +60,49 @@ export default function HrRostersPage() {
     byDate.set(key, arr);
   }
 
-  const days: string[] = [];
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(weekStart);
-    d.setDate(weekStart.getDate() + i);
-    days.push(fmtDate(d));
-  }
-
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold font-headline">Duty Rosters</h1>
-        <p className="text-sm text-on-surface-variant">
-          Week of {weekStart.toLocaleDateString('en-IN')} — coverage by shift, ward, and role.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold font-headline">Duty Rosters</h1>
+          <p className="text-sm text-on-surface-variant">
+            {weekHeading(days)} — coverage by shift, ward, and role.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {canManage ? (
+            <label className="flex items-center gap-1.5 text-xs text-on-surface-variant">
+              Week starts
+              <select
+                aria-label="Roster week start day"
+                className="rounded-md border bg-background px-2 py-1 text-xs"
+                value={weekStartDay}
+                disabled={updateHrSettings.isPending}
+                onChange={(e) =>
+                  updateHrSettings.mutate(
+                    { rosterWeekStartDay: Number(e.target.value) },
+                    {
+                      onSuccess: (s) => toast.success(`Roster weeks now start on ${WEEKDAY_NAMES[s.rosterWeekStartDay]}`),
+                      onError: (err) => toast.error(getApiErrorMessage(err, 'Could not save the week start day')),
+                    },
+                  )
+                }
+              >
+                {WEEKDAY_NAMES.map((name, i) => (
+                  <option key={name} value={i}>{name}</option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          <Button variant="outline" size="sm" onClick={() => setAnchor((a) => addDays(a, -7))} aria-label="Previous week">
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setAnchor(new Date())}>This week</Button>
+          <Button variant="outline" size="sm" onClick={() => setAnchor((a) => addDays(a, 7))} aria-label="Next week">
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          {canManage && <AddShiftDialog defaultDate={days.includes(today) ? today : days[0]!} />}
+        </div>
       </div>
 
       {isLoading ? (
@@ -82,7 +115,7 @@ export default function HrRostersPage() {
               <Card key={day} className="min-h-[160px]">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-xs uppercase tracking-wider text-on-surface-variant">
-                    {new Date(day).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
+                    {fromLocalYmd(day).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-1.5 pt-0">

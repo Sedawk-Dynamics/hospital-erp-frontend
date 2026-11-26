@@ -75,7 +75,7 @@ import {
   RefreshCw,
   History,
   Edit3,
-  CheckCircle2,
+  AlarmClockCheck,
   AlertCircle,
   Settings as SettingsIcon,
 } from 'lucide-react';
@@ -98,7 +98,7 @@ const STATUS_META: Record<EmarDoseStatus, {
   due:        { label: 'Due',        icon: Clock,       cellClass: 'bg-blue-100 text-blue-700 hover:bg-blue-200',                 badgeClass: 'bg-blue-100 text-blue-800' },
   overdue:    { label: 'Overdue',    icon: AlertCircle, cellClass: 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200 ring-1 ring-yellow-400', badgeClass: 'bg-yellow-100 text-yellow-800' },
   given:      { label: 'Given',      icon: Check,       cellClass: 'bg-green-100 text-green-700',                                 badgeClass: 'bg-green-100 text-green-800' },
-  given_late: { label: 'Given Late', icon: CheckCircle2,cellClass: 'bg-emerald-100 text-emerald-800 ring-1 ring-amber-400',       badgeClass: 'bg-emerald-100 text-emerald-800' },
+  given_late: { label: 'Given Late', icon: AlarmClockCheck,cellClass: 'bg-emerald-100 text-emerald-800 ring-1 ring-amber-400',       badgeClass: 'bg-emerald-100 text-emerald-800' },
   missed:     { label: 'Missed',     icon: X,           cellClass: 'bg-red-100 text-red-700',                                     badgeClass: 'bg-red-100 text-red-800' },
   held:       { label: 'Held',       icon: Pause,       cellClass: 'bg-amber-100 text-amber-800',                                 badgeClass: 'bg-amber-100 text-amber-800' },
   refused:    { label: 'Refused',    icon: Ban,         cellClass: 'bg-orange-100 text-orange-800',                               badgeClass: 'bg-orange-100 text-orange-800' },

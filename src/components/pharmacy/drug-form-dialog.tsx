@@ -37,6 +37,7 @@ import {
 } from '@/hooks/use-pharmacy';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useHsnGstRates, matchHsnGstRate } from '@/hooks/use-drug-master';
+import { gstAfterHsnChange, gstDiffersFromHsn } from '@/lib/gst-rate';
 import { DrugDuplicateResolver } from '@/components/pharmacy/drug-duplicate-resolver';
 
 const DOSAGE_FORMS: DosageForm[] = [
@@ -57,6 +58,7 @@ interface FormState {
   looseUnitLabel: string;
   taxPercent: string;
   gstTreatment: string;
+  gstRateReason: string;
   minStock: string;
   gtin: string;
   hsnCode: string;
@@ -71,7 +73,7 @@ interface FormState {
 const EMPTY_FORM: FormState = {
   drugName: '', category: 'drug', genericName: '', composition: '', manufacturer: '', dosageForm: '',
   strength: '', unitOfMeasurement: '', price: '', packSize: '', looseUnitLabel: '',
-  taxPercent: '', gstTreatment: '', minStock: '', gtin: '', hsnCode: '', indications: '', contraindications: '',
+  taxPercent: '', gstTreatment: '', gstRateReason: '', minStock: '', gtin: '', hsnCode: '', indications: '', contraindications: '',
   isLifeSaving: false, isNarcotic: false, isReimbursable: true, isActive: true,
 };
 
@@ -90,6 +92,7 @@ function formStateFromItem(item: FormularyItem): FormState {
     looseUnitLabel: item.looseUnitLabel ?? '',
     taxPercent: item.taxPercent != null ? String(item.taxPercent) : '',
     gstTreatment: item.gstTreatment ?? '',
+    gstRateReason: item.gstRateReason ?? '',
     minStock: item.minStock != null ? String(item.minStock) : '',
     gtin: item.gtin ?? '',
     hsnCode: item.hsnCode ?? '',
@@ -102,7 +105,7 @@ function formStateFromItem(item: FormularyItem): FormState {
   };
 }
 
-function formStateToInput(form: FormState): CreateFormularyInput {
+function formStateToInput(form: FormState, hsnRate?: number | null): CreateFormularyInput {
   const out: CreateFormularyInput = { drugName: form.drugName.trim() };
   if (form.category) out.category = form.category as CreateFormularyInput['category'];
   if (form.genericName.trim()) out.genericName = form.genericName.trim();
@@ -116,6 +119,8 @@ function formStateToInput(form: FormState): CreateFormularyInput {
   if (form.looseUnitLabel.trim()) out.looseUnitLabel = form.looseUnitLabel.trim();
   if (form.taxPercent && !isNaN(parseFloat(form.taxPercent))) out.taxPercent = parseFloat(form.taxPercent);
   out.gstTreatment = (form.gstTreatment || null) as CreateFormularyInput['gstTreatment'];
+  // G-2: the reason only means something while the rate still differs from HSN.
+  out.gstRateReason = gstDiffersFromHsn(form.taxPercent, hsnRate) ? form.gstRateReason.trim() || null : null;
   if (form.minStock && !isNaN(parseInt(form.minStock, 10))) out.minStock = parseInt(form.minStock, 10);
   if (form.gtin.trim()) out.gtin = form.gtin.trim();
   if (form.hsnCode.trim()) out.hsnCode = form.hsnCode.trim();
@@ -261,13 +266,19 @@ function DrugForm({
     const hit = matchHsnGstRate(code, hsnRates);
     return hit ? String(hit.gstRate) : '';
   };
+  // G-2: the HSN default fills a blank (or a value the previous HSN filled);
+  // it never overwrites a rate somebody typed.
   const updateHsn = (value: string) =>
-    setFormData((prev) => {
-      const next = { ...prev, hsnCode: value };
-      const newGst = gstForHsnCode(value);
-      if (newGst) next.taxPercent = newGst;
-      return next;
-    });
+    setFormData((prev) => ({
+      ...prev,
+      hsnCode: value,
+      taxPercent: gstAfterHsnChange(prev.taxPercent, gstForHsnCode(prev.hsnCode), gstForHsnCode(value)),
+    }));
+  const hsnHit = matchHsnGstRate(formData.hsnCode, hsnRates);
+  // An exempt / nil / non-GST treatment forces 0% server-side, so no reason is owed.
+  const rateDiffers =
+    (!formData.gstTreatment || formData.gstTreatment === 'taxable') &&
+    gstDiffersFromHsn(formData.taxPercent, hsnHit?.gstRate);
 
   const resolveGtin = async (code: string) => {
     const c = code.trim();
@@ -307,7 +318,7 @@ function DrugForm({
 
   const doCreate = async (force: boolean) => {
     try {
-      const payload = formStateToInput(formData);
+      const payload = formStateToInput(formData, hsnHit?.gstRate ?? null);
       if (force) payload.force = true;
       const result = await createItem.mutateAsync(payload);
       if (isDuplicateSuspected(result)) {
@@ -327,11 +338,15 @@ function DrugForm({
       toast.error('Drug name is required');
       return;
     }
+    if (rateDiffers && !formData.gstRateReason.trim()) {
+      toast.error(`GST ${formData.taxPercent}% differs from the HSN rate of ${hsnHit?.gstRate}% — enter a reason`);
+      return;
+    }
     if (editing) {
       try {
         await updateItem.mutateAsync({
           id: editing.id,
-          ...formStateToInput(formData),
+          ...formStateToInput(formData, hsnHit?.gstRate ?? null),
           gtin: formData.gtin.trim() || null,
         });
         toast.success('Drug updated');
@@ -460,7 +475,7 @@ function DrugForm({
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="taxPercent">GST %</Label>
-            <Input id="taxPercent" type="number" step="0.01" value={formData.taxPercent} onChange={(e) => updateField('taxPercent', e.target.value)} placeholder="12" />
+            <Input id="taxPercent" type="number" step="0.01" value={formData.taxPercent} onChange={(e) => updateField('taxPercent', e.target.value)} placeholder={hsnHit ? String(hsnHit.gstRate) : 'e.g. 5'} />
           </div>
         </div>
         <div className="grid grid-cols-3 gap-3">
@@ -488,16 +503,30 @@ function DrugForm({
           <div className="space-y-1.5">
             <Label htmlFor="hsnCode">HSN Code</Label>
             <Input id="hsnCode" className="font-mono" value={formData.hsnCode} onChange={(e) => updateHsn(e.target.value)} placeholder="e.g. 3004" />
-            {(() => {
-              const hit = matchHsnGstRate(formData.hsnCode, hsnRates);
-              return hit ? (
-                <p className="text-[11px] leading-tight text-primary">
-                  {hit.gstRate}% GST{hit.description ? ` · ${hit.description}` : ''}
-                </p>
-              ) : null;
-            })()}
+            {hsnHit ? (
+              <p className="text-[11px] leading-tight text-primary">
+                HSN default {hsnHit.gstRate}% GST{hsnHit.description ? ` · ${hsnHit.description}` : ''}
+              </p>
+            ) : null}
           </div>
         </div>
+        {rateDiffers ? (
+          <div className="space-y-1.5 rounded-md border border-amber-300 bg-amber-50 p-2.5 dark:border-amber-700 dark:bg-amber-950/30">
+            <Label htmlFor="gstRateReason">
+              Reason GST {formData.taxPercent}% differs from the HSN rate of {hsnHit?.gstRate}% *
+            </Label>
+            <Input
+              id="gstRateReason"
+              value={formData.gstRateReason}
+              onChange={(e) => updateField('gstRateReason', e.target.value)}
+              placeholder="e.g. Notified rate for this product, supplier invoice shows 18%"
+              maxLength={255}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Bills use this item&apos;s {formData.taxPercent}% rather than the HSN default.
+            </p>
+          </div>
+        ) : null}
         <div className="space-y-1.5">
           <Label htmlFor="indications">Indications</Label>
           <Textarea id="indications" value={formData.indications} onChange={(e) => updateField('indications', e.target.value)} placeholder="Conditions this drug treats..." rows={2} />

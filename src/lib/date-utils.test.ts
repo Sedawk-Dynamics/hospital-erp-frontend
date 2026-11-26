@@ -4,6 +4,8 @@ import {
   formatDateTime,
   formatMonthYear,
   toInputDateStr,
+  formatAge,
+  isFutureDate,
 } from './date-utils';
 
 /**
@@ -54,5 +56,38 @@ describe('date-utils — IST display formatting (reports)', () => {
     it('falls back to today (valid yyyy-MM-dd) for an invalid date', () => {
       expect(toInputDateStr('garbage')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     });
+  });
+});
+
+
+describe('formatAge / isFutureDate (gap 329)', () => {
+  const now = new Date('2026-11-19T08:00:00Z'); // 13:30 IST
+
+  it('shows years for adults and children over one', () => {
+    expect(formatAge('1990-05-01', now)).toBe('36 yrs');
+    expect(formatAge('2025-11-19', now)).toBe('1 yr');
+    expect(formatAge('1990-11-20', now)).toBe('35 yrs'); // birthday tomorrow
+  });
+
+  it('shows months, then days, for infants', () => {
+    expect(formatAge('2026-05-10', now)).toBe('6 mo');
+    expect(formatAge('2026-11-05', now)).toBe('14 days');
+    expect(formatAge('2026-11-18', now)).toBe('1 day');
+    expect(formatAge('2026-11-19', now)).toBe('0 days'); // newborn today
+  });
+
+  it('reads a stored @db.Date timestamp as its calendar date', () => {
+    expect(formatAge('2026-11-05T00:00:00.000Z', now)).toBe('14 days');
+  });
+
+  it('shows a dash for a missing or future DOB', () => {
+    expect(formatAge(null, now)).toBe('—');
+    expect(formatAge('2030-01-01', now)).toBe('—');
+  });
+
+  it('flags only dates after today as future', () => {
+    expect(isFutureDate('2030-01-01')).toBe(true);
+    expect(isFutureDate(new Date())).toBe(false);
+    expect(isFutureDate('2000-01-01')).toBe(false);
   });
 });

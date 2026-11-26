@@ -36,10 +36,11 @@ const fmtDateTime = (v?: string | null) =>
   v
     ? new Date(v).toLocaleString('en-IN', {
         day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+        timeZone: 'Asia/Kolkata', // hospital time regardless of the viewer's clock (gap 342)
       })
     : '—';
 const fmtDate = (v?: string | null) =>
-  v ? new Date(v).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+  v ? new Date(v).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '—';
 const dash = (v?: string | number | null) =>
   v === null || v === undefined || v === '' ? '—' : String(v);
 
@@ -128,7 +129,13 @@ export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: Admis
       if (gst.invoiceNumbers.length) {
         info.push([`${gst.documentLabel ?? 'Invoice'} No.`, gst.invoiceNumbers.join(', ')]);
       }
-      if (gst.supplierGstin) info.push(['GSTIN (Hospital)', gst.supplierGstin]);
+      // Gap #311: the server's caption ("not verified…" / SANDBOX) travels with the number.
+      if (gst.supplierGstin) {
+        info.push([
+          'GSTIN (Hospital)',
+          gst.supplierGstinCaption ? `${gst.supplierGstin} (${gst.supplierGstinCaption})` : gst.supplierGstin,
+        ]);
+      }
       // A patient with a GSTIN is being billed as a business — it is what lets
       // them claim the credit, so it belongs on the paper.
       if (gst.recipientGstin) info.push(['GSTIN (Patient)', gst.recipientGstin]);
@@ -451,12 +458,31 @@ export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: Admis
                     // so React saw an unkeyed list of group blocks here.
                     <Fragment key={g.category}>
                       <tr style={{ backgroundColor: soft }}>
-                        <td
-                          colSpan={chargeColumns.length}
-                          style={{ ...bodyCellStyle(theme), fontWeight: 700 }}
-                        >
-                          {g.label}
-                        </td>
+                        {/* Summarised bill: a category carries no line detail, so
+                            the amount goes on this heading row and the separate
+                            total row below is dropped. The columns in between get
+                            a dash rather than being left blank. */}
+                        {g.lines.length === 0 ? (
+                          chargeColumns.map(([label, align], i) => (
+                            <td
+                              key={label}
+                              style={{ ...bodyCellStyle(theme), textAlign: align, fontWeight: 700 }}
+                            >
+                              {i === 0
+                                ? g.label
+                                : i === chargeColumns.length - 1
+                                  ? fmtMoney(g.total)
+                                  : '—'}
+                            </td>
+                          ))
+                        ) : (
+                          <td
+                            colSpan={chargeColumns.length}
+                            style={{ ...bodyCellStyle(theme), fontWeight: 700 }}
+                          >
+                            {g.label}
+                          </td>
+                        )}
                       </tr>
                       {g.lines.map((l, i) => (
                         <tr
@@ -524,6 +550,7 @@ export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: Admis
                           <td style={{ ...bodyCellStyle(theme), textAlign: 'right' }}>{fmtMoney(l.totalAmount)}</td>
                         </tr>
                       ))}
+                      {g.lines.length > 0 && (
                       <tr>
                         <td
                           colSpan={showTax ? 4 : chargeColumns.length - 1}
@@ -560,6 +587,7 @@ export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: Admis
                           {fmtMoney(g.total)}
                         </td>
                       </tr>
+                      )}
                     </Fragment>
                   ))}
                 </tbody>

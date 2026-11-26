@@ -1,11 +1,18 @@
 'use client';
 
 import { useState, useMemo, useCallback, type ReactNode } from 'react';
+import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod/v4';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { formatDate as formatDateUtil, formatTime as formatTimeUtil, toInputDateStr } from '@/lib/date-utils';
-import { cn } from '@/lib/utils';
+import {
+  formatDate as formatDateUtil,
+  formatTime as formatTimeUtil,
+  formatTime24,
+  getCurrentISTDate,
+  toInputDateStr,
+} from '@/lib/date-utils';
+import { cn, getApiErrorMessage } from '@/lib/utils';
 import {
   Search,
   Plus,
@@ -19,6 +26,7 @@ import {
   ChevronRight,
   Ban,
   Clock3,
+  AlertTriangle,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -46,7 +54,11 @@ import {
   useScheduleOT,
   useUpdateOTRequest,
   useOperatingTheaters,
+  useOTRequest,
+  otConflictsFromError,
+  otErrorCode,
   type OTRequest,
+  type OtConflict,
 } from '@/hooks/use-ot';
 import { useDoctorsList } from '@/hooks/use-hospital';
 import { useAdmissions } from '@/hooks/use-clinical';
@@ -102,8 +114,10 @@ const PRIORITIES = ['routine', 'urgent', 'emergency'];
 // Zod Schemas
 // ============================================================
 
+// Gap 350: the theatre is required and comes from the theatre master.
 const createOTSchema = z.object({
   patientId: z.string().min(1, 'Patient is required'),
+  otId: z.string().min(1, 'Select an operating theater'),
   surgeryName: z.string().min(1, 'Surgery name is required'),
   surgeryType: z.string().optional(),
   speciality: z.string().optional(),
@@ -116,6 +130,10 @@ const createOTSchema = z.object({
   priority: z.string().optional(),
   preOpDiagnosis: z.string().optional(),
   notes: z.string().optional(),
+}).refine((v) => !v.scheduledDate || !!v.scheduledStartTime, {
+  // The clash check (gap 351) needs a start time to compare slots.
+  message: 'Start time is required when a date is booked',
+  path: ['scheduledStartTime'],
 });
 
 type CreateOTFormValues = z.infer<typeof createOTSchema>;
@@ -124,8 +142,7 @@ const scheduleSchema = z.object({
   scheduledDate: z.string().min(1, 'Date is required'),
   scheduledStartTime: z.string().min(1, 'Start time is required'),
   scheduledEndTime: z.string().optional(),
-  otId: z.string().optional(),
-  otName: z.string().optional(),
+  otId: z.string().min(1, 'Select an operating theater'),
   surgeonId: z.string().optional(),
   anaesthetistId: z.string().optional(),
   // Required (enforced below + server-side) when the booked slot differs from
@@ -214,6 +231,62 @@ function honoursPreference(r: OTRequest): boolean {
 
 const AWAITING_DOCTOR = 'awaiting_doctor';
 
+/** Theatre name from the master, or null when the booking has none (gap 350). */
+function theatreName(r: OTRequest): string | null {
+  return r.ot?.name ?? null;
+}
+
+/** Shown wherever a booking needs a theatre but the master is empty (gap 350). */
+function NoTheatreNotice() {
+  return (
+    <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+      <p>
+        No operating theaters are configured. Add a theater first in{' '}
+        <Link href="/ot/settings" className="font-medium underline">
+          OT Settings
+        </Link>
+        , then book the surgery.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * The clashes the server found (gap 351). The desk can change the slot, or
+ * confirm and book anyway — the override is explicit, never silent.
+ */
+function ConflictPanel({
+  conflicts,
+  onOverride,
+  pending,
+}: {
+  conflicts: OtConflict[];
+  onOverride: () => void;
+  pending: boolean;
+}) {
+  return (
+    <div className="space-y-2 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+      <p className="flex items-center gap-1.5 font-semibold">
+        <AlertTriangle className="h-4 w-4" />
+        Scheduling conflict{conflicts.length === 1 ? '' : 's'}
+      </p>
+      <ul className="list-disc space-y-1 pl-5">
+        {conflicts.map((c, i) => (
+          <li key={`${c.kind}-${c.otRequestId ?? i}`}>{c.message}</li>
+        ))}
+      </ul>
+      <div className="flex items-center justify-between gap-2 pt-1">
+        <p className="text-xs">Change the slot, theater or surgeon — or confirm to book anyway.</p>
+        <Button type="button" size="sm" variant="destructive" onClick={onOverride} disabled={pending}>
+          {pending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+          Book anyway
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // ============================================================
 // Main Page
 // ============================================================
@@ -230,6 +303,7 @@ export default function OTHomePage() {
   const [scheduleTarget, setScheduleTarget] = useState<OTRequest | null>(null);
   const [viewTarget, setViewTarget] = useState<OTRequest | null>(null);
   const [cancelTarget, setCancelTarget] = useState<OTRequest | null>(null);
+  const [completeTarget, setCompleteTarget] = useState<OTRequest | null>(null);
 
   const statusFilter = activeFilter === 'all' ? undefined : activeFilter;
 
@@ -277,48 +351,49 @@ export default function OTHomePage() {
   const approveMutation = useApproveOTRequest();
   const updateMutation = useUpdateOTRequest();
 
+  const openScheduleDialog = useCallback((req: OTRequest) => {
+    setScheduleTarget(req);
+    setScheduleDialogOpen(true);
+  }, []);
+
   // Surgery lifecycle: scheduled → in_progress stamps the actual start,
   // in_progress → completed stamps the actual end (feeds OT utilization).
-  const handleStartSurgery = useCallback(
-    (id: string) => {
-      updateMutation.mutate(
-        { id, status: 'in_progress', actualStartTime: new Date().toISOString() },
-        {
-          onSuccess: () => toast.success('Surgery started'),
-          onError: (err: any) => toast.error(err?.message ?? 'Failed to start surgery'),
+  function handleStartSurgery(req: OTRequest, confirmEarly = false) {
+    updateMutation.mutate(
+      { id: req.id, status: 'in_progress', actualStartTime: new Date().toISOString(), confirmEarly },
+      {
+        onSuccess: () => toast.success('Surgery started'),
+        onError: (err: unknown) => {
+          const code = otErrorCode(err);
+          // Gap 354: starting before the scheduled day needs a confirmation.
+          if (code === 'OT_EARLY') {
+            toast.warning(getApiErrorMessage(err), {
+              action: { label: 'Start anyway', onClick: () => handleStartSurgery(req, true) },
+            });
+            return;
+          }
+          // Gap 350: no theatre → send the desk where they can fix it.
+          if (code === 'OT_THEATRE_REQUIRED') {
+            toast.error('Assign a theater first — use Reschedule to pick one.', {
+              action: { label: 'Reschedule', onClick: () => openScheduleDialog(req) },
+            });
+            return;
+          }
+          toast.error(getApiErrorMessage(err, 'Failed to start surgery'));
         },
-      );
-    },
-    [updateMutation]
-  );
-
-  const handleCompleteSurgery = useCallback(
-    (id: string) => {
-      updateMutation.mutate(
-        { id, status: 'completed', actualEndTime: new Date().toISOString() },
-        {
-          onSuccess: () => toast.success('Surgery completed'),
-          onError: (err: any) => toast.error(err?.message ?? 'Failed to complete surgery'),
-        },
-      );
-    },
-    [updateMutation]
-  );
+      },
+    );
+  }
 
   const handleApprove = useCallback(
     (id: string) => {
       approveMutation.mutate(id, {
         onSuccess: () => toast.success('OT request approved'),
-        onError: (err: any) => toast.error(err?.message ?? 'Failed to approve'),
+        onError: (err: unknown) => toast.error(getApiErrorMessage(err, 'Failed to approve')),
       });
     },
     [approveMutation]
   );
-
-  const openScheduleDialog = useCallback((req: OTRequest) => {
-    setScheduleTarget(req);
-    setScheduleDialogOpen(true);
-  }, []);
 
   return (
     <div className="space-y-4 animate-fade-in-up">
@@ -356,6 +431,9 @@ export default function OTHomePage() {
           </button>
         ))}
       </div>
+
+      {/* Gap 350: bookings cannot be saved until a theater exists. */}
+      {theaters && theaters.length === 0 && <NoTheatreNotice />}
 
       {/* Theater availability — status + today's bookings */}
       {theaters && theaters.length > 0 && (
@@ -501,8 +579,12 @@ export default function OTHomePage() {
                       )}
                     </td>
 
-                    {/* OT Name */}
-                    <td className="px-4 py-3 text-muted-foreground">{req.otName ?? req.ot?.name ?? '-'}</td>
+                    {/* OT Name — from the theatre master (gap 350) */}
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {theatreName(req) ?? (
+                        <span className="text-xs font-medium text-amber-700">No theater assigned</span>
+                      )}
+                    </td>
 
                     {/* Doctor's preferred slot vs what is actually booked */}
                     <td className="px-4 py-3">
@@ -584,6 +666,9 @@ export default function OTHomePage() {
                       <div className="flex items-center justify-center gap-1">
                         {req.status === 'requested' && (
                           <>
+                            {/* Approving needs a theater (gap 350); without
+                                one the desk schedules instead. */}
+                            {req.otId && (
                             <Button
                               size="sm"
                               variant="ghost"
@@ -598,6 +683,7 @@ export default function OTHomePage() {
                               )}
                               Approve
                             </Button>
+                            )}
                             <Button
                               size="sm"
                               variant="ghost"
@@ -618,7 +704,7 @@ export default function OTHomePage() {
                               size="sm"
                               variant="ghost"
                               className="text-purple-600 hover:text-purple-700 hover:bg-purple-50"
-                              onClick={() => handleStartSurgery(req.id)}
+                              onClick={() => handleStartSurgery(req)}
                               disabled={
                                 updateMutation.isPending || req.scheduleState === AWAITING_DOCTOR
                               }
@@ -647,7 +733,7 @@ export default function OTHomePage() {
                             size="sm"
                             variant="ghost"
                             className="text-teal-600 hover:text-teal-700 hover:bg-teal-50"
-                            onClick={() => handleCompleteSurgery(req.id)}
+                            onClick={() => setCompleteTarget(req)}
                             disabled={updateMutation.isPending}
                           >
                             <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
@@ -744,6 +830,11 @@ export default function OTHomePage() {
       {cancelTarget && (
         <CancelSurgeryDialog request={cancelTarget} onClose={() => setCancelTarget(null)} />
       )}
+
+      {/* Complete surgery — end time, early-completion check, billing preview */}
+      {completeTarget && (
+        <CompleteSurgeryDialog request={completeTarget} onClose={() => setCompleteTarget(null)} />
+      )}
     </div>
   );
 }
@@ -801,14 +892,28 @@ function DetailRow({ label, value }: { label: string; value?: ReactNode }) {
   );
 }
 
+/** Shown inside a details section that has nothing recorded yet (gap 354). */
+function EmptyLine({ children }: { children: ReactNode }) {
+  return <p className="py-1.5 text-xs italic text-muted-foreground">{children}</p>;
+}
+
+function rupees(n: number): string {
+  return `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+}
+
 function SurgeryDetailsDialog({ request, onClose }: { request: OTRequest; onClose: () => void }) {
-  const r = request;
+  // The list row is a snapshot without charge data; the detail call adds what
+  // Complete will bill and what has been posted (gaps 352/354).
+  const { data: fresh } = useOTRequest(request.id);
+  const r = fresh ?? request;
   const sched = r.scheduledDate
     ? `${formatDate(r.scheduledDate)}${r.scheduledStartTime ? ` · ${formatTime(r.scheduledStartTime)}` : ''}${r.scheduledEndTime ? ` – ${formatTime(r.scheduledEndTime)}` : ''}`
     : '-';
   const actual = r.actualStartTime
-    ? `${formatTime(r.actualStartTime)}${r.actualEndTime ? ` – ${formatTime(r.actualEndTime)}` : ' (in progress)'}`
+    ? `${formatDate(r.actualStartTime)} · ${formatTime(r.actualStartTime)}${r.actualEndTime ? ` – ${formatTime(r.actualEndTime)}` : ' (in progress)'}`
     : '-';
+  const hasClinical = !!(r.preOpDiagnosis || r.postOpDiagnosis || r.notes);
+  const posted = r.postedCharges ?? [];
 
   return (
     <Dialog open={true} onOpenChange={(o) => !o && onClose()}>
@@ -836,7 +941,10 @@ function SurgeryDetailsDialog({ request, onClose }: { request: OTRequest; onClos
             <DetailRow label="Type" value={r.surgeryType} />
             <DetailRow label="Speciality" value={r.speciality} />
             <DetailRow label="Priority" value={r.priority && <span className="capitalize">{r.priority}</span>} />
-            <DetailRow label="Theater" value={r.otName ?? r.ot?.name} />
+            <DetailRow
+              label="Theater"
+              value={theatreName(r) ?? <span className="text-amber-700">No theater assigned</span>}
+            />
             <DetailRow label="Surgeon" value={formatDoctorName(r.surgeon)} />
             <DetailRow label="Anaesthetist" value={formatDoctorName(r.anaesthetist)} />
           </section>
@@ -883,11 +991,48 @@ function SurgeryDetailsDialog({ request, onClose }: { request: OTRequest; onClos
             <DetailRow label="Pre-op diagnosis" value={r.preOpDiagnosis} />
             <DetailRow label="Post-op diagnosis" value={r.postOpDiagnosis} />
             <DetailRow label="Notes" value={r.notes} />
+            {!hasClinical && <EmptyLine>No diagnosis or notes recorded for this surgery.</EmptyLine>}
           </section>
           <section>
             <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Billing</h4>
-            <DetailRow label="Amount" value={r.billingAmount != null ? `₹${Number(r.billingAmount).toFixed(2)}` : undefined} />
-            <DetailRow label="Status" value={r.billingStatus && <span className="capitalize">{r.billingStatus.replace('_', ' ')}</span>} />
+            {posted.length > 0 ? (
+              posted.map((b) => (
+                <div key={b.billId}>
+                  <DetailRow
+                    label={`Posted to bill ${b.billNumber ?? ''}`.trim()}
+                    value={
+                      <>
+                        {rupees(b.amount)}{' '}
+                        <span className="text-xs capitalize text-muted-foreground">({b.status.replace('_', ' ')})</span>
+                      </>
+                    }
+                  />
+                  {/* Gap 352: each posted line — theatre, surgeon, anaesthesia, or ₹0 no charge. */}
+                  {(b.lines ?? []).length > 1 || (b.lines ?? []).some((l) => l.amount === 0)
+                    ? (b.lines ?? []).map((l, i) => (
+                        <DetailRow key={i} label={`· ${l.description}`} value={rupees(l.amount)} />
+                      ))
+                    : null}
+                </div>
+              ))
+            ) : r.status === 'cancelled' ? (
+              <EmptyLine>Cancelled — nothing billed.</EmptyLine>
+            ) : r.chargePreview ? (
+              <>
+                <DetailRow
+                  label={r.status === 'completed' ? 'Not yet posted' : 'Will be posted on Complete'}
+                  value={`${rupees(r.chargePreview.amount)} · ${r.chargePreview.label}`}
+                />
+                {(r.chargePreview.lines ?? []).length > 1 &&
+                  (r.chargePreview.lines ?? []).map((l, i) => (
+                    <DetailRow key={i} label={`· ${l.label}`} value={rupees(l.amount)} />
+                  ))}
+              </>
+            ) : fresh ? (
+              <EmptyLine>{r.chargePreviewMessage ?? 'No OT charge is configured — nothing will be billed.'}</EmptyLine>
+            ) : (
+              <EmptyLine>Loading charges…</EmptyLine>
+            )}
           </section>
           {r.status === 'cancelled' && r.cancellationReason && (
             <section>
@@ -917,7 +1062,7 @@ function CancelSurgeryDialog({ request, onClose }: { request: OTRequest; onClose
       { id: request.id, status: 'cancelled', cancellationReason: reason.trim() },
       {
         onSuccess: () => { toast.success('Surgery cancelled'); onClose(); },
-        onError: (e: any) => toast.error(e?.message ?? 'Failed to cancel surgery'),
+        onError: (e: unknown) => toast.error(getApiErrorMessage(e, 'Failed to cancel surgery')),
       },
     );
   };
@@ -955,6 +1100,151 @@ function CancelSurgeryDialog({ request, onClose }: { request: OTRequest; onClose
   );
 }
 
+/**
+ * Complete a surgery (gaps 352/354). The end time defaults to the actual start
+ * plus the planned duration and can be edited; completing before the
+ * scheduled day needs an explicit tick; and the desk sees up front whether a
+ * charge will be posted to the stay or nothing will be billed.
+ */
+function CompleteSurgeryDialog({ request, onClose }: { request: OTRequest; onClose: () => void }) {
+  const update = useUpdateOTRequest();
+  const { data: fresh } = useOTRequest(request.id);
+  const r = fresh ?? request;
+
+  const start = r.actualStartTime ? new Date(r.actualStartTime) : null;
+  const plannedMinutes = useMemo(() => {
+    if (r.durationMinutes && r.durationMinutes > 0) return r.durationMinutes;
+    const toMin = (v?: string | null) => {
+      const m = v?.match(/(\d{2}):(\d{2})/);
+      return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+    };
+    const s = toMin(r.scheduledStartTime);
+    const e = toMin(r.scheduledEndTime);
+    return s != null && e != null && e > s ? e - s : 60;
+  }, [r.durationMinutes, r.scheduledStartTime, r.scheduledEndTime]);
+  const defaultEnd = start ? new Date(start.getTime() + plannedMinutes * 60_000) : null;
+
+  const [endDate, setEndDate] = useState(defaultEnd ? toInputDateStr(defaultEnd) : getCurrentISTDate());
+  const [endTime, setEndTime] = useState(defaultEnd ? formatTime24(defaultEnd) : '');
+  const [confirmEarly, setConfirmEarly] = useState(false);
+
+  const scheduledDay = r.scheduledDate ? toInputDateStr(r.scheduledDate) : null;
+  const isEarly = !!scheduledDay && getCurrentISTDate() < scheduledDay;
+
+  const submit = () => {
+    if (!start) {
+      toast.error('Start the surgery before completing it.');
+      return;
+    }
+    if (!endDate || !endTime) {
+      toast.error('Enter the end time');
+      return;
+    }
+    const end = new Date(`${endDate}T${endTime}:00+05:30`);
+    if (isNaN(end.getTime()) || end <= start) {
+      toast.error('The end time must be after the start time');
+      return;
+    }
+    if (isEarly && !confirmEarly) {
+      toast.error('Confirm completing before the scheduled date');
+      return;
+    }
+    update.mutate(
+      { id: r.id, status: 'completed', actualEndTime: end.toISOString(), confirmEarly: isEarly ? true : undefined },
+      {
+        onSuccess: (res) => {
+          const billing = res?.billing;
+          if (billing?.posted) toast.success(`Surgery completed — ${billing.message}`);
+          else if (billing) toast.warning(`Surgery completed. ${billing.message}`, { duration: 10000 });
+          else toast.success('Surgery completed');
+          onClose();
+        },
+        onError: (e: unknown) => toast.error(getApiErrorMessage(e, 'Failed to complete surgery')),
+      },
+    );
+  };
+
+  return (
+    <Dialog open={true} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Complete Surgery</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 text-sm">
+          <p className="text-muted-foreground">
+            <b>{r.surgeryName}</b> for {formatPatientName(r)}
+            {theatreName(r) ? ` · ${theatreName(r)}` : ''}
+          </p>
+          <div className="rounded-md bg-muted/40 p-3">
+            <span className="font-medium">Started:</span>{' '}
+            {start ? `${formatDate(r.actualStartTime ?? undefined)} · ${formatTime(r.actualStartTime ?? undefined)}` : 'Not started'}
+            <span className="text-muted-foreground"> · planned {plannedMinutes} min</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>End date</Label>
+              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>End time</Label>
+              <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+            </div>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Defaults to the start time plus the planned duration — change it if the surgery ran shorter or longer.
+          </p>
+
+          {isEarly && (
+            <label className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-800">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={confirmEarly}
+                onChange={(e) => setConfirmEarly(e.target.checked)}
+              />
+              <span>
+                This surgery is scheduled for {formatDate(r.scheduledDate ?? undefined)}. Tick to confirm it is being
+                completed before its scheduled date.
+              </span>
+            </label>
+          )}
+
+          {/* What Complete will bill (gap 352) */}
+          {!fresh ? (
+            <p className="text-xs text-muted-foreground">Checking the OT charge…</p>
+          ) : (r.postedCharges ?? []).length > 0 ? (
+            <p className="rounded-md border p-3 text-xs">
+              {rupees(r.postedAmount ?? 0)} is already posted to the patient&apos;s bill.
+            </p>
+          ) : r.chargePreview ? (
+            <p className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-xs text-emerald-800">
+              {/* Gap 352: a ₹0 tariff posts a labelled no-charge line; components post separately. */}
+              {r.chargePreview.noCharge
+                ? `${r.chargePreview.label} will be posted to the patient's bill as a no-charge line.`
+                : `${rupees(r.chargePreview.amount)} (${r.chargePreview.label}${
+                    (r.chargePreview.lines ?? []).length > 1
+                      ? ` — ${(r.chargePreview.lines ?? []).map((l) => `${l.label} ${rupees(l.amount)}`).join(', ')}`
+                      : ''
+                  }) will be posted to the patient's bill.`}
+            </p>
+          ) : (
+            <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
+              {r.chargePreviewMessage ?? 'No OT price is configured — nothing will be billed.'}
+            </p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Back</Button>
+          <Button onClick={submit} disabled={update.isPending || !start || (isEarly && !confirmEarly)}>
+            {update.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+            Complete Surgery
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ============================================================
 // Create OT Dialog (React Hook Form + Zod)
 // ============================================================
@@ -978,7 +1268,10 @@ function CreateOTDialog({
   });
   const admissions = admissionsData?.data ?? [];
   const { data: doctorsRaw } = useDoctorsList();
+  const { data: theaters, isLoading: theatersLoading } = useOperatingTheaters();
+  const noTheatres = !theatersLoading && (theaters ?? []).length === 0;
   const createMutation = useCreateOTRequest();
+  const [conflicts, setConflicts] = useState<OtConflict[] | null>(null);
 
   const doctors = useMemo(
     () =>
@@ -1000,6 +1293,7 @@ function CreateOTDialog({
     resolver: zodResolver(createOTSchema),
     defaultValues: {
       patientId: '',
+      otId: '',
       surgeryName: '',
       surgeryType: '',
       speciality: '',
@@ -1026,12 +1320,15 @@ function CreateOTDialog({
     onOpenChange(false);
     reset();
     setPatientQuery('');
+    setConflicts(null);
   }, [onOpenChange, reset]);
 
-  const onSubmit = (values: CreateOTFormValues) => {
+  const submitBooking = (values: CreateOTFormValues, overrideConflicts = false) => {
     createMutation.mutate(
       {
         patientId: values.patientId,
+        otId: values.otId,
+        overrideConflicts: overrideConflicts || undefined,
         surgeryName: values.surgeryName,
         surgeryType: values.surgeryType || undefined,
         speciality: values.speciality || undefined,
@@ -1052,11 +1349,22 @@ function CreateOTDialog({
           toast.success('OT request created successfully');
           handleClose();
         },
-        onError: (err: any) => {
-          toast.error(err?.message ?? 'Failed to create OT request');
+        onError: (err: unknown) => {
+          // Gap 351: show the clashes and let the desk decide.
+          const found = otConflictsFromError(err);
+          if (found) {
+            setConflicts(found);
+            return;
+          }
+          toast.error(getApiErrorMessage(err, 'Failed to create OT request'));
         },
       }
     );
+  };
+
+  const onSubmit = (values: CreateOTFormValues) => {
+    setConflicts(null);
+    submitBooking(values);
   };
 
   return (
@@ -1155,6 +1463,35 @@ function CreateOTDialog({
             {errors.patientId && (
               <p className="text-xs text-red-500">{errors.patientId.message}</p>
             )}
+          </div>
+
+          {/* Theater — required, from the theatre master (gap 350) */}
+          <div className="space-y-1.5">
+            <Label>Operating Theater *</Label>
+            {noTheatres ? (
+              <NoTheatreNotice />
+            ) : (
+              <Select
+                value={watch('otId') || undefined}
+                onValueChange={(v: string | null) => {
+                  setValue('otId', v ?? '', { shouldValidate: true });
+                  setConflicts(null);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={theatersLoading ? 'Loading theaters…' : 'Select theater'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {(theaters ?? []).map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}{t.location ? ` · ${t.location}` : ''}
+                      {t.status !== 'available' ? ` (${t.status.replace('_', ' ')})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {errors.otId && !noTheatres && <p className="text-xs text-red-500">{errors.otId.message}</p>}
           </div>
 
           {/* Surgery Name + Type */}
@@ -1277,6 +1614,9 @@ function CreateOTDialog({
             <div className="space-y-1.5">
               <Label>Start Time</Label>
               <Input type="time" {...register('scheduledStartTime')} />
+              {errors.scheduledStartTime && (
+                <p className="text-xs text-red-500">{errors.scheduledStartTime.message}</p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>End Time</Label>
@@ -1307,11 +1647,19 @@ function CreateOTDialog({
             />
           </div>
 
+          {conflicts && conflicts.length > 0 && (
+            <ConflictPanel
+              conflicts={conflicts}
+              pending={createMutation.isPending}
+              onOverride={handleSubmit((v) => submitBooking(v, true))}
+            />
+          )}
+
           <DialogFooter>
             <Button type="button" variant="outline" onClick={handleClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={createMutation.isPending}>
+            <Button type="submit" disabled={createMutation.isPending || noTheatres}>
               {createMutation.isPending && (
                 <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
               )}
@@ -1338,7 +1686,9 @@ function ScheduleOTDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const scheduleMutation = useScheduleOT();
-  const { data: theaters } = useOperatingTheaters();
+  const { data: theaters, isLoading: theatersLoading } = useOperatingTheaters();
+  const noTheatres = !theatersLoading && (theaters ?? []).length === 0;
+  const [conflicts, setConflicts] = useState<OtConflict[] | null>(null);
   const { data: doctorsRaw } = useDoctorsList();
   const doctors = useMemo(
     () => (doctorsRaw || []).map((d) => ({
@@ -1380,7 +1730,6 @@ function ScheduleOTDialog({
       scheduledStartTime: request.scheduledStartTime ?? preferredTimeInput,
       scheduledEndTime: request.scheduledEndTime ?? '',
       otId: request.otId ?? '',
-      otName: request.otName ?? request.ot?.name ?? '',
       surgeonId: request.surgeonId ?? '',
       anaesthetistId: request.anaesthetistId ?? '',
       rescheduleReason: '',
@@ -1407,7 +1756,7 @@ function ScheduleOTDialog({
     setValue('scheduledStartTime', preferredTimeInput, { shouldValidate: true });
   };
 
-  const onSubmit = (values: ScheduleFormValues) => {
+  const submitSchedule = (values: ScheduleFormValues, overrideConflicts = false) => {
     const reason = values.rescheduleReason?.trim();
     if (reasonRequired && !reason) {
       toast.error('Tell the doctor why the surgery is not at the time they asked for');
@@ -1419,8 +1768,8 @@ function ScheduleOTDialog({
         scheduledDate: values.scheduledDate,
         scheduledStartTime: values.scheduledStartTime,
         scheduledEndTime: values.scheduledEndTime || undefined,
-        otId: values.otId || undefined,
-        otName: values.otName || undefined,
+        otId: values.otId,
+        overrideConflicts: overrideConflicts || undefined,
         surgeonId: values.surgeonId || undefined,
         anaesthetistId: values.anaesthetistId || undefined,
         rescheduleReason: reason || undefined,
@@ -1434,11 +1783,22 @@ function ScheduleOTDialog({
           );
           onOpenChange(false);
         },
-        onError: (err: any) => {
-          toast.error(err?.message ?? 'Failed to schedule OT');
+        onError: (err: unknown) => {
+          // Gap 351: same clash rules when a booking is moved.
+          const found = otConflictsFromError(err);
+          if (found) {
+            setConflicts(found);
+            return;
+          }
+          toast.error(getApiErrorMessage(err, 'Failed to schedule OT'));
         },
       }
     );
+  };
+
+  const onSubmit = (values: ScheduleFormValues) => {
+    setConflicts(null);
+    submitSchedule(values);
   };
 
   return (
@@ -1501,31 +1861,33 @@ function ScheduleOTDialog({
         ) : null}
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          {/* Gap 350: theatre from the master only — a typed name was never saved. */}
           <div className="space-y-1.5">
-            <Label>Operating Theater</Label>
-            <Select
-              value={watch('otId') || 'none'}
-              onValueChange={(v) => {
-                if (v === 'none') {
-                  setValue('otId', '');
-                } else {
-                  setValue('otId', v ?? '');
-                  const t = theaters?.find((tt) => tt.id === v);
-                  if (t) setValue('otName', t.name);
-                }
-              }}
-            >
-              <SelectTrigger><SelectValue placeholder="Select OT room" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">— Manual entry —</SelectItem>
-                {(theaters ?? []).map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.name}{t.location ? ` · ${t.location}` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Input {...register('otName')} placeholder="Or enter OT name (e.g., OT-1)" className="mt-2" />
+            <Label>Operating Theater *</Label>
+            {noTheatres ? (
+              <NoTheatreNotice />
+            ) : (
+              <Select
+                value={watch('otId') || undefined}
+                onValueChange={(v: string | null) => {
+                  setValue('otId', v ?? '', { shouldValidate: true });
+                  setConflicts(null);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={theatersLoading ? 'Loading theaters…' : 'Select OT room'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {(theaters ?? []).map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}{t.location ? ` · ${t.location}` : ''}
+                      {t.status !== 'available' ? ` (${t.status.replace('_', ' ')})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {errors.otId && !noTheatres && <p className="text-xs text-red-500">{errors.otId.message}</p>}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -1608,6 +1970,14 @@ function ScheduleOTDialog({
             )}
           </div>
 
+          {conflicts && conflicts.length > 0 && (
+            <ConflictPanel
+              conflicts={conflicts}
+              pending={scheduleMutation.isPending}
+              onOverride={handleSubmit((v) => submitSchedule(v, true))}
+            />
+          )}
+
           <DialogFooter>
             <Button
               type="button"
@@ -1617,7 +1987,7 @@ function ScheduleOTDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={scheduleMutation.isPending}>
+            <Button type="submit" disabled={scheduleMutation.isPending || noTheatres}>
               {scheduleMutation.isPending && (
                 <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
               )}

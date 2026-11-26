@@ -41,6 +41,7 @@ import {
   ShieldOff,
   MessageSquare,
   type LucideIcon,
+  Calculator,
 } from 'lucide-react';
 import type { ModuleKey } from '@/stores/module-store';
 
@@ -178,8 +179,9 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
     baseRoute: '/counsellor',
     sidebarItems: [
       { label: 'Home', href: '/counsellor', icon: Home },
-      { label: 'Reports', href: '/counsellor/reports', icon: BarChart3 },
-      { label: 'Settings', href: '/counsellor/settings', icon: Settings },
+      // Reports and Settings are hidden until those pages are built — the links
+      // returned 404 (gap items 178, 179). next.config.ts redirects old
+      // bookmarks to /counsellor.
     ],
   },
 
@@ -202,6 +204,7 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       // missing. This is its entry point.
       { label: 'OT Kits', href: '/doctor/ot-kits', icon: Package },
       { label: 'CDSS Alerts', href: '/doctor/cdss', icon: Activity },
+      { label: 'Calculators', href: '/doctor/calculators', icon: Calculator },
       { label: 'AI Assistant', href: '/doctor/ai-assistant', icon: Sparkles },
       { label: 'Settings', href: '/doctor/settings', icon: Settings },
     ],

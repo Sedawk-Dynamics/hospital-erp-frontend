@@ -829,7 +829,18 @@ interface ReturnLine {
   expiryDate: string | null;
   inStock: number;
   purchasePrice: number | null;
+  /** G-12: the purchase line's discount and GST, copied so the tax to reverse shows. */
+  purchaseDiscountPercent: number;
+  gstPercent: number | null;
   quantity: number;
+}
+
+/** G-12: what was paid for the returned units — net value and the GST on it. */
+function returnLineTax(l: ReturnLine): { net: number; tax: number } {
+  if (l.purchasePrice == null) return { net: 0, tax: 0 };
+  const net = Math.round(l.purchasePrice * (1 - l.purchaseDiscountPercent / 100) * l.quantity * 100) / 100;
+  const tax = l.gstPercent != null ? Math.round(net * l.gstPercent) / 100 : 0;
+  return { net, tax };
 }
 
 /** Days until expiry; negative when already past. Null when no date on file. */
@@ -902,6 +913,8 @@ function VendorReturnDialog({ onClose }: { onClose: () => void }) {
         expiryDate: b.expiryDate ?? null,
         inStock: Number(b.quantityInStock ?? 0),
         purchasePrice: b.purchasePrice != null ? Number(b.purchasePrice) : null,
+        purchaseDiscountPercent: Number(b.purchaseDiscountPercent ?? 0) || 0,
+        gstPercent: b.gstPercent != null && b.gstPercent !== '' ? Number(b.gstPercent) : null,
         quantity: Number(b.quantityInStock ?? 0),
       },
     ]);
@@ -916,12 +929,19 @@ function VendorReturnDialog({ onClose }: { onClose: () => void }) {
     setLines((prev) => prev.filter((l) => l.batchId !== batchId));
   }
 
-  // Credit defaults to what the distributor should give back: qty x purchase
-  // price across every line. Overridable, because the credit note is theirs.
-  const autoCredit = useMemo(
-    () => lines.reduce((sum, l) => sum + (l.purchasePrice ?? 0) * l.quantity, 0),
-    [lines],
-  );
+  // Credit defaults to what the distributor should give back: what was paid —
+  // net purchase value plus its GST (G-12). Overridable, because the credit
+  // note is theirs. The GST part is the input tax to reverse.
+  const { autoCredit, taxToReverse } = useMemo(() => {
+    let net = 0;
+    let tax = 0;
+    for (const l of lines) {
+      const t = returnLineTax(l);
+      net += t.net;
+      tax += t.tax;
+    }
+    return { autoCredit: Math.round((net + tax) * 100) / 100, taxToReverse: Math.round(tax * 100) / 100 };
+  }, [lines]);
   const overQty = lines.filter((l) => l.quantity > l.inStock || l.quantity <= 0);
   const canSubmit = lines.length > 0 && overQty.length === 0 && !!supplierId;
 
@@ -1085,8 +1105,13 @@ function VendorReturnDialog({ onClose }: { onClose: () => void }) {
                         onValueChange={(v) => patchLine(l.batchId, { quantity: v })}
                       />
                     </div>
-                    <span className="w-20 text-right text-xs text-muted-foreground">
-                      {l.purchasePrice != null ? inr(l.purchasePrice * l.quantity) : '—'}
+                    <span className="w-28 text-right text-xs text-muted-foreground">
+                      {l.purchasePrice != null ? inr(returnLineTax(l).net) : '—'}
+                      <span className="block text-[10px]">
+                        {l.gstPercent != null
+                          ? `+ GST ${l.gstPercent}% ${inr(returnLineTax(l).tax)}`
+                          : 'GST not recorded on batch'}
+                      </span>
                     </span>
                     <button
                       type="button"
@@ -1161,8 +1186,14 @@ function VendorReturnDialog({ onClose }: { onClose: () => void }) {
           </div>
           {autoCredit > 0 && !creditAmount && (
             <p className="text-[11px] text-muted-foreground">
-              Defaults to {inr(autoCredit)} across {lines.length} line(s) — quantity × purchase
-              price — if left blank.
+              Defaults to {inr(autoCredit)} across {lines.length} line(s) — what was paid (net
+              purchase value plus GST) — if left blank.
+            </p>
+          )}
+          {lines.length > 0 && (
+            <p className="text-[11px] text-muted-foreground">
+              Input tax to reverse: <span className="font-medium text-foreground">{inr(taxToReverse)}</span>
+              {' '}— at the rate paid on each batch, split as it was on the purchase.
             </p>
           )}
 

@@ -1,22 +1,5 @@
 'use client';
 
-// IPPatientWorkspace
-// ──────────────────────────────────────────────────────────────────────────
-// Single shared "in-patient detail" view used by:
-//   • /doctor/ip/[admissionId]
-//   • /nurse/ip/[admissionId]
-//   • /hospital/ip/[admissionId]
-//
-// Brings together the moving parts of an IP stay so doctors, nurses and admin
-// staff can land on one URL and see everything tied to that admission:
-// overview, vitals (nurses record from /nurse/charting; doctors capture inline),
-// today's eMAR doses, active prescriptions, progress notes, lab + imaging
-// orders, and patient demographics.
-//
-// Action buttons are role-aware: doctors get prescription / discharge-summary
-// quick links, nurses get charting + eMAR shortcuts, admin gets transfer/
-// discharge. Anyone can deep-link out to the dedicated pages with the
-// admissionId / patientId pre-filled.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -25,6 +8,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   BedDouble,
+  Siren,
   Calendar,
   CalendarDays,
   ChevronDown,
@@ -49,6 +33,7 @@ import {
   Wind,
   X,
   FolderOpen,
+  ListOrdered,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -73,8 +58,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
-// Base-UI Button doesn't support `asChild`; use the `render` prop with a Link
-// element so prefetching + accessibility on the underlying anchor still apply.
 type LinkButtonProps = React.ComponentProps<typeof Button> & { href: string };
 function LinkButton({ href, children, ...props }: LinkButtonProps) {
   return (
@@ -86,6 +69,7 @@ function LinkButton({ href, children, ...props }: LinkButtonProps) {
 import { formatDate, formatDateTime, formatTime } from '@/lib/date-utils';
 
 import { useAdmissionDetail, usePatientVitals, useLatestVitals, useActivePrescriptions, useNursingNotes } from '@/hooks/use-nurse';
+import { useEmergencyRegistration } from '@/hooks/use-hospital';
 import {
   useEmarSchedules,
   useNdpsPrescriptionItemContext,
@@ -98,19 +82,23 @@ import {
   buildNdpsPatientDose,
 } from '@/components/emar/ndps-dose-fields';
 import { PrnDoseHistoryCard, latestAdministeredPrnByItem } from '@/components/emar/prn-dose-history';
-import { useProgressNotes, useLabOrders, useImagingRequests, usePatientDetail, type ProgressNote } from '@/hooks/use-doctor';
+import { useProgressNotes, useLabOrders, useImagingRequests, usePatientDetail, usePatientVitals as usePatientVitalsForNotes, type ProgressNote, type Vital as DoctorVital } from '@/hooks/use-doctor';
 import { LabOrderDetailDialog } from '@/components/shared/lab-order-detail-dialog';
 import { IpPrescriptionDialog } from '@/components/doctor/ip-prescription-dialog';
 import { LabOrderDialog } from '@/components/doctor/lab-order-dialog';
 import { ImagingRequestDialog } from '@/components/doctor/imaging-request-dialog';
 import { IpLedgerPanel, IpActivityLog } from '@/components/shared/ip-ledger-panel';
 import { IpProgressNoteComposer } from '@/components/doctor/ip-progress-note-composer';
+import { ProgressionView } from '@/components/doctor/progress-notes/progression-view';
+import { ClubbedByDayView } from '@/components/doctor/progress-notes/clubbed-by-day-view';
 import { useAuthStore } from '@/stores/auth-store';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
 
 import type { NurseAdmission, NursingNote, Prescription, Vital } from '@/hooks/use-nurse';
 import { AssignBedDialog } from '@/components/hospital/ip/assign-bed-dialog';
+import { StayActionsMenu } from '@/components/hospital/ip/in-patient-list';
+import type { Admission } from '@/types';
 import { AdmissionTypeBadge } from '@/components/shared/admission-type-badge';
 import { AdmissionDoctorControl } from '@/components/shared/admission-doctor-control';
 import { AdmissionTypeConvertButton } from '@/components/shared/admission-type-control';
@@ -121,6 +109,12 @@ import { VitalValue } from '@/components/shared/vital-value';
 import { formatTemperature, temperatureIn, temperatureUnitLabel, temperatureValue } from '@/lib/vitals-temperature';
 import { useTemperatureUnit } from '@/stores/temperature-unit-store';
 import { fullName } from '@/lib/person-name';
+import FastTrackPanel, { CODE_META as FAST_TRACK_META } from './fast-track-panel';
+import IcuDetailPanel from './icu-detail-panel';
+import MedicoLegalPanel from './medico-legal-panel';
+import IntoxicationExamPanel from './intoxication-exam-panel';
+import { useFastTrackCodes } from '@/hooks/use-fast-track';
+import ImagingOrderDetailDialog from './imaging-order-detail-dialog';
 
 // Hooks here return raw `ApiResponse<T>` — pull out the inner payload safely.
 function unwrapList<T>(value: unknown): T[] {
@@ -140,24 +134,6 @@ function unwrapOne<T>(value: unknown): T | undefined {
 // ── Roles ──────────────────────────────────────────────────────────────────
 
 export type WorkspaceRole = 'doctor' | 'nurse' | 'admin';
-
-// ── Which tabs a counter role has any business in ──────────────────────────
-//
-// The workspace is mounted per module, and the Hospital module passes
-// role="admin" for EVERYONE in it — hospital admin, billing admin, cashier and
-// front desk alike. So the front desk got the full clinical record: eMAR,
-// prescriptions, nursing charting, progress notes and clinical orders, none of
-// which they act on.
-//
-// The module prop cannot answer this, because it describes the module rather
-// than the person. The gate below reads the signed-in user's ACTUAL role.
-//
-// Front desk and cashier keep everything their job needs — who is in the bed,
-// the money, the paperwork, the audit trail — and lose the clinical record they
-// only ever browsed.
-//
-// OFF-SWITCH: delete a role from COUNTER_ROLES and it goes back to seeing
-// every tab. Roles affected: front_desk, cashier. Nobody else changes.
 const COUNTER_ROLES = new Set(['front_desk', 'cashier']);
 
 /** Tabs a counter role keeps. Everything absent from this list is clinical. */
@@ -170,15 +146,8 @@ const COUNTER_TABS = new Set([
   'patient',
 ]);
 
-/**
- * Decide the visible tab set for the signed-in user.
- *
- * Returns null when every tab is allowed, so the common case costs nothing and
- * the caller can skip filtering entirely.
- */
+
 export function visibleWorkspaceTabs(roles: string[]): Set<string> | null {
-  // A user who is ALSO an admin or a doctor keeps the full view — the
-  // restriction is about the counter job, not about punishing a second role.
   if (roles.some((r) => r === 'admin' || r === 'super_admin' || r === 'doctor')) return null;
   if (!roles.some((r) => COUNTER_ROLES.has(r))) return null;
   return COUNTER_TABS;
@@ -219,10 +188,6 @@ function localDateTimeIso(date: string, time: string): string {
   return new Date(`${date}T${time}:00`).toISOString();
 }
 
-// A fourth copy of the ranges lived here and disagreed with the others again
-// (fever at 38.5 not 38, SpO2 at 95 not 94). All of them now come from
-// lib/vitals-ranges, so a reading cannot be abnormal on one screen and normal
-// on the next.
 function bpAbnormal(s?: number, d?: number) {
   return (
     isValueAbnormal('bloodPressureSystolic', s) ||
@@ -236,7 +201,21 @@ function defaultBackHref(role: WorkspaceRole): string {
   return '/hospital/ip';
 }
 
+
+
+
+
+
+
 // ── Sub-panels ─────────────────────────────────────────────────────────────
+
+// ESI triage priority → label + colour for the emergency-registration badge.
+const TRIAGE_META: Record<string, { label: string; className: string }> = {
+  resuscitation: { label: 'P1 · Resuscitation', className: 'border-red-500 bg-red-500/10 text-red-600' },
+  emergent: { label: 'P2 · Emergent', className: 'border-orange-500 bg-orange-500/10 text-orange-600' },
+  urgent: { label: 'P3 · Urgent', className: 'border-yellow-500 bg-yellow-500/10 text-yellow-700' },
+  non_urgent: { label: 'P4 · Non-urgent', className: 'border-green-500 bg-green-500/10 text-green-600' },
+};
 
 function HeaderStrip({
   admission,
@@ -254,7 +233,11 @@ function HeaderStrip({
   const age = calcAge(patient?.dateOfBirth);
   const initials = `${patient?.firstName?.[0] ?? ''}${patient?.lastName?.[0] ?? ''}`.toUpperCase();
   const [assignBedOpen, setAssignBedOpen] = useState(false);
-
+  const { data: emergency } = useEmergencyRegistration(admission.patientId);
+  const triage = emergency?.priority ? TRIAGE_META[emergency.priority] : undefined;
+  const { data: fastTrack } = useFastTrackCodes(admission.id);
+  const fastTrackCode = fastTrack?.[0]?.code ?? null;
+  const fastTrackMeta = fastTrackCode ? FAST_TRACK_META[fastTrackCode] : undefined;
   return (
     <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4">
       <div className="flex items-start gap-3">
@@ -271,6 +254,7 @@ function HeaderStrip({
             <h1 className="flex items-center gap-2 text-lg font-bold text-foreground">
               {patient?.firstName} {patient?.lastName}
             </h1>
+            
             <span className="text-xs text-muted-foreground">
               {patient?.mrn ? `MRN ${patient.mrn}` : ''}
               {patient?.gender ? ` · ${patient.gender.toUpperCase()}` : ''}
@@ -278,6 +262,29 @@ function HeaderStrip({
               {patient?.phone ? ` · ${patient.phone}` : ''}
               {patient?.bloodGroup ? ` · ${patient.bloodGroup}` : ''}
             </span>
+
+            {triage && (
+              <span className="inline-flex items-center gap-1.5">
+                <Badge
+                  variant="outline"
+                  className={`font-semibold ${triage.className}`}
+                  title={emergency?.chiefComplaint ? `Emergency: ${emergency.chiefComplaint}` : 'Emergency triage priority'}
+                >
+                  Intake Code - {triage.label}
+                </Badge>
+              </span>
+            )}
+            {fastTrackMeta && (
+              <span className="inline-flex items-center gap-1.5">
+                <Badge
+                  variant="outline"
+                  className={`font-semibold ${fastTrackMeta.badge}`}
+                  title="Active fast-track emergency protocol"
+                >
+                  {fastTrackMeta.emoji} Fast Track Code - {fastTrackMeta.label}
+                </Badge>
+              </span>
+            )}
           </div>
 
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -299,10 +306,6 @@ function HeaderStrip({
                 </button>
               )}
             </span>
-            {/* The consultant. Nullable so an emergency admission can be opened
-                before one is named — and settable here, because until now
-                nothing could name one afterwards and the stay stayed on
-                nobody's list. */}
             <span className="inline-flex items-center gap-1">
               <Stethoscope className="h-3.5 w-3.5" />
               <AdmissionDoctorControl
@@ -378,11 +381,11 @@ function HeaderStrip({
               </LinkButton>
             </>
           )}
+          {/* The stay's real actions — collect advance, generate bill,
+              transfer, discharge. "Manage IP" only navigated back to the
+              list (gap item 343). */}
           {role === 'admin' && (
-            <LinkButton variant="outline" size="sm" className="gap-1.5" href={`/hospital/ip`}>
-              <BedDouble className="h-3.5 w-3.5" />
-              Manage IP
-            </LinkButton>
+            <StayActionsMenu admission={admission as unknown as Admission} />
           )}
         </div>
       </div>
@@ -487,10 +490,6 @@ function LatestVitalsStrip({ patientId, role, admissionId }: { patientId: string
         </div>
       )}
 
-      {/* Same blind spot as the OPD consultation card: Vital.notes is what the
-          nurse wrote while taking the reading, and it was stored and returned
-          but never shown. The IP strip is where the doctor looks on a ward
-          round, so it belongs here too. */}
       {latest?.notes && (
         <div className="mt-2 rounded-lg bg-surface-container-low px-3 py-2">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -923,16 +922,21 @@ const noteSnippet = (p: ParsedNote): string =>
   p.fallback ?? p.sections.map((s) => `${s.key}: ${s.text}`).join('   ·   ');
 
 function ProgressNotesPanel({ admissionId, visitId, patientId, role, admissionDate }: { admissionId: string; visitId?: string; patientId: string; role: WorkspaceRole; admissionDate?: string }) {
-  // An admission reuses the same Visit as the pre-admission OP encounter, so
-  // fetching by that visitId surfaces BOTH the OP notes recorded before the IP
-  // request and the IP round notes — the OP case details are no longer hidden.
-  // Fall back to admissionId for older rows without a resolvable visit.
   const { data, isLoading, refetch } = useProgressNotes(
     visitId ? { visitId, limit: 100 } : { admissionId, limit: 100 },
   );
-  // IP running log — this admission's notes, newest first.
   const ipNotes = useMemo<ProgressNote[]>(() => data?.data ?? [], [data]);
+  const { data: patientVitals } = usePatientVitalsForNotes(patientId);
+  const vitalsByNote = useMemo(() => {
+    const map = new Map<string, DoctorVital>();
+    for (const v of patientVitals ?? []) {
+      if (v.progressNoteId) map.set(v.progressNoteId, v);
+    }
+    return map;
+  }, [patientVitals]);
   const [composerOpen, setComposerOpen] = useState(false);
+  // How the notes are laid out: a flat chronological list, or grouped by day.
+  const [view, setView] = useState<'progression' | 'byDay'>('progression');
   const [openNote, setOpenNote] = useState<ProgressNote | null>(null);
 
   // ── Filters (scoped to this panel only) ─────────────────────
@@ -1023,10 +1027,33 @@ function ProgressNotesPanel({ admissionId, visitId, patientId, role, admissionDa
           </h2>
           <p className="text-[11px] text-muted-foreground">Running clinical log for the whole admission — a note per visit / round.</p>
         </div>
-        {role === 'doctor' && (
-          <Button size="sm" variant="outline" className="h-7 shrink-0 gap-1 text-xs" onClick={() => setComposerOpen(true)}>
-            <Plus className="h-3 w-3" /> Add visit note
-          </Button>
+        {ipNotes.length > 0 && (
+          <div className="flex shrink-0 items-center gap-1.5">
+            {/* View toggle: flat chronological list vs grouped by day. */}
+            <div className="flex items-center gap-0.5 rounded-lg border border-outline-variant/40 bg-surface-container-low/40 p-0.5">
+              <Button
+                size="sm"
+                variant={view === 'progression' ? 'default' : 'ghost'}
+                className="h-6 gap-1 px-2 text-[11px]"
+                onClick={() => setView('progression')}
+              >
+                <ListOrdered className="h-3 w-3" /> Progression view
+              </Button>
+              <Button
+                size="sm"
+                variant={view === 'byDay' ? 'default' : 'ghost'}
+                className="h-6 gap-1 px-2 text-[11px]"
+                onClick={() => setView('byDay')}
+              >
+                <CalendarDays className="h-3 w-3" /> Clubbed by day
+              </Button>
+            </div>
+            {role === 'doctor' && (
+              <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setComposerOpen(true)}>
+                <Plus className="h-3 w-3" /> Add visit note
+              </Button>
+            )}
+          </div>
         )}
       </div>
 
@@ -1122,75 +1149,10 @@ function ProgressNotesPanel({ admissionId, visitId, patientId, role, admissionDa
             <X className="h-3 w-3" /> Clear filters
           </Button>
         </div>
+      ) : view === 'progression' ? (
+        <ProgressionView notes={filtered} vitalsByNote={vitalsByNote} admissionDate={admissionDate} />
       ) : (
-        <div className="space-y-2">
-          {groupedDays.map((g) => {
-            const open = isDayOpen(g.key);
-            return (
-              <div key={g.key} className="overflow-hidden rounded-lg border border-outline-variant/40">
-                {/* Day header — click to expand/collapse the notes under it */}
-                <button
-                  type="button"
-                  onClick={() => toggleDay(g.key)}
-                  className="flex w-full items-center justify-between gap-2 bg-surface-container-low/60 px-3 py-2 text-left transition-colors hover:bg-surface-container-high"
-                >
-                  <span className="flex items-center gap-2">
-                    <CalendarDays className="h-3.5 w-3.5 text-primary" />
-                    <span className="text-xs font-bold text-foreground">
-                      {g.dayNumber != null ? `Day ${g.dayNumber}` : formatDate(g.date)}
-                    </span>
-                    {g.dayNumber != null && (
-                      <span className="text-[10px] text-muted-foreground">{formatDate(g.date)}</span>
-                    )}
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-                      {g.notes.length} note{g.notes.length !== 1 ? 's' : ''}
-                    </span>
-                    <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', open && 'rotate-180')} />
-                  </span>
-                </button>
-
-                {open && (
-                  <ul className="space-y-2 p-2">
-                    {g.notes.map((n) => {
-                      const parsed = parseProgressNote(n.content ?? '');
-                      return (
-                        <li key={n.id}>
-                          <button
-                            type="button"
-                            onClick={() => setOpenNote(n)}
-                            className="group w-full rounded-md border bg-card px-3 py-2 text-left text-xs transition-colors hover:border-primary/40 hover:bg-surface-container-high"
-                          >
-                            <div className="mb-1 flex items-center justify-between gap-2">
-                              <span className="flex items-center gap-1.5 font-medium text-foreground">
-                                {drLabel(n)}
-                                {parsed.progress && (
-                                  <span className={cn('rounded-full px-2 py-0.5 text-[9px] font-semibold', parsed.tone)}>{parsed.progress}</span>
-                                )}
-                                {n.status === 'finalized' && (
-                                  <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">Signed</Badge>
-                                )}
-                              </span>
-                              <span className="flex items-center gap-1 text-[10px] text-muted-foreground shrink-0">
-                                <Clock className="h-3 w-3" />
-                                {formatTime(n.createdAt)}
-                                <ChevronRight className="h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-100" />
-                              </span>
-                            </div>
-                            <p className="line-clamp-2 text-muted-foreground">
-                              {noteSnippet(parsed) || '—'}
-                            </p>
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <ClubbedByDayView notes={filtered} vitalsByNote={vitalsByNote} />
       )}
 
       <ProgressNoteDetailDialog note={openNote} onClose={() => setOpenNote(null)} />
@@ -1354,12 +1316,11 @@ function OrdersPanel({ admissionId, patientId, role }: { admissionId: string; pa
   const { data: imagingData, isLoading: imgLoading } = useImagingRequests({ patientId, limit: 10 });
 
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
+  const [openImagingId, setOpenImagingId] = useState<string|null>(null);
   const [labOpen, setLabOpen] = useState(false);
   const [imgOpen, setImgOpen] = useState(false);
   const canOrder = role === 'doctor';
 
-  // Resolve the patient's active IP visit — the lab / imaging order dialogs bind
-  // the order to a visit.
   const { data: visitData } = useQuery({
     queryKey: ['ipws-active-visit', patientId],
     queryFn: async () => (await apiGet<Array<{ id: string; visitType: string }>>('/clinical/visits', { params: { patientId, status: 'active', limit: 5 } })).data ?? [],
@@ -1370,10 +1331,6 @@ function OrdersPanel({ admissionId, patientId, role }: { admissionId: string; pa
   const labs = labData?.data ?? [];
   const imaging = imagingData?.data ?? [];
 
-  // Surface any lab order with at least one attachment so clinicians can spot
-  // a reportable file at a glance. The list endpoint ships a tenant-scoped
-  // `_count.attachments` for the badge; we fall back to the array length if
-  // the full attachment list is hydrated.
   const attachmentCount = (o: any): number =>
     typeof o?._count?.attachments === 'number'
       ? o._count.attachments
@@ -1460,18 +1417,28 @@ function OrdersPanel({ admissionId, patientId, role }: { admissionId: string; pa
         ) : (
           <ul className="space-y-1.5 text-xs">
             {imaging.slice(0, 8).map((r) => (
-              <li key={r.id} className="flex items-center justify-between rounded border bg-card px-2 py-1.5">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium text-foreground">
-                    {r.imagingType || '—'}{r.bodyPart ? ` · ${r.bodyPart}` : ''}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">{formatDate(r.createdAt)}</p>
-                </div>
-                <Badge variant="outline" className="text-[10px] capitalize">{r.status}</Badge>
+              <li key={r.id}>
+                <button
+                  type="button"
+                  onClick={() => setOpenImagingId(r.id)}
+                  className="flex w-full items-center justify-between gap-2 rounded border bg-card px-2 py-1.5 text-left hover:bg-muted/50"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium text-foreground">
+                      {r.imagingType || '—'}{r.bodyPart ? ` · ${r.bodyPart}` : ''}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">{formatDate(r.createdAt)}</p>
+                  </div>
+                  <Badge variant="outline" className="text-[10px] capitalize">{r.status}</Badge>
+                </button>
               </li>
             ))}
           </ul>
         )}
+        <ImagingOrderDetailDialog
+          orderId={openImagingId ?? ''}
+          setOpen={(open) => !open && setOpenImagingId(null)}
+        />
       </div>
 
       {canOrder && (
@@ -1587,7 +1554,17 @@ function PatientPanel({ patientId }: { patientId: string }) {
       <PatientRow label="Phone" value={patient.phone} />
       <PatientRow label="Email" value={patient.email} />
       <PatientRow label="Blood group" value={patient.bloodGroup} />
-      <PatientRow label="Address" value={patient.address} />
+      {/* The patient record stores the address in parts (addressLine1, city, …);
+          `address` is only a form field, so this row was always blank (gap 341). */}
+      <PatientRow
+        label="Address"
+        value={
+          [patient.address ?? patient.addressLine1, patient.addressLine2, patient.city, patient.state, patient.postalCode]
+            .map((part) => (part ?? '').trim())
+            .filter(Boolean)
+            .join(', ') || 'No address on file'
+        }
+      />
       {patient.allergies && patient.allergies.length > 0 && (
         <div className="mt-2">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Allergies</p>
@@ -1603,6 +1580,63 @@ function PatientPanel({ patientId }: { patientId: string }) {
     </div>
   );
 }
+
+/** Humanise an enum-style value, e.g. "cat_108" → "Cat 108". */
+function humanise(value?: string | null) {
+  if (!value) return '—';
+  return value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Emergency-registration details — only renders if the patient has a record. */
+function EmergencyDetailsSection({ patientId }: { patientId: string }) {
+  const { data: emergency } = useEmergencyRegistration(patientId);
+  if (!emergency) return null;
+
+  const triage = emergency.priority ? TRIAGE_META[emergency.priority] : undefined;
+
+  return (
+    <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4">
+      <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
+        <Siren className="h-4 w-4 text-primary" />
+        Emergency Details
+      </h2>
+      <Separator className="mb-2" />
+      <div className="flex items-center justify-between py-1.5 text-xs">
+        <span className="text-muted-foreground">Intake Code</span>
+        {triage ? (
+          <Badge variant="outline" className={`font-semibold ${triage.className}`}>
+            {triage.label}
+          </Badge>
+        ) : (
+          <span className="text-right font-medium text-foreground">{humanise(emergency.priority)}</span>
+        )}
+      </div>
+      <PatientRow label="Chief complaint" value={emergency.chiefComplaint} />
+      <PatientRow label="Brought by" value={humanise(emergency.broughtBy)} />
+      <PatientRow label="Informant / escort" value={emergency.informantName} />
+      <PatientRow label="Contact phone" value={emergency.contactPhone} />
+      <PatientRow label="Relationship" value={emergency.relationship} />
+      <PatientRow label="Ambulance number" value={emergency.ambulanceNumber} />
+      <PatientRow label="Police badge / station" value={emergency.policeBadgeStation} />
+    </div>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // ── Main ───────────────────────────────────────────────────────────────────
 
@@ -1657,9 +1691,6 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
         />
       )}
       <HeaderStrip admission={admission} role={role} backHref={back} onNewRx={onNewRx} />
-      {/* Above everything else on the bedside record: whoever opens this — the
-          doctor prescribing or the nurse administering — sees the allergies
-          before they see anything they could act on. */}
       <PatientSafetyBanner patientId={patientId} />
       <LatestVitalsStrip patientId={patientId} role={role} admissionId={admissionId} />
 
@@ -1674,6 +1705,18 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
           {canSee('charting') && (
             <TabsTrigger value="charting">Nursing Charting</TabsTrigger>
           )}
+          {canSee('icuDetails') && (
+            <TabsTrigger value="icu_details">ICU Details</TabsTrigger>
+          )}
+          {canSee('fastTrack') && (
+            <TabsTrigger value="fastTrack">Fast Track Codes</TabsTrigger>
+          )}
+          {canSee('medicoLegal') && (
+            <TabsTrigger value="medicoLegal">Medico Legal & Injury Canvas</TabsTrigger>
+          )}
+          {canSee('intoxicationExam') && (
+            <TabsTrigger value="intoxicationExam">Intoxication Exam (Form 39)</TabsTrigger>
+          )}
           {canSee('progress') && (
             <TabsTrigger value="progress">Progress Notes</TabsTrigger>
           )}
@@ -1685,14 +1728,10 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
           <TabsTrigger value="patient">Patient Info</TabsTrigger>
         </TabsList>
 
-        {/* Overview embeds the same clinical panels the tabs above expose.
-            Hiding the tabs while leaving these here would have achieved
-            nothing — the counter would still land on the medication round and
-            the progress notes the moment the page opened. */}
-        <TabsContent value="overview" className="space-y-4 pt-4">
+        <TabsContent value="overview" className="space-y-4 pt-4 ">
           {canSee('emar') && <EmarTodayPanel admissionId={admissionId} role={role} />}
           {(canSee('prescriptions') || canSee('progress')) && (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-1">
               {canSee('prescriptions') && (
                 <PrescriptionsPanel admissionId={admissionId} patientId={patientId} role={role} onNewRx={onNewRx} />
               )}
@@ -1701,8 +1740,7 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
               )}
             </div>
           )}
-          {/* Without the clinical panels the counter's Overview would be blank,
-              so point it at the two things it actually came for. */}
+          
           {allowedTabs && (
             <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">
               This patient&rsquo;s clinical record is with the ward. Use{' '}
@@ -1713,9 +1751,6 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
           )}
         </TabsContent>
 
-        {/* Panes are gated as well as triggers. A hidden trigger still leaves
-            a reachable tab value, and the clinical record should not be one
-            crafted URL away. */}
         {canSee('emar') && (
           <TabsContent value="emar" className="pt-4">
             <EmarTodayPanel admissionId={admissionId} role={role} />
@@ -1742,10 +1777,7 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
 
         {canSee('progress') && (
         <TabsContent value="progress" className="pt-4 space-y-4">
-          <ProgressNotesPanel admissionId={admissionId} visitId={admission.visitId} patientId={patientId} role={role} />
-          {/* Referral letters, outside scans and old reports the patient
-              uploaded from their portal — they belong beside the notes, which
-              is where a clinician looks for them. */}
+          <ProgressNotesPanel admissionId={admissionId} visitId={admission.visitId} patientId={patientId} role={role} admissionDate={admission.admissionDate} />
           <div className="rounded-xl bg-surface-container-lowest shadow-sanctuary p-4">
             <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
               <FolderOpen className="h-4 w-4 text-primary" /> Miscellaneous Files
@@ -1760,14 +1792,6 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
             <OrdersPanel admissionId={admissionId} patientId={patientId} role={role} />
           </TabsContent>
         )}
-
-        {/* Dynamic patient forms, bound to this admission — the same catalogue
-            the nurse fills for an OP appointment, now reachable for IP /
-            emergency / day-care stays without leaving the workspace.
-            For doctors this renders only the forms nursing has actually
-            filled — patient forms are nursing documentation, so a doctor
-            reads the record rather than a catalogue of blanks they cannot
-            complete. The server denies the role as well. */}
         <TabsContent value="forms" className="pt-4">
           <PatientFormsPanel
             patientId={patientId}
@@ -1789,12 +1813,32 @@ export default function IPPatientWorkspace({ admissionId, role, backHref }: IPPa
           <IpLedgerPanel admissionId={admissionId} patientId={patientId} role={role} />
         </TabsContent>
 
+        <TabsContent value="icu_details" className="pt-4">
+          <IcuDetailPanel admissionId={admissionId} visitId={admission.visitId} patientId={patientId} role={role} />
+        </TabsContent>
+
+        <TabsContent value="fastTrack" className="pt-4">
+          <FastTrackPanel admissionId={admissionId} visitId={admission.visitId} patientId={patientId} role={role} />
+        </TabsContent>
+
+        <TabsContent value="medicoLegal" className="pt-4">
+          <MedicoLegalPanel admissionId={admissionId} visitId={admission.visitId} patientId={patientId} />
+        </TabsContent>
+
+        <TabsContent value="intoxicationExam" className="pt-4">
+          <IntoxicationExamPanel admissionId={admissionId} visitId={admission.visitId} patientId={patientId} />
+        </TabsContent>
+
+
         <TabsContent value="activity" className="pt-4">
           <IpActivityLog admissionId={admissionId} />
         </TabsContent>
 
         <TabsContent value="patient" className="pt-4">
-          <PatientPanel patientId={patientId} />
+          <div className="space-y-4">
+            <PatientPanel patientId={patientId} />
+            <EmergencyDetailsSection patientId={patientId} />
+          </div>
         </TabsContent>
       </Tabs>
     </div>

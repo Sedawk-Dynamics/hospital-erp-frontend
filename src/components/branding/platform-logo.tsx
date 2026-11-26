@@ -3,11 +3,6 @@
 import { useEffect, useState } from 'react';
 import { resolveLogoUrl, type PlatformBranding } from '@/hooks/use-branding';
 
-// Self-contained logo renderer that works on EVERY surface — including pre-auth
-// screens (login, public website) where the React Query provider may not wrap.
-// It fetches the public /platform-branding endpoint once (module-level cache)
-// and renders the uploaded logo for the requested placement variant, or the
-// provided `fallback` (the built-in icon mark) when no logo is set.
 
 let cache: PlatformBranding | null = null;
 let inflight: Promise<PlatformBranding | null> | null = null;

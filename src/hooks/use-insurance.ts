@@ -48,6 +48,9 @@ export interface Insurer {
   stateCode?: string | null;
   isActive: boolean;
   createdAt: string;
+  /** Gap 293: set when this record was merged into another (and deactivated). */
+  mergedIntoId?: string | null;
+  mergedAt?: string | null;
 }
 
 export interface TpaProvider {
@@ -70,6 +73,9 @@ export interface TpaProvider {
   stateCode?: string | null;
   isActive: boolean;
   createdAt: string;
+  /** Gap 293: set when this record was merged into another (and deactivated). */
+  mergedIntoId?: string | null;
+  mergedAt?: string | null;
 }
 
 export type CommunicationType = 'email' | 'phone' | 'portal' | 'letter';
@@ -239,7 +245,7 @@ export interface InsuranceClaim {
   } | null;
   bill?: InsuranceClaimBill;
   preAuth?: PreAuthRequest | null;
-  queries?: Array<{ id: string; queryReference?: string | null; subject: string; queryText: string; status: string; raisedAt: string; responseDueAt: string; responseText?: string | null; respondedAt?: string | null; resolvedAt?: string | null }>;
+  queries?: Array<{ id: string; queryReference?: string | null; subject: string; queryText: string; status: string; raisedAt: string; responseDueAt: string; responseText?: string | null; respondedAt?: string | null; resolvedAt?: string | null; closedAt?: string | null; closeReason?: string | null }>;
   settlements?: Array<{ id: string; grossApprovedAmount: number; grossPaidAmount: number; tdsAmount: number; tdsSection?: string | null; tdsRate?: number | null; disallowedAmount: number; disallowanceReason?: string | null; netPaidAmount: number; paymentReference?: string | null; bankReference?: string | null; settlementDate: string; notes?: string | null }>;
   writeOffs?: Array<{ id: string; amount: number; reason: string; status: string; decisionNote?: string | null; createdAt: string }>;
   adjustments?: Array<{ id: string; adjustmentType: string; amount: number; reference?: string | null; reason: string; effectiveDate: string }>;
@@ -286,6 +292,26 @@ export interface PreAuthRequest {
   insuranceCase?: { id: string; caseNumber: string; priority?: string } | null;
 }
 
+export interface InsuranceMetricDefinitions {
+  approvalRate: string;
+  /** Gap 290: approval by amount — approved ÷ claimed over decided claims. */
+  amountApprovalRate?: string;
+  outstanding: string;
+  awaitingDecision: string;
+  totals: string;
+  claimExpiry: string;
+}
+
+/** A claim's payer as the reports resolve it (payer case first, then policy). null = "Payer missing". */
+export type ReportPayer = { id: string; name: string } | null;
+
+export interface PayerGroup {
+  payerId: string | null;
+  payerName: string;
+  count: number;
+  amount: number;
+}
+
 export interface DashboardData {
   claims: {
     pending: number;
@@ -296,20 +322,34 @@ export interface DashboardData {
     settled: number;
     partiallySettled: number;
     totalThisMonth: number;
-    approvalRate: number;
+    /** null when no claim has been decided yet. */
+    approvalRate: number | null;
+    decided?: number;
+    approvedOrPartial?: number;
+    /** Gap 290: approved ÷ claimed amount of decided claims; null when none decided. */
+    amountApprovalRate?: number | null;
+    decidedApprovedAmount?: number;
+    decidedClaimedAmount?: number;
   };
+  /** The filters the claim figures were computed for (gap 290). */
+  filters?: { fromDate: string | null; toDate: string | null; insurerId: string | null; tpaId: string | null };
   preAuth: { pending: number; onHold: number; approved: number };
   settlement: {
     totalClaimed: number;
     totalApprovedAmount: number;
     totalPaid: number;
+    totalWrittenOff?: number;
     totalOutstanding: number;
+    awaitingDecision?: number;
   };
   expiry: {
     policiesIn7Days: number;
     claimsIn7Days: number;
+    claimsExpired?: number;
     preAuthsIn7Days: number;
   };
+  /** Gap 290: the server's written definition of each figure, for tooltips. */
+  definitions?: InsuranceMetricDefinitions;
   recentClaims: InsuranceClaim[];
   recentPreAuths: PreAuthRequest[];
 }
@@ -359,11 +399,15 @@ export const insuranceKeys = {
 // Dashboard
 // ============================================================
 
-export function useInsuranceDashboard() {
+/**
+ * Gap 290: takes the same filters as Reports. The key keeps the
+ * ['insurance', 'dashboard'] prefix so existing invalidations still match.
+ */
+export function useInsuranceDashboard(filters?: ReportFilters) {
   return useQuery({
-    queryKey: insuranceKeys.dashboard,
+    queryKey: [...insuranceKeys.dashboard, filters ?? {}] as const,
     queryFn: async () => {
-      const res = await apiGet<DashboardData>('/insurance/dashboard');
+      const res = await apiGet<DashboardData>('/insurance/dashboard', { params: filters });
       return res.data;
     },
   });
@@ -553,6 +597,8 @@ export function useClaims(params?: {
   fromDate?: string;
   toDate?: string;
   expiringWithinDays?: number;
+  /** Gap 296: TPA-deadline filter — the dashboard's expiry counts link here. */
+  expiry?: 'expired' | 'expiring';
   page?: number;
   limit?: number;
 }) {
@@ -1020,13 +1066,46 @@ export interface ReportFilters {
   tpaId?: string;
 }
 
+export interface ApprovalRateRow {
+  total: number;
+  decided?: number;
+  approved: number;
+  rejected: number;
+  awaitingDecision?: number;
+  /** null when nothing has been decided yet. */
+  approvalRate: number | null;
+  /** Gap 290: approved ÷ claimed amount of decided claims; null when none decided. */
+  amountApprovalRate?: number | null;
+  decidedApprovedAmount?: number;
+  decidedClaimedAmount?: number;
+  claimedAmount: number;
+  approvedAmount: number;
+}
+
+export interface OutstandingReportClaim {
+  id: string;
+  claimNumber: string | null;
+  patient: { id: string; firstName: string; lastName?: string | null } | null;
+  insurer: ReportPayer;
+  policyNumber: string | null;
+  status: ClaimStatus;
+  claimAmount: number;
+  approvedAmount: number;
+  paidAmount: number;
+  writtenOffAmount?: number;
+  outstandingAmount: number;
+  submissionDate: string;
+  approvalDate: string | null;
+}
+
 export function useClaimsSummaryReport(filters?: ReportFilters) {
   return useQuery({
     queryKey: insuranceKeys.reports('claims-summary', filters as Record<string, unknown>),
     queryFn: async () => {
       const res = await apiGet<{
-        total: { count: number; claimed: number; approved: number; paid: number; outstanding: number };
-        byStatus: { status: ClaimStatus; count: number; claimed: number; approved: number; paid: number }[];
+        total: { count: number; claimed: number; approved: number; paid: number; writtenOff?: number; outstanding: number; awaitingDecision?: number };
+        byStatus: { status: ClaimStatus; count: number; claimed: number; approved: number; paid: number; excludedFromTotals?: boolean }[];
+        definitions?: InsuranceMetricDefinitions;
       }>('/insurance/reports/claims-summary', { params: filters });
       return res.data;
     },
@@ -1038,8 +1117,9 @@ export function useApprovalRateReport(filters?: ReportFilters) {
     queryKey: insuranceKeys.reports('approval-rate', filters as Record<string, unknown>),
     queryFn: async () => {
       const res = await apiGet<{
-        overall: { total: number; approved: number; rejected: number; approvalRate: number; claimedAmount: number; approvedAmount: number };
-        byInsurer: { insurerId: string; insurerName: string; total: number; approved: number; rejected: number; approvalRate: number; claimedAmount: number; approvedAmount: number }[];
+        overall: ApprovalRateRow;
+        byInsurer: (ApprovalRateRow & { insurerId: string | null; insurerName: string })[];
+        definitions?: InsuranceMetricDefinitions;
       }>('/insurance/reports/approval-rate', { params: filters });
       return res.data;
     },
@@ -1051,20 +1131,26 @@ export function useAgingReport(filters?: ReportFilters) {
     queryKey: insuranceKeys.reports('aging', filters as Record<string, unknown>),
     queryFn: async () => {
       const res = await apiGet<{
+        total?: { count: number; amount: number; outstanding: number; awaitingDecision: number };
+        byPayer?: PayerGroup[];
         buckets: {
           range: string;
           count: number;
           amount: number;
+          outstanding?: number;
+          awaitingDecision?: number;
           claims: {
             id: string;
             claimNumber: string | null;
             patient: { id: string; firstName: string; lastName?: string | null };
-            insurer: { id: string; name: string };
+            insurer: ReportPayer;
             status: ClaimStatus;
+            /** Amount still awaited: outstanding if approved, claimed if awaiting decision. */
             outstandingAmount: number;
             submissionDate: string;
           }[];
         }[];
+        definitions?: InsuranceMetricDefinitions;
       }>('/insurance/reports/aging', { params: filters });
       return res.data;
     },
@@ -1078,7 +1164,9 @@ export function useOutstandingReport(filters?: ReportFilters) {
       const res = await apiGet<{
         totalOutstanding: number;
         count: number;
-        claims: InsuranceClaim[];
+        byPayer?: PayerGroup[];
+        claims: OutstandingReportClaim[];
+        definitions?: InsuranceMetricDefinitions;
       }>('/insurance/reports/outstanding', { params: filters });
       return res.data;
     },

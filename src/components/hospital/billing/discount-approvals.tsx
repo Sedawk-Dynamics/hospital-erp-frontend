@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { NumberInput } from '@/components/ui/number-input';
 import { cn, getApiErrorMessage } from '@/lib/utils';
+import { formatINR } from '@/lib/money';
 import { formatDate, formatTime24 } from '@/lib/date-utils';
 import {
   useDiscountPolicy,
@@ -29,7 +30,7 @@ import {
   type PendingDiscountRow,
 } from '@/hooks/use-hospital';
 
-const fmt = (n: number) => `₹${(Number(n) || 0).toLocaleString('en-IN')}`;
+const fmt = (n: number) => formatINR(n);
 
 export function DiscountApprovals() {
   const { data: pending, isLoading } = usePendingDiscounts();

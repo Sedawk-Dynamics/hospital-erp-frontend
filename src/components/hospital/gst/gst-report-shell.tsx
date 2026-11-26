@@ -1,9 +1,11 @@
 'use client';
 
 import * as XLSX from 'xlsx';
-import { type ReactNode } from 'react';
-import { AlertTriangle, CheckCircle2, Download, Loader2, Printer } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { toast } from 'sonner';
+import { AlertTriangle, CheckCircle2, Download, FileText, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { apiClient } from '@/lib/api';
 import { formatDate } from '@/lib/date-utils';
 
 // ============================================================
@@ -30,6 +32,37 @@ export const pct = (n: number | null | undefined) => `${Number(n ?? 0).toFixed(2
 
 export const titleCase = (s: string | null | undefined) =>
   (s ?? '—').replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * A return period as a person reads it: "112026" → "Nov 2026".
+ *
+ * The portal's MMYYYY code belongs inside the files uploaded to it, not on a
+ * screen (gap item 310). One formatter, used by B-5, C-6 and A-13 alike.
+ */
+export function formatReturnPeriod(code: string | null | undefined): string {
+  if (!code) return '—';
+  const m = /^(\d{2})(\d{4})$/.exec(code.trim());
+  if (!m) return code;
+  const month = MONTHS[Number(m[1]) - 1];
+  return month ? `${month} ${m[2]}` : code;
+}
+
+/**
+ * The report title the PDF carries — set by the GST reports page for the
+ * report on screen, so an export does not have to be told it every time.
+ */
+let currentReportTitle: string | null = null;
+export function setPdfReportContext(title: string | null) {
+  currentReportTitle = title;
+}
+
+/** One labelled figure in an export's summary block (gap 278). */
+export interface SummaryLine {
+  label: string;
+  value: string | number;
+}
 
 export interface Column<T> {
   key: string;
@@ -116,26 +149,56 @@ export function ReportTable<T>({
 }
 
 /** The headline figures above a report, so the answer is readable at a glance. */
-export function StatStrip({
-  stats,
-}: {
-  stats: Array<{ label: string; value: string; tone?: 'good' | 'warn' | 'bad'; hint?: string }>;
-}) {
+export interface Stat {
+  label: string;
+  value: string;
+  tone?: 'good' | 'warn' | 'bad';
+  hint?: string;
+  /**
+   * Drill-through from a headline total (gap 282): a figure in the header an
+   * accountant cannot open is one they re-add by hand before signing it.
+   */
+  onClick?: () => void;
+  /** The figure whose lines are open below. */
+  active?: boolean;
+}
+
+export function StatStrip({ stats }: { stats: Stat[] }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      {stats.map((s) => (
-        <div key={s.label} className="rounded-lg border bg-card p-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{s.label}</p>
-          <p
-            className={`mt-1 text-lg font-semibold tabular-nums ${
-              s.tone === 'bad' ? 'text-red-600' : s.tone === 'warn' ? 'text-amber-600' : s.tone === 'good' ? 'text-emerald-600' : ''
+      {stats.map((s) => {
+        const body = (
+          <>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{s.label}</p>
+            <p
+              className={`mt-1 text-lg font-semibold tabular-nums ${
+                s.tone === 'bad' ? 'text-red-600' : s.tone === 'warn' ? 'text-amber-600' : s.tone === 'good' ? 'text-emerald-600' : ''
+              }`}
+            >
+              {s.value}
+            </p>
+            {s.hint ? <p className="mt-0.5 text-xs text-muted-foreground">{s.hint}</p> : null}
+          </>
+        );
+        return s.onClick ? (
+          <button
+            key={s.label}
+            type="button"
+            onClick={s.onClick}
+            title="Open the lines behind this figure"
+            aria-pressed={s.active ?? false}
+            className={`rounded-lg border bg-card p-3 text-left transition-colors hover:border-primary/50 hover:bg-primary/5 ${
+              s.active ? 'border-primary ring-1 ring-primary/40' : ''
             }`}
           >
-            {s.value}
-          </p>
-          {s.hint ? <p className="mt-0.5 text-xs text-muted-foreground">{s.hint}</p> : null}
-        </div>
-      ))}
+            {body}
+          </button>
+        ) : (
+          <div key={s.label} className="rounded-lg border bg-card p-3">
+            {body}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -202,12 +265,24 @@ export function Loading() {
  * two — an export that does not match the screen it came from is worse than no
  * export.
  */
-export function exportCsv<T>(name: string, columns: Column<T>[], rows: T[], period: { from?: string; to?: string }) {
+export function exportCsv<T>(
+  name: string,
+  columns: Column<T>[],
+  rows: T[],
+  period: { from?: string; to?: string },
+  /** A totals row printed last, as the screen's header totals (gap 271). */
+  totalRow?: T,
+  /** The screen's labelled header figures, printed above the table (gap 278). */
+  summary?: SummaryLine[],
+) {
+  if (totalRow) rows = [...rows, totalRow];
   const cell = (c: Column<T>, r: T) => {
     const v = c.csv ? c.csv(r) : c.cell(r);
     return typeof v === 'string' || typeof v === 'number' ? String(v) : '';
   };
+  const q = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
   const lines = [
+    ...(summary?.length ? ['"Summary"', ...summary.map((s) => `${q(s.label)},${q(s.value)}`), ''] : []),
     columns.map((c) => `"${c.label}"`).join(','),
     ...rows.map((r) => columns.map((c) => `"${cell(c, r).replace(/"/g, '""')}"`).join(',')),
   ];
@@ -238,7 +313,11 @@ export function exportXlsx<T>(
   columns: Column<T>[],
   rows: T[],
   period: { from?: string; to?: string },
+  totalRow?: T,
+  /** Labelled header figures above the table (gap 278). */
+  summary?: SummaryLine[],
 ) {
+  if (totalRow) rows = [...rows, totalRow];
   const value = (c: Column<T>, r: T) => {
     const v = c.csv ? c.csv(r) : c.cell(r);
     if (typeof v === 'number') return v;
@@ -250,8 +329,15 @@ export function exportXlsx<T>(
     for (const c of columns) out[c.label] = value(c, r);
     return out;
   });
-  const sheet = XLSX.utils.json_to_sheet(data, {
+  // Gap 278: the screen's header figures head the sheet, labelled, with the
+  // table starting two rows below them.
+  const top = summary?.length ? summary.length + 2 : 0;
+  const sheet = top
+    ? XLSX.utils.aoa_to_sheet([['Summary'], ...summary!.map((s) => [s.label, s.value])])
+    : XLSX.utils.json_to_sheet([]);
+  XLSX.utils.sheet_add_json(sheet, data, {
     header: columns.map((c) => c.label),
+    origin: top ? { r: top, c: 0 } : 'A1',
   });
   // A code is text. Excel turns "04012" into 4012 and "00" into 0 otherwise,
   // and an HSN or a state code that has lost its leading zero is a return the
@@ -264,7 +350,7 @@ export function exportXlsx<T>(
   );
   for (let r = 0; r < data.length; r += 1) {
     for (const ci of codeCols) {
-      const ref = XLSX.utils.encode_cell({ r: r + 1, c: ci });
+      const ref = XLSX.utils.encode_cell({ r: r + 1 + top, c: ci });
       const cell = sheet[ref];
       if (cell && cell.v !== '' && cell.v != null) {
         cell.t = 's';
@@ -278,27 +364,128 @@ export function exportXlsx<T>(
   XLSX.writeFile(book, `${name}_${period.from ?? 'all'}_${period.to ?? 'all'}.xlsx`);
 }
 
+/** A cell as the PDF prints it — money with two decimals, counts as they are. */
+function pdfCell<T>(c: Column<T>, r: T): string | number | null {
+  const v = c.csv ? c.csv(r) : c.cell(r);
+  if (typeof v === 'number') {
+    const isCount = /qty|lines|count|payments|days|bills|invoices|batches|notes|%/i.test(c.label);
+    if (c.align === 'right' && !(Number.isInteger(v) && isCount)) {
+      return v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    return v;
+  }
+  return typeof v === 'string' ? v : null;
+}
+
 /**
- * Export the rows on screen, as a spreadsheet or as CSV.
+ * The rows on screen as a real PDF report (gap items 282 / 372).
  *
- * Both, because they are for different people: the accountant wants a sheet to
- * work in, and a system that has to ingest the figures wants CSV. Printing is
- * the browser's own — the report screens carry the print CSS, so a PDF is
- * Ctrl-P, and a second rendering of the same table server-side is one more
- * place for it to disagree with the screen.
+ * "PDF" used to call window.print(), which printed the whole web page. The
+ * server now renders the report itself — title, period, figures, table and
+ * notes — from exactly these rows, so the PDF matches the screen.
+ */
+export async function exportPdf<T>(
+  name: string,
+  columns: Column<T>[],
+  rows: T[],
+  period: { from?: string; to?: string },
+  extras: {
+    title?: string;
+    stats?: Array<{ label: string; value: string }>;
+    notes?: string[];
+    totalRow?: T;
+  } = {},
+) {
+  if (extras.totalRow) rows = [...rows, extras.totalRow];
+  try {
+    const res = await apiClient.post(
+      '/gst/reports/pdf',
+      {
+        title: extras.title ?? currentReportTitle ?? titleCase(name.replace(/-/g, ' ')),
+        subtitle: currentReportTitle && !extras.title ? titleCase(name.replace(/-/g, ' ')) : null,
+        period: { from: period.from ?? null, to: period.to ?? null },
+        stats: extras.stats,
+        columns: columns.map((c) => ({ label: c.label, align: c.align === 'center' ? 'center' : c.align ?? 'left' })),
+        rows: rows.map((r) => columns.map((c) => pdfCell(c, r))),
+        notes: extras.notes,
+      },
+      { responseType: 'blob' },
+    );
+    const url = URL.createObjectURL(res.data as Blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${name}_${period.from ?? 'all'}_${period.to ?? 'all'}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch {
+    toast.error('Could not produce the PDF');
+  }
+}
+
+/**
+ * CSV, Excel and PDF handlers for one flat table, so every register gets all three.
+ *
+ * `totalRow` is appended to all three files and `stats` heads the PDF, so a
+ * figure in the screen's header is in the export too (gap 271).
+ */
+export function exportAll<T>(
+  name: string,
+  columns: Column<T>[],
+  rows: T[],
+  period: { from?: string; to?: string },
+  opts: {
+    totalRow?: T;
+    stats?: Array<{ label: string; value: string }>;
+    notes?: string[];
+    /**
+     * The labelled header block for CSV and Excel (gap 278). Raw numbers here
+     * keep the spreadsheet summable; when omitted the `stats` strings are used,
+     * so every export carries the figures its screen's header shows.
+     */
+    summary?: SummaryLine[];
+  } = {},
+) {
+  const summary = opts.summary ?? opts.stats?.map((s) => ({ label: s.label, value: s.value }));
+  return {
+    onClick: () => exportCsv(name, columns, rows, period, opts.totalRow, summary),
+    onExcel: () => exportXlsx(name, columns, rows, period, opts.totalRow, summary),
+    onPdf: () => exportPdf(name, columns, rows, period, opts),
+  };
+}
+
+/**
+ * Export the rows on screen, as a spreadsheet, as CSV, or as a PDF report.
+ *
+ * Spreadsheet and CSV are built here from what is on screen; the PDF is
+ * rendered by the server from the same rows. There is no print-the-page
+ * fallback any more: a view without a PDF of its own shows no PDF button
+ * rather than printing the whole screen.
  */
 export function ExportButton({
   onClick,
   onExcel,
+  onPdf,
   disabled,
+  disabledReason = 'Nothing to export for this period',
 }: {
   onClick: () => void;
   /** Omit on a view whose shape is not one flat table. */
   onExcel?: () => void;
+  onPdf?: () => void | Promise<void>;
   disabled?: boolean;
+  /**
+   * Shown beside greyed-out buttons (gap 282). A disabled button with no
+   * reason reads as a broken one; the only reason here is that there is
+   * nothing to export.
+   */
+  disabledReason?: string;
 }) {
+  const [busy, setBusy] = useState(false);
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-1.5" title={disabled ? disabledReason : undefined}>
+      {disabled ? <span className="text-xs text-muted-foreground">{disabledReason}</span> : null}
       {onExcel ? (
         <Button variant="outline" size="sm" onClick={onExcel} disabled={disabled}>
           <Download className="mr-1.5 h-4 w-4" /> Excel
@@ -307,16 +494,67 @@ export function ExportButton({
       <Button variant="outline" size="sm" onClick={onClick} disabled={disabled}>
         <Download className="mr-1.5 h-4 w-4" /> CSV
       </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => window.print()}
-        disabled={disabled}
-        title="Print or save as PDF"
-      >
-        <Printer className="mr-1.5 h-4 w-4" /> PDF
-      </Button>
+      {onPdf ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await onPdf();
+            } finally {
+              setBusy(false);
+            }
+          }}
+          disabled={disabled || busy}
+          title="Download this report as a PDF"
+        >
+          {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <FileText className="mr-1.5 h-4 w-4" />} PDF
+        </Button>
+      ) : null}
     </div>
+  );
+}
+
+/**
+ * A sub-table with its own Excel / CSV / PDF export (gap 282).
+ *
+ * QA found sub-tables on several reports with no export at all. Every table a
+ * report shows is built through this, so a table cannot be added without its
+ * export.
+ */
+export function ExportableTable<T>({
+  title,
+  name,
+  columns,
+  rows,
+  period,
+  empty,
+  footer,
+  onRowClick,
+  rowTitle,
+  totalRow,
+}: {
+  title: ReactNode;
+  /** File name stem for the export. */
+  name: string;
+  columns: Column<T>[];
+  rows: T[];
+  period: { from?: string; to?: string };
+  empty?: string;
+  footer?: ReactNode;
+  onRowClick?: (row: T) => void;
+  rowTitle?: (row: T) => string;
+  totalRow?: T;
+}) {
+  return (
+    <section className="space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">{title}</h3>
+        <ExportButton {...exportAll(name, columns, rows, period, { totalRow })} disabled={!rows.length} />
+      </div>
+      <ReportTable columns={columns} rows={rows} empty={empty} footer={footer} onRowClick={onRowClick} rowTitle={rowTitle} />
+    </section>
   );
 }
 
@@ -355,8 +593,7 @@ export function DrillThrough<T>({
         </div>
         <div className="flex items-center gap-1.5">
           <ExportButton
-            onClick={() => exportCsv('drill-through', columns, rows, {})}
-            onExcel={() => exportXlsx('drill-through', columns, rows, {})}
+            {...exportAll('drill-through', columns, rows, {})}
             disabled={!rows.length}
           />
           <Button variant="ghost" size="sm" onClick={onClose}>

@@ -1,20 +1,28 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod/v4';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, Building2, Save, Loader2 } from 'lucide-react';
-
+import { ArrowLeft, Building2, Save, Loader2, Download, QrCode } from 'lucide-react';
+import { QRCodeSVG } from "qrcode.react";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
+import { toPng } from "html-to-image";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useClinicStore } from '@/stores/clinic-store';
 import { apiGet, apiPut } from '@/lib/api';
 import { formatDate } from '@/lib/date-utils';
@@ -50,6 +58,8 @@ export default function HospitalInfoPage() {
     },
     enabled: !!selectedClinic?.id,
   });
+
+  const [open,setOpen]=useState<boolean>(false);
 
   const {
     register,
@@ -178,7 +188,8 @@ export default function HospitalInfoPage() {
             </p>
           </div>
         </div>
-        <Button
+        <div className='flex flex-row gap-4'>
+          <Button
           size="sm"
           onClick={handleSubmit(onSubmit)}
           disabled={!isDirty || updateMutation.isPending}
@@ -191,6 +202,7 @@ export default function HospitalInfoPage() {
           )}
           Save Changes
         </Button>
+        </div>
       </div>
 
       {/* Form Card */}
@@ -329,3 +341,4 @@ export default function HospitalInfoPage() {
     </div>
   );
 }
+

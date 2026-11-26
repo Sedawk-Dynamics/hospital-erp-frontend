@@ -5,6 +5,7 @@ import { Search, Pill, AlertTriangle, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { cn } from '@/lib/utils';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useFormularySearch, useAllergyCheck, type FormularyDrug } from '@/hooks/use-doctor';
@@ -21,16 +22,7 @@ import {
 import { QtyCell } from '@/components/doctor/prescription-qty-cell';
 import { StockTypeBadge } from '@/components/shared/stock-type-badge';
 
-/**
- * Shared, controlled medicine capture — the same M-A-N dose / frequency / timing
- * / duration / auto-Qty the OP prescription pad uses, so the IP flow writes
- * medicines identically (and the auto-computed Qty reaches the pharmacy).
- *
- * Each medicine is a responsive CARD with a wrapping field grid (2 cols on
- * mobile → 6 on desktop) — no fixed-width table, no horizontal scroll box.
- * Operates on a plain MedicineFormData[] + onChange, so it works outside
- * react-hook-form.
- */
+
 export function MedicineTable({
   medicines,
   onChange,
@@ -42,7 +34,7 @@ export function MedicineTable({
 }) {
   const [drugSearch, setDrugSearch] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
-  const debouncedSearch = useDebounce(drugSearch, 300);
+  const debouncedSearch = useDebounce(drugSearch, 100);
   const { data: formularyResults } = useFormularySearch(debouncedSearch);
 
   const filteredResults = (formularyResults ?? []).filter(
@@ -279,9 +271,14 @@ function MedCard({ index, med, patientId, onUpdate, onUpdateMany, onRemove }: {
             </select>
           </Field>
           <Field label="Route">
-            <select className={selectCls} value={med.route || 'oral'} onChange={(e) => onUpdate(index, 'route', e.target.value)}>
-              {ROUTE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-            </select>
+            <SearchableSelect
+              size="sm"
+              options={[...ROUTE_OPTIONS]}
+              value={med.route || 'oral'}
+              onChange={(v) => onUpdate(index, 'route', v ?? 'oral')}
+              placeholder="Route"
+              searchPlaceholder="Search route…"
+            />
           </Field>
           <Field label="Duration">
             <div className="flex items-center gap-1">

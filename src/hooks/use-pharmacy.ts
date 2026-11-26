@@ -47,6 +47,7 @@ export interface FormularyItem {
   looseUnitLabel: string | null;
   taxPercent: number | string | null;
   gstTreatment?: GstTreatment | null;
+  gstRateReason?: string | null;
   // Product Resolution Engine / compliance identity (GTIN-13 consumer unit,
   // GTIN-14 case + units-per-case, HSN code, manufacturer product code).
   gtin?: string | null;
@@ -128,7 +129,7 @@ export interface DrugBatch {
     FormularyItem,
     | 'id' | 'drugName' | 'category' | 'genericName' | 'strength' | 'dosageForm'
     | 'packSize' | 'looseUnitLabel' | 'taxPercent'
-  >;
+  > & { unitOfMeasurement?: string | null };
   supplier?: { id: string; name: string } | null;
   // Derived purchase economics (G2) returned by the batch getters.
   economics?: BatchEconomics;
@@ -313,6 +314,8 @@ export interface CreateFormularyInput {
   looseUnitLabel?: string;
   taxPercent?: number;
   gstTreatment?: GstTreatment | null;
+  // G-2: why the rate differs from the HSN default (null clears it).
+  gstRateReason?: string | null;
   minStock?: number;
   // Product Resolution Engine / compliance identity. Nullable so an edit can
   // CLEAR a wrong GTIN (send null); create simply omits it when blank.
@@ -1060,15 +1063,23 @@ export function useAdjustBatchStock() {
       newQuantity,
       physicalCount,
       reason,
+      writeOffType,
     }: {
       id: string;
       newQuantity?: number;
       physicalCount?: number;
       reason: string;
+      /** G-12: book a reduction as a write-off; the input GST on it is reversed. */
+      writeOffType?: 'damaged' | 'expired' | 'other';
     }) => {
-      const response = await apiPatch<{ from: number; to: number; delta: number }>(
+      const response = await apiPatch<{
+        from: number;
+        to: number;
+        delta: number;
+        writeOff?: { id: string; taxToReverse: number } | null;
+      }>(
         `/pharmacy/batches/${id}/adjust`,
-        { newQuantity, physicalCount, reason },
+        { newQuantity, physicalCount, reason, writeOffType },
       );
       return response.data;
     },
@@ -1295,6 +1306,7 @@ export type PharmacyPaymentMethod =
 export interface PharmacyTenderInput {
   method: PharmacyPaymentMethod;
   amount: number;
+  /** G-8: card slip / UPI reference. Blank is fine — send undefined. */
   reference?: string;
 }
 
@@ -1314,6 +1326,14 @@ export interface CreatePharmacySaleInput {
   billDiscountAmount?: number;
   paymentMethod?: 'cash' | 'credit_card' | 'debit_card' | 'upi' | 'net_banking' | 'cheque' | 'other';
   amountPaid?: number;
+  /** G-8: card slip / UPI reference for the single-mode tender (≤ 100 chars). */
+  paymentReference?: string;
+  /** 344: required when the sale leaves a balance — "dispense on credit". */
+  creditReason?: string;
+  /** G-6: the admission the counter saw; the server re-resolves it. */
+  admissionId?: string;
+  /** G-4: a registered buyer — makes the sale a B2B tax invoice. */
+  buyer?: { gstin: string; legalName: string; address?: string } | null;
   // G7: split payment — overrides paymentMethod/amountPaid when present.
   payments?: PharmacyTenderInput[];
   // TTO — flags the sale as discharge / take-home medication (full packs).
@@ -1345,8 +1365,13 @@ export interface PharmacySaleGst {
   invoiceNumbers: string[];
   financialYear: string | null;
   supplierGstin: string | null;
+  /** Gap #311: "not verified with the GST portal" / SANDBOX label beside the hospital GSTIN. */
+  supplierGstinCaption?: string | null;
   supplierStateName: string | null;
   recipientGstin: string | null;
+  /** G-4: the B2B buyer's legal name and address. */
+  recipientLegalName?: string | null;
+  recipientAddress?: string | null;
   placeOfSupplyStateCode: string | null;
   placeOfSupplyStateName: string | null;
   isInterState: boolean;
@@ -1420,6 +1445,54 @@ export interface PharmacySale {
     phone: string | null;
     email: string | null;
   } | null;
+  /** G-7: credit notes raised against this sale (cancellation / return). */
+  creditNotes?: PharmacyCreditNote[];
+  /** The invoice number a credit note reverses. */
+  originalInvoiceNumber?: string;
+  /** Gap 347: pharmacist(s) on this bill's dispensing records (bill creator as fallback). */
+  dispensedBy?: string | null;
+}
+
+export interface PharmacyCreditNote {
+  id: string;
+  creditNoteNumber: string;
+  noteType: string;
+  issueDate: string;
+  reason: string;
+  reasonNote: string | null;
+  taxableValue: number | string;
+  cgstAmount: number | string;
+  sgstAmount: number | string;
+  igstAmount: number | string;
+  cessAmount: number | string;
+  taxAmount: number | string;
+  totalAmount: number | string;
+  recipientGstin: string | null;
+  placeOfSupplyStateCode: string | null;
+  withinTimeLimit: boolean;
+  /** G-5 (gap #266): set once a B2B note is registered on the IRP. */
+  irn?: string | null;
+  irnAckNo?: string | null;
+  irnAckDate?: string | null;
+  irnQrPayload?: string | null;
+  irnStatus?: string | null;
+  irnCancelledAt?: string | null;
+  items: Array<{
+    id: string;
+    description: string;
+    hsnSacCode: string | null;
+    gstTreatment: string | null;
+    quantity: number | string;
+    unitPrice: number | string;
+    taxableValue: number | string;
+    taxPercent: number | string;
+    taxAmount: number | string;
+    cgstAmount: number | string;
+    sgstAmount: number | string;
+    igstAmount: number | string;
+    cessAmount: number | string;
+    totalAmount: number | string;
+  }>;
 }
 
 // Bill an entire cart as ONE invoice (partial / loose / walk-in / GST / payment).
@@ -1473,11 +1546,13 @@ export function useSalePreview(
     unitPrice?: number; discountPercent?: number;
   }>,
   enabled = true,
+  /** G-6: the patient, so an admitted patient's quote carries the exemption. */
+  patientId?: string | null,
 ) {
   return useQuery({
-    queryKey: ['pharmacy', 'sale-preview', items],
+    queryKey: ['pharmacy', 'sale-preview', items, patientId ?? null],
     queryFn: async () =>
-      (await apiPost<SalePreview>('/pharmacy/sales/preview', { items })).data,
+      (await apiPost<SalePreview>('/pharmacy/sales/preview', { items, patientId: patientId || undefined })).data,
     enabled: enabled && items.length > 0,
     // The cart is the truth; a stale price is worse than none.
     staleTime: 0,
@@ -1716,6 +1791,27 @@ export interface ReturnReceipt {
     patient?: { id: string; mrn?: string | null; firstName: string; lastName: string | null; phone?: string | null };
   };
   billNumber: string | null;
+  /** G-7: the original sale's GST invoice number, and the credit note raised. */
+  invoiceNumber?: string | null;
+  creditNote?: {
+    id: string;
+    creditNoteNumber: string;
+    issueDate: string;
+    taxableValue: number | string;
+    cgstAmount: number | string;
+    sgstAmount: number | string;
+    igstAmount: number | string;
+    cessAmount: number | string;
+    taxAmount: number | string;
+    totalAmount: number | string;
+    /** G-5 (gap #266): set once a B2B note is registered on the IRP. */
+    irn?: string | null;
+    irnAckNo?: string | null;
+    irnAckDate?: string | null;
+    irnQrPayload?: string | null;
+    irnStatus?: string | null;
+    irnCancelledAt?: string | null;
+  } | null;
   hospital: {
     name: string;
     logoUrl: string | null;
@@ -2226,7 +2322,7 @@ export function useDispenseIpPrescription() {
       ...body
     }: {
       prescriptionId: string;
-      batches?: Array<{ itemId: string; drugBatchId: string }>;
+      batches?: Array<{ itemId: string; drugBatchId: string;quantity:number}>;
     }) => (await apiPost(`/pharmacy/queue/${prescriptionId}/dispense-ip`, body)).data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['prescriptions', 'queue'] });
@@ -2270,6 +2366,9 @@ export interface PharmacyAnalytics {
     month: number;
     rangeRevenue: number;
     rangeMargin: number;
+    /** 348: margin on cost; null when no sold line has a cost. */
+    rangeMarginPct?: number | null;
+    rangeCostMissingLines?: number;
     rangeTransactions: number;
   };
   topDrugs: { drugId: string; drugName: string; qty: number; revenue: number }[];
@@ -2318,14 +2417,17 @@ export function usePharmacyAnalytics(params?: { fromDate?: string; toDate?: stri
 export interface PharmacyDetailedReport {
   period: { fromDate: string; toDate: string; days: number };
   sales: {
-    revenue: number; cost: number; grossProfit: number; marginPct: number;
+    revenue: number; cost: number; grossProfit: number;
+    /** 348: (retail excl. tax − cost) ÷ cost; null = cost not set. */
+    marginPct: number | null;
+    costMissingLines?: number;
     lines: number; itemsSold: number; bills: number;
     avgBillValue: number; avgLineValue: number; perDayRevenue: number;
   };
   trend: { date: string; revenue: number; profit: number; lines: number; qty: number }[];
   byDosageForm: { form: string; qty: number; revenue: number; sharePct: number }[];
-  topByRevenue: { drugId: string; drugName: string; qty: number; revenue: number; profit: number; marginPct: number }[];
-  topByQuantity: { drugId: string; drugName: string; qty: number; revenue: number; profit: number; marginPct: number }[];
+  topByRevenue: { drugId: string; drugName: string; qty: number; revenue: number; profit: number | null; marginPct: number | null }[];
+  topByQuantity: { drugId: string; drugName: string; qty: number; revenue: number; profit: number | null; marginPct: number | null }[];
   abc: Record<'A' | 'B' | 'C', { count: number; revenue: number; sharePct: number }>;
   dispensers: { userId: string; name: string; lines: number; qty: number; revenue: number }[];
   returns: {
@@ -2362,9 +2464,16 @@ export function usePharmacyDetailedReport(params?: { fromDate?: string; toDate?:
 // Stock Ledger (batch-wise movement register)
 // ============================================================
 
-export type StockLedgerMovement = 'receipt' | 'dispense' | 'patient_return' | 'vendor_return' | 'counter_return';
+// 349: every pharmacy stock movement, read from the movement log.
+export type StockLedgerMovement =
+  | 'receipt' | 'sale' | 'sale_cancel' | 'dispense'
+  | 'patient_return' | 'counter_return' | 'vendor_return'
+  | 'adjustment' | 'transfer_out' | 'transfer_in'
+  | 'ward_issue' | 'ward_return' | 'indent_issue' | 'indent_return'
+  | 'ot_issue' | 'ot_return' | 'hold' | 'hold_release' | 'ndps';
 
 export interface StockLedgerEntry {
+  id: string;
   date: string;
   movementType: StockLedgerMovement;
   drugId: string;
@@ -2373,7 +2482,13 @@ export interface StockLedgerEntry {
   quantityIn: number;
   quantityOut: number;
   party: string | null;
+  /** Gap 347: who made the movement (null where never recorded). */
+  by?: string | null;
   referenceId: string;
+  /** Running balance after this row — only when filtered to one drug. */
+  balance: number | null;
+  /** Rebuilt from source documents (predates the movement log). */
+  reconstructed: boolean;
 }
 
 export interface StockLedgerResult {
@@ -2390,7 +2505,14 @@ export interface StockLedgerResult {
     totalIn: number;
     totalOut: number;
     netChange: number;
+    openingStock: number;
+    /** Equals live stock for a period ending today. */
     closingStock: number;
+    liveStock: number;
+    expiredOnHand: number;
+    saleableStock: number;
+    trackedSince: string | null;
+    reconstructedBefore: string | null;
   };
 }
 

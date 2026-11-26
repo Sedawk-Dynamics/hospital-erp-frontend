@@ -38,7 +38,6 @@ import { PatientSafetyBanner } from '@/components/shared/patient-safety-banner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { useSetNurseChiefComplaint } from '@/hooks/use-clinical';
 import { isValueAbnormal, vitalRangeText } from '@/lib/vitals-ranges';
 import { TemperatureUnitToggle } from '@/components/shared/temperature-unit-toggle';
 import {
@@ -396,7 +395,6 @@ export default function NurseVitalsPage() {
   // framing of the problem; this is the intake version, recorded by whoever
   // took the vitals and attributed to them.
   const [nurseComplaint, setNurseComplaint] = useState('');
-  const setNurseChiefComplaint = useSetNurseChiefComplaint();
 
   // ── Queries ──────────────────────────────────────────────
   const { data: myDoctorsData } = useMyAssignedDoctors();
@@ -539,10 +537,6 @@ export default function NurseVitalsPage() {
       return;
     }
 
-    // Build the encounter linkage. Prefer visitId when present so we never
-    // hit the auto-create path twice. For OPD without a visit, send
-    // appointmentId — server creates the Visit. For IPD send admissionId
-    // (server resolves to the admission's visit).
     const linkage: { visitId?: string; admissionId?: string; appointmentId?: string } = {};
     if (selectedEncounter.visitId) {
       linkage.visitId = selectedEncounter.visitId;
@@ -555,24 +549,10 @@ export default function NurseVitalsPage() {
       return;
     }
 
-    // Saved with the vitals rather than as its own action — it is recorded in
-    // the same breath at intake, and a separate Save button would be missed.
-    if (selectedEncounter.visitId && nurseComplaint.trim()) {
-      try {
-        await setNurseChiefComplaint.mutateAsync({
-          visitId: selectedEncounter.visitId,
-          text: nurseComplaint.trim(),
-        });
-      } catch {
-        // Never lose the vitals over the complaint text — the reading is the
-        // clinically urgent half.
-        toast.error('Vitals saved, but the chief complaint could not be recorded');
-      }
-    }
-
     const payload = {
       patientId: selectedEncounter.patientId,
       ...linkage,
+      nurseChiefComplaint: nurseComplaint.trim() || undefined,
       bloodPressureSystolic: parseNum(vitalsForm.bloodPressureSystolic),
       bloodPressureDiastolic: parseNum(vitalsForm.bloodPressureDiastolic),
       temperature: toCelsius(parseNum(vitalsForm.temperature), tempUnit),
@@ -963,9 +943,7 @@ export default function NurseVitalsPage() {
                   })}
                 </div>
 
-                {/* Only an OP/visit encounter has somewhere to hang this —
-                    an admission's complaint belongs to the admission note. */}
-                {selectedEncounter?.visitId && (
+
                   <div className="mt-4">
                     <label className="font-label mb-1 block text-[10px] uppercase tracking-widest text-on-surface-variant">
                       Chief complaint (intake)
@@ -981,7 +959,6 @@ export default function NurseVitalsPage() {
                       yours stays on record either way.
                     </p>
                   </div>
-                )}
 
                 <div className="mt-4">
                   <label className="font-label mb-1 block text-[10px] uppercase tracking-widest text-on-surface-variant">

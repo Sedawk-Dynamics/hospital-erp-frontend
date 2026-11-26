@@ -6,11 +6,24 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /** Convert snake_case DB name to Title Case: "billing_admin" → "Billing Admin" */
+// Gap 305: acronyms stay upper-case ("hr_staff" → "HR Staff", not "Hr Staff").
+const ROLE_ACRONYMS = new Set(['hr', 'ot', 'icu', 'opd', 'ipd', 'mrd', 'it']);
+
 export function formatRoleName(name: string): string {
   return name
     .split('_')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .map((word) => (ROLE_ACRONYMS.has(word.toLowerCase()) ? word.toUpperCase() : word.charAt(0).toUpperCase() + word.slice(1)))
     .join(' ');
+}
+
+/**
+ * Gap 305: the roles a hospital assigns to staff. The Users role filter and the
+ * Add User dialog both use this, so they list the same roles — never `patient`
+ * (portal accounts are not staff) or the platform-only `super_admin`.
+ */
+const NON_STAFF_ROLES = new Set(['super_admin', 'patient']);
+export function staffRoles<T extends { name: string }>(roles: T[]): T[] {
+  return roles.filter((r) => !NON_STAFF_ROLES.has(r.name));
 }
 
 /**

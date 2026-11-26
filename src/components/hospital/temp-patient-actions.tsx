@@ -33,6 +33,7 @@ import {
   type GlobalPatientMatch,
 } from '@/hooks/use-hospital';
 import type { Patient } from '@/types';
+import { getCurrentISTDate } from '@/lib/date-utils';
 
 const GENDERS = ['male', 'female', 'other', 'prefer_not_to_say'] as const;
 
@@ -175,7 +176,8 @@ export function RegisterInPlaceDialog({
               </div>
               <div className="space-y-1.5">
                 <Label>Date of birth</Label>
-                <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
+                {/* No future DOB (gap 329); the server refuses one too. */}
+                <Input type="date" max={getCurrentISTDate()} value={dob} onChange={(e) => setDob(e.target.value)} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">

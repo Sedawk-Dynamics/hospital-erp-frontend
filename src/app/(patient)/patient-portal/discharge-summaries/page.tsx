@@ -6,6 +6,7 @@ import { FileCheck, Download } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { fullName } from '@/lib/person-name';
+import { usePatientProfileStore } from '@/stores/patient-profile-store';
 
 interface Summary {
   id: string;
@@ -24,10 +25,11 @@ function getAuthToken() {
 }
 
 export default function DischargeSummariesListPage() {
+  const {selectedProfileId} = usePatientProfileStore();
   const { data, isLoading } = useQuery({
-    queryKey: ['patient', 'discharge-summaries'],
+    queryKey: ['patient', 'discharge-summaries', selectedProfileId],
     queryFn: async () => {
-      const res = await apiGet<Summary[]>('/patient-portal/discharge-summaries');
+      const res = await apiGet<Summary[]>('/patient-portal/discharge-summaries', { params: selectedProfileId ? { profileId: selectedProfileId } : {} });
       return res.data ?? [];
     },
   });

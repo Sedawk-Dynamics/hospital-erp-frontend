@@ -31,7 +31,7 @@ import { cn } from '@/lib/utils';
 import { fullName, initials } from '@/lib/person-name';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
-import { useDoctorAdmissions, useCreateProgressNote } from '@/hooks/use-doctor';
+import { useDoctorAdmissions, useCreateProgressNote, useDoctorProfile } from '@/hooks/use-doctor';
 import { Badge } from '@/components/ui/badge';
 import { apiPost } from '@/lib/api';
 import { IpPrescriptionDialog } from '@/components/doctor/ip-prescription-dialog';
@@ -55,6 +55,9 @@ const ipStatItems = [
 
 export default function DoctorIPHomePage() {
   const { user } = useAuthStore();
+  // The treating doctor's PROFILE id (DoctorProfile.id) — not the login user id.
+  // POST /clinical/visits validates doctorId against the doctor_profiles table.
+  const { data: doctorProfile } = useDoctorProfile();
   const router = useRouter();
   const [activeFilter, setActiveFilter] = useState('admitted');
   // 'my' = patients where I'm the main doctor; 'all' = every IP patient (shared
@@ -127,7 +130,7 @@ export default function DoctorIPHomePage() {
       try {
         const visitResp = await apiPost<{ id: string }>('/clinical/visits', {
           patientId: selectedPatientId,
-          doctorId: user?.id,
+          doctorId: doctorProfile?.id,
           visitType: 'ip',
           visitDate: new Date().toISOString(),
         });
@@ -150,7 +153,7 @@ export default function DoctorIPHomePage() {
     } catch {
       toast.error('Failed to add progress note');
     }
-  }, [noteContent, selectedPatientId, user, createNoteMutation]);
+  }, [noteContent, selectedPatientId, doctorProfile, createNoteMutation]);
 
   return (
     <div className="space-y-4 animate-fade-in-up">

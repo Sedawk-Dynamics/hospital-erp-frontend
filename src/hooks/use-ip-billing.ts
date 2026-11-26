@@ -360,6 +360,8 @@ export interface BillDocumentGst {
   invoiceNumbers: string[];
   financialYear: string | null;
   supplierGstin: string | null;
+  /** Gap #311: "not verified with the GST portal" / SANDBOX label beside the hospital GSTIN. */
+  supplierGstinCaption?: string | null;
   supplierStateCode: string | null;
   supplierStateName: string | null;
   recipientGstin: string | null;
@@ -484,10 +486,11 @@ export function useAdmissionBillDocument(
 }
 
 /** Open the branded PDF in a new tab (auth-gated, so it goes through the client). */
-export async function openAdmissionBillPdf(admissionId: string): Promise<void> {
+export async function openAdmissionBillPdf(admissionId: string, summary = false): Promise<void> {
   const apiClientMod = await import('@/lib/api-client');
   const res = await apiClientMod.default.get(`/billing/admissions/${admissionId}/bill-document/pdf`, {
     responseType: 'blob',
+    ...(summary ? { params: { summary: true } } : {}),
   });
   const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
   window.open(url, '_blank');

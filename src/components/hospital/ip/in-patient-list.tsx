@@ -60,7 +60,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiPatch } from '@/lib/api';
-import { formatDate, formatDateTime, toInputDateStr } from '@/lib/date-utils';
+import { formatDate, formatDateTime, formatDateTimeAmPm, toInputDateStr } from '@/lib/date-utils';
 import { toast } from 'sonner';
 import type { Admission, Patient, DoctorProfile, BedWithStatus } from '@/types';
 import { FrontDeskRegisterDialog } from '@/components/hospital/frontdesk-register-dialog';
@@ -75,8 +75,10 @@ import { BillingSummaryDialog } from '@/components/pharmacy/billing-summary-dial
 import { AssignBedDialog } from '@/components/hospital/ip/assign-bed-dialog';
 import { usePermissions } from '@/hooks/use-permissions';
 import { useGlobalPatientSearch, useProvisionLocalPatient } from '@/hooks/use-hospital';
+import { patientPickerSubtitle } from '@/components/hospital/patient-picker-label';
 import { useAuthStore } from '@/stores/auth-store';
 import { fullName } from '@/lib/person-name';
+import { formatINR } from '@/lib/money';
 import { useInsuranceCases } from '@/hooks/use-insurance-workflow';
 
 // Generating a bill or collecting advance are billing actions. Gate on the
@@ -699,7 +701,7 @@ function AdmissionDialog({
                             {m.firstName} {m.lastName}
                           </span>
                           <span className="text-muted-foreground text-xs">
-                            {m.isLocal ? (m.mrn ?? '—') : `at ${m.hospital}`} | {m.phone ?? '—'}
+                            {patientPickerSubtitle(m, matches ?? [])}
                           </span>
                           {!m.isLocal && (
                             <span className="ml-auto shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
@@ -1144,7 +1146,7 @@ function AdmissionSlipDialog({
               <tr>
                 <td className="lbl text-muted-foreground py-1">Deposit Collected</td>
                 <td className="val font-semibold">
-                  ₹{Number(admission.depositAmount ?? 0).toLocaleString('en-IN')}
+                  {formatINR(admission.depositAmount)}
                 </td>
               </tr>
             </tbody>
@@ -1199,6 +1201,47 @@ type DischargeBillingSummary = {
   bills: Array<{ billNumber: string; status: string; totalAmount: number; balanceDue: number }>;
 };
 
+/** What the discharge dialog reads of the stay's discharge summary (gap 337). */
+type DischargeSummaryStatusInfo = {
+  id: string;
+  status: 'draft' | 'finalized' | 'published';
+  signedAt?: string | null;
+  updatedAt?: string | null;
+  signer?: { firstName?: string | null; lastName?: string | null } | null;
+  doctor?: { user?: { firstName?: string | null; lastName?: string | null } | null } | null;
+};
+
+/**
+ * "Discharge summary: Published · signed by Dr X on 20/11/2026, 12:04 PM" —
+ * the desk sees WHICH sign-off it is discharging on, not just that the gate
+ * let it through (gap 337).
+ */
+function DischargeSummaryLine({ ds, onOpen }: { ds: DischargeSummaryStatusInfo; onOpen: () => void }) {
+  const signerName = ds.signer ? fullName(ds.signer) : '';
+  const doctorName = ds.doctor?.user ? fullName(ds.doctor.user) : '';
+  const who = signerName || doctorName;
+  // The signer is the treating doctor in every normal flow; only prefix "Dr"
+  // when the name is known to be the doctor's.
+  const byLine = who ? `${who === doctorName ? 'Dr ' : ''}${who}` : null;
+  const label = ds.status === 'published' ? 'Published' : ds.status === 'finalized' ? 'Signed (finalised)' : 'Draft';
+  return (
+    <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-[13px] text-emerald-900">
+      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+      <div className="min-w-0">
+        <p>
+          <span className="font-medium">Discharge summary:</span> {label}
+          {ds.signedAt
+            ? <> · signed{byLine ? <> by <strong>{byLine}</strong></> : null} on {formatDateTimeAmPm(ds.signedAt)}</>
+            : byLine ? <> · {byLine}</> : null}
+        </p>
+        <button type="button" onClick={onOpen} className="mt-0.5 text-xs font-medium text-primary hover:underline">
+          Open discharge summary
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function DischargeDialog({
   admission,
   open,
@@ -1231,7 +1274,7 @@ function DischargeDialog({
     queryKey: ['discharge-summary', 'by-admission', admission.id],
     queryFn: async () => {
       try {
-        return (await apiGet<{ status: 'draft' | 'finalized' | 'published' }>(
+        return (await apiGet<DischargeSummaryStatusInfo>(
           `/mrd/discharge-summary/by-admission/${admission.id}`,
         )).data;
       } catch {
@@ -1242,7 +1285,9 @@ function DischargeDialog({
     retry: false,
   });
   const dsStatus = dsQuery.data?.status;
-  const published = dsStatus === 'published';
+  // Signed (finalized) is the doctor's sign-off; publishing only releases it to
+  // the patient. Either satisfies the rule, as the server checks (gap 337).
+  const published = dsStatus === 'published' || dsStatus === 'finalized';
 
   const dischargeMutation = useMutation({
     // `force` skips BOTH discharge gates (published summary + cleared bill) and
@@ -1278,7 +1323,7 @@ function DischargeDialog({
       toast.error(msg || 'Discharge failed');
     },
   });
-  const money = (n: number) => `₹${(n ?? 0).toFixed(2)}`;
+  const money = (n: number) => formatINR(n);
 
   const openDischargeSummary = () => {
     onOpenChange(false);
@@ -1322,6 +1367,8 @@ function DischargeDialog({
               </div>
             )}
             <p className="text-[11px] text-muted-foreground">Collect the net payable / issue the refund at the billing counter.</p>
+            {/* The discharged stay keeps its link to the summary (gap 337). */}
+            {published && dsQuery.data && <DischargeSummaryLine ds={dsQuery.data} onOpen={openDischargeSummary} />}
           </div>
         )}
 
@@ -1339,7 +1386,7 @@ function DischargeDialog({
                   <div className="text-sm">
                     <p className="font-medium text-amber-800">Discharge summary required</p>
                     <p className="mt-0.5 text-[13px] text-amber-700">
-                      The doctor must complete and <strong>publish</strong> the discharge summary before this patient can be discharged. Publishing is the clinical sign-off only — the final bill still has to be cleared here.
+                      The doctor must complete and <strong>sign</strong> (finalize) the discharge summary before this patient can be discharged. Signing is the clinical sign-off only — the final bill still has to be cleared here.
                     </p>
                     <p className="mt-1.5 text-[11px] text-amber-700">
                       Current status:{' '}
@@ -1370,8 +1417,9 @@ function DischargeDialog({
               )}
             </div>
           ) : (
-            // Published summary → normal discharge confirmation.
+            // Signed or published summary → normal discharge confirmation.
             <div className="grid gap-4 py-2">
+              {dsQuery.data && <DischargeSummaryLine ds={dsQuery.data} onOpen={openDischargeSummary} />}
               <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm space-y-1">
                 <p><span className="text-muted-foreground">Ward:</span> {admission.ward?.name ?? '-'}</p>
                 <p><span className="text-muted-foreground">Bed:</span> {admission.bed?.bedNumber ?? '-'}</p>
@@ -1538,7 +1586,7 @@ function ViewAdmissionDialog({
                 />
                 <DetailRow
                   label="Deposit"
-                  value={`₹${Number(admission.depositAmount ?? 0).toLocaleString('en-IN')}`}
+                  value={formatINR(admission.depositAmount)}
                 />
                 <div className="col-span-2">
                   <DetailRow
@@ -1628,7 +1676,8 @@ function RowActionsMenu({
   // same bill as ready-to-discharge instead of the draft-only patient lookup.
   const { data: ipBills } = useIpAdmissions();
   const stayBill = ipBills?.find((b) => b.admissionId === admission.id) ?? null;
-  const isActive = admission.status === 'admitted';
+  // A ready-to-discharge patient is still in the bed, so the stay actions stay.
+  const isActive = (['admitted', 'ready_to_discharge'] as string[]).includes(admission.status);
   // Provisional (TEMP-) patient → offer Register / Connect right here.
   const isTemp = isTemporaryPatient(admission.patient);
   const tempPatient = admission.patient
@@ -1768,11 +1817,113 @@ function RowActionsMenu({
           admissionId={admission.id}
         />
 
-          {/* Advance / deposit collection against the admitted patient. */}
+          {/* Advance collected against THIS stay, so the admission has one
+              advance balance (gap item 335). */}
           <AdvancePaymentDialog
             open={advanceOpen}
             onOpenChange={setAdvanceOpen}
             patient={billingPatient}
+            admissionId={admission.id}
+            onDone={() => {
+              queryClient.invalidateQueries({ queryKey: ['hospital', 'admissions'] });
+              queryClient.invalidateQueries({ queryKey: ['hospital', 'ip-bills'] });
+            }}
+          />
+        </>
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// StayActionsMenu — the real stay actions for the IP workspace header. The
+// header's "Manage IP" button only navigated back to /hospital/ip (gap 343).
+// ---------------------------------------------------------------------------
+export function StayActionsMenu({ admission }: { admission: Admission }) {
+  const queryClient = useQueryClient();
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [dischargeOpen, setDischargeOpen] = useState(false);
+  const [billOpen, setBillOpen] = useState(false);
+  const [advanceOpen, setAdvanceOpen] = useState(false);
+  const canBill = useCanBillToHospital();
+  const { data: ipBills } = useIpAdmissions();
+  const stayBill = ipBills?.find((b) => b.admissionId === admission.id) ?? null;
+  const isActive = (['admitted', 'ready_to_discharge'] as string[]).includes(admission.status);
+  const billingPatient = {
+    id: admission.patient?.id ?? admission.patientId,
+    firstName: admission.patient?.firstName ?? '',
+    lastName: admission.patient?.lastName ?? '',
+    mrn: admission.patient?.mrn ?? null,
+  };
+  if (!isActive && !canBill) return null;
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger render={<Button variant="outline" size="sm" className="gap-1.5" />}>
+          <BedDouble className="h-3.5 w-3.5" />
+          Manage stay
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {canBill && isActive && (
+            <DropdownMenuItem onClick={() => setAdvanceOpen(true)}>
+              <Wallet className="mr-2 h-4 w-4" />
+              Collect Advance
+            </DropdownMenuItem>
+          )}
+          {canBill && (
+            <DropdownMenuItem onClick={() => setBillOpen(true)}>
+              <Receipt className="mr-2 h-4 w-4" />
+              {stayBill && stayBill.status !== 'draft' ? 'Edit Bill' : 'Generate Bill'}
+            </DropdownMenuItem>
+          )}
+          {isActive && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setTransferOpen(true)}>
+                <ArrowRightLeft className="mr-2 h-4 w-4" />
+                Transfer
+              </DropdownMenuItem>
+              <DropdownMenuItem variant="destructive" onClick={() => setDischargeOpen(true)}>
+                <LogOut className="mr-2 h-4 w-4" />
+                Discharge
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <AssignBedDialog
+        admissionId={admission.id}
+        currentBedId={admission.bedId ?? null}
+        currentWardName={admission.ward?.name ?? null}
+        currentBedNumber={admission.bed?.bedNumber ?? null}
+        open={transferOpen}
+        onOpenChange={setTransferOpen}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['hospital', 'admissions'] });
+          queryClient.invalidateQueries({ queryKey: ['hospital', 'beds'] });
+        }}
+      />
+      <DischargeDialog admission={admission} open={dischargeOpen} onOpenChange={setDischargeOpen} />
+      {canBill && (
+        <>
+          <BillGeneratorDialog
+            open={billOpen}
+            onOpenChange={setBillOpen}
+            initialPatient={billingPatient}
+            initialBillId={stayBill?.id ?? null}
+            admissionId={admission.id}
+          />
+          <AdvancePaymentDialog
+            open={advanceOpen}
+            onOpenChange={setAdvanceOpen}
+            patient={billingPatient}
+            admissionId={admission.id}
+            onDone={() => {
+              queryClient.invalidateQueries({ queryKey: ['hospital', 'admissions'] });
+              queryClient.invalidateQueries({ queryKey: ['hospital', 'ip-bills'] });
+            }}
           />
         </>
       )}
@@ -2027,7 +2178,9 @@ export function InPatientList() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-right font-label text-sm font-bold">
-                        ₹{Number(adm.depositAmount ?? 0).toLocaleString('en-IN')}
+                        {/* The stay's one advance balance: admission deposit
+                            plus every Collect Advance (gap item 335). */}
+                        {formatINR(adm.depositAmount)}
                       </td>
                       <td className="px-4 py-3">
                         <span

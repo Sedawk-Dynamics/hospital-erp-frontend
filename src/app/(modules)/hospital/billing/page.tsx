@@ -18,6 +18,8 @@ import { BillGeneratorDialog } from '@/components/hospital/billing/bill-generato
 import { IpBillingTab } from '@/components/hospital/billing/ip-billing-tab';
 import { fullName } from '@/lib/person-name';
 import { DocumentBadge } from '@/components/hospital/gst/gst-badges';
+import { formatINR } from '@/lib/money';
+import { billBalance, balanceTitle, rowKeyOpen } from '@/components/hospital/billing/bill-balance';
 
 type TopAction = 'op-list' | 'draft' | 'order-list' | null;
 
@@ -36,6 +38,19 @@ export default function HospitalBillingPage() {
   >(null);
   const [initialBillId, setInitialBillId] = useState<string | null>(null);
   const [topAction, setTopAction] = useState<TopAction>(null);
+  // Count badges, so each panel says how much is in it before it is opened
+  // (gap item 288). limit: 1 — only the totals are wanted.
+  const { data: counts } = useQuery({
+    queryKey: ['hospital', 'bills', 'top-action-counts'],
+    queryFn: async () => {
+      const [drafts, orders] = await Promise.all([
+        apiGet<Bill[]>('/billing', { params: { status: 'draft', limit: 1 } }),
+        apiGet<{ summary: { count: number } }>('/billing/pending-orders'),
+      ]);
+      return { drafts: drafts.meta?.total ?? 0, orders: orders.data?.summary?.count ?? 0 };
+    },
+  });
+  const toggleAction = (a: Exclude<TopAction, null>) => setTopAction((cur) => (cur === a ? null : a));
 
   const openGenerator = (patient?: { id: string; firstName: string; lastName: string; mrn: string | null } | null, billId?: string | null) => {
     setInitialPatient(patient ?? null);
@@ -49,25 +64,30 @@ export default function HospitalBillingPage() {
         <h1 className="font-headline text-xl font-bold">Hospital Billing</h1>
         <div className="flex gap-2">
           <Button
-            variant="outline"
+            variant={topAction === 'op-list' ? 'default' : 'outline'}
             className="gap-1.5 text-xs"
-            onClick={() => setTopAction('op-list')}
+            aria-pressed={topAction === 'op-list'}
+            onClick={() => toggleAction('op-list')}
           >
             <Users className="h-3.5 w-3.5" /> OP List
           </Button>
           <Button
-            variant="outline"
+            variant={topAction === 'draft' ? 'default' : 'outline'}
             className="gap-1.5 text-xs"
-            onClick={() => setTopAction('draft')}
+            aria-pressed={topAction === 'draft'}
+            onClick={() => toggleAction('draft')}
           >
             <FileText className="h-3.5 w-3.5" /> Drafts
+            <CountBadge n={counts?.drafts} />
           </Button>
           <Button
-            variant="outline"
+            variant={topAction === 'order-list' ? 'default' : 'outline'}
             className="gap-1.5 text-xs"
-            onClick={() => setTopAction('order-list')}
+            aria-pressed={topAction === 'order-list'}
+            onClick={() => toggleAction('order-list')}
           >
             <ListChecks className="h-3.5 w-3.5" /> Order List
+            <CountBadge n={counts?.orders} />
           </Button>
           <Button className="gap-1.5" onClick={() => openGenerator(null, null)}>
             <Plus className="h-4 w-4" /> New Bill
@@ -94,7 +114,7 @@ export default function HospitalBillingPage() {
             <CashCounterTab />
           </TabsContent>
           <TabsContent value="pending" className="pt-4">
-            <PendingListTab />
+            <PendingListTab onOpenBill={(id, patient) => openGenerator(patient, id)} />
           </TabsContent>
         </Tabs>
       </div>
@@ -157,7 +177,10 @@ function BillingTab({
     // is why a freshly created bill never showed up here.
     queryKey: ['hospital', 'bills', 'list', { search, page }],
     queryFn: async () => {
-      const params: Record<string, unknown> = { page, limit: 20 };
+      // Issued OUTPATIENT bills only (gap item 288). Drafts have their own
+      // panel, and an IP stay's bills live on the IP Patients tab — listing
+      // them here put IPW-… running drafts among the counter's OP bills.
+      const params: Record<string, unknown> = { page, limit: 20, billType: 'op', finalised: 'true' };
       if (search) params.search = search;
       const response = await apiGet<Bill[]>('/billing', { params });
       return { data: response.data, meta: response.meta! };
@@ -212,17 +235,21 @@ function BillingTab({
                 bills.map((bill) => {
                   const total = Number((bill as { totalAmount?: number | string }).totalAmount ?? bill.total ?? 0);
                   const paid = Number((bill as { amountPaid?: number | string }).amountPaid ?? bill.paidAmount ?? 0);
-                  const balance = Number((bill as { balanceDue?: number | string }).balanceDue ?? bill.balanceAmount ?? 0);
+                  const balance = billBalance(bill);
+                  const open = () => onOpenBill(bill.id, bill.patient ? {
+                    id: bill.patient.id,
+                    firstName: bill.patient.firstName,
+                    lastName: bill.patient.lastName,
+                    mrn: bill.patient.mrn ?? null,
+                  } : null);
                   return (
                     <tr
                       key={bill.id}
-                      onClick={() => onOpenBill(bill.id, bill.patient ? {
-                        id: bill.patient.id,
-                        firstName: bill.patient.firstName,
-                        lastName: bill.patient.lastName,
-                        mrn: bill.patient.mrn ?? null,
-                      } : null)}
-                      className="group hover:bg-surface-container-low transition-colors cursor-pointer"
+                      tabIndex={0}
+                      aria-label={`Open bill ${bill.billNumber}`}
+                      onClick={open}
+                      onKeyDown={rowKeyOpen(open)}
+                      className="group hover:bg-surface-container-low focus-visible:bg-surface-container-low focus-visible:outline-none transition-colors cursor-pointer"
                     >
                       <td className="px-4 py-4 font-label text-sm font-bold">{bill.billNumber}</td>
                       <td className="px-4 py-4">
@@ -237,9 +264,9 @@ function BillingTab({
                       <td className="px-4 py-4 font-label text-sm text-on-surface-variant">
                         {formatDate(bill.createdAt)}
                       </td>
-                      <td className="px-4 py-4 text-right font-label text-sm font-bold">{total.toLocaleString('en-IN')}</td>
-                      <td className="px-4 py-4 text-right font-label text-sm text-primary font-bold">{paid.toLocaleString('en-IN')}</td>
-                      <td className="px-4 py-4 text-right font-label text-sm text-error font-bold">{balance.toLocaleString('en-IN')}</td>
+                      <td className="px-4 py-4 text-right font-label text-sm font-bold">{formatINR(total)}</td>
+                      <td className="px-4 py-4 text-right font-label text-sm text-primary font-bold">{formatINR(paid)}</td>
+                      <td className="px-4 py-4 text-right font-label text-sm text-error font-bold" title={balanceTitle(bill)}>{formatINR(balance)}</td>
                       <td className="px-4 py-4">
                         <span className={cn(
                           'text-[10px] font-bold px-2 py-0.5 rounded-full',
@@ -311,7 +338,7 @@ function CashCounterTab() {
     },
   });
 
-  const fmt = (n: number) => `₹${(Number(n) || 0).toLocaleString('en-IN')}`;
+  const fmt = (n: number) => formatINR(n);
 
   const refunds = summary?.refunds ?? 0;
   const summaryCards = [
@@ -380,7 +407,7 @@ function CashCounterTab() {
             <div
               key={h}
               className="flex-1 flex flex-col items-center justify-end gap-1"
-              title={`${h.toString().padStart(2, '0')}:00 — ₹${amt.toLocaleString('en-IN')}${amt < 0 ? ' (net refund)' : ''}`}
+              title={`${h.toString().padStart(2, '0')}:00 — ${formatINR(amt)}${amt < 0 ? ' (net refund)' : ''}`}
             >
               <div
                 className={cn(
@@ -474,7 +501,11 @@ function CashCounterTab() {
 // Pending tab — unpaid/partial bills with aging + quick collect
 // ────────────────────────────────────────────────────────────────────────
 
-function PendingListTab() {
+function PendingListTab({
+  onOpenBill,
+}: {
+  onOpenBill: (billId: string, patient: { id: string; firstName: string; lastName: string; mrn: string | null } | null) => void;
+}) {
   const queryClient = useQueryClient();
   const [collectTarget, setCollectTarget] = useState<Bill | null>(null);
   const [agingFilter, setAgingFilter] = useState<'all' | '0-7' | '8-30' | '31-60' | '60+'>('all');
@@ -520,8 +551,7 @@ function PendingListTab() {
   const bucketTotals = useMemo(() => {
     const t = { '0-7': 0, '8-30': 0, '31-60': 0, '60+': 0 };
     for (const b of withAging) {
-      const bal = Number((b as { balanceDue?: number | string }).balanceDue ?? b.balanceAmount ?? 0);
-      t[b.bucket] += bal;
+      t[b.bucket] += billBalance(b);
     }
     return t;
   }, [withAging]);
@@ -534,7 +564,7 @@ function PendingListTab() {
     setCollectTarget(null);
   };
 
-  const fmt = (n: number) => `₹${(Number(n) || 0).toLocaleString('en-IN')}`;
+  const fmt = (n: number) => formatINR(n);
 
   return (
     <div className="space-y-4">
@@ -581,9 +611,22 @@ function PendingListTab() {
               ) : (
                 filtered.map((bill) => {
                   const total = Number((bill as { totalAmount?: number | string }).totalAmount ?? bill.total ?? 0);
-                  const balance = Number((bill as { balanceDue?: number | string }).balanceDue ?? bill.balanceAmount ?? 0);
+                  const balance = billBalance(bill);
+                  const open = () => onOpenBill(bill.id, bill.patient ? {
+                    id: bill.patient.id,
+                    firstName: bill.patient.firstName,
+                    lastName: bill.patient.lastName,
+                    mrn: bill.patient.mrn ?? null,
+                  } : null);
                   return (
-                    <tr key={bill.id} className="group hover:bg-surface-container-low transition-colors">
+                    <tr
+                      key={bill.id}
+                      tabIndex={0}
+                      aria-label={`Open bill ${bill.billNumber}`}
+                      onClick={open}
+                      onKeyDown={rowKeyOpen(open)}
+                      className="group cursor-pointer hover:bg-surface-container-low focus-visible:bg-surface-container-low focus-visible:outline-none transition-colors"
+                    >
                       <td className="px-4 py-4 font-label text-sm font-bold">{bill.billNumber}</td>
                       <td className="px-4 py-4 font-label text-sm">{bill.patient ? fullName(bill.patient) : '-'}</td>
                       <td className="px-4 py-4 font-label text-xs">
@@ -598,14 +641,14 @@ function PendingListTab() {
                         </span>
                       </td>
                       <td className="px-4 py-4 text-right font-label text-sm">{fmt(total)}</td>
-                      <td className="px-4 py-4 text-right font-label text-sm text-error font-bold">{fmt(balance)}</td>
+                      <td className="px-4 py-4 text-right font-label text-sm text-error font-bold" title={balanceTitle(bill)}>{fmt(balance)}</td>
                       <td className="px-4 py-4 text-center">
                         <Button
                           size="sm"
                           variant="outline"
                           className="gap-1.5 text-xs"
                           disabled={balance <= 0}
-                          onClick={() => setCollectTarget(bill)}
+                          onClick={(e) => { e.stopPropagation(); setCollectTarget(bill); }}
                         >
                           <Banknote className="h-3.5 w-3.5" />
                           Accept Payment
@@ -627,9 +670,7 @@ function PendingListTab() {
               ? {
                   id: collectTarget.id,
                   billNumber: collectTarget.billNumber,
-                  balanceDue: Number(
-                    (collectTarget as { balanceDue?: number | string }).balanceDue ?? collectTarget.balanceAmount ?? 0,
-                  ),
+                  balanceDue: billBalance(collectTarget),
                   patientName: collectTarget.patient
                     ? fullName(collectTarget.patient)
                     : undefined,
@@ -790,17 +831,25 @@ function DraftListPanel({ onPickBill }: { onPickBill: (b: Bill) => void }) {
             const itemCount = (b as { billItems?: unknown[]; items?: unknown[] }).billItems?.length
               ?? (b as { items?: unknown[] }).items?.length
               ?? 0;
+            const open = () => onPickBill(b);
             return (
-              <tr key={b.id} className="hover:bg-surface-container-low">
+              <tr
+                key={b.id}
+                tabIndex={0}
+                aria-label={`Open draft ${b.billNumber}`}
+                onClick={open}
+                onKeyDown={rowKeyOpen(open)}
+                className="cursor-pointer hover:bg-surface-container-low focus-visible:bg-surface-container-low focus-visible:outline-none"
+              >
                 <td className="px-3 py-2 font-label text-sm font-bold">{b.billNumber}</td>
                 <td className="px-3 py-2 font-label text-sm">
                   {b.patient ? fullName(b.patient) : '-'}
                 </td>
                 <td className="px-3 py-2 font-label text-xs text-on-surface-variant">{formatDate(b.createdAt)}</td>
                 <td className="px-3 py-2 text-right font-label text-sm">{itemCount}</td>
-                <td className="px-3 py-2 text-right font-label text-sm font-bold">₹{total.toLocaleString('en-IN')}</td>
+                <td className="px-3 py-2 text-right font-label text-sm font-bold">{formatINR(total)}</td>
                 <td className="px-3 py-2 text-right">
-                  <Button size="sm" className="text-xs" onClick={() => onPickBill(b)}>
+                  <Button size="sm" className="text-xs" onClick={(e) => { e.stopPropagation(); open(); }}>
                     Continue
                   </Button>
                 </td>
@@ -897,7 +946,7 @@ function OrderListPanel({
                   {/* Imaging is priced from the radiology tariff at the moment
                       it is pulled onto a bill, so there is no figure to show
                       here yet. */}
-                  {r.amount > 0 ? `₹${r.amount.toLocaleString('en-IN')}` : '—'}
+                  {r.amount > 0 ? formatINR(r.amount) : '—'}
                 </td>
                 <td className="px-3 py-2 font-label text-xs text-on-surface-variant">{r.orderedAt}</td>
                 <td className="px-3 py-2 text-right">
@@ -921,5 +970,14 @@ function OrderListPanel({
         </table>
       </div>
     </div>
+  );
+}
+
+function CountBadge({ n }: { n: number | undefined }) {
+  if (!n) return null;
+  return (
+    <span className="ml-0.5 inline-flex min-w-[18px] items-center justify-center rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-white">
+      {n}
+    </span>
   );
 }

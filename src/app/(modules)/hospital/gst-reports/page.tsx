@@ -1,15 +1,15 @@
 'use client';
 
 import { DailyLiabilityView, Gstr9View, Gstr9cView } from '@/components/hospital/gst/gst-report-views-annual';
-import { useMemo, useState, type ComponentType } from 'react';
-import { FileSpreadsheet, Info } from 'lucide-react';
+import { useEffect, useMemo, useState, type ComponentType } from 'react';
+import { AlertTriangle, FileSpreadsheet, Info, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuthStore } from '@/stores/auth-store';
-import { useGstProfile } from '@/hooks/use-gst-profile';
+import { useGstProfile, SANDBOX_LABEL } from '@/hooks/use-gst-profile';
 import type { GstReportQuery } from '@/hooks/use-gst-reports';
-import { Provenance } from '@/components/hospital/gst/gst-report-shell';
+import { Provenance, setPdfReportContext } from '@/components/hospital/gst/gst-report-shell';
 import {
   AdvancesView, B2bRegisterView, B2cSummaryView, CreditNoteView, ExemptTurnoverView,
   Gstr1View, Gstr3bView, HsnSummaryView, RateSummaryView, SalesRegisterView,
@@ -139,7 +139,17 @@ export default function GstReportsPage() {
   const [selected, setSelected] = useState(ALL[0].ref);
   const [sixDigit, setSixDigit] = useState(false);
   const user = useAuthStore((s) => s.user);
-  const { data: profile } = useGstProfile();
+  // Three states, not two (gap item 284): while the settings load the page
+  // must not announce "not registered", and a failed read is not the same as
+  // an unregistered hospital either.
+  const { data: profile, isLoading: profileLoading, isError: profileError } = useGstProfile();
+  const profileState: 'loading' | 'error' | 'registered' | 'unregistered' = profileLoading
+    ? 'loading'
+    : profileError || !profile
+      ? 'error'
+      : profile.registered
+        ? 'registered'
+        : 'unregistered';
 
   const report = ALL.find((r) => r.ref === selected) ?? ALL[0];
   const q: GstReportQuery = useMemo(
@@ -153,15 +163,61 @@ export default function GstReportsPage() {
   const runBy = user ? [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email : null;
   const View = report.View;
 
+  // The PDF export names the report on screen (gap items 282 / 372).
+  useEffect(() => {
+    setPdfReportContext(`${report.ref} ${report.label}`);
+    return () => setPdfReportContext(null);
+  }, [report.ref, report.label]);
+
+  // Gap item 311: until the hospital's GST service provider has confirmed THIS
+  // GSTIN as active, every report says it is unverified — louder when it looks
+  // like a sample number or its PAN part does not match the hospital PAN, and
+  // a sandbox pass is labelled as the not-a-real-check it is.
+  const checks = profile?.gstinChecks;
+  const verification = profile?.gstinVerification;
+  const sandboxVerified = !!profile?.gstinVerified && !!verification?.sandbox;
+  const unverifiedWhy =
+    verification?.status === 'not_found'
+      ? ' The GST provider did not find it on the GST portal.'
+      : verification?.status === 'inactive'
+        ? ` The GST provider reports its registration as “${verification.registrationStatus ?? 'inactive'}”.`
+        : verification?.status === 'error'
+          ? ` The last lookup failed (${verification.lastError ?? 'unknown error'}).`
+          : ' Verify it under Settings → GST Registration.';
+  const gstinWarning =
+    profileState !== 'registered'
+      ? null
+      : checks?.looksLikeSample
+        ? `GSTIN ${profile?.gstin} looks like a sample or placeholder number. Check it against the registration certificate before filing anything.`
+        : checks?.panMatches === false
+          ? `GSTIN ${profile?.gstin} does not carry the hospital PAN (${profile?.pan}). Correct it under Settings → GST.`
+          : !profile?.gstinVerified
+            ? `GSTIN not verified — ${profile?.gstin} passes the format, state-code and check-digit checks${
+                checks?.panMatches ? ' and matches the hospital PAN' : ''
+              }, but it has not been confirmed with the GST portal.${unverifiedWhy}`
+            : sandboxVerified
+              ? `GSTIN ${profile?.gstin} was verified by the SANDBOX provider — ${SANDBOX_LABEL}. Do not file from this system until a real GST provider verifies it.`
+              : null;
+
   return (
     <div className="space-y-4 p-4 md:p-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">GST Reports</h1>
           <p className="text-sm text-muted-foreground">
-            {profile?.registered
-              ? `Filed as ${profile.gstin} · ${profile.stateName ?? 'state not resolved'}`
-              : 'This hospital is not registered under GST — every document is a Bill of Supply and there is nothing to file.'}
+            {profileState === 'loading' ? (
+              <span className="inline-flex items-center gap-1.5">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading the GST registration…
+              </span>
+            ) : profileState === 'error' ? (
+              'The GST registration could not be read — the figures below still load, but check Settings → GST.'
+            ) : profileState === 'registered' ? (
+              `GSTIN ${profile!.gstin}${
+                !profile!.gstinVerified ? ' (not verified)' : sandboxVerified ? ' (SANDBOX verification — not a real government check)' : ' (verified)'
+              } · ${profile!.stateName ?? 'state not resolved'}`
+            ) : (
+              'This hospital is not registered under GST — every document is a Bill of Supply and there is nothing to file.'
+            )}
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
@@ -244,7 +300,14 @@ export default function GstReportsPage() {
             </div>
           </div>
 
-          {!profile?.registered ? (
+          {gstinWarning ? (
+            <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <p>{gstinWarning}</p>
+            </div>
+          ) : null}
+
+          {profileState === 'unregistered' ? (
             <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
               <Info className="mt-0.5 h-4 w-4 shrink-0" />
               <p>

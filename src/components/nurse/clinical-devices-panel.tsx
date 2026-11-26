@@ -802,12 +802,47 @@ function DeviceCard({
                           ) : (
                             <XCircle className="h-3 w-3" />
                           )}
-                          {c.patency}
+                          Patency - {c.patency}
                         </span>
                       )}
                       {c.siteCondition && c.siteCondition !== 'normal' && (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
-                          {c.siteCondition}
+                          Site Condition - {c.siteCondition}
+                        </span>
+                      )}
+                      {c.securement && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-100 text-sky-700">
+                          Securement - {c.securement}
+                        </span>
+                      )}
+                      {c.flowStatus && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-100 text-sky-700">
+                          Flow - {c.flowStatus}
+                        </span>
+                      )}
+                      {c.urineFlow && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-100 text-sky-700">
+                          Urine Flow - {c.urineFlow}
+                        </span>
+                      )}
+                      {c.urineColor && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-100 text-sky-700">
+                          Urine Color - {c.urineColor}
+                        </span>
+                      )}
+                      {c.painPresent === 'yes' && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">
+                          Pain Present
+                        </span>
+                      )}
+                      {c.dislodged && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                          Dislodged
+                        </span>
+                      )}
+                      {c.blocked && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                          Blocked
                         </span>
                       )}
                       {c.infectionSuspected && (
@@ -821,7 +856,12 @@ function DeviceCard({
                     </span>
                   </div>
                   {c.remarks && (
-                    <p className="text-on-surface-variant mt-0.5 truncate">{c.remarks}</p>
+                    <div className="mt-2 rounded-md bg-surface-container-low/60 px-2 py-1.5">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant">
+                        Remarks
+                      </p>
+                      <p className="mt-0.5 text-on-surface">{c.remarks}</p>
+                    </div>
                   )}
                 </li>
               ))}

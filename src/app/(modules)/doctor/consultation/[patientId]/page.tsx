@@ -28,6 +28,8 @@ import {
   Heart,
   History,
   Loader2,
+  Mic,
+  Square,
   Pill,
   Printer,
   Stethoscope,
@@ -85,6 +87,9 @@ import type { Vital } from '@/hooks/use-vital-history';
 import { RecordVitalsDialog } from '@/components/shared/record-vitals-dialog';
 import type { Patient, Appointment } from '@/types';
 import { fullName } from '@/lib/person-name';
+import { object } from 'zod';
+import { useTranscribe } from '@/hooks/use-transcribe';
+import { TranscriptSections } from '@/components/doctor/prescription-pad/prescription-pad';
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -102,6 +107,7 @@ function calculateAge(dob: string): string {
 
 function TopBar({
   patient,
+  visitId,
   onBack,
   onOrderLab,
   onOrderImaging,
@@ -109,8 +115,14 @@ function TopBar({
   canOrder,
   isEditing,
   onCancelEdit,
+  isRecording,
+  isProcessing,
+  handleStartRecording,
+  handleStopRecording,
+
 }: {
   patient: Patient;
+  visitId?:string | null;
   onBack: () => void;
   onOrderLab: () => void;
   onOrderImaging: () => void;
@@ -118,6 +130,11 @@ function TopBar({
   canOrder: boolean;
   isEditing: boolean;
   onCancelEdit?: () => void;
+  isRecording:boolean;
+  isProcessing:boolean;
+  handleStartRecording:()=>void,
+  handleStopRecording:()=>void
+
 }) {
   const initials =
     `${patient.firstName?.[0] ?? ''}${patient.lastName?.[0] ?? ''}`.toUpperCase() || 'P';
@@ -198,6 +215,49 @@ function TopBar({
           Cancel edit
         </Button>
       )}
+      {/* AI voice scribe — one consistent premium gradient button across all
+          three states (idle / recording / transcribing). Only the icon + label
+          change; the shape, size, gradient and sheen stay identical. */}
+      {isProcessing ? (
+        <Button
+          size="sm"
+          disabled
+          className="group relative h-8 gap-1.5 overflow-hidden rounded-lg border border-white/20 bg-gradient-to-r from-emerald-500 via-teal-500 to-green-600 bg-[length:200%_100%] px-3 text-xs font-semibold text-white shadow-md shadow-emerald-500/30 disabled:opacity-100"
+        >
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          <span className="relative">Transcribing…</span>
+        </Button>
+      ) : !isRecording ? (
+        <Button
+          size="sm"
+          onClick={handleStartRecording}
+          disabled={!canOrder}
+          className="group relative h-8 gap-1.5 overflow-hidden rounded-lg border border-white/20 bg-gradient-to-r from-emerald-500 via-teal-500 to-green-600 bg-[length:200%_100%] bg-left px-3 text-xs font-semibold text-white shadow-md shadow-emerald-500/30 transition-[background-position,box-shadow] duration-500 hover:bg-right hover:shadow-lg hover:shadow-emerald-500/50 disabled:opacity-50"
+        >
+          {/* sheen sweep on hover */}
+          <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/30 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+          <Sparkles className="h-3.5 w-3.5 transition-transform group-hover:scale-110 group-hover:rotate-12" />
+          <span className="relative">Start Recording</span>
+          <Mic className="h-3 w-3 opacity-90 transition-transform group-hover:scale-110" />
+        </Button>
+      ) : (
+        <Button
+          size="sm"
+          onClick={handleStopRecording}
+          className="group relative h-8 gap-1.5 overflow-hidden rounded-lg border border-white/20 bg-gradient-to-r from-emerald-500 via-teal-500 to-green-600 bg-[length:200%_100%] px-3 text-xs font-semibold text-white shadow-md shadow-emerald-500/40"
+        >
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-white" />
+          </span>
+          <span className="relative group-hover:hidden">Recording…</span>
+          <span className="relative hidden items-center gap-1.5 group-hover:inline-flex">
+            <Square className="h-3 w-3 fill-current" />
+            Stop
+          </span>
+        </Button>
+      )}
+
       <Button
         variant="outline"
         size="sm"
@@ -257,10 +317,11 @@ function TopBar({
 
       {/* UC2: in-context patient AI assistant — opens as a right-side chat panel
           so the doctor keeps the consultation in view while asking the assistant. */}
-      <Sheet open={aiOpen} onOpenChange={setAiOpen}>
+      <Sheet open={aiOpen} onOpenChange={setAiOpen} modal={false}>
         <SheetContent
           side="right"
-          className="flex w-full flex-col gap-0 p-0 sm:max-w-md"
+          showOverlay={false}
+          className="flex w-full flex-col gap-0 p-0 data-[side=right]:sm:max-w-3xl"
         >
           <SheetHeader className="shrink-0 border-b border-outline-variant/40 p-4 pr-12 pb-3">
             <SheetTitle className="flex items-center gap-2 text-base">
@@ -273,6 +334,7 @@ function TopBar({
           <PatientAiAssistant
             patientId={patient.id}
             patientName={patientName}
+            visitId={visitId ?? undefined}
             className="min-h-0 flex-1 p-4 pt-3"
             scrollClassName="min-h-0"
           />
@@ -873,6 +935,10 @@ function ClinicalCard({
 }
 
 
+
+
+
+
 // ── Main page ─────────────────────────────────────────────────────────
 
 export default function PatientConsultationPage({
@@ -888,7 +954,9 @@ export default function PatientConsultationPage({
   const summaryRef = useRef<HTMLDivElement | null>(null);
   const searchParams = useSearchParams();
   const appointmentId = searchParams.get('appointmentId');
-
+  const [isrecording,setIsRecording]=useState<boolean>(false);
+  const [audioUrl,setAudioUrl]=useState<string>('');
+  const [transcript,setTranscript]=useState<TranscriptSections | null>(null);
   const [clinicalOpen, setClinicalOpen] = useState(false);
   const [activeClinical, setActiveClinical] = useState<
     'medications' | 'history' | 'investigations' | 'drugs' | 'files' | null
@@ -897,11 +965,15 @@ export default function PatientConsultationPage({
   const [imagingDialogOpen, setImagingDialogOpen] = useState(false);
   const [admissionRequestOpen, setAdmissionRequestOpen] = useState(false);
   const [amendmentOpen, setAmendmentOpen] = useState(false);
+  const mediaRecorderRef=useRef<MediaRecorder | null>(null);
+  const audioChunkRef=useRef<Blob[]>([])
 
   const openClinical = (key: 'medications' | 'history' | 'investigations' | 'drugs' | 'files') => {
     setActiveClinical(key);
     setClinicalOpen(true);
   };
+
+  const {mutateAsync:transcribe,isPending}=useTranscribe();
 
   const { data: patient, isLoading: patientLoading } = usePatientDetail(patientId);
 
@@ -916,10 +988,17 @@ export default function PatientConsultationPage({
 
   const queryClient = useQueryClient();
   const { data: activeVisitId } = useQuery({
-    queryKey: ['doctor', 'active-visit', patientId],
+    queryKey: ['doctor', 'active-visit', patientId, appointmentId ?? null],
     queryFn: async () => {
+      // Resolve the visit tied to THIS appointment, not just "any active visit"
+      // for the patient — otherwise an old, never-closed visit (visits stay
+      // 'active' after the appointment is marked completed) would win, and the
+      // AI/context would read the wrong consultation.
+      const params = appointmentId
+        ? { appointmentId, status: 'active', limit: 1 }
+        : { patientId, status: 'active', limit: 1 };
       const response = await apiGet<Array<{ id: string; status?: string }>>('/clinical/visits', {
-        params: { patientId, status: 'active', limit: 1 },
+        params,
       });
       return response.data?.[0]?.id ?? null;
     },
@@ -929,11 +1008,7 @@ export default function PatientConsultationPage({
   const isInConsultation = appointment?.status === 'in_consultation';
   const isCompleted = appointment?.status === 'completed';
 
-  // Lab + imaging orders need a visit row. Visits historically only got
-  // created when the doctor finished writing the SOAP note, which left the
-  // "Order Lab" / "Order Imaging" buttons disabled for the entire
-  // consultation. Eagerly ensure a visit exists as soon as the appointment
-  // is in_consultation so the buttons work from the start.
+
   useEffect(() => {
     if (!appointmentId || !isInConsultation || activeVisitId) return;
     let cancelled = false;
@@ -993,15 +1068,8 @@ export default function PatientConsultationPage({
   });
   const prefill = prefillResponse?.prefill;
   const prefillReason = prefillResponse?.reason;
-  // Distinguish "fetch in flight" from "fetch finished but server has nothing"
-  // — the old `!prefill` check conflated the two and hung the form forever.
   const prefillIsLoading = isEditing && (prefillLoading || (prefillFetching && !prefillResponse));
   const prefillUnavailable = isEditing && !prefillIsLoading && !prefill;
-
-  // Progress note for the active visit — drives the amendment-history link,
-  // session-checklist badges, and (after the appointment is completed) the
-  // Consultation Summary panel + sign action. Falls back to the most recent
-  // note for this patient when the active visit hasn't been resolved yet.
   const { data: recentNotes } = useProgressNotes(
     activeVisitId ? { visitId: activeVisitId, limit: 1 } : { patientId, limit: 1 },
   );
@@ -1085,10 +1153,60 @@ export default function PatientConsultationPage({
     setEditRequested(false);
   };
 
+
+  const handleStartRecording=async()=>{
+    audioChunkRef.current=[];
+    try {
+      const microphoneAccess=await navigator.mediaDevices.getUserMedia({audio:true});
+      const audioRecorder=new MediaRecorder(microphoneAccess);
+      mediaRecorderRef.current=audioRecorder;
+
+      audioRecorder.ondataavailable=(e)=>{
+        if(e.data.size>0){
+          audioChunkRef.current.push(e.data);
+        }
+      }
+      
+      audioRecorder.onstop=async()=>{
+        const audioBlob=new Blob(audioChunkRef.current,{type:'audio/webm'});
+        console.log('[rec] onstop — blob size:', audioBlob.size, 'type:', audioBlob.type);
+        setAudioUrl(URL.createObjectURL(audioBlob));
+        try {
+          console.log('[rec] sending to /transcribe…');
+          const text=await transcribe({audio:audioBlob});
+          console.log('[rec] transcribe response:', text);
+          setTranscript(text);
+        } catch (err) {
+          console.error('[rec] Transcription failed', err);
+          toast.error('Transcription failed');
+        }
+      }
+
+      audioRecorder.start();
+      setIsRecording(true);
+    } catch (error) {
+      console.error('Error accessing microphone', error)
+      toast.error('Microphone access denied')
+    }
+  }
+
+  const handleStopRecording=async()=>{
+    if(mediaRecorderRef.current && isrecording){
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(a=>a.stop());
+      setIsRecording(false);
+    }
+  }
+  
   return (
     <div className="min-h-screen bg-background">
       <TopBar
+        isRecording={isrecording}
+        isProcessing={isPending}
+        handleStartRecording={handleStartRecording}
+        handleStopRecording={handleStopRecording}
         patient={patient}
+        visitId={activeVisitId ?? undefined}
         onBack={() => router.back()}
         onOrderLab={guardedOrderLab}
         onOrderImaging={guardedOrderImaging}
@@ -1098,12 +1216,39 @@ export default function PatientConsultationPage({
         onCancelEdit={isEditing ? cancelEdit : undefined}
       />
 
+
+      {/* {audioUrl && (
+        <div className="space-y-2 px-4 py-2 lg:px-6">
+          <div className="flex items-center gap-3">
+            <audio controls src={audioUrl} className="w-full max-w-md" />
+            <a
+              href={audioUrl}
+              download="recording.webm"
+              className="text-xs text-primary underline whitespace-nowrap"
+            >
+              Download
+            </a>
+          </div>
+          {isPending && (
+            <p className="text-xs text-muted-foreground">Transcribing…</p>
+          )}
+          {!isPending && transcript && (
+            <div className="max-w-2xl space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">Transcript</p>
+              <p className="rounded-md border bg-muted/40 p-2 text-sm whitespace-pre-wrap">
+                {transcript}
+              </p>
+            </div>
+          )}
+          {!isPending && !transcript && (
+            <p className="text-xs text-muted-foreground">No transcript returned.</p>
+          )}
+        </div>
+      )} */}
+
       <div className="px-4 py-4 lg:px-6">
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-          {/* ── Main column (80%) ─────────────────────────────────── */}
           <div className="space-y-4 min-w-0 lg:col-span-4">
-            {/* Allergies + family disorders — on screen from the moment the
-                consultation opens, not buried in a history sub-tab. */}
             <PatientSafetyBanner patientId={patient.id} />
 
             {/* Banners */}
@@ -1242,6 +1387,7 @@ export default function PatientConsultationPage({
                   <div className="px-5 py-4">
                     <PrescriptionPad
                       key={isEditing ? `edit-${prefill?.visitId}` : 'new'}
+                      transcript={transcript?transcript:null}
                       patientId={patient.id}
                       patientName={fullName(patient, 'Patient')}
                       patientAge={patient.dateOfBirth ? calculateAge(patient.dateOfBirth) : undefined}
@@ -1428,3 +1574,46 @@ export default function PatientConsultationPage({
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -202,6 +202,18 @@ export interface HospitalForm {
   archivedBy?: UserStub | null;
   template?: { id: string; name: string } | null;
   _count?: { submissions: number };
+  // Gap 304 — draft vs published. `schema` is what nurses fill (the published
+  // snapshot once published); `draftSchema` holds unpublished edits and is
+  // only sent to hospital admins.
+  draftSchema?: FormSchema | null;
+  publishedAt?: string | null;
+  publishedById?: string | null;
+  /** Server-derived; the list and the builder both show this. */
+  status?: 'draft' | 'published' | 'published_with_changes' | 'archived';
+  statusLabel?: string;
+  hasUnpublishedChanges?: boolean;
+  /** Version nurses currently see; null until first published. */
+  publishedVersion?: number | null;
 }
 
 export interface FormSubmission {
@@ -358,6 +370,17 @@ export function useUpdateHospitalForm(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: Partial<UpsertHospitalFormInput>) => apiPut<HospitalForm>(`/forms/${id}`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['hospital-forms'] });
+    },
+  });
+}
+
+/** Drop unpublished edits on a published form. */
+export function useDiscardHospitalFormDraft(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiPost<HospitalForm>(`/forms/${id}/discard-draft`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['hospital-forms'] });
     },

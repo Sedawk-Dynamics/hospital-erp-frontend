@@ -30,7 +30,6 @@ import { cn } from '@/lib/utils';
 
 import {
   useRecordPayment,
-  useUpdateAppointmentStatus,
   type FrontdeskPaymentMethod,
 } from '@/hooks/use-hospital';
 import type { Appointment } from '@/types';
@@ -69,7 +68,7 @@ interface CollectFrontdeskPaymentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   appointment: Appointment | null;
-  /** Called after payment recorded AND appointment confirmed. */
+  /** Called after the payment is recorded. Confirmation is a separate action. */
   onConfirmed?: (apt: Appointment) => void;
 }
 
@@ -80,7 +79,6 @@ export function CollectFrontdeskPaymentDialog({
   onConfirmed,
 }: CollectFrontdeskPaymentDialogProps) {
   const recordPayment = useRecordPayment();
-  const updateStatus = useUpdateAppointmentStatus();
   const [submitting, setSubmitting] = useState(false);
 
   const balanceDue = appointment?.paymentInfo?.balanceDue ?? 0;
@@ -124,25 +122,11 @@ export function CollectFrontdeskPaymentDialog({
         notes: data.notes?.trim() || undefined,
       });
 
-      // Only advance a pre-confirmation appointment. A patient who has already
-      // checked in (or is with the doctor) must not be dragged back to
-      // 'confirmed' — that transition is invalid and used to throw AFTER the
-      // money was taken, leaving the desk with an error on a successful payment.
-      const advanceable = ['pending_payment', 'booked'].includes(appointment.status);
-      let advanced = false;
-      if (advanceable) {
-        try {
-          await updateStatus.mutateAsync({ id: appointment.id, status: 'confirmed' });
-          advanced = true;
-        } catch {
-          // Payment is already recorded — never fail the collection over this.
-        }
-      }
-
-      toast.success(
-        `Payment of ₹${balanceDue.toLocaleString('en-IN')} collected.` +
-          (advanced ? ' Appointment confirmed.' : ''),
-      );
+      // Collecting money no longer confirms the appointment. Confirmation is a
+      // separate front-desk decision (verify the doctor is available) taken via
+      // the "Confirm" action — so a portal-booked patient is accepted BEFORE
+      // they travel, and payment is just the counter step on arrival.
+      toast.success(`Payment of ₹${balanceDue.toLocaleString('en-IN')} collected.`);
       onOpenChange(false);
       onConfirmed?.(appointment);
     } catch (error: unknown) {
@@ -247,7 +231,7 @@ export function CollectFrontdeskPaymentDialog({
                   Processing...
                 </>
               ) : (
-                <>Mark Paid &amp; Confirm</>
+                <>Mark Paid</>
               )}
             </Button>
           </DialogFooter>

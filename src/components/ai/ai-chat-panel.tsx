@@ -4,14 +4,33 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Send, Sparkles } from 'lucide-react';
+import { Send, Sparkles, Cpu, ChevronDown } from 'lucide-react';
 import { MarkdownMessage } from '@/components/ai/markdown-message';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
+
+export type AiModelId = 'gemini' | 'medgemma';
+
+const AI_MODELS: { id: AiModelId; label: string; description: string }[] = [
+  { id: 'gemini', label: 'Gemini', description: 'Google Gemini (cloud)' },
+  { id: 'medgemma', label: 'MedGemma', description: 'MedGemma 4B (local)' },
+];
 
 export interface AiChatMessage {
   role: 'user' | 'assistant';
   content: string;
-  /** Optional rich node rendered under the assistant text (e.g. a score card). */
   extra?: ReactNode;
+  excludeFromHistory?: boolean;
+  kind?: 'summary' | 'blood-report' | 'imaging';
+  version?: string;
+  images?: string[];
+  summary?: string;
 }
 
 export interface AiQuickAction {
@@ -32,13 +51,11 @@ interface AiChatPanelProps {
   quickActions?: AiQuickAction[];
   footerNote?: string;
   className?: string;
-  /** Tailwind height for the scroll area (default min-h to fill the container). */
   scrollClassName?: string;
+  aiModel?: string;
+  onModelChange?: (model: AiModelId) => void;
 }
 
-// Presentational chat surface shared by the patient AI assistant (UC2) and the
-// platform support assistant (UC3). Holds only local composer state; the caller
-// owns the message list and the send handler.
 export function AiChatPanel({
   messages,
   onSend,
@@ -50,9 +67,15 @@ export function AiChatPanel({
   footerNote,
   className,
   scrollClassName,
+  aiModel,
+  onModelChange,
 }: AiChatPanelProps) {
   const [input, setInput] = useState('');
+  const [model, setModel] = useState<AiModelId>('gemini');
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const activeModel = AI_MODELS.find((m) => m.id === model) ?? AI_MODELS[0];
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -130,7 +153,6 @@ export function AiChatPanel({
         </div>
       )}
 
-      {/* Composer */}
       <div className="flex items-end gap-2 pt-3">
         <Textarea
           value={input}
@@ -146,6 +168,51 @@ export function AiChatPanel({
           disabled={disabled || pending}
           className="min-h-[40px] max-h-32 resize-none"
         />
+
+        <DropdownMenu open={modelMenuOpen} onOpenChange={setModelMenuOpen}>
+          <DropdownMenuTrigger
+            disabled={disabled || pending}
+            render={
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-10 shrink-0 gap-1.5"
+                aria-label="Select AI model"
+                title={`Model: ${activeModel.label}`}
+              >
+                <Cpu className="h-4 w-4" />
+                <span className="hidden sm:inline">{activeModel.label}</span>
+                <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+              </Button>
+            }
+          />
+          <DropdownMenuContent align="end" className="w-52">
+            <div className="px-1.5 py-1 text-xs font-medium text-muted-foreground">
+              AI model
+            </div>
+            <DropdownMenuSeparator />
+            <DropdownMenuRadioGroup
+              value={model}
+              onValueChange={(v) => {
+                setModel(v as AiModelId);
+                onModelChange?.(v as AiModelId);
+                setModelMenuOpen(false);
+              }}
+            >
+              {AI_MODELS.map((m) => (
+                <DropdownMenuRadioItem
+                  key={m.id}
+                  value={m.id}
+                  className="flex-col items-start gap-0.5"
+                >
+                  <span className="font-medium">{m.label}</span>
+                  <span className="text-xs text-muted-foreground">{m.description}</span>
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
         <Button
           onClick={submit}
           disabled={disabled || pending || !input.trim()}

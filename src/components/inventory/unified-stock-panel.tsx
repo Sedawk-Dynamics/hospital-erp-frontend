@@ -272,7 +272,7 @@ export function UnifiedStockPanel() {
                   <TableHead className="text-right">Stock</TableHead>
                   <TableHead className="text-right">Reorder</TableHead>
                   <TableHead>Expiry</TableHead>
-                  <TableHead className="text-right">Value</TableHead>
+                  <TableHead className="text-right" title="At purchase cost — unexpired, non-recalled stock">Value (cost)</TableHead>
                   <TableHead className="text-center">Status</TableHead>
                   <TableHead className="text-right w-[150px]">Actions</TableHead>
                 </TableRow>
@@ -433,7 +433,9 @@ function StockRow({
   const out = row.currentStock <= 0;
   const expDays = row.nearestExpiry ? daysUntil(row.nearestExpiry) : null;
   const expSoon = expDays != null && expDays <= 90;
-  const value = row.sellingPrice != null ? row.sellingPrice * row.currentStock : null;
+  // Gap 301: the server's purchase-cost value (live batches only), so rows sum to
+  // the dashboard's stock value. Older servers without it fall back to the old maths.
+  const value = row.stockValue ?? (row.sellingPrice != null ? row.sellingPrice * row.currentStock : null);
 
   return (
     <>

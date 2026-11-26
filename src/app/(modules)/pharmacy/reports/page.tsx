@@ -62,7 +62,8 @@ function PharmacyReportsPageInner() {
       {/* Sales tiles */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard
-          label="Today's Sales"
+          // 346: paid bills only, IST day — the same query as the detailed report.
+          label="Today's Sales (paid)"
           value={isLoading || !data ? '…' : fmtINR(data.sales.today)}
           icon={IndianRupee}
           accent="bg-emerald-50 text-emerald-700"
@@ -81,7 +82,14 @@ function PharmacyReportsPageInner() {
         />
         <StatCard
           label="Margin / Profit (range)"
-          value={isLoading || !data ? '…' : fmtINR(data.sales.rangeMargin)}
+          // 348: profit ex-tax over cost — the same figure the detailed report shows.
+          value={
+            isLoading || !data
+              ? '…'
+              : data.sales.rangeMarginPct == null
+                ? 'Cost not set'
+                : `${fmtINR(data.sales.rangeMargin)} · ${data.sales.rangeMarginPct}%`
+          }
           icon={Receipt}
           accent="bg-amber-50 text-amber-700"
         />

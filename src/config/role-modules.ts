@@ -102,6 +102,11 @@ const ROLE_MODULE_MAP: Record<string, ModuleKey[]> = {
   // HR → dedicated HR module
   hr_staff: ['hr'],
 
+  // Counsellor → the Counsellor portal only. `counsellor` is the exact system
+  // role name the backend seeds (role-permissions.ts, gap #200/#298) and sends
+  // back as role.slug, so it lands here instead of on every admin module (gap 178).
+  counsellor: ['counsellor'],
+
   // Patient role → no module access (future patient portal)
   patient: [],
 };
@@ -135,8 +140,36 @@ export function getModulesForRole(roleSlug?: string): ModuleKey[] {
     return ROLE_MODULE_MAP[normalized];
   }
 
-  // Default: show admin modules
-  return ADMIN_MODULES;
+  // Default: show admin modules — minus any module restricted to named roles
+  // (gap 178: an unmapped role must not be offered the Counsellor portal).
+  return ADMIN_MODULES.filter((m) => canOpenModule(normalized, m));
+}
+
+/**
+ * Modules a user may not open by URL unless their role is listed (admin and
+ * super_admin always pass).
+ *
+ * Gap 178/179: the sidebar only HIDES modules a role is not given, so a Front
+ * Desk user typing /counsellor got Counsellor Home and its session data. The
+ * (modules) layout now checks this before rendering a page.
+ *
+ * Only modules with no legitimate cross-portal entry points are listed. Other
+ * portals are reached by links from outside their own role (global search →
+ * /hospital/patients/:id for every role, the IP discharge dialog →
+ * /doctor/discharge-summary, a payer case → /insurance/cases/:id, …), so
+ * enforcing getModulesForRole for those would break working flows; they need
+ * per-route allowances first.
+ */
+const MODULE_ROLE_ALLOWLIST: Partial<Record<ModuleKey, string[]>> = {
+  counsellor: ['counsellor'],
+};
+
+/** Whether this role may open the module's pages (see MODULE_ROLE_ALLOWLIST). */
+export function canOpenModule(roleSlug: string | null | undefined, moduleKey: ModuleKey): boolean {
+  const normalized = (roleSlug ?? '').toLowerCase().replace(/[\s-]+/g, '_');
+  if (normalized === 'admin' || normalized === 'super_admin') return true;
+  const allowed = MODULE_ROLE_ALLOWLIST[moduleKey];
+  return allowed ? allowed.includes(normalized) : true;
 }
 
 /**
@@ -174,6 +207,7 @@ const ROLE_PORTAL_LABEL: Record<string, string> = {
   inventory_manager: 'Inventory Portal',
   blood_bank_staff: 'Blood Bank Portal',
   hr_staff: 'HR Portal',
+  counsellor: 'Counsellor Portal',
 
   // Patient
   patient: 'Patient Portal',

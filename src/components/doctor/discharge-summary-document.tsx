@@ -11,9 +11,9 @@ import { cn } from '@/lib/utils';
 // /mrd/discharge-summary/:id/pdf renders the same structure.
 
 const fmtDate = (v?: string | null) =>
-  v ? new Date(v).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+  v ? new Date(v).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '—';
 const fmtDateTime = (v?: string | null) =>
-  v ? new Date(v).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+  v ? new Date(v).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : '—';
 const dash = (v?: string | number | null) => (v === null || v === undefined || v === '' ? '—' : String(v));
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -108,15 +108,25 @@ function Table({ head, rows }: { head: string[]; rows: (string | number | null)[
   );
 }
 
-const vitalCells = (v: DischargeVitalRow | null, label: string): (string | null)[] => [
-  label,
-  v?.bp ?? null,
-  v?.pulse != null ? String(v.pulse) : null,
-  v?.temp != null ? `${v.temp}°C` : null,
-  v?.rr != null ? String(v.rr) : null,
-  v?.spo2 != null ? `${v.spo2}%` : null,
-  v?.weight != null ? `${v.weight} kg` : null,
+const vitalCells = (v: DischargeVitalRow): (string | null)[] => [
+  fmtDateTime(v.at),
+  v.bp ?? null,
+  v.pulse != null ? String(v.pulse) : null,
+  v.temp != null ? `${v.temp}°C` : null,
+  v.rr != null ? String(v.rr) : null,
+  v.spo2 != null ? `${v.spo2}%` : null,
+  v.weight != null ? `${v.weight} kg` : null,
+  v.height != null ? `${v.height} cm` : null,
+  v.bmi != null ? String(v.bmi) : null,
+  v.sugar != null ? String(v.sugar) : null,
 ];
+
+/** "Dr. <name>" for the signing doctor, without a double prefix. */
+function signerLabel(name: string | null | undefined): string | null {
+  const n = (name ?? '').trim();
+  if (!n) return null;
+  return /^dr\.?\s/i.test(n) ? n : `Dr. ${n}`;
+}
 
 export const DischargeSummaryDocument = forwardRef<HTMLDivElement, { doc: DischargeDocument }>(
   function DischargeSummaryDocument({ doc }, ref) {
@@ -228,12 +238,12 @@ export const DischargeSummaryDocument = forwardRef<HTMLDivElement, { doc: Discha
           </Section>
         )}
 
-        {/* Vitals */}
-        {(doc.vitals.admission || doc.vitals.discharge) && (
+        {/* Vitals — one dated row per pinned reading, all 9 vitals. */}
+        {doc.vitals.length > 0 && (
           <Section title="Vital Signs">
             <Table
-              head={['At', 'BP', 'Pulse', 'Temp', 'RR', 'SpO₂', 'Weight']}
-              rows={[vitalCells(doc.vitals.admission, 'On admission'), vitalCells(doc.vitals.discharge, 'At discharge')]}
+              head={['Date/Time', 'BP', 'Pulse', 'Temp', 'RR', 'SpO₂', 'Weight', 'Height', 'BMI', 'Sugar']}
+              rows={doc.vitals.map((v) => vitalCells(v))}
             />
           </Section>
         )}
@@ -287,30 +297,19 @@ export const DischargeSummaryDocument = forwardRef<HTMLDivElement, { doc: Discha
           </Section>
         )}
 
-        {/* Lab Results */}
-        {(doc.sections.keyLabs || doc.sections.labResults || doc.imaging.length > 0) && (
+        {/* Lab Results — the grouped summary already lists each test's count and
+            its abnormal values, so no separate "Significant / Abnormal" block. */}
+        {doc.sections.labResults && (
           <Section title="Lab Results">
-            {doc.sections.keyLabs && (
-              <>
-                <p className="mb-0.5 text-[11px] font-bold text-[#0f5049]">Significant / Abnormal Labs</p>
-                <Prose text={doc.sections.keyLabs} />
-              </>
-            )}
-            {doc.sections.labResults && (
-              <>
-                <p className="mb-0.5 mt-2 text-[11px] font-bold text-[#0f5049]">All Lab Results</p>
-                <Prose text={doc.sections.labResults} />
-              </>
-            )}
-            {doc.imaging.length > 0 && (
-              <>
-                <p className="mb-0.5 mt-2 text-[11px] font-bold text-[#0f5049]">Imaging</p>
-                <Table
-                  head={['Study', 'Indication', 'Impression', 'Date']}
-                  rows={doc.imaging.map((im) => [im.study, im.indication, im.impression, fmtDate(im.date)])}
-                />
-              </>
-            )}
+            <Prose text={doc.sections.labResults} />
+          </Section>
+        )}
+
+        {/* Radiology / Imaging — the stored, doctor-reviewed text (not a live
+            imaging re-query), so the printout equals what was signed. */}
+        {doc.sections.radiologyText && (
+          <Section title="Radiology / Imaging">
+            <Prose text={doc.sections.radiologyText} />
           </Section>
         )}
 
@@ -355,13 +354,14 @@ export const DischargeSummaryDocument = forwardRef<HTMLDivElement, { doc: Discha
         <div className="mt-10 flex justify-end break-inside-avoid">
           <div className="w-[260px] text-right">
             <div className="mb-1 border-t border-[#1a2332]" />
-            <p className="text-[12px] font-bold">{doc.admission.attendingDoctor}</p>
+            {/* Gap 363: the signing doctor and signed time (server builds the
+                attestation line from those, never from typed free text). */}
+            <p className="text-[12px] font-bold">{signerLabel(doc.meta.signerName) ?? doc.admission.attendingDoctor}</p>
             {doc.admission.specialization && <p className="text-[11px] text-[#5b6472]">{doc.admission.specialization}</p>}
-            {doc.meta.signedAt && (
-              <p className="text-[10px] text-[#5b6472]">Electronically signed on {fmtDateTime(doc.meta.signedAt)}</p>
-            )}
-            {doc.meta.attestation && (
-              <p className="text-[10px] italic text-[#5b6472]">Attested as &ldquo;{doc.meta.attestation}&rdquo;</p>
+            {(doc.meta.attestation || doc.meta.signedAt) && (
+              <p className="text-[10px] text-[#5b6472]">
+                {doc.meta.attestation ?? `Electronically signed on ${fmtDateTime(doc.meta.signedAt)}`}
+              </p>
             )}
           </div>
         </div>

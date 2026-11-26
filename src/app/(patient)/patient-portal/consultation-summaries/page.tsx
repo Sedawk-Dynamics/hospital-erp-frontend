@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Clock3, FileSignature, Stethoscope } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { usePatientProfileStore } from '@/stores/patient-profile-store';
 
 /** What the portal list endpoint returns — a consultation plus enough visit
  *  context to say what it was about. `signedAt` is null while the doctor has
@@ -23,10 +24,11 @@ interface ConsultationListItem {
 }
 
 export default function ConsultationSummariesListPage() {
+  const { selectedProfileId } = usePatientProfileStore();
   const { data, isLoading } = useQuery({
-    queryKey: ['patient', 'consultation-summaries'],
+    queryKey: ['patient', 'consultation-summaries', selectedProfileId],
     queryFn: async () => {
-      const res = await apiGet<ConsultationListItem[]>('/patient-portal/consultation-summaries');
+      const res = await apiGet<ConsultationListItem[]>('/patient-portal/consultation-summaries', { params: selectedProfileId ? { profileId: selectedProfileId } : {} });
       return res.data ?? [];
     },
   });

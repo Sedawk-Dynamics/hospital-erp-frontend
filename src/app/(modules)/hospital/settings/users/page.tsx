@@ -33,6 +33,7 @@ import {
   type UserListItem,
 } from '@/hooks/use-users';
 import { fullName } from '@/lib/person-name';
+import { formatRoleName, staffRoles } from '@/lib/utils';
 
 export default function UserAccessConfigPage() {
   const router = useRouter();
@@ -88,6 +89,7 @@ export default function UserAccessConfigPage() {
     roleIds: string[];
     departmentId?: string;
     specialization?: string;
+    specialty?: string;
     qualifications?: string;
     licenseNumber?: string;
     experienceYears?: string;
@@ -101,6 +103,7 @@ export default function UserAccessConfigPage() {
       const doctorProfile = {
         departmentId: data.departmentId || undefined,
         specialization: data.specialization || undefined,
+        specialty: data.specialty || undefined,
         qualifications: data.qualifications || undefined,
         licenseNumber: data.licenseNumber || undefined,
         experienceYears: data.experienceYears ? Number(data.experienceYears) : undefined,
@@ -209,17 +212,21 @@ export default function UserAccessConfigPage() {
           }}
         >
           <SelectTrigger>
-            <SelectValue placeholder="All Roles" />
+            <SelectValue placeholder="All Roles">
+              {(val: string) => {
+                const r = roles.find((x) => x.id === val);
+                return r ? formatRoleName(r.name) : 'All Roles';
+              }}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Roles</SelectItem>
-            {roles
-              .filter((r) => r.name !== 'super_admin')
-              .map((role) => (
-                <SelectItem key={role.id} value={role.id}>
-                  <span className="capitalize">{role.name.replace(/_/g, ' ')}</span>
-                </SelectItem>
-              ))}
+            {/* Gap 305: same staff-role list as the Add User dialog. */}
+            {staffRoles(roles).map((role) => (
+              <SelectItem key={role.id} value={role.id}>
+                {formatRoleName(role.name)}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
 
@@ -287,8 +294,8 @@ export default function UserAccessConfigPage() {
                     <td className="px-4 py-2.5">
                       <div className="flex flex-wrap gap-1">
                         {user.userRoles.map((ur) => (
-                          <span key={ur.role.id} className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-secondary/10 text-secondary capitalize">
-                            {ur.role.name.replace(/_/g, ' ')}
+                          <span key={ur.role.id} className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-secondary/10 text-secondary">
+                            {formatRoleName(ur.role.name)}
                           </span>
                         ))}
                       </div>

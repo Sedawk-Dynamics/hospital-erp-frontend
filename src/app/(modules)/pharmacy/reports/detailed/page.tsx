@@ -71,7 +71,17 @@ export default function PharmacyDetailedReportPage() {
           {/* ── KPI row ── */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-4">
             <StatCard label="Revenue" value={inr(data.sales.revenue)} sub={`${inr(data.sales.perDayRevenue)}/day`} tone="primary" />
-            <StatCard label="Gross profit" value={inr(data.sales.grossProfit)} sub={`${data.sales.marginPct}% margin`} tone="emerald" />
+            <StatCard
+              label="Gross profit"
+              value={inr(data.sales.grossProfit)}
+              // 348: margin on cost, ex-tax; never a percentage invented from a missing cost.
+              sub={
+                data.sales.marginPct == null
+                  ? 'Cost not set'
+                  : `${data.sales.marginPct}% on cost${data.sales.costMissingLines ? ` · ${data.sales.costMissingLines} line(s) without cost` : ''}`
+              }
+              tone="emerald"
+            />
             <StatCard label="Bills" value={compact(data.sales.bills)} sub={`avg ${inr(data.sales.avgBillValue)}`} />
             <StatCard label="Items sold" value={compact(data.sales.itemsSold)} sub={`${data.sales.lines} lines`} />
             <StatCard label="COGS" value={inr(data.sales.cost)} sub="cost of goods" tone="amber" />
@@ -129,7 +139,9 @@ export default function PharmacyDetailedReportPage() {
                       <td className="px-2.5 py-1.5">{d.drugName}</td>
                       <td className="px-2.5 py-1.5 text-right tabular-nums">{compact(d.qty)}</td>
                       <td className="px-2.5 py-1.5 text-right font-medium tabular-nums">{inr(d.revenue)}</td>
-                      <td className="px-2.5 py-1.5 text-right tabular-nums text-emerald-600">{d.marginPct}%</td>
+                      <td className={`px-2.5 py-1.5 text-right tabular-nums ${d.marginPct == null ? 'text-muted-foreground' : d.marginPct < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                        {d.marginPct == null ? 'Cost not set' : `${d.marginPct}%`}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

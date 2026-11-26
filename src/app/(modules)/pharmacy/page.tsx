@@ -29,12 +29,13 @@ import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
 import { Button } from '@/components/ui/button';
 import { cn, getApiErrorMessage } from '@/lib/utils';
+import { gstinProblem } from '@/lib/gstin';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
 import { toast } from 'sonner';
 import { formatDate, formatTime24, toInputDateStr } from '@/lib/date-utils';
 import { calcQuantityFromStrings } from '@/lib/dosage-calc';
-import { looseUnitLabel, packSummary, formatBaseQty } from '@/lib/pharmacy-units';
+import { looseUnitLabel, packSummary, formatBaseQty, sellingUnits, formatSaleQty } from '@/lib/pharmacy-units';
 import {
   useFormulary,
   useBatchesByDrug,
@@ -53,7 +54,6 @@ import {
   type DrugSchedule,
   type PharmacySale,
   type PharmacyPaymentMethod,
-  type PharmacyTenderInput,
   type CreatePharmacySaleInput,
   type FormularyAlternative,
   useCreditStatus,
@@ -132,6 +132,9 @@ interface CartItem {
   // sells 'pack' the quantity counts packs; when 'loose' it counts sub-units.
   packSize: number;
   looseUnitLabel: string;
+  // 345: the noun for a whole pack ("strip", "bottle"). For a drug with no
+  // pack breakdown it equals looseUnitLabel, so the row has one selling unit.
+  packLabel: string;
   // Dosage form (tablet/syrup/...) — drives the base-unit noun shown to the
   // cashier when no explicit looseUnitLabel is configured.
   dosageForm: string | null;
@@ -200,11 +203,6 @@ function computeItemNet(item: CartItem): number {
  * what is quoted IS what is billed. See `useSalePreview`.
  */
 
-function computeItemMargin(item: CartItem): number {
-  const cost = item.purchasePrice * baseQtyOf(item);
-  return computeItemNet(item) - cost;
-}
-
 // Gross profit margin % of a line (selling vs purchase, per unit) — the stable
 // input to the margin-based discount bands. Null when cost is unknown, so no
 // margin-derived cap can be applied.
@@ -257,8 +255,22 @@ function PharmacyPOS() {
 
   // --- Cart + payment state ---
   const [cart, setCart] = useState<CartItem[]>([]);
+  // 344: payment is chosen BEFORE the bill is generated, and the sale, its
+  // payment and the hand-over are saved in one server transaction. The old
+  // two-step flow (generate an unpaid bill, then POST /billing/payments) left
+  // a pending bill whose medicine already read "Dispensed" whenever the second
+  // step failed or was skipped — and that second request was the bare 400.
   const [paymentMode, setPaymentMode] = useState<string>('Cash');
   const [amountTendered, setAmountTendered] = useState<string>('');
+  // G-8: card slip / UPI reference — optional.
+  const [paymentRef, setPaymentRef] = useState<string>('');
+  // 344: "Pay later" / short payment needs a reason to dispense on credit.
+  const [creditReason, setCreditReason] = useState<string>('');
+  // G-4: optional registered buyer — makes the sale a B2B tax invoice.
+  const [buyerOpen, setBuyerOpen] = useState(false);
+  const [buyerGstin, setBuyerGstin] = useState('');
+  const [buyerName, setBuyerName] = useState('');
+  const [buyerAddress, setBuyerAddress] = useState('');
   // G2: bill-level discount applied on top of any per-item discounts.
   const [billDiscPct, setBillDiscPct] = useState<string>('');
   // G7: split payment — when on, the bill is settled across multiple tenders.
@@ -375,6 +387,7 @@ function PharmacyPOS() {
           purchasePrice: 0,
           packSize: 1,
           looseUnitLabel: 'unit',
+          packLabel: 'unit',
           dosageForm: null,
           // No rate is guessed here any more — the server resolves it. Kept at
           // zero so nothing downstream can mistake a placeholder for an answer.
@@ -479,7 +492,13 @@ function PharmacyPOS() {
           purchasePrice: toNum(batch.purchasePrice),
           packSize: pack,
           dosageForm: batch.drug?.dosageForm ?? c.dosageForm,
-          looseUnitLabel: looseUnitLabel(batch.drug?.dosageForm, batch.drug?.looseUnitLabel) || c.looseUnitLabel,
+          // 345: one pair of unit nouns, from the batch's drug when it has one.
+          ...(batch.drug
+            ? (() => {
+                const u = sellingUnits({ ...batch.drug, packSize: pack });
+                return { looseUnitLabel: u.looseLabel, packLabel: u.packLabel };
+              })()
+            : { looseUnitLabel: c.looseUnitLabel, packLabel: c.packLabel }),
           taxPercent: batch.drug?.taxPercent != null ? toNum(batch.drug.taxPercent) : c.taxPercent,
           saleUnit,
           availableQty: batch.quantityInStock,
@@ -544,7 +563,10 @@ function PharmacyPOS() {
           sellingPrice: toNum(item.price),
           purchasePrice: 0,
           packSize: pack,
-          looseUnitLabel: looseUnitLabel(item.dosageForm, item.looseUnitLabel),
+          ...(() => {
+            const u = sellingUnits({ ...item, packSize: pack });
+            return { looseUnitLabel: u.looseLabel, packLabel: u.packLabel };
+          })(),
           dosageForm: item.dosageForm ?? null,
           taxPercent: item.taxPercent != null ? toNum(item.taxPercent) : 0,
           // Default to loose so "give me X" works out of the box; the cashier
@@ -587,9 +609,12 @@ function PharmacyPOS() {
       );
       setScanCode('');
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'No product matched this scan');
+      toast.error(getApiErrorMessage(e, 'No product matched this scan'));
     }
   }, [resolveScan, addWalkInItem]);
+
+  // 345: the noun for the unit this row is being sold in.
+  const saleUnitNoun = (c: CartItem): string => (c.saleUnit === 'loose' ? c.looseUnitLabel : c.packLabel);
 
   // Max quantity in the row's current unit (packs vs loose), given base stock.
   const maxQtyInUnit = (c: CartItem): number => {
@@ -606,7 +631,7 @@ function PharmacyPOS() {
           const max = maxQtyInUnit(c);
           const newQty = Math.max(0, c.quantity + delta);
           if (newQty > max) {
-            toast.warning(`Max available: ${max} ${c.saleUnit === 'loose' ? c.looseUnitLabel : 'pack'}(s)`);
+            toast.warning(`Max available: ${formatSaleQty(max, saleUnitNoun(c))}`);
             return c;
           }
           return { ...c, quantity: newQty };
@@ -624,7 +649,7 @@ function PharmacyPOS() {
         if (!raw || Number.isNaN(parsed) || parsed < 0) return { ...c, quantity: 0 };
         const max = maxQtyInUnit(c);
         if (parsed > max) {
-          toast.warning(`Max available: ${max} ${c.saleUnit === 'loose' ? c.looseUnitLabel : 'pack'}(s)`);
+          toast.warning(`Max available: ${formatSaleQty(max, saleUnitNoun(c))}`);
           return { ...c, quantity: max === Infinity ? parsed : max };
         }
         return { ...c, quantity: parsed };
@@ -648,9 +673,7 @@ function PharmacyPOS() {
     setCart((prev) => prev.filter((c) => c.rowKey !== rowKey));
   };
 
-  // Margin-based discount policy (separate module) — a visual refinement that
-  // caps the per-line discount based on the item's profit margin. Read once; the
-  // cap is applied locally so there is no round-trip per keystroke.
+
   const { data: discountPolicy } = useEffectiveDiscountPolicy();
   const capForItem = (item: CartItem): number | null => {
     if (!discountPolicy?.enabled) return null;
@@ -681,8 +704,7 @@ function PharmacyPOS() {
     const afterDiscount = subtotal - totalDiscount;
     const rounded = Math.round(afterDiscount);
     const roundOff = Math.round((rounded - afterDiscount) * 100) / 100;
-    const margin = cart.reduce((s, c) => s + computeItemMargin(c), 0);
-    return { subtotal, totalDiscount, afterDiscount, rounded, roundOff, margin };
+    return { subtotal, totalDiscount, afterDiscount, rounded, roundOff };
   }, [cart]);
 
   /**
@@ -707,7 +729,9 @@ function PharmacyPOS() {
         })),
     [cart],
   );
-  const salePreview = useSalePreview(previewItems, previewItems.length > 0);
+  // G-6: the patient travels with the quote so an admitted patient's lines are
+  // priced with the same exemption the sale will apply.
+  const salePreview = useSalePreview(previewItems, previewItems.length > 0, selectedPatient?.id);
   const gst = salePreview.data?.totals;
   /**
    * The server's answer per line, so a cart row shows the rate it will actually
@@ -725,6 +749,24 @@ function PharmacyPOS() {
     }
     return m;
   }, [salePreview.data]);
+
+  // 348: margin = (retail excl. tax − cost) ÷ cost — the formula the Reports
+  // and Detailed Analysis use. Retail is taken ex-GST at the rate the server
+  // quoted; a line with no purchase price is "cost not set", never ₹0 cost.
+  const marginSummary = useMemo(() => {
+    let profit = 0;
+    let cost = 0;
+    let missing = 0;
+    for (const c of cart) {
+      if (!c.purchasePrice || c.purchasePrice <= 0) { missing += 1; continue; }
+      const lineCost = c.purchasePrice * baseQtyOf(c);
+      const rate = (c.batchId && gstByBatch.get(c.batchId)?.taxRatePercent) || 0;
+      const exTax = (computeItemNet(c) * 100) / (100 + rate);
+      profit += exTax - lineCost;
+      cost += lineCost;
+    }
+    return { profit, pct: cost > 0 ? (profit / cost) * 100 : null, missing };
+  }, [cart, gstByBatch]);
 
   // G2: bill-level discount on top of per-item discounts → final payable.
   const billDiscPctNum = Math.min(100, Math.max(0, Number(billDiscPct) || 0));
@@ -764,22 +806,26 @@ function PharmacyPOS() {
     'Bank Transfer',
     'Insurance',
     ...(advanceAvailable > 0 ? ['Advance'] : []),
+    // 344: explicit credit — dispensed with a reason, shown as "To collect".
+    'Pay later',
   ];
+  // 344: a short cash tender or "Pay later" leaves a balance → needs a reason.
+  const leavesBalance =
+    paymentMode === 'Pay later' ||
+    (paymentMode === 'Cash' && amountTendered.trim() !== '' && Number(amountTendered) < payable);
 
   // Sum of all split tenders entered (in split mode).
   const tendersTotal = tenders.reduce((s, t) => s + (Number(t.amount) || 0), 0);
 
   // Bills the whole cart as one invoice, then opens the printable receipt.
   const runSale = async () => {
-    // IP prescription: dispense straight to the patient's hospital IP ledger — no
-    // counter sale, ₹0 collected here. Uses the prescription's own lines (FEFO).
     if (isIp && activePrescriptionId) {
       try {
         await dispenseIp.mutateAsync({
           prescriptionId: activePrescriptionId,
           batches: cart.flatMap((item) =>
             item.prescriptionItemId && item.batchId
-              ? [{ itemId: item.prescriptionItemId, drugBatchId: item.batchId }]
+              ? [{ itemId: item.prescriptionItemId, drugBatchId: item.batchId,quantity:baseQtyOf(item) }]
               : [],
           ),
         });
@@ -841,11 +887,6 @@ function PharmacyPOS() {
         }
       }
 
-      // Dispensing less than the doctor prescribed was passing on a passive
-      // grey note beside the line. The pharmacist could bill 1 against a
-      // prescribed 2 without ever saying so — and the patient walks out short
-      // of a course of treatment. Name both numbers and make it an explicit
-      // acknowledgement.
       const short = cart
         .filter((c) => c.rxQuantity != null && baseQtyOf(c) < (c.rxQuantity ?? 0))
         .map((c) => ({
@@ -870,21 +911,6 @@ function PharmacyPOS() {
         if (!proceed) return;
       }
 
-      // Build the tender line(s). Both modes go through payments[] so Insurance
-      // (and any future mode) works uniformly; the backend trims change and
-      // settles the bill. Split mode = one line per tender; single mode = one
-      // line for the chosen method at the tendered (or full) amount.
-      const tenderLines: PharmacyTenderInput[] = splitMode
-        ? tenders
-            .filter((t) => Number(t.amount) > 0)
-            .map((t) => ({ method: PAYMENT_METHOD_MAP[t.method] ?? 'cash', amount: Number(t.amount) }))
-        : (() => {
-            const amt = amountTendered ? Math.min(tenderedNum, payable) : payable;
-            return amt > 0
-              ? [{ method: PAYMENT_METHOD_MAP[paymentMode] ?? 'cash', amount: amt }]
-              : [];
-          })();
-
       const payload: CreatePharmacySaleInput = {
         // Omitted for walk-in — backend bills it to the tenant Walk-in customer.
         patientId: selectedPatient?.id,
@@ -900,24 +926,73 @@ function PharmacyPOS() {
           discountPercent: c.discount || undefined,
           nonReturnable: c.nonReturnable || undefined,
         })),
+        // G-6: the admission the screen saw; the server re-resolves it.
+        admissionId: creditStatus?.hasAdmission ? creditStatus.admissionId ?? undefined : undefined,
       };
+      // 344 / G-8: the tender travels WITH the sale, so the sale and its payment
+      // commit together. A full payment is left for the server to size (it owns
+      // the total and the round-off), so a client-side rounding difference can
+      // never leave a few paise owing or be refused as an overpayment.
+      const ref = paymentRef.trim() || undefined;
+      if (leavesBalance) {
+        if (!creditReason.trim()) {
+          toast.error('Give a reason to dispense on credit, or take the full payment.');
+          return;
+        }
+        payload.creditReason = creditReason.trim();
+        payload.paymentMethod = 'cash';
+        payload.amountPaid = paymentMode === 'Pay later' ? 0 : Math.max(0, Number(amountTendered) || 0);
+      } else if (paymentMode === 'Insurance' || paymentMode === 'Advance') {
+        payload.payments = [{ method: PAYMENT_METHOD_MAP[paymentMode], amount: payable, reference: ref }];
+      } else {
+        payload.paymentMethod = (PAYMENT_METHOD_MAP[paymentMode] ?? 'cash') as CreatePharmacySaleInput['paymentMethod'];
+        payload.paymentReference = ref;
+      }
       if (billDiscPctNum > 0) payload.billDiscountPercent = billDiscPctNum;
-      if (tenderLines.length) payload.payments = tenderLines;
+      if (buyerGstin.trim()) {
+        const problem = gstinProblem(buyerGstin);
+        if (problem) {
+          toast.error(`Buyer GSTIN: ${problem}`);
+          return;
+        }
+        if (!buyerName.trim()) {
+          toast.error("Enter the buyer's legal name for the B2B invoice");
+          return;
+        }
+        payload.buyer = {
+          gstin: buyerGstin.trim().toUpperCase(),
+          legalName: buyerName.trim(),
+          address: buyerAddress.trim() || undefined,
+        };
+      }
       const sale = await createSale.mutateAsync(payload);
-      toast.success(`Bill ${sale.bill.billNumber} created`);
       setReceiptSale(sale);
       setReceiptOpen(true);
-      setCart([]);
-      setAmountTendered('');
+      toast.success(
+        Number(sale.bill.balanceDue) > 0
+          ? `Bill ${sale.bill.billNumber} dispensed on credit — ₹${fmt(Number(sale.bill.balanceDue))} to collect`
+          : `Bill ${sale.bill.billNumber} paid`,
+      );
+      // Reset the counter for the next sale.
       setBillDiscPct('');
       setSplitMode(false);
       setTenders([{ id: 'tender-1', method: 'Cash', amount: '' }]);
+      setAmountTendered('');
+      setPaymentRef('');
+      setCreditReason('');
+      setBuyerOpen(false);
+      setBuyerGstin('');
+      setBuyerName('');
+      setBuyerAddress('');
+      setPaymentMode('Cash');
+      setCart([]);
       setActivePrescriptionId(null);
       setExternalRx(null);
       clearPatient();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to create bill';
-      toast.error(message);
+      // G-6 / G-8: the server's own words (field errors included), never
+      // "Request failed with status code 400".
+      toast.error(getApiErrorMessage(err, 'Failed to create bill'));
     }
   };
 
@@ -1055,32 +1130,6 @@ function PharmacyPOS() {
               <X className="inline h-3 w-3" />
             </button>
           )}
-        </div>
-
-        {/* Outside (paper) prescription — the path for a walk-in holding an Rx
-            written elsewhere. Available with or without a patient selected,
-            because most people presenting one are not registered here. */}
-        <div className="flex items-center gap-1">
-          <Button
-            variant={externalRx ? 'secondary' : 'outline'}
-            size="sm"
-            onClick={() => setOutsideRxOpen(true)}
-          >
-            <FileText className="h-4 w-4 mr-1.5" />
-            {externalRx
-              ? `Outside Rx: ${externalRx.prescriberName}${externalRx.prescriberRegNo ? ` (${externalRx.prescriberRegNo})` : ''}`
-              : 'Outside Prescription'}
-          </Button>
-          {externalRx && (
-            <button
-              type="button"
-              onClick={() => setExternalRx(null)}
-              className="text-xs text-muted-foreground hover:text-destructive"
-              aria-label="Clear outside prescription"
-            >
-              <X className="inline h-3 w-3" />
-            </button>
-          )}
           {prescriptionPickerOpen && selectedPatient && (
             <div className="absolute top-full left-0 z-50 mt-1 w-[420px] rounded-lg border bg-popover shadow-lg overflow-hidden">
               <div className="px-3 py-2 border-b bg-muted/30 flex items-center justify-between">
@@ -1154,6 +1203,29 @@ function PharmacyPOS() {
                 )}
               </div>
             </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1">
+          <Button
+            variant={externalRx ? 'secondary' : 'outline'}
+            size="sm"
+            onClick={() => setOutsideRxOpen(true)}
+          >
+            <FileText className="h-4 w-4 mr-1.5" />
+            {externalRx
+              ? `Outside Rx: ${externalRx.prescriberName}${externalRx.prescriberRegNo ? ` (${externalRx.prescriberRegNo})` : ''}`
+              : 'Outside Prescription'}
+          </Button>
+          {externalRx && (
+            <button
+              type="button"
+              onClick={() => setExternalRx(null)}
+              className="text-xs text-muted-foreground hover:text-destructive"
+              aria-label="Clear outside prescription"
+            >
+              <X className="inline h-3 w-3" />
+            </button>
           )}
         </div>
 
@@ -1257,7 +1329,9 @@ function PharmacyPOS() {
                       </p>
                       <p className="mt-0.5 text-[10px]">
                         {inStock ? (
-                          <span className="text-emerald-600">In stock: {item.totalStock}</span>
+                          <span className="text-emerald-600">
+                            In stock: {formatSaleQty(item.totalStock ?? 0, sellingUnits(item).looseLabel)}
+                          </span>
                         ) : (
                           <span className="font-medium text-amber-600">Out of stock — tap for alternatives</span>
                         )}
@@ -1484,24 +1558,30 @@ function PharmacyPOS() {
                                     : 'border-border text-muted-foreground hover:bg-muted/50',
                                 )}
                               >
-                                {u === 'loose' ? item.looseUnitLabel || 'Loose' : 'Pack'}
+                                {u === 'loose' ? item.looseUnitLabel || 'loose' : item.packLabel}
                               </button>
                             ))}
                           </div>
                         )}
+                        {item.packSize <= 1 && (
+                          <p className="text-center text-[10px] text-muted-foreground mt-0.5">{item.packLabel}</p>
+                        )}
                         {item.availableQty > 0 && (
                           <p className="text-center text-[10px] text-muted-foreground mt-0.5">
-                            Avl: {item.saleUnit === 'loose'
-                              ? `${item.availableQty} ${item.looseUnitLabel || 'units'}`
-                              : `${Math.floor(item.availableQty / (item.packSize || 1))} pack`}
-                            {item.packSize > 1 && ` (1 pack = ${item.packSize})`}
+                            Avl: {formatSaleQty(
+                              item.saleUnit === 'loose'
+                                ? item.availableQty
+                                : Math.floor(item.availableQty / (item.packSize || 1)),
+                              saleUnitNoun(item),
+                            )}
+                            {item.packSize > 1 && ` (1 ${item.packLabel} = ${formatSaleQty(item.packSize, item.looseUnitLabel)})`}
                           </p>
                         )}
                       </td>
                       <td className="px-3 py-2.5 text-right">
                         {`₹${fmt(item.saleUnit === 'loose' ? item.sellingPrice : item.sellingPrice * (item.packSize || 1))}`}
                         <div className="text-[10px] text-muted-foreground">
-                          {item.saleUnit === 'loose' ? `/${item.looseUnitLabel || 'unit'}` : '/pack'}
+                          {`/${saleUnitNoun(item)}`}
                         </div>
                       </td>
                       <td className="px-3 py-2.5">
@@ -1744,9 +1824,17 @@ function PharmacyPOS() {
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Margin / Profit</span>
-              <span className={cn('font-medium', summary.margin >= 0 ? 'text-emerald-600' : 'text-red-600')}>
-                {`₹${fmt(summary.margin)}`}
-              </span>
+              {marginSummary.pct == null ? (
+                <span className="font-medium text-muted-foreground">Cost not set</span>
+              ) : (
+                <span
+                  className={cn('font-medium', marginSummary.profit >= 0 ? 'text-emerald-600' : 'text-red-600')}
+                  title={marginSummary.missing ? `${marginSummary.missing} line(s) have no cost and are left out` : 'On cost, excluding GST'}
+                >
+                  {`₹${fmt(marginSummary.profit)} · ${marginSummary.pct.toFixed(1)}%`}
+                  {marginSummary.missing ? ' *' : ''}
+                </span>
+              )}
             </div>
           </div>
 
@@ -1761,8 +1849,8 @@ function PharmacyPOS() {
             </div>
           )}
 
-          {/* Payment — single mode, or G7 split across multiple tenders */}
-          {!isIp && (
+          {/* Payment — single mode, or G7 split across multiple tenders. */}
+          {false && !isIp && (
           <div>
             <div className="mb-2 flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Payment</p>
@@ -1925,6 +2013,123 @@ function PharmacyPOS() {
           </div>
           )}
 
+          {/* 344: payment step — chosen BEFORE the bill is generated. */}
+          {!isIp && cart.length > 0 && (
+            <div className="space-y-3 rounded-md border border-border p-3">
+              <p className="text-xs text-muted-foreground">Payment</p>
+              {advanceAvailable > 0 && (
+                <p className="rounded-md bg-primary/5 px-2.5 py-1 text-[11px] text-primary">
+                  Advance available: ₹{fmt(advanceAvailable)} — selectable as a payment mode.
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                {paymentModes.map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setPaymentMode(mode)}
+                    className={cn(
+                      'rounded-full border px-3 py-1 text-xs transition-colors',
+                      paymentMode === mode
+                        ? 'border-primary/40 bg-primary/10 text-primary'
+                        : 'border-border text-muted-foreground hover:bg-muted/50',
+                    )}
+                  >
+                    {mode}
+                  </button>
+                ))}
+              </div>
+              {paymentMode === 'Cash' && (
+                <div>
+                  <p className="mb-1 text-xs text-muted-foreground">Amount Tendered</p>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder={`Default: ₹${fmt(payable)} (full)`}
+                    value={amountTendered}
+                    onChange={(e) => setAmountTendered(e.target.value)}
+                    className="h-9"
+                  />
+                  {tenderedNum > 0 && (
+                    <div className="mt-1 flex justify-between text-xs">
+                      <span className="text-muted-foreground">
+                        {tenderedNum >= payable ? 'Change to return' : 'Balance to collect'}
+                      </span>
+                      <span className={cn('font-medium', tenderedNum >= payable ? 'text-emerald-600' : 'text-amber-600')}>
+                        ₹{fmt(tenderedNum >= payable ? changeDue : payable - tenderedNum)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+              {['Card', 'UPI', 'Bank Transfer', 'Insurance'].includes(paymentMode) && (
+                <div>
+                  <p className="mb-1 text-xs text-muted-foreground">Reference (optional)</p>
+                  <Input
+                    maxLength={100}
+                    placeholder={paymentMode === 'Card' ? 'Card slip / approval no.' : 'Transaction / UTR no.'}
+                    value={paymentRef}
+                    onChange={(e) => setPaymentRef(e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+              )}
+              {/* G-4: a business buyer's GSTIN makes this a B2B tax invoice. */}
+              <div>
+                <button
+                  type="button"
+                  className="text-xs text-primary underline-offset-2 hover:underline"
+                  onClick={() => setBuyerOpen((o) => !o)}
+                >
+                  {buyerOpen ? 'Hide' : buyerGstin.trim() ? `B2B buyer: ${buyerGstin.trim()}` : '+ Buyer GSTIN (B2B invoice)'}
+                </button>
+                {buyerOpen && (
+                  <div className="mt-1 space-y-1.5">
+                    <Input
+                      maxLength={15}
+                      placeholder="Buyer GSTIN"
+                      value={buyerGstin}
+                      onChange={(e) => setBuyerGstin(e.target.value.toUpperCase())}
+                      className="h-9 font-mono uppercase"
+                    />
+                    {buyerGstin.trim() && gstinProblem(buyerGstin) && (
+                      <p className="text-[11px] text-red-600">{gstinProblem(buyerGstin)}</p>
+                    )}
+                    <Input
+                      maxLength={200}
+                      placeholder="Legal name (as registered)"
+                      value={buyerName}
+                      onChange={(e) => setBuyerName(e.target.value)}
+                      className="h-9"
+                    />
+                    <Input
+                      maxLength={500}
+                      placeholder="Address (optional)"
+                      value={buyerAddress}
+                      onChange={(e) => setBuyerAddress(e.target.value)}
+                      className="h-9"
+                    />
+                  </div>
+                )}
+              </div>
+              {leavesBalance && (
+                <div>
+                  <p className="mb-1 text-xs text-amber-700">
+                    Dispense on credit — reason (required). The bill will show &ldquo;To collect&rdquo;.
+                  </p>
+                  <Input
+                    maxLength={500}
+                    placeholder="e.g. Staff — salary deduction / Patient returning with cash"
+                    value={creditReason}
+                    onChange={(e) => setCreditReason(e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex gap-2">
             {!isIp && (
               <Button
@@ -1938,7 +2143,12 @@ function PharmacyPOS() {
             )}
             <Button
               className="flex-1"
-              disabled={!canCreateBill || createSale.isPending || dispenseIp.isPending}
+              disabled={
+                !canCreateBill ||
+                createSale.isPending ||
+                dispenseIp.isPending ||
+                (!isIp && leavesBalance && !creditReason.trim())
+              }
               onClick={handleCreateBill}
             >
               {isIp
@@ -1947,7 +2157,9 @@ function PharmacyPOS() {
                   : 'Dispense to IP ledger'
                 : createSale.isPending
                   ? 'Billing...'
-                  : 'Generate Bill'}
+                  : leavesBalance
+                    ? 'Generate Bill & dispense on credit'
+                    : `Generate Bill & collect ₹${fmt(payable)}`}
             </Button>
           </div>
         </div>
@@ -2176,7 +2388,12 @@ function PharmacyCashCounterTab() {
         lineTotal?: number | string | null;
         drugBatch?: { drug?: { drugName: string }; batchNumber: string; sellingPrice?: number | string };
         patient?: { firstName: string; lastName: string };
-      }>>('/pharmacy/dispensing', { params: { fromDate: today, limit: 100 } });
+        dispenser?: { firstName: string; lastName: string | null } | null;
+        // 344: the bill this line went out on, so an unpaid one reads "To collect".
+        billNumber?: string | null;
+        billStatus?: string | null;
+        creditReason?: string | null;
+      }>>('/pharmacy/dispensing', { params: { fromDate: today, toDate: today, limit: 100 } });
       return response.data;
     },
   });
@@ -2194,7 +2411,12 @@ function PharmacyCashCounterTab() {
     const unit = r.unitPrice != null ? Number(r.unitPrice) : Number(r.drugBatch?.sellingPrice ?? 0);
     return unit * (r.quantityDispensed || 0);
   };
-  const total = records.reduce((sum, r) => sum + lineAmountOf(r), 0);
+  // 344/346: a sale is a PAID bill; lines handed over on credit are money to
+  // collect, not takings.
+  const isToCollect = (r: { billStatus?: string | null }) =>
+    r.billStatus === 'pending' || r.billStatus === 'partially_paid';
+  const total = records.filter((r) => !isToCollect(r)).reduce((sum, r) => sum + lineAmountOf(r), 0);
+  const toCollect = records.filter(isToCollect).reduce((sum, r) => sum + lineAmountOf(r), 0);
   const fmt = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
   return (
@@ -2203,7 +2425,9 @@ function PharmacyCashCounterTab() {
         <div className="rounded-lg border p-4">
           <p className="text-xs font-medium text-muted-foreground uppercase">Today&apos;s Sales</p>
           <p className="font-headline text-3xl font-extrabold mt-1">{fmt(total)}</p>
-          <p className="text-xs text-muted-foreground">{records.length} transactions</p>
+          <p className="text-xs text-muted-foreground">
+            {records.length} transactions{toCollect > 0 ? ` · ${fmt(toCollect)} to collect` : ''}
+          </p>
         </div>
         <div className="rounded-lg border p-4">
           <p className="text-xs font-medium text-muted-foreground uppercase">Items Dispensed</p>
@@ -2229,14 +2453,16 @@ function PharmacyCashCounterTab() {
               <th className="px-4 pb-4 pt-5 text-right font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Qty</th>
               <th className="px-4 pb-4 pt-5 text-right font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Amount</th>
               <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Time</th>
+              {/* Gap 347: who handed the line over. */}
+              <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Dispensed By</th>
               <th className="px-4 pb-4 pt-5 text-left font-semibold text-on-surface-variant font-label text-[10px] uppercase tracking-widest">Status</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center"><div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" /></td></tr>
+              <tr><td colSpan={8} className="px-4 py-8 text-center"><div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" /></td></tr>
             ) : records.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center font-label text-on-surface-variant">No dispensing records today.</td></tr>
+              <tr><td colSpan={8} className="px-4 py-8 text-center font-label text-on-surface-variant">No dispensing records today.</td></tr>
             ) : (
               records.map((r) => {
                 const lineAmount = lineAmountOf(r);
@@ -2248,13 +2474,23 @@ function PharmacyCashCounterTab() {
                     <td className="px-4 py-3 text-right">{r.quantityDispensed}</td>
                     <td className="px-4 py-3 text-right font-medium">{lineAmount > 0 ? fmt(lineAmount) : '-'}</td>
                     <td className="px-4 py-3 text-muted-foreground">{formatTime24(r.dispensedAt)}</td>
+                    <td className="px-4 py-3">{r.dispenser ? fullName(r.dispenser) : '-'}</td>
                     <td className="px-4 py-3">
-                      <span className={cn(
-                        'text-[10px] font-bold px-2 py-0.5 rounded-full capitalize',
-                        r.verifiedBy ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800',
-                      )}>
-                        {r.verifiedBy ? 'verified' : 'dispensed'}
-                      </span>
+                      {isToCollect(r) ? (
+                        <span
+                          className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800"
+                          title={r.creditReason ? `On credit: ${r.creditReason}` : 'Bill not yet paid'}
+                        >
+                          To collect
+                        </span>
+                      ) : (
+                        <span className={cn(
+                          'text-[10px] font-bold px-2 py-0.5 rounded-full capitalize',
+                          r.verifiedBy ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800',
+                        )}>
+                          {r.verifiedBy ? 'verified' : 'dispensed'}
+                        </span>
+                      )}
                     </td>
                   </tr>
                 );

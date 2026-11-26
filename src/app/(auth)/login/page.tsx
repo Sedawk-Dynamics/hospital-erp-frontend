@@ -12,6 +12,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { ArrowRight, Eye, EyeOff, Phone, Building2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PhoneOtpForm } from '../_components/phone-otp-form';
+import { describeSignInError } from '../_components/sign-in-error';
 
 const loginSchema = z.object({
   email: z.email('Please enter a valid email address'),
@@ -25,8 +26,14 @@ export default function LoginPage() {
   const { login } = useAuthStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  // Shown inline under the form, so the reason stays visible after the toast.
+  const [signInError, setSignInError] = useState<string | null>(null);
   // Patients sign in with phone + OTP; staff use email + password.
   const [mode, setMode] = useState<'patient' | 'staff'>('patient');
+  // Gap 297: accounts with two-factor sign-in on are asked for an app code
+  // after the password (the server answers 2FA_REQUIRED).
+  const [needs2fa, setNeeds2fa] = useState(false);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
 
   const {
     register,
@@ -42,8 +49,10 @@ export default function LoginPage() {
 
   const onSubmit = async (data: LoginFormData) => {
     setIsSubmitting(true);
+    setSignInError(null);
     try {
-      const onboardingStatus = await login(data.email, data.password);
+      if (needs2fa) await login(data.email, data.password, twoFactorCode);
+      else await login(data.email, data.password);
       toast.success('Login successful! Redirecting...');
       const loggedInUser = useAuthStore.getState().user;
       const roleSlug = loggedInUser?.role?.slug || loggedInUser?.roles?.[0];
@@ -62,9 +71,18 @@ export default function LoginPage() {
       // Hospital admins go to hospital selection
       router.push('/select-hospital');
     } catch (error: unknown) {
-      const message =
-        (error as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-        'Login failed. Please check your credentials.';
+      if ((error as { response?: { data?: { code?: string } } })?.response?.data?.code === '2FA_REQUIRED') {
+        // Password was right; now ask for the authenticator code.
+        setNeeds2fa(true);
+        setTwoFactorCode('');
+        setSignInError(null);
+        return;
+      }
+      // Gaps 370/371: stay on the Staff tab with the email kept, and say what
+      // actually went wrong — a wrong password, an unreachable server and a
+      // login-service fault each get their own message.
+      const message = describeSignInError(error);
+      setSignInError(message);
       toast.error(message);
     } finally {
       setIsSubmitting(false);
@@ -156,11 +174,38 @@ export default function LoginPage() {
           )}
         </div>
 
+        {needs2fa && (
+          <div className="space-y-2">
+            <Label htmlFor="twoFactorCode" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">
+              Two-factor code
+            </Label>
+            <input
+              id="twoFactorCode"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              autoFocus
+              placeholder="6-digit code from your authenticator app"
+              className="bg-surface-container-low border-none rounded-xl px-4 py-2.5 w-full font-label text-sm focus:ring-2 focus:ring-primary/20 transition-all outline-none placeholder:text-on-surface-variant/60"
+              value={twoFactorCode}
+              onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            />
+            <p className="font-label text-xs text-on-surface-variant">
+              Two-factor sign-in is on for this account. Enter the code your authenticator app shows.
+            </p>
+          </div>
+        )}
+
+        {signInError && (
+          <p role="alert" className="rounded-xl bg-error/10 px-4 py-2.5 font-label text-sm text-error">
+            {signInError}
+          </p>
+        )}
+
         <button
           type="submit"
           className="w-full bg-primary text-on-primary font-label font-bold text-sm px-6 py-3 rounded-xl hover:shadow-lg transition-all animate-fade-in-up h-11"
           style={{ animationDelay: '300ms' }}
-          disabled={isSubmitting}
+          disabled={isSubmitting || (needs2fa && twoFactorCode.length !== 6)}
         >
           {isSubmitting ? (
             <span className="flex items-center justify-center gap-2">

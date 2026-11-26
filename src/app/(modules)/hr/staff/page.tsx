@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useStaffProfiles, useDeactivateStaffProfile, type StaffStatus } from '@/hooks/use-hr';
 import { Search, UserMinus } from 'lucide-react';
+import { AddStaffDialog, ImportStaffButton, useCanManageHr } from '../_components/hr-create-dialogs';
 
 const STATUS_TONE: Record<StaffStatus, string> = {
   active: 'bg-emerald-100 text-emerald-700 border-emerald-200',
@@ -21,6 +22,7 @@ export default function HrStaffPage() {
   const [status, setStatus] = useState<StaffStatus | ''>('');
   const { data, isLoading } = useStaffProfiles({ search: search || undefined, status: status || undefined });
   const deactivate = useDeactivateStaffProfile();
+  const canManage = useCanManageHr();
 
   const rows = (data?.data ?? []) as Array<{
     id: string;
@@ -36,11 +38,19 @@ export default function HrStaffPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold font-headline">Staff Profiles</h1>
-        <p className="text-sm text-on-surface-variant">
-          Personal info, department, position, employment type, license info.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold font-headline">Staff Profiles</h1>
+          <p className="text-sm text-on-surface-variant">
+            Personal info, department, position, employment type, license info.
+          </p>
+        </div>
+        {canManage && (
+          <div className="flex gap-2">
+            <ImportStaffButton />
+            <AddStaffDialog />
+          </div>
+        )}
       </div>
 
       <Card>
@@ -72,7 +82,9 @@ export default function HrStaffPage() {
           {isLoading ? (
             <Skeleton className="h-32 w-full" />
           ) : rows.length === 0 ? (
-            <p className="py-6 text-center text-sm text-on-surface-variant">No staff found.</p>
+            <p className="py-6 text-center text-sm text-on-surface-variant">
+              No staff found.{canManage && ' Use “Import from users” to create profiles for existing staff accounts.'}
+            </p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -97,7 +109,13 @@ export default function HrStaffPage() {
                         {r.user?.email && <div className="text-xs text-on-surface-variant">{r.user.email}</div>}
                       </td>
                       <td className="px-3 py-2">{r.department?.name ?? '—'}</td>
-                      <td className="px-3 py-2">{r.position ?? '—'}</td>
+                      <td className="px-3 py-2">
+                        {r.position ?? '—'}
+                        {/* Imported profiles start as drafts until HR fills them in. */}
+                        {!r.employeeId && !r.position && (
+                          <Badge variant="outline" className="ml-1 text-[10px]">Draft</Badge>
+                        )}
+                      </td>
                       <td className="px-3 py-2 text-xs">{r.employmentType?.replace('_', ' ') ?? '—'}</td>
                       <td className="px-3 py-2 text-xs">
                         {r.dateOfJoining ? new Date(r.dateOfJoining).toLocaleDateString('en-IN') : '—'}

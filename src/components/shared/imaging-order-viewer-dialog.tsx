@@ -1,11 +1,5 @@
 'use client';
 
-// Read-only viewer for an imaging request's report + uploaded files.
-// Used by doctor / nurse / patient surfaces. Renders impression + radiologist
-// metadata from the linked ImagingResult and shows the attachments through
-// the universal FileViewer so PDFs, modality JPG/PNG, DICOM and video loops
-// all play back inside the same dialog.
-
 import { useMemo } from 'react';
 import { Loader2, ScanLine, User as UserIcon, Calendar } from 'lucide-react';
 import {

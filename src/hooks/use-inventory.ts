@@ -102,6 +102,8 @@ export interface PurchaseOrderItem {
   quantityReceived: number;
   unitPrice: number | string | null;
   totalPrice: number | string | null;
+  // Gap 302: display name resolved by the reorder-history report (item, drug, code).
+  itemName?: string;
   inventoryItem?: (Pick<InventoryItem, 'id' | 'itemName' | 'itemCode' | 'unitOfMeasurement'> & {
     currentStock?: number;
   }) | null;
@@ -468,6 +470,8 @@ export interface ReceivePurchaseOrderLine {
   manufacturingDate?: string;
   mrp?: number;
   sellingPrice?: number;
+  /** G-10: GST % on the supplier's invoice line; the server splits CGST/SGST vs IGST. */
+  gstPercent?: number;
 }
 
 export function useCreatePurchaseOrder() {
@@ -502,12 +506,19 @@ export function useReceivePurchaseOrder() {
     mutationFn: async ({
       id,
       items,
+      invoiceNumber,
+      invoiceDate,
     }: {
       id: string;
       items: ReceivePurchaseOrderLine[];
+      /** G-9: the supplier's tax invoice — required for a GST-registered supplier. */
+      invoiceNumber?: string;
+      invoiceDate?: string;
     }) => {
       const response = await apiPatch<PurchaseOrder>(`/inventory/purchase-orders/${id}/receive`, {
         items,
+        invoiceNumber,
+        invoiceDate,
       });
       return response.data;
     },
@@ -785,6 +796,7 @@ export function useStockBalanceReport(params?: StockBalanceParams) {
 export interface InventoryDetailedReport {
   period: { fromDate: string; toDate: string; days: number };
   valuation: {
+    basis?: 'purchase_cost'; basisLabel?: string; asOf?: string;
     itemCount: number; units: number; costValue: number; retailValue: number; potentialMargin: number;
     byCategory: { category: string; items: number; units: number; costValue: number; retailValue: number }[];
   };
@@ -794,7 +806,11 @@ export interface InventoryDetailedReport {
     adjustments: { qty: number; value: number }; returns: { qty: number; value: number }; expiredRemoval: { qty: number; value: number };
     trend: { date: string; stockIn: number; stockOut: number }[];
   };
-  topConsumed: { itemName: string; category: string; qty: number; value: number }[];
+  // Gap 349: kind + refId open the supporting transactions.
+  topConsumed: {
+    kind?: 'item' | 'drug'; refId?: string; transactions?: number;
+    itemName: string; category: string; qty: number; value: number;
+  }[];
   purchases: {
     poCount: number; totalSpend: number;
     byStatus: { status: string; count: number; value: number }[];
@@ -813,6 +829,33 @@ export function useInventoryDetailedReport(params?: { fromDate?: string; toDate?
     queryKey: ['inventory', 'detailed-report', params],
     queryFn: async () => {
       const response = await apiGet<InventoryDetailedReport>('/inventory/reports/detailed', { params });
+      return response.data;
+    },
+  });
+}
+
+// Gap 349: the consumption records behind one Top-consumed row.
+export interface ConsumptionTransactions {
+  period: { fromDate: string; toDate: string };
+  kind: 'item' | 'drug';
+  refId: string;
+  itemName: string;
+  totals: { transactions: number; qty: number; value: number };
+  rows: {
+    id: string; date: string; batchNumber: string | null; movementType: string;
+    documentType: string | null; documentNumber: string | null; party: string | null;
+    quantity: number; unitCost: number | null; value: number;
+  }[];
+}
+
+export function useConsumptionTransactions(
+  params: { fromDate?: string; toDate?: string; kind?: 'item' | 'drug'; refId?: string } | null,
+) {
+  return useQuery({
+    queryKey: ['inventory', 'detailed-report', 'consumption', params],
+    enabled: !!params?.kind && !!params?.refId,
+    queryFn: async () => {
+      const response = await apiGet<ConsumptionTransactions>('/inventory/reports/detailed/consumption', { params: params ?? {} });
       return response.data;
     },
   });
@@ -1183,10 +1226,18 @@ export interface StockOverviewSystem {
   stockValue: number;
 }
 
+export interface StockValuationMeta {
+  basis: 'purchase_cost';
+  basisLabel: string;
+  asOf: string;
+}
+
 export interface StockOverview {
   expiryAlertMonths: number;
   // Drugs mapped to a generic inventory item (de-duped from combined.skus).
   linkedSkus: number;
+  // Gap 301: the basis every stock-value figure uses, and when it was computed.
+  valuation?: StockValuationMeta;
   items: StockOverviewSystem;
   drugs: StockOverviewSystem & { recalledBatches: number; valueAtRisk: number };
   combined: StockOverviewSystem & { valueAtRisk: number };
@@ -1238,6 +1289,8 @@ export interface UnifiedStockRow {
   controlledClass: 'narcotic' | 'psychotropic' | null;
   vaultControlled: boolean;
   scheduleReason: string | null;
+  // Gap 301: on-hand value from the shared valuation service (purchase cost).
+  stockValue?: number;
 }
 
 export interface UnifiedStockParams extends PaginatedParams {
@@ -1286,6 +1339,8 @@ export interface CreateUnifiedDrugPayload {
   looseUnitLabel?: string;
   packSize?: number;
   taxPercent?: number;
+  /** G-2: why the rate differs from the HSN default. */
+  gstRateReason?: string | null;
   price?: number;
   minStock?: number;
   hsnCode?: string;

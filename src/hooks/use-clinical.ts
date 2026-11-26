@@ -148,7 +148,11 @@ interface VisitParams {
   limit?: number;
   search?: string;
   status?: string;
+  /** Ignored by the server — use fromDate / toDate. */
   date?: string;
+  fromDate?: string;
+  toDate?: string;
+  visitType?: 'op' | 'ip';
   doctorId?: string;
   sortOrder?: 'asc' | 'desc';
 }

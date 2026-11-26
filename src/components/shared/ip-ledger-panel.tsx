@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { formatINR } from '@/lib/money';
 import {
   Plus, Loader2, Receipt, Wallet, Stethoscope, LogIn, LogOut, UserCog,
   FlaskConical, ScanLine, Pill, History, Activity, NotebookPen, Trash2, Printer,
@@ -53,7 +54,8 @@ const CATEGORY_LABELS: Record<string, string> = {
   other: 'Other',
 };
 const catLabel = (c: string) => CATEGORY_LABELS[c] ?? c;
-const money = (n: number) => `₹${(n ?? 0).toFixed(2)}`;
+// One formatter for money everywhere (gap item 289).
+const money = (n: number) => formatINR(n);
 
 // ---------------------------------------------------------------- Add charge
 
@@ -406,6 +408,14 @@ export function IpLedgerPanel({ admissionId, patientId, role }: { admissionId: s
               <div className="rounded-lg border bg-card px-3 py-2">
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Balance</p>
                 <p className="text-base font-bold text-foreground">{money(ledger.totals.balanceAfterDeposit)}</p>
+                {/* Balance = charges − advance applied − payments. When the
+                    advance held is more than the stay costs, a ₹0 balance hides
+                    money owed back — say it (gap item 340). */}
+                {(ledger.totals.refundable ?? 0) > 0 && (
+                  <p className="text-[10px] font-semibold text-emerald-600">
+                    Refund due {money(ledger.totals.refundable)}
+                  </p>
+                )}
               </div>
             </div>
 

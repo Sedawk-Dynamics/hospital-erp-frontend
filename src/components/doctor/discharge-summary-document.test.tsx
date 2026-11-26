@@ -40,7 +40,7 @@ function makeDoc(over: Partial<DischargeDocument> = {}): DischargeDocument {
     admission: { admissionDate: null, dischargeDate: null, lengthOfStayDays: 3, ward: 'A', bed: '4', reason: null, chiefComplaint: null, attendingDoctor: 'Dr. Rao', specialization: null },
     allergies: [],
     diagnoses: [],
-    vitals: { admission: null, discharge: null },
+    vitals: [],
     procedures: [],
     imaging: [],
     sections: {

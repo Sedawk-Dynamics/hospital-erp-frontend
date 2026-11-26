@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, BarChart3, AlertTriangle, ArrowRightLeft } from 'lucide-react';
+import { ConsumptionTransactionsDialog } from '@/components/inventory/consumption-transactions-dialog';
 
 function isoDaysAgo(n: number) {
   return new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
@@ -21,6 +22,8 @@ export default function InventoryDetailedReportPage() {
   const [fromDate, setFromDate] = useState(isoDaysAgo(29));
   const [toDate, setToDate] = useState(today());
   const { data, isLoading } = useInventoryDetailedReport({ fromDate, toDate });
+  // Gap 349: the Top-consumed row whose transactions are open.
+  const [drill, setDrill] = useState<{ kind: 'item' | 'drug'; refId: string; itemName: string; qty: number; value: number } | null>(null);
 
   const preset = (days: number) => { setFromDate(isoDaysAgo(days - 1)); setToDate(today()); };
   const catMax = useMemo(() => Math.max(1, ...(data?.valuation.byCategory ?? []).map((c) => c.costValue)), [data]);
@@ -60,6 +63,11 @@ export default function InventoryDetailedReportPage() {
         <>
           <p className="text-xs text-muted-foreground">
             Period <b>{data.period.fromDate}</b> → <b>{data.period.toDate}</b> ({data.period.days} days)
+            {/* Gap 301: valuation basis + as-of so it can be reconciled with the dashboard. */}
+            {data.valuation.asOf && (
+              <> · Stock valued {data.valuation.basisLabel ? `at ${data.valuation.basisLabel.charAt(0).toLowerCase()}${data.valuation.basisLabel.slice(1)}` : 'at purchase cost'}, as of{' '}
+                <b>{new Date(data.valuation.asOf).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</b></>
+            )}
           </p>
 
           {/* KPI */}
@@ -100,7 +108,7 @@ export default function InventoryDetailedReportPage() {
                 {data.valuation.byCategory.map((c) => (
                   <BarRow key={c.category} tone="blue" label={`${cap(c.category)} (${c.items})`} value={c.costValue} max={catMax} valueLabel={inr(c.costValue)} />
                 ))}
-                {data.valuation.byCategory.length === 0 && <p className="text-xs text-muted-foreground">No active items.</p>}
+                {data.valuation.byCategory.length === 0 && <p className="text-xs text-muted-foreground">No stock on hand.</p>}
               </div>
             </ReportSection>
 
@@ -117,13 +125,23 @@ export default function InventoryDetailedReportPage() {
 
           {/* Top consumed + low stock */}
           <div className="grid gap-4 lg:grid-cols-2">
-            <ReportSection title="Top consumed items" description="Highest stock-out value." csv={{ filename: 'inventory-top-consumed.csv', rows: data.topConsumed }}>
+            <ReportSection title="Top consumed items" description="Highest stock-out value. Click an item for its transactions." csv={{ filename: 'inventory-top-consumed.csv', rows: data.topConsumed }}>
               <RTable>
                 <RHead cols={[{ label: 'Item' }, { label: 'Category' }, { label: 'Units', align: 'right' }, { label: 'Value', align: 'right' }]} />
                 <tbody>
                   {data.topConsumed.map((t, i) => (
-                    <tr key={i} className="border-t">
-                      <td className="px-2.5 py-1.5">{t.itemName}</td>
+                    <tr
+                      key={t.kind && t.refId ? `${t.kind}:${t.refId}` : i}
+                      className={`border-t ${t.kind && t.refId ? 'cursor-pointer hover:bg-muted/40' : ''}`}
+                      onClick={() => {
+                        if (t.kind && t.refId) setDrill({ kind: t.kind, refId: t.refId, itemName: t.itemName, qty: t.qty, value: t.value });
+                      }}
+                    >
+                      <td className="px-2.5 py-1.5">
+                        {t.kind && t.refId ? (
+                          <button type="button" className="text-left text-primary hover:underline">{t.itemName}</button>
+                        ) : t.itemName}
+                      </td>
                       <td className="px-2.5 py-1.5 text-muted-foreground">{cap(t.category)}</td>
                       <td className="px-2.5 py-1.5 text-right tabular-nums">{compact(t.qty)}</td>
                       <td className="px-2.5 py-1.5 text-right font-medium tabular-nums">{inr(t.value)}</td>
@@ -237,6 +255,7 @@ export default function InventoryDetailedReportPage() {
           </ReportSection>
         </>
       )}
+      <ConsumptionTransactionsDialog target={drill} fromDate={fromDate} toDate={toDate} onClose={() => setDrill(null)} />
     </div>
   );
 }

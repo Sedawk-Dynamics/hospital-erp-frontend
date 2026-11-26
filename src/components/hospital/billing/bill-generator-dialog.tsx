@@ -26,6 +26,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
 import { BillPrintDialog } from '@/components/hospital/billing/bill-print-dialog';
+import { BuyerGstinPanel, type BillBuyerFields } from '@/components/hospital/billing/buyer-gstin-panel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
@@ -50,6 +51,9 @@ import {
   type ChargeSource,
 } from '@/hooks/use-hospital';
 import { useAddIpCharge } from '@/hooks/use-ip-ledger';
+import { useQueryClient } from '@tanstack/react-query';
+import { apiPost } from '@/lib/api';
+import { formatINR } from '@/lib/money';
 
 interface BackendBill {
   id: string;
@@ -93,8 +97,7 @@ interface BillGeneratorDialogProps {
   onBillFinalized?: (billId: string) => void;
 }
 
-const fmt = (n: number | undefined | null) =>
-  `₹${(Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+const fmt = (n: number | undefined | null) => formatINR(n);
 
 const SOURCE_TABS: { key: ChargeSource; label: string; icon: typeof Stethoscope }[] = [
   { key: 'all', label: 'All', icon: FileCheck2 },
@@ -363,10 +366,42 @@ function ComposeStep({
     );
   }, [effectiveBillId, existingBills, createBill, patient.id, admissionId]);
 
+  // Generate Bill for a stay pulls EVERY unbilled charge on the admission —
+  // the bed charge for each occupied day included — onto the stay's running
+  // bill as soon as it opens, and says how many it pulled (gap item 338). The
+  // pull is idempotent server-side, so nothing is ever added twice; the bill
+  // is not finalised here.
+  const queryClient = useQueryClient();
+  const pulledFor = useRef<string | null>(null);
+  const [autoPulled, setAutoPulled] = useState<number | null>(null);
+  useEffect(() => {
+    if (!admissionId || pulledFor.current === admissionId) return;
+    pulledFor.current = admissionId;
+    (async () => {
+      try {
+        const r = await apiPost<{ bill: { id: string }; pulled?: number }>(
+          `/billing/admissions/${admissionId}/consolidate`,
+          { finalize: false },
+        );
+        const data = r.data;
+        if (data?.bill?.id) setBillId(data.bill.id);
+        const n = data?.pulled ?? 0;
+        setAutoPulled(n);
+        if (n > 0) toast.success(`${n} unbilled charge${n === 1 ? '' : 's'} pulled onto the bill`);
+        queryClient.invalidateQueries({ queryKey: ['hospital', 'charges'] });
+        queryClient.invalidateQueries({ queryKey: ['hospital', 'bills'] });
+        queryClient.invalidateQueries({ queryKey: ['hospital', 'ip-bills'] });
+      } catch (e: unknown) {
+        // The desk can still pull by hand from the panel below.
+        toast.error(getApiErrorMessage(e, 'Could not pull the stay charges automatically'));
+      }
+    })();
+  }, [admissionId, queryClient]);
+
   const { data: bill, isLoading: billLoading } = useBill(effectiveBillId ?? '');
   const billTyped = (bill as unknown) as BackendBill | null;
   const { data: charges, isLoading: chargesLoading } = usePatientCharges(
-    patient.id ? { patientId: patient.id, source: activeSource } : null,
+    patient.id ? { patientId: patient.id, source: activeSource, admissionId } : null,
   );
 
   const pullCharges = usePullCharges();
@@ -566,10 +601,14 @@ function ComposeStep({
   const handleFinalize = useCallback(async () => {
     if (!effectiveBillId) return;
     try {
-      await finalizeBill.mutateAsync(effectiveBillId);
+      const finalized = await finalizeBill.mutateAsync(effectiveBillId);
+      // G-3: service lines with no SAC are issued but flagged by the server.
+      for (const w of ((finalized as { gstWarnings?: string[] } | null)?.gstWarnings ?? [])) {
+        toast.warning(w, { duration: 10000 });
+      }
       onFinalized(effectiveBillId);
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Failed to finalize');
+      toast.error(getApiErrorMessage(e, 'Failed to finalize'));
     }
   }, [effectiveBillId, finalizeBill, onFinalized]);
 
@@ -585,6 +624,10 @@ function ComposeStep({
 
   const selectedCount = Object.keys(selectedRefs).length;
   const selectedTotal = Object.values(selectedRefs).reduce((s, c) => s + c.totalAmount, 0);
+  // A settled or issued bill shows only its own lines. Unbilled stay charges
+  // belong on Generate Bill or the Order List, not inside a paid bill's modal
+  // (gap item 366).
+  const showUnbilledCharges = !billTyped || billTyped.status === 'draft' || admissionBillAcceptsCharges;
 
   return (
     <div className="space-y-4">
@@ -609,6 +652,14 @@ function ComposeStep({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* LEFT: Auto-pull charges + manual line add + line items */}
         <div className="lg:col-span-2 space-y-4">
+          {admissionId && autoPulled !== null && (
+            <p className="rounded-lg bg-primary/5 border border-primary/20 px-3 py-2 font-label text-[11px] text-on-surface-variant">
+              {autoPulled > 0
+                ? `${autoPulled} unbilled charge${autoPulled === 1 ? '' : 's'} on this stay (room days included) were pulled onto the bill.`
+                : 'Every charge on this stay is already on the bill.'}
+            </p>
+          )}
+          {showUnbilledCharges && (
           <ChargesPanel
             activeSource={activeSource}
             onSourceChange={setActiveSource}
@@ -633,6 +684,7 @@ function ComposeStep({
             selectedCount={selectedCount}
             selectedTotal={selectedTotal}
           />
+          )}
 
           <ManualLineForm
             onAdd={handleAddManual}
@@ -671,6 +723,8 @@ function ComposeStep({
             onApply={handleSetDiscount}
             loading={setBillDiscount.isPending}
           />
+          {/* G-4: optional B2B buyer — before finalize, the only time it can change the document. */}
+          <BuyerGstinPanel bill={(billTyped as unknown as BillBuyerFields | undefined) ?? null} />
           <BillSummaryPanel bill={billTyped ?? null} />
           <div className="flex flex-col gap-2">
             {isPendingFinalized && admissionId ? (

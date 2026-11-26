@@ -14,7 +14,7 @@ import {
   formatDate,
   toInputDateStr,
   getCurrentISTTime,
-  isToday,
+  getCurrentISTDate,
 } from '@/lib/date-utils';
 import { FullCalendar, type CalendarView } from '@/components/doctor/full-calendar';
 import { useDoctorProfileWithSchedules } from '@/hooks/use-doctor-schedule';
@@ -22,6 +22,7 @@ import { useDoctorLeaves } from '@/hooks/use-doctor-leaves';
 import { useScheduleOverrides } from '@/hooks/use-schedule-overrides';
 import { useDoctorAppointments } from '@/hooks/use-doctor';
 import { useAvailableSlots } from '@/hooks/use-hospital';
+import { withPastFlag } from '@/lib/slots';
 
 // ── Local date helpers ─────────────────────────────────────────
 
@@ -148,12 +149,7 @@ export function DoctorCalendarPicker({
     selectedDate,
   );
 
-  const currentTime = getCurrentISTTime();
-  const isTodaySelected = isToday(selectedDate);
-  const slots = (slotsData?.slots ?? []).map((slot) => ({
-    ...slot,
-    isPast: isTodaySelected && slot.startTime < currentTime,
-  }));
+  const slots = withPastFlag(slotsData?.slots ?? [], selectedDate, getCurrentISTDate(), getCurrentISTTime());
 
   const navigate = (dir: -1 | 0 | 1) => {
     if (dir === 0) {

@@ -1,11 +1,5 @@
 'use client';
 
-// Read-only lab order detail dialog for clinicians (doctor / nurse / admin).
-// The lab produces reports as uploaded files (PDF / image / scan) — there is
-// no separate manual result-entry step — so this dialog renders tests with
-// their uploaded files inline. Legacy parameter results (from orders created
-// under the old flow) still render in a table if present.
-
 import { useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -55,9 +49,7 @@ interface LabOrderItemWithResults {
   labResults?: LabResultRow[];
 }
 
-// We override labOrderItems to widen with results + nullable test fields. The
-// underlying LabOrder hook types are stricter than what `getLabOrderById`
-// returns; this dialog talks to that endpoint directly.
+
 type LabOrderDetail = Omit<LabOrder, 'labOrderItems' | 'labReport'> & {
   labOrderItems?: LabOrderItemWithResults[];
   attachments?: LabAttachment[];
@@ -81,10 +73,6 @@ export function LabOrderDetailDialog({ orderId, onOpenChange }: LabOrderDetailDi
     return rows;
   }, [order]);
 
-  // Bucket attachments by labOrderItemId. The Order Detail endpoint returns
-  // the full attachment list on the order; we slice it per item so each test
-  // row can show its files inline. Files without an item link land in a
-  // shared "Additional files" block.
   const { attachmentsByItem, orphanAttachments } = useMemo(() => {
     const byItem = new Map<string, LabAttachment[]>();
     const orphans: LabAttachment[] = [];
@@ -278,9 +266,6 @@ export function LabOrderDetailDialog({ orderId, onOpenChange }: LabOrderDetailDi
   );
 }
 
-// Renders a list of uploaded files. Images get an inline thumbnail clickable
-// to a new tab; PDFs and other docs get an icon row with download chevron.
-// Read-only — clinicians can view + download but never delete from this view.
 function AttachmentList({ files }: { files: LabAttachment[] }) {
   return (
     <ul className="space-y-1.5">

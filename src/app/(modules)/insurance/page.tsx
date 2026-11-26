@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import {
   ShieldCheck,
@@ -17,10 +18,14 @@ import {
   FileCog,
   Landmark,
   WalletCards,
+  Info,
+  Scale,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { useInsuranceDashboard, type ClaimStatus, type PreAuthStatus } from '@/hooks/use-insurance';
+import { useInsuranceDashboard, type ClaimStatus, type PreAuthStatus, type ReportFilters } from '@/hooks/use-insurance';
+import { InsuranceReportFilters, amountRateBasis } from '@/components/insurance/insurance-report-filters';
+import { formatINR } from '@/lib/money';
 import { useSlaQueue, useWorkflowAnalytics } from '@/hooks/use-insurance-workflow';
 import { formatDate } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
@@ -48,9 +53,10 @@ const PREAUTH_STATUS_TONE: Record<PreAuthStatus, string> = {
   cancelled: 'bg-zinc-100 text-zinc-700 border-zinc-300',
 };
 
+// Gap 289: the shared formatter (₹1,23,456.78).
 function inr(value: number | null | undefined) {
   if (value === null || value === undefined) return '—';
-  return `₹${Number(value).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+  return formatINR(value);
 }
 
 function patientName(p?: { firstName: string; lastName?: string | null } | null) {
@@ -59,7 +65,11 @@ function patientName(p?: { firstName: string; lastName?: string | null } | null)
 }
 
 export default function InsuranceDashboardPage() {
-  const { data, isLoading } = useInsuranceDashboard();
+  // Gap 290: the same date-range / insurer / TPA filters as Reports, sent to
+  // the same backend filter and metric helpers.
+  const [filters, setFilters] = useState<ReportFilters>({});
+  const filtered = Boolean(filters.fromDate || filters.toDate || filters.insurerId || filters.tpaId);
+  const { data, isLoading } = useInsuranceDashboard(filters);
   const { data: analytics } = useWorkflowAnalytics();
   const { data: slaQueue } = useSlaQueue();
 
@@ -80,8 +90,14 @@ export default function InsuranceDashboardPage() {
         <QuickLink href="/insurance/settlements" icon={<WalletCards />} title="Settlements" detail="Bulk remittance and TDS" />
       </div>
 
+      <InsuranceReportFilters
+        filters={filters}
+        onChange={setFilters}
+        description="Applies to the claim figures below (status counts, approval rates, settlement, recent claims) exactly as on Insurance Reports. Pre-auth and deadline panels always show the current position."
+      />
+
       {/* Claim status row */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
         <StatTile
           icon={<Clock className="text-amber-600" />}
           label="Pending"
@@ -132,10 +148,27 @@ export default function InsuranceDashboardPage() {
         />
         <StatTile
           icon={<TrendingUp className="text-primary" />}
-          label="Approval Rate"
-          value={`${data?.claims.approvalRate ?? 0}%`}
+          label="Approval (count)"
+          // null = nothing decided yet; same calculation as Reports (gap 290).
+          value={data?.claims.approvalRate == null ? '—' : `${data.claims.approvalRate}%`}
           tone="primary"
           loading={isLoading}
+          hint={data?.definitions?.approvalRate}
+          sub={
+            data?.claims.decided != null
+              ? `${data.claims.approvedOrPartial ?? 0} approved ÷ ${data.claims.decided} decided`
+              : undefined
+          }
+        />
+        {/* Gap 290: approval by amount, shown separately from the count. */}
+        <StatTile
+          icon={<Scale className="text-primary" />}
+          label="Approval (amount)"
+          value={data?.claims.amountApprovalRate == null ? '—' : `${data.claims.amountApprovalRate}%`}
+          tone="primary"
+          loading={isLoading}
+          hint={data?.definitions?.amountApprovalRate}
+          sub={amountRateBasis(data?.claims.decidedApprovedAmount, data?.claims.decidedClaimedAmount, inr)}
         />
       </div>
 
@@ -174,13 +207,28 @@ export default function InsuranceDashboardPage() {
             <CardTitle className="flex items-center gap-2">
               <IndianRupee className="size-4 text-teal-600" /> Settlement Overview
             </CardTitle>
-            <CardDescription>Claim amounts across the lifetime of the hospital</CardDescription>
+            <CardDescription title={data?.definitions?.totals}>
+              {filtered
+                ? 'Claim amounts for the selected filters, excluding cancelled and replaced claims'
+                : 'Claim amounts across the lifetime of the hospital, excluding cancelled and replaced claims'}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <Row label="Total Claimed" value={inr(data?.settlement.totalClaimed)} />
             <Row label="Approved" value={inr(data?.settlement.totalApprovedAmount)} tone="text-emerald-600" />
             <Row label="Paid by Insurer" value={inr(data?.settlement.totalPaid)} tone="text-teal-600" />
-            <Row label="Outstanding" value={inr(data?.settlement.totalOutstanding)} tone="text-rose-600" />
+            <Row
+              label={<HintLabel text="Outstanding" hint={data?.definitions?.outstanding} />}
+              value={inr(data?.settlement.totalOutstanding)}
+              tone="text-rose-600"
+            />
+            {data?.settlement.awaitingDecision !== undefined && (
+              <Row
+                label={<HintLabel text="Awaiting decision" hint={data?.definitions?.awaitingDecision} />}
+                value={inr(data.settlement.awaitingDecision)}
+                tone="text-amber-600"
+              />
+            )}
           </CardContent>
         </Card>
 
@@ -189,11 +237,25 @@ export default function InsuranceDashboardPage() {
             <CardTitle className="flex items-center gap-2">
               <AlertTriangle className="size-4 text-amber-600" /> Expiring in 7 Days
             </CardTitle>
-            <CardDescription>Deadlines you should follow up on</CardDescription>
+            <CardDescription title={data?.definitions?.claimExpiry}>Deadlines you should follow up on</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <Row label="Policies" value={data?.expiry.policiesIn7Days} tone="text-rose-600" />
-            <Row label="Claims (TPA deadline)" value={data?.expiry.claimsIn7Days} tone="text-amber-600" />
+            {/* Gap 296: both claim counts open the claims list filtered by the
+                same clause they were counted with, so the rows match. */}
+            <Row
+              label="Claims (TPA deadline)"
+              value={data?.expiry.claimsIn7Days}
+              tone="text-amber-600"
+              href="/insurance/claims?expiry=expiring7"
+            />
+            {/* Gap 296: already-past deadlines were invisible here. */}
+            <Row
+              label={<HintLabel text="Claims already expired" hint={data?.definitions?.claimExpiry} />}
+              value={data?.expiry.claimsExpired}
+              tone="text-rose-700"
+              href="/insurance/claims?expiry=expired"
+            />
             <Row label="Pre-Auth Validity" value={data?.expiry.preAuthsIn7Days} tone="text-violet-600" />
           </CardContent>
         </Card>
@@ -206,7 +268,9 @@ export default function InsuranceDashboardPage() {
             <CardTitle className="flex items-center gap-2">
               <FileCheck className="size-4 text-primary" /> Recent Claims
             </CardTitle>
-            <CardDescription>Latest 8 claims across all statuses</CardDescription>
+            <CardDescription>
+              Latest 8 claims across all statuses{filtered ? ' for the selected filters' : ''}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-1">
             {data?.recentClaims?.length ? (
@@ -283,6 +347,8 @@ function StatTile({
   tone,
   loading,
   href,
+  hint,
+  sub,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -290,6 +356,9 @@ function StatTile({
   tone: 'amber' | 'emerald' | 'sky' | 'rose' | 'teal' | 'primary';
   loading?: boolean;
   href?: string;
+  hint?: string;
+  /** Numerator ÷ denominator behind a rate (gap 290). */
+  sub?: string;
 }) {
   const toneClasses: Record<typeof tone, string> = {
     amber: 'border-amber-200 bg-amber-50',
@@ -306,14 +375,17 @@ function StatTile({
         'flex items-center justify-between rounded-xl border px-4 py-3 transition-all hover:shadow-sm',
         toneClasses[tone],
       )}
+      title={hint}
     >
       <div>
-        <div className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
+        <div className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
           {label}
+          {hint && <Info className="size-3" aria-label={hint} />}
         </div>
         <div className="text-xl font-bold font-headline">
           {loading ? '…' : value}
         </div>
+        {sub && !loading && <div className="text-[10px] text-on-surface-variant">{sub}</div>}
       </div>
       <div className="size-9 rounded-lg bg-white/70 flex items-center justify-center [&_svg]:size-5">
         {icon}
@@ -328,7 +400,19 @@ function Row({
   label,
   value,
   tone,
-}: { label: React.ReactNode; value: React.ReactNode; tone?: string }) {
+  href,
+}: { label: React.ReactNode; value: React.ReactNode; tone?: string; href?: string }) {
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className="-mx-2 flex items-center justify-between rounded-md px-2 py-0.5 hover:bg-surface-container-low"
+      >
+        <span className="text-on-surface-variant underline-offset-2 hover:underline">{label}</span>
+        <span className={cn('font-bold', tone)}>{value ?? '—'}</span>
+      </Link>
+    );
+  }
   return (
     <div className="flex items-center justify-between">
       <span className="text-on-surface-variant">{label}</span>
@@ -342,5 +426,15 @@ function EmptyHint({ loading, text }: { loading?: boolean; text: string }) {
     <div className="rounded-lg border border-dashed border-outline-variant/40 px-3 py-6 text-center text-xs text-on-surface-variant">
       {loading ? 'Loading…' : text}
     </div>
+  );
+}
+
+/** Label with the server's written definition as a hover tooltip (gap 290). */
+function HintLabel({ text, hint }: { text: string; hint?: string }) {
+  return (
+    <span className="inline-flex items-center gap-1" title={hint}>
+      {text}
+      {hint && <Info className="size-3" aria-label={hint} />}
+    </span>
   );
 }

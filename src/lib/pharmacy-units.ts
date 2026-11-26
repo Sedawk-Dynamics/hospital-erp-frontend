@@ -87,3 +87,43 @@ export function packLooseBreakdown(
   if (loose === 0) return packStr;
   return `${packStr} + ${loose} loose ${pluralizeUnit(loose, unit)}`;
 }
+
+/**
+ * Gap 345: the pack noun from the formulary's Unit of Measurement — "Strip (UQC
+ * PAC)" → "strip", "Bottle" → "bottle" — else the generic "pack".
+ */
+export function packUnitLabel(unitOfMeasurement?: string | null): string {
+  const raw = (unitOfMeasurement ?? '').replace(/\(.*?\)/g, '').trim().toLowerCase();
+  return raw || 'pack';
+}
+
+/**
+ * Gap 345: ONE pair of selling-unit nouns per item, used by the quantity field,
+ * the stock-clamp message, the stock list and the bill line alike.
+ *
+ * A drug with packSize > 1 sells in packs (its UoM noun) or loose base units.
+ * A drug with no pack breakdown sells only whole units, and that unit is what
+ * the hospital configured, else its UoM ("bottle"), else the dosage-form noun —
+ * never "ml" for a bottle that is sold whole.
+ */
+export function sellingUnits(drug: {
+  dosageForm?: string | null;
+  looseUnitLabel?: string | null;
+  unitOfMeasurement?: string | null;
+  packSize?: number | null;
+}): { packLabel: string; looseLabel: string } {
+  const packLabel = packUnitLabel(drug.unitOfMeasurement);
+  if (drug.packSize && drug.packSize > 1) {
+    return { packLabel, looseLabel: looseUnitLabel(drug.dosageForm, drug.looseUnitLabel) };
+  }
+  const single =
+    drug.looseUnitLabel?.trim() ||
+    (drug.unitOfMeasurement ? packLabel : '') ||
+    looseUnitLabel(drug.dosageForm, null);
+  return { packLabel: single, looseLabel: single };
+}
+
+/** "<n> <unit(s)>" for a quantity in the unit a line is sold in. */
+export function formatSaleQty(count: number, unit: string): string {
+  return `${count} ${pluralizeUnit(count, unit)}`;
+}

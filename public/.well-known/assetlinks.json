@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "in.cenaps.trms",
+      "sha256_cert_fingerprints": [
+        "C0:2A:9D:07:D1:BA:A7:0F:EE:9A:4A:1E:A2:56:AD:AF:DF:37:0A:FF:50:12:80:C7:28:A3:BF:23:F8:E8:8A:36"
+      ]
+    }
+  }
+]

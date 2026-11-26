@@ -16,6 +16,7 @@ import {
   MoreHorizontal,
   Loader2,
   Package,
+  Merge,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -45,6 +46,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
+import { useIsHospitalAdmin } from '@/hooks/use-insurance-admin';
+import { MergePayerDialog, type MergeCandidate } from '@/components/insurance/merge-payer-dialog';
 
 // ─── Types ──────────────────────────────────────────────
 interface Insurer {
@@ -54,8 +57,11 @@ interface Insurer {
   phone?: string;
   email?: string;
   address?: string;
+  gstin?: string | null;
   isActive: boolean;
   createdAt: string;
+  /** Gap 293: set once merged into another insurer. */
+  mergedIntoId?: string | null;
 }
 
 // ─── Schema ─────────────────────────────────────────────
@@ -78,6 +84,8 @@ export default function InsuranceSettingsPage() {
   const [editing, setEditing] = useState<Insurer | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Insurer | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [merging, setMerging] = useState<MergeCandidate | null>(null);
+  const isHospitalAdmin = useIsHospitalAdmin();
 
   const { data: insurers, isLoading } = useQuery({
     queryKey: QUERY_KEY,
@@ -296,7 +304,7 @@ export default function InsuranceSettingsPage() {
                   </TableCell>
                   <TableCell>
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${insurer.isActive ? 'bg-primary/10 text-primary' : 'bg-error-container text-on-error-container'}`}>
-                      {insurer.isActive ? 'Active' : 'Inactive'}
+                      {insurer.mergedIntoId ? 'Merged' : insurer.isActive ? 'Active' : 'Inactive'}
                     </span>
                   </TableCell>
                   <TableCell className="text-right">
@@ -311,6 +319,12 @@ export default function InsuranceSettingsPage() {
                           <Pencil className="mr-2 h-4 w-4" />
                           Edit
                         </DropdownMenuItem>
+                        {isHospitalAdmin && !insurer.mergedIntoId && (
+                          <DropdownMenuItem onClick={() => setMerging(insurer)}>
+                            <Merge className="mr-2 h-4 w-4" />
+                            Merge duplicate…
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem
                           onClick={() => setDeleteConfirm(insurer)}
                           className="text-destructive"
@@ -413,6 +427,14 @@ export default function InsuranceSettingsPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* ── Merge Duplicate Dialog (gap 293) ───────────────── */}
+      <MergePayerDialog
+        kind="insurer"
+        duplicate={merging}
+        records={allInsurers}
+        onClose={() => setMerging(null)}
+      />
 
       {/* ── Delete Confirmation Dialog ────────────────────── */}
       <Dialog

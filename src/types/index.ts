@@ -222,6 +222,7 @@ export interface DoctorProfile {
   userId: string;
   user: User;
   specialization: string;
+  specialty?: string | null;
   qualification: string;
   licenseNumber: string;
   hprId?: string | null;

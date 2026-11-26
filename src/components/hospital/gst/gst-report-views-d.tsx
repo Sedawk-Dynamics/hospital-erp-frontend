@@ -1,14 +1,17 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, ExternalLink, Info } from 'lucide-react';
 import { formatDate } from '@/lib/date-utils';
 import {
   Column, ExportButton, Loading, ReportTable, StatStrip,
-  exportCsv, exportXlsx, money, plain, titleCase,
+  exportCsv, exportXlsx, money, plain, titleCase, exportPdf
 } from './gst-report-shell';
 import type { EInvoiceApplicability, EwayRow, GstReportQuery, IrnRow } from '@/hooks/use-gst-reports';
 import * as R from '@/hooks/use-gst-reports';
+import { useStatDrill } from './gst-report-views';
+import { EwayRowAction, IntegrationBanner, IrnRowActions, ewayStatusOf } from './gst-einvoice-actions';
 
 // ============================================================
 // Group D — e-invoice and e-way bill.
@@ -80,7 +83,7 @@ const KIND_LABELS: Record<string, string> = {
   debit_note: 'Debit note',
 };
 
-function StatusChip({ status }: { status: string }) {
+function StatusChip({ status, label: override }: { status: string; label?: string }) {
   const tone =
     status === 'registered'
       ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
@@ -91,7 +94,7 @@ function StatusChip({ status }: { status: string }) {
           : status === 'cancelled'
             ? 'border-border bg-muted text-muted-foreground'
             : 'border-amber-300 bg-amber-50 text-amber-900';
-  const label = status === 'not_sent' ? 'Not sent' : titleCase(status);
+  const label = override ?? (status === 'not_sent' ? 'Not sent' : titleCase(status));
   return (
     <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[11px] font-medium ${tone}`}>
       {label}
@@ -138,16 +141,27 @@ const irnCols: Column<IrnRow>[] = [
  */
 export function EInvoiceRegisterView({ q }: { q: Q }) {
   const { data, isLoading } = R.useEInvoiceRegister(q);
+  const d = useStatDrill();
   if (isLoading) return <Loading />;
   const rows = data?.rows ?? [];
   const s = data?.summary;
   const outstanding = (s?.notSent ?? 0) + (s?.failed ?? 0);
+  // Gap 282: each count opens the documents it counts.
+  const irnDrills: Record<string, ReactNode> = {
+    'Needed an IRN': d.lines('Needed an IRN', irnCols, rows, { sum: (r) => Math.abs(r.totalAmount) }),
+    Registered: d.lines('Registered', irnCols, rows.filter((r) => r.status === 'registered'), { sum: (r) => Math.abs(r.totalAmount) }),
+    Outstanding: d.lines('Outstanding', irnCols, rows.filter((r) => r.status === 'not_sent' || r.status === 'failed'), {
+      sum: (r) => Math.abs(r.totalAmount),
+    }),
+    'Document value': d.lines('Document value', irnCols, rows, { sum: (r) => Math.abs(r.totalAmount) }),
+  };
 
   return (
     <div className="space-y-4">
       {data?.applicability ? <Applicability a={data.applicability} /> : null}
+      <IntegrationBanner integration={data?.integration} what="IRN" />
       <StatStrip
-        stats={[
+        stats={d.wire([
           { label: 'Needed an IRN', value: String(s?.required ?? 0) },
           { label: 'Registered', value: String(s?.registered ?? 0), tone: 'good' },
           {
@@ -157,18 +171,23 @@ export function EInvoiceRegisterView({ q }: { q: Q }) {
             hint: 'Not sent, or refused by the portal',
           },
           { label: 'Document value', value: money(s?.totalValue) },
-        ]}
+        ], irnDrills)}
       />
+      {d.panel(irnDrills)}
       <EmptyMeaning note={data?.note ?? ''} bad={outstanding > 0} />
       <div className="flex justify-end">
         <ExportButton
           onClick={() => exportCsv('D1-einvoice-register', irnCols, rows, { from: q.from, to: q.to })}
-          onExcel={() => exportXlsx('D1-einvoice-register', irnCols, rows, { from: q.from, to: q.to })}
+          onExcel={() => exportXlsx('D1-einvoice-register', irnCols, rows, { from: q.from, to: q.to })} onPdf={() => exportPdf('D1-einvoice-register', irnCols, rows, { from: q.from, to: q.to })}
           disabled={!rows.length}
         />
       </div>
+      {/* G-5 (gap #266): screen-only action column — never exported. */}
       <ReportTable
-        columns={irnCols}
+        columns={[
+          ...irnCols,
+          { key: 'act', label: '', cell: (r) => <IrnRowActions row={r} integration={data?.integration} /> },
+        ]}
         rows={rows}
         empty="No B2B document in this period needed an IRN."
       />
@@ -187,6 +206,7 @@ export function EInvoiceRegisterView({ q }: { q: Q }) {
  */
 export function FailedIrnView({ q }: { q: Q }) {
   const { data, isLoading } = R.useFailedIrn(q);
+  const d = useStatDrill();
   if (isLoading) return <Loading />;
   const rows = data?.rows ?? [];
   const s = data?.summary;
@@ -220,11 +240,19 @@ export function FailedIrnView({ q }: { q: Q }) {
     },
   ];
 
+  // Gap 282: each count opens the documents it counts.
+  const failedDrills: Record<string, ReactNode> = {
+    Outstanding: d.lines('Outstanding', cols, rows, { sum: (r) => r.totalAmount }),
+    'Refused by the portal': d.lines('Refused by the portal', cols, rows.filter((r) => r.status === 'failed'), { sum: (r) => r.totalAmount }),
+    'Never sent': d.lines('Never sent', cols, rows.filter((r) => r.status === 'not_sent'), { sum: (r) => r.totalAmount }),
+    'Past the window': d.lines('Past the window', cols, rows.filter((r) => r.overdue), { sum: (r) => r.totalAmount }),
+  };
   return (
     <div className="space-y-4">
       {data?.applicability ? <Applicability a={data.applicability} /> : null}
+      <IntegrationBanner integration={data?.integration} what="IRN" />
       <StatStrip
-        stats={[
+        stats={d.wire([
           { label: 'Outstanding', value: String(s?.outstanding ?? 0), tone: (s?.outstanding ?? 0) > 0 ? 'bad' : 'good' },
           { label: 'Refused by the portal', value: String(s?.rejected ?? 0), tone: (s?.rejected ?? 0) > 0 ? 'bad' : undefined },
           { label: 'Never sent', value: String(s?.neverSent ?? 0), tone: (s?.neverSent ?? 0) > 0 ? 'warn' : undefined },
@@ -234,17 +262,23 @@ export function FailedIrnView({ q }: { q: Q }) {
             tone: (s?.overdue ?? 0) > 0 ? 'bad' : 'good',
             hint: `${data?.uploadDays ?? 30} days, from the hospital's GST settings`,
           },
-        ]}
+        ], failedDrills)}
       />
+      {d.panel(failedDrills)}
       <EmptyMeaning note={data?.note ?? ''} bad={(s?.outstanding ?? 0) > 0} />
       <div className="flex justify-end">
         <ExportButton
           onClick={() => exportCsv('D2-failed-irn', cols, rows, { from: q.from, to: q.to })}
-          onExcel={() => exportXlsx('D2-failed-irn', cols, rows, { from: q.from, to: q.to })}
+          onExcel={() => exportXlsx('D2-failed-irn', cols, rows, { from: q.from, to: q.to })} onPdf={() => exportPdf('D2-failed-irn', cols, rows, { from: q.from, to: q.to })}
           disabled={!rows.length}
         />
       </div>
-      <ReportTable columns={cols} rows={rows} empty="Nothing is outstanding — every B2B document carries an IRN." />
+      {/* G-5 (gap #266): Generate / Retry beside the portal's reason — screen only, never exported. */}
+      <ReportTable
+        columns={[...cols, { key: 'act', label: '', cell: (r) => <IrnRowActions row={r} integration={data?.integration} /> }]}
+        rows={rows}
+        empty="Nothing is outstanding — every B2B document carries an IRN."
+      />
     </div>
   );
 }
@@ -272,7 +306,38 @@ const ewayCols: Column<EwayRow>[] = [
     csv: (r) => r.ewayBillNumber ?? '',
   },
   { key: 'ewbd', label: 'Bill date', cell: (r) => (r.ewayBillDate ? formatDate(r.ewayBillDate) : '—'), csv: (r) => (r.ewayBillDate ? formatDate(r.ewayBillDate) : '') },
+  {
+    // G-5 (gap #266): the portal state, with the portal's own words on a
+    // refusal and the reason on a cancellation.
+    key: 'ewst',
+    label: 'Status',
+    cell: (r) => {
+      const st = ewayStatusOf(r);
+      const detail = st === 'failed' ? r.ewayError : st === 'cancelled' ? r.ewayCancelReason : null;
+      return (
+        <div className="space-y-0.5">
+          <EwayStatusChip status={st} />
+          {detail ? <p className="max-w-[18rem] text-[11px] text-muted-foreground">{detail}</p> : null}
+          {st === 'failed' && r.ewayAttemptedAt ? (
+            <p className="text-[11px] text-muted-foreground">Last attempt {formatDate(r.ewayAttemptedAt)}</p>
+          ) : null}
+        </div>
+      );
+    },
+    csv: (r) => {
+      const st = ewayStatusOf(r);
+      const detail = st === 'failed' ? r.ewayError : st === 'cancelled' ? r.ewayCancelReason : null;
+      return detail ? `${st}: ${detail}` : st;
+    },
+  },
 ];
+
+function EwayStatusChip({ status }: { status: string }) {
+  if (status === 'not_generated') {
+    return <StatusChip status="not_sent" />;
+  }
+  return <StatusChip status={status === 'generated' ? 'registered' : status} label={status === 'generated' ? 'Generated' : undefined} />;
+}
 
 /**
  * D-3 — E-way Bill Register.
@@ -285,15 +350,29 @@ const ewayCols: Column<EwayRow>[] = [
  */
 export function EwayBillView({ q }: { q: Q }) {
   const { data, isLoading } = R.useEwayBills(q);
+  const d = useStatDrill();
   if (isLoading) return <Loading />;
   const rows = data?.rows ?? [];
   const s = data?.summary;
+  // Gap 282: each count opens the consignments it counts. The API returns
+  // only consignments above the threshold, so 'Goods movements' opens those
+  // and says how many below it are not listed.
+  const below = Math.max(0, (s?.movements ?? 0) - rows.length);
+  const ewayDrills: Record<string, ReactNode> = {
+    'Goods movements': d.lines('Goods movements', ewayCols, rows, {
+      sum: (r) => r.consignmentValue, note: below ? `${below} movement(s) below the threshold are not listed` : undefined,
+    }),
+    'Above the threshold': d.lines('Above the threshold', ewayCols, rows, { sum: (r) => r.consignmentValue }),
+    'With an e-way bill': d.lines('With an e-way bill', ewayCols, rows.filter((r) => !!r.ewayBillNumber), { sum: (r) => r.consignmentValue }),
+    'Without one': d.lines('Without one', ewayCols, rows.filter((r) => !r.ewayBillNumber), { sum: (r) => r.consignmentValue }),
+  };
 
   return (
     <div className="space-y-4">
       {data?.applicability ? <Applicability a={data.applicability} /> : null}
+      <IntegrationBanner integration={data?.integration} what="E-way bill" />
       <StatStrip
-        stats={[
+        stats={d.wire([
           { label: 'Goods movements', value: String(s?.movements ?? 0), hint: 'Stock returned to a supplier' },
           {
             label: 'Above the threshold',
@@ -306,18 +385,22 @@ export function EwayBillView({ q }: { q: Q }) {
             value: String(s?.missingBill ?? 0),
             tone: (s?.missingBill ?? 0) > 0 ? 'bad' : 'good',
           },
-        ]}
+        ], ewayDrills)}
       />
+      {d.panel(ewayDrills)}
       <EmptyMeaning note={data?.note ?? ''} bad={(s?.missingBill ?? 0) > 0} />
       <div className="flex justify-end">
         <ExportButton
           onClick={() => exportCsv('D3-eway-bills', ewayCols, rows, { from: q.from, to: q.to })}
-          onExcel={() => exportXlsx('D3-eway-bills', ewayCols, rows, { from: q.from, to: q.to })}
+          onExcel={() => exportXlsx('D3-eway-bills', ewayCols, rows, { from: q.from, to: q.to })} onPdf={() => exportPdf('D3-eway-bills', ewayCols, rows, { from: q.from, to: q.to })}
           disabled={!rows.length}
         />
       </div>
       <ReportTable
-        columns={ewayCols}
+        columns={[
+          ...ewayCols,
+          { key: 'act', label: '', cell: (r) => <EwayRowAction row={r} integration={data?.integration} /> },
+        ]}
         rows={rows}
         empty="No goods movement in this period crossed the consignment threshold."
       />

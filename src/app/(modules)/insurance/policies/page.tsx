@@ -33,6 +33,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { formatDate } from '@/lib/date-utils';
+import { formatINR } from '@/lib/money';
 import { useDebounce } from '@/hooks/use-debounce';
 import { usePatientSearch } from '@/hooks/use-hospital';
 import {
@@ -261,12 +262,12 @@ export default function PoliciesPage() {
                     </TableCell>
                     <TableCell>{p.tpa?.name ?? '—'}</TableCell>
                     <TableCell>
-                      ₹{(p.coverageAmount ?? 0).toLocaleString('en-IN')}
+                      {formatINR(p.coverageAmount)}
                     </TableCell>
                     <TableCell>
                       <div>{p.coPayPercent}% co-pay</div>
                       <div className="text-xs text-on-surface-variant">
-                        ₹{(p.deductibleAmount ?? 0).toLocaleString('en-IN')} ded.
+                        {formatINR(p.deductibleAmount)} ded.
                       </div>
                     </TableCell>
                     <TableCell>

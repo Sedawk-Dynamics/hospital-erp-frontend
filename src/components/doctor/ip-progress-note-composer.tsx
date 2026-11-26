@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { NotebookPen, Loader2, Stethoscope, Pill, Link2, Activity, Pin, MapPinned } from 'lucide-react';
@@ -11,9 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
+import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue,} from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { cn, getApiErrorMessage } from '@/lib/utils';
 import { apiGet, apiPost } from '@/lib/api';
@@ -24,6 +22,8 @@ import { useCreateProgressNote, type SoapSectionPayload,
   type GeneralCondition,
 } from '@/hooks/use-doctor';
 import { useRecordDoctorVisit } from '@/hooks/use-ip-ledger';
+import { useAdmission } from '@/hooks/use-clinical';
+import { useRecordVitals } from '@/hooks/use-nurse';
 import { DoctorMentionPicker } from '@/components/doctor/doctor-mention-picker';
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
@@ -63,6 +63,27 @@ type NoteTypeValue = (typeof NOTE_TYPES)[number]['value'];
 
 const free = (t: string): SoapSectionPayload | null => (t.trim() ? { free: t.trim() } : null);
 
+// Format a Date for an <input type="datetime-local"> value ("YYYY-MM-DDTHH:MM"),
+// in the browser's local time (not UTC, which the ISO string would give).
+function toLocalDateTimeValue(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+const VITALS_FIELDS = [
+  { key: 'bloodPressureSystolic', label: 'BP Systolic', unit: 'mmHg', min: 0, max: 400, integer: true },
+  { key: 'bloodPressureDiastolic', label: 'BP Diastolic', unit: 'mmHg', min: 0, max: 300, integer: true },
+  { key: 'pulseRate', label: 'Pulse', unit: 'bpm', min: 0, max: 300, integer: true },
+  { key: 'temperature', label: 'Temperature', unit: '°C', step: '0.1', min: 25, max: 50 },
+  { key: 'respiratoryRate', label: 'Respiratory Rate', unit: '/min', min: 0, max: 100, integer: true },
+  { key: 'oxygenSaturation', label: 'SpO₂', unit: '%', min: 0, max: 100 },
+  { key: 'weightKg', label: 'Weight', unit: 'kg', step: '0.1', min: 0, max: 700 },
+  { key: 'heightCm', label: 'Height', unit: 'cm', step: '0.1', min: 0, max: 300 },
+  { key: 'bloodSugar', label: 'Blood Sugar', unit: 'mg/dL', min: 0, max: 2000 },
+] as const;
+
+type VitalsKey = (typeof VITALS_FIELDS)[number]['key'];
+
 interface PartPin {
   content: string;                        // the part's text (or condition label)
   showToPatient: boolean;                 // the checkbox
@@ -97,11 +118,33 @@ export function IpProgressNoteComposer({
   const updatePart = (key: PinKey, patch: Partial<PartPin>) =>setParts((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
   const createNote = useCreateProgressNote();
   const recordVisit = useRecordDoctorVisit(admissionId);
+  const recordVitals = useRecordVitals();
   const currentUserId = useAuthStore((s) => s.user?.id);
-
   const [mentions, setMentions] = useState<string[]>([]);
   const [noteType, setNoteType] = useState<NoteTypeValue>('daily_soap_round');
   const [noteTitle, setNoteTitle] = useState('');
+  // Admission date drives the "Day N since admission" options. Admission day = Day 1.
+  const { data: admission } = useAdmission(admissionId);
+  const currentHospitalDay = useMemo(() => {
+    if (!admission?.admissionDate) return 1;
+    const start = new Date(admission.admissionDate).setHours(0, 0, 0, 0);
+    return Math.max(1, Math.floor((Date.now() - start) / 86400000) + 1);
+  }, [admission?.admissionDate]);
+  // Day selected (number as string, default = today's hospital day) and the
+  // note's own date + time (datetime-local string, default = now).
+  const [noteDay, setNoteDay] = useState<string>('');
+  const [noteAt, setNoteAt] = useState<string>(toLocalDateTimeValue(new Date()));
+  // Seed the day default once the admission date is known / when reopened.
+  useEffect(() => {
+    if (open) setNoteDay(String(currentHospitalDay));
+  }, [open, currentHospitalDay]);
+  const [isVitals, setIsVitals] = useState(false);
+  // Entered vitals values, keyed by field — separate from the VITALS_FIELDS config.
+  const [vitals, setVitals] = useState<Partial<Record<VitalsKey, string>>>({});
+  const setVital = (k: VitalsKey, v: string) => setVitals((prev) => ({ ...prev, [k]: v }));
+  // Pin / show-to-patient for the vitals capture, same controls as the SOAP parts.
+  const [vitalsPinned, setVitalsPinned] = useState<DischargeSectionOption | null>(null);
+  const [vitalsShowToPatient, setVitalsShowToPatient] = useState(false);
   const [condition, setCondition] = useState<GeneralCondition>('stable');
   const [billVisit, setBillVisit] = useState(defaultBillVisit);
   const [writeRx, setWriteRx] = useState(false);
@@ -126,6 +169,8 @@ export function IpProgressNoteComposer({
     setCondition('stable'); setBillVisit(defaultBillVisit);
     setWriteRx(false); setMedicines([]); setRxNotes('');
     setMentions([]);
+    setIsVitals(false); setVitals({});
+    setVitalsPinned(null); setVitalsShowToPatient(false);
     setParts(emptyParts());
   };
 
@@ -187,13 +232,15 @@ export function IpProgressNoteComposer({
       }));
 
     try {
-      await createNote.mutateAsync({
+      const note = await createNote.mutateAsync({
         patientId,
         visitId,
         admissionId,
         prescriptionId: newPrescriptionId,
         noteType: noteType,
         noteTitle: noteTitle,
+        noteDay: noteDay ? Number(noteDay) : undefined,
+        noteAt: noteAt || undefined,
         content: buildContent(),
         generalCondition: condition,
         subjective: free(parts.subjective.content),
@@ -203,6 +250,33 @@ export function IpProgressNoteComposer({
         pins:pins.length?pins:undefined,
         mentionedUserIds: mentions.length ? mentions : undefined,
       });
+
+      if (isVitals && note?.id) {
+        const vitalsPayload: Record<string, number> = {};
+        for (const f of VITALS_FIELDS) {
+          const raw = vitals[f.key];
+          if (raw != null && raw.trim() !== '') {
+            const n = Number(raw);
+            if (!Number.isNaN(n)) vitalsPayload[f.key] = n;
+          }
+        }
+        if (Object.keys(vitalsPayload).length > 0) {
+          try {
+            await recordVitals.mutateAsync({
+              patientId,
+              visitId,
+              admissionId,
+              progressNoteId: note.id,
+              pinnedDischargeSection: vitalsPinned?.key ?? null,
+              showToPatient: vitalsShowToPatient,
+              ...vitalsPayload,
+            });
+          } catch (e) {
+            toast.error(getApiErrorMessage(e, 'Note saved, but the vitals could not be recorded.'));
+          }
+        }
+      }
+
       if (mentions.length) {
         toast.success(`${mentions.length} doctor${mentions.length === 1 ? '' : 's'} notified.`);
       }
@@ -311,6 +385,29 @@ export function IpProgressNoteComposer({
                 maxLength={200}
               />
             </div>
+            <div className="flex-1">
+              <Label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Day</Label>
+              <Select value={noteDay} onValueChange={(v) => v && setNoteDay(v)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select day" />
+                </SelectTrigger>
+                <SelectContent className="max-h-60 overflow-y-auto">
+                  {Array.from({ length: currentHospitalDay }, (_, i) => String(i + 1)).map((d) => (
+                    <SelectItem key={d} value={d}>
+                      Day {d}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex-1">
+              <Label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Date &amp; time</Label>
+              <Input
+                type="datetime-local"
+                value={noteAt}
+                onChange={(e) => setNoteAt(e.target.value)}
+              />
+            </div>
           </div>
 
           <div>
@@ -347,6 +444,66 @@ export function IpProgressNoteComposer({
               <span className="pl-6 text-[11px] text-muted-foreground">Flows into the discharge summary&apos;s hospital course automatically — no need to pin.</span>
             </label>
           </div>
+
+          <div className="rounded-xl border border-primary/25 bg-primary/[0.04] p-3.5">
+            <div className="flex items-center justify-between gap-3">
+              <span className="flex items-center gap-2">
+                <span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10">
+                  <Activity className="h-4 w-4 text-primary" />
+                </span>
+                <span className="leading-tight">
+                  <span className="block text-sm font-semibold text-foreground">
+                    Record vitals <span className="font-normal text-muted-foreground">· optional</span>
+                  </span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    Capture BP, pulse, temperature and more alongside this note.
+                  </span>
+                </span>
+              </span>
+              <Button
+                size="sm"
+                type="button"
+                variant={isVitals ? 'outline' : 'default'}
+                onClick={() => setIsVitals((v) => !v)}
+                className="shrink-0 gap-1.5"
+              >
+                <Activity className="h-3.5 w-3.5" />
+                {isVitals ? 'Hide' : 'Record Vitals'}
+              </Button>
+            </div>
+
+            {isVitals && (
+              <div className="mt-3 space-y-3">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {VITALS_FIELDS.map((f) => (
+                    <div key={f.key}>
+                      <Label className="mb-1 block text-[10px] uppercase tracking-widest text-muted-foreground">
+                        {f.label} <span className="font-normal normal-case">({f.unit})</span>
+                      </Label>
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        step={'step' in f ? f.step : 'integer' in f ? '1' : 'any'}
+                        min={f.min}
+                        max={f.max}
+                        value={vitals[f.key] ?? ''}
+                        onChange={(e) => setVital(f.key, e.target.value)}
+                        placeholder="—"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <PartActions
+                  pinned={vitalsPinned}
+                  handlepinned={(s) => setVitalsPinned(s)}
+                  handlepinnedNUll={() => setVitalsPinned(null)}
+                  showToPatient={vitalsShowToPatient}
+                  onShowToPatient={setVitalsShowToPatient}
+                />
+              </div>
+            )}
+          </div>
+
           <div className="rounded-xl border border-primary/25 bg-primary/[0.04] p-3.5">
             <label className="flex cursor-pointer items-center gap-2">
               <input

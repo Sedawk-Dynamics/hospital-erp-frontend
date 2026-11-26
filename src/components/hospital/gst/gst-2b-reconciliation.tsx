@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { AlertTriangle, CheckCircle2, FileJson, Loader2, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -8,10 +8,11 @@ import { Badge } from '@/components/ui/badge';
 import { formatDate, formatDateTime } from '@/lib/date-utils';
 import {
   Column, ExportButton, Loading, ReportNotes, ReportTable, StatStrip,
-  exportCsv, exportXlsx, money, plain,
+  exportCsv, exportXlsx, money, plain, exportPdf, formatReturnPeriod, exportAll,
 } from './gst-report-shell';
 import type { GstReportQuery, ReconRow } from '@/hooks/use-gst-reports';
 import { useGstr2bReconciliation, useImportGstr2b } from '@/hooks/use-gst-reports';
+import { useStatDrill } from './gst-report-views';
 
 // ============================================================
 // B-5 — our purchase register against what the portal says our suppliers filed.
@@ -36,6 +37,8 @@ export function Gstr2bReconciliationView({ q }: { q: GstReportQuery }) {
   const importer = useImportGstr2b();
   const fileInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  // Gap 282: each headline opens the invoices behind it.
+  const d = useStatDrill();
 
   const onFile = async (file: File | undefined) => {
     if (!file) return;
@@ -51,7 +54,7 @@ export function Gstr2bReconciliationView({ q }: { q: GstReportQuery }) {
         throw new Error('That file is not JSON. Download the GSTR-2B JSON for the period from the portal.');
       }
       const out = await importer.mutateAsync({ file: parsed, fileName: file.name });
-      toast.success(`GSTR-2B for ${out?.returnPeriod} imported — ${out?.documents} document(s)`);
+      toast.success(`GSTR-2B for ${formatReturnPeriod(out?.returnPeriod)} imported — ${out?.documents} document(s)`);
       for (const w of out?.warnings ?? []) toast.warning(w, { duration: 8000 });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not import that statement');
@@ -101,6 +104,22 @@ export function Gstr2bReconciliationView({ q }: { q: GstReportQuery }) {
     },
   ];
 
+  const matched = data?.matched ?? [];
+  const noteAdjustment = (data?.supplierNotes ?? []).reduce((sum, n) => sum + Number(n.taxAmount ?? 0), 0);
+  const reconDrills: Record<string, ReactNode> = {
+    Matched: d.lines('Matched', compareCols, matched, { sum: (r) => Number(r.portalTaxAmount ?? 0) }),
+    Mismatched: d.lines('Mismatched', compareCols, data?.mismatched ?? [], { sum: (r) => Number(r.taxDifference ?? 0) }),
+    'Credit at risk': d.lines('Credit at risk', bookCols, data?.inBooksOnly ?? [], {
+      sum: (r) => Number(r.booksTaxAmount ?? r.taxAmount ?? 0),
+    }),
+    // Matched credit the portal allows, at the portal's figure; the supplier
+    // notes below are netted on top (they have no invoice row of their own).
+    Claimable: d.lines('Claimable', compareCols, matched.filter((r) => r.itcAvailable), {
+      sum: (r) => Number(r.portalTaxAmount ?? 0),
+      note: noteAdjustment ? `plus supplier notes ${money(noteAdjustment)} (listed below)` : undefined,
+    }),
+  };
+
   return (
     <div className="space-y-6">
       {/* The statement, or the fact that there isn't one. */}
@@ -111,7 +130,7 @@ export function Gstr2bReconciliationView({ q }: { q: GstReportQuery }) {
             {data?.statement ? (
               <>
                 <p className="font-medium">
-                  GSTR-2B for {data.returnPeriod}
+                  GSTR-2B for {formatReturnPeriod(data.returnPeriod)}
                   {data.statement.fileName ? ` · ${data.statement.fileName}` : ''}
                 </p>
                 <p className="text-muted-foreground">
@@ -122,7 +141,7 @@ export function Gstr2bReconciliationView({ q }: { q: GstReportQuery }) {
               </>
             ) : (
               <>
-                <p className="font-medium">No GSTR-2B imported for {data?.returnPeriod}</p>
+                <p className="font-medium">No GSTR-2B imported for {formatReturnPeriod(data?.returnPeriod)}</p>
                 <p className="text-muted-foreground">
                   Until one is, every purchase in the period shows as not declared by its supplier.
                 </p>
@@ -146,7 +165,7 @@ export function Gstr2bReconciliationView({ q }: { q: GstReportQuery }) {
       </div>
 
       <StatStrip
-        stats={[
+        stats={d.wire([
           { label: 'Matched', value: String(t?.matched.count ?? 0), tone: 'good', hint: money(t?.matched.taxAmount) },
           {
             label: 'Mismatched',
@@ -160,8 +179,9 @@ export function Gstr2bReconciliationView({ q }: { q: GstReportQuery }) {
             hint: `${t?.inBooksOnly.count ?? 0} invoice(s) the supplier has not filed`,
           },
           { label: 'Claimable', value: money(t?.claimable), hint: 'portal figures, net of notes' },
-        ]}
+        ], reconDrills)}
       />
+      {d.panel(reconDrills)}
 
       {(t?.creditAtRisk ?? 0) > 0 ? (
         <div className="flex items-start gap-2 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900">
@@ -220,46 +240,34 @@ export function Gstr2bReconciliationView({ q }: { q: GstReportQuery }) {
 
       {(data?.supplierNotes.length ?? 0) > 0 ? (
         <section className="space-y-2">
-          <h3 className="text-sm font-semibold">
-            Supplier credit and debit notes ({data?.supplierNotes.length})
-          </h3>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">
+              Supplier credit and debit notes ({data?.supplierNotes.length})
+            </h3>
+            {/* Gap 282: every sub-table exports. */}
+            <ExportButton {...exportAll('gstr2b-supplier-notes', supplierNoteCols, data?.supplierNotes ?? [], q)} disabled={!(data?.supplierNotes ?? []).length} />
+          </div>
           <p className="text-xs text-muted-foreground">
             A credit note takes credit away and is carried negative; a debit note adds to it.
             Neither has a goods receipt behind it, so neither is matched to a purchase.
           </p>
-          <ReportTable
-            columns={[
-              { key: 's', label: 'Supplier', cell: (n: { supplierName: string | null }) => n.supplierName ?? '—' },
-              { key: 't', label: 'Type', cell: (n: { documentType: string }) => (n.documentType === 'credit_note' ? 'Credit note' : 'Debit note') },
-              { key: 'n', label: 'Number', cell: (n: { documentNumber: string }) => n.documentNumber },
-              { key: 'd', label: 'Dated', cell: (n: { documentDate: string | null }) => formatDate(n.documentDate) },
-              { key: 'v', label: 'Taxable', align: 'right', cell: (n: { taxableValue: number }) => plain(n.taxableValue) },
-              { key: 'x', label: 'Effect on credit', align: 'right', cell: (n: { taxAmount: number }) => plain(n.taxAmount) },
-            ]}
-            rows={data?.supplierNotes ?? []}
-          />
+          <ReportTable columns={supplierNoteCols} rows={data?.supplierNotes ?? []} />
         </section>
       ) : null}
 
       {(data?.unmatchable.length ?? 0) > 0 ? (
         <section className="space-y-2">
-          <h3 className="text-sm font-semibold">
-            Cannot be matched at all ({data?.unmatchable.length})
-          </h3>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">
+              Cannot be matched at all ({data?.unmatchable.length})
+            </h3>
+            <ExportButton {...exportAll('gstr2b-unmatchable', unmatchableCols, data?.unmatchable ?? [], q)} disabled={!(data?.unmatchable ?? []).length} />
+          </div>
           <p className="text-xs text-muted-foreground">
             No supplier GSTIN or no invoice number recorded on our side, so there is nothing to match
             on. Fix these at inward, not on the portal.
           </p>
-          <ReportTable
-            columns={[
-              { key: 's', label: 'Supplier', cell: (u: { supplierName: string | null }) => u.supplierName ?? '—' },
-              { key: 'i', label: 'Item', cell: (u: { drugName: string }) => u.drugName },
-              { key: 'n', label: 'Invoice', cell: (u: { invoiceNumber: string | null }) => u.invoiceNumber ?? '—' },
-              { key: 'p', label: 'Problem', cell: (u: { problem: string }) => <Badge variant="secondary">{u.problem}</Badge> },
-              { key: 't', label: 'Tax', align: 'right', cell: (u: { taxAmount: number }) => plain(u.taxAmount) },
-            ]}
-            rows={data?.unmatchable ?? []}
-          />
+          <ReportTable columns={unmatchableCols} rows={data?.unmatchable ?? []} />
         </section>
       ) : null}
 
@@ -267,6 +275,28 @@ export function Gstr2bReconciliationView({ q }: { q: GstReportQuery }) {
     </div>
   );
 }
+
+type SupplierNoteRow = {
+  supplierName: string | null; documentType: string; documentNumber: string;
+  documentDate: string | null; taxableValue: number; taxAmount: number;
+};
+const supplierNoteCols: Column<SupplierNoteRow>[] = [
+  { key: 's', label: 'Supplier', cell: (n) => n.supplierName ?? '—', csv: (n) => n.supplierName ?? '' },
+  { key: 't', label: 'Type', cell: (n) => (n.documentType === 'credit_note' ? 'Credit note' : 'Debit note') },
+  { key: 'n', label: 'Number', cell: (n) => n.documentNumber },
+  { key: 'd', label: 'Dated', cell: (n) => formatDate(n.documentDate) },
+  { key: 'v', label: 'Taxable', align: 'right', cell: (n) => plain(n.taxableValue), csv: (n) => n.taxableValue },
+  { key: 'x', label: 'Effect on credit', align: 'right', cell: (n) => plain(n.taxAmount), csv: (n) => n.taxAmount },
+];
+
+type UnmatchableRow = { supplierName: string | null; drugName: string; invoiceNumber: string | null; problem: string; taxAmount: number };
+const unmatchableCols: Column<UnmatchableRow>[] = [
+  { key: 's', label: 'Supplier', cell: (u) => u.supplierName ?? '—', csv: (u) => u.supplierName ?? '' },
+  { key: 'i', label: 'Item', cell: (u) => u.drugName },
+  { key: 'n', label: 'Invoice', cell: (u) => u.invoiceNumber ?? '—', csv: (u) => u.invoiceNumber ?? '' },
+  { key: 'p', label: 'Problem', cell: (u) => <Badge variant="secondary">{u.problem}</Badge>, csv: (u) => u.problem },
+  { key: 't', label: 'Tax', align: 'right', cell: (u) => plain(u.taxAmount), csv: (u) => u.taxAmount },
+];
 
 function Bucket({
   title, note, cols, rows, name, q, empty,
@@ -287,7 +317,7 @@ function Bucket({
           <p className="text-xs text-muted-foreground">{note}</p>
         </div>
         <ExportButton onClick={() => exportCsv(name, cols, rows, q)}
-          onExcel={() => exportXlsx(name, cols, rows, q)} disabled={!rows.length} />
+          onExcel={() => exportXlsx(name, cols, rows, q)} onPdf={() => exportPdf(name, cols, rows, q)} disabled={!rows.length} />
       </div>
       <ReportTable columns={cols} rows={rows} empty={empty} />
     </section>

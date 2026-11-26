@@ -3,8 +3,15 @@
 import Link from 'next/link';
 import { HeartPulse } from 'lucide-react';
 import { PhoneOtpForm } from '../_components/phone-otp-form';
+import { useEffect } from 'react';
 
 export default function PatientRegisterPage() {
+
+  useEffect(() => {
+  const ua = navigator.userAgent;
+  if (/android/i.test(ua)) window.location.href = "https://play.google.com/store/apps/details?id=io.webel.ess&hl=en_IN";
+}, []);
+
   return (
     <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary p-8 animate-fade-in-up">
       <div className="text-center mb-6">

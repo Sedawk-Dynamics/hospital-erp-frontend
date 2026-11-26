@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useLicenses, useExpiringLicenses, type LicenseStatus } from '@/hooks/use-hr';
 import { AlertTriangle, ShieldCheck } from 'lucide-react';
+import { AddLicenseDialog, useCanManageHr } from '../_components/hr-create-dialogs';
 
 const STATUS_TONE: Record<LicenseStatus, string> = {
   active: 'bg-emerald-100 text-emerald-700 border-emerald-200',
@@ -23,6 +24,7 @@ export default function HrLicensesPage() {
   const [status, setStatus] = useState<LicenseStatus | ''>('');
   const { data: all, isLoading } = useLicenses({ status: status || undefined, limit: 100 });
   const { data: expiring } = useExpiringLicenses(30);
+  const canManage = useCanManageHr();
 
   const rows = (all?.data ?? []) as Array<{
     id: string;
@@ -37,11 +39,14 @@ export default function HrLicensesPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold font-headline">License Tracking</h1>
-        <p className="text-sm text-on-surface-variant">
-          Staff certifications and licenses with expiry alerts.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold font-headline">License Tracking</h1>
+          <p className="text-sm text-on-surface-variant">
+            Staff certifications and licenses with expiry alerts.
+          </p>
+        </div>
+        {canManage && <AddLicenseDialog />}
       </div>
 
       {(expiring?.length ?? 0) > 0 && (

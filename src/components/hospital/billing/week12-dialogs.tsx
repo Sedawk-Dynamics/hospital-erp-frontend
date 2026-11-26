@@ -25,6 +25,9 @@ import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import { formatINR } from '@/lib/money';
+import { apiGet } from '@/lib/api';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   useCreateSplitPayment,
@@ -40,8 +43,7 @@ import {
   type SplitEntry,
 } from '@/hooks/use-hospital';
 
-const fmt = (n: number | string | undefined | null) =>
-  `₹${Number(n ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+const fmt = (n: number | string | undefined | null) => formatINR(n);
 
 const METHODS: { value: BillingPaymentMethod; label: string; icon: typeof Wallet }[] = [
   { value: 'cash', label: 'Cash', icon: Wallet },
@@ -289,6 +291,12 @@ export interface AdvancePaymentDialogProps {
   patient: { id: string; firstName: string; lastName: string; mrn?: string | null } | null;
   /** If passed, the dialog defaults to "adjust against this bill" mode. */
   targetBill?: { id: string; billNumber: string; balanceDue: number } | null;
+  /**
+   * An admitted stay. The advance is then collected against THAT stay and the
+   * balance shown is the stay's one advance balance — the same figure Patient
+   * Home, the ledger and the final bill use (gap item 335).
+   */
+  admissionId?: string | null;
   onDone?: () => void;
 }
 
@@ -297,6 +305,7 @@ export function AdvancePaymentDialog({
   onOpenChange,
   patient,
   targetBill,
+  admissionId,
   onDone,
 }: AdvancePaymentDialogProps) {
   return (
@@ -313,6 +322,7 @@ export function AdvancePaymentDialog({
             key={`${patient.id}|${targetBill?.id ?? ''}`}
             patient={patient}
             targetBill={targetBill ?? null}
+            admissionId={admissionId ?? null}
             onClose={() => onOpenChange(false)}
             onDone={() => {
               onDone?.();
@@ -328,15 +338,31 @@ export function AdvancePaymentDialog({
 function AdvancePaymentBody({
   patient,
   targetBill,
+  admissionId,
   onClose,
   onDone,
 }: {
   patient: { id: string; firstName: string; lastName: string; mrn?: string | null };
   targetBill: { id: string; billNumber: string; balanceDue: number } | null;
+  admissionId: string | null;
   onClose: () => void;
   onDone: () => void;
 }) {
-  const { data: balance } = useAdvanceBalance(patient.id);
+  const queryClient = useQueryClient();
+  const { data: patientBalance } = useAdvanceBalance(admissionId ? null : patient.id);
+  const { data: stayBalance } = useQuery({
+    queryKey: ['hospital', 'admission-advance', admissionId],
+    queryFn: async () =>
+      (await apiGet<{ collected: number; applied: number; refunded: number; available: number }>(
+        `/billing/admissions/${admissionId}/advance-balance`,
+      )).data ?? null,
+    enabled: !!admissionId,
+  });
+  // One number for the header either way: the stay's held balance, or the
+  // patient's general advance when there is no stay.
+  const balance = admissionId
+    ? { balance: stayBalance?.available ?? 0 }
+    : patientBalance;
   const [mode, setMode] = useState<'collect' | 'adjust'>(targetBill ? 'adjust' : 'collect');
   const [amount, setAmount] = useState<number | ''>(
     targetBill ? Math.min(targetBill.balanceDue, balance?.balance ?? targetBill.balanceDue) : '',
@@ -358,11 +384,16 @@ function AdvancePaymentBody({
       if (mode === 'collect') {
         await collect.mutateAsync({
           patientId: patient.id,
+          ...(admissionId ? { admissionId } : {}),
           amount: amt,
           paymentMethod: method,
           referenceNumber: reference.trim() || undefined,
           notes: notes.trim() || undefined,
         });
+        if (admissionId) {
+          queryClient.invalidateQueries({ queryKey: ['hospital', 'admission-advance', admissionId] });
+          queryClient.invalidateQueries({ queryKey: ['ip-ledger'] });
+        }
         toast.success(`Advance ${fmt(amt)} recorded`);
       } else if (targetBill) {
         await adjust.mutateAsync({
@@ -385,9 +416,16 @@ function AdvancePaymentBody({
         <p className="font-label text-sm font-bold">{patient.firstName} {patient.lastName}</p>
         <p className="font-label text-[10px] text-on-surface-variant">MRN {patient.mrn ?? '-'}</p>
         <div className="mt-2 flex items-center justify-between border-t border-primary/10 pt-2">
-          <span className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">Advance Balance</span>
+          <span className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
+            {admissionId ? 'Stay advance held' : 'Advance Balance'}
+          </span>
           <span className="font-display text-lg font-bold text-primary">{fmt(balance?.balance ?? 0)}</span>
         </div>
+        {admissionId && stayBalance && (
+          <p className="mt-1 font-label text-[10px] text-on-surface-variant">
+            Collected {fmt(stayBalance.collected)} · applied to bill {fmt(stayBalance.applied)}
+          </p>
+        )}
       </div>
 
       {targetBill && (

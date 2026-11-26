@@ -23,7 +23,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { ArrowLeft, BadgeCheck, Loader2, Search, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, Loader2, Plus, Search, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -36,9 +36,10 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  useServiceTariffs, useUpdateServiceTariff, useSetTariffGstApproval,
-  type ServiceTariff,
+  useServiceTariffs, useUpdateServiceTariff, useSetTariffGstApproval, useCreateServiceTariff,
+  type ServiceTariff, type ServiceTariffCategory,
 } from '@/hooks/use-service-tariffs';
+import { getApiErrorMessage } from '@/lib/utils';
 import { useSacCodes } from '@/hooks/use-sac-codes';
 import { useGstSlabs } from '@/hooks/use-gst-slabs';
 
@@ -52,21 +53,44 @@ const TREATMENTS = [
 
 type Treatment = (typeof TREATMENTS)[number]['value'];
 
+// G-3: every kind of hospital service can be put in the master here, not only
+// the radiology studies the imaging settings create.
+const CATEGORIES: Array<{ value: ServiceTariffCategory; label: string }> = [
+  { value: 'consultation', label: 'Consultation' },
+  { value: 'procedure', label: 'Procedure' },
+  { value: 'surgery', label: 'Surgery' },
+  { value: 'lab', label: 'Laboratory' },
+  { value: 'imaging', label: 'Imaging' },
+  { value: 'nursing', label: 'Nursing' },
+  { value: 'room', label: 'Room' },
+  { value: 'other', label: 'Other' },
+];
+
+const EMPTY_FORM = {
+  name: '',
+  code: '',
+  category: 'procedure' as ServiceTariffCategory,
+  basePrice: '',
+  sacCode: '',
+  gstTreatment: 'exempt' as Treatment,
+  taxRate: 0,
+  isCosmetic: false,
+  gstEffectiveFrom: '',
+  reason: '',
+};
+
 export default function GstClassificationPage() {
   const { data, isLoading } = useServiceTariffs({ limit: 200 });
   const { data: sacCodes = [] } = useSacCodes();
   const { data: slabData } = useGstSlabs();
   const update = useUpdateServiceTariff();
+  const create = useCreateServiceTariff();
   const approve = useSetTariffGstApproval();
 
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<ServiceTariff | null>(null);
-  const [form, setForm] = useState({
-    sacCode: '',
-    gstTreatment: 'exempt' as Treatment,
-    taxRate: 0,
-    isCosmetic: false,
-  });
+  const [creating, setCreating] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
 
   const tariffs = useMemo(() => {
     const rows = data?.data ?? [];
@@ -85,13 +109,31 @@ export default function GstClassificationPage() {
   const legalRates = (slabData?.slabs ?? []).filter((s) => s.current).map((s) => s.ratePercent);
 
   const open = (t: ServiceTariff) => {
+    setCreating(false);
     setEditing(t);
     setForm({
+      ...EMPTY_FORM,
+      name: t.serviceName,
+      code: t.serviceCode ?? '',
+      category: t.category,
+      basePrice: String(t.basePrice ?? ''),
       sacCode: t.sacCode ?? '',
       gstTreatment: (t.gstTreatment as Treatment) ?? 'exempt',
       taxRate: Number(t.gstRatePercent ?? 0),
       isCosmetic: Boolean(t.isCosmetic),
+      gstEffectiveFrom: t.gstEffectiveFrom ? String(t.gstEffectiveFrom).slice(0, 10) : '',
     });
+  };
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm(EMPTY_FORM);
+    setCreating(true);
+  };
+
+  const close = () => {
+    setEditing(null);
+    setCreating(false);
   };
 
   /** Picking a SAC fills the rate and treatment from the master. */
@@ -105,19 +147,40 @@ export default function GstClassificationPage() {
   };
 
   const save = async () => {
-    if (!editing) return;
+    const classification = {
+      sacCode: form.sacCode.trim() || null,
+      gstTreatment: form.gstTreatment,
+      taxRate: form.gstTreatment === 'taxable' ? form.taxRate : 0,
+      isCosmetic: form.isCosmetic,
+      gstEffectiveFrom: form.gstEffectiveFrom || null,
+      ...(form.reason.trim() ? { gstChangeReason: form.reason.trim() } : {}),
+    };
     try {
-      await update.mutateAsync({
-        id: editing.id,
-        sacCode: form.sacCode.trim() || null,
-        gstTreatment: form.gstTreatment,
-        taxRate: form.gstTreatment === 'taxable' ? form.taxRate : 0,
-        isCosmetic: form.isCosmetic,
-      });
-      toast.success('Classification saved — it still needs approving');
-      setEditing(null);
+      if (creating) {
+        const price = Number(form.basePrice);
+        if (!form.name.trim() || !form.code.trim()) {
+          toast.error('Enter the service name and code');
+          return;
+        }
+        if (!Number.isFinite(price) || price <= 0) {
+          toast.error('Enter a price above zero');
+          return;
+        }
+        await create.mutateAsync({
+          name: form.name.trim(),
+          code: form.code.trim(),
+          category: form.category,
+          basePrice: price,
+          ...classification,
+        });
+        toast.success(`${form.name.trim()} added — approve it once your auditor has checked it`);
+      } else if (editing) {
+        await update.mutateAsync({ id: editing.id, ...classification });
+        toast.success('Classification saved — it still needs approving');
+      }
+      close();
     } catch (e) {
-      toast.error((e as Error)?.message || 'Could not save the classification');
+      toast.error(getApiErrorMessage(e, 'Could not save the classification'));
     }
   };
 
@@ -130,7 +193,7 @@ export default function GstClassificationPage() {
           : `Approval withdrawn from ${t.serviceName}`,
       );
     } catch (e) {
-      toast.error((e as Error)?.message || 'Could not change the approval');
+      toast.error(getApiErrorMessage(e, 'Could not change the approval'));
     }
   };
 
@@ -148,19 +211,23 @@ export default function GstClassificationPage() {
         <div>
           <h1 className="font-headline text-xl font-bold">GST classification</h1>
           <p className="max-w-3xl text-xs text-muted-foreground">
-            What each service is, for tax. The SAC code decides the rate; the cosmetic flag is
-            how an exempt procedure is told from an 18% one. Your auditor approves the mapping —
-            until they do, the tariff&apos;s own rate is not used.
+            What each service is, for tax. Bills take the SAC code, treatment and rate from the
+            service from its effective date; the cosmetic flag is how an exempt procedure is told
+            from an 18% one. Your auditor approves the mapping — a taxable service with no SAC
+            stays flagged until they do.
           </p>
         </div>
+        <Button size="sm" className="ml-auto" onClick={openCreate}>
+          <Plus className="size-4" /> New service
+        </Button>
       </div>
 
       {unapproved.length > 0 && (
         <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
           <ShieldAlert className="mt-0.5 size-4 shrink-0" />
           <p>
-            <b>{unapproved.length}</b> of {tariffs.length} tariffs have not been approved. Until a
-            tariff is approved its configured rate is discarded when a charge is raised against it.
+            <b>{unapproved.length}</b> of {tariffs.length} services have not been approved by your
+            auditor. Their classification is already used on bills; approval is the sign-off.
           </p>
         </div>
       )}
@@ -191,6 +258,7 @@ export default function GstClassificationPage() {
                 <th className="px-3 py-2">SAC</th>
                 <th className="px-3 py-2">Treatment</th>
                 <th className="px-3 py-2 text-right">Rate</th>
+                <th className="px-3 py-2">From</th>
                 <th className="px-3 py-2">Cosmetic</th>
                 <th className="px-3 py-2">Approved</th>
                 <th className="px-3 py-2" />
@@ -209,6 +277,9 @@ export default function GstClassificationPage() {
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">
                     {t.gstTreatment === 'taxable' ? `${Number(t.gstRatePercent)}%` : '—'}
+                  </td>
+                  <td className="px-3 py-2 text-[11px] tabular-nums text-muted-foreground">
+                    {t.gstEffectiveFrom ? String(t.gstEffectiveFrom).slice(0, 10) : 'Always'}
                   </td>
                   <td className="px-3 py-2">{t.isCosmetic ? <Badge variant="outline">Cosmetic</Badge> : '—'}</td>
                   <td className="px-3 py-2">
@@ -242,16 +313,47 @@ export default function GstClassificationPage() {
         </div>
       )}
 
-      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+      <Dialog open={!!editing || creating} onOpenChange={(o) => !o && close()}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{editing?.serviceName}</DialogTitle>
+            <DialogTitle>{creating ? 'New hospital service' : editing?.serviceName}</DialogTitle>
             <DialogDescription>
               Picking a SAC fills the treatment and rate from the platform master. Saving a change
               withdraws any approval — your auditor signed off what was there, not what it becomes.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
+            {creating && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <Label className="text-xs">Service name *</Label>
+                  <Input className="mt-1 h-9" value={form.name} maxLength={300} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                </div>
+                <div>
+                  <Label className="text-xs">Code *</Label>
+                  <Input className="mt-1 h-9" value={form.code} maxLength={50} onChange={(e) => setForm({ ...form, code: e.target.value })} />
+                </div>
+                <div>
+                  <Label className="text-xs">Price (₹) *</Label>
+                  <Input className="mt-1 h-9" type="number" min={0} step="0.01" value={form.basePrice} onChange={(e) => setForm({ ...form, basePrice: e.target.value })} />
+                </div>
+                <div className="col-span-2">
+                  <Label className="text-xs">Category</Label>
+                  <Select value={form.category} onValueChange={(v) => v && setForm({ ...form, category: v as ServiceTariffCategory })}>
+                    <SelectTrigger className="mt-1 h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CATEGORIES.map((c) => (
+                        <SelectItem key={c.value} value={c.value}>
+                          {c.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
             <div>
               <Label className="text-xs">SAC code</Label>
               <Select value={form.sacCode || null} onValueChange={(v) => v && pickSac(v)}>
@@ -310,6 +412,27 @@ export default function GstClassificationPage() {
                 </Select>
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Applies from</Label>
+                <Input
+                  className="mt-1 h-9"
+                  type="date"
+                  value={form.gstEffectiveFrom}
+                  onChange={(e) => setForm({ ...form, gstEffectiveFrom: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Reason for change</Label>
+                <Input
+                  className="mt-1 h-9"
+                  value={form.reason}
+                  maxLength={255}
+                  placeholder="e.g. CA advice"
+                  onChange={(e) => setForm({ ...form, reason: e.target.value })}
+                />
+              </div>
+            </div>
             <label className="flex cursor-pointer items-start gap-2 text-sm">
               <input
                 type="checkbox"
@@ -327,11 +450,11 @@ export default function GstClassificationPage() {
             </label>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditing(null)}>
+            <Button variant="outline" onClick={close}>
               Cancel
             </Button>
-            <Button onClick={save} disabled={update.isPending}>
-              {update.isPending ? <Loader2 className="size-4 animate-spin" /> : null} Save
+            <Button onClick={save} disabled={update.isPending || create.isPending}>
+              {update.isPending || create.isPending ? <Loader2 className="size-4 animate-spin" /> : null} Save
             </Button>
           </DialogFooter>
         </DialogContent>

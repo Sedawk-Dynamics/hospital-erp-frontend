@@ -13,7 +13,7 @@ import {
   Printer, CheckCircle2, RotateCcw, ChevronDown,
   Clock, Eye as ObservationIcon, Pin, Activity,
 } from 'lucide-react';
-import { useFormularySearch, useAllergyCheck, usePatientVitals, usePatientDiagnoses, usePrescriptions, useProgressNotes, type FormularyDrug } from '@/hooks/use-doctor';
+import { useFormularySearch, useAllergyCheck, usePatientVitals, usePatientDiagnoses, usePrescriptions, useProgressNotes, useDoctorProfile, type FormularyDrug } from '@/hooks/use-doctor';
 import { useLatestVitals } from '@/hooks/use-nurse';
 import { RecordVitalsDialog } from '@/components/shared/record-vitals-dialog';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -47,6 +47,7 @@ import {
   getConsultationSectionText,
 } from '../consultation-completion/use-consultation-completion';
 import { VoiceInputButton } from '../voice-input-button';
+import { SpecialityInputs } from './speciality-inputs';
 import { IcdCodeCombobox } from '@/components/clinical/icd-code-combobox';
 import { DiagnosisNameField } from '@/components/clinical/diagnosis-name-field';
 import { SmartSuggestionsCard } from '../smart-suggestions-card';
@@ -72,6 +73,15 @@ export function clearConsultationDraft(appointmentId: string, visitId?: string):
   }
 }
 
+export interface TranscriptSections {
+    chiefComplaint: string;
+    generalExamination: string;
+    investigationsSummary: string;
+    impression: string;
+    advice: string;
+    referralNotes: string;
+}
+
 interface PrescriptionPadProps {
   patientId: string;
   patientName: string;
@@ -95,6 +105,7 @@ interface PrescriptionPadProps {
     progressNoteId?: string;
     prescriptionId?: string;
   };
+  transcript?:TranscriptSections | null
 }
 
 export function PrescriptionPad({
@@ -112,6 +123,7 @@ export function PrescriptionPad({
   hideHeader,
   initialValues,
   editMode,
+  transcript,
 }: PrescriptionPadProps) {
   const [tempUnit] = useTemperatureUnit();
   // Draft key — persists in-progress form state across navigation so the
@@ -189,15 +201,28 @@ export function PrescriptionPad({
           : defaultFormValues.physicalObservations,
       investigationsSummary: (seed as any)?.investigationsSummary ?? '',
       pinnedSections: seedPinnedSections,
-      // Drop the legacy bulk pins from prefill — the consultation summary
-      // is now driven by per-section toggles, which are composed back into
-      // pin rows on submit.
       pins: defaultFormValues.pins,
     },
   });
 
   const { register, watch, setValue, formState: { errors } } = form;
   const { submitConsultation, isSubmitting, error: submitError, currentStep } = useConsultationCompletion();
+
+  // Seed the form from the AI voice transcript. The text boxes are uncontrolled
+  // (register), so per-field setValue updates state without re-painting them
+  // (needed a manual refresh). form.reset re-renders and fills them live. We
+  // merge with current values and skip empty AI fields so nothing typed is lost.
+  useEffect(() => {
+    if (!transcript) return;
+    const filled = Object.fromEntries(
+      Object.entries(transcript).filter(([, v]) => typeof v === 'string' && v.trim()),
+    );
+    if (Object.keys(filled).length === 0) return;
+    form.reset({ ...form.getValues(), ...filled }, { keepDefaultValues: true });
+  }, [transcript, form]);
+
+
+  const { data: doctorProfile } = useDoctorProfile();
 
   // Persist form state to localStorage (debounced) so the draft survives
   // Back navigation, remounts, and accidental tab closes.
@@ -518,9 +543,7 @@ export function PrescriptionPad({
                 </div>
               }
             >
-              {/* What the nurse was told at intake. Sits ABOVE the box so the
-                  doctor reads it before writing their own framing. "Use this"
-                  copies it in to be rewritten; the nurse's record is untouched. */}
+
               <NurseIntakeComplaint
                 visitId={visitId ?? editMode?.visitId}
                 currentValue={watch('chiefComplaint') ?? ''}
@@ -681,22 +704,6 @@ export function PrescriptionPad({
                     className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-none"
                   />
                 </div>
-                {/* <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-medium text-muted-foreground">Systemic Examination</label>
-                    <VoiceInputButton
-                      value={watch('systemicExamination') ?? ''}
-                      onChange={(v) => setValue('systemicExamination', v, { shouldDirty: true })}
-                      fieldLabel="Systemic Examination"
-                    />
-                  </div>
-                  <textarea
-                    {...register('systemicExamination')}
-                    placeholder="CVS, RS, P/A, CNS findings..."
-                    rows={3}
-                    className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-none"
-                  />
-                </div> */}
               </div>
             </PadSection>
 
@@ -920,6 +927,10 @@ export function PrescriptionPad({
               pinnedSections={pinnedSections}
               form={form}
             />
+
+            {doctorProfile?.specialty && (
+              <SpecialityInputs speciality={doctorProfile.specialty} visitId={visitId ?? undefined} />
+            )}
         </div>
       </div>
 
@@ -1222,7 +1233,7 @@ function MedicationsSection({ form, patientId }: { form: any; patientId: string 
 
   const [drugSearch, setDrugSearch] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
-  const debouncedSearch = useDebounce(drugSearch, 300);
+  const debouncedSearch = useDebounce(drugSearch, 100);
   const { data: formularyResults } = useFormularySearch(debouncedSearch);
 
   // A drug already on the prescription used to be filtered OUT of the search
@@ -2124,3 +2135,21 @@ function ConsultationSummaryPreview({
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

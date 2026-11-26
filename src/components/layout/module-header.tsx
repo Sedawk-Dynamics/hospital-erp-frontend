@@ -1,8 +1,9 @@
 'use client';
 
-import { Menu, HelpCircle, LogOut, Settings, ArrowLeftRight, Search, User, CreditCard, ArrowLeft } from 'lucide-react';
+import { Menu, HelpCircle, LogOut, Settings, ArrowLeftRight, User, CreditCard, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { NotificationBell } from '@/components/layout/notification-bell';
+import { GlobalSearch } from '@/components/layout/global-search';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -97,15 +98,8 @@ export function ModuleHeader() {
           </h1>
         </div>
 
-        {/* Search bar — code.html: relative group, bg-surface-container-low, rounded-xl, pl-12 pr-6 py-2.5 w-80 */}
-        <div className="relative hidden md:block group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-outline" />
-          <input
-            className="bg-surface-container-low border-none rounded-xl pl-12 pr-6 py-2.5 w-80 font-label text-sm focus:ring-2 focus:ring-primary/20 transition-all outline-none placeholder:text-on-surface-variant/60"
-            placeholder="Search patients, doctors, or reports..."
-            type="text"
-          />
-        </div>
+        {/* Search bar — patients, doctors and reports (gap 367) */}
+        <GlobalSearch />
       </div>
 
       {/* Right: Actions — code.html: gap-6 */}

@@ -33,6 +33,7 @@ import {
 
 import { useDoctorsList, useGlobalPatientSearch, useProvisionLocalPatient, type GlobalPatientMatch } from '@/hooks/use-hospital';
 import { DoctorCalendarPicker } from '@/components/hospital/doctor-calendar-picker';
+import { patientPickerSubtitle } from '@/components/hospital/patient-picker-label';
 import { apiPost } from '@/lib/api';
 import type { Patient, Appointment } from '@/types';
 
@@ -294,7 +295,7 @@ export function CreateAppointmentDialog({
                           {m.firstName} {m.lastName}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {m.isLocal ? `MRN: ${m.mrn ?? '—'}` : `at ${m.hospital}`} &middot; {m.phone ?? '—'}
+                          {patientPickerSubtitle(m, matches)}
                         </p>
                       </div>
                       {!m.isLocal && (

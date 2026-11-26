@@ -1,10 +1,11 @@
 'use client';
 
-import { AlertTriangle, CheckCircle2, Info, Lock } from 'lucide-react';
-import { formatDate } from '@/lib/date-utils';
+import { useState } from 'react';
+import { AlertTriangle, CheckCircle2, History, Info, Lock } from 'lucide-react';
+import { formatDate, formatDateTime } from '@/lib/date-utils';
 import {
-  Column, ExportButton, Loading, ReportTable, StatStrip,
-  exportCsv, exportXlsx, money, plain,
+  Column, DrillThrough, ExportButton, Loading, ReportTable, StatStrip,
+  exportAll, money, plain, formatReturnPeriod,
 } from './gst-report-shell';
 import type { AmendmentRow, GstReportQuery } from '@/hooks/use-gst-reports';
 import * as R from '@/hooks/use-gst-reports';
@@ -24,13 +25,8 @@ import * as R from '@/hooks/use-gst-reports';
 // moved since I filed anything".
 // ============================================================
 
-/** MMYYYY, as the portal writes it — shown the way a person reads it. */
-function periodLabel(mmyyyy: string): string {
-  if (!/^\d{6}$/.test(mmyyyy)) return mmyyyy;
-  const months = ['January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'];
-  return `${months[Number(mmyyyy.slice(0, 2)) - 1] ?? mmyyyy.slice(0, 2)} ${mmyyyy.slice(2)}`;
-}
+/** MMYYYY shown the way a person reads it — the one shared formatter (gap item 310). */
+const periodLabel = (mmyyyy: string) => formatReturnPeriod(mmyyyy);
 
 const TABLE_HINTS: Record<string, string> = {
   '9A': 'B2B invoice — amended against its own number',
@@ -63,7 +59,7 @@ const cols: Column<AmendmentRow>[] = [
     ),
     csv: (r) => r.table,
   },
-  { key: 'per', label: 'Original period', cell: (r) => periodLabel(r.originalPeriod), csv: (r) => r.originalPeriod },
+  { key: 'per', label: 'Original period', cell: (r) => periodLabel(r.originalPeriod), csv: (r) => periodLabel(r.originalPeriod) },
   {
     key: 'num',
     label: 'Original document',
@@ -97,15 +93,48 @@ const cols: Column<AmendmentRow>[] = [
   { key: 'why', label: 'Why', cell: (r) => <span className="text-xs">{r.reason}</span>, csv: (r) => r.reason },
 ];
 
+type CorrectionRow = {
+  returnPeriod: string; action: string; version: number | null; reason: string | null; at: string; by?: string | null;
+};
+const CORRECTION_LABEL: Record<string, string> = {
+  unlocked: 'Reopened for correction',
+  refiled: 'Correction filed',
+  locked: 'Locked again',
+};
+/** Gap 281: the reopen / correction trail across every filed period. */
+const correctionCols: Column<CorrectionRow>[] = [
+  { key: 'p', label: 'Period', cell: (c) => periodLabel(c.returnPeriod), csv: (c) => periodLabel(c.returnPeriod) },
+  { key: 'at', label: 'When', cell: (c) => formatDateTime(c.at), csv: (c) => formatDateTime(c.at) },
+  { key: 'a', label: 'What', cell: (c) => CORRECTION_LABEL[c.action] ?? c.action, csv: (c) => CORRECTION_LABEL[c.action] ?? c.action },
+  { key: 'v', label: 'Snapshot', cell: (c) => (c.version ? `v${c.version}` : '—'), csv: (c) => (c.version ? `v${c.version}` : '') },
+  { key: 'by', label: 'By', cell: (c) => c.by ?? '—', csv: (c) => c.by ?? '' },
+  { key: 'r', label: 'Reason', cell: (c) => <span className="text-xs">{c.reason ?? '—'}</span>, csv: (c) => c.reason ?? '' },
+];
+
 export function AmendmentsView({ q }: { q: GstReportQuery }) {
   // The shared period is not passed through — see the file header.
   void q;
   const { data, isLoading } = R.useGstr1Amendments({});
+  // Gap 282: every headline figure opens the amendment rows behind it.
+  const [focus, setFocus] = useState<string | null>(null);
   if (isLoading) return <Loading />;
   const rows = data?.rows ?? [];
   const s = data?.summary;
   const periods = data?.periods ?? [];
   const clean = (s?.amendments ?? 0) === 0;
+  const drills: Record<string, AmendmentRow[]> = {
+    Amendments: rows,
+    'Table 9A': rows.filter((r) => r.table === '9A'),
+    'Table 9C': rows.filter((r) => r.table === '9C'),
+    'Table 10': rows.filter((r) => r.table === '10'),
+    'Net value change': rows.filter((r) => r.difference !== 0),
+  };
+  const drillRows = focus ? drills[focus] ?? [] : [];
+  const pick = (label: string) => setFocus(focus === label ? null : label);
+  const corrections: CorrectionRow[] = periods.flatMap((p) =>
+    (p.corrections ?? []).map((c) => ({ ...c, returnPeriod: p.returnPeriod })),
+  );
+  const statOf = (label: string) => ({ onClick: () => pick(label), active: focus === label });
 
   return (
     <div className="space-y-4">
@@ -122,23 +151,36 @@ export function AmendmentsView({ q }: { q: GstReportQuery }) {
 
       <StatStrip
         stats={[
-          { label: 'Filed periods', value: String(s?.filedPeriods ?? 0) },
+          {
+            label: 'Filed periods',
+            value: String(s?.filedPeriods ?? 0),
+            hint: `${s?.comparablePeriods ?? 0} comparable — listed below`,
+          },
           {
             label: 'Amendments',
             value: String(s?.amendments ?? 0),
             tone: clean ? 'good' : 'warn',
+            ...statOf('Amendments'),
           },
-          {
-            label: 'By table',
-            value: `9A ${s?.table9A ?? 0} · 9C ${s?.table9C ?? 0} · 10 ${s?.table10 ?? 0}`,
-          },
+          { label: 'Table 9A', value: String(s?.table9A ?? 0), hint: 'B2B invoices', ...statOf('Table 9A') },
+          { label: 'Table 9C', value: String(s?.table9C ?? 0), hint: 'credit / debit notes', ...statOf('Table 9C') },
+          { label: 'Table 10', value: String(s?.table10 ?? 0), hint: 'B2C totals', ...statOf('Table 10') },
           {
             label: 'Net value change',
             value: money(s?.netValueChange),
             tone: (s?.netValueChange ?? 0) === 0 ? 'good' : 'warn',
             hint: 'Signed — this one nets off, because that is what is being declared',
+            ...statOf('Net value change'),
           },
         ]}
+      />
+      <DrillThrough
+        open={!!focus}
+        onClose={() => setFocus(null)}
+        title={focus ? `${focus} — the documents behind it` : ''}
+        subtitle={`${drillRows.length} row(s) · net difference ${money(drillRows.reduce((t, r) => t + r.difference, 0))}`}
+        columns={cols}
+        rows={drillRows}
       />
 
       <div
@@ -174,26 +216,58 @@ export function AmendmentsView({ q }: { q: GstReportQuery }) {
                 ) : null}
                 <span className="text-[11px] text-muted-foreground">
                   filed {formatDate(p.filedAt)}
+                  {p.status ? ` · ${p.status === 'filed_locked' ? 'Filed – Locked' : 'Filed – Unlocked'}` : ''}
+                  {/* The same as-filed figures C-6 shows, from the same snapshot (gap item 281). */}
+                  {p.filed ? ` · outward tax as filed ${money(p.filed.outwardTax)} on ${money(p.filed.outwardTaxableValue)}` : ''}
                 </span>
               </div>
-              <p
-                className={`max-w-[60%] text-right text-xs ${
-                  !p.comparable ? 'text-amber-700' : p.amendments > 0 ? 'text-amber-700' : 'text-muted-foreground'
-                }`}
-              >
-                {p.note}
-              </p>
+              <div className="max-w-[60%] space-y-1 text-right">
+                <p
+                  className={`text-xs ${
+                    !p.comparable ? 'text-amber-700' : p.amendments > 0 ? 'text-amber-700' : 'text-muted-foreground'
+                  }`}
+                >
+                  {p.note}
+                </p>
+                {/* Gap 281: what this period is compared against. */}
+                <p className="text-[11px] text-muted-foreground">
+                  Compared with{' '}
+                  {p.baseline?.kind === 'declared' && p.baseline.inPeriod
+                    ? `the amendments already declared in the ${periodLabel(p.baseline.inPeriod)} return`
+                    : 'the original filed snapshot'}
+                </p>
+              </div>
             </div>
           ))}
         </div>
+      ) : null}
+
+      {/* Gap 281: every reopen and correction of a filed period — who, when, why. */}
+      {corrections.length > 0 ? (
+        <section className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+              <History className="h-4 w-4" /> Reopens and corrections of filed periods
+            </h3>
+            <ExportButton {...exportAll('A13-period-corrections', correctionCols, corrections, {})} />
+          </div>
+          <ReportTable columns={correctionCols} rows={corrections} />
+        </section>
       ) : null}
 
       {rows.length > 0 ? (
         <>
           <div className="flex justify-end">
             <ExportButton
-              onClick={() => exportCsv('A13-gstr1-amendments', cols, rows, {})}
-              onExcel={() => exportXlsx('A13-gstr1-amendments', cols, rows, {})}
+              {...exportAll('A13-gstr1-amendments', cols, rows, {}, {
+                stats: [
+                  { label: 'Amendments', value: String(s?.amendments ?? 0) },
+                  { label: 'Table 9A', value: String(s?.table9A ?? 0) },
+                  { label: 'Table 9C', value: String(s?.table9C ?? 0) },
+                  { label: 'Table 10', value: String(s?.table10 ?? 0) },
+                  { label: 'Net value change', value: money(s?.netValueChange) },
+                ],
+              })}
             />
           </div>
           <ReportTable columns={cols} rows={rows} />

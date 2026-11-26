@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Plus, Search, FileCheck, ExternalLink, AlertTriangle } from 'lucide-react';
+import { Plus, Search, FileCheck, ExternalLink, AlertTriangle, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -110,6 +110,13 @@ export default function ClaimsListPage() {
   const sp = useSearchParams();
   const initialStatus = (sp.get('status') as ClaimStatus | null) ?? null;
   const [statusFilter, setStatusFilter] = useState<ClaimStatus | 'all'>(initialStatus ?? 'all');
+  // Gap 296: the dashboard's "Claims already expired" / "Claims (TPA deadline)"
+  // counts open this list as ?expiry=expired | expiring7. The API applies the
+  // same clause the dashboard counted with, so the total below is that number.
+  const expiryParam = sp.get('expiry');
+  const [expiryFilter, setExpiryFilter] = useState<'expired' | 'expiring7' | null>(
+    expiryParam === 'expired' || expiryParam === 'expiring7' ? expiryParam : null,
+  );
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<CreateForm>(EMPTY);
@@ -122,6 +129,8 @@ export default function ClaimsListPage() {
   const { data, isLoading } = useClaims({
     status: statusFilter === 'all' ? undefined : statusFilter,
     search: search || undefined,
+    expiry: expiryFilter === 'expired' ? 'expired' : expiryFilter === 'expiring7' ? 'expiring' : undefined,
+    expiringWithinDays: expiryFilter === 'expiring7' ? 7 : undefined,
   });
   const { data: expiring } = useExpiringClaims(7);
   const { data: patients } = usePatientSearch(debouncedPatient);
@@ -143,7 +152,7 @@ export default function ClaimsListPage() {
     }
     setBillLoading(true);
     apiClient
-      .get(`/billing/bills`, { params: { patientId: form.patientId, limit: 50 } })
+      .get(`/billing`, { params: { patientId: form.patientId, limit: 50 } })
       .then((res) => setBills((res.data?.data as BillSummary[]) ?? []))
       .catch(() => setBills([]))
       .finally(() => setBillLoading(false));
@@ -153,7 +162,7 @@ export default function ClaimsListPage() {
     if (calc?.split && !form.claimAmount) {
       setForm((f) => ({ ...f, claimAmount: String(calc.split.claimAmount) }));
     }
-  }, [calc]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [calc]); 
 
   async function handleCreate() {
     if (!form.policyId && !form.insuranceCaseId) return toast.error('Pick a policy or payer case');
@@ -267,8 +276,23 @@ export default function ClaimsListPage() {
               </div>
             </div>
           </div>
-          <CardDescription>
+          <CardDescription className="flex flex-wrap items-center gap-2">
             {data?.data?.length ?? 0} of {data?.meta?.total ?? 0} claims
+            {expiryFilter && (
+              <Badge variant="outline" className="gap-1 border-rose-300 bg-rose-50 text-rose-700">
+                {expiryFilter === 'expired'
+                  ? 'TPA deadline already passed'
+                  : 'TPA deadline in the next 7 days'}
+                <button
+                  type="button"
+                  aria-label="Clear deadline filter"
+                  className="ml-0.5 rounded hover:bg-rose-100"
+                  onClick={() => setExpiryFilter(null)}
+                >
+                  <X className="size-3" />
+                </button>
+              </Badge>
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent>

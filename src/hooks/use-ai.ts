@@ -166,10 +166,17 @@ export function useResetAiConfig() {
 // UC2: Patient AI chatbot for the doctor
 // ============================================================
 
+export interface AiSource {
+  n: number;
+  label: string;
+  url: string;
+}
+
 export interface PatientChatResponse {
   reply: string;
   model: string;
   provider: string;
+  sources?: AiSource[];
   context: {
     patient: { id: string; name: string; mrn: string; age: number | null; gender: string | null; bloodGroup: string | null };
     counts: Record<string, number>;
@@ -178,10 +185,58 @@ export interface PatientChatResponse {
 
 export function usePatientAiChat() {
   return useMutation({
-    mutationFn: async (data: { patientId: string; message: string; history?: AiChatTurn[] }) => {
+    mutationFn: async (data: { patientId: string; message: string; history?: AiChatTurn[]; visitId?: string | null; model?: string }) => {
       const res = await apiPost<PatientChatResponse>('/ai/patient/chat', data);
       return res.data;
     },
+  });
+}
+
+export interface PatientSummaryResponse {
+  summary: string;
+  model: string;
+  provider: string;
+  patient: { id: string; name: string; mrn: string; age: number | null; gender: string | null; bloodGroup: string | null };
+  counts: Record<string, number>;
+  alerts: {
+    allergies: string[];
+    abnormalLabs: string[];
+    abnormalVitals: string[];
+  };
+  sources?: AiSource[];
+}
+
+// Prefetched patient briefing shown when the doctor opens the AI assistant.
+// Pass `enabled` so it only fires once the panel is actually open.
+export function usePatientAiSummary(
+  patientId: string | undefined,
+  enabled: boolean,
+  visitId?: string | null,
+) {
+  return useQuery({
+    queryKey: ['ai', 'patient-summary', patientId, visitId ?? null],
+    queryFn: async () => {
+      const qs = visitId ? `?visitId=${encodeURIComponent(visitId)}` : '';
+      const res = await apiGet<PatientSummaryResponse>(`/ai/patient/${patientId}/summary${qs}`);
+      return res.data;
+    },
+    enabled: enabled && !!patientId,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+// Cheap change-stamp for the patient's clinical record. Polled while the
+// assistant is open so the summary can auto-refresh when data changes mid-session.
+export function usePatientContextVersion(patientId: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ['ai', 'context-version', patientId],
+    queryFn: async () => {
+      const res = await apiGet<{ version: { version: string } }>(`/ai/patient/${patientId}/context-version`);
+      return res.data.version.version;
+    },
+    enabled: enabled && !!patientId,
+    refetchInterval: 40_000, // poll every 40s while the panel is open
+    refetchIntervalInBackground: true, // keep polling even when the tab is unfocused
   });
 }
 
@@ -198,6 +253,28 @@ export function useBloodReportAnalysis() {
   return useMutation({
     mutationFn: async (data: { patientId: string; labOrderId?: string }) => {
       const res = await apiPost<BloodReportAnalysis>('/ai/patient/blood-report', data);
+      return res.data;
+    },
+  });
+}
+
+// Imaging (X-ray) report analysis. patientId is a URL param; tenant comes from
+// the auth token server-side. Returns the model's text read of the study.
+export interface ImagingReportAnalysis {
+  summary: string;
+  /** Base64 PNG data URLs of the rendered X-ray frames, for display in the UI. */
+  images: string[];
+  imageCount: number;
+  modality?: string;
+}
+
+export function useImagingReportAnalysis() {
+  return useMutation({
+    mutationFn: async (data: { patientId: string; model?: string }) => {
+      const res = await apiPost<ImagingReportAnalysis>(
+        `/ai/patient/${data.patientId}/analyse-imaging`,
+        { model: data.model },
+      );
       return res.data;
     },
   });

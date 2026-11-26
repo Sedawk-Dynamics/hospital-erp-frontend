@@ -46,7 +46,8 @@ export interface ProgressNotePinEntry {
     | 'chief_complaint'
     | 'examination'
     | 'investigation'
-    | 'impression';
+    | 'impression'
+    | 'vitals';
   content: string;
   createdAt: string;
 }
@@ -65,6 +66,9 @@ export interface ProgressNote {
   noteType?: string;
   noteTitle?: string | null;
   hospitalDay?: number | null;
+  // Doctor-entered hospital day + date/time (independent of createdAt).
+  noteDay?: number | null;
+  noteAt?: string | null;
   content?: string;
   impressions?: string | null;
   discussions?: string | null;
@@ -164,6 +168,9 @@ export interface Vital {
   bloodSugar?: number;
   notes?: string;
   recordedBy?: string;
+  // Set when the reading was captured alongside a progress note.
+  progressNoteId?: string | null;
+  recordedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -617,6 +624,10 @@ export interface CreateProgressNoteInput {
   // @mentioned doctors (User ids) — they get a notification linking to the patient.
   mentionedUserIds?: string[];
   noteTitle?:string;
+  /** Hospital day this note is for (Day 1 = admission day). */
+  noteDay?: number | null;
+  /** Doctor-entered date + time for the note ("YYYY-MM-DDTHH:MM", local). */
+  noteAt?: string | null;
 }
 
 export interface UpdateProgressNoteInput extends Partial<CreateProgressNoteInput> {
@@ -1428,6 +1439,8 @@ export interface DischargeSummary {
   diagnosesSummary?: string;
   proceduresSummary?: string;
   labResultsSummary?: string;
+  vitalsSummary?: string;
+  radiologySummary?: string;
   medicationReconciliation?: string;
   dischargeInstructions?: string;
   followUpDate?: string;
@@ -1507,7 +1520,7 @@ export interface DischargeDocument {
   admission: { admissionDate: string | null; dischargeDate: string | null; lengthOfStayDays: number | null; ward: string | null; bed: string | null; reason: string | null; chiefComplaint: string | null; attendingDoctor: string; specialization: string | null };
   allergies: Array<{ allergen: string; reaction: string | null }>;
   diagnoses: Array<{ name: string; type: string; icdCode: string | null }>;
-  vitals: { admission: DischargeVitalRow | null; discharge: DischargeVitalRow | null };
+  vitals: DischargeVitalRow[];
   procedures: Array<{ name: string; type: string | null; date: string | null; status: string; surgeon: string | null }>;
   imaging: Array<{ study: string; indication: string | null; impression: string | null; date: string | null }>;
   sections: {
@@ -1521,6 +1534,7 @@ export interface DischargeDocument {
     hospitalCourse: string | null;
     keyLabs: string | null;
     labResults: string | null;
+    radiologyText: string | null;
     medicationsText: string | null;
     dischargeInstructions: string | null;
     followUpDate: string | null;
@@ -1552,6 +1566,8 @@ export function useUpdateDischargeSummary() {
       diagnosesSummary?: string;
       proceduresSummary?: string;
       labResultsSummary?: string;
+      vitalsSummary?: string;
+      radiologySummary?: string;
       medicationReconciliation?: string;
       dischargeInstructions?: string;
       followUpDate?: string;
