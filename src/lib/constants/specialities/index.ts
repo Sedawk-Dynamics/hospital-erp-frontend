@@ -25,6 +25,11 @@ import {
   diabetologyEndocrinology,
   diabetologyEndocrinologyLabels,
 } from './diabetology-and-endocrinology';
+import {
+  neurologyNeurosurgery,
+  neurologyNeurosurgeryLabels,
+} from './neurology-and-neurosurgery';
+import { pulmonologySleep, pulmonologySleepLabels } from './pulmonology-and-sleep';
 
 export type {
   FieldType,
@@ -43,6 +48,8 @@ export const SPECIALTY_FIELDS: Record<string, SpecialtyCategories> = {
   cardiology_cath_lab: cardiologyCathLab,
   oncology: oncology,
   diabetology_endocrinology: diabetologyEndocrinology,
+  neurology_neurosurgery: neurologyNeurosurgery,
+  pulmonology_sleep: pulmonologySleep,
 };
 
 
@@ -55,6 +62,8 @@ export const SPECIALTY_CATEGORY_LABELS: Record<string, SpecialtyCategoryLabels> 
   cardiology_cath_lab: cardiologyCathLabLabels,
   oncology: oncologyLabels,
   diabetology_endocrinology: diabetologyEndocrinologyLabels,
+  neurology_neurosurgery: neurologyNeurosurgeryLabels,
+  pulmonology_sleep: pulmonologySleepLabels,
 };
 
 

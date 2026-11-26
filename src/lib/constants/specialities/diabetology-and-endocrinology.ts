@@ -1,7 +1,103 @@
 import type { SpecialtyCategories, SpecialtyCategoryLabels } from './types';
 
 export const diabetologyEndocrinology: SpecialtyCategories = {
-  smbg_cgm_tir: [],
+  smbg_cgm_tir: [
+    {
+      heading: '7-Point SMBG & CGM Ambulatory Glucose Profile',
+      inputs: [
+        { key: 'fbg', label: 'Fasting (FBG)', type: 'number', unit: 'mg/dL' },
+        { key: 'post2hBf', label: '2h Post-BF', type: 'number', unit: 'mg/dL' },
+        { key: 'preLunch', label: 'Pre-Lunch', type: 'number', unit: 'mg/dL' },
+        { key: 'post2hLunch', label: '2h Post-Lunch', type: 'number', unit: 'mg/dL' },
+        { key: 'preDinner', label: 'Pre-Dinner', type: 'number', unit: 'mg/dL' },
+        { key: 'post2hDinner', label: '2h Post-Dinner', type: 'number', unit: 'mg/dL' },
+        { key: 'bed3am', label: 'Bed / 3 AM', type: 'number', unit: 'mg/dL' },
+        { key: 'mean7pt', label: 'Mean 7-Point', type: 'number', unit: 'mg/dL', auto: true },
+        { key: 'peakPpbg', label: 'Peak PPBG', type: 'number', unit: 'mg/dL', auto: true },
+        { key: 'smbgHba1c', label: 'HbA1c', type: 'number', unit: '%' },
+        { key: 'derivedEag', label: 'Derived eAG (ADAG)', type: 'number', unit: 'mg/dL', auto: true },
+        { key: 'tir', label: 'TIR 70–180', type: 'number', unit: '%' },
+        { key: 'tbr', label: 'TBR <70', type: 'number', unit: '%' },
+        { key: 'tar', label: 'TAR >180', type: 'number', unit: '%' },
+        { key: 'glycemicCv', label: 'Glycemic %CV', type: 'number', unit: '%' },
+        { key: 'agpProfile', label: 'AGP Bar', type: 'skeleton', auto: true },
+      ],
+    },
+    {
+      heading: 'RSSDI MNT, Millets & FITTE Lifestyle Prescription',
+      inputs: [
+        {
+          key: 'autoEstimateIbw',
+          label: 'Auto-Estimate IBW Calories & Fiber',
+          type: 'skeleton',
+          auto: true,
+        },
+        { key: 'calorieTarget', label: 'Daily Calorie Target', type: 'number', unit: 'kcal/day' },
+        { key: 'fiberTarget', label: 'Dietary Fiber Target', type: 'number', unit: 'g/day' },
+        {
+          key: 'regionalDietPattern',
+          label: 'Regional Indian Diet Pattern & Low-GI Millet Alternative',
+          type: 'select',
+          options: [
+            'South Indian',
+            'North Indian',
+            'West Indian',
+            'East Indian',
+            'Pan-Indian Vegetarian',
+            'Religious-Fasting',
+          ],
+        },
+        {
+          key: 'carbCountingStatus',
+          label: 'Carbohydrate Counting Status',
+          type: 'select',
+          options: [
+            'Not Practicing',
+            'RSSDI Plate Method 50-25-25',
+            '15g Exchange',
+            'Advanced ICR',
+          ],
+        },
+        {
+          key: 'proteinStrategy',
+          label: 'Protein Intake Strategy',
+          type: 'select',
+          options: ['1.0 g/kg/day', '1.2 g/kg/day', '0.8 g/kg/day'],
+        },
+        { key: 'fitteAerobicDays', label: 'FITTE — Aerobic', type: 'number', unit: 'days/wk' },
+        { key: 'fitteSessionMins', label: 'FITTE — Session', type: 'number', unit: 'mins' },
+        {
+          key: 'fitteResistanceDays',
+          label: 'FITTE — Resistance',
+          type: 'number',
+          unit: 'days/wk',
+        },
+        {
+          key: 'fitteIntensity',
+          label: 'FITTE — Intensity Tier',
+          type: 'select',
+          options: ['Light', 'Moderate', 'Moderate-to-Vigorous HRmax'],
+        },
+        {
+          key: 'fitteEnjoyment',
+          label: 'FITTE — Enjoyment & Preferred Routine',
+          type: 'text',
+        },
+        {
+          key: 'fitteExerciseType',
+          label: 'FITTE — Exercise Type Selection',
+          type: 'multiselect',
+          options: [
+            'Brisk Walking',
+            'Post-Meal 15-Min Walk',
+            'Resistance Bands',
+            'Cycling-Swimming',
+            'Yoga-Pranayama',
+          ],
+        },
+      ],
+    },
+  ],
   insulin_engine: [
     {
       heading: 'RSSDI/ESI Weight-Based Insulin Engine',
@@ -54,7 +150,101 @@ export const diabetologyEndocrinology: SpecialtyCategories = {
       ],
     },
   ],
-  diabetic_foot_neuropathy: [],
+  diabetic_foot_neuropathy: [
+    {
+      heading: 'Interactive 10g Monofilament Mapping (Right & Left foot)',
+      inputs: [
+        {
+          key: 'footMonofilamentRight',
+          label: 'Monofilament Score — Right (/10)',
+          type: 'number',
+          min: 0,
+          max: 10,
+        },
+        {
+          key: 'footMonofilamentLeft',
+          label: 'Monofilament Score — Left (/10)',
+          type: 'number',
+          min: 0,
+          max: 10,
+        },
+      ],
+    },
+    {
+      heading: 'Tuning Fork, VPT, ABI',
+      inputs: [
+        {
+          key: 'tuningForkVibRight',
+          label: '128 Hz Tuning Fork — Right',
+          type: 'select',
+          options: ['Intact ≥8s', 'Diminished', 'Absent'],
+        },
+        { key: 'tuningForkVibRightSecs', label: 'Tuning Fork Right', type: 'number', unit: 's' },
+        {
+          key: 'tuningForkVibLeft',
+          label: '128 Hz Tuning Fork — Left',
+          type: 'select',
+          options: ['Intact ≥8s', 'Diminished', 'Absent'],
+        },
+        { key: 'tuningForkVibLeftSecs', label: 'Tuning Fork Left', type: 'number', unit: 's' },
+        { key: 'vptRight', label: 'VPT Biothesiometer — Right', type: 'number', unit: 'V' },
+        { key: 'vptLeft', label: 'VPT Biothesiometer — Left', type: 'number', unit: 'V' },
+        { key: 'abiRight', label: 'Ankle-Brachial Index — Right', type: 'number' },
+        { key: 'abiLeft', label: 'Ankle-Brachial Index — Left', type: 'number' },
+      ],
+    },
+    {
+      heading: 'Cardiovascular Autonomic Neuropathy (CAN) & Postural Hypotension',
+      inputs: [
+        { key: 'canSupineSbp', label: 'Supine SBP', type: 'number', unit: 'mmHg' },
+        { key: 'canSupineDbp', label: 'Supine DBP', type: 'number', unit: 'mmHg' },
+        { key: 'canStandingSbp', label: 'Standing 3m SBP', type: 'number', unit: 'mmHg' },
+        { key: 'canStandingDbp', label: 'Standing 3m DBP', type: 'number', unit: 'mmHg' },
+        { key: 'restingHr', label: 'Resting HR', type: 'number', unit: 'bpm' },
+        {
+          key: 'canOrthostaticDrop',
+          label: 'Orthostatic Drop',
+          type: 'number',
+          unit: 'mmHg',
+          auto: true,
+        },
+        {
+          key: 'autonomicSymptoms',
+          label: 'Autonomic Symptoms',
+          type: 'multiselect',
+          options: [
+            'Resting Tachycardia',
+            'Hypoglycemia Unawareness',
+            'Gastroparesis',
+            'Sudomotor Anhidrosis',
+          ],
+        },
+      ],
+    },
+    {
+      heading: 'Wagner Grade & Ankle Reflexes',
+      inputs: [
+        {
+          key: 'wagnerGrade',
+          label: 'Wagner Diabetic Foot Ulcer Classification',
+          type: 'select',
+          options: ['Grade 0', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5'],
+        },
+        {
+          key: 'ankleJerkRight',
+          label: 'Ankle Jerk Reflex — Right',
+          type: 'select',
+          options: ['Normal 2+', 'Diminished 1+', 'Absent 0'],
+        },
+        {
+          key: 'ankleJerkLeft',
+          label: 'Ankle Jerk Reflex — Left',
+          type: 'select',
+          options: ['Normal 2+', 'Diminished 1+', 'Absent 0'],
+        },
+      ],
+    },
+  ],
   thyroid_lipid_metabolic: [
     {
       heading: 'Thyroid Axis & Autoimmune Screening',
@@ -245,3 +435,18 @@ export const diabetologyEndocrinologyLabels: SpecialtyCategoryLabels = {
   thyroid_lipid_metabolic: 'Thyroid Axis, Lipid Panel, HOMA-IR & eAG',
   complication_screening: 'Complication Screening: DKD (UACR) & Retinopathy',
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
