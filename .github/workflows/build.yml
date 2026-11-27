@@ -1,0 +1,21 @@
+name: build-frontend
+on: { push: { branches: [trms_frontend_dev] } }
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions: { contents: read, packages: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_URL=https://trms-backend-dev-vz4mu5-b0ba91-82-29-166-148.traefik.me/api/v1
+            NEXT_PUBLIC_APP_NAME=Hospital ERP
+          tags: ghcr.io/sedawk-dynamics/trms-frontend:latest
