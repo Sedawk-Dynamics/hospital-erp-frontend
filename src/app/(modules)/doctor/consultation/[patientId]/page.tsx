@@ -91,7 +91,7 @@ import { object } from 'zod';
 import { useTranscribe } from '@/hooks/use-transcribe';
 import { TranscriptSections } from '@/components/doctor/prescription-pad/prescription-pad';
 
-// ── Helpers ────────────────────────────────────────────────────────────
+// ── Helpers 
 
 function calculateAge(dob: string): string {
   try {
@@ -103,7 +103,6 @@ function calculateAge(dob: string): string {
   }
 }
 
-// ── Top bar ────────────────────────────────────────────────────────────
 
 function TopBar({
   patient,

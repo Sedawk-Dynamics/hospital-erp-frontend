@@ -1,0 +1,353 @@
+import type { SpecialtyCategories, SpecialtyCategoryLabels } from './types';
+
+export const pulmonologySleep: SpecialtyCategories = {
+  pft_dlco_6mwt: [
+    {
+      heading: 'Pre & Post-Salbutamol Spirometry',
+      inputs: [
+        { key: 'fvcPredicted', label: 'FVC — Predicted', type: 'number', unit: 'L' },
+        { key: 'fvcPreBd', label: 'FVC — Pre-BD', type: 'number', unit: 'L' },
+        { key: 'fvcPostBd', label: 'FVC — Post-BD', type: 'number', unit: 'L' },
+        { key: 'fev1Predicted', label: 'FEV₁ — Predicted', type: 'number', unit: 'L' },
+        { key: 'fev1PreBd', label: 'FEV₁ — Pre-BD', type: 'number', unit: 'L' },
+        { key: 'fev1PostBd', label: 'FEV₁ — Post-BD', type: 'number', unit: 'L' },
+        { key: 'pefrPredicted', label: 'PEFR — Predicted', type: 'number', unit: 'L/min' },
+        { key: 'pefrPreBd', label: 'PEFR — Pre-BD', type: 'number', unit: 'L/min' },
+        { key: 'pefrPostBd', label: 'PEFR — Post-BD', type: 'number', unit: 'L/min' },
+        { key: 'fev1FvcRatio', label: 'FEV₁/FVC Ratio', type: 'number', unit: '%', auto: true },
+        {
+          key: 'spirometryInterpretation',
+          label: 'Reversibility & Pattern',
+          type: 'text',
+          auto: true,
+        },
+      ],
+    },
+    {
+      heading: 'DLCO Gas Transfer & Body Plethysmography Lung Volumes',
+      inputs: [
+        { key: 'dlcoPercent', label: 'DLCO (% Predicted)', type: 'number', unit: '%' },
+        { key: 'kco', label: 'DLCO/VA KCO (% Pred)', type: 'number', unit: '%' },
+        { key: 'tlcPercent', label: 'TLC (% Predicted)', type: 'number', unit: '%' },
+        { key: 'tlcAbsolute', label: 'TLC Absolute', type: 'number', unit: 'L' },
+        { key: 'residualVolume', label: 'Residual Volume RV', type: 'number', unit: 'L' },
+        { key: 'rvTlcRatio', label: 'RV/TLC Ratio', type: 'number', unit: '%', auto: true },
+      ],
+    },
+    {
+      heading: '6-Minute Walk Test (6MWT)',
+      inputs: [
+        { key: 'baselineSpo2', label: 'Baseline SpO₂', type: 'number', unit: '%' },
+        { key: 'postWalkSpo2', label: 'Post-Walk SpO₂', type: 'number', unit: '%' },
+        { key: 'nadirSpo2', label: 'Nadir SpO₂', type: 'number', unit: '%' },
+        { key: 'distanceWalked', label: 'Distance Walked', type: 'number', unit: 'm' },
+        { key: 'supplementalO2', label: 'Supplemental O₂', type: 'number', unit: 'L/min' },
+        { key: 'peakBorg', label: 'Peak Borg Dyspnea (0–10)', type: 'number', min: 0, max: 10 },
+        { key: 'desatDrop', label: 'Desaturation Drop', type: 'number', unit: '%', auto: true },
+      ],
+    },
+  ],
+  gold_asthma_aco: [
+    {
+      heading: 'GOLD 2025 ABE COPD Assessment',
+      inputs: [
+        {
+          key: 'mmrcGrade',
+          label: 'mMRC Dyspnea Grade',
+          type: 'select',
+          options: ['mMRC 0', 'mMRC 1', 'mMRC 2', 'mMRC 3', 'mMRC 4'],
+        },
+        { key: 'catScore', label: 'CAT Symptom Score (0–40)', type: 'number', min: 0, max: 40 },
+        { key: 'moderateExacerbations', label: 'Moderate Exacerbations / 12m', type: 'number' },
+        {
+          key: 'hospitalizedExacerbations',
+          label: 'Hospitalized Exacerbations / 12m',
+          type: 'number',
+        },
+        { key: 'abeGroup', label: 'ABE Group', type: 'text', auto: true },
+      ],
+    },
+    {
+      heading: 'GINA Asthma Control & MART Track',
+      inputs: [
+        { key: 'ginaDaytimeSymptoms', label: 'Daytime symptoms >2×/wk', type: 'checkbox' },
+        { key: 'ginaNocturnalWaking', label: 'Nocturnal waking', type: 'checkbox' },
+        { key: 'ginaReliever', label: 'Reliever >2×/wk', type: 'checkbox' },
+        { key: 'ginaActivityLimitation', label: 'Activity limitation', type: 'checkbox' },
+        {
+          key: 'ginaTrack1Step',
+          label: 'GINA Track 1 (ICS-Formoterol MART) Step',
+          type: 'select',
+          options: ['Step 1–2', 'Step 3', 'Step 4', 'Step 5'],
+        },
+        { key: 'ginaControlLabel', label: 'Control Label', type: 'text', auto: true },
+      ],
+    },
+    {
+      heading: 'Asthma-COPD Overlap (ACO), Type-2 Biomarkers & Allergy Panel',
+      inputs: [
+        {
+          key: 'absoluteEosinophilCount',
+          label: 'Absolute Eosinophil Count',
+          type: 'number',
+          unit: 'cells/µL',
+        },
+        { key: 'serumTotalIge', label: 'Serum Total IgE', type: 'number', unit: 'IU/mL' },
+        { key: 'exhaledFeno', label: 'Exhaled FeNO', type: 'number', unit: 'ppb' },
+        {
+          key: 'allergySensitizations',
+          label: 'Skin Prick Test / Specific IgE Sensitizations',
+          type: 'multiselect',
+          options: [
+            'House Dust Mite',
+            'Aspergillus fumigatus',
+            'Cockroach',
+            'Parthenium/Grass Pollen',
+            'Alternaria/Mold',
+            'Cat/Dog/Pigeon Dander',
+          ],
+        },
+        {
+          key: 'abpaWorkupNotes',
+          label: 'Specific IgE / Wheal Diameter / ABPA Workup Notes',
+          type: 'text',
+        },
+      ],
+    },
+    {
+      heading: 'CURB-65 CAP Triage',
+      inputs: [
+        { key: 'curbConfusion', label: 'Confusion', type: 'checkbox' },
+        { key: 'curbUrea', label: 'Urea >42 mg/dL', type: 'checkbox' },
+        { key: 'curbRespRate', label: 'Resp Rate ≥30/min', type: 'checkbox' },
+        { key: 'curbBp', label: 'BP <90 sys / ≤60 dia', type: 'checkbox' },
+        { key: 'curbAge', label: 'Age ≥65', type: 'checkbox' },
+        { key: 'curb65Score', label: 'CURB-65 Score', type: 'number', auto: true },
+      ],
+    },
+  ],
+  sleep_medicine: [
+    {
+      heading: 'STOP-Bang Pre-PSG OSA Screen',
+      inputs: [
+        { key: 'sbSnoring', label: 'S — Snoring', type: 'checkbox' },
+        { key: 'sbTired', label: 'T — Tired', type: 'checkbox' },
+        { key: 'sbObservedApnea', label: 'O — Observed apnea', type: 'checkbox' },
+        { key: 'sbPressure', label: 'P — Pressure/HTN', type: 'checkbox' },
+        { key: 'sbBmi', label: 'B — BMI >35', type: 'checkbox' },
+        { key: 'sbAge', label: 'A — Age >50', type: 'checkbox' },
+        { key: 'sbNeck', label: 'N — Neck >40cm', type: 'checkbox' },
+        { key: 'sbGender', label: 'G — Male', type: 'checkbox' },
+        { key: 'stopBangScore', label: 'STOP-Bang Score (/8)', type: 'number', auto: true },
+        {
+          key: 'sleepStudyModality',
+          label: 'Recommended Diagnostic Sleep Study Modality',
+          type: 'select',
+          options: [
+            'Level 1 In-Lab',
+            'Split-Night',
+            'Level 2 Portable',
+            'Level 3 HSAT',
+          ],
+        },
+      ],
+    },
+    {
+      heading: 'Epworth Sleepiness Scale (ESS 0–24)',
+      inputs: [
+        { key: 'essReading', label: 'Sitting & reading', type: 'select', options: ['0', '1', '2', '3'] },
+        { key: 'essTv', label: 'Watching TV', type: 'select', options: ['0', '1', '2', '3'] },
+        {
+          key: 'essPublic',
+          label: 'Sitting inactive in public',
+          type: 'select',
+          options: ['0', '1', '2', '3'],
+        },
+        {
+          key: 'essPassenger',
+          label: 'Passenger in car 1h',
+          type: 'select',
+          options: ['0', '1', '2', '3'],
+        },
+        {
+          key: 'essLying',
+          label: 'Lying down afternoon',
+          type: 'select',
+          options: ['0', '1', '2', '3'],
+        },
+        { key: 'essTalking', label: 'Sitting & talking', type: 'select', options: ['0', '1', '2', '3'] },
+        {
+          key: 'essAfterLunch',
+          label: 'After lunch no alcohol',
+          type: 'select',
+          options: ['0', '1', '2', '3'],
+        },
+        {
+          key: 'essTraffic',
+          label: 'In car stopped in traffic',
+          type: 'select',
+          options: ['0', '1', '2', '3'],
+        },
+        { key: 'essOverride', label: 'Direct ESS Override', type: 'number', min: 0, max: 24 },
+      ],
+    },
+    {
+      heading: 'Sleep Architecture & Polysomnography (PSG) Metrics',
+      inputs: [
+        { key: 'ahi', label: 'AHI', type: 'number', unit: '/hr' },
+        { key: 'rdi', label: 'RDI', type: 'number', unit: '/hr' },
+        { key: 'odi', label: 'ODI', type: 'number', unit: '/hr' },
+        { key: 'minSpo2', label: 'Min SpO₂', type: 'number', unit: '%' },
+        { key: 'sleepEfficiency', label: 'Sleep Efficiency', type: 'number', unit: '%' },
+        { key: 'osaSeverity', label: 'OSA Severity', type: 'text', auto: true },
+        { key: 'stageN1', label: 'N1 (% of TST)', type: 'number', unit: '%' },
+        { key: 'stageN2', label: 'N2 (% of TST)', type: 'number', unit: '%' },
+        { key: 'stageN3', label: 'N3 SWS (% of TST)', type: 'number', unit: '%' },
+        { key: 'stageRem', label: 'REM (% of TST)', type: 'number', unit: '%' },
+        { key: 'stageSum', label: 'Stage Sum', type: 'number', unit: '%', auto: true },
+      ],
+    },
+    {
+      heading: 'PAP Therapy Prescription & Compliance Tracker',
+      inputs: [
+        {
+          key: 'papModality',
+          label: 'PAP Device Modality',
+          type: 'select',
+          options: ['CPAP', 'BiPAP S/T', 'Auto-CPAP', 'ASV'],
+        },
+        { key: 'prescribedPressure', label: 'Prescribed Pressure Settings (cmH₂O)', type: 'text' },
+        {
+          key: 'maskInterface',
+          label: 'Mask Interface Type',
+          type: 'select',
+          options: ['Nasal Pillow', 'Full Face', 'Nasal Mask'],
+        },
+        {
+          key: 'ipap',
+          label: 'IPAP',
+          type: 'number',
+          unit: 'cmH₂O',
+          visibleWhen: { field: 'papModality', equals: ['BiPAP S/T', 'ASV'] },
+        },
+        {
+          key: 'epap',
+          label: 'EPAP',
+          type: 'number',
+          unit: 'cmH₂O',
+          visibleWhen: { field: 'papModality', equals: ['BiPAP S/T', 'ASV'] },
+        },
+        {
+          key: 'backupRate',
+          label: 'Backup Rate',
+          type: 'number',
+          unit: '/min',
+          visibleWhen: { field: 'papModality', equals: ['BiPAP S/T', 'ASV'] },
+        },
+        { key: 'avgUsage', label: 'Avg Usage', type: 'number', unit: 'hrs/nt' },
+        { key: 'nightsOver4h', label: 'Nights ≥4h', type: 'number', unit: '%' },
+        { key: 'residualAhi', label: 'Residual AHI', type: 'number', unit: '/hr' },
+        { key: 'leak95', label: '95% Leak', type: 'number', unit: 'L/min' },
+        { key: 'complianceLabel', label: 'Compliance Label', type: 'text', auto: true },
+      ],
+    },
+  ],
+  bronchoscopy_pleural: [
+    {
+      heading: 'Flexible Bronchoscopy, BAL, EBUS-TBNA & TBLB Log',
+      inputs: [
+        { key: 'endobronchialFindings', label: 'Endobronchial Inspection Findings', type: 'text' },
+        { key: 'balMicrobiologyCytology', label: 'BAL Microbiology & Cytology', type: 'text' },
+        { key: 'balSegment', label: 'BAL Segment', type: 'text' },
+        { key: 'balReturn', label: 'BAL Return', type: 'number', unit: 'mL' },
+        { key: 'balLymphocytes', label: 'BAL Lymphocytes', type: 'number', unit: '%' },
+        { key: 'balNeutrophils', label: 'BAL Neutrophils', type: 'number', unit: '%' },
+        { key: 'balEosinophils', label: 'BAL Eosinophils', type: 'number', unit: '%' },
+        {
+          key: 'ebusNodalStations',
+          label: 'EBUS-TBNA Nodal Mapping (IASLC Stations)',
+          type: 'multiselect',
+          options: ['2R', '2L', '4R', '4L', '7 Subcarinal', '10R', '10L', '11R', '11L'],
+        },
+        { key: 'ebusNodalDetails', label: 'EBUS Nodal Size, Passes & ROSE Adequacy', type: 'text' },
+        { key: 'tblbSiteCores', label: 'Transbronchial Lung Biopsy (TBLB) Site & Cores', type: 'text' },
+        {
+          key: 'postTblbPneumothorax',
+          label: 'Post-TBLB Check USG/CXR Pneumothorax Screen',
+          type: 'select',
+          options: [
+            'Lung sliding preserved',
+            'Moderate bleed controlled',
+            'Pneumothorax detected',
+          ],
+        },
+      ],
+    },
+    {
+      heading: "Thoracentesis Appearance, Light's Criteria & Pleural ADA",
+      inputs: [
+        {
+          key: 'pleuralFluidAppearance',
+          label: 'Gross Pleural Fluid Appearance',
+          type: 'select',
+          options: ['Serous', 'Sanguineous', 'Purulent-Empyema', 'Chylous-Milky'],
+        },
+        { key: 'fluidProtein', label: 'Fluid Protein', type: 'number', unit: 'g/dL' },
+        { key: 'serumProtein', label: 'Serum Protein', type: 'number', unit: 'g/dL' },
+        { key: 'pleuralAda', label: 'Pleural ADA', type: 'number', unit: 'U/L' },
+        { key: 'pleuralPh', label: 'Pleural pH', type: 'number' },
+        { key: 'fluidLdh', label: 'Fluid LDH', type: 'number', unit: 'U/L' },
+        { key: 'serumLdh', label: 'Serum LDH', type: 'number', unit: 'U/L' },
+        { key: 'serumLdhUln', label: 'Serum LDH Lab ULN', type: 'number', unit: 'U/L' },
+        {
+          key: 'lightsCriteriaResult',
+          label: "Light's Criteria — Exudate vs Transudate",
+          type: 'text',
+          auto: true,
+        },
+      ],
+    },
+    {
+      heading: 'Intercostal Chest Drain (ICD) & Tunneled PleurX Catheter Log',
+      inputs: [
+        {
+          key: 'drainHardware',
+          label: 'Drain / Catheter Hardware',
+          type: 'select',
+          options: [
+            '12–14Fr Pigtail',
+            '24–28Fr Intercostal Tube',
+            'Indwelling Tunneled PleurX',
+          ],
+        },
+        { key: 'drainInsertionSite', label: 'Insertion Site & Laterality', type: 'text' },
+        { key: 'drainOutput24h', label: '24-Hour Drain Output', type: 'number', unit: 'mL/24hr' },
+        {
+          key: 'underwaterSealSuction',
+          label: 'Underwater Seal / Wall Suction',
+          type: 'select',
+          options: ['Gravity Seal', 'Low Wall Suction', 'Heimlich Valve'],
+        },
+        {
+          key: 'airLeakStatus',
+          label: 'Air Leak & Water-Column Oscillation Status',
+          type: 'select',
+          options: [
+            'No Leak Oscillating',
+            'Bubbling Expiratory',
+            'Continuous Bubbling BPF',
+          ],
+        },
+      ],
+    },
+  ],
+  nikshay_tb_environmental: [],
+};
+
+export const pulmonologySleepLabels: SpecialtyCategoryLabels = {
+  pft_dlco_6mwt: 'ATS/ERS PFT, DLCO & 6MWT',
+  gold_asthma_aco: 'GOLD 2025 ABE, Asthma GINA & ACO',
+  sleep_medicine: 'Sleep Medicine: STOP-Bang, Epworth & PSG/CPAP',
+  bronchoscopy_pleural: 'Interventional Bronchoscopy, Pleural Fluid & ICD',
+  nikshay_tb_environmental: 'MoHFW Nikshay TB Hub & Environmental History',
+};
