@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/dialog';
 import { BillPrintDialog } from '@/components/hospital/billing/bill-print-dialog';
 import { BuyerGstinPanel, type BillBuyerFields } from '@/components/hospital/billing/buyer-gstin-panel';
+import { SupplyTypePanel, type BillSupplyFields } from '@/components/hospital/billing/supply-type-panel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
@@ -608,7 +609,8 @@ function ComposeStep({
       }
       onFinalized(effectiveBillId);
     } catch (e: unknown) {
-      toast.error(getApiErrorMessage(e, 'Failed to finalize'));
+      // #264: a refusal names the services and where to fix them — long enough to read.
+      toast.error(getApiErrorMessage(e, 'Failed to finalize'), { duration: 12000 });
     }
   }, [effectiveBillId, finalizeBill, onFinalized]);
 
@@ -725,6 +727,8 @@ function ComposeStep({
           />
           {/* G-4: optional B2B buyer — before finalize, the only time it can change the document. */}
           <BuyerGstinPanel bill={(billTyped as unknown as BillBuyerFields | undefined) ?? null} />
+          {/* #265: an inpatient bill is always supplied here, so the exception is not offered on one. */}
+          {admissionId ? null : <SupplyTypePanel bill={(billTyped as unknown as BillSupplyFields | undefined) ?? null} />}
           <BillSummaryPanel bill={billTyped ?? null} />
           <div className="flex flex-col gap-2">
             {isPendingFinalized && admissionId ? (

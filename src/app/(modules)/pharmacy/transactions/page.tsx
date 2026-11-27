@@ -452,7 +452,7 @@ function DispensingRecordsTab() {
                     <TableCell className="text-muted-foreground font-mono text-xs">
                       {record.drugBatch?.batchNumber ?? '-'}
                     </TableCell>
-                    <TableCell className="text-right">{record.quantityDispensed}</TableCell>
+                    <TableCell className="text-right">{record.quantityText ?? record.quantityDispensed}</TableCell>
                     <TableCell className="text-muted-foreground">
                       {record.dispenser
                         ? fullName(record.dispenser)

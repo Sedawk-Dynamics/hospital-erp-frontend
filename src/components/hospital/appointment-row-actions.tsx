@@ -23,7 +23,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { cn } from '@/lib/utils';
+import { cn, getApiErrorMessage } from '@/lib/utils';
 import {
   useUpdateAppointmentStatus,
   useInitiateFrontdeskPayment,
@@ -37,6 +37,7 @@ import { RescheduleAppointmentDialog } from './reschedule-appointment-dialog';
 import { PatientDetailDialog } from './patient-detail-dialog';
 import { CollectFrontdeskPaymentDialog } from './collect-frontdesk-payment-dialog';
 import { RegistrationFeePrompt } from './registration-fee-prompt';
+import { rupees, WAIVED_LABEL } from '@/lib/follow-up-fee';
 import type { Appointment } from '@/types';
 
 /**
@@ -193,7 +194,11 @@ export function AppointmentRowActions({
         toast.info(
           bill.totalAmount > 0
             ? `Bill ${bill.billNumber} is already fully paid`
-            : `Bill ${bill.billNumber} raised at ₹0 — no consultation fee is set on this doctor's profile`,
+            : bill.isFreeFollowUp
+              ? `Bill ${bill.billNumber} · ${rupees(0)} · ${WAIVED_LABEL}${bill.feeLabel ? ` — ${bill.feeLabel}` : ''}`
+              : bill.feeLabel
+                ? `Bill ${bill.billNumber} raised at ${rupees(0)} — ${bill.feeLabel}`
+                : `Bill ${bill.billNumber} raised at ₹0 — no consultation fee is set on this doctor's profile`,
         );
         onChanged?.();
         return;
@@ -212,7 +217,7 @@ export function AppointmentRowActions({
         },
       });
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Failed to start front-desk payment');
+      toast.error(getApiErrorMessage(err, 'Failed to start front-desk payment'), { duration: 12000 });
     }
   };
 

@@ -1,5 +1,6 @@
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { formatDrugQty, type UnitSource } from '@/lib/pharmacy-units';
 
 /**
  * Consistent "pharmacy availability" chip for a drug shown in ANY medicine
@@ -12,13 +13,17 @@ import { cn } from '@/lib/utils';
  * Pass whichever stock figure the search returns — `availableStock`
  * (prescriptions search) or `totalStock` (pharmacy formulary) — via `stock`.
  * Set `catalog` when the row is a catalog-only result (no tenant formulary id).
+ * Pass `drug` where the row carries its pack/unit fields and the chip words the
+ * stock as the bill does ("4 strips + 5 tablets (45 tablets)") — gap 345.
  */
 export function DrugStockLabel({
   stock,
+  drug,
   catalog = false,
   className,
 }: {
   stock?: number | null;
+  drug?: UnitSource | null;
   catalog?: boolean;
   className?: string;
 }) {
@@ -44,7 +49,7 @@ export function DrugStockLabel({
           className,
         )}
       >
-        {qty} in stock
+        {drug ? formatDrugQty(qty, drug) : qty} in stock
       </span>
     );
   }

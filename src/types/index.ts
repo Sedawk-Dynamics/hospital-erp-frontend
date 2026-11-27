@@ -262,6 +262,10 @@ export interface Appointment {
     amountPaid: number;
     balanceDue: number;
     paymentStatus: 'paid_online' | 'paid_at_frontdesk' | 'waived' | 'pay_at_frontdesk' | 'pending' | 'no_billing';
+    /** The consultation line alone, and how it was priced (gap 331/019). */
+    consultationAmount?: number;
+    isFreeFollowUp?: boolean;
+    feeLabel?: string | null;
   } | null;
   tenantId: string;
   createdAt: string;

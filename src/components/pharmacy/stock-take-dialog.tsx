@@ -205,7 +205,7 @@ export function StockTakeDialog({
                         >
                           <Check className={cn('mr-2 h-4 w-4', drugFilter === d.id ? 'opacity-100' : 'opacity-0')} />
                           <span className="truncate">{d.drugName}{d.strength ? ` ${d.strength}` : ''}</span>
-                          <DrugStockLabel stock={d.totalStock} className="ml-auto shrink-0" />
+                          <DrugStockLabel stock={d.totalStock} drug={d} className="ml-auto shrink-0" />
                         </CommandItem>
                       ))}
                     </CommandGroup>

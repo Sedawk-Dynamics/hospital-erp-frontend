@@ -237,7 +237,7 @@ export function TwoFactorCard({
 // ─────────────────────────────────────────────────────────────
 
 interface PhoneRequestResponse {
-  channel: 'email' | 'sms';
+  channel: 'email' | 'sms' | 'whatsapp';
   sentTo: string;
   expiresInSeconds: number;
 }
@@ -353,7 +353,7 @@ export function PhoneChangeCard({
           className="space-y-3"
         >
           <p className="font-label text-sm" data-testid="phone-code-sent">
-            We sent a 6-digit code {sent.channel === 'sms' ? 'by SMS' : 'by email'} to{' '}
+            We sent a 6-digit code {{ sms: 'by SMS', whatsapp: 'on WhatsApp', email: 'by email' }[sent.channel]} to{' '}
             <strong>{sent.sentTo}</strong>. It expires in {Math.round(sent.expiresInSeconds / 60)} minutes.
           </p>
           <div className="max-w-[12rem] space-y-1.5">

@@ -37,6 +37,9 @@ export interface DiagnosticBillingPreview {
   chargeAmount: number;
   /** Tests/studies with no price in the catalog — they bill nothing. */
   unpricedCount: number;
+  /** #358: GST not approved (billed exempt), or a cosmetic scan that cannot be issued. */
+  gstWarning?: string | null;
+  gstBlocked?: boolean;
   alreadyBilled: boolean;
   bill: {
     id: string;

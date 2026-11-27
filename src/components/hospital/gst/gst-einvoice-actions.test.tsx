@@ -159,9 +159,30 @@ describe('EwayRowAction', () => {
     expect(screen.getByText(/24-hour cancel window closed/)).toBeInTheDocument();
   });
 
-  it('offers nothing on a cancelled e-way bill (never a second one)', () => {
+  // #266: a cancelled one can be followed by a new one; the old stays in the history.
+  it('offers "Generate new" after a cancellation, prefilled, as a fresh generate', async () => {
+    render(
+      <EwayRowAction
+        row={ewayRow({
+          ewayStatus: 'cancelled', ewayBillNumber: '125644998983', ewayBillDate: new Date().toISOString(),
+          ewayTransport: { transMode: '1', distanceKm: 42, vehicleNo: 'TN01AB1234' },
+        })}
+        integration={READY}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /^Cancel/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Generate new/ }));
+    expect(screen.getByText(/125644998983 was cancelled; it stays in this return's history/)).toBeInTheDocument();
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Generate$/ })));
+    expect(genEway).toHaveBeenCalledWith({
+      returnId: 'ret-1', retry: false, input: { transMode: '1', distanceKm: 42, vehicleNo: 'TN01AB1234' },
+    });
+  });
+
+  it('offers no new one to a role that cannot manage GST', () => {
+    canManage.mockReturnValue(false);
     const { container } = render(
-      <EwayRowAction row={ewayRow({ ewayStatus: 'cancelled', ewayBillNumber: '125644998983', ewayBillDate: new Date().toISOString() })} integration={READY} />,
+      <EwayRowAction row={ewayRow({ ewayStatus: 'cancelled', ewayBillNumber: '125644998983' })} integration={READY} />,
     );
     expect(container).toBeEmptyDOMElement();
   });

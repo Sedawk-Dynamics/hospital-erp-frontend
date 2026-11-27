@@ -1,9 +1,9 @@
 'use client';
 
-// G-4: the B2B buyer on a hospital bill. A valid GSTIN makes the invoice B2B,
-// and for a service the place of supply becomes the buyer's state (IGST when
-// that is not the hospital's). Only editable while the bill is a draft — once
-// issued, the document type is fixed and the correction is a credit note.
+// G-4: the B2B buyer on a hospital bill. A valid GSTIN makes the invoice B2B. It
+// does not change the tax (#265): a health service is supplied at the hospital,
+// so it is CGST + SGST even for a buyer in another state. Only editable while the
+// bill is a draft — once issued, the correction is a credit note.
 
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -114,7 +114,8 @@ export function BuyerGstinPanel({ bill }: { bill: BillBuyerFields | null }) {
         <Input className="h-8" value={address} maxLength={500} onChange={(e) => setAddress(e.target.value)} />
       </div>
       <p className="text-[10px] text-on-surface-variant">
-        The place of supply becomes the buyer&apos;s state; another state means IGST on finalize.
+        For a corporate, insurer or TPA that asks for a B2B invoice. The tax stays CGST + SGST: the service is supplied
+        at the hospital, whichever state the buyer is in.
       </p>
       <div className="flex justify-end gap-1.5">
         {bill.recipientGstin && (

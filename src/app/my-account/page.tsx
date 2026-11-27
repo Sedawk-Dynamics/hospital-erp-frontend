@@ -11,6 +11,8 @@ import {
   Loader2, ChevronRight, Building2, KeyRound, ShieldCheck, UserCog, RefreshCw,
 } from 'lucide-react';
 import { TwoFactorCard, PhoneChangeCard } from './_components/account-security';
+import { PatientPinCard } from '@/components/account/patient-pin-card';
+import { isPatientOnly } from '@/lib/patient-auth';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -267,6 +269,7 @@ export default function MyAccountPage() {
                 refreshMe();
               }}
             />
+            {isPatientOnly(me.roles) && <PatientPinCard name={me.firstName} />}
           </>
         )}
 

@@ -82,8 +82,13 @@ export function AcceptRequestDialog({
           payment,
           deferReason,
         });
-        const billing = (res as { billing?: { mode?: string; chargeAmount?: number } } | undefined)
-          ?.billing;
+        const billing = (
+          res as { billing?: { mode?: string; chargeAmount?: number; issueBlockedReason?: string | null; gstWarnings?: string[] } } | undefined
+        )?.billing;
+        // #264 / #358: the charge is on a draft bill that was refused, or went out
+        // with its GST not set. Accepted either way, but not silently.
+        if (billing?.issueBlockedReason) toast.error(billing.issueBlockedReason, { duration: 15000 });
+        for (const w of billing?.issueBlockedReason ? [] : (billing?.gstWarnings ?? [])) toast.warning(w, { duration: 10000 });
         toast.success(
           billing?.mode === 'ip'
             ? `Accepted — ${money(billing.chargeAmount)} posted to the stay ledger`

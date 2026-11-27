@@ -1,5 +1,9 @@
 'use client';
 
+import { useBookingChargePreview } from '@/hooks/use-follow-up-rules';
+import {
+  consultationFeeText, followUpNote, isWaivedFollowUp, ruleHint, rupees, WAIVED_LABEL,
+} from '@/lib/follow-up-fee';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod/v4';
@@ -37,7 +41,7 @@ import {
   useAvailableSlots,
 } from '@/hooks/use-hospital';
 import { withPastFlag } from '@/lib/slots';
-import { cn } from '@/lib/utils';
+import { cn, getApiErrorMessage } from '@/lib/utils';
 import { apiPost, apiPatch, apiGet } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
 import type { Patient, Appointment, DoctorProfile } from '@/types';
@@ -134,14 +138,6 @@ const PAYMENT_MODES = [
 const NEEDS_REFERENCE = new Set(['upi', 'credit_card', 'debit_card', 'net_banking']);
 
 /** Shape returned by POST /appointments/:id/frontdesk-checkout */
-/** GET /appointments/charge-preview — what the bill will actually carry. */
-interface BookingChargePreview {
-  consultationFee: number;
-  followUp: { isFree: boolean; listFee: number; windowDays: number; previousVisitDate: string | null };
-  registration: { applies: boolean; label: string; totalAmount: number; reason: string };
-  total: number;
-}
-
 interface FrontdeskCheckoutResult {
   billId: string;
   billNumber: string;
@@ -151,6 +147,8 @@ interface FrontdeskCheckoutResult {
   status: string;
   paymentId: string | null;
   receiptNumber: string | null;
+  isFreeFollowUp?: boolean;
+  feeLabel?: string | null;
 }
 
 const QUICK_DATES = [
@@ -674,10 +672,10 @@ export function FrontDeskRegisterDialog({
       } catch (billErr: unknown) {
         // Surfaced, not swallowed — the appointment exists, but the desk must
         // know the money was not taken so they can collect it from the queue.
+        const why = getApiErrorMessage(billErr, '');
         toast.error(
-          billErr instanceof Error && billErr.message
-            ? billErr.message
-            : 'Appointment booked, but the bill could not be raised — collect payment from the queue.',
+          `Appointment booked, but the bill could not be raised${why ? `: ${why}` : ' — collect payment from the queue.'}`,
+          { duration: 12000 },
         );
       }
 
@@ -689,14 +687,17 @@ export function FrontDeskRegisterDialog({
       const tokenPart = tokenNumber ? ` — Token #${tokenNumber}` : '';
       if (checkout?.paymentId) {
         toast.success(
-          `Booked${tokenPart} · ₹${checkout.amountPaid.toLocaleString('en-IN')} collected · Receipt ${checkout.receiptNumber ?? '—'}`,
+          `Booked${tokenPart} · ${rupees(checkout.amountPaid)} collected · Receipt ${checkout.receiptNumber ?? '—'}`,
         );
       } else if (checkout && checkout.totalAmount <= 0) {
         // Nothing owed (e.g. a waived follow-up) — say so, not "₹0 payable".
-        toast.success(`Booked${tokenPart} · Bill ${checkout.billNumber} · ₹0, nothing to collect`);
+        const why = checkout.isFreeFollowUp
+          ? `${WAIVED_LABEL}${checkout.feeLabel ? ` — ${checkout.feeLabel}` : ''}`
+          : 'nothing to collect';
+        toast.success(`Booked${tokenPart} · Bill ${checkout.billNumber} · ${rupees(0)} · ${why}`);
       } else if (checkout) {
         toast.success(
-          `Booked${tokenPart} · Bill ${checkout.billNumber} raised · ₹${checkout.balanceDue.toLocaleString('en-IN')} payable at the counter`,
+          `Booked${tokenPart} · Bill ${checkout.billNumber} raised · ${rupees(checkout.balanceDue)} payable at the counter`,
         );
       } else {
         toast.success(`Appointment booked${tokenPart}`);
@@ -721,29 +722,23 @@ export function FrontDeskRegisterDialog({
   // Gap 331: the payment step showed the doctor's list fee ("Collect ₹500 &
   // Book") for a follow-up that billing then waived to ₹0. Ask the server what
   // the bill will carry — the same rules the bill is raised with.
-  const { data: preview, isFetching: previewLoading } = useQuery({
-    queryKey: ['appointments', 'charge-preview', selectedDoctorId, selectedPatient?.id ?? null, appointmentType],
-    queryFn: async () =>
-      (
-        await apiGet<BookingChargePreview>('/appointments/charge-preview', {
-          params: {
-            doctorId: selectedDoctorId,
-            patientId: selectedPatient?.id || undefined,
-            type: appointmentType,
-          },
-        })
-      ).data ?? null,
-    enabled: step === 2 && !!selectedDoctorId,
-    retry: false,
+  // The follow-up days are counted to the day of the visit, so the date is part
+  // of the question (gap 019).
+  const { data: preview, isLoading: previewLoading } = useBookingChargePreview({
+    doctorId: selectedDoctorId,
+    patientId: selectedPatient?.id,
+    type: appointmentType,
+    date: appointmentDate,
+    enabled: step === 2,
   });
-  // Until the preview lands, fall back to what we know — never overstate a
-  // follow-up, whose consultation fee is always waived.
-  const consultationFee = preview
-    ? preview.consultationFee
-    : appointmentType === 'follow_up' ? 0 : listFee;
-  const amountDue = preview ? preview.total : consultationFee;
-  const isWaivedFollowUp = preview ? preview.followUp.isFree && listFee > 0 : appointmentType === 'follow_up' && listFee > 0;
-  const hasConsultationFee = listFee > 0;
+  // Without the preview the amount is not known — a follow-up may be free or
+  // chargeable — so none is promised; the bill the server raises decides.
+  const consultationFee = preview?.consultationFee ?? null;
+  const amountDue = preview?.total ?? null;
+  const isWaived = consultationFee !== null && isWaivedFollowUp(consultationFee, preview?.followUp);
+  const feeNote =
+    consultationFee === null ? null : (followUpNote(consultationFee, preview?.followUp) ?? ruleHint(preview?.followUp));
+  const hasConsultationFee = listFee > 0 || (consultationFee ?? 0) > 0;
 
   return (
     <>
@@ -1431,32 +1426,43 @@ export function FrontDeskRegisterDialog({
                 <div className="space-y-1.5 border-t border-surface-container pt-3">
                   <div className="flex items-center justify-between">
                     <p className="font-label text-sm text-on-surface-variant">Consultation Fee</p>
-                    {isWaivedFollowUp ? (
+                    {consultationFee === null ? (
+                      <p className="font-label text-sm">—</p>
+                    ) : isWaived ? (
                       <p className="font-label text-sm font-bold text-emerald-700">
-                        <span className="mr-2 font-normal text-on-surface-variant line-through">
-                          ₹{listFee.toLocaleString('en-IN')}
-                        </span>
-                        ₹0 · Waived (Follow-up)
+                        {listFee > 0 && (
+                          <span className="mr-2 font-normal text-on-surface-variant line-through">
+                            {rupees(listFee)}
+                          </span>
+                        )}
+                        {consultationFeeText(0, preview?.followUp)}
                       </p>
                     ) : (
-                      <p className="font-label text-sm font-bold">₹{consultationFee.toLocaleString('en-IN')}</p>
+                      <p className="font-label text-sm font-bold">{rupees(consultationFee)}</p>
                     )}
                   </div>
+                  {feeNote && (
+                    <p className="font-label text-[11px] text-on-surface-variant">{feeNote}</p>
+                  )}
                   {preview?.registration.applies && (
                     <div className="flex items-center justify-between">
                       <p className="font-label text-sm text-on-surface-variant">{preview.registration.label}</p>
                       <p className="font-label text-sm font-bold">
-                        ₹{preview.registration.totalAmount.toLocaleString('en-IN')}
+                        {rupees(preview.registration.totalAmount)}
                       </p>
                     </div>
                   )}
                   <div className="flex items-center justify-between">
                     <p className="font-label text-sm font-semibold text-on-surface-variant">Total</p>
                     <p className="font-headline text-xl font-bold text-primary">
-                      {previewLoading && !preview ? (
+                      {amountDue !== null ? (
+                        rupees(amountDue)
+                      ) : previewLoading ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
-                        `₹${amountDue.toLocaleString('en-IN')}`
+                        <span className="font-label text-sm font-normal text-on-surface-variant">
+                          Shown on the bill
+                        </span>
                       )}
                     </p>
                   </div>
@@ -1562,7 +1568,7 @@ export function FrontDeskRegisterDialog({
               )}
             </div>
 
-            {!hasConsultationFee && (
+            {!hasConsultationFee && !isWaived && (
               <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 font-label text-[11px] text-amber-800">
                 No consultation fee is set on this doctor&apos;s profile, so the bill
                 will be raised at ₹0. Set the fee under Doctor Profile to charge for
@@ -1578,7 +1584,7 @@ export function FrontDeskRegisterDialog({
               </Button>
               <Button
                 onClick={handleFinalSubmit}
-                disabled={isSubmitting}
+                disabled={isSubmitting || previewLoading}
                 className="gap-2 bg-primary text-white font-bold px-8"
               >
                 {isSubmitting ? (
@@ -1589,8 +1595,8 @@ export function FrontDeskRegisterDialog({
                 ) : (
                   <>
                     <CheckCircle2 className="h-4 w-4" />
-                    {collectNow && amountDue > 0
-                      ? `Collect ₹${amountDue.toLocaleString('en-IN')} & Book`
+                    {collectNow && amountDue !== null && amountDue > 0
+                      ? `Collect ${rupees(amountDue)} & Book`
                       : 'Confirm & Book'}
                   </>
                 )}

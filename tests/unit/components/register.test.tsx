@@ -41,8 +41,8 @@ import RegisterPage from '@/app/(auth)/register/page';
 describe('Patient register page (phone OTP signup)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requestPhoneOtp.mockResolvedValue({ isNewUser: true });
-    loginWithPhoneOtp.mockResolvedValue('active');
+    requestPhoneOtp.mockResolvedValue({ channel: 'sms', sentTo: '+91 ******3210', expiresInSeconds: 300, resendInSeconds: 60 });
+    loginWithPhoneOtp.mockResolvedValue({});
   });
 
   const sendButton = () => screen.getByRole('button', { name: /send|continue/i });

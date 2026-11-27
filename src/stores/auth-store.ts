@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import apiClient from '@/lib/api-client';
 import { setTokens, clearTokens, getAccessToken, getRefreshToken } from '@/lib/api';
+import type { CodeReceipt } from '@/lib/patient-auth';
 import type { User, RegisterData, SwitchHospitalResponse } from '@/types';
 
 // ============================================================
@@ -40,16 +41,20 @@ interface AuthState {
   hydrate: () => void;
   /** `twoFactorCode` is sent only when the account has 2FA on (gap 297). */
   login: (email: string, password: string, twoFactorCode?: string) => Promise<string | undefined>;
-  requestPhoneOtp: (phone: string) => Promise<{ isExistingUser: boolean }>;
+  requestPhoneOtp: (phone: string, intent: 'login' | 'signup') => Promise<CodeReceipt>;
   loginWithPhoneOtp: (input: {
     phone: string;
     otp: string;
-    intent?: 'login' | 'signup';
+    intent: 'login' | 'signup';
+    /** Only when the account has 2FA on (the server answers 2FA_REQUIRED). */
+    twoFactorCode?: string;
     firstName?: string;
     lastName?: string;
     gender?: 'male' | 'female' | 'other';
     dateOfBirth?: string;
-  }) => Promise<string | undefined>;
+  }) => Promise<{ pinSetupToken?: string }>;
+  /** Patients, on a device that already has a PIN. */
+  loginWithPin: (input: { deviceToken: string; pin: string; twoFactorCode?: string }) => Promise<void>;
   switchHospital: (tenantId: string) => Promise<SwitchHospitalResponse>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
@@ -99,12 +104,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  // Ask the backend to "send" an OTP to a phone (fixed dev code for now).
-  // Returns whether the number already has an account, so the UI knows if it
-  // must collect a name for a new patient.
-  requestPhoneOtp: async (phone: string) => {
-    const { data } = await apiClient.post('/auth/otp/request', { phone });
-    return { isExistingUser: !!data.data?.isExistingUser };
+  // Ask the backend to send a one-time code to a phone. The answer says only
+  // how and roughly where it went, never whether the number has an account.
+  requestPhoneOtp: async (phone, intent) => {
+    const { data } = await apiClient.post('/auth/otp/request', { phone, intent });
+    return data.data as CodeReceipt;
   },
 
   // Verify the OTP and log the patient in (creating the account if new).
@@ -112,11 +116,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isLoading: true });
     try {
       const { data } = await apiClient.post('/auth/otp/verify', input);
+      const { accessToken, refreshToken, user, onboardingStatus, pinSetupToken } = data.data;
+      setTokens(accessToken, refreshToken);
+      persistUser(user);
+      set({ user, isAuthenticated: true, isLoading: false, onboardingStatus: onboardingStatus || null });
+      return { pinSetupToken: pinSetupToken as string | undefined };
+    } catch (error) {
+      set({ isLoading: false });
+      throw error;
+    }
+  },
+
+  loginWithPin: async (input) => {
+    set({ isLoading: true });
+    try {
+      const { data } = await apiClient.post('/auth/pin/login', input);
       const { accessToken, refreshToken, user, onboardingStatus } = data.data;
       setTokens(accessToken, refreshToken);
       persistUser(user);
       set({ user, isAuthenticated: true, isLoading: false, onboardingStatus: onboardingStatus || null });
-      return onboardingStatus as string | undefined;
     } catch (error) {
       set({ isLoading: false });
       throw error;

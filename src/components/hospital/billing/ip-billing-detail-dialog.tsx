@@ -13,7 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/number-input';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
+import { cn, getApiErrorMessage } from '@/lib/utils';
 import { formatINR } from '@/lib/money';
 import { IpLedgerPanel } from '@/components/shared/ip-ledger-panel';
 import { CollectBillPaymentDialog } from '@/components/hospital/billing/collect-bill-payment-dialog';
@@ -109,7 +109,7 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
       return;
     }
     try { await settle.mutateAsync({ admissionId, paidAmount: payAmt }); toast.success('TPA payment recorded.'); setPayAmt(0); }
-    catch (e) { toast.error((e as Error).message || 'Could not record the TPA payment.'); }
+    catch (e) { toast.error(getApiErrorMessage(e, 'Could not record the TPA payment.')); }
   };
   const doChangeToTpa = async () => {
     if (!admissionId) return;
@@ -136,7 +136,7 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
   const doDiscount = async () => {
     if (!(discValue > 0)) { toast.error('Enter a discount value.'); return; }
     try { await discount.mutateAsync({ billId: bill.id, discountType: discType, discountValue: discValue, reason: 'IP billing desk' }); toast.success('Discount applied.'); setDiscValue(0); }
-    catch (e) { toast.error((e as Error).message || 'Could not apply the discount.'); }
+    catch (e) { toast.error(getApiErrorMessage(e, 'Could not apply the discount.')); }
   };
   const doConsolidate = async () => {
     try {
@@ -150,7 +150,7 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
           : 'All charges pulled onto the bill.',
       );
     }
-    catch (e) { toast.error((e as Error).message || 'Could not generate the bill.'); }
+    catch (e) { toast.error(getApiErrorMessage(e, 'Could not generate the bill.')); }
   };
 
   /**
@@ -176,7 +176,7 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
       await qc.invalidateQueries({ queryKey: ['ip-ledger', admissionId] });
       setCollectOpen(true);
     } catch (e) {
-      toast.error((e as Error).message || 'Could not prepare the bill for payment.');
+      toast.error(getApiErrorMessage(e, 'Could not prepare the bill for payment.'));
     } finally {
       setPreparing(false);
     }
@@ -184,15 +184,15 @@ export function IpBillingDetailDialog({ bill, open, onOpenChange }: {
 
   const doApplyDeposit = async () => {
     try { await applyDeposit.mutateAsync({ admissionId }); toast.success('Deposit applied — cut from the bill balance.'); }
-    catch (e) { toast.error((e as Error).message || 'Could not apply the deposit.'); }
+    catch (e) { toast.error(getApiErrorMessage(e, 'Could not apply the deposit.')); }
   };
   const doRefundDeposit = async () => {
     try { await refundDeposit.mutateAsync({ admissionId }); toast.success('Deposit returned to the patient.'); }
-    catch (e) { toast.error((e as Error).message || 'Could not return the deposit.'); }
+    catch (e) { toast.error(getApiErrorMessage(e, 'Could not return the deposit.')); }
   };
   const toggleLine = async (itemId: string, toInsurance: boolean) => {
     try { await setReimbursable.mutateAsync({ itemId, isReimbursable: toInsurance }); }
-    catch (e) { toast.error((e as Error).message || 'Could not update the line.'); }
+    catch (e) { toast.error(getApiErrorMessage(e, 'Could not update the line.')); }
   };
 
   // Posted (real) bill lines — only these can be split insurance vs patient.

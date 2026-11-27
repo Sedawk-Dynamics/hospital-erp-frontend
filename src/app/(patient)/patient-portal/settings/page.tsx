@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuthStore } from '@/stores/auth-store';
+import { PatientPinCard } from '@/components/account/patient-pin-card';
+import { isPatientOnly } from '@/lib/patient-auth';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod/v4';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -63,6 +65,8 @@ function SanctuarySection({
 // ============================================================
 
 export default function PatientSettingsPage() {
+  const { user } = useAuthStore();
+
   return (
     <div className="space-y-6 max-w-2xl">
       {/* Header */}
@@ -79,6 +83,7 @@ export default function PatientSettingsPage() {
       </div>
 
       <ProfileSection />
+      {isPatientOnly(user?.roles) && <PatientPinCard name={user?.firstName} />}
       <ChangePasswordSection />
       <NotificationPreferencesSection />
       <SecuritySection />

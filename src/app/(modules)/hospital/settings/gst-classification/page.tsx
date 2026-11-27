@@ -23,7 +23,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { ArrowLeft, BadgeCheck, Loader2, Plus, Search, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, FileUp, Loader2, Plus, Search, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -36,10 +36,13 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  useServiceTariffs, useUpdateServiceTariff, useSetTariffGstApproval, useCreateServiceTariff,
+  useAllServiceTariffs, useUpdateServiceTariff, useSetTariffGstApproval, useCreateServiceTariff,
+  useApproveRadiologyDiagnostic, isRadiologyTariff, radiologyGstSet,
   type ServiceTariff, type ServiceTariffCategory,
 } from '@/hooks/use-service-tariffs';
 import { getApiErrorMessage } from '@/lib/utils';
+import { ServiceGstImportDialog } from '@/components/hospital/gst/service-gst-import';
+import { useCanManageGst } from '@/hooks/use-gst-portal';
 import { useSacCodes } from '@/hooks/use-sac-codes';
 import { useGstSlabs } from '@/hooks/use-gst-slabs';
 
@@ -80,20 +83,25 @@ const EMPTY_FORM = {
 };
 
 export default function GstClassificationPage() {
-  const { data, isLoading } = useServiceTariffs({ limit: 200 });
+  const { data: allTariffs = [], isLoading } = useAllServiceTariffs();
   const { data: sacCodes = [] } = useSacCodes();
   const { data: slabData } = useGstSlabs();
   const update = useUpdateServiceTariff();
   const create = useCreateServiceTariff();
   const approve = useSetTariffGstApproval();
+  const approveDiagnostic = useApproveRadiologyDiagnostic();
+  const canManage = useCanManageGst();
+  const [importing, setImporting] = useState(false);
 
   const [search, setSearch] = useState('');
+  const [showInactive, setShowInactive] = useState(false);
   const [editing, setEditing] = useState<ServiceTariff | null>(null);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
 
+  const inactiveCount = allTariffs.filter((t) => !t.isActive).length;
   const tariffs = useMemo(() => {
-    const rows = data?.data ?? [];
+    const rows = showInactive ? allTariffs : allTariffs.filter((t) => t.isActive);
     const q = search.trim().toLowerCase();
     return q
       ? rows.filter(
@@ -103,9 +111,10 @@ export default function GstClassificationPage() {
             (t.sacCode ?? '').includes(q),
         )
       : rows;
-  }, [data, search]);
+  }, [allTariffs, search, showInactive]);
 
-  const unapproved = tariffs.filter((t) => !t.gstApproved);
+  // Deactivated services are not billed, so they need no sign-off.
+  const unapproved = tariffs.filter((t) => t.isActive && !t.gstApproved);
   const legalRates = (slabData?.slabs ?? []).filter((s) => s.current).map((s) => s.ratePercent);
 
   const open = (t: ServiceTariff) => {
@@ -184,8 +193,28 @@ export default function GstClassificationPage() {
     }
   };
 
+  // #264: a service the hospital no longer offers is switched off, not deleted,
+  // so the bills that used it keep their link.
+  const setActive = async (t: ServiceTariff, isActive: boolean) => {
+    try {
+      await update.mutateAsync({ id: t.id, isActive });
+      toast.success(isActive ? `${t.serviceName} is active again` : `${t.serviceName} deactivated — it can no longer be billed`, {
+        action: { label: 'Undo', onClick: () => void update.mutateAsync({ id: t.id, isActive: !isActive }) },
+      });
+    } catch (e) {
+      toast.error(getApiErrorMessage(e, isActive ? 'Could not reactivate the service' : 'Could not deactivate the service'));
+    }
+  };
+
   const setApproval = async (t: ServiceTariff, approved: boolean) => {
     try {
+      // #358: a diagnostic scan is approved as exempt 0%; that sets the treatment too.
+      if (approved && isRadiologyTariff(t) && !t.isCosmetic) {
+        const res = await approveDiagnostic.mutateAsync([t.id]);
+        if (res.skipped.length) toast.error(`${t.serviceName}: ${res.skipped[0]!.reason}`);
+        else toast.success(`${t.serviceName} approved as a diagnostic scan — exempt, 0%`);
+        return;
+      }
       await approve.mutateAsync({ id: t.id, approved });
       toast.success(
         approved
@@ -217,10 +246,20 @@ export default function GstClassificationPage() {
             stays flagged until they do.
           </p>
         </div>
-        <Button size="sm" className="ml-auto" onClick={openCreate}>
-          <Plus className="size-4" /> New service
-        </Button>
+        <div className="ml-auto flex gap-2">
+          {canManage ? (
+            <Button size="sm" variant="outline" onClick={() => setImporting(true)}>
+              <FileUp className="size-4" /> Import services list
+            </Button>
+          ) : null}
+          {canManage ? (
+            <Button size="sm" onClick={openCreate}>
+              <Plus className="size-4" /> New service
+            </Button>
+          ) : null}
+        </div>
       </div>
+      <ServiceGstImportDialog open={importing} onOpenChange={setImporting} />
 
       {unapproved.length > 0 && (
         <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
@@ -232,14 +271,28 @@ export default function GstClassificationPage() {
         </div>
       )}
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search a service, code or SAC"
-          className="h-9 pl-8"
-        />
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative w-full max-w-sm">
+          <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search a service, code or SAC"
+            className="h-9 pl-8"
+          />
+        </div>
+        {inactiveCount > 0 ? (
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={showInactive}
+              onChange={(e) => setShowInactive(e.target.checked)}
+              className="size-3.5"
+            />
+            Show {inactiveCount} deactivated
+          </label>
+        ) : null}
+        <span className="ml-auto text-xs text-muted-foreground">{tariffs.length} services</span>
       </div>
 
       {isLoading ? (
@@ -266,14 +319,24 @@ export default function GstClassificationPage() {
             </thead>
             <tbody>
               {tariffs.map((t) => (
-                <tr key={t.id} className="border-t">
-                  <td className="px-3 py-2 font-medium">{t.serviceName}</td>
+                <tr key={t.id} className={t.isActive ? 'border-t' : 'border-t bg-muted/30 text-muted-foreground'}>
+                  <td className="px-3 py-2 font-medium">
+                    {t.serviceName}
+                    {!t.isActive ? <Badge variant="outline" className="ml-2 text-[10px]">Deactivated</Badge> : null}
+                  </td>
                   <td className="px-3 py-2 capitalize text-muted-foreground">{t.category}</td>
                   <td className="px-3 py-2 font-mono text-[11px]">
                     {t.sacCode ?? <span className="text-red-600">not set</span>}
                   </td>
                   <td className="px-3 py-2 capitalize">
-                    {t.gstTreatment ? t.gstTreatment.replace(/_/g, ' ') : <span className="text-red-600">not set</span>}
+                    {/* #358: a scan's GST is not set until somebody approves it. */}
+                    {isRadiologyTariff(t) && !radiologyGstSet(t) ? (
+                      <span className="text-amber-700">GST not set</span>
+                    ) : t.gstTreatment ? (
+                      t.gstTreatment.replace(/_/g, ' ')
+                    ) : (
+                      <span className="text-red-600">not set</span>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">
                     {t.gstTreatment === 'taxable' ? `${Number(t.gstRatePercent)}%` : '—'}
@@ -293,17 +356,31 @@ export default function GstClassificationPage() {
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => open(t)}>
-                        Classify
-                      </Button>
-                      <Button
-                        variant={t.gstApproved ? 'ghost' : 'outline'}
-                        size="sm"
-                        disabled={approve.isPending}
-                        onClick={() => setApproval(t, !t.gstApproved)}
-                      >
-                        {t.gstApproved ? 'Withdraw' : 'Approve'}
-                      </Button>
+                      {canManage ? (
+                        <Button variant="ghost" size="sm" onClick={() => open(t)}>
+                          Classify
+                        </Button>
+                      ) : null}
+                      {canManage && t.isActive ? (
+                        <Button
+                          variant={t.gstApproved ? 'ghost' : 'outline'}
+                          size="sm"
+                          disabled={approve.isPending || approveDiagnostic.isPending}
+                          onClick={() => setApproval(t, !t.gstApproved)}
+                        >
+                          {t.gstApproved ? 'Withdraw' : isRadiologyTariff(t) && !t.isCosmetic ? 'Approve 0%' : 'Approve'}
+                        </Button>
+                      ) : null}
+                      {canManage ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={update.isPending}
+                          onClick={() => setActive(t, !t.isActive)}
+                        >
+                          {t.isActive ? 'Deactivate' : 'Reactivate'}
+                        </Button>
+                      ) : null}
                     </div>
                   </td>
                 </tr>
@@ -357,17 +434,31 @@ export default function GstClassificationPage() {
             <div>
               <Label className="text-xs">SAC code</Label>
               <Select value={form.sacCode || null} onValueChange={(v) => v && pickSac(v)}>
-                <SelectTrigger className="mt-1 h-9">
+                <SelectTrigger className="mt-1 min-h-9 w-full py-1.5 data-[size=default]:h-auto">
                   <SelectValue placeholder="Pick a service accounting code" />
                 </SelectTrigger>
-                <SelectContent>
+                {/* Wide enough to read each description in full, and below the field rather than over it. */}
+                <SelectContent alignItemWithTrigger={false} align="start" className="max-h-80 w-[min(30rem,calc(100vw-2rem))]">
                   {sacCodes
                     .filter((c) => c.isActive)
-                    .map((c) => (
-                      <SelectItem key={c.id} value={c.sacCode}>
-                        {c.sacCode} — {c.description ?? ''} ({c.treatment === 'taxable' ? `${c.gstRate}%` : c.treatment})
-                      </SelectItem>
-                    ))}
+                    .map((c) => {
+                      // A 4-digit heading covers a whole group; invoices above Rs 5 crore turnover need the 6-digit code.
+                      const group = c.sacCode.length < 6;
+                      return (
+                        <SelectItem key={c.id} value={c.sacCode} className="items-start py-1.5 *:shrink *:whitespace-normal">
+                          <span className="flex flex-col gap-0.5">
+                            <span>
+                              <span className="font-mono font-semibold">{c.sacCode}</span>
+                              <span className="ml-2 text-xs text-muted-foreground">
+                                {c.treatment === 'taxable' ? `Taxable ${Number(c.gstRate)}%` : c.treatment.replace(/_/g, ' ')}
+                                {group ? ' · group code — use only if your CA agrees' : ''}
+                              </span>
+                            </span>
+                            <span className="text-xs leading-snug">{c.description ?? ''}</span>
+                          </span>
+                        </SelectItem>
+                      );
+                    })}
                 </SelectContent>
               </Select>
             </div>

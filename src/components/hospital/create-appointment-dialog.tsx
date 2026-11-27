@@ -33,6 +33,7 @@ import {
 
 import { useDoctorsList, useGlobalPatientSearch, useProvisionLocalPatient, type GlobalPatientMatch } from '@/hooks/use-hospital';
 import { DoctorCalendarPicker } from '@/components/hospital/doctor-calendar-picker';
+import { BookingFeeNote } from '@/components/hospital/booking-fee-note';
 import { patientPickerSubtitle } from '@/components/hospital/patient-picker-label';
 import { apiPost } from '@/lib/api';
 import type { Patient, Appointment } from '@/types';
@@ -130,6 +131,7 @@ export function CreateAppointmentDialog({
   const watchedDoctorId = watch('doctorId');
   const watchedDate = watch('appointmentDate');
   const watchedStartTime = watch('startTime');
+  const watchedType = watch('type');
 
   // Reset form when dialog closes
   useEffect(() => {
@@ -433,6 +435,16 @@ export function CreateAppointmentDialog({
               />
             </div>
           </div>
+
+          {selectedPatient && watchedDoctorId && (
+            <BookingFeeNote
+              doctorId={watchedDoctorId}
+              patientId={selectedPatient.id}
+              type={watchedType}
+              date={watchedDate}
+              chargeRegistrationFee={chargeRegistration}
+            />
+          )}
 
           {/* Reason */}
           <div className="space-y-1.5">

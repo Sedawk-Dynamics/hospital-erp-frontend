@@ -125,7 +125,8 @@ function StockLedgerPageInner() {
           the period predates the movement log. */}
       {data && (
         <p className="text-xs text-muted-foreground">
-          Opening + in − out = closing. Live stock now: {data.summary.liveStock} unit(s)
+          Opening + in − out = closing. Totals above count single units (tablets, bottles…) across all items; each
+          row below names its own unit. Live stock now: {data.summary.liveStock} unit(s)
           {data.summary.expiredOnHand > 0 ? ` (${data.summary.expiredOnHand} expired, not yet written off)` : ''}.
           {data.summary.reconstructedBefore && (
             <> Movements before {formatDateTimeAmPm(data.summary.reconstructedBefore)} are rebuilt from bills, receipts and
@@ -176,13 +177,13 @@ function StockLedgerPageInner() {
                     <TableCell className="font-medium text-sm">{e.drugName}</TableCell>
                     <TableCell className="font-mono text-xs">{e.batchNumber}</TableCell>
                     <TableCell className="text-right text-sm text-emerald-700 font-semibold">
-                      {e.quantityIn > 0 ? `+${e.quantityIn}` : ''}
+                      {e.quantityIn > 0 ? `+${e.quantityText ?? e.quantityIn}` : ''}
                     </TableCell>
                     <TableCell className="text-right text-sm text-red-700 font-semibold">
-                      {e.quantityOut > 0 ? `−${e.quantityOut}` : ''}
+                      {e.quantityOut > 0 ? `−${e.quantityText ?? e.quantityOut}` : ''}
                     </TableCell>
                     {showBalance && (
-                      <TableCell className="text-right text-sm font-medium">{e.balance ?? ''}</TableCell>
+                      <TableCell className="text-right text-sm font-medium">{e.balanceText ?? e.balance ?? ''}</TableCell>
                     )}
                     <TableCell className="text-xs text-muted-foreground">{e.party ?? '-'}</TableCell>
                     <TableCell className="text-xs whitespace-nowrap">{e.by ?? '-'}</TableCell>

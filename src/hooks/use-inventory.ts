@@ -72,6 +72,8 @@ export interface StockTransaction {
   inventoryItemId: string;
   transactionType: StockTransactionType;
   quantity: number;
+  /** 345: a pharmacy outflow's quantity in words. */
+  quantityText?: string | null;
   batchNumber: string | null;
   expiryDate: string | null;
   supplierId: string | null;
@@ -844,7 +846,7 @@ export interface ConsumptionTransactions {
   rows: {
     id: string; date: string; batchNumber: string | null; movementType: string;
     documentType: string | null; documentNumber: string | null; party: string | null;
-    quantity: number; unitCost: number | null; value: number;
+    quantity: number; quantityText?: string | null; unitCost: number | null; value: number;
   }[];
 }
 
@@ -1289,6 +1291,9 @@ export interface UnifiedStockRow {
   controlledClass: 'narcotic' | 'psychotropic' | null;
   vaultControlled: boolean;
   scheduleReason: string | null;
+  // Gap 345: the stock and reorder level in words, as the bill and ledger print them.
+  currentStockText?: string;
+  reorderLevelText?: string | null;
   // Gap 301: on-hand value from the shared valuation service (purchase cost).
   stockValue?: number;
 }

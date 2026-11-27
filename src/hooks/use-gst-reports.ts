@@ -306,6 +306,8 @@ export const useGstr3b = (q: GstReportQuery, on = true) =>
     outwardTaxable: { taxableValue: number; cgstAmount: number; sgstAmount: number; igstAmount: number; taxAmount: number };
     outwardExempt: number;
     outwardNonGst: number;
+    /** 3.2 — inter-State supplies to unregistered persons, per place of supply. */
+    interStateUnregistered?: Array<{ placeOfSupplyStateCode: string | null; taxableValue: number; igstAmount: number }>;
     inputTaxCredit: { available: number; reversed: number; net: number };
     netTaxPayable: number;
     creditCarriedForward: number;
@@ -720,6 +722,33 @@ export const useUnmappedItems = (q: GstReportQuery, on = true) =>
     totals: { linesChecked: number; exceptions: number };
   }>('unmapped-items', '/gst/reports/unmapped-items', q, on);
 
+/** C-10 — services billed with no SAC (#264). */
+export interface MissingSacRow {
+  key: string;
+  serviceTariffId: string | null;
+  service: string;
+  serviceCode: string | null;
+  category: string;
+  lines: number;
+  value: number;
+  taxAmount: number;
+  maxRatePercent: number;
+  lastBillNumber: string | null;
+  lastBillDate: string | null;
+  status: 'warn' | 'blocked';
+  blockedDrafts: number;
+  issuedTaxedLines: number;
+  fix: 'gst_classification' | 'radiology_settings' | 'registration_fee';
+}
+export const useMissingSac = (q: GstReportQuery, on = true) =>
+  useReport<{
+    period: GstPeriod;
+    registered: boolean;
+    rows: MissingSacRow[];
+    summary: { services: number; warn: number; blocked: number; blockedDrafts: number; issuedTaxedLines: number; lines: number; value: number };
+    note: string;
+  }>('missing-sac', '/gst/reports/missing-sac', { from: q.from, to: q.to }, on);
+
 export const useRateOverrides = (q: GstReportQuery, on = true) =>
   useReport<{
     period: GstPeriod;
@@ -1038,6 +1067,15 @@ export interface EwayRow {
   ewayValidUpto?: string | null;
   ewayCancelledAt?: string | null;
   ewayCancelReason?: string | null;
+  /** #266: the earlier e-way bills of this return, oldest first. */
+  ewayHistory?: Array<{
+    ewayBillNumber: string;
+    ewayBillDate: string | null;
+    validUpto: string | null;
+    status: string;
+    cancelledAt: string | null;
+    reason: string | null;
+  }>;
   /** The transport details last sent — Retry offers them again. */
   ewayTransport?: {
     transMode?: string;

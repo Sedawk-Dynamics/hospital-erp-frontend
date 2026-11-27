@@ -44,6 +44,11 @@ export interface LabTestCatalog {
   tags?: string[];
   // True for hospital-authored tests with no platform-template link.
   isCustom?: boolean;
+  /** Optimistic lock over the reference-range fields (gap 369). */
+  rangeVersion?: number;
+  /** Returned by a save: range changes sent to the pathologist. */
+  rangeProposals?: number;
+  replacedByTestId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -412,7 +417,13 @@ type LabTestPayload = {
   tags?: string[];
   isCustom?: boolean;
   isActive?: boolean;
+  // Gap 369 guards: see the matching refusals from PUT /lab/tests/:id.
+  priceConfirmation?: PriceConfirmation;
+  confirmRangeReset?: boolean;
+  expectedRangeVersion?: number;
 };
+
+export type PriceConfirmation = { confirmed: true; reason: string };
 
 type LegacyLabTestPayload = {
   name?: string;
@@ -443,6 +454,7 @@ export function useCreateLabTest() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: labKeys.tests.all });
+      queryClient.invalidateQueries({ queryKey: ['lab', 'catalog'] });
     },
   });
 }
@@ -456,6 +468,7 @@ export function useUpdateLabTest() {
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: labKeys.tests.all });
+      queryClient.invalidateQueries({ queryKey: ['lab', 'catalog'] });
       queryClient.invalidateQueries({ queryKey: labKeys.tests.detail(variables.id) });
     },
   });
@@ -470,6 +483,7 @@ export function useDeleteLabTest() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: labKeys.tests.all });
+      queryClient.invalidateQueries({ queryKey: ['lab', 'catalog'] });
     },
   });
 }
@@ -480,15 +494,17 @@ export function useDeleteLabTest() {
 export function useUpdateLabTestPrice() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, price, turnaroundHours }: { id: string; price?: number; turnaroundHours?: number }) => {
+    mutationFn: async ({ id, price, turnaroundHours, priceConfirmation }: { id: string; price?: number; turnaroundHours?: number; priceConfirmation?: PriceConfirmation }) => {
       const response = await apiPatch<LabTestCatalog>(`/lab/tests/${id}/price`, {
         price,
         turnaroundHours,
+        priceConfirmation,
       });
       return response.data;
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: labKeys.tests.all });
+      queryClient.invalidateQueries({ queryKey: ['lab', 'catalog'] });
       queryClient.invalidateQueries({ queryKey: labKeys.tests.detail(variables.id) });
     },
   });

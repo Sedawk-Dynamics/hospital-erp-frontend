@@ -177,6 +177,24 @@ function RegistrationFeeForm({ initial }: { initial: RegistrationFeeSettings }) 
                   )}
                 </div>
                 <div className="sm:col-span-2">
+                  <Label htmlFor="registration-sac" className="mb-1 block text-xs text-muted-foreground">
+                    SAC code (6 digits)
+                  </Label>
+                  <Input
+                    id="registration-sac"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={form.sacCode ?? ''}
+                    onChange={(e) => set('sacCode', e.target.value.replace(/\D/g, ''))}
+                  />
+                  {/* #264: a service that carries GST with no SAC stops the bill. */}
+                  {form.gstRatePercent > 0 && !/^\d{6}$/.test(form.sacCode ?? '') && (
+                    <p className="mt-1 text-[11px] text-red-700">
+                      The fee carries GST, so a bill with it cannot be issued until the 6-digit SAC is set.
+                    </p>
+                  )}
+                </div>
+                <div className="sm:col-span-2">
                   <Label className="mb-1 block text-xs text-muted-foreground">
                     What the patient sees on the bill
                   </Label>

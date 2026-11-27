@@ -65,7 +65,7 @@ export function ConsumptionTransactionsDialog({
                       {r.party && <div className="text-[10px] text-muted-foreground">{r.party}</div>}
                     </td>
                     <td className="px-2.5 py-1.5 capitalize text-muted-foreground">{label(r.movementType)}</td>
-                    <td className="px-2.5 py-1.5 text-right tabular-nums">{r.quantity}</td>
+                    <td className="px-2.5 py-1.5 text-right tabular-nums">{r.quantityText ?? r.quantity}</td>
                     <td className="px-2.5 py-1.5 text-right tabular-nums">{inr(r.value)}</td>
                   </tr>
                 ))}
@@ -108,6 +108,7 @@ export function ConsumptionTransactionsDialog({
                   party: r.party ?? '',
                   type: label(r.movementType),
                   quantity: r.quantity,
+                  quantityInWords: r.quantityText ?? '',
                   unitCost: r.unitCost ?? '',
                   value: r.value,
                 })),

@@ -37,6 +37,7 @@ import {
 } from '@/hooks/use-pharmacy';
 import { useSuppliers } from '@/hooks/use-inventory';
 import { fullName } from '@/lib/person-name';
+import { formatDrugQty, formatQty, formatSaleQty, pluralizeUnit, qtyUnitsOf, toBaseQty, type QtyUnits } from '@/lib/pharmacy-units';
 
 const inr = (n: number | string | null | undefined) =>
   n == null ? '—' : `₹${Number(n).toFixed(2)}`;
@@ -229,7 +230,7 @@ function ReturnRow({ record }: { record: PharmacyReturn }) {
           ? <span className="text-muted-foreground">Walk-in / counter</span>
           : record.supplier?.name ?? '-'}
       </TableCell>
-      <TableCell className="text-right">{record.quantity}</TableCell>
+      <TableCell className="text-right">{record.quantityText ?? record.quantity}</TableCell>
       <TableCell className="text-right">
         {record.refundAmount != null ? (
           <div className="flex flex-col items-end">
@@ -302,8 +303,8 @@ function CounterReturnDialog({ onClose }: { onClose: () => void }) {
   const cosign = useWitnessCosign(onClose);
 
   // Only offer the loose-unit option when the medicine is sold in sub-units.
-  const canSellLoose = !!drug?.packSize && drug.packSize > 1;
-  const looseLabel = drug?.looseUnitLabel || 'unit';
+  const counterUnits = qtyUnitsOf(drug);
+  const canSellLoose = counterUnits.packSize > 1;
 
   const handleSubmit = async () => {
     if (!drug) return toast.error('Pick the medicine being returned');
@@ -384,7 +385,7 @@ function CounterReturnDialog({ onClose }: { onClose: () => void }) {
                           {d.drugName}
                           {d.strength && <span className="ml-1 text-xs text-muted-foreground">{d.strength}</span>}
                           <StockTypeBadge category={d.category} />
-                          <DrugStockLabel stock={d.totalStock} className="ml-auto" />
+                          <DrugStockLabel stock={d.totalStock} drug={d} className="ml-auto" />
                         </div>
                         {d.genericName && (
                           <div className="text-xs text-muted-foreground">{d.genericName}</div>
@@ -427,14 +428,20 @@ function CounterReturnDialog({ onClose }: { onClose: () => void }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="pack">Pack / Strip</SelectItem>
+                  <SelectItem value="pack">{canSellLoose ? `${counterUnits.packNoun} of ${formatSaleQty(counterUnits.packSize, counterUnits.looseNoun)}` : counterUnits.packNoun}</SelectItem>
                   {canSellLoose && (
-                    <SelectItem value="loose">{looseLabel} (loose)</SelectItem>
+                    <SelectItem value="loose">{counterUnits.looseNoun} (loose)</SelectItem>
                   )}
                 </SelectContent>
               </Select>
             </div>
           </div>
+          {/* 345: what will go back on the shelf, in the words the ledger prints. */}
+          {drug && quantity > 0 && (
+            <p className="text-[11px] text-muted-foreground">
+              Restocks <b>{formatQty(toBaseQty(quantity, canSellLoose ? saleUnit : 'loose', counterUnits.packSize), counterUnits)}</b>
+            </p>
+          )}
 
           {/* 3. Optional batch + expiry */}
           <div className="grid grid-cols-2 gap-3">
@@ -723,12 +730,12 @@ function PatientReturnDialog({ onClose }: { onClose: () => void }) {
                             <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">Non-returnable</span>
                           )}
                         </span>
-                        <span className="text-xs text-muted-foreground">{inr(l.unitPrice)}/{l.saleUnit === 'loose' ? (l.looseUnitLabel || 'unit') : 'pack'}</span>
+                        <span className="text-xs text-muted-foreground">{inr(l.unitPrice)}/{l.units?.looseNoun ?? (l.looseUnitLabel || 'unit')}</span>
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {l.billNumber && <span className="font-mono">{l.billNumber}</span>}
                         {l.batchNumber && <span className="font-mono"> · {l.batchNumber}</span>}
-                        <span> · {l.nonReturnable ? 'marked non-returnable on the bill' : `${l.remaining} of ${l.quantityDispensed} returnable`}</span>
+                        <span> · {l.nonReturnable ? 'marked non-returnable on the bill' : `${l.remainingText ?? l.remaining} of ${l.quantityDispensedText ?? l.quantityDispensed} returnable`}</span>
                       </div>
                     </button>
                   ))}
@@ -742,7 +749,7 @@ function PatientReturnDialog({ onClose }: { onClose: () => void }) {
             <>
               <div>
                 <label className="text-xs font-medium">
-                  Return quantity (max {maxQty})
+                  Return quantity in single {pluralizeUnit(2, selectedLine.units?.looseNoun ?? 'unit')} (max {maxQty})
                 </label>
                 <NumberInput
                   min={0}
@@ -751,6 +758,11 @@ function PatientReturnDialog({ onClose }: { onClose: () => void }) {
                   value={quantity}
                   onValueChange={setQuantity}
                 />
+                {selectedLine.units && quantity > 0 && (
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Returning <b>{formatQty(quantity, selectedLine.units)}</b>
+                  </p>
+                )}
               </div>
               <div>
                 <label className="text-xs font-medium">Refund amount — money given to customer (₹)</label>
@@ -833,6 +845,8 @@ interface ReturnLine {
   purchaseDiscountPercent: number;
   gstPercent: number | null;
   quantity: number;
+  /** 345: how a count of this item reads. */
+  units: QtyUnits;
 }
 
 /** G-12: what was paid for the returned units — net value and the GST on it. */
@@ -916,6 +930,7 @@ function VendorReturnDialog({ onClose }: { onClose: () => void }) {
         purchaseDiscountPercent: Number(b.purchaseDiscountPercent ?? 0) || 0,
         gstPercent: b.gstPercent != null && b.gstPercent !== '' ? Number(b.gstPercent) : null,
         quantity: Number(b.quantityInStock ?? 0),
+        units: qtyUnitsOf(b.drug),
       },
     ]);
     if (!supplierId && b.supplier?.id) setSupplierId(b.supplier.id);
@@ -1040,7 +1055,7 @@ function VendorReturnDialog({ onClose }: { onClose: () => void }) {
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-medium">{b.drug?.drugName}</span>
                         <span className="shrink-0 text-xs text-muted-foreground">
-                          Stock: {b.quantityInStock}
+                          Stock: {formatDrugQty(b.quantityInStock, b.drug)}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -1092,7 +1107,7 @@ function VendorReturnDialog({ onClose }: { onClose: () => void }) {
                         </span>
                         <ExpiryBadge expiryDate={l.expiryDate} />
                         <span className="text-[11px] text-muted-foreground">
-                          in stock {l.inStock}
+                          in stock {formatQty(l.inStock, l.units)} · returning {formatQty(l.quantity, l.units)}
                         </span>
                       </div>
                     </div>
@@ -1123,7 +1138,7 @@ function VendorReturnDialog({ onClose }: { onClose: () => void }) {
                     </button>
                     {l.quantity > l.inStock && (
                       <p className="w-full text-[11px] text-error">
-                        Only {l.inStock} in stock for this batch.
+                        Only {formatQty(l.inStock, l.units)} in stock for this batch.
                       </p>
                     )}
                   </div>

@@ -28,6 +28,7 @@ import {
   type ScheduleOverride,
 } from '@/hooks/use-schedule-overrides';
 import { ScheduleOverrideEditor } from '@/components/hospital/schedule-override-editor';
+import { DoctorFollowUpRuleCard } from '@/components/hospital/follow-up-rule-form';
 import { toInputDateStr, formatDate } from '@/lib/date-utils';
 import { useSeedOnChange } from '@/hooks/use-seed-on-change';
 
@@ -149,10 +150,6 @@ export function DoctorScheduleManager({
 
   const [shifts, setShifts] = useState<ShiftEntry[]>([]);
   const [consultationFee, setConsultationFee] = useState<string>('');
-  // Days after a paid consultation with this doctor in which a return visit
-  // carries no fee. Blank / 0 = no free follow-up, which is what every doctor
-  // had before this existed.
-  const [freeFollowUpDays, setFreeFollowUpDays] = useState<string>('');
   const [dirty, setDirty] = useState(false);
 
   // Week navigator — the week whose overrides we show/edit inline.
@@ -177,9 +174,6 @@ export function DoctorScheduleManager({
     }
     if (profile?.consultationFee !== undefined) {
       setConsultationFee(profile.consultationFee != null ? String(profile.consultationFee) : '');
-    }
-    if (profile?.freeFollowUpDays !== undefined) {
-      setFreeFollowUpDays(profile.freeFollowUpDays ? String(profile.freeFollowUpDays) : '');
     }
   });
 
@@ -287,13 +281,8 @@ export function DoctorScheduleManager({
     try {
       const newFee = consultationFee ? Number(consultationFee) : 0;
       const currentFee = profile?.consultationFee ?? 0;
-      const newWindow = freeFollowUpDays ? Number(freeFollowUpDays) : 0;
-      const currentWindow = profile?.freeFollowUpDays ?? 0;
-      if (newFee !== currentFee || newWindow !== currentWindow) {
-        await updateProfileMutation.mutateAsync({
-          consultationFee: newFee,
-          freeFollowUpDays: newWindow || null,
-        });
+      if (newFee !== currentFee) {
+        await updateProfileMutation.mutateAsync({ consultationFee: newFee });
       }
       await updateMutation.mutateAsync(toApi(activeShifts));
       setDirty(false);
@@ -301,7 +290,7 @@ export function DoctorScheduleManager({
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'Failed to save');
     }
-  }, [shifts, consultationFee, freeFollowUpDays, profile, updateMutation, updateProfileMutation]);
+  }, [shifts, consultationFee, profile, updateMutation, updateProfileMutation]);
 
   const handleRevertOverride = useCallback(async (override: ScheduleOverride) => {
     try {
@@ -415,37 +404,8 @@ export function DoctorScheduleManager({
           </div>
         </div>
       )}
-      {!readOnly && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-card px-4 py-3">
-          <div>
-            <span className="text-sm font-semibold text-foreground">Free follow-up window</span>
-            <p className="text-[11px] text-muted-foreground">
-              A return visit to you within this many days of a paid consultation carries no
-              consultation fee. Leave blank to charge every visit.
-            </p>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Input
-              type="number"
-              placeholder="0"
-              value={freeFollowUpDays}
-              onChange={(e) => { setFreeFollowUpDays(e.target.value); setDirty(true); }}
-              className="h-8 w-[80px] text-sm"
-              min={0}
-              max={365}
-            />
-            <span className="text-xs text-muted-foreground">days</span>
-          </div>
-        </div>
-      )}
-      {readOnly && (profile?.freeFollowUpDays ?? 0) > 0 && (
-        <div className="flex items-center justify-between rounded-xl border bg-card px-4 py-3">
-          <span className="text-sm font-semibold text-foreground">Free follow-up window</span>
-          <span className="text-sm font-bold text-foreground">
-            {profile?.freeFollowUpDays} days
-          </span>
-        </div>
-      )}
+      {/* Saved on its own, not with the weekly pattern: it is the Hospital Admin's alone. */}
+      <DoctorFollowUpRuleCard doctorId={doctorId} readOnly={readOnly} />
       {readOnly && profile?.consultationFee != null && (
         <div className="flex items-center justify-between rounded-xl border bg-card px-4 py-3">
           <span className="text-sm font-semibold text-foreground">Consultation Fee</span>

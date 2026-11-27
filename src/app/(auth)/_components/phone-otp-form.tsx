@@ -1,23 +1,54 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { toast } from 'sonner';
 import { ArrowRight, ArrowLeft, ShieldCheck } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { PhoneField, DEFAULT_PHONE, phoneToE164, type PhoneValue } from '@/components/ui/phone-field';
+import {
+  parseTrustedDevice,
+  pinPromptSkipped,
+  subscribeTrustedDevice,
+  trustedDeviceSnapshot,
+} from '@/lib/trusted-device';
+import { authErrorCode, authErrorMessage, onlyDigits, sentByText, type CodeReceipt } from '@/lib/patient-auth';
+import { AUTH_BUTTON, AUTH_INPUT, AUTH_LABEL, AuthError, Busy } from './auth-form-parts';
+import { PinSignIn } from './pin-sign-in';
+import { PinSetupPrompt } from './pin-setup-prompt';
 
-const INPUT_CLASS =
-  'bg-surface-container-low border-none rounded-xl px-4 py-2.5 w-full font-label text-sm focus:ring-2 focus:ring-primary/20 transition-all outline-none placeholder:text-on-surface-variant/60';
+/** How long to wait before another code when the server did not say. */
+const DEFAULT_RESEND_SECONDS = 60;
+
+/** A countdown in whole seconds, and a way to (re)start it. */
+function useCountdown(): [number, (seconds: number) => void] {
+  const [{ until, now }, setClock] = useState({ until: 0, now: 0 });
+  useEffect(() => {
+    if (!until) return;
+    const timer = setInterval(() => {
+      const t = Date.now();
+      setClock((c) => ({ ...c, now: t }));
+      if (t >= until) clearInterval(timer);
+    }, 500);
+    return () => clearInterval(timer);
+  }, [until]);
+  const start = (seconds: number) => {
+    const t = Date.now();
+    setClock({ until: t + seconds * 1000, now: t });
+  };
+  return [Math.max(0, Math.ceil((until - now) / 1000)), start];
+}
 
 /**
- * Patient phone + OTP form, in one of two explicit modes:
+ * Patient sign-in, in one of two explicit modes:
  *   - 'login'  → the number MUST already have an account; never creates one.
  *   - 'signup' → the number must NOT have an account; collects details + creates.
- * Each mode has its own page, so login never shows signup fields. On success
- * the user is routed by role (patients → the portal).
+ * Each mode has its own page, so login never shows signup fields. Whether a
+ * number has an account is only said once the code sent to it is entered.
  *
- * The OTP is a fixed dev code (123123) until SMS delivery is wired up.
+ * On a device that has a PIN, login starts with the PIN. After a code sign-in
+ * the patient may set a PIN for this device, or skip it.
  */
 export function PhoneOtpForm({ mode }: { mode: 'login' | 'signup' }) {
   const router = useRouter();
@@ -25,42 +56,56 @@ export function PhoneOtpForm({ mode }: { mode: 'login' | 'signup' }) {
 
   const isSignup = mode === 'signup';
 
-  const [step, setStep] = useState<'phone' | 'otp'>('phone');
+  // The server renders the phone form; a remembered device appears after hydration.
+  const deviceRaw = useSyncExternalStore(subscribeTrustedDevice, trustedDeviceSnapshot, () => null);
+  const device = useMemo(() => parseTrustedDevice(deviceRaw), [deviceRaw]);
+  const [useCode, setUseCode] = useState(false);
+
+  const [step, setStep] = useState<'phone' | 'otp' | 'set-pin'>('phone');
   const [phoneVal, setPhoneVal] = useState<PhoneValue>({ ...DEFAULT_PHONE });
   const [otp, setOtp] = useState('');
+  const [receipt, setReceipt] = useState<CodeReceipt | null>(null);
+  const [needs2fa, setNeeds2fa] = useState(false);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [gender, setGender] = useState<'male' | 'female' | 'other'>('male');
   const [dateOfBirth, setDateOfBirth] = useState('');
+  const [setupToken, setSetupToken] = useState('');
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<{ message: string; code?: string } | null>(null);
+
+  const [resendIn, startResendTimer] = useCountdown();
 
   // National number is 10 digits; the country code is chosen (default +91).
   const fullPhone = phoneToE164(phoneVal);
 
+  const fail = (err: unknown, fallback: string) => {
+    const message = authErrorMessage(err, fallback);
+    setError({ message, code: authErrorCode(err) });
+    toast.error(message);
+  };
+
   const sendCode = async () => {
     if (phoneVal.national.length !== 10) {
+      setError({ message: 'Enter a 10-digit phone number' });
       toast.error('Enter a 10-digit phone number');
       return;
     }
     setBusy(true);
+    setError(null);
     try {
-      const { isExistingUser: exists } = await requestPhoneOtp(fullPhone);
-      // Gate each flow to its purpose before sending the user to the code step.
-      if (mode === 'login' && !exists) {
-        toast.error('No account found for this number. Please sign up first.');
-        return;
-      }
-      if (mode === 'signup' && exists) {
-        toast.error('An account already exists for this number. Please sign in.');
-        return;
-      }
+      const sent = await requestPhoneOtp(fullPhone, mode);
+      setReceipt(sent);
+      startResendTimer(sent?.resendInSeconds ?? DEFAULT_RESEND_SECONDS);
+      setOtp('');
+      setNeeds2fa(false);
+      setTwoFactorCode('');
       setStep('otp');
       toast.success('Verification code sent');
-    } catch (error: unknown) {
-      const message =
-        (error as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-        'Could not send the code. Please try again.';
-      toast.error(message);
+    } catch (err: unknown) {
+      if (authErrorCode(err) === 'OTP_COOLDOWN') startResendTimer(DEFAULT_RESEND_SECONDS);
+      fail(err, 'Could not send the code. Please try again.');
     } finally {
       setBusy(false);
     }
@@ -75,20 +120,24 @@ export function PhoneOtpForm({ mode }: { mode: 'login' | 'signup' }) {
   };
 
   const verify = async () => {
-    if (otp.trim().length < 4) {
-      toast.error('Enter the verification code');
+    if (otp.length !== 6) {
+      setError({ message: 'Enter the 6-digit code' });
+      toast.error('Enter the 6-digit code');
       return;
     }
     if (isSignup && !firstName.trim()) {
+      setError({ message: 'Please enter your name' });
       toast.error('Please enter your name');
       return;
     }
     setBusy(true);
+    setError(null);
     try {
-      await loginWithPhoneOtp({
+      const result = await loginWithPhoneOtp({
         phone: fullPhone,
-        otp: otp.trim(),
+        otp,
         intent: mode,
+        ...(needs2fa ? { twoFactorCode } : {}),
         ...(isSignup
           ? {
               firstName: firstName.trim() || undefined,
@@ -98,23 +147,83 @@ export function PhoneOtpForm({ mode }: { mode: 'login' | 'signup' }) {
             }
           : {}),
       });
+      if (result?.pinSetupToken && !pinPromptSkipped()) {
+        setSetupToken(result.pinSetupToken);
+        setStep('set-pin');
+        return;
+      }
       toast.success('Signed in! Redirecting…');
       redirectByRole();
-    } catch (error: unknown) {
-      const message =
-        (error as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-        'Invalid code. Please try again.';
-      toast.error(message);
+    } catch (err: unknown) {
+      const code = authErrorCode(err);
+      if (code === '2FA_REQUIRED') {
+        // The code was right; now the authenticator app's.
+        setNeeds2fa(true);
+        setTwoFactorCode('');
+        return;
+      }
+      // Anything that used the code up leaves nothing to correct: start over.
+      if (['OTP_EXPIRED', 'OTP_ATTEMPTS_EXCEEDED', 'NO_ACCOUNT', 'ACCOUNT_EXISTS'].includes(code ?? '')) setOtp('');
+      if (needs2fa) setTwoFactorCode('');
+      fail(err, 'Invalid code. Please try again.');
     } finally {
       setBusy(false);
     }
   };
 
+  if (step === 'set-pin') {
+    return (
+      <PinSetupPrompt
+        setupToken={setupToken}
+        name={useAuthStore.getState().user?.firstName}
+        onDone={redirectByRole}
+      />
+    );
+  }
+
+  if (!isSignup && device && !device.locked && !useCode && step === 'phone') {
+    return (
+      <PinSignIn
+        device={device}
+        onSignedIn={() => {
+          toast.success('Signed in! Redirecting…');
+          redirectByRole();
+        }}
+        onUseCode={(reason) => {
+          setUseCode(true);
+          setError(reason ? { message: reason } : null);
+        }}
+      />
+    );
+  }
+
+  const errorBox = error && (
+    <AuthError>
+      {error.message}
+      {error.code === 'NO_ACCOUNT' && (
+        <>
+          {' '}
+          <Link href="/register" className="font-bold underline">
+            Create an account
+          </Link>
+        </>
+      )}
+      {error.code === 'ACCOUNT_EXISTS' && (
+        <>
+          {' '}
+          <Link href="/login" className="font-bold underline">
+            Go to sign in
+          </Link>
+        </>
+      )}
+    </AuthError>
+  );
+
   if (step === 'phone') {
     return (
       <div className="space-y-4">
         <div className="space-y-2">
-          <label htmlFor="otp-phone" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">
+          <label htmlFor="otp-phone" className={AUTH_LABEL}>
             Phone Number
           </label>
           <PhoneField
@@ -130,17 +239,11 @@ export function PhoneOtpForm({ mode }: { mode: 'login' | 'signup' }) {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={sendCode}
-          disabled={busy}
-          className="w-full bg-primary text-on-primary font-label font-bold text-sm px-6 py-3 rounded-xl hover:shadow-lg transition-all h-11"
-        >
+        {errorBox}
+
+        <button type="button" onClick={sendCode} disabled={busy} className={AUTH_BUTTON}>
           {busy ? (
-            <span className="flex items-center justify-center gap-2">
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-              Sending code…
-            </span>
+            <Busy>Sending code…</Busy>
           ) : (
             <span className="flex items-center justify-center gap-2">
               Send verification code
@@ -148,6 +251,19 @@ export function PhoneOtpForm({ mode }: { mode: 'login' | 'signup' }) {
             </span>
           )}
         </button>
+
+        {!isSignup && device && !device.locked && (
+          <button
+            type="button"
+            onClick={() => {
+              setUseCode(false);
+              setError(null);
+            }}
+            className="w-full font-label text-xs text-on-surface-variant hover:text-primary"
+          >
+            Use my PIN instead
+          </button>
+        )}
       </div>
     );
   }
@@ -156,7 +272,11 @@ export function PhoneOtpForm({ mode }: { mode: 'login' | 'signup' }) {
     <div className="space-y-4">
       <button
         type="button"
-        onClick={() => { setStep('phone'); setOtp(''); }}
+        onClick={() => {
+          setStep('phone');
+          setOtp('');
+          setError(null);
+        }}
         className="flex items-center gap-1.5 font-label text-xs font-semibold text-on-surface-variant hover:text-on-surface"
       >
         <ArrowLeft className="h-3.5 w-3.5" />
@@ -164,7 +284,7 @@ export function PhoneOtpForm({ mode }: { mode: 'login' | 'signup' }) {
       </button>
 
       <div className="space-y-2">
-        <label htmlFor="otp-code" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">
+        <label htmlFor="otp-code" className={AUTH_LABEL}>
           Verification Code
         </label>
         <div className="relative">
@@ -172,18 +292,45 @@ export function PhoneOtpForm({ mode }: { mode: 'login' | 'signup' }) {
           <input
             id="otp-code"
             inputMode="numeric"
+            autoComplete="one-time-code"
             autoFocus
             placeholder="Enter 6-digit code"
-            className={`${INPUT_CLASS} pl-10 tracking-[0.3em]`}
+            className={`${AUTH_INPUT} pl-10 tracking-[0.3em]`}
             value={otp}
-            onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+            onChange={(e) => setOtp(onlyDigits(e.target.value, 6))}
             onKeyDown={(e) => e.key === 'Enter' && !isSignup && verify()}
           />
         </div>
-        <p className="font-label text-[11px] text-on-surface-variant/70">
-          For testing, use code <span className="font-bold text-primary">123123</span>.
-        </p>
+        {receipt?.sentTo && (
+          <p data-testid="code-sent-to" className="font-label text-[11px] text-on-surface-variant/70">
+            {sentByText(receipt)}
+            <span className="font-bold">{receipt.sentTo}</span>. It expires in{' '}
+            {Math.round(receipt.expiresInSeconds / 60)} minutes.
+          </p>
+        )}
       </div>
+
+      {needs2fa && (
+        <div className="space-y-2">
+          <label htmlFor="otp-2fa" className={AUTH_LABEL}>
+            Two-factor
+          </label>
+          <input
+            id="otp-2fa"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            autoFocus
+            placeholder="6 digits from your authenticator app"
+            className={AUTH_INPUT}
+            value={twoFactorCode}
+            onChange={(e) => setTwoFactorCode(onlyDigits(e.target.value, 6))}
+            onKeyDown={(e) => e.key === 'Enter' && twoFactorCode.length === 6 && verify()}
+          />
+          <p className="font-label text-[11px] text-on-surface-variant/70">
+            Two-factor sign-in is on for this account. Enter what your authenticator app shows.
+          </p>
+        </div>
+      )}
 
       {/* New number → collect the patient's basics to create their profile */}
       {isSignup && (
@@ -193,20 +340,20 @@ export function PhoneOtpForm({ mode }: { mode: 'login' | 'signup' }) {
           </p>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <label htmlFor="otp-first" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">First Name *</label>
-              <input id="otp-first" placeholder="John" className={INPUT_CLASS} value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+              <label htmlFor="otp-first" className={AUTH_LABEL}>First Name *</label>
+              <input id="otp-first" placeholder="John" className={AUTH_INPUT} value={firstName} onChange={(e) => setFirstName(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <label htmlFor="otp-last" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">Last Name</label>
-              <input id="otp-last" placeholder="Doe" className={INPUT_CLASS} value={lastName} onChange={(e) => setLastName(e.target.value)} />
+              <label htmlFor="otp-last" className={AUTH_LABEL}>Last Name</label>
+              <input id="otp-last" placeholder="Doe" className={AUTH_INPUT} value={lastName} onChange={(e) => setLastName(e.target.value)} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <label htmlFor="otp-gender" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">Gender</label>
+              <label htmlFor="otp-gender" className={AUTH_LABEL}>Gender</label>
               <select
                 id="otp-gender"
-                className={INPUT_CLASS}
+                className={AUTH_INPUT}
                 value={gender}
                 onChange={(e) => setGender(e.target.value as 'male' | 'female' | 'other')}
               >
@@ -216,24 +363,23 @@ export function PhoneOtpForm({ mode }: { mode: 'login' | 'signup' }) {
               </select>
             </div>
             <div className="space-y-2">
-              <label htmlFor="otp-dob" className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-widest">Date of Birth</label>
-              <input id="otp-dob" type="date" className={INPUT_CLASS} value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} />
+              <label htmlFor="otp-dob" className={AUTH_LABEL}>Date of Birth</label>
+              <input id="otp-dob" type="date" className={AUTH_INPUT} value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} />
             </div>
           </div>
         </div>
       )}
 
+      {errorBox}
+
       <button
         type="button"
         onClick={verify}
-        disabled={busy}
-        className="w-full bg-primary text-on-primary font-label font-bold text-sm px-6 py-3 rounded-xl hover:shadow-lg transition-all h-11"
+        disabled={busy || (needs2fa && twoFactorCode.length !== 6)}
+        className={AUTH_BUTTON}
       >
         {busy ? (
-          <span className="flex items-center justify-center gap-2">
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-            Verifying…
-          </span>
+          <Busy>Verifying…</Busy>
         ) : (
           <span className="flex items-center justify-center gap-2">
             {isSignup ? 'Verify & create account' : 'Verify & sign in'}
@@ -245,10 +391,10 @@ export function PhoneOtpForm({ mode }: { mode: 'login' | 'signup' }) {
       <button
         type="button"
         onClick={sendCode}
-        disabled={busy}
-        className="w-full font-label text-xs text-on-surface-variant hover:text-primary"
+        disabled={busy || resendIn > 0}
+        className="w-full font-label text-xs text-on-surface-variant hover:text-primary disabled:hover:text-on-surface-variant"
       >
-        Didn&apos;t get a code? Resend
+        {resendIn > 0 ? `You can ask for a new code in ${resendIn}s` : "Didn't get a code? Resend"}
       </button>
     </div>
   );

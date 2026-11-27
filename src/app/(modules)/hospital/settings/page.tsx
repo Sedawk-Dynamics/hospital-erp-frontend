@@ -41,6 +41,7 @@ const settingsGroups: SettingsGroup[] = [
     items: [
       { label: 'Service Master Configuration', href: '/hospital/settings/services' },
       { label: 'Registration Fee', href: '/hospital/settings/registration-fee' },
+      { label: 'Follow-up Rules', href: '/hospital/settings/follow-up-rules' },
       { label: 'GST Registration', href: '/hospital/settings/gst' },
       // Where the auditor maps each service to a SAC code and signs it off.
       // Until a tariff is approved its own rate is not used, so this is not

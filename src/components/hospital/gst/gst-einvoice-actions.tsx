@@ -268,12 +268,14 @@ export function EwayRowAction({ row, integration }: { row: EwayRow; integration?
   const status = ewayStatusOf(row);
   const close = () => setOpen(null);
 
-  if (status === 'not_generated' || status === 'failed' || status === 'pending') {
-    const retry = status !== 'not_generated';
+  if (status === 'not_generated' || status === 'failed' || status === 'pending' || status === 'cancelled') {
+    const retry = status === 'failed' || status === 'pending';
+    // #266: the cancelled number stays in the history; this raises a new one.
+    const again = status === 'cancelled';
     return (
       <>
         <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" onClick={() => setOpen(retry ? 'retry' : 'generate')}>
-          {retry ? <RefreshCw className="h-3 w-3" /> : <Truck className="h-3 w-3" />} {retry ? 'Retry' : 'Generate e-way bill'}
+          {retry ? <RefreshCw className="h-3 w-3" /> : <Truck className="h-3 w-3" />} {retry ? 'Retry' : again ? 'Generate new' : 'Generate e-way bill'}
         </Button>
         {open === 'generate' || open === 'retry' ? (
           <EwayDialog row={row} retry={open === 'retry'} onClose={close} />
@@ -306,8 +308,10 @@ export function EwayRowAction({ row, integration }: { row: EwayRow; integration?
 
 function EwayDialog({ row, retry, onClose }: { row: EwayRow; retry: boolean; onClose: () => void }) {
   const gen = useGenerateEwayBill();
-  // Retry offers what was sent last time, so a refusal is corrected rather than retyped.
-  const last = retry ? row.ewayTransport ?? null : null;
+  // Retry — and a new one after a cancellation — offers what was sent last time,
+  // so it is corrected rather than retyped.
+  const replaces = ewayStatusOf(row) === 'cancelled' ? row.ewayBillNumber : null;
+  const last = retry || replaces ? row.ewayTransport ?? null : null;
   const [transMode, setTransMode] = useState<EwayBillInput['transMode']>(
     (last?.transMode as EwayBillInput['transMode'] | undefined) ?? '1',
   );
@@ -354,10 +358,11 @@ function EwayDialog({ row, retry, onClose }: { row: EwayRow; retry: boolean; onC
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {retry ? 'Retry the e-way bill' : 'E-way bill'} for return {documentNumber || '—'}
+            {retry ? 'Retry the e-way bill' : replaces ? 'New e-way bill' : 'E-way bill'} for return {documentNumber || '—'}
           </DialogTitle>
           <DialogDescription>
             One e-way bill covers every medicine on this return. Give the transport details as they will be on the road.
+            {replaces ? ` E-way bill ${replaces} was cancelled; it stays in this return's history.` : ''}
           </DialogDescription>
         </DialogHeader>
         {retry && row.ewayError ? (
@@ -434,7 +439,7 @@ function CancelEwayDialog({ row, hours, onClose }: { row: EwayRow; hours: number
           <DialogTitle>Cancel e-way bill {row.ewayBillNumber}</DialogTitle>
           <DialogDescription>
             The portal allows cancellation only within {hours} hours of generation. It covers every line of return{' '}
-            {row.documentNumber || '—'}, and this system will not raise a second e-way bill for the same return.
+            {row.documentNumber || '—'}. The number stays in the history, and a new e-way bill can be generated afterwards.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">

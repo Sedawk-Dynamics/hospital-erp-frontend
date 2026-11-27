@@ -484,13 +484,14 @@ function StockRow({
         </TableCell>
         <TableCell className="text-right">
           <span className={cn('font-medium', out ? 'text-red-700' : low ? 'text-amber-700' : '')}>
-            {row.currentStock}
+            {/* 345: packs and single units, the words the bill and ledger print. */}
+            {row.currentStockText ?? row.currentStock}
           </span>
           {isFormulary && row.batchCount > 0 && (
             <span className="ml-1 text-[11px] text-muted-foreground">({row.batchCount} batch{row.batchCount === 1 ? '' : 'es'})</span>
           )}
         </TableCell>
-        <TableCell className="text-right text-muted-foreground">{row.reorderLevel ?? '-'}</TableCell>
+        <TableCell className="text-right text-muted-foreground">{row.reorderLevelText ?? row.reorderLevel ?? '-'}</TableCell>
         <TableCell className={cn('text-xs', expDays != null && expDays < 0 ? 'text-red-600' : expSoon ? 'text-amber-600' : 'text-muted-foreground')}>
           {row.nearestExpiry ? (
             <>

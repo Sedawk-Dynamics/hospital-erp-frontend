@@ -16,6 +16,8 @@ export interface RegistrationFeeSettings {
   enabled: boolean;
   amount: number;
   gstRatePercent: number;
+  /** #264: 6-digit SAC. Required for a bill once the fee carries GST. */
+  sacCode?: string | null;
   label: string;
   /** When on, the fee can only ever be taken once per patient at this hospital. */
   oncePerPatient: boolean;

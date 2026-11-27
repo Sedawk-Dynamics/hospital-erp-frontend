@@ -65,7 +65,7 @@ function HoldLineBuilder({ onAdd }: { onAdd: (l: HoldLine) => void }) {
           {search.length >= 2 && (data?.data ?? []).length > 0 && (
             <div className="absolute z-50 mt-1 max-h-40 w-full overflow-y-auto rounded-md border bg-popover shadow">
               {(data?.data ?? []).map((d) => (
-                <button key={d.id} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-muted" onClick={() => { setDrug(d); setSearch(''); }}><span className="truncate">{d.drugName} {d.strength ?? ''}</span><DrugStockLabel stock={d.totalStock} className="ml-auto shrink-0" /></button>
+                <button key={d.id} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-muted" onClick={() => { setDrug(d); setSearch(''); }}><span className="truncate">{d.drugName} {d.strength ?? ''}</span><DrugStockLabel stock={d.totalStock} drug={d} className="ml-auto shrink-0" /></button>
               ))}
             </div>
           )}

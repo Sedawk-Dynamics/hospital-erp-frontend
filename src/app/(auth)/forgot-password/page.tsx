@@ -36,7 +36,7 @@ export default function ForgotPasswordPage() {
     try {
       await apiClient.post('/auth/forgot-password', { email: data.email });
       setIsEmailSent(true);
-      toast.success('Password reset email sent!');
+      toast.success('Request received');
     } catch (error: unknown) {
       const message =
         (error as { response?: { data?: { message?: string } } })?.response?.data?.message ||
@@ -55,7 +55,8 @@ export default function ForgotPasswordPage() {
         </div>
         <h2 className="font-headline text-2xl font-extrabold tracking-tight">Check Your Email</h2>
         <p className="font-label text-sm text-on-surface-variant mt-2 mb-6">
-          We&apos;ve sent a password reset link to your email address. Please check your inbox and follow the instructions.
+          If that email address has an account, we&apos;ve sent it a reset link. It works once, for one hour. If nothing
+          arrives, ask your hospital administrator.
         </p>
         <Link href="/login">
           <button className="inline-flex items-center gap-2 font-label text-sm font-bold text-primary hover:text-primary-container transition-colors">

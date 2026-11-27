@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
 import { useStockTransactions } from '@/hooks/use-inventory';
 import { fullName } from '@/lib/person-name';
+import { formatDrugQty } from '@/lib/pharmacy-units';
 
 export default function StockOutPage() {
   // History of all "out" type transactions (stock_out + expired_removal).
@@ -74,7 +75,11 @@ export default function StockOutPage() {
                   </TableCell>
                   <TableCell className="font-mono text-xs">{t.batchNumber ?? '-'}</TableCell>
                   <TableCell className="text-sm">{t.department?.name ?? '-'}</TableCell>
-                  <TableCell className="text-right">{t.quantity}</TableCell>
+                  {/* 345: pharmacy rows in the words of the bill; a generic item in its own unit. */}
+                  <TableCell className="text-right">
+                    {t.quantityText ??
+                      formatDrugQty(t.quantity, { unitOfMeasurement: t.inventoryItem?.unitOfMeasurement })}
+                  </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     {t.referenceType ?? '-'}
                   </TableCell>

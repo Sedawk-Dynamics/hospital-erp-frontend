@@ -75,6 +75,24 @@ describe('My Account', () => {
     expect(screen.queryByText(/not available yet/i)).not.toBeInTheDocument();
   });
 
+  it('offers the sign-in PIN to patients and nobody else', async () => {
+    renderPage();
+    await screen.findByText('doctor, department head');
+    expect(screen.queryByRole('heading', { name: 'Sign-in PIN' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [['patient'], true],
+    [['patient', 'nurse'], false],
+  ])('sign-in PIN for roles %j: %s', async (roles, shown) => {
+    apiGet.mockImplementation(async (url: string) =>
+      url === '/auth/me/pin/devices' ? { data: { devices: [] } } : { data: { ...ME, roles } },
+    );
+    renderPage();
+    await screen.findByRole('button', { name: /change phone/i });
+    expect(screen.queryAllByRole('heading', { name: 'Sign-in PIN' })).toHaveLength(shown ? 1 : 0);
+  });
+
   it('shows an error with Retry when the profile fails to load, and Retry reloads it', async () => {
     apiGet.mockRejectedValueOnce(new Error('Network error'));
     renderPage();

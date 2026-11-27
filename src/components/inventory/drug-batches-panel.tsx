@@ -75,7 +75,7 @@ import {
 } from '@/components/ui/command';
 import { cn} from '@/lib/utils';
 import { formatDate, formatDateTimeAmPm, toInputDateStr } from '@/lib/date-utils';
-import { packSummary } from '@/lib/pharmacy-units';
+import { formatDrugQty, packSummary, qtyUnitsOf } from '@/lib/pharmacy-units';
 import { StockTypeBadge } from '@/components/shared/stock-type-badge';
 import { DrugStockLabel } from '@/components/shared/drug-stock-label';
 import { BarcodeViewDialog } from '@/components/pharmacy/barcode-view-dialog';
@@ -799,7 +799,7 @@ export function DrugBatchesPanel({
                                   {drug.drugName}
                                   {drug.strength ? ` ${drug.strength}` : ''}
                                   <StockTypeBadge category={drug.category} />
-                                  <DrugStockLabel stock={drug.totalStock} />
+                                  <DrugStockLabel stock={drug.totalStock} drug={drug} />
                                 </span>
                                 <span className="text-xs text-muted-foreground">
                                   {drug.genericName || ''}
@@ -1297,10 +1297,8 @@ export function DrugBatchesPanel({
                           {batch.drug?.strength ?? ''}
                           {batch.drug?.dosageForm ? ` · ${batch.drug.dosageForm}` : ''}
                         </div>
-                        {packSummary(batch.drug?.packSize, batch.drug?.dosageForm, batch.drug?.looseUnitLabel) && (
-                          <div className="text-[10px] text-muted-foreground">
-                            {packSummary(batch.drug?.packSize, batch.drug?.dosageForm, batch.drug?.looseUnitLabel)}
-                          </div>
+                        {batch.drug && packSummary(batch.drug) && (
+                          <div className="text-[10px] text-muted-foreground">{packSummary(batch.drug)}</div>
                         )}
                       </TableCell>
                       <TableCell className="text-muted-foreground">{batch.supplier?.name ?? '-'}</TableCell>
@@ -1314,13 +1312,19 @@ export function DrugBatchesPanel({
                         )}
                       </TableCell>
                       <TableCell className="text-right font-medium">
-                        {batch.quantityInStock}
+                        {/* 345: the words the bill and the ledger print. */}
+                        {formatDrugQty(batch.quantityInStock, batch.drug)}
                         {batch.quantityReceived !== batch.quantityInStock && (
-                          <span className="text-xs text-muted-foreground"> / {batch.quantityReceived}</span>
+                          <div className="text-xs font-normal text-muted-foreground">
+                            of {formatDrugQty(batch.quantityReceived, batch.drug)} received
+                          </div>
                         )}
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         {batch.sellingPrice != null ? `₹${Number(batch.sellingPrice).toFixed(2)}` : '-'}
+                        {batch.sellingPrice != null && batch.drug && (
+                          <div className="font-sans text-[10px] text-muted-foreground">/{qtyUnitsOf(batch.drug).looseNoun}</div>
+                        )}
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         {(isExpired || remaining <= 90) && batch.quantityInStock > 0 && batch.sellingPrice != null ? (

@@ -52,8 +52,8 @@ describe('Login page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockLogin.mockResolvedValue('active');
-    requestPhoneOtp.mockResolvedValue({ isExistingUser: true });
-    loginWithPhoneOtp.mockResolvedValue('active');
+    requestPhoneOtp.mockResolvedValue({ channel: 'sms', sentTo: '+91 ******3210', expiresInSeconds: 300, resendInSeconds: 60 });
+    loginWithPhoneOtp.mockResolvedValue({});
   });
 
   describe('choosing how to sign in', () => {

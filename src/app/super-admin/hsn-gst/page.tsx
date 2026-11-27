@@ -270,6 +270,12 @@ export default function SuperAdminHsnGstPage() {
         `Imported ${res?.created ?? 0} new, updated ${res?.updated ?? 0}` +
           (skipped ? `, skipped ${skipped}` : ''),
       );
+      // #262: say which rows were rejected and why (e.g. a retired 12%).
+      if (skipped) {
+        toast.error(
+          (res?.skipped ?? []).slice(0, 4).map((s) => `${s.hsnCode}: ${s.reason}`).join(' ') + (skipped > 4 ? ` (+${skipped - 4} more)` : ''),
+        );
+      }
       setBulkText('');
       setOpenBulk(false);
     } catch (e: unknown) {

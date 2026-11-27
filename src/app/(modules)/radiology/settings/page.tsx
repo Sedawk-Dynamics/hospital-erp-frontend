@@ -11,7 +11,7 @@
 
 import { useState, useEffect } from 'react';
 import {
-  Plus, Pencil, Search, Activity, RefreshCw, Save, Trash2,
+  BadgeCheck, Plus, Pencil, Search, Activity, RefreshCw, Save, Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
@@ -31,8 +31,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import {
   useServiceTariffs, useCreateServiceTariff, useUpdateServiceTariff, useDeleteServiceTariff,
+  useApproveRadiologyDiagnostic, useSetTariffGstApproval, radiologyGstSet,
   type ServiceTariff,
 } from '@/hooks/use-service-tariffs';
+import { useCanManageGst } from '@/hooks/use-gst-portal';
+import { getApiErrorMessage } from '@/lib/utils';
 import { RadiologyAdminGuard } from '@/components/radiology/radiology-admin-guard';
 
 export default function RadiologySettingsPage() {
@@ -70,6 +73,43 @@ function ModalitiesSection() {
     );
   });
 
+  // #358: the finance / GST admin approves each study's GST. Nothing is approved
+  // until they do, and only what they select.
+  const canApprove = useCanManageGst();
+  const approveDiagnostic = useApproveRadiologyDiagnostic();
+  const setApproval = useSetTariffGstApproval();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const approvable = modalities.filter((t) => !t.isCosmetic && !radiologyGstSet(t));
+  const chosen = approvable.filter((t) => selected.has(t.id));
+  const toggle = (id: string) =>
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const approveAsDiagnostic = async (rows: ServiceTariff[]) => {
+    try {
+      const res = await approveDiagnostic.mutateAsync(rows.map((t) => t.id));
+      if (res.approved.length) toast.success(`${res.approved.length} approved as diagnostic — exempt, 0%`);
+      for (const s of res.skipped) toast.warning(`${s.serviceName ?? 'Study'} not approved: ${s.reason}`, { duration: 8000 });
+      setSelected(new Set());
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Could not approve'));
+    }
+  };
+  const changeApproval = async (t: ServiceTariff, approved: boolean) => {
+    try {
+      await setApproval.mutateAsync({ id: t.id, approved });
+      toast.success(approved ? `${t.serviceName} approved at ${Number(t.gstRatePercent)}%` : `Approval withdrawn from ${t.serviceName}`);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Could not change the approval'));
+    }
+  };
+  const notSet = all.filter((t) => t.isActive && !radiologyGstSet(t));
+  const cosmeticNotSet = notSet.filter((t) => t.isCosmetic);
+
   const [editing, setEditing] = useState<ServiceTariff | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<ServiceTariff | null>(null);
@@ -99,6 +139,16 @@ function ModalitiesSection() {
           />
         </div>
         <div className="flex gap-2">
+          {canApprove ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!chosen.length || approveDiagnostic.isPending}
+              onClick={() => approveAsDiagnostic(chosen)}
+            >
+              <BadgeCheck className="mr-1.5 h-4 w-4" /> Approve selected as diagnostic 0%{chosen.length ? ` (${chosen.length})` : ''}
+            </Button>
+          ) : null}
           <Button variant="outline" size="sm" onClick={() => tariffsQ.refetch()}>
             <RefreshCw className="mr-1.5 h-4 w-4" /> Refresh
           </Button>
@@ -107,6 +157,16 @@ function ModalitiesSection() {
           </Button>
         </div>
       </div>
+
+      {!tariffsQ.isLoading && notSet.length > 0 ? (
+        <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          GST is not set for {notSet.length} of {all.filter((t) => t.isActive).length} active studies. Diagnostic scans are
+          billed as exempt until the finance / GST admin approves them.
+          {cosmeticNotSet.length
+            ? ` ${cosmeticNotSet.length} cosmetic / non-medical study(ies) cannot be billed until their rate and SAC are approved.`
+            : ''}
+        </p>
+      ) : null}
 
       <div className="bg-surface-container-lowest rounded-xl shadow-sanctuary overflow-hidden">
         {tariffsQ.isLoading ? (
@@ -126,9 +186,21 @@ function ModalitiesSection() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-surface-container">
+                  {canApprove ? (
+                    <Th>
+                      <input
+                        type="checkbox"
+                        aria-label="Select every diagnostic study not yet approved"
+                        checked={approvable.length > 0 && chosen.length === approvable.length}
+                        disabled={!approvable.length}
+                        onChange={(e) => setSelected(e.target.checked ? new Set(approvable.map((t) => t.id)) : new Set())}
+                      />
+                    </Th>
+                  ) : null}
                   <Th>Modality</Th>
+                  <Th>Purpose</Th>
                   <Th align="right">Price</Th>
-                  <Th align="right">GST %</Th>
+                  <Th align="right">GST</Th>
                   <Th>Status</Th>
                   <Th align="right">Actions</Th>
                 </tr>
@@ -136,23 +208,27 @@ function ModalitiesSection() {
               <tbody>
                 {modalities.map((t) => (
                   <tr key={t.id} className="hover:bg-surface-container-low">
+                    {canApprove ? (
+                      <td className="px-4 py-3">
+                        {!t.isCosmetic && !radiologyGstSet(t) ? (
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${t.serviceName}`}
+                            checked={selected.has(t.id)}
+                            onChange={() => toggle(t.id)}
+                          />
+                        ) : null}
+                      </td>
+                    ) : null}
                     <td className="px-4 py-3 font-medium">{t.serviceName}</td>
+                    <td className="px-4 py-3 text-xs">{t.isCosmetic ? 'Cosmetic / non-medical' : 'Diagnostic'}</td>
                     <td className="px-4 py-3 text-right">
                       {Number(t.basePrice).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
                     </td>
-                    {/* Gap item 358: the seeded 0% was a column default, not a
-                        decision. With no treatment and no approval, say so
-                        rather than print 0.00 as if a rate had been set. */}
+                    {/* #358: a rate counts only once the finance / GST admin has
+                        approved it. Until then it is "GST not set", never 0%. */}
                     <td className="px-4 py-3 text-right">
-                      {!t.gstApproved && !t.gstTreatment && Number(t.gstRatePercent ?? 0) === 0 ? (
-                        <span className="text-xs text-amber-700" title="No GST rate or treatment has been set or approved for this modality">
-                          GST not set
-                        </span>
-                      ) : t.gstTreatment && t.gstTreatment !== 'taxable' ? (
-                        <span className="text-xs">{t.gstTreatment.replace(/_/g, ' ')}{t.gstApproved ? '' : ' (not approved)'}</span>
-                      ) : (
-                        `${Number(t.gstRatePercent ?? 0).toFixed(2)}${t.gstApproved ? '' : ' (not approved)'}`
-                      )}
+                      <GstCell t={t} />
                     </td>
                     <td className="px-4 py-3">
                       <Badge variant="outline" className={cn(
@@ -163,6 +239,22 @@ function ModalitiesSection() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        {canApprove && !radiologyGstSet(t) ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={approveDiagnostic.isPending || setApproval.isPending}
+                            onClick={() => (t.isCosmetic ? changeApproval(t, true) : approveAsDiagnostic([t]))}
+                          >
+                            <BadgeCheck className="size-3.5" />{' '}
+                            {t.isCosmetic ? `Approve${Number(t.gstRatePercent) > 0 ? ` ${Number(t.gstRatePercent)}%` : ''}` : 'Approve 0%'}
+                          </Button>
+                        ) : null}
+                        {canApprove && t.gstApproved ? (
+                          <Button size="sm" variant="ghost" disabled={setApproval.isPending} onClick={() => changeApproval(t, false)}>
+                            Withdraw
+                          </Button>
+                        ) : null}
                         <Button size="sm" variant="outline" onClick={() => setEditing(t)}>
                           <Pencil className="size-3.5" /> Edit
                         </Button>
@@ -224,6 +316,25 @@ function ModalitiesSection() {
   );
 }
 
+function GstCell({ t }: { t: ServiceTariff }) {
+  if (radiologyGstSet(t)) {
+    return (
+      <span className="text-xs">
+        {t.gstTreatment === 'taxable' ? `${Number(t.gstRatePercent)}%` : `0% (${String(t.gstTreatment).replace(/_/g, ' ')})`}
+        {t.sacCode ? <span className="block font-mono text-[10px] text-muted-foreground">SAC {t.sacCode}</span> : null}
+      </span>
+    );
+  }
+  const proposed = t.isCosmetic && Number(t.gstRatePercent ?? 0) > 0;
+  return (
+    <span className="text-xs text-amber-700" title="The finance / GST admin has not approved this study's GST">
+      GST not set
+      {proposed ? <span className="block text-[10px]">{Number(t.gstRatePercent)}% entered, awaiting approval</span> : null}
+      {t.isCosmetic ? <span className="block text-[10px] text-red-700">Cannot be billed yet</span> : null}
+    </span>
+  );
+}
+
 function slugifyCode(name: string): string {
   const base = name
     .toLowerCase()
@@ -247,7 +358,10 @@ function ModalityEditorDialog({
 
   const [name, setName] = useState('');
   const [basePrice, setBasePrice] = useState<number | ''>('');
-  const [taxRate, setTaxRate] = useState<number | ''>(0);
+  // #358: no default. A cosmetic / non-medical scan's rate is the admin's to enter.
+  const [taxRate, setTaxRate] = useState<number | ''>('');
+  const [cosmetic, setCosmetic] = useState(false);
+  const [sacCode, setSacCode] = useState('');
   // The rates in force today — the same list the finalisation gate checks
   // against, so this form cannot offer one the bill will refuse.
   const { data: radSlabs } = useGstSlabs();
@@ -262,16 +376,37 @@ function ModalityEditorDialog({
     if (tariff) {
       setName(tariff.serviceName);
       setBasePrice(Number(tariff.basePrice));
-      setTaxRate(Number(tariff.gstRatePercent ?? 0));
+      setCosmetic(!!tariff.isCosmetic);
+      setTaxRate(tariff.isCosmetic && Number(tariff.gstRatePercent ?? 0) > 0 ? Number(tariff.gstRatePercent) : '');
+      setSacCode(tariff.sacCode ?? '');
       setIsActive(tariff.isActive);
     } else {
-      setName(''); setBasePrice(''); setTaxRate(0); setIsActive(true);
+      setName(''); setBasePrice(''); setTaxRate(''); setCosmetic(false); setSacCode(''); setIsActive(true);
     }
   }, [open, tariff?.id]);
 
   const handleSave = async () => {
     if (!name.trim()) { toast.error('Modality name is required'); return; }
     if (basePrice === '' || Number(basePrice) <= 0) { toast.error('Price must be positive'); return; }
+    if (cosmetic && !(Number(taxRate) > 0)) { toast.error('Choose the GST rate for a cosmetic / non-medical scan'); return; }
+    if (cosmetic && !/^\d{6}$/.test(sacCode)) { toast.error('Enter the 6-digit SAC for a cosmetic / non-medical scan'); return; }
+    if (!cosmetic && sacCode && !/^\d{6}$/.test(sacCode)) { toast.error('A SAC code is 6 digits'); return; }
+
+    // The purpose decides the treatment. An unchanged classification is not sent,
+    // so editing a name or a price never withdraws an approval.
+    const gst = cosmetic
+      ? { isCosmetic: true, gstTreatment: 'taxable' as const, taxRate: Number(taxRate), sacCode }
+      : {
+          isCosmetic: false,
+          gstTreatment: tariff?.gstTreatment && tariff.gstTreatment !== 'taxable' ? tariff.gstTreatment : ('exempt' as const),
+          taxRate: 0,
+          sacCode: sacCode || null,
+        };
+    const gstChanged =
+      !tariff ||
+      !!tariff.isCosmetic !== gst.isCosmetic ||
+      Number(tariff.gstRatePercent ?? 0) !== gst.taxRate ||
+      (tariff.sacCode ?? null) !== (gst.sacCode || null);
 
     try {
       if (mode === 'create') {
@@ -280,20 +415,20 @@ function ModalityEditorDialog({
           code: slugifyCode(name),
           category: 'imaging',
           basePrice: Number(basePrice),
-          taxRate: Number(taxRate || 0),
+          ...gst,
           isActive,
         });
-        toast.success('Modality added');
+        toast.success('Modality added — its GST still needs the finance / GST admin’s approval');
       } else if (tariff) {
         await update.mutateAsync({
           id: tariff.id,
           name: name.trim(),
           category: 'imaging',
           basePrice: Number(basePrice),
-          taxRate: Number(taxRate || 0),
+          ...(gstChanged ? gst : {}),
           isActive,
         });
-        toast.success('Modality updated');
+        toast.success(gstChanged ? 'Modality updated — its GST needs approving' : 'Modality updated');
       }
       onOpenChange(false);
     } catch (err: any) {
@@ -329,30 +464,50 @@ function ModalityEditorDialog({
               />
             </div>
             <div>
-              <Label>GST %</Label>
-              {/* A rate the law recognises, not a free number. Imaging is a
-                  diagnostic service and exempt under Notification 12/2017, so
-                  Nil is the honest default here — but the choice is between
-                  legal slabs rather than anything anyone types. */}
-              <Select
-                value={String(taxRate || 0)}
-                onValueChange={(v: string | null) => v != null && setTaxRate(Number(v))}
-              >
+              <Label>Scan purpose *</Label>
+              <Select value={cosmetic ? 'cosmetic' : 'diagnostic'} onValueChange={(v: string | null) => v && setCosmetic(v === 'cosmetic')}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue>{cosmetic ? 'Cosmetic / non-medical' : 'Diagnostic'}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {radLegalRates.map((r) => (
-                    <SelectItem key={r} value={String(r)}>
-                      {r === 0 ? 'Nil / exempt' : `${r}%`}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="diagnostic">Diagnostic</SelectItem>
+                  <SelectItem value="cosmetic">Cosmetic / non-medical</SelectItem>
                 </SelectContent>
               </Select>
               <p className="mt-1 text-[11px] text-muted-foreground">
-                Diagnostic imaging is exempt healthcare. Set a rate only where
-                your auditor says this study is not.
+                {cosmetic ? 'Taxable. Enter the rate and SAC.' : 'Exempt (0%).'} The finance / GST admin approves it.
               </p>
+            </div>
+            {cosmetic ? (
+              <div>
+                <Label>GST % *</Label>
+                {/* A rate the law recognises, and no default: the client gave none. */}
+                <Select value={taxRate === '' ? null : String(taxRate)} onValueChange={(v: string | null) => v != null && setTaxRate(Number(v))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a rate" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {radLegalRates
+                      .filter((r) => r > 0)
+                      .map((r) => (
+                        <SelectItem key={r} value={String(r)}>
+                          {r}%
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+            <div>
+              <Label htmlFor="rad-sac">SAC {cosmetic ? '*' : '(optional)'}</Label>
+              <Input
+                id="rad-sac"
+                inputMode="numeric"
+                maxLength={6}
+                value={sacCode}
+                onChange={(e) => setSacCode(e.target.value.replace(/\D/g, ''))}
+                placeholder={cosmetic ? '6 digits' : '999316 if left blank'}
+              />
             </div>
           </div>
           <div className="flex items-center gap-2">

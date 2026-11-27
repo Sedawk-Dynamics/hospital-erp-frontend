@@ -272,8 +272,12 @@ export function PharmacyReceiptDialog({
                               .join(' · ')}
                           </div>
                         </td>
-                        <td className="r">{it.quantity}</td>
-                        <td className="r">{num(it.unitPrice).toFixed(2)}</td>
+                        {/* 345: the words the stock list and ledger use; the bare count on an older bill. */}
+                        <td className="r qty">{it.quantityText ?? it.quantity}</td>
+                        <td className="r">
+                          {num(it.unitPrice).toFixed(2)}
+                          {it.rateUnit && <div className="muted xs">/{it.rateUnit}</div>}
+                        </td>
                         <td className="r">{num(it.discountAmount) > 0 ? num(it.discountAmount).toFixed(2) : '-'}</td>
                         <td className="r">{num(it.totalAmount).toFixed(2)}</td>
                       </tr>
@@ -396,8 +400,10 @@ export function PharmacyReceiptDialog({
 
                 <div className="rule" />
                 <p className="center muted xs">
-                  {/* 345: each line names the unit it was sold in (strips, bottles, tablets). */}
-                  Qty is in base units; each line names the unit it was sold in.
+                  {/* 345: packs and the individual units they hold, on every line. */}
+                  {bill.billItems.some((it) => it.quantityText)
+                    ? 'Qty shows packs and the single units in them. Rate is per single unit.'
+                    : 'Qty is in base units; each line names the unit it was sold in.'}
                 </p>
                 <p className="center muted xs">
                   GST is inclusive in MRP. Goods once sold are returnable only per policy.
@@ -532,7 +538,7 @@ function CreditNoteReceipt({
                     .join(' · ')}
                 </div>
               </td>
-              <td className="r">{abs(it.quantity)}</td>
+              <td className="r qty">{it.quantityText ?? abs(it.quantity)}</td>
               <td className="r">{abs(it.taxableValue).toFixed(2)}</td>
               <td className="r">{abs(it.taxAmount).toFixed(2)}</td>
               <td className="r">{abs(it.totalAmount).toFixed(2)}</td>
@@ -605,6 +611,7 @@ const printStyles = `<style>
   thead th { border-bottom: 1px solid #9ca3af; font-size: 10px; text-transform: uppercase; color: #4b5563; }
   .l { text-align: left; }
   .r { text-align: right; white-space: nowrap; }
+  .qty { white-space: normal; }
   .totals { font-size: 12px; }
   .trow { display: flex; justify-content: space-between; padding: 1px 0; }
   .trow.bold { font-weight: 700; font-size: 13px; }

@@ -163,6 +163,37 @@ describe('Auth Store', () => {
   });
 
   // ────────────────────────────────────────────────────────
+  // patient code + PIN sign-in
+  // ────────────────────────────────────────────────────────
+
+  describe('patient sign-in', () => {
+    const session = { accessToken: 'a', refreshToken: 'r', user: mockUser };
+
+    it('asks for a code with its intent and returns only where it went', async () => {
+      const receipt = { channel: 'sms', sentTo: '+91 ******3210', expiresInSeconds: 300, resendInSeconds: 60 };
+      mockPost.mockResolvedValue({ data: { data: receipt } });
+      expect(await useAuthStore.getState().requestPhoneOtp('+919876543210', 'login')).toEqual(receipt);
+      expect(mockPost).toHaveBeenCalledWith('/auth/otp/request', { phone: '+919876543210', intent: 'login' });
+    });
+
+    it('code sign-in stores the session and hands over the PIN setup ticket', async () => {
+      mockPost.mockResolvedValue({ data: { data: { ...session, pinSetupToken: 'ticket' } } });
+      const res = await useAuthStore.getState().loginWithPhoneOtp({ phone: '+919876543210', otp: '482915', intent: 'login' });
+      expect(res).toEqual({ pinSetupToken: 'ticket' });
+      expect(mockSetTokens).toHaveBeenCalledWith('a', 'r');
+      expect(JSON.stringify({ ...localStorage })).not.toContain('ticket');
+    });
+
+    it('PIN sign-in stores the session', async () => {
+      mockPost.mockResolvedValue({ data: { data: session } });
+      await useAuthStore.getState().loginWithPin({ deviceToken: 'tok', pin: '480193' });
+      expect(mockPost).toHaveBeenCalledWith('/auth/pin/login', { deviceToken: 'tok', pin: '480193' });
+      expect(useAuthStore.getState().isAuthenticated).toBe(true);
+      expect(JSON.stringify({ ...localStorage })).not.toContain('480193');
+    });
+  });
+
+  // ────────────────────────────────────────────────────────
   // register()
   // ────────────────────────────────────────────────────────
 

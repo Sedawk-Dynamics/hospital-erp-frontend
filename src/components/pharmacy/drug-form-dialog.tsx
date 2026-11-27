@@ -38,6 +38,7 @@ import {
 import { useDebounce } from '@/hooks/use-debounce';
 import { useHsnGstRates, matchHsnGstRate } from '@/hooks/use-drug-master';
 import { gstAfterHsnChange, gstDiffersFromHsn } from '@/lib/gst-rate';
+import { GstSlabHint } from '@/components/pharmacy/gst-slab-hint';
 import { DrugDuplicateResolver } from '@/components/pharmacy/drug-duplicate-resolver';
 
 const DOSAGE_FORMS: DosageForm[] = [
@@ -476,6 +477,7 @@ function DrugForm({
           <div className="space-y-1.5">
             <Label htmlFor="taxPercent">GST %</Label>
             <Input id="taxPercent" type="number" step="0.01" value={formData.taxPercent} onChange={(e) => updateField('taxPercent', e.target.value)} placeholder={hsnHit ? String(hsnHit.gstRate) : 'e.g. 5'} />
+            {(!formData.gstTreatment || formData.gstTreatment === 'taxable') && <GstSlabHint value={formData.taxPercent} />}
           </div>
         </div>
         <div className="grid grid-cols-3 gap-3">

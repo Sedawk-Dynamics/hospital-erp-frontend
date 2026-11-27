@@ -140,6 +140,13 @@ function PharmacyCatalogPageInner() {
         `Copied ${res.created} drug${res.created !== 1 ? 's' : ''} to formulary` +
           (res.skipped ? ` · ${res.skipped} already there` : ''),
       );
+      // #262: rows on a GST rate that is no longer legal are left out, by name.
+      if (res.rejected?.length) {
+        toast.error(
+          `${res.rejected.length} not copied: ${res.rejected.slice(0, 3).map((r) => r.reason).join(' ')}` +
+            (res.rejected.length > 3 ? ` (+${res.rejected.length - 3} more)` : ''),
+        );
+      }
       setSelected(new Set());
     } catch (e: unknown) {
       const msg =

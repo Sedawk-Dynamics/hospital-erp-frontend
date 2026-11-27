@@ -159,14 +159,17 @@ export function useCloneOneLabTemplate() {
       templateId,
       overridePrice,
       overrideTurnaroundHours,
+      priceConfirmation,
     }: {
       templateId: string;
       overridePrice?: number;
       overrideTurnaroundHours?: number;
+      priceConfirmation?: { confirmed: true; reason: string };
     }) => {
       const res = await apiPost(`/lab/templates/${templateId}/clone`, {
         overridePrice,
         overrideTurnaroundHours,
+        priceConfirmation,
       });
       return res.data;
     },
@@ -174,6 +177,7 @@ export function useCloneOneLabTemplate() {
       // Invalidate both the catalog list (so the new test appears) and the
       // template list (so the "_count.catalogs" badge re-renders).
       qc.invalidateQueries({ queryKey: ['lab', 'tests'] });
+      qc.invalidateQueries({ queryKey: ['lab', 'catalog'] });
       qc.invalidateQueries({ queryKey: keys.all });
     },
   });
@@ -191,6 +195,7 @@ export function useCloneAllLabTemplates() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['lab', 'tests'] });
+      qc.invalidateQueries({ queryKey: ['lab', 'catalog'] });
       qc.invalidateQueries({ queryKey: keys.all });
     },
   });

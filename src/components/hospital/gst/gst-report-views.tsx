@@ -10,6 +10,7 @@ import {
   DrillThrough, exportCsv, exportXlsx, money, pct, plain, titleCase, exportPdf, exportAll, type Stat,
 } from './gst-report-shell';
 import type { GstReportQuery } from '@/hooks/use-gst-reports';
+import { gstStateName } from '@/lib/gst-states';
 import * as R from '@/hooks/use-gst-reports';
 
 // ============================================================
@@ -1026,6 +1027,16 @@ export function Gstr3bView({ q }: { q: Q }) {
         rows: (register.data?.rows ?? []).filter((l) => l.gstTreatment === 'non_gst'),
       }),
     },
+    // #265: only goods shipped out of the state, and bills issued before it, are here.
+    ...(data?.interStateUnregistered ?? []).map((s) => ({
+      box: '3.2',
+      what: `Inter-State to unregistered persons — place of supply ${gstStateName(s.placeOfSupplyStateCode) ?? s.placeOfSupplyStateCode ?? 'not set'} (IGST ${money(s.igstAmount)})`,
+      value: s.taxableValue,
+      drill: (): Drill => ({
+        kind: 'lines' as const, title: '3.2 — the lines supplied to another state',
+        rows: taxableLines().filter((l) => l.isInterState && !l.recipientGstin && l.placeOfSupplyStateCode === s.placeOfSupplyStateCode),
+      }),
+    })),
     {
       box: '4(A)', what: 'Input tax credit available (blocked credit excluded)', value: itcAvailable,
       drill: () => ({

@@ -535,6 +535,9 @@ export interface FrontdeskBillCreation {
   amountPaid: number;
   balanceDue: number;
   status: string;
+  /** The consultation was waived as a follow-up, and the rule that said so. */
+  isFreeFollowUp?: boolean;
+  feeLabel?: string | null;
   /** The lines behind the total, so the counter can see WHAT it is collecting. */
   items?: { id: string; description: string; category: string; quantity: number; amount: number }[];
 }
@@ -553,6 +556,12 @@ export interface AppointmentChargePreview {
     listFee: number;
     windowDays: number;
     previousVisitDate: string | null;
+    /** Gap 019: the follow-up rule that decided it. */
+    kind?: 'consultation' | 'free_follow_up' | 'paid_follow_up' | 'legacy';
+    governed?: boolean;
+    /** "Free follow-up, day 4 of 7". */
+    label?: string | null;
+    ruleSummary?: string | null;
   };
   registration: {
     /** The hospital charges a registration fee at all. */
@@ -769,6 +778,21 @@ export function useSetBillBuyer() {
       const response = await apiPatch<{ recipientGstin: string | null }>(`/billing/${id}/buyer`, body);
       return response.data ?? null;
     },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bills'] });
+      queryClient.invalidateQueries({ queryKey: ['hospital', 'bill'] });
+    },
+  });
+}
+
+export type BillSupplyType = 'performed_at_hospital' | 'goods_shipped' | 'off_site_service';
+
+/** #265: where a draft bill is supplied. Billing / admin only; audited. */
+export function useSetBillSupplyType() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...body }: { id: string; supplyType: BillSupplyType; destinationStateCode: string | null; reason: string | null }) =>
+      (await apiPatch<{ supplyType: string }>(`/billing/${id}/supply-type`, body)).data ?? null,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['hospital', 'bills'] });
       queryClient.invalidateQueries({ queryKey: ['hospital', 'bill'] });

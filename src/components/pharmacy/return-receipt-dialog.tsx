@@ -116,7 +116,7 @@ export function ReturnReceiptDialog({
               <div className="rule" />
               <div className="row"><span className="b">{drugName}</span></div>
               {batch && <div className="row xs"><span className="muted">Batch</span><span className="font-mono">{batch}</span></div>}
-              <div className="row"><span className="muted">Qty returned</span><span className="b">{r.quantity}</span></div>
+              <div className="row"><span className="muted">Qty returned</span><span className="b">{r.quantityText ?? r.quantity}</span></div>
               {r.refundAmount != null && Number(r.refundAmount) > 0 && (
                 <>
                   <div className="rule" />

@@ -3303,8 +3303,8 @@ function DoneStep({ lines, result }: { lines: DraftLine[]; result: CommitInwardR
                     ▮ {code}
                   </button>
                 )}
-                <span className={cn('text-xs', r.status === 'error' ? 'text-red-600' : 'text-muted-foreground')}>
-                  {r.status === 'ok' ? 'Stock posted' : r.message}
+                <span className={cn('max-w-md text-xs', r.status === 'error' ? 'text-red-600' : r.warning ? 'text-amber-700' : 'text-muted-foreground')}>
+                  {r.status === 'ok' ? (r.warning ? `Stock posted. ${r.warning}` : 'Stock posted') : r.message}
                 </span>
               </div>
             </div>

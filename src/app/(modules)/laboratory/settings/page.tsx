@@ -20,7 +20,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Search, Plus, Pencil, Trash2, Beaker, RefreshCw,
-  CopyPlus, Download, Loader2, CheckCircle2, Eye, Ruler, AlertTriangle,
+  CopyPlus, Download, Loader2, CheckCircle2, Eye, Ruler, AlertTriangle, ShieldCheck, FileUp, Replace,
 } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import { LabUnitsManager } from '@/components/laboratory/lab-units-manager';
@@ -32,8 +32,13 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
+import { cn, getApiErrorMessage } from '@/lib/utils';
+import { formatINR } from '@/lib/money';
 import { toast } from 'sonner';
+import { apiErrorCode, useRangeStatus, type RangeFilter } from '@/hooks/use-lab-catalog';
+import { RangeApprovalSection } from '@/components/laboratory/catalog/range-approval';
+import { CatalogReviewSection, PriceReasonDialog, RetireDialog } from '@/components/laboratory/catalog/catalog-review';
+import { CatalogImportSection } from '@/components/laboratory/catalog/catalog-import';
 import {
   useLabTests,
   useCreateLabTest,
@@ -41,7 +46,7 @@ import {
   useUpdateLabTestPrice,
   useDeleteLabTest,
 } from '@/hooks/use-lab';
-import type { LabTestCatalog, LabTestParameter } from '@/hooks/use-lab';
+import type { LabTestCatalog, LabTestParameter, PriceConfirmation } from '@/hooks/use-lab';
 import {
   useLabTemplates,
   useCloneOneLabTemplate,
@@ -72,6 +77,7 @@ export default function LabSettingsPage() {
 }
 
 function LabSettingsPageInner() {
+  const { canEditCatalog } = useLabRole();
   return (
     <div className="space-y-4 animate-fade-in-up">
       <div className="flex items-center justify-between">
@@ -88,6 +94,20 @@ function LabSettingsPageInner() {
             <CopyPlus className="mr-1.5 h-4 w-4" />
             Import Templates
           </TabsTrigger>
+          <TabsTrigger value="ranges">
+            <ShieldCheck className="mr-1.5 h-4 w-4" />
+            Reference Ranges
+          </TabsTrigger>
+          <TabsTrigger value="review">
+            <AlertTriangle className="mr-1.5 h-4 w-4" />
+            Price &amp; Duplicates
+          </TabsTrigger>
+          {canEditCatalog && (
+            <TabsTrigger value="import">
+              <FileUp className="mr-1.5 h-4 w-4" />
+              Import File
+            </TabsTrigger>
+          )}
           <TabsTrigger value="units">
             <Ruler className="mr-1.5 h-4 w-4" />
             Units
@@ -100,6 +120,17 @@ function LabSettingsPageInner() {
         <TabsContent value="templates" className="pt-4">
           <TemplatesImportSection />
         </TabsContent>
+        <TabsContent value="ranges" className="pt-4">
+          <RangeApprovalSection />
+        </TabsContent>
+        <TabsContent value="review" className="pt-4">
+          <CatalogReviewSection />
+        </TabsContent>
+        {canEditCatalog && (
+          <TabsContent value="import" className="pt-4">
+            <CatalogImportSection />
+          </TabsContent>
+        )}
         <TabsContent value="units" className="pt-4">
           <LabUnitsManager />
         </TabsContent>
@@ -164,12 +195,19 @@ function TestCatalogSection() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editingTest, setEditingTest] = useState<LabTestCatalog | null>(null);
   const [previewTest, setPreviewTest] = useState<LabTestCatalog | null>(null);
+  const [retiring, setRetiring] = useState<LabTestCatalog | null>(null);
+  const [rangeStatus, setRangeStatus] = useState<RangeFilter>('all');
+  const [priceReview, setPriceReview] = useState(false);
+  const ranges = useRangeStatus();
+  const rangeByTest = new Map((ranges.data?.tests ?? []).map((t) => [t.testId, t]));
 
   const { data, isLoading, refetch } = useLabTests({
     search: search || undefined,
     page,
     limit: 20,
-  });
+    ...(rangeStatus !== 'all' ? { rangeStatus } : {}),
+    ...(priceReview ? { priceReview: true } : {}),
+  } as Parameters<typeof useLabTests>[0]);
   const deleteTest = useDeleteLabTest();
 
   const tests = data?.data ?? [];
@@ -210,6 +248,32 @@ function TestCatalogSection() {
             <TestFormDialog mode="create" onClose={() => setCreateOpen(false)} />
           </Dialog>
         )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        {([
+          ['all', 'All tests'],
+          ['not_signed_off', `Ranges not signed off (${ranges.data?.totals.testsNotSignedOff ?? 0})`],
+          ['pending', 'Ranges awaiting approval'],
+        ] as [RangeFilter, string][]).map(([value, label]) => (
+          <Button
+            key={value}
+            size="sm"
+            className="h-7 text-xs"
+            variant={rangeStatus === value ? 'default' : 'outline'}
+            onClick={() => { setRangeStatus(value); setPage(1); }}
+          >
+            {label}
+          </Button>
+        ))}
+        <Button
+          size="sm"
+          className="h-7 text-xs"
+          variant={priceReview ? 'default' : 'outline'}
+          onClick={() => { setPriceReview((v) => !v); setPage(1); }}
+        >
+          Needs price review
+        </Button>
       </div>
 
       {canEditCatalog && <CatalogReviewFlags />}
@@ -271,6 +335,16 @@ function TestCatalogSection() {
                             +{test.aliases!.length} alias{test.aliases!.length === 1 ? '' : 'es'}
                           </Badge>
                         )}
+                        {(rangeByTest.get(test.id)?.notSignedOff ?? 0) > 0 && (
+                          <Badge className="bg-amber-100 text-amber-900 text-[9px]">
+                            Not signed off ({rangeByTest.get(test.id)!.notSignedOff})
+                          </Badge>
+                        )}
+                        {(rangeByTest.get(test.id)?.pending ?? 0) > 0 && (
+                          <Badge className="bg-sky-100 text-sky-900 text-[9px]">
+                            {rangeByTest.get(test.id)!.pending} range{rangeByTest.get(test.id)!.pending === 1 ? '' : 's'} pending
+                          </Badge>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{test.testCode ?? test.code ?? '-'}</td>
@@ -286,9 +360,7 @@ function TestCatalogSection() {
                     <td className="px-4 py-3 text-muted-foreground">{test.sampleType || '-'}</td>
                     <td className="px-4 py-3 text-right text-muted-foreground">{test.turnaroundHours ? `${test.turnaroundHours}h` : '-'}</td>
                     <td className="px-4 py-3 text-right font-medium">
-                      {test.price != null
-                        ? Number(test.price).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })
-                        : '-'}
+                      {test.price != null ? formatINR(test.price) : '-'}
                     </td>
                     <td className="px-4 py-3">
                       <span className={cn(
@@ -327,6 +399,16 @@ function TestCatalogSection() {
                             />
                           )}
                         </Dialog>
+                        {test.isActive && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setRetiring(test)}
+                            title="Retire as a duplicate of another test"
+                          >
+                            <Replace className="h-4 w-4" />
+                          </Button>
+                        )}
                         {canEditCatalog && (
                           <Button
                             variant="ghost"
@@ -356,6 +438,14 @@ function TestCatalogSection() {
           </div>
         )}
       </div>
+
+      {retiring && (
+        <RetireDialog
+          retireId={retiring.id}
+          retireName={retiring.testName ?? 'Test'}
+          onClose={() => setRetiring(null)}
+        />
+      )}
 
       <LabReportPreviewDialog
         open={!!previewTest}
@@ -421,6 +511,7 @@ function TestFormDialog({
     ),
   );
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [priceQuestion, setPriceQuestion] = useState<string | null>(null);
 
   const createTest = useCreateLabTest();
   const updateTest = useUpdateLabTest();
@@ -428,6 +519,13 @@ function TestFormDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    await save({});
+  };
+
+  // The server refuses a price above a panel, or a rename that would carry a
+  // reference range with it, until it is told to go ahead (gap 369).
+  const save = async (extra: { priceConfirmation?: PriceConfirmation; confirmRangeReset?: boolean }) => {
+    setPriceQuestion(null);
     if (!fullEdit && isEdit && test) {
       // Supervisor edit: price-only
       try {
@@ -435,11 +533,16 @@ function TestFormDialog({
           id: test.id,
           price: formData.price || undefined,
           turnaroundHours: formData.turnaroundHours || undefined,
+          priceConfirmation: extra.priceConfirmation,
         });
         toast.success('Price updated');
         onClose();
       } catch (err: unknown) {
-        toast.error((err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Failed to update price');
+        if (apiErrorCode(err) === 'PRICE_ABOVE_PANEL' && !extra.priceConfirmation) {
+          setPriceQuestion(getApiErrorMessage(err));
+          return;
+        }
+        toast.error(getApiErrorMessage(err, 'Failed to update price'));
       }
       return;
     }
@@ -478,19 +581,37 @@ function TestFormDialog({
       // explicitly cloned from a template (createTest path doesn't carry
       // a templateId). Edits don't change isCustom — preserved server-side.
       ...(mode === 'create' ? { isCustom: true } : {}),
+      ...(extra.priceConfirmation ? { priceConfirmation: extra.priceConfirmation } : {}),
     };
 
     try {
-      if (isEdit && test) {
-        await updateTest.mutateAsync({ id: test.id, ...payload });
-        toast.success('Test updated');
-      } else {
-        await createTest.mutateAsync(payload);
-        toast.success('Test created');
-      }
+      const saved =
+        isEdit && test
+          ? await updateTest.mutateAsync({
+              id: test.id,
+              ...payload,
+              expectedRangeVersion: test.rangeVersion,
+              ...(extra.confirmRangeReset ? { confirmRangeReset: true } : {}),
+            })
+          : await createTest.mutateAsync(payload);
+      const waiting = saved?.rangeProposals ?? 0;
+      toast.success(
+        `${isEdit ? 'Test updated' : 'Test created'}${
+          waiting ? `. ${waiting} reference range(s) sent for pathologist approval; not in use yet` : ''
+        }`,
+      );
       onClose();
     } catch (err: unknown) {
-      toast.error((err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Failed to save');
+      const code = apiErrorCode(err);
+      if (code === 'PRICE_ABOVE_PANEL' && !extra.priceConfirmation) {
+        setPriceQuestion(getApiErrorMessage(err));
+        return;
+      }
+      if (code === 'RANGE_RENAME' && !extra.confirmRangeReset) {
+        if (window.confirm(getApiErrorMessage(err))) await save({ ...extra, confirmRangeReset: true });
+        return;
+      }
+      toast.error(getApiErrorMessage(err, 'Failed to save'));
     }
   };
 
@@ -610,7 +731,11 @@ function TestFormDialog({
             </div>
 
             <div className="col-span-12">
-              <Label className="block mb-2">Parameters ({parameters.length})</Label>
+              <Label className="block mb-1">Parameters ({parameters.length})</Label>
+              <p className="mb-2 text-[11px] text-amber-800">
+                Reference range and unit changes are sent to the pathologist and are not used on results or reports until
+                approved. Ranges shown here are the ones in use.
+              </p>
               <LabParameterBuilder value={parameters} onChange={setParameters} />
             </div>
 
@@ -675,6 +800,13 @@ function TestFormDialog({
         </DialogFooter>
       </form>
 
+      <PriceReasonDialog
+        key={priceQuestion ?? 'closed'}
+        message={priceQuestion}
+        onCancel={() => setPriceQuestion(null)}
+        onConfirm={(reason) => void save({ priceConfirmation: { confirmed: true, reason } })}
+      />
+
       <LabReportPreviewDialog
         open={previewOpen}
         onOpenChange={setPreviewOpen}
@@ -703,6 +835,7 @@ function TemplatesImportSection() {
   const { canEditCatalog } = useLabRole();
   const [search, setSearch] = useState('');
   const [previewTpl, setPreviewTpl] = useState<LabTestTemplate | null>(null);
+  const [priceQuestion, setPriceQuestion] = useState<{ tpl: LabTestTemplate; message: string } | null>(null);
   const { data, isLoading, refetch } = useLabTemplates({ limit: 200 });
   const cloneOne = useCloneOneLabTemplate();
   const cloneAll = useCloneAllLabTemplates();
@@ -732,15 +865,20 @@ function TemplatesImportSection() {
     return haystack.includes(q);
   });
 
-  const onCloneOne = async (tpl: LabTestTemplate) => {
+  const onCloneOne = async (tpl: LabTestTemplate, priceConfirmation?: PriceConfirmation) => {
+    setPriceQuestion(null);
     try {
-      const res = await cloneOne.mutateAsync({ templateId: tpl.id });
+      const res = await cloneOne.mutateAsync({ templateId: tpl.id, priceConfirmation });
       if ((res as { status?: string })?.status === 'already_cloned') {
         toast.info(`Already imported — opened existing catalog entry`);
       } else {
-        toast.success(`${tpl.name} added to catalog`);
+        toast.success(`${tpl.name} added to catalog. Its reference ranges wait for pathologist approval.`);
       }
     } catch (e: unknown) {
+      if (apiErrorCode(e) === 'PRICE_ABOVE_PANEL' && !priceConfirmation) {
+        setPriceQuestion({ tpl, message: getApiErrorMessage(e) });
+        return;
+      }
       toast.error((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Clone failed');
     }
   };
@@ -748,8 +886,8 @@ function TemplatesImportSection() {
   const onCloneAll = async (overwrite: boolean) => {
     if (!confirm(
       overwrite
-        ? 'Re-import every template and overwrite parameter schemas for tests already cloned? Local price/TAT customisations are preserved.'
-        : 'Import every published template into your catalog? Already-imported tests are skipped.',
+        ? 'Re-import every template and overwrite parameter schemas for tests already cloned? Local price/TAT customisations are preserved. Reference ranges in use stay; different template ranges are sent for pathologist approval.'
+        : 'Import every published template into your catalog? Already-imported tests are skipped. Reference ranges of new tests wait for pathologist approval.',
     )) return;
     try {
       const res = await cloneAll.mutateAsync({ overwriteExisting: overwrite });
@@ -894,6 +1032,13 @@ function TemplatesImportSection() {
           </tbody>
         </table>
       </div>
+
+      <PriceReasonDialog
+        key={priceQuestion?.message ?? 'closed'}
+        message={priceQuestion?.message ?? null}
+        onCancel={() => setPriceQuestion(null)}
+        onConfirm={(reason) => priceQuestion && void onCloneOne(priceQuestion.tpl, { confirmed: true, reason })}
+      />
 
       <LabReportPreviewDialog
         open={!!previewTpl}

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
 import { formatDate } from '@/lib/date-utils';
-import { cn } from '@/lib/utils';
+import { cn, getApiErrorMessage } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -233,11 +233,14 @@ export function BillingDashboard() {
                             // this dashboard's own list is keyed differently
                             // and is refreshed here.
                             finalize.mutate(bill.id, {
-                              onSuccess: () => {
+                              onSuccess: (finalized) => {
                                 queryClient.invalidateQueries({ queryKey: ['billing-admin'] });
                                 toast.success('Bill finalized successfully');
+                                for (const w of (finalized as { gstWarnings?: string[] } | null)?.gstWarnings ?? []) {
+                                  toast.warning(w, { duration: 10000 });
+                                }
                               },
-                              onError: () => toast.error('Failed to finalize bill'),
+                              onError: (e) => toast.error(getApiErrorMessage(e, 'Failed to finalize bill'), { duration: 12000 }),
                             })
                           }
                         >

@@ -42,5 +42,10 @@ export function useLabRole() {
     canApprove: isSupervisor,
     /** True when the user can edit lab catalog schema (parameters, name, ...). */
     canEditCatalog: isAdmin,
+    /**
+     * Gap 369: approve / reject / confirm reference ranges. The pathologist's
+     * role only: an admin sees the queue but cannot sign. Enforced on the server.
+     */
+    canSignRanges: role === 'lab_supervisor' || role === 'pathologist',
   };
 }

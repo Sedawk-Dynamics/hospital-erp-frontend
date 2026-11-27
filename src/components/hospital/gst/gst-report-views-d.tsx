@@ -295,17 +295,22 @@ const ewayCols: Column<EwayRow>[] = [
   {
     key: 'ewb',
     label: 'E-way bill',
+    // #266: the ACTIVE number. A cancelled one is in the history column.
     cell: (r) =>
-      r.ewayBillNumber ? (
-        <span className="font-mono text-xs">{r.ewayBillNumber}</span>
+      activeEway(r) ? (
+        <span className="font-mono text-xs">{activeEway(r)}</span>
       ) : (
         <span className="inline-flex items-center rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-900">
           Not recorded
         </span>
       ),
-    csv: (r) => r.ewayBillNumber ?? '',
+    csv: (r) => activeEway(r) ?? '',
   },
-  { key: 'ewbd', label: 'Bill date', cell: (r) => (r.ewayBillDate ? formatDate(r.ewayBillDate) : '—'), csv: (r) => (r.ewayBillDate ? formatDate(r.ewayBillDate) : '') },
+  {
+    key: 'ewbd', label: 'Bill date',
+    cell: (r) => (activeEway(r) && r.ewayBillDate ? formatDate(r.ewayBillDate) : '—'),
+    csv: (r) => (activeEway(r) && r.ewayBillDate ? formatDate(r.ewayBillDate) : ''),
+  },
   {
     // G-5 (gap #266): the portal state, with the portal's own words on a
     // refusal and the reason on a cancellation.
@@ -330,7 +335,56 @@ const ewayCols: Column<EwayRow>[] = [
       return detail ? `${st}: ${detail}` : st;
     },
   },
+  {
+    // #266: every cancelled e-way bill of this return, with when and why.
+    key: 'ewhist',
+    label: 'Cancelled before',
+    cell: (r) => {
+      const past = pastEway(r);
+      return past.length ? (
+        <ul className="space-y-0.5">
+          {past.map((h) => (
+            <li key={h.ewayBillNumber} className="max-w-[18rem] text-[11px] text-muted-foreground">
+              <span className="font-mono line-through">{h.ewayBillNumber}</span>
+              {h.ewayBillDate ? ` · ${formatDate(h.ewayBillDate)}` : ''}
+              {h.cancelledAt ? ` · cancelled ${formatDate(h.cancelledAt)}` : ' · cancelled'}
+              {h.reason ? ` — ${h.reason}` : ''}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        '—'
+      );
+    },
+    csv: (r) =>
+      pastEway(r)
+        .map((h) =>
+          [h.ewayBillNumber, h.ewayBillDate ? formatDate(h.ewayBillDate) : null, h.cancelledAt ? `cancelled ${formatDate(h.cancelledAt)}` : 'cancelled', h.reason]
+            .filter(Boolean)
+            .join(' '),
+        )
+        .join('; '),
+  },
 ];
+
+/** The return's live e-way bill number; a cancelled one covers no goods. */
+function activeEway(r: EwayRow): string | null {
+  return ewayStatusOf(r) === 'cancelled' ? null : r.ewayBillNumber;
+}
+
+/** The history, plus the number cancelled last while no new one has replaced it. */
+function pastEway(r: EwayRow): NonNullable<EwayRow['ewayHistory']> {
+  const past = r.ewayHistory ?? [];
+  return ewayStatusOf(r) === 'cancelled' && r.ewayBillNumber
+    ? [
+        ...past,
+        {
+          ewayBillNumber: r.ewayBillNumber, ewayBillDate: r.ewayBillDate, validUpto: r.ewayValidUpto ?? null, status: 'cancelled',
+          cancelledAt: r.ewayCancelledAt ?? null, reason: r.ewayCancelReason ?? null,
+        },
+      ]
+    : past;
+}
 
 function EwayStatusChip({ status }: { status: string }) {
   if (status === 'not_generated') {
@@ -363,8 +417,8 @@ export function EwayBillView({ q }: { q: Q }) {
       sum: (r) => r.consignmentValue, note: below ? `${below} movement(s) below the threshold are not listed` : undefined,
     }),
     'Above the threshold': d.lines('Above the threshold', ewayCols, rows, { sum: (r) => r.consignmentValue }),
-    'With an e-way bill': d.lines('With an e-way bill', ewayCols, rows.filter((r) => !!r.ewayBillNumber), { sum: (r) => r.consignmentValue }),
-    'Without one': d.lines('Without one', ewayCols, rows.filter((r) => !r.ewayBillNumber), { sum: (r) => r.consignmentValue }),
+    'With an e-way bill': d.lines('With an e-way bill', ewayCols, rows.filter((r) => !!activeEway(r)), { sum: (r) => r.consignmentValue }),
+    'Without one': d.lines('Without one', ewayCols, rows.filter((r) => !activeEway(r)), { sum: (r) => r.consignmentValue }),
   };
 
   return (

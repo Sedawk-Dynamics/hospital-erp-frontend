@@ -546,6 +546,9 @@ function ChargeLines({ preview }: { preview: DiagnosticBillingPreview | null }) 
           <span className="shrink-0 font-medium">{money(l.amount)}</span>
         </div>
       ))}
+      {preview.gstWarning ? (
+        <p className={`pt-1 text-[11px] ${preview.gstBlocked ? 'text-red-700' : 'text-amber-700'}`}>{preview.gstWarning}</p>
+      ) : null}
       {preview.unpricedCount > 0 && (
         <p className="pt-1 text-[10px] italic text-amber-700">
           {preview.unpricedCount} item(s) have no price in the catalog and are not billed.

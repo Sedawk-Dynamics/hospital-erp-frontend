@@ -147,6 +147,8 @@ export interface BatchEconomics {
 
 export interface DispenseRecord {
   id: string;
+  /** 345: the quantity in words ("2 strips (20 tablets)"). */
+  quantityText?: string | null;
   tenantId?: string;
   prescriptionId: string;
   prescriptionItemId: string;
@@ -173,6 +175,8 @@ export interface PharmacyReturn {
   patientId: string | null;
   supplierId: string | null;
   quantity: number;
+  /** 345: the quantity in words. */
+  quantityText?: string | null;
   reason: string | null;
   status: 'pending' | 'processed' | 'rejected';
   processedBy: string | null;
@@ -207,6 +211,10 @@ export interface ReturnableDispense {
   unitPrice: number | null;
   quantityDispensed: number;
   remaining: number;
+  /** 345: the units the line was sold in, and the counts in words. */
+  units?: { packSize: number; packNoun: string; looseNoun: string };
+  remainingText?: string;
+  quantityDispensedText?: string;
   // §4.4: line marked non-returnable on the bill — cannot be returned.
   nonReturnable?: boolean;
   dispensedAt: string;
@@ -624,6 +632,8 @@ export interface ScanResult {
     dosageForm: string | null;
     packSize: number | null;
     looseUnitLabel: string | null;
+    /** 345: the pack noun ("Strip"). */
+    unitOfMeasurement?: string | null;
     price: number | null;
     hsnCode: string | null;
   };
@@ -739,6 +749,8 @@ export interface CommitInwardResult {
     formularyId?: string;
     batchId?: string;
     message?: string;
+    /** #262: received, but the supplier's GST rate was not legal on the invoice date. */
+    warning?: string;
   }>;
   // G2: invoice purchase economics (gross → −line disc → −bill disc → net).
   purchaseSummary?: {
@@ -847,7 +859,11 @@ export function useImportFormularyBulk() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: { drugMasterIds: string[] }) => {
-      const response = await apiPost<{ requested: number; created: number; skipped: number }>(
+      const response = await apiPost<{
+        requested: number; created: number; skipped: number;
+        /** #262: catalogue rows left out because their GST rate is no longer legal. */
+        rejected?: Array<{ drugMasterId: string; drugName: string; reason: string }>;
+      }>(
         '/pharmacy/formulary/import-bulk',
         data,
       );
@@ -1355,6 +1371,9 @@ export interface PharmacyBillItem {
   // belongs to, and the receipt is the paper that goes out with the medicine.
   hsnSacCode?: string | null;
   gstTreatment?: string | null;
+  /** 345: the quantity in words, and the unit the rate is for. Null on old bills. */
+  quantityText?: string | null;
+  rateUnit?: string | null;
 }
 
 /** The GST block carried on a counter-sale receipt. Mirrors the server's. */
@@ -1492,6 +1511,8 @@ export interface PharmacyCreditNote {
     igstAmount: number | string;
     cessAmount: number | string;
     totalAmount: number | string;
+    /** 345: the returned quantity in words. */
+    quantityText?: string | null;
   }>;
 }
 
@@ -1512,6 +1533,9 @@ export interface SalePreviewLine {
   igstAmount: number;
   totalAmount: number;
   taxReason: string;
+  /** 345: the line's quantity and the batch's stock in words. */
+  quantityText?: string;
+  availableText?: string;
 }
 
 export interface SalePreview {
@@ -1523,6 +1547,8 @@ export interface SalePreview {
    * is still time to fix it, rather than with the patient standing there.
    */
   blockers?: string[];
+  /** #262: the items behind a retired-GST-rate block, to mark them in the cart. */
+  retiredRates?: Array<{ drugName: string; ratePercent: number; hsnCode?: string | null; source?: string | null }>;
   totals: {
     taxableValue: number; cgstAmount: number; sgstAmount: number;
     igstAmount: number; taxAmount: number; totalAmount: number;
@@ -1786,6 +1812,8 @@ export function useReturnableDispenses(params: {
 // G3: full return record + hospital header for the acknowledgement receipt.
 export interface ReturnReceipt {
   return: PharmacyReturn & {
+    /** 345: the returned quantity in words. */
+    quantityText?: string | null;
     drugBatch?: { id: string; batchNumber: string; expiryDate?: string; drug?: { id: string; drugName: string; looseUnitLabel?: string | null } };
     drug?: { id: string; drugName: string; looseUnitLabel?: string | null } | null;
     patient?: { id: string; mrn?: string | null; firstName: string; lastName: string | null; phone?: string | null };
@@ -2481,6 +2509,9 @@ export interface StockLedgerEntry {
   batchNumber: string;
   quantityIn: number;
   quantityOut: number;
+  /** 345: the quantity and the running balance in words. */
+  quantityText?: string;
+  balanceText?: string | null;
   party: string | null;
   /** Gap 347: who made the movement (null where never recorded). */
   by?: string | null;

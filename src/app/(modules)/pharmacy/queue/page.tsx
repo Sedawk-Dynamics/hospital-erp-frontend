@@ -39,7 +39,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { formatDateTimeAmPm } from '@/lib/date-utils';
 import { calcQuantityFromStrings } from '@/lib/dosage-calc';
-import { formatBaseQty, packLooseBreakdown } from '@/lib/pharmacy-units';
+import { formatBaseQty, formatDrugQty } from '@/lib/pharmacy-units';
 import {
   usePrescriptionQueue,
   useSetPharmacyOrderStatus,
@@ -266,10 +266,14 @@ export default function PrescriptionQueuePage() {
                                 .join(' · ');
                               const dosageForm = it.drug?.dosageForm ?? null;
                               const looseLabel = it.drug?.looseUnitLabel ?? null;
-                              // Total as tablets/caps/ml, plus a pack + loose breakdown
+                              // 345: packs plus tablets, in the words the bill will use,
                               // so the pharmacist knows how to pick stock.
-                              const totalLabel = qty != null ? formatBaseQty(qty, dosageForm, looseLabel) : null;
-                              const breakdown = qty != null ? packLooseBreakdown(qty, it.drug?.packSize, dosageForm, looseLabel) : null;
+                              const totalLabel =
+                                qty == null
+                                  ? null
+                                  : (it.drug?.packSize ?? 0) > 1
+                                    ? formatDrugQty(qty, { ...it.drug, drugName: it.drugName })
+                                    : formatBaseQty(qty, dosageForm, looseLabel);
                               return (
                                 <div key={it.id} className="flex items-start gap-1.5">
                                   <Pill className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -289,9 +293,6 @@ export default function PrescriptionQueuePage() {
                                             >
                                               {totalLabel}
                                             </span>
-                                            {breakdown && (
-                                              <span className="text-muted-foreground"> ({breakdown})</span>
-                                            )}
                                           </>
                                         ) : it.isPrn ? (
                                           <>{sig ? ' · ' : ''}<span className="font-medium">PRN</span></>

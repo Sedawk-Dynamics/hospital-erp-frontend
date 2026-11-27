@@ -32,7 +32,7 @@ apiClient.interceptors.response.use(
     // A 401 from a sign-in endpoint is a wrong password, not an expired session.
     // Refreshing and redirecting to /login reloaded the page, which dropped the
     // error and reset the form to the Patient tab (gap 370).
-    const isSignInCall = /\/auth\/(login|otp\/|register|refresh|forgot-password|reset-password)/.test(
+    const isSignInCall = /\/auth\/(login|otp\/|pin\/login|register|refresh|forgot-password|reset-password)/.test(
       originalRequest?.url ?? '',
     );
     if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isSignInCall) {

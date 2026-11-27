@@ -1293,7 +1293,7 @@ function DischargeDialog({
     // `force` skips BOTH discharge gates (published summary + cleared bill) and
     // the server requires a reason for it — the discharge notes are that reason.
     mutationFn: async (opts?: { force?: boolean; payerCaseId?: string; releaseUndertaking?: string }) =>
-      (await apiPatch<{ dischargeBilling?: DischargeBillingSummary | null }>(
+      (await apiPatch<{ dischargeBilling?: DischargeBillingSummary | null; dischargeBillingError?: string | null }>(
         `/clinical/admissions/${admission.id}/discharge`,
         {
           dischargeDate,
@@ -1301,9 +1301,13 @@ function DischargeDialog({
           ...(opts?.force ? { force: true, reason: notes.trim() } : {}),
           ...(opts?.payerCaseId ? { payerCaseId: opts.payerCaseId, releaseUndertaking: opts.releaseUndertaking } : {}),
         },
-      )).data?.dischargeBilling ?? null,
-    onSuccess: (billing) => {
+      )).data ?? null,
+    onSuccess: (result) => {
+      const billing = result?.dischargeBilling ?? null;
       toast.success('Patient discharged successfully');
+      // #264: the final bill can be refused (a taxed service with no SAC). The
+      // charges are still on the stay's draft bill — say so, and why.
+      if (result?.dischargeBillingError) toast.error(result.dischargeBillingError, { duration: 15000 });
       queryClient.invalidateQueries({ queryKey: ['hospital', 'admissions'] });
       queryClient.invalidateQueries({ queryKey: ['hospital', 'beds'] });
       queryClient.invalidateQueries({ queryKey: ['hospital', 'occupancy'] });

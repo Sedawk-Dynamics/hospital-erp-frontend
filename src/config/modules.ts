@@ -82,6 +82,8 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       // The accounts/GST team owns these; the endpoints are gated on
       // billing:approve, which is why the entry is not shown to a doctor.
       { label: 'GST Reports', href: '/hospital/gst-reports', icon: FileSpreadsheet, restrictTo: ['admin', 'super_admin', 'billing_admin', 'insurance_staff', 'front_desk'] },
+      // #262: Finance has no inventory module, so it gets the same screen here.
+      { label: 'Retired GST rates', href: '/hospital/retired-gst', icon: Percent, restrictTo: ['billing_admin'] },
       { label: 'Settings', href: '/hospital/settings', icon: Settings },
       { label: 'PDF Builder', href: '/hospital/pdf-builder', icon: FileText, restrictTo: ['admin', 'super_admin'] },
       { label: 'Dashboard', href: '/hospital/dashboard', icon: LayoutDashboard },
@@ -266,6 +268,8 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleConfig> = {
       // the Controlled-Drug Register, which is the inspector's view.
       { label: 'Drug Orders', href: '/inventory/drug-purchase-orders', icon: ShoppingCart },
       { label: 'Drug GST', href: '/inventory/drug-gst', icon: FileText },
+      // #262: medicines on a GST rate that is no longer legal, and the rate-list import.
+      { label: 'Retired GST rates', href: '/inventory/retired-gst', icon: Percent, restrictTo: ['admin', 'super_admin', 'pharmacy_admin', 'inventory_manager'] },
       { label: 'Reports', href: '/inventory/reports', icon: BarChart3 },
       { label: 'Audit Logs', href: '/inventory/audit-logs', icon: FileCheck },
       { label: 'Settings', href: '/inventory/settings', icon: Settings },

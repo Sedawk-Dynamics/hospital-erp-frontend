@@ -35,7 +35,11 @@ import { apiGet } from '@/lib/api';
 import { toast } from 'sonner';
 import { formatDate, formatTime24, toInputDateStr } from '@/lib/date-utils';
 import { calcQuantityFromStrings } from '@/lib/dosage-calc';
-import { looseUnitLabel, packSummary, formatBaseQty, sellingUnits, formatSaleQty } from '@/lib/pharmacy-units';
+import {
+  clampMessage, formatBaseQty, formatDrugQty, formatQty, formatSaleQty, maxSaleQty, qtyUnitsOf, toBaseQty,
+  type QtyUnits,
+  roundPharmacyTotal,
+} from '@/lib/pharmacy-units';
 import {
   useFormulary,
   useBatchesByDrug,
@@ -178,8 +182,12 @@ const toNum = (n: number | string | null | undefined): number => {
 
 // Base (loose) units this line represents, accounting for pack vs loose selling.
 function baseQtyOf(item: CartItem): number {
-  const pack = item.packSize > 0 ? item.packSize : 1;
-  return item.saleUnit === 'loose' ? item.quantity : item.quantity * pack;
+  return toBaseQty(item.quantity, item.saleUnit, item.packSize);
+}
+
+// 345: the row's units — one set of words for the field, the clamp and the bill.
+function unitsOf(item: CartItem): QtyUnits {
+  return { packSize: item.packSize > 0 ? item.packSize : 1, packNoun: item.packLabel, looseNoun: item.looseUnitLabel };
 }
 
 function computeItemGross(item: CartItem): number {
@@ -479,8 +487,10 @@ function PharmacyPOS() {
           quantity = Math.max(1, Math.min(target, batch.quantityInStock));
         } else {
           saleUnit = pack > 1 ? c.saleUnit : 'pack';
-          const maxInUnit =
-            saleUnit === 'loose' ? batch.quantityInStock : Math.floor(batch.quantityInStock / (pack || 1));
+          // 345: a batch holding less than one whole strip can only be sold by
+          // the tablet — it used to be offered as "1 strip" it did not have.
+          if (saleUnit === 'pack' && maxSaleQty(batch.quantityInStock, 'pack', pack) === 0) saleUnit = 'loose';
+          const maxInUnit = maxSaleQty(batch.quantityInStock, saleUnit, pack);
           quantity = Math.max(1, Math.min(c.quantity || 1, maxInUnit || 1));
         }
 
@@ -495,8 +505,8 @@ function PharmacyPOS() {
           // 345: one pair of unit nouns, from the batch's drug when it has one.
           ...(batch.drug
             ? (() => {
-                const u = sellingUnits({ ...batch.drug, packSize: pack });
-                return { looseUnitLabel: u.looseLabel, packLabel: u.packLabel };
+                const u = qtyUnitsOf({ ...batch.drug, packSize: pack });
+                return { looseUnitLabel: u.looseNoun, packLabel: u.packNoun };
               })()
             : { looseUnitLabel: c.looseUnitLabel, packLabel: c.packLabel }),
           taxPercent: batch.drug?.taxPercent != null ? toNum(batch.drug.taxPercent) : c.taxPercent,
@@ -540,6 +550,11 @@ function PharmacyPOS() {
     setCart((prev) => {
       const existing = prev.find((c) => c.rowKey === rowKey);
       if (existing) {
+        // 345: adding it again (a second scan) is clamped like the + button.
+        if (existing.availableQty > 0 && existing.quantity + 1 > maxSaleQty(existing.availableQty, existing.saleUnit, existing.packSize)) {
+          toast.warning(clampMessage(existing.availableQty, existing.saleUnit, unitsOf(existing)));
+          return prev;
+        }
         return prev.map((c) =>
           c.rowKey === rowKey ? { ...c, quantity: c.quantity + 1 } : c,
         );
@@ -564,8 +579,8 @@ function PharmacyPOS() {
           purchasePrice: 0,
           packSize: pack,
           ...(() => {
-            const u = sellingUnits({ ...item, packSize: pack });
-            return { looseUnitLabel: u.looseLabel, packLabel: u.packLabel };
+            const u = qtyUnitsOf({ ...item, packSize: pack });
+            return { looseUnitLabel: u.looseNoun, packLabel: u.packNoun };
           })(),
           dosageForm: item.dosageForm ?? null,
           taxPercent: item.taxPercent != null ? toNum(item.taxPercent) : 0,
@@ -602,6 +617,7 @@ function PharmacyPOS() {
         price: res.drug.price,
         packSize: res.drug.packSize,
         looseUnitLabel: res.drug.looseUnitLabel,
+        unitOfMeasurement: res.drug.unitOfMeasurement ?? null,
         taxPercent: null,
       } as unknown as FormularyItem);
       toast.success(
@@ -619,8 +635,7 @@ function PharmacyPOS() {
   // Max quantity in the row's current unit (packs vs loose), given base stock.
   const maxQtyInUnit = (c: CartItem): number => {
     if (c.availableQty <= 0) return Infinity; // batch not chosen yet — no cap
-    const pack = c.packSize > 0 ? c.packSize : 1;
-    return c.saleUnit === 'loose' ? c.availableQty : Math.floor(c.availableQty / pack);
+    return maxSaleQty(c.availableQty, c.saleUnit, c.packSize);
   };
 
   const updateQty = (rowKey: string, delta: number) => {
@@ -631,7 +646,7 @@ function PharmacyPOS() {
           const max = maxQtyInUnit(c);
           const newQty = Math.max(0, c.quantity + delta);
           if (newQty > max) {
-            toast.warning(`Max available: ${formatSaleQty(max, saleUnitNoun(c))}`);
+            toast.warning(clampMessage(c.availableQty, c.saleUnit, unitsOf(c)));
             return c;
           }
           return { ...c, quantity: newQty };
@@ -649,7 +664,7 @@ function PharmacyPOS() {
         if (!raw || Number.isNaN(parsed) || parsed < 0) return { ...c, quantity: 0 };
         const max = maxQtyInUnit(c);
         if (parsed > max) {
-          toast.warning(`Max available: ${formatSaleQty(max, saleUnitNoun(c))}`);
+          toast.warning(clampMessage(c.availableQty, c.saleUnit, unitsOf(c)));
           return { ...c, quantity: max === Infinity ? parsed : max };
         }
         return { ...c, quantity: parsed };
@@ -664,6 +679,11 @@ function PharmacyPOS() {
         if (c.rowKey !== rowKey) return c;
         const next = { ...c, saleUnit: unit };
         const max = maxQtyInUnit(next);
+        // 345: less than one whole pack left — nothing to sell in that unit.
+        if (max === 0) {
+          toast.warning(clampMessage(c.availableQty, unit, unitsOf(c)));
+          return c;
+        }
         return { ...next, quantity: Math.max(1, Math.min(c.quantity || 1, max === Infinity ? c.quantity || 1 : max)) };
       }),
     );
@@ -702,8 +722,9 @@ function PharmacyPOS() {
     const subtotal = cart.reduce((s, c) => s + computeItemGross(c), 0);
     const totalDiscount = cart.reduce((s, c) => s + computeItemGross(c) * (c.discount / 100), 0);
     const afterDiscount = subtotal - totalDiscount;
-    const rounded = Math.round(afterDiscount);
-    const roundOff = Math.round((rounded - afterDiscount) * 100) / 100;
+    // #345: the same rule the server applies — loose tablets never round up past the MRP.
+    const hasLoose = cart.some((c) => c.saleUnit === 'loose' && c.packSize > 1);
+    const { rounded, roundOff } = roundPharmacyTotal(afterDiscount, hasLoose);
     return { subtotal, totalDiscount, afterDiscount, rounded, roundOff };
   }, [cart]);
 
@@ -785,7 +806,14 @@ function PharmacyPOS() {
   // A bill needs a cart with a batch per line. Patient AND prescription are
   // both OPTIONAL — a walk-in / OTC counter sale needs neither. For an IP Rx we
   // dispense straight from the prescription (FEFO) → only the Rx is required.
-  const canCreateBill = isIp ? !!activePrescriptionId : cart.length > 0 && cartHasAllBatches;
+  // #262: a cart the server will refuse (a retired GST rate, an unclassified
+  // medicine) is stopped here, before any money is asked for. An IP dispense is
+  // left to the server, which lets a life-saving drug through.
+  const billBlockers = isIp ? [] : salePreview.data?.blockers ?? [];
+  const retiredNames = new Set((salePreview.data?.retiredRates ?? []).map((r) => r.drugName));
+  const canCreateBill = isIp
+    ? !!activePrescriptionId
+    : cart.length > 0 && cartHasAllBatches && billBlockers.length === 0;
 
   const PAYMENT_METHOD_MAP: Record<string, PharmacyPaymentMethod> = {
     Cash: 'cash',
@@ -1006,6 +1034,7 @@ function PharmacyPOS() {
     }
     if (cart.length === 0) return toast.error('Add at least one medicine to the cart');
     if (!cartHasAllBatches) return toast.error('Please select a batch for each medicine');
+    if (billBlockers.length) return toast.error(billBlockers.join(' '));
 
     await runSale();
   };
@@ -1330,7 +1359,7 @@ function PharmacyPOS() {
                       <p className="mt-0.5 text-[10px]">
                         {inStock ? (
                           <span className="text-emerald-600">
-                            In stock: {formatSaleQty(item.totalStock ?? 0, sellingUnits(item).looseLabel)}
+                            In stock: {formatDrugQty(item.totalStock ?? 0, item)}
                           </span>
                         ) : (
                           <span className="font-medium text-amber-600">Out of stock — tap for alternatives</span>
@@ -1343,13 +1372,16 @@ function PharmacyPOS() {
                           {item.price != null ? `₹${toNum(item.price).toFixed(2)}` : '-'}
                           {item.price != null && (
                             <span className="text-[10px] font-normal text-muted-foreground">
-                              {' '}/{looseUnitLabel(item.dosageForm, item.looseUnitLabel)}
+                              {' '}/{qtyUnitsOf(item).looseNoun}
                             </span>
                           )}
                         </p>
-                        {packSummary(item.packSize, item.dosageForm, item.looseUnitLabel) && (
+                        {/* 345: the price of a whole pack beside the single unit. */}
+                        {qtyUnitsOf(item).packSize > 1 && (
                           <p className="text-[10px] text-muted-foreground">
-                            {packSummary(item.packSize, item.dosageForm, item.looseUnitLabel)}
+                            {item.price != null && `₹${(toNum(item.price) * qtyUnitsOf(item).packSize).toFixed(2)} / ${qtyUnitsOf(item).packNoun} of `}
+                            {item.price == null && `1 ${qtyUnitsOf(item).packNoun} = `}
+                            {formatSaleQty(qtyUnitsOf(item).packSize, qtyUnitsOf(item).looseNoun)}
                           </p>
                         )}
                       </div>
@@ -1411,10 +1443,15 @@ function PharmacyPOS() {
                         {item.genericName && (
                           <p className="text-xs text-muted-foreground">{item.genericName}</p>
                         )}
-                        {packSummary(item.packSize, item.dosageForm, item.looseUnitLabel) && (
+                        {item.packSize > 1 && (
                           <p className="text-[10px] text-muted-foreground">
                             <Package className="mr-0.5 inline h-2.5 w-2.5" />
-                            {packSummary(item.packSize, item.dosageForm, item.looseUnitLabel)}
+                            1 {item.packLabel} = {formatSaleQty(item.packSize, item.looseUnitLabel)}
+                          </p>
+                        )}
+                        {retiredNames.has(item.drugName) && (
+                          <p className="text-[10px] font-semibold text-error">
+                            GST rate no longer legal — cannot be billed until it is corrected
                           </p>
                         )}
                         {item.prescriptionItemId && (
@@ -1440,7 +1477,7 @@ function PharmacyPOS() {
                                   >
                                     {baseQtyOf(item) < (item.rxQuantity ?? 0)
                                       ? `— SHORT by ${formatBaseQty((item.rxQuantity ?? 0) - baseQtyOf(item), item.dosageForm, item.looseUnitLabel)}`
-                                      : `(billing ${formatBaseQty(baseQtyOf(item), item.dosageForm, item.looseUnitLabel)})`}
+                                      : `(billing ${formatQty(baseQtyOf(item), unitsOf(item))})`}
                                   </span>
                                 )}
                               </p>
@@ -1550,6 +1587,13 @@ function PharmacyPOS() {
                             {(['pack', 'loose'] as const).map((u) => (
                               <button
                                 key={u}
+                                type="button"
+                                aria-pressed={item.saleUnit === u}
+                                title={
+                                  u === 'pack'
+                                    ? `Sell by the ${item.packLabel}`
+                                    : `Sell by the single ${item.looseUnitLabel || 'unit'} (type more than one ${item.packLabel} for a mixed sale)`
+                                }
                                 onClick={() => toggleSaleUnit(item.rowKey, u)}
                                 className={cn(
                                   'rounded border px-1.5 py-0.5 text-[10px] capitalize transition-colors',
@@ -1566,15 +1610,15 @@ function PharmacyPOS() {
                         {item.packSize <= 1 && (
                           <p className="text-center text-[10px] text-muted-foreground mt-0.5">{item.packLabel}</p>
                         )}
+                        {/* 345: what is being sold, in the words the bill will print. */}
+                        {item.packSize > 1 && item.quantity > 0 && (
+                          <p className="text-center text-[11px] font-medium text-foreground mt-0.5">
+                            {formatQty(baseQtyOf(item), unitsOf(item))}
+                          </p>
+                        )}
                         {item.availableQty > 0 && (
                           <p className="text-center text-[10px] text-muted-foreground mt-0.5">
-                            Avl: {formatSaleQty(
-                              item.saleUnit === 'loose'
-                                ? item.availableQty
-                                : Math.floor(item.availableQty / (item.packSize || 1)),
-                              saleUnitNoun(item),
-                            )}
-                            {item.packSize > 1 && ` (1 ${item.packLabel} = ${formatSaleQty(item.packSize, item.looseUnitLabel)})`}
+                            Avl: {formatQty(item.availableQty, unitsOf(item))}
                           </p>
                         )}
                       </td>
@@ -1645,8 +1689,8 @@ function PharmacyPOS() {
           {cart.length > 0 && (
             <div className="border-t px-3 py-2 bg-muted/20 flex justify-between items-center text-xs text-muted-foreground">
               <span>{cart.length} item{cart.length !== 1 ? 's' : ''} in cart</span>
-              <span title="Loose units (tablets/caps/ml), not packs">
-                Total Units: {cart.reduce((s, c) => s + baseQtyOf(c), 0)}
+              <span title="Single units (tablets, bottles…), not packs">
+                Total single units: {cart.reduce((s, c) => s + baseQtyOf(c), 0)}
               </span>
             </div>
           )}
@@ -2229,12 +2273,13 @@ function PharmacyPOS() {
                               {isSelected && <Check className="h-3.5 w-3.5 text-primary" />}
                             </div>
                             <p className={cn('text-xs', expiringSoon ? 'text-amber-600' : 'text-muted-foreground')}>
-                              Exp: {formatDate(batch.expiryDate)} ({days}d) · Stock: {batch.quantityInStock}
+                              Exp: {formatDate(batch.expiryDate)} ({days}d) · Stock: {formatDrugQty(batch.quantityInStock, batch.drug)}
                             </p>
                           </div>
                           {batch.sellingPrice != null && (
                             <p className="shrink-0 font-semibold text-sm">
                               ₹{toNum(batch.sellingPrice).toFixed(2)}
+                              <span className="text-[10px] font-normal text-muted-foreground"> /{qtyUnitsOf(batch.drug).looseNoun}</span>
                             </p>
                           )}
                         </button>

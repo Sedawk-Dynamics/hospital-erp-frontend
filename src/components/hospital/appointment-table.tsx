@@ -12,6 +12,7 @@ import {
 } from './appointment-row-actions';
 import { cn } from '@/lib/utils';
 import { formatDate, formatTime24 } from '@/lib/date-utils';
+import { rupees, WAIVED_LABEL } from '@/lib/follow-up-fee';
 import type { Appointment } from '@/types';
 
 interface AppointmentTableProps {
@@ -188,11 +189,17 @@ export function AppointmentTable({
                             {apt.paymentInfo.paymentStatus === 'paid_at_frontdesk' && 'Paid at Desk'}
                             {apt.paymentInfo.paymentStatus === 'pay_at_frontdesk' && 'Pay at Desk'}
                             {apt.paymentInfo.paymentStatus === 'pending' && 'Payment Pending'}
-                            {apt.paymentInfo.paymentStatus === 'waived' && 'Waived (Follow-up)'}
+                            {apt.paymentInfo.paymentStatus === 'waived' &&
+                              (apt.paymentInfo.isFreeFollowUp === false ? 'No charge' : WAIVED_LABEL)}
                           </span>
-                          {apt.paymentInfo.balanceDue > 0 && (
-                            <p className="text-[10px] text-on-surface-variant mt-0.5 font-label">
-                              &#8377;{apt.paymentInfo.balanceDue.toLocaleString('en-IN')} due
+                          {/* The bill's own amount, so the row agrees with it (gap 331). */}
+                          <p className="text-[10px] text-on-surface-variant mt-0.5 font-label">
+                            {rupees(apt.paymentInfo.totalAmount)}
+                            {apt.paymentInfo.balanceDue > 0 && ` · ${rupees(apt.paymentInfo.balanceDue)} due`}
+                          </p>
+                          {apt.paymentInfo.feeLabel && (
+                            <p className="max-w-[180px] text-[10px] text-on-surface-variant font-label">
+                              {apt.paymentInfo.feeLabel}
                             </p>
                           )}
                         </div>

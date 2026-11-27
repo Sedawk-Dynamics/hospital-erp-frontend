@@ -5,6 +5,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPatch, apiPost, apiPut, apiDelete } from '@/lib/api';
+import type { ServiceGstImportRow } from '@/lib/service-gst-import';
 
 export type ServiceTariffCategory =
   | 'consultation' | 'procedure' | 'lab' | 'imaging' | 'pharmacy'
@@ -76,6 +77,28 @@ export function useServiceTariffs(params?: TariffListParams) {
     queryFn: async () => {
       const response = await apiGet<ServiceTariff[]>('/billing/tariffs', { params });
       return { data: response.data, meta: response.meta };
+    },
+  });
+}
+
+/**
+ * #264: EVERY service, page by page. The classification screen showed the first
+ * 200 only, so a hospital with more could not classify the rest there.
+ */
+export function useAllServiceTariffs(params?: Omit<TariffListParams, 'page' | 'limit'>) {
+  return useQuery({
+    queryKey: tariffKeys.list({ ...params, limit: -1 }),
+    queryFn: async () => {
+      const PAGE = 500;
+      const rows: ServiceTariff[] = [];
+      for (let page = 1; page <= 100; page++) {
+        const response = await apiGet<ServiceTariff[]>('/billing/tariffs', { params: { ...params, page, limit: PAGE } });
+        const batch = response.data ?? [];
+        rows.push(...batch);
+        const total = Number((response.meta as { total?: number } | undefined)?.total ?? NaN);
+        if (batch.length < PAGE || (Number.isFinite(total) && rows.length >= total)) break;
+      }
+      return rows;
     },
   });
 }
@@ -203,6 +226,86 @@ export function useSetTariffGstApproval() {
       (await apiPatch<ServiceTariff>(`/billing/tariffs/${id}/gst-approval`, { approved })).data,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: tariffKeys.all });
+    },
+  });
+}
+
+// ── #358: radiology ────────────────────────────────────────────────────────
+
+export interface RadiologyApprovalResult {
+  approved: Array<{ id: string; serviceName: string }>;
+  skipped: Array<{ id: string; serviceName: string | null; reason: string }>;
+}
+
+/** Approve the selected studies as diagnostic, exempt at 0%. Finance / GST admin only. */
+export function useApproveRadiologyDiagnostic() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids: string[]) =>
+      (await apiPost<RadiologyApprovalResult>('/billing/tariffs/radiology/approve-diagnostic', { ids })).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: tariffKeys.all });
+    },
+  });
+}
+
+/** The API answers with the database category; the form sends 'imaging'. */
+export const isRadiologyTariff = (t: Pick<ServiceTariff, 'category'>) =>
+  String(t.category) === 'radiology' || String(t.category) === 'imaging';
+
+/** A study's GST is set only once the finance / GST admin has approved it. */
+export const radiologyGstSet = (t: ServiceTariff, now: Date = new Date()) =>
+  !!t.gstApproved && !!t.gstTreatment && (!t.gstEffectiveFrom || new Date(t.gstEffectiveFrom) <= now);
+
+// ── #264: the services list import ─────────────────────────────────────────
+
+export interface ServiceGstPreviewRow {
+  rowNumber: number;
+  serviceCode: string | null;
+  serviceName: string | null;
+  status: 'ready' | 'unchanged' | 'error';
+  errors: string[];
+  warnings: string[];
+  tariffId: string | null;
+  matchedName: string | null;
+  category: string | null;
+  current: { sacCode: string | null; treatment: string | null; gstPercent: number; gstApproved: boolean } | null;
+  next: { sacCode: string; treatment: string; gstPercent: number } | null;
+}
+
+export const fetchServiceGstTemplate = async () =>
+  (
+    await apiGet<{ columns: string[]; rows: Array<Array<string | number>>; notes: string[] }>(
+      '/billing/tariffs/gst-import/template',
+    )
+  ).data;
+
+export function usePreviewServiceGstImport() {
+  return useMutation({
+    mutationFn: async (rows: ServiceGstImportRow[]) =>
+      (
+        await apiPost<{
+          rows: ServiceGstPreviewRow[];
+          summary: { total: number; ready: number; unchanged: number; errors: number };
+        }>('/billing/tariffs/gst-import/preview', { rows })
+      ).data,
+  });
+}
+
+export function useApplyServiceGstImport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (rows: ServiceGstImportRow[]) =>
+      (
+        await apiPost<{
+          applied: number;
+          failed: number;
+          results: Array<{ rowNumber: number; serviceName: string | null; applied: boolean; reason: string | null }>;
+        }>('/billing/tariffs/gst-import/apply', { rows })
+      ).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: tariffKeys.all });
+      qc.invalidateQueries({ queryKey: ['gst-report', 'missing-sac'] });
     },
   });
 }

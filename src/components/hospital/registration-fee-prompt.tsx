@@ -23,8 +23,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Loader2, ReceiptText } from 'lucide-react';
 import { useAppointmentChargePreview } from '@/hooks/use-hospital';
-
-const inr = (n: number) => `₹${n.toLocaleString('en-IN')}`;
+import { consultationFeeText, followUpNote, isWaivedFollowUp, rupees as inr } from '@/lib/follow-up-fee';
 
 export function RegistrationFeePrompt({
   appointmentId,
@@ -44,6 +43,8 @@ export function RegistrationFeePrompt({
   // Whether the rule WOULD apply it, which is what the primary button confirms.
   const wouldCharge = reg?.applies ?? false;
   const consultation = preview?.consultationFee ?? 0;
+  const waived = isWaivedFollowUp(consultation, preview?.followUp);
+  const note = followUpNote(consultation, preview?.followUp);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -67,7 +68,7 @@ export function RegistrationFeePrompt({
               <div className="flex items-center justify-between border-b px-3 py-2 text-sm">
                 <span>
                   Consultation fee
-                  {preview?.followUp.isFree && (
+                  {waived && (
                     <span className="ml-1.5 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
                       Free follow-up
                     </span>
@@ -76,12 +77,12 @@ export function RegistrationFeePrompt({
                 <span className="font-medium tabular-nums">
                   {/* Show what it would have been, struck through, so ₹0 against
                       a doctor who charges ₹600 does not read as a fault. */}
-                  {preview?.followUp.isFree && preview.followUp.listFee > 0 && (
+                  {waived && preview && preview.followUp.listFee > 0 && (
                     <span className="mr-1.5 text-muted-foreground line-through">
                       {inr(preview.followUp.listFee)}
                     </span>
                   )}
-                  {inr(consultation)}
+                  {consultationFeeText(consultation, preview?.followUp)}
                 </span>
               </div>
               <div className="flex items-center justify-between px-3 py-2 text-sm">
@@ -104,11 +105,8 @@ export function RegistrationFeePrompt({
               </div>
             </div>
 
-            {preview?.followUp.isFree && (
-              <p className="text-xs text-emerald-700">
-                Within this doctor&rsquo;s {preview.followUp.windowDays}-day follow-up window of a
-                paid consultation — no consultation fee.
-              </p>
+            {note && (
+              <p className={waived ? 'text-xs text-emerald-700' : 'text-xs text-muted-foreground'}>{note}</p>
             )}
 
             {/* Say why it does or does not apply — a desk that expected a fee

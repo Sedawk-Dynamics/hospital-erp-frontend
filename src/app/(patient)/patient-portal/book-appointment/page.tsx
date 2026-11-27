@@ -17,6 +17,10 @@ import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
 import { toInputDateStr, formatTime24, getCurrentISTTime, isToday } from '@/lib/date-utils';
 import { fullName } from '@/lib/person-name';
+import {
+  consultationFeeText, followUpNote, isWaivedFollowUp, ruleHint, rupees, WAIVED_LABEL,
+  type FollowUpPricing,
+} from '@/lib/follow-up-fee';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -70,6 +74,18 @@ interface PaymentOrderResponse {
   keyId: string;
   paymentId: string;
   billId: string;
+}
+
+/** GET /patient-portal/consultation-quote — what this booking costs (gap 019). */
+interface ConsultationQuote {
+  fee: number;
+  listFee: number;
+  isFreeFollowUp: boolean;
+  governed: boolean;
+  windowDays: number;
+  kind: FollowUpPricing['kind'];
+  label: string | null;
+  ruleSummary: string | null;
 }
 
 type BookingStep = 'hospital' | 'doctor' | 'datetime' | 'confirm' | 'payment';
@@ -181,8 +197,36 @@ export default function BookAppointmentPage() {
   });
   const paymentInfo = paymentInfoRaw ?? { onlinePaymentAvailable: false };
 
-  const consultationFee = selectedDoctor?.consultationFee ?? 0;
+  // The hospital's follow-up rules decide what this visit costs; the doctor's
+  // own fee is only what it usually costs.
+  const { data: quote, isLoading: quoteLoading } = useQuery({
+    queryKey: ['patient', 'consultation-quote', selectedHospital?.id, selectedDoctor?.id, dateStr],
+    queryFn: async () =>
+      (
+        await apiGet<ConsultationQuote>('/patient-portal/consultation-quote', {
+          params: { tenantId: selectedHospital!.id, doctorId: selectedDoctor!.id, date: dateStr },
+        })
+      ).data ?? null,
+    // Not after booking: that visit's price is settled, and paying it would
+    // otherwise make it count as an earlier visit of its own.
+    enabled: !!selectedHospital && !!selectedDoctor && !!dateStr && step === 'confirm',
+    retry: false,
+  });
+  const followUp: FollowUpPricing | null = quote
+    ? {
+        isFree: quote.isFreeFollowUp,
+        listFee: quote.listFee,
+        windowDays: quote.windowDays,
+        kind: quote.kind,
+        governed: quote.governed,
+        label: quote.label,
+        ruleSummary: quote.ruleSummary,
+      }
+    : null;
+  const consultationFee = quote?.fee ?? selectedDoctor?.consultationFee ?? 0;
   const hasPayment = consultationFee > 0;
+  const isFreeFollowUp = isWaivedFollowUp(consultationFee, followUp);
+  const feeNote = followUpNote(consultationFee, followUp) ?? ruleHint(followUp);
   const canPayOnline = paymentInfo.onlinePaymentAvailable;
 
   // ── Book Mutation ──────────────────────────────────────
@@ -198,9 +242,29 @@ export default function BookAppointmentPage() {
         reason: reason || undefined,
       });
     },
-    onSuccess: (res) => {
+    onSuccess: async (res) => {
       const appointmentId = res.data?.id;
       setBookedAppointmentId(appointmentId ?? null);
+      // Nothing to pay: confirm the booking now. The server prices it again, so
+      // if it is not free after all the payment step shows and takes the money.
+      if (appointmentId && isFreeFollowUp) {
+        try {
+          const confirmed = await apiPost<{ amount?: number }>('/patient-portal/confirm-frontdesk-payment', {
+            appointmentId,
+          });
+          queryClient.invalidateQueries({ queryKey: ['patient', 'appointments'] });
+          const due = confirmed.data?.amount ?? 0;
+          toast.success(
+            due > 0
+              ? `Appointment booked. Please pay ${rupees(due)} at the hospital front desk.`
+              : `Appointment booked · ${rupees(0)} · ${WAIVED_LABEL}`,
+          );
+          router.push('/patient-portal/appointments');
+          return;
+        } catch {
+          // Fall through to the payment step, which offers the same choice.
+        }
+      }
       queryClient.invalidateQueries({ queryKey: ['patient', 'appointments'] });
       setStep('payment');
     },
@@ -314,8 +378,7 @@ export default function BookAppointmentPage() {
 
   const formatTime = (t: string) => formatTime24(t) || t;
 
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
+  const formatCurrency = rupees;
 
   const goBack = () => {
     if (step === 'doctor') {
@@ -879,7 +942,7 @@ export default function BookAppointmentPage() {
               </div>
             </div>
 
-            {hasPayment && (
+            {(hasPayment || isFreeFollowUp) && (
               <>
                 <div className="border-t border-outline-variant/30" />
                 <div className="flex items-start gap-3">
@@ -887,12 +950,22 @@ export default function BookAppointmentPage() {
                   <div className="flex-1">
                     <p className="font-label text-xs text-on-surface-variant">Consultation Fee</p>
                     <p className="font-headline text-lg font-bold text-on-surface">
-                      {formatCurrency(consultationFee)}
+                      {isFreeFollowUp && quote && quote.listFee > 0 && (
+                        <span className="mr-2 text-sm font-normal text-on-surface-variant line-through">
+                          {formatCurrency(quote.listFee)}
+                        </span>
+                      )}
+                      {consultationFeeText(consultationFee, followUp)}
                     </p>
+                    {feeNote && (
+                      <p className="font-label text-xs text-on-surface mt-0.5">{feeNote}</p>
+                    )}
                     <p className="font-label text-xs text-on-surface-variant mt-0.5">
-                      {canPayOnline
-                        ? 'You can pay online or at the front desk'
-                        : 'Payable at the hospital front desk'}
+                      {isFreeFollowUp
+                        ? 'Nothing to pay for this visit'
+                        : canPayOnline
+                          ? 'You can pay online or at the front desk'
+                          : 'Payable at the hospital front desk'}
                     </p>
                   </div>
                 </div>
@@ -929,14 +1002,14 @@ export default function BookAppointmentPage() {
             className="w-full"
             size="lg"
             onClick={() => bookMutation.mutate()}
-            disabled={bookMutation.isPending}
+            disabled={bookMutation.isPending || quoteLoading}
           >
-            {bookMutation.isPending ? (
+            {bookMutation.isPending || quoteLoading ? (
               <Loader2 className="h-5 w-5 animate-spin mr-2" />
             ) : (
               <CalendarIcon className="h-5 w-5 mr-2" />
             )}
-            Confirm & Proceed to Payment
+            {isFreeFollowUp ? 'Confirm Booking' : 'Confirm & Proceed to Payment'}
           </Button>
         </div>
       )}

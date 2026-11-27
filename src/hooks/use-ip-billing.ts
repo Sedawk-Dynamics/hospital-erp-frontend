@@ -367,6 +367,8 @@ export interface BillDocumentGst {
   recipientGstin: string | null;
   placeOfSupplyStateCode: string | null;
   placeOfSupplyStateName: string | null;
+  /** #265: set only on a bill not supplied at the hospital. */
+  supplyTypeLabel?: string | null;
   isInterState: boolean;
   hasTax: boolean;
   hasClassifiedLines: boolean;

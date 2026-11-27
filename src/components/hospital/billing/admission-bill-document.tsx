@@ -136,12 +136,13 @@ export const AdmissionBillDocumentView = forwardRef<HTMLDivElement, { doc: Admis
           gst.supplierGstinCaption ? `${gst.supplierGstin} (${gst.supplierGstinCaption})` : gst.supplierGstin,
         ]);
       }
-      // A patient with a GSTIN is being billed as a business — it is what lets
-      // them claim the credit, so it belongs on the paper.
-      if (gst.recipientGstin) info.push(['GSTIN (Patient)', gst.recipientGstin]);
+      // The corporate, insurer or TPA the invoice is to — it is what lets them
+      // claim the credit, so it belongs on the paper.
+      if (gst.recipientGstin) info.push(['GSTIN (Buyer)', gst.recipientGstin]);
       if (gst.placeOfSupplyStateName) {
         info.push(['Place of Supply', `${gst.placeOfSupplyStateName} (${gst.placeOfSupplyStateCode})`]);
       }
+      if (gst.supplyTypeLabel) info.push(['Supply', gst.supplyTypeLabel]);
     }
 
     // ── The charge table's shape, which follows what KIND of document this is.

@@ -24,7 +24,7 @@ import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { cn } from '@/lib/utils';
+import { cn, getApiErrorMessage } from '@/lib/utils';
 import { formatINR } from '@/lib/money';
 import { apiGet } from '@/lib/api';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -405,7 +405,7 @@ function AdvancePaymentBody({
       }
       onDone();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Operation failed');
+      toast.error(getApiErrorMessage(e, 'Operation failed'));
     }
   };
 
