@@ -18,6 +18,11 @@ interface SubmitParams {
     progressNoteId?: string;
     prescriptionId?: string;
   };
+  ensured?: {
+    visitId?: string;
+    progressNoteId?: string;
+    prescriptionId?: string;
+  };
 }
 
 interface SubmitResult {
@@ -38,11 +43,17 @@ export function useConsultationCompletion() {
       setIsSubmitting(true);
       setError(null);
 
+      // Effective ids: an edit-mode id, or one autosave created this session.
+      // When present we update that record instead of creating a duplicate.
+      const effVisitId = editMode?.visitId ?? params.ensured?.visitId;
+      const effProgressNoteId = editMode?.progressNoteId ?? params.ensured?.progressNoteId;
+      const effPrescriptionId = editMode?.prescriptionId ?? params.ensured?.prescriptionId;
+
       try {
         // ── 1. Find or create visit ──
         let visitId: string;
-        if (editMode?.visitId) {
-          visitId = editMode.visitId;
+        if (effVisitId) {
+          visitId = effVisitId;
           // Keep the visit's chief complaint in sync when editing. Without
           // this, the prefill on next reload re-reads the stale value
           // stored at first-create time.
@@ -94,9 +105,10 @@ export function useConsultationCompletion() {
         // role as defense-in-depth.
 
         // ── 3. Diagnoses ──
-        // In edit mode we replace: delete existing for this visit, then re-insert.
-        // This keeps the list in sync with what the doctor sees in the form.
-        if (editMode?.visitId) {
+        // Replace: delete existing for this visit, then re-insert. Runs when
+        // the visit pre-existed (edit mode OR autosaved) so autosaved rows are
+        // not duplicated; for a brand-new visit there is nothing to delete.
+        if (effVisitId) {
           setCurrentStep('Updating diagnoses...');
           try {
             const existingRes = await apiGet<Array<{ id: string }>>('/clinical/diagnoses', {
@@ -123,7 +135,7 @@ export function useConsultationCompletion() {
         }
 
         // ── 4. Prescription ──
-        let prescriptionId: string | undefined = editMode?.prescriptionId;
+        let prescriptionId: string | undefined = effPrescriptionId;
         const hasMedicines = formData.medicines.length > 0;
         const hasFollowUp = !!formData.followUpDate;
         const rxBuildItems = () =>
@@ -172,9 +184,9 @@ export function useConsultationCompletion() {
               };
             });
 
-        if (editMode?.prescriptionId) {
+        if (effPrescriptionId) {
           setCurrentStep('Updating prescription...');
-          await apiPut(`/prescriptions/${editMode.prescriptionId}`, {
+          await apiPut(`/prescriptions/${effPrescriptionId}`, {
             notes: formData.advice || formData.followUpNotes || undefined,
             followUpDate: formData.followUpDate || null,
             items: hasMedicines ? rxBuildItems() : [],
@@ -221,10 +233,10 @@ export function useConsultationCompletion() {
           // input. Vitals are now nurse-only, so we omit it here. The progress
           // note backend treats it as optional.
         };
-        let progressNoteId: string | undefined = editMode?.progressNoteId;
-        if (editMode?.progressNoteId) {
+        let progressNoteId: string | undefined = effProgressNoteId;
+        if (effProgressNoteId) {
           setCurrentStep('Updating consultation notes...');
-          await apiPut(`/progress-notes/${editMode.progressNoteId}`, notePayload);
+          await apiPut(`/progress-notes/${effProgressNoteId}`, notePayload);
         } else {
           setCurrentStep('Saving consultation notes...');
           const noteRes = await apiPost<{ id: string }>('/progress-notes', {

@@ -34,6 +34,14 @@ import {
   anesthesiologyPerioperative,
   anesthesiologyPerioperativeLabels,
 } from './anesthesiology-and-perioperative';
+import {
+  pediatricsNeonatology,
+  pediatricsNeonatologyLabels,
+} from './pediatrics-and-neonatology';
+import {
+  obstetricsGynecology,
+  obstetricsGynecologyLabels,
+} from './obstetrics-and-gynecology';
 
 export type {
   FieldType,
@@ -55,6 +63,8 @@ export const SPECIALTY_FIELDS: Record<string, SpecialtyCategories> = {
   neurology_neurosurgery: neurologyNeurosurgery,
   pulmonology_sleep: pulmonologySleep,
   anesthesiology_perioperative: anesthesiologyPerioperative,
+  pediatrics_neonatology: pediatricsNeonatology,
+  obstetrics_gynecology: obstetricsGynecology,
 };
 
 
@@ -70,6 +80,8 @@ export const SPECIALTY_CATEGORY_LABELS: Record<string, SpecialtyCategoryLabels> 
   neurology_neurosurgery: neurologyNeurosurgeryLabels,
   pulmonology_sleep: pulmonologySleepLabels,
   anesthesiology_perioperative: anesthesiologyPerioperativeLabels,
+  pediatrics_neonatology: pediatricsNeonatologyLabels,
+  obstetrics_gynecology: obstetricsGynecologyLabels,
 };
 
 

@@ -101,9 +101,131 @@ export const anesthesiologyPerioperative: SpecialtyCategories = {
       ],
     },
   ],
-  intraop_flowsheet: [],
-  fluids_blood_dosing: [],
-  pacu_aldrete: [],
+  intraop_flowsheet: [
+    {
+      heading: 'Technique & Ventilator Workstation',
+      inputs: [
+        {
+          key: 'anesthesiaModality',
+          label: 'Anesthesia Modality',
+          type: 'select',
+          options: ['GA', 'Spinal', 'Epidural', 'CSE', 'PNB', 'MAC'],
+        },
+        {
+          key: 'airwayDevice',
+          label: 'Airway Device',
+          type: 'select',
+          options: [
+            'Oral Cuffed ETT',
+            'Nasal ETT',
+            'LMA Supreme',
+            'LMA ProSeal',
+            'Tracheostomy',
+          ],
+        },
+        { key: 'airwayEttSizing', label: 'Airway / ETT Sizing', type: 'text' },
+        { key: 'depthAtIncisors', label: 'Depth at Incisors', type: 'number', unit: 'cm' },
+        {
+          key: 'volatileAgent',
+          label: 'Volatile Inhalation Agent',
+          type: 'select',
+          options: ['Sevoflurane', 'Isoflurane', 'Desflurane'],
+        },
+        { key: 'bisEntropyScore', label: 'BIS / Entropy Score', type: 'number' },
+        { key: 'laryngoscopeBlade', label: 'Laryngoscope Blade / Aid', type: 'text' },
+        { key: 'neuraxialDrugDose', label: 'Neuraxial / Regional Drug & Dose', type: 'text' },
+        { key: 'spinalInterspaceNeedle', label: 'Spinal / Epidural Interspace & Needle', type: 'text' },
+        { key: 'targetSensoryBlock', label: 'Target Sensory Block Level', type: 'text' },
+      ],
+    },
+    {
+      heading: 'Ventilator Ribbon',
+      inputs: [
+        {
+          key: 'ventMode',
+          label: 'Vent Mode',
+          type: 'select',
+          options: ['VCV', 'PCV', 'PSV'],
+        },
+        { key: 'tidalVolume', label: 'Tidal Vol', type: 'number', unit: 'mL' },
+        { key: 'respRate', label: 'Resp Rate', type: 'number', unit: '/min' },
+        { key: 'peep', label: 'PEEP', type: 'number', unit: 'cmH₂O' },
+        { key: 'fio2', label: 'FiO₂', type: 'number', unit: '%' },
+        { key: 'macValue', label: 'MAC Value', type: 'number' },
+      ],
+    },
+  ],
+  fluids_blood_dosing: [
+    {
+      heading: 'Weight-Based Dosing Engine',
+      inputs: [
+        { key: 'dosingWeight', label: 'Dosing Weight', type: 'number', unit: 'kg' },
+        { key: 'propofolDose', label: 'Propofol (2 mg/kg)', type: 'number', unit: 'mg', auto: true },
+        { key: 'atracuriumDose', label: 'Atracurium (0.5 mg/kg)', type: 'number', unit: 'mg', auto: true },
+        { key: 'neostigmineDose', label: 'Neostigmine (0.05 mg/kg)', type: 'number', unit: 'mg', auto: true },
+        { key: 'glycopyrrolateDose', label: 'Glycopyrrolate (0.01 mg/kg)', type: 'number', unit: 'mg', auto: true },
+        { key: 'intralipidBolus', label: 'Intralipid 20% Rescue Bolus (1.5 mL/kg)', type: 'number', unit: 'mL', auto: true },
+        {
+          key: 'otVasopressor',
+          label: 'OT Vasopressor Choice',
+          type: 'select',
+          options: [
+            'Mephentermine',
+            'Ephedrine',
+            'Noradrenaline infusion',
+            'Phenylephrine',
+          ],
+        },
+      ],
+    },
+    {
+      heading: 'Holliday-Segar 4-2-1 Fluid Protocol',
+      inputs: [
+        { key: 'thirdSpaceLossFactor', label: '3rd-Space Surgical Loss Factor', type: 'number', unit: 'mL/kg/h' },
+        { key: 'hourlyMaintenance', label: 'Hourly Maintenance', type: 'number', unit: 'mL/h', auto: true },
+        { key: 'npoFastingDeficit', label: 'NPO Fasting Deficit', type: 'number', unit: 'mL', auto: true },
+        { key: 'surgicalTissueLoss', label: 'Surgical Tissue Loss', type: 'number', unit: 'mL/h', auto: true },
+        { key: 'firstHourTarget', label: '1st-Hour Intraoperative Target', type: 'number', unit: 'mL', auto: true },
+      ],
+    },
+    {
+      heading: 'Maximum Allowable Blood Loss (ABL)',
+      inputs: [
+        { key: 'targetHct', label: 'Minimum Acceptable Target Hct', type: 'number', unit: '%' },
+        { key: 'estimatedBloodVolume', label: 'Estimated Blood Volume (EBV)', type: 'number', unit: 'mL', auto: true },
+        { key: 'baselineTargetHct', label: 'Baseline → Target Hct', type: 'text', auto: true },
+        { key: 'maxAllowableBloodLoss', label: 'Maximum Allowable Blood Loss', type: 'number', unit: 'mL', auto: true },
+      ],
+    },
+  ],
+  pacu_aldrete: [
+    {
+      heading: 'Modified Aldrete Recovery Scoring',
+      inputs: [
+        { key: 'aldreteMotor', label: 'Motor Activity', type: 'select', options: ['0', '1', '2'] },
+        { key: 'aldreteRespiration', label: 'Respiration', type: 'select', options: ['0', '1', '2'] },
+        { key: 'aldreteCirculation', label: 'Circulation (BP)', type: 'select', options: ['0', '1', '2'] },
+        { key: 'aldreteConsciousness', label: 'Consciousness', type: 'select', options: ['0', '1', '2'] },
+        { key: 'aldreteOxygenSat', label: 'O₂ Saturation', type: 'select', options: ['0', '1', '2'] },
+        { key: 'aldreteTotal', label: 'Total Aldrete Score', type: 'number', unit: '/10', auto: true },
+        { key: 'dischargeReadiness', label: 'Discharge Readiness', type: 'text', auto: true },
+      ],
+    },
+    {
+      heading: 'Post-Op Handover & Pain Assessment',
+      inputs: [
+        { key: 'postOpPainVas', label: 'Post-Op Pain Score (VAS)', type: 'number', min: 0, max: 10 },
+        {
+          key: 'apfelScore',
+          label: 'Apfel Score for PONV Risk',
+          type: 'select',
+          options: ['Low 0–1', 'Moderate 2', 'High 3–4'],
+        },
+        { key: 'dischargeDestination', label: 'Discharge Destination', type: 'text' },
+        { key: 'consultantHandoverSignoff', label: 'Consultant Anaesthesiologist Handover Sign-off', type: 'text' },
+      ],
+    },
+  ],
   clinical_calculators: [],
 };
 

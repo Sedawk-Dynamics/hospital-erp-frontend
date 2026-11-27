@@ -91,47 +91,89 @@ export function SpecialityInputs({ speciality, visitId }: SpecialityInputsProps)
               No specialty inputs configured yet.
             </p>
           ) : (
-            <div className="grid grid-cols-3 gap-2">
-              {categoryKeys.map((catKey) => {
-                const isActive = catKey === active;
-                return (
-                  <button
-                    key={catKey}
-                    type="button"
-                    onClick={() => setActiveCat(catKey)}
-                    className={cn(
-                      'rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors',
-                      isActive
-                        ? 'border-primary bg-primary text-primary-foreground'
-                        : 'border-border bg-card text-foreground hover:bg-primary/10',
-                    )}
-                  >
-                    {categoryLabels[catKey] ?? catKey}
-                  </button>
-                );
-              })}
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">
+                Categories — pick one to add its inputs
+              </p>
+              <div
+                className="grid gap-2"
+                style={{ gridTemplateColumns: `repeat(${categoryKeys.length}, minmax(0, 1fr))` }}
+              >
+                {categoryKeys.map((catKey, ci) => {
+                  const isActive = catKey === active;
+                  return (
+                    <button
+                      key={catKey}
+                      type="button"
+                      onClick={() => setActiveCat(catKey)}
+                      className={cn(
+                        'flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors',
+                        isActive
+                          ? 'border-primary bg-primary text-primary-foreground shadow-sm text-left'
+                          : 'border-border bg-card text-left text-foreground hover:border-primary/40 hover:bg-primary/10',
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'flex h-5 w-5 items-center justify-center rounded-md text-[10px] font-semibold',
+                          isActive ? 'bg-primary-foreground/20' : 'bg-primary/10 text-primary',
+                        )}
+                      >
+                        {String(ci + 1).padStart(2, '0')}
+                      </span>
+                      {categoryLabels[catKey] ?? catKey}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 
-          {activeGroups.map((group, gi) => (
-            <div key={gi} className="mt-5 space-y-3">
-              {group.heading && (
-                <div className="flex items-center gap-2 border-l-4 border-primary bg-primary/10 px-3 py-2">
-                  <h4 className="text-sm font-bold text-primary">{group.heading}</h4>
-                </div>
-              )}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                {group.inputs.map((field) => (
-                  <SpecialtyFieldInput
-                    key={field.key}
-                    field={field}
-                    values={values}
-                    setValue={setValue}
-                  />
-                ))}
+          {activeGroups.map((group, gi) => {
+            // Plain checkboxes (no nested fields) get their own grid: one column per checkbox.
+            const plainCheckboxes = group.inputs.filter(
+              (f) => f.type === 'checkbox' && !(f.fields && f.fields.length > 0),
+            );
+            const otherInputs = group.inputs.filter((f) => !plainCheckboxes.includes(f));
+            return (
+              <div key={gi} className="mt-5 space-y-3">
+                {group.heading && (
+                  <div className="flex items-center gap-2 border-l-4 border-primary bg-primary/10 px-3 py-2">
+                    <h4 className="text-xs font-bold text-primary">{group.heading}</h4>
+                  </div>
+                )}
+                {otherInputs.length > 0 && (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    {otherInputs.map((field) => (
+                      <SpecialtyFieldInput
+                        key={field.key}
+                        field={field}
+                        values={values}
+                        setValue={setValue}
+                      />
+                    ))}
+                  </div>
+                )}
+                {plainCheckboxes.length > 0 && (
+                  <div
+                    className="grid gap-3"
+                    style={{
+                      gridTemplateColumns: `repeat(${plainCheckboxes.length}, minmax(0, 1fr))`,
+                    }}
+                  >
+                    {plainCheckboxes.map((field) => (
+                      <SpecialtyFieldInput
+                        key={field.key}
+                        field={field}
+                        values={values}
+                        setValue={setValue}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {categoryKeys.length > 0 && (
             <div className="mt-6 flex justify-end border-t border-primary/15 pt-4">
@@ -166,16 +208,23 @@ type FieldProps = {
 function SpecialtyFieldInput({ field, values, setValue }: FieldProps) {
   const value = values[field.key];
 
-  // 1. Checkbox — inline label + (optional) nested fields. Spans full row.
+  // 1. Checkbox — inline label + (optional) nested fields.
+  // Only checkboxes WITH nested fields span the full row; plain ones sit in the grid.
   if (field.type === 'checkbox') {
+    const hasNested = Boolean(field.fields && field.fields.length > 0);
     return (
-      <div className="col-span-full space-y-2 rounded-lg border bg-card p-3">
+      <div
+        className={cn(
+          'space-y-2 rounded-lg border bg-card p-3',
+          hasNested && 'col-span-full',
+        )}
+      >
         <label className="flex items-center gap-2 text-sm font-medium">
           <input
             type="checkbox"
             className="h-4 w-4 accent-primary"
             checked={Boolean(value)}
-            onChange={(e) => setValue(field.key, field.unit ? { value: e.target.checked, unit: field.unit } : e.target.value)} />
+            onChange={(e) => setValue(field.key, field.unit ? { value: e.target.checked, unit: field.unit } : e.target.checked)} />
           {field.label}
         </label>
         {field.fields && field.fields.length > 0 && (
@@ -259,7 +308,7 @@ function SpecialtyFieldInput({ field, values, setValue }: FieldProps) {
   const control =
     field.type === 'select' ? (
       <Select value={(value as string) || undefined} onValueChange={(v) => setValue(field.key, v)}>
-        <SelectTrigger className="h-8 w-full">
+        <SelectTrigger className="h-8 w-full bg-white">
           <SelectValue placeholder="Select" />
         </SelectTrigger>
         <SelectContent>
@@ -299,7 +348,7 @@ function SpecialtyFieldInput({ field, values, setValue }: FieldProps) {
         type={
           field.type === 'number' ? 'number' : field.type === 'datetime' ? 'datetime-local' : 'text'
         }
-        className="h-8"
+        className="h-8 bg-white"
         value={
           (field.unit
             ? (value as { value?: string | number } | undefined)?.value

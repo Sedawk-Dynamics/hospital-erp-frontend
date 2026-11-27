@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useForm, useFieldArray, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Input } from '@/components/ui/input';
@@ -13,8 +13,9 @@ import {
   Printer, CheckCircle2, RotateCcw, ChevronDown,
   Clock, Eye as ObservationIcon, Pin, Activity,
 } from 'lucide-react';
-import { useFormularySearch, useAllergyCheck, usePatientVitals, usePatientDiagnoses, usePrescriptions, useProgressNotes, useDoctorProfile, type FormularyDrug } from '@/hooks/use-doctor';
+import { useFormularySearch, useAllergyCheck, usePatientVitals, usePatientDiagnoses, usePrescriptions, useProgressNotes, useDoctorProfile, useCreateProgressNote, useUpdateProgressNote, useCreatePrescription, useUpdatePrescription, useAddDiagnosis, type FormularyDrug, useUpdateDiagnosis, useDeleteDiagnosis } from '@/hooks/use-doctor';
 import { useLatestVitals } from '@/hooks/use-nurse';
+import { apiGet } from '@/lib/api';
 import { RecordVitalsDialog } from '@/components/shared/record-vitals-dialog';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useValidatePrescriptionQuery, useValidatePrescription, type CdssWarning } from '@/hooks/use-cdss';
@@ -57,6 +58,8 @@ import { formatTemperature, temperatureIn, temperatureUnitLabel, temperatureValu
 import { useTemperatureUnit } from '@/stores/temperature-unit-store';
 import { NurseIntakeComplaint } from '@/components/doctor/nurse-intake-complaint';
 import { VitalValue } from '@/components/shared/vital-value';
+import { useSetChiefComplaint, useCreateVisit } from '@/hooks/use-clinical';
+import { create } from 'domain';
 
 /** Build the localStorage key where the consultation draft is stored. */
 export function getConsultationDraftKey(appointmentId: string, visitId?: string): string {
@@ -74,12 +77,12 @@ export function clearConsultationDraft(appointmentId: string, visitId?: string):
 }
 
 export interface TranscriptSections {
-    chiefComplaint: string;
-    generalExamination: string;
-    investigationsSummary: string;
-    impression: string;
-    advice: string;
-    referralNotes: string;
+  chiefComplaint: string;
+  generalExamination: string;
+  investigationsSummary: string;
+  impression: string;
+  advice: string;
+  referralNotes: string;
 }
 
 interface PrescriptionPadProps {
@@ -105,7 +108,7 @@ interface PrescriptionPadProps {
     progressNoteId?: string;
     prescriptionId?: string;
   };
-  transcript?:TranscriptSections | null
+  transcript?: TranscriptSections | null
 }
 
 export function PrescriptionPad({
@@ -172,14 +175,14 @@ export function PrescriptionPad({
     Array.isArray(seed?.pinnedSections) && seed!.pinnedSections!.length > 0
       ? (seed!.pinnedSections as ConsultationPinSection[])
       : Array.from(
-          new Set(
-            (seed?.pins ?? [])
-              .map((p: any) => p.dischargeSection as ConsultationPinSection)
-              .filter((s: any): s is ConsultationPinSection =>
-                CONSULTATION_PIN_SECTIONS.includes(s),
-              ),
-          ),
-        );
+        new Set(
+          (seed?.pins ?? [])
+            .map((p: any) => p.dischargeSection as ConsultationPinSection)
+            .filter((s: any): s is ConsultationPinSection =>
+              CONSULTATION_PIN_SECTIONS.includes(s),
+            ),
+        ),
+      );
 
   const form = useForm<ConsultationFormData>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -259,24 +262,13 @@ export function PrescriptionPad({
   const { data: pastDiagnoses } = usePatientDiagnoses(patientId);
   const { data: pastPrescriptions } = usePrescriptions({ patientId, limit: 5 });
   const { data: pastNotes } = useProgressNotes({ patientId, limit: 5 });
-  // Latest nurse-recorded vitals → displayed read-only in the Objective
-  // section. The doctor cannot edit them; if a fresh reading is needed they
-  // ask the assigned nurse to capture it from the Nursing module.
   const { data: latestVitalsResp } = useLatestVitals(patientId);
   const latestVital = (latestVitalsResp as any)?.data ?? null;
   const [recordVitalsOpen, setRecordVitalsOpen] = useState(false);
 
-  // Watched SOAP extras — reading the field array this way keeps the
-  // render in sync without subscribing the whole form to every keystroke.
-  /* const physicalObservations = watch('physicalObservations') ?? []; */
   const impression = watch('impression') ?? '';
   const investigationsSummary = watch('investigationsSummary') ?? '';
   const pinnedSections = (watch('pinnedSections') ?? []) as ConsultationPinSection[];
-
-  // ── CDSS prescription safety (allergy / drug-interaction / dosage) ──
-  // Live-validates the medicines list against the patient's allergy profile,
-  // drug-drug interactions and dosage limits. `blockers` (severe allergy,
-  // contraindicated interaction) hard-stop signing.
   const watchedMeds = (useWatch({ control: form.control, name: 'medicines' }) ?? []) as MedicineFormData[];
   const cdssItems = useMemo(
     () =>
@@ -350,6 +342,8 @@ export function PrescriptionPad({
         doctorProfileId,
         doctorUserId,
         editMode,
+        ensured: { visitId: ensuredVisitId, progressNoteId: ensuredProgressNoteId, prescriptionId: ensuredPrescriptionId }
+
       });
       clearDraft();
       onComplete?.();
@@ -361,8 +355,6 @@ export function PrescriptionPad({
   const handleFinish = useCallback(async () => {
     const valid = await form.trigger();
     if (!valid) {
-      // Never fail silently — the button used to look dead when a field deep in
-      // another step was invalid, with nothing on screen to explain why.
       const firstError = Object.values(form.formState.errors)
         .map((e) => (e as { message?: string })?.message)
         .find(Boolean);
@@ -437,6 +429,136 @@ export function PrescriptionPad({
     form.reset(defaultFormValues);
     clearDraft();
   }, [form, clearDraft]);
+
+
+  const chiefcomplaintRef = useRef(watch('chiefComplaint'));
+  const setChiefComplaint = useSetChiefComplaint();
+  const createVisit = useCreateVisit();
+  const [ensuredVisitId, setEnsuredVisitId] = useState<string>();
+  const creatingVisitRef = useRef(false);
+  const examinationFindingRef = useRef(watch('generalExamination'))
+  const createProgressNote = useCreateProgressNote();
+  const updateProgressNote = useUpdateProgressNote();
+  const [ensuredProgressNoteId, setEnsuredProgressNoteId] = useState<string>();
+  const [ensuredPrescriptionId, setEnsuredPrescriptionId] = useState<string>();
+  const creatingNoteRef = useRef(false);
+  const investigationSummaryRef = useRef(watch('investigationsSummary'));
+  const impressionRef = useRef(watch('impression'));
+  const adviceRef = useRef(watch('advice'));
+  const referralRef = useRef(watch('referralNotes'));
+  const followUpRef = useRef(JSON.stringify([watch('followUpDate'), watch('followUpNotes')]));
+
+  const chiefComplaintBlur = async () => {
+    const text = watch('chiefComplaint') ?? '';
+    if (text === chiefcomplaintRef.current) return;
+    const visId = visitId ?? editMode?.visitId ?? ensuredVisitId ?? '';
+    if (visId) {
+      try {
+        await setChiefComplaint.mutateAsync({ visitId: visId, text });
+        chiefcomplaintRef.current = text;
+      } catch (error) {
+        toast.error('Error in saving the chief complaint')
+      }
+    }
+    else {
+      if (creatingVisitRef.current) return;
+      creatingVisitRef.current = true;
+      try {
+        const visit = await createVisit.mutateAsync({
+          patientId,
+          doctorId: doctorProfileId,
+          appointmentId,
+          visitType: 'op',
+          visitDate: new Date().toISOString(),
+          chiefComplaint: text,
+        });
+        setEnsuredVisitId(visit.id);
+        chiefcomplaintRef.current = text;
+      } catch (error) {
+        toast.error('Error in saving the chief complaint')
+      } finally {
+        creatingVisitRef.current = false;
+      }
+    }
+  }
+
+  const saveNote = async () => {
+    const visId = visitId ?? editMode?.visitId ?? ensuredVisitId ?? '';
+    if (!visId) return;
+    const generalExamination = watch('generalExamination') || '';
+    const investigations = watch('investigationsSummary') || '';
+    const impression = watch('impression') || '';
+    const advice = watch('advice') || '';
+    const objective = { vitalsSummary: '', generalExamination, investigations } as any;
+    const plan = {
+      advice,
+      followUpDate: watch('followUpDate') || '',
+      followUpNotes: watch('followUpNotes') || '',
+      referralNotes: watch('referralNotes') || '',
+    } as any;
+    const impressions = impression || null;
+    const noteId = editMode?.progressNoteId ?? ensuredProgressNoteId;
+
+    try {
+      if (noteId) {
+        await updateProgressNote.mutateAsync({ id: noteId, data: { objective, impressions, plan } });
+      } else {
+        if (creatingNoteRef.current) return;
+        creatingNoteRef.current = true;
+        const note = await createProgressNote.mutateAsync({
+          visitId: visId,
+          patientId,
+          content: generalExamination || investigations || impression || advice || 'Consultation in progress',
+          objective,
+          impressions,
+          plan,
+        });
+        setEnsuredProgressNoteId(note.id);
+      }
+      examinationFindingRef.current = generalExamination;
+      investigationSummaryRef.current = investigations;
+      impressionRef.current = impression;
+      adviceRef.current = advice;
+    } catch (error) {
+      toast.error('Error in saving consultation notes')
+    } finally {
+      creatingNoteRef.current = false;
+    }
+  }
+
+  const examinationFindingBlur = async () => {
+    if ((watch('generalExamination') ?? '') === examinationFindingRef.current) return;
+    await saveNote();
+  }
+
+  const investigationsSummaryBlur = async () => {
+    if ((watch('investigationsSummary') ?? '') === investigationSummaryRef.current) return;
+    await saveNote();
+  }
+
+  const impressionBlur = async () => {
+    if ((watch('impression') ?? '') === impressionRef.current) return;
+    await saveNote();
+  }
+
+  const adviceBlur = async () => {
+    if ((watch('advice') ?? '') === adviceRef.current) return;
+    await saveNote();
+  }
+
+  const referralBlur = async () => {
+    if ((watch('referralNotes') ?? '') === referralRef.current) return;
+    referralRef.current = watch('referralNotes') ?? '';
+    await saveNote();
+  }
+
+  const followUpBlur = async () => {
+    const snap = JSON.stringify([watch('followUpDate'), watch('followUpNotes')]);
+    if (snap === followUpRef.current) return;
+    followUpRef.current = snap;
+    await saveNote();
+  }
+
 
   return (
     <div className="bg-background">
@@ -521,45 +643,54 @@ export function PrescriptionPad({
               Subjective · what the patient reports
             </span>
           </div>
-            <PadSection
-              icon={<Stethoscope className="h-4 w-4" />}
-              title="Chief Complaints"
-              badge="Symptoms"
-              collapsed={collapsed.symptoms}
-              onToggle={() => toggleSection('symptoms')}
-              color="text-primary-container"
-              actions={
-                <div onClick={(e) => e.stopPropagation()} className="contents">
-                  <PinToggle
-                    pinned={isPinned('chief_complaint')}
-                    onToggle={() => togglePin('chief_complaint')}
-                    sectionLabel="Chief Complaints"
-                  />
-                  <VoiceInputButton
-                    value={watch('chiefComplaint') ?? ''}
-                    onChange={(v) => setValue('chiefComplaint', v, { shouldDirty: true })}
-                    fieldLabel="Chief Complaints"
-                  />
-                </div>
-              }
-            >
-
-              <NurseIntakeComplaint
-                visitId={visitId ?? editMode?.visitId}
-                currentValue={watch('chiefComplaint') ?? ''}
-                onUse={(text) => setValue('chiefComplaint', text, { shouldDirty: true })}
-                className="mb-2"
-              />
-              <textarea
-                {...register('chiefComplaint')}
-                placeholder="e.g. Fever × 3 days, dry cough, fatigue · chronology, severity, related history…"
-                rows={6}
-                className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-y"
-              />
-              {errors.chiefComplaint && (
-                <p className="text-xs text-error mt-1">{errors.chiefComplaint.message}</p>
-              )}
-            </PadSection>
+          <PadSection
+            icon={<Stethoscope className="h-4 w-4" />}
+            title="Chief Complaints"
+            badge="Symptoms"
+            collapsed={collapsed.symptoms}
+            onToggle={() => toggleSection('symptoms')}
+            color="text-primary-container"
+            actions={
+              <div onClick={(e) => e.stopPropagation()} className="contents">
+                {(setChiefComplaint.isPending || createVisit.isPending) ? (
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                    Saving…
+                  </span>
+                ) : (setChiefComplaint.isSuccess || createVisit.isSuccess) ? (
+                  <span className="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-700">
+                    Saved
+                  </span>
+                ) : null}
+                <PinToggle
+                  pinned={isPinned('chief_complaint')}
+                  onToggle={() => togglePin('chief_complaint')}
+                  sectionLabel="Chief Complaints"
+                />
+                <VoiceInputButton
+                  value={watch('chiefComplaint') ?? ''}
+                  onChange={(v) => setValue('chiefComplaint', v, { shouldDirty: true })}
+                  fieldLabel="Chief Complaints"
+                />
+              </div>
+            }
+          >
+            <NurseIntakeComplaint
+              visitId={visitId ?? editMode?.visitId}
+              currentValue={watch('chiefComplaint') ?? ''}
+              onUse={(text) => setValue('chiefComplaint', text, { shouldDirty: true })}
+              className="mb-2"
+            />
+            <textarea
+              {...register('chiefComplaint')}
+              onBlur={(e) => { register('chiefComplaint').onBlur(e); chiefComplaintBlur() }}
+              placeholder="e.g. Fever × 3 days, dry cough, fatigue · chronology, severity, related history…"
+              rows={6}
+              className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-y"
+            />
+            {errors.chiefComplaint && (
+              <p className="text-xs text-error mt-1">{errors.chiefComplaint.message}</p>
+            )}
+          </PadSection>
 
         </div>
 
@@ -571,91 +702,91 @@ export function PrescriptionPad({
               Objective · what you measure & observe
             </span>
           </div>
-            {/* VITALS — latest reading (nurse or doctor) + inline capture */}
-            <PadSection
-              icon={<Activity className="h-4 w-4" />}
-              title="Vital Signs"
-              badge={latestVital ? 'Latest' : 'None yet'}
-              collapsed={false}
-              onToggle={() => {}}
-              color="text-secondary"
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                {latestVital ? (
-                  // Chips rather than one joined string, so an out-of-range
-                  // reading can be marked. These are the numbers the doctor
-                  // reads while consulting; they were plain text.
-                  [
-                    latestVital.bloodPressureSystolic && latestVital.bloodPressureDiastolic ? (
-                      <span key="bp" className="inline-flex items-baseline gap-0.5">
-                        BP&nbsp;
-                        <VitalValue vitalKey="bloodPressureSystolic" value={latestVital.bloodPressureSystolic} />
-                        <span className="text-muted-foreground">/</span>
-                        <VitalValue vitalKey="bloodPressureDiastolic" value={latestVital.bloodPressureDiastolic} />
-                      </span>
-                    ) : null,
-                    (latestVital.pulseRate ?? latestVital.heartRate) ? (
-                      <span key="pulse">
-                        Pulse <VitalValue vitalKey="pulseRate" value={latestVital.pulseRate ?? latestVital.heartRate} />
-                      </span>
-                    ) : null,
-                    latestVital.temperature ? (
-                      <span key="temp">
-                        Temp <VitalValue vitalKey="temperature" value={latestVital.temperature} showUnit />
-                      </span>
-                    ) : null,
-                    latestVital.respiratoryRate ? (
-                      <span key="rr">
-                        RR <VitalValue vitalKey="respiratoryRate" value={latestVital.respiratoryRate} />
-                      </span>
-                    ) : null,
-                    latestVital.oxygenSaturation ? (
-                      <span key="spo2">
-                        SpO₂ <VitalValue vitalKey="oxygenSaturation" value={latestVital.oxygenSaturation} showUnit />
-                      </span>
-                    ) : null,
-                    // Blood sugar has no single adult normal worth asserting —
-                    // fasting and post-meal are judged differently — so it is
-                    // shown without a flag rather than flagged wrongly.
-                    latestVital.bloodSugar ? <span key="bgl">BGL {latestVital.bloodSugar}</span> : null,
-                  ]
-                    .filter(Boolean)
-                    .map((chip, i) => (
-                      <span
-                        key={i}
-                        className="rounded-md bg-muted px-2 py-1 font-label text-xs font-semibold"
-                      >
-                        {chip}
-                      </span>
-                    ))
-                ) : (
-                  <span className="font-label text-xs text-muted-foreground">
-                    No vitals recorded for this patient yet.
-                  </span>
-                )}
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="ml-auto h-7 gap-1 text-[11px]"
-                  onClick={() => setRecordVitalsOpen(true)}
-                >
-                  <Plus className="h-3 w-3" />
-                  Record Vitals
-                </Button>
-              </div>
-            </PadSection>
+          {/* VITALS — latest reading (nurse or doctor) + inline capture */}
+          <PadSection
+            icon={<Activity className="h-4 w-4" />}
+            title="Vital Signs"
+            badge={latestVital ? 'Latest' : 'None yet'}
+            collapsed={false}
+            onToggle={() => { }}
+            color="text-secondary"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              {latestVital ? (
+                // Chips rather than one joined string, so an out-of-range
+                // reading can be marked. These are the numbers the doctor
+                // reads while consulting; they were plain text.
+                [
+                  latestVital.bloodPressureSystolic && latestVital.bloodPressureDiastolic ? (
+                    <span key="bp" className="inline-flex items-baseline gap-0.5">
+                      BP&nbsp;
+                      <VitalValue vitalKey="bloodPressureSystolic" value={latestVital.bloodPressureSystolic} />
+                      <span className="text-muted-foreground">/</span>
+                      <VitalValue vitalKey="bloodPressureDiastolic" value={latestVital.bloodPressureDiastolic} />
+                    </span>
+                  ) : null,
+                  (latestVital.pulseRate ?? latestVital.heartRate) ? (
+                    <span key="pulse">
+                      Pulse <VitalValue vitalKey="pulseRate" value={latestVital.pulseRate ?? latestVital.heartRate} />
+                    </span>
+                  ) : null,
+                  latestVital.temperature ? (
+                    <span key="temp">
+                      Temp <VitalValue vitalKey="temperature" value={latestVital.temperature} showUnit />
+                    </span>
+                  ) : null,
+                  latestVital.respiratoryRate ? (
+                    <span key="rr">
+                      RR <VitalValue vitalKey="respiratoryRate" value={latestVital.respiratoryRate} />
+                    </span>
+                  ) : null,
+                  latestVital.oxygenSaturation ? (
+                    <span key="spo2">
+                      SpO₂ <VitalValue vitalKey="oxygenSaturation" value={latestVital.oxygenSaturation} showUnit />
+                    </span>
+                  ) : null,
+                  // Blood sugar has no single adult normal worth asserting —
+                  // fasting and post-meal are judged differently — so it is
+                  // shown without a flag rather than flagged wrongly.
+                  latestVital.bloodSugar ? <span key="bgl">BGL {latestVital.bloodSugar}</span> : null,
+                ]
+                  .filter(Boolean)
+                  .map((chip, i) => (
+                    <span
+                      key={i}
+                      className="rounded-md bg-muted px-2 py-1 font-label text-xs font-semibold"
+                    >
+                      {chip}
+                    </span>
+                  ))
+              ) : (
+                <span className="font-label text-xs text-muted-foreground">
+                  No vitals recorded for this patient yet.
+                </span>
+              )}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="ml-auto h-7 gap-1 text-[11px]"
+                onClick={() => setRecordVitalsOpen(true)}
+              >
+                <Plus className="h-3 w-3" />
+                Record Vitals
+              </Button>
+            </div>
+          </PadSection>
 
-            <RecordVitalsDialog
-              open={recordVitalsOpen}
-              onOpenChange={setRecordVitalsOpen}
-              patientId={patientId}
-              appointmentId={appointmentId}
-              visitId={editMode?.visitId}
-            />
+          <RecordVitalsDialog
+            open={recordVitalsOpen}
+            onOpenChange={setRecordVitalsOpen}
+            patientId={patientId}
+            appointmentId={appointmentId}
+            visitId={editMode?.visitId}
+          />
 
-            {/* PHYSICAL OBSERVATIONS */}
-            {/* <PadSection
+          {/* PHYSICAL OBSERVATIONS */}
+          {/* <PadSection
               icon={<ObservationIcon className="h-4 w-4" />}
               title="Physical Observations"
               badge="Catalog"
@@ -669,83 +800,96 @@ export function PrescriptionPad({
               />
             </PadSection> */}
 
-            {/* EXAMINATION FINDINGS */}
-            <PadSection
-              icon={<Search className="h-4 w-4" />}
-              title="Examination Findings"
-              badge="O/E"
-              collapsed={collapsed.exam}
-              onToggle={() => toggleSection('exam')}
-              color="text-primary"
-              actions={
+          {/* EXAMINATION FINDINGS */}
+          <PadSection
+            icon={<Search className="h-4 w-4" />}
+            title="Examination Findings"
+            badge="O/E"
+            collapsed={collapsed.exam}
+            onToggle={() => toggleSection('exam')}
+            color="text-primary"
+            actions={
+              <div onClick={(e) => e.stopPropagation()} className="contents">
+                <PinToggle
+                  pinned={isPinned('examination')}
+                  onToggle={() => togglePin('examination')}
+                  sectionLabel="Examination Findings"
+                />
                 <div onClick={(e) => e.stopPropagation()} className="contents">
-                  <PinToggle
-                    pinned={isPinned('examination')}
-                    onToggle={() => togglePin('examination')}
-                    sectionLabel="Examination Findings"
-                  />
-                </div>
-              }
-            >
-              <div className="grid grid-cols-1 md:grid-cols-1 gap-3">
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-medium text-muted-foreground">General Examination</label>
-                    <VoiceInputButton
-                      value={watch('generalExamination') ?? ''}
-                      onChange={(v) => setValue('generalExamination', v, { shouldDirty: true })}
-                      fieldLabel="General Examination"
-                    />
-                  </div>
-                  <textarea
-                    {...register('generalExamination')}
-                    placeholder="General appearance, consciousness, pallor, icterus..."
-                    rows={3}
-                    className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-none"
-                  />
+                  {(updateProgressNote.isPending || createProgressNote.isPending) ? (
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                      Saving…
+                    </span>
+                  ) : (updateProgressNote.isSuccess || createProgressNote.isSuccess) ? (
+                    <span className="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-700">
+                      Saved
+                    </span>
+                  ) : null}
                 </div>
               </div>
-            </PadSection>
-
-            {/* LAB INVESTIGATIONS — short narrative summary; real orders are
-                placed via Order Lab / Order Imaging in the top bar. */}
-            <PadSection
-              icon={<FlaskConical className="h-4 w-4" />}
-              title="Investigations Summary"
-              collapsed={collapsed.lab}
-              onToggle={() => toggleSection('lab')}
-              color="text-tertiary"
-              actions={
-                <div onClick={(e) => e.stopPropagation()} className="contents">
-                  <PinToggle
-                    pinned={isPinned('investigation')}
-                    onToggle={() => togglePin('investigation')}
-                    sectionLabel="Investigations Summary"
-                  />
+            }
+          >
+            <div className="grid grid-cols-1 md:grid-cols-1 gap-3">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-muted-foreground">General Examination</label>
                   <VoiceInputButton
-                    value={investigationsSummary}
-                    onChange={(v) =>
-                      setValue('investigationsSummary', v, { shouldDirty: true })
-                    }
-                    fieldLabel="Investigations Summary"
+                    value={watch('generalExamination') ?? ''}
+                    onChange={(v) => setValue('generalExamination', v, { shouldDirty: true })}
+                    fieldLabel="General Examination"
                   />
                 </div>
+                <textarea
+                  {...register('generalExamination')}
+                  onBlur={(e) => { register('generalExamination').onBlur(e); examinationFindingBlur(); }}
+                  placeholder="General appearance, consciousness, pallor, icterus..."
+                  rows={3}
+                  className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-none"
+                />
+              </div>
+            </div>
+          </PadSection>
+
+          {/* LAB INVESTIGATIONS — short narrative summary; real orders are
+                placed via Order Lab / Order Imaging in the top bar. */}
+          <PadSection
+            icon={<FlaskConical className="h-4 w-4" />}
+            title="Investigations Summary"
+            collapsed={collapsed.lab}
+            onToggle={() => toggleSection('lab')}
+            color="text-tertiary"
+            actions={
+              <div onClick={(e) => e.stopPropagation()} className="contents">
+                <PinToggle
+                  pinned={isPinned('investigation')}
+                  onToggle={() => togglePin('investigation')}
+                  sectionLabel="Investigations Summary"
+                />
+                <VoiceInputButton
+                  value={investigationsSummary}
+                  onChange={(v) =>
+                    setValue('investigationsSummary', v, { shouldDirty: true })
+                  }
+                  fieldLabel="Investigations Summary"
+                />
+              </div>
+            }
+          >
+            <textarea
+              value={investigationsSummary}
+              onChange={(e) =>
+                setValue('investigationsSummary', e.target.value, { shouldDirty: true })
               }
-            >
-              <textarea
-                value={investigationsSummary}
-                onChange={(e) =>
-                  setValue('investigationsSummary', e.target.value, { shouldDirty: true })
-                }
-                placeholder="Notable labs / imaging already done — key results, dates, who interpreted…"
-                rows={3}
-                className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-y"
-              />
-              <p className="text-xs text-muted-foreground mt-2">
-                Use <strong>Order Lab</strong> / <strong>Order Imaging</strong> in the top bar to
-                place new orders — they flow back into the Orders panel.
-              </p>
-            </PadSection>
+              onBlur={(e) => { register('investigationsSummary').onBlur(e); investigationsSummaryBlur }}
+              placeholder="Notable labs / imaging already done — key results, dates, who interpreted…"
+              rows={3}
+              className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-y"
+            />
+            <p className="text-xs text-muted-foreground mt-2">
+              Use <strong>Order Lab</strong> / <strong>Order Imaging</strong> in the top bar to
+              place new orders — they flow back into the Orders panel.
+            </p>
+          </PadSection>
 
         </div>
 
@@ -757,47 +901,62 @@ export function PrescriptionPad({
               Assessment · diagnosis & clinical judgement
             </span>
           </div>
-            <DiagnosisSection
-              form={form}
-              pinSlot={
-                <PinToggle
-                  pinned={isPinned('diagnosis')}
-                  onToggle={() => togglePin('diagnosis')}
-                  sectionLabel="Diagnosis"
-                />
-              }
-            />
-
-            <PadSection
-              icon={<StickyNote className="h-4 w-4" />}
-              title="Impression"
-              badge="Clinical Note"
-              collapsed={collapsed.impression}
-              onToggle={() => toggleSection('impression')}
-              color="text-secondary"
-              actions={
-                <div onClick={(e) => e.stopPropagation()} className="contents">
-                  <PinToggle
-                    pinned={isPinned('impression')}
-                    onToggle={() => togglePin('impression')}
-                    sectionLabel="Impression"
-                  />
-                  <VoiceInputButton
-                    value={impression}
-                    onChange={(v) => setValue('impression', v, { shouldDirty: true })}
-                    fieldLabel="Impression"
-                  />
-                </div>
-              }
-            >
-              <textarea
-                value={impression}
-                onChange={(e) => setValue('impression', e.target.value, { shouldDirty: true })}
-                placeholder="Clinical impression — serves as the official narrative note…"
-                rows={4}
-                className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-y"
+          <DiagnosisSection
+            form={form}
+            patientId={patientId}
+            visitId={visitId ?? editMode?.visitId ?? ensuredVisitId ?? ''}
+            doctorProfileId={doctorProfileId}
+            appointmentId={appointmentId}
+            onVisitCreated={setEnsuredVisitId}
+            pinSlot={
+              <PinToggle
+                pinned={isPinned('diagnosis')}
+                onToggle={() => togglePin('diagnosis')}
+                sectionLabel="Diagnosis"
               />
-            </PadSection>
+            }
+          />
+
+          <PadSection
+            icon={<StickyNote className="h-4 w-4" />}
+            title="Impression"
+            badge="Clinical Note"
+            collapsed={collapsed.impression}
+            onToggle={() => toggleSection('impression')}
+            color="text-secondary"
+            actions={
+              <div onClick={(e) => e.stopPropagation()} className="contents">
+                <PinToggle
+                  pinned={isPinned('impression')}
+                  onToggle={() => togglePin('impression')}
+                  sectionLabel="Impression"
+                />
+                {(updateProgressNote.isPending || createProgressNote.isPending) ? (
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                    Saving…
+                  </span>
+                ) : (updateProgressNote.isSuccess || createProgressNote.isSuccess) ? (
+                  <span className="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-700">
+                    Saved
+                  </span>
+                ) : null}
+                <VoiceInputButton
+                  value={impression}
+                  onChange={(v) => setValue('impression', v, { shouldDirty: true })}
+                  fieldLabel="Impression"
+                />
+              </div>
+            }
+          >
+            <textarea
+              value={impression}
+              onChange={(e) => setValue('impression', e.target.value, { shouldDirty: true })}
+              onBlur={impressionBlur}
+              placeholder="Clinical impression — serves as the official narrative note…"
+              rows={4}
+              className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-y"
+            />
+          </PadSection>
 
         </div>
 
@@ -809,128 +968,151 @@ export function PrescriptionPad({
               Plan · treatment, advice & next steps
             </span>
           </div>
-            {/* AI Smart Suggestions sit at the top of P so the doctor can use
+          {/* AI Smart Suggestions sit at the top of P so the doctor can use
                them to guide treatment/next-step choices below. */}
-            <div className="rounded-xl border bg-card p-3">
-              <SmartSuggestionsCard
-                buildInput={() => ({
-                  chiefComplaints: watch('chiefComplaint') || undefined,
-                  presentIllness:watch('generalExamination') || undefined,
-                  vitalsSummary: (() => {
-                    // Latest reading on file, whoever recorded it.
-                    const v = latestVital;
-                    if (!v) return undefined;
-                    const parts: string[] = [];
-                    if (v.bloodPressureSystolic && v.bloodPressureDiastolic)
-                      parts.push(`BP ${v.bloodPressureSystolic}/${v.bloodPressureDiastolic}`);
-                    const hr = v.pulseRate ?? v.heartRate;
-                    if (hr) parts.push(`HR ${hr}`);
-                    if (v.temperature) parts.push(`T ${formatTemperature(v.temperature, tempUnit)}`);
-                    if (v.respiratoryRate) parts.push(`RR ${v.respiratoryRate}`);
-                    if (v.oxygenSaturation) parts.push(`SpO2 ${v.oxygenSaturation}%`);
-                    return parts.join(' · ') || undefined;
-                  })(),
-                  /* physicalObservations: physicalObservations.map((po) => ({
-                    value: po.value,
-                    system: po.system,
-                  })), */
-                  diagnosis: (watch('diagnoses') ?? [])
-                    .map((d: any) => d.diagnosisName)
-                    .filter(Boolean)
-                    .join(', ') || undefined,
-                  medications: (watch('medicines') ?? [])
-                    .map((m: any) => m.drugName)
-                    .filter(Boolean)
-                    .join(', ') || undefined,
-                  advice: watch('advice') || undefined,
-                })}
-                onAdopt={(s) => {
-                  const current = watch('advice') ?? '';
-                  const next = current ? `${current}\n- ${s}` : `- ${s}`;
-                  setValue('advice', next, { shouldDirty: true });
-                }}
-              />
-            </div>
+          <div className="rounded-xl border bg-card p-3">
+            <SmartSuggestionsCard
+              buildInput={() => ({
+                chiefComplaints: watch('chiefComplaint') || undefined,
+                presentIllness: watch('generalExamination') || undefined,
+                vitalsSummary: (() => {
+                  // Latest reading on file, whoever recorded it.
+                  const v = latestVital;
+                  if (!v) return undefined;
+                  const parts: string[] = [];
+                  if (v.bloodPressureSystolic && v.bloodPressureDiastolic)
+                    parts.push(`BP ${v.bloodPressureSystolic}/${v.bloodPressureDiastolic}`);
+                  const hr = v.pulseRate ?? v.heartRate;
+                  if (hr) parts.push(`HR ${hr}`);
+                  if (v.temperature) parts.push(`T ${formatTemperature(v.temperature, tempUnit)}`);
+                  if (v.respiratoryRate) parts.push(`RR ${v.respiratoryRate}`);
+                  if (v.oxygenSaturation) parts.push(`SpO2 ${v.oxygenSaturation}%`);
+                  return parts.join(' · ') || undefined;
+                })(),
+                /* physicalObservations: physicalObservations.map((po) => ({
+                  value: po.value,
+                  system: po.system,
+                })), */
+                diagnosis: (watch('diagnoses') ?? [])
+                  .map((d: any) => d.diagnosisName)
+                  .filter(Boolean)
+                  .join(', ') || undefined,
+                medications: (watch('medicines') ?? [])
+                  .map((m: any) => m.drugName)
+                  .filter(Boolean)
+                  .join(', ') || undefined,
+                advice: watch('advice') || undefined,
+              })}
+              onAdopt={(s) => {
+                const current = watch('advice') ?? '';
+                const next = current ? `${current}\n- ${s}` : `- ${s}`;
+                setValue('advice', next, { shouldDirty: true });
+              }}
+            />
+          </div>
 
-            <CdssSafetyPanel warnings={cdssWarnings} blockers={cdssBlockers} />
+          <CdssSafetyPanel warnings={cdssWarnings} blockers={cdssBlockers} />
 
-            <MedicationsSection form={form} patientId={patientId} />
+          <MedicationsSection form={form} patientId={patientId} visitId={visitId ?? editMode?.visitId ?? ensuredVisitId} doctorProfileId={doctorProfileId} appointmentId={appointmentId} prescriptionId={editMode?.prescriptionId} onPrescriptionCreated={setEnsuredPrescriptionId} onVisitCreated={setEnsuredVisitId} />
 
-            <PadSection
-              icon={<StickyNote className="h-4 w-4" />}
-              title="Notes for Patient"
-              badge="Treatment / Surgical / Other"
-              collapsed={collapsed.notes}
-              onToggle={() => toggleSection('notes')}
-              color="text-primary"
-              actions={
-                <div onClick={(e) => e.stopPropagation()} className="contents">
-                  <PinToggle
-                    pinned={isPinned('advice')}
-                    onToggle={() => togglePin('advice')}
-                    sectionLabel="Notes / Advice"
-                  />
-                  <VoiceInputButton
-                    value={watch('advice') ?? ''}
-                    onChange={(v) => setValue('advice', v, { shouldDirty: true })}
-                    fieldLabel="Notes / Advice"
-                  />
-                </div>
-              }
-            >
-              <textarea
-                {...register('advice')}
-                placeholder="Add notes…"
-                rows={4}
-                className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-y"
-              />
-            </PadSection>
-
-            <FollowUpSection
-              form={form}
-              pinSlot={
+          <PadSection
+            icon={<StickyNote className="h-4 w-4" />}
+            title="Notes for Patient"
+            badge="Treatment / Surgical / Other"
+            collapsed={collapsed.notes}
+            onToggle={() => toggleSection('notes')}
+            color="text-primary"
+            actions={
+              <div onClick={(e) => e.stopPropagation()} className="contents">
                 <PinToggle
-                  pinned={isPinned('follow_up')}
-                  onToggle={() => togglePin('follow_up')}
-                  sectionLabel="Follow-up"
+                  pinned={isPinned('advice')}
+                  onToggle={() => togglePin('advice')}
+                  sectionLabel="Notes / Advice"
                 />
-              }
+                {(updateProgressNote.isPending || createProgressNote.isPending) ? (
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                    Saving…
+                  </span>
+                ) : (updateProgressNote.isSuccess || createProgressNote.isSuccess) ? (
+                  <span className="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-700">
+                    Saved
+                  </span>
+                ) : null}
+                <VoiceInputButton
+                  value={watch('advice') ?? ''}
+                  onChange={(v) => setValue('advice', v, { shouldDirty: true })}
+                  fieldLabel="Notes / Advice"
+                />
+              </div>
+            }
+          >
+            <textarea
+              {...register('advice')}
+              onBlur={(e) => { register('advice').onBlur(e); adviceBlur(); }}
+              placeholder="Add notes…"
+              rows={4}
+              className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-y"
             />
+          </PadSection>
 
-            <PadSection
-              icon={<UserCheck className="h-4 w-4" />}
-              title="Refer to a Doctor"
-              collapsed={collapsed.refer}
-              onToggle={() => toggleSection('refer')}
-              color="text-tertiary"
-              actions={
-                <div onClick={(e) => e.stopPropagation()} className="contents">
-                  <VoiceInputButton
-                    value={watch('referralNotes') ?? ''}
-                    onChange={(v) => setValue('referralNotes', v, { shouldDirty: true })}
-                    fieldLabel="Referral"
-                  />
-                </div>
-              }
-            >
-              <textarea
-                {...register('referralNotes')}
-                placeholder="Start typing doctor name or speciality / Add referral notes…"
-                rows={2}
-                className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-none"
+          <FollowUpSection
+            form={form}
+            onFieldBlur={followUpBlur}
+            saving={updateProgressNote.isPending || createProgressNote.isPending}
+            saved={updateProgressNote.isSuccess || createProgressNote.isSuccess}
+            pinSlot={
+              <PinToggle
+                pinned={isPinned('follow_up')}
+                onToggle={() => togglePin('follow_up')}
+                sectionLabel="Follow-up"
               />
-            </PadSection>
+            }
+          />
 
-            {/* Consultation Summary roll-up — surfaces every pinned section
-                so the doctor can audit what the patient will actually see. */}
-            <ConsultationSummaryPreview
-              pinnedSections={pinnedSections}
-              form={form}
+          <PadSection
+            icon={<UserCheck className="h-4 w-4" />}
+            title="Refer to a Doctor"
+            collapsed={collapsed.refer}
+            onToggle={() => toggleSection('refer')}
+            color="text-tertiary"
+            actions={
+              <div onClick={(e) => e.stopPropagation()} className="contents">
+                {(updateProgressNote.isPending || createProgressNote.isPending) ? (
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                    Saving…
+                  </span>
+                ) : (updateProgressNote.isSuccess || createProgressNote.isSuccess) ? (
+                  <span className="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-700">
+                    Saved
+                  </span>
+                ) : null}
+                <VoiceInputButton
+                  value={watch('referralNotes') ?? ''}
+                  onChange={(v) => setValue('referralNotes', v, { shouldDirty: true })}
+                  fieldLabel="Referral"
+                />
+              </div>
+            }
+          >
+            <textarea
+              {...register('referralNotes')}
+              onBlur={(e) => { register('referralNotes').onBlur(e); referralBlur(); }}
+              placeholder="Start typing doctor name or speciality / Add referral notes…"
+              rows={2}
+              className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 resize-none"
             />
+          </PadSection>
 
-            {doctorProfile?.specialty && (
-              <SpecialityInputs speciality={doctorProfile.specialty} visitId={visitId ?? undefined} />
-            )}
+          {/* Consultation Summary roll-up — surfaces every pinned section
+                so the doctor can audit what the patient will actually see. */}
+          <ConsultationSummaryPreview
+            pinnedSections={pinnedSections}
+            form={form}
+          />
+
+          {doctorProfile?.specialty && (
+            <SpecialityInputs speciality={doctorProfile.specialty} visitId={visitId ?? undefined} />
+          )}
         </div>
       </div>
 
@@ -1039,6 +1221,7 @@ function PadSection({
   onToggle?: () => void;
   color?: string;
   actions?: React.ReactNode;
+
 }) {
   return (
     <div className="rounded-xl border bg-card overflow-hidden">
@@ -1073,9 +1256,56 @@ function PadSection({
 // ═══════════════════════════════════════════════════════════
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function DiagnosisSection({ form, pinSlot }: { form: any; pinSlot?: React.ReactNode }) {
+function DiagnosisSection({ form, pinSlot, visitId, patientId, doctorProfileId, appointmentId, onVisitCreated }: { form: any; pinSlot?: React.ReactNode, visitId: string, patientId: string, doctorProfileId?: string, appointmentId?: string, onVisitCreated?: (id: string) => void }) {
   const { register, control, formState: { errors } } = form;
   const { fields, append, remove } = useFieldArray({ control, name: 'diagnoses' });
+
+  const addDiagnosis = useAddDiagnosis();
+  const updateDiagnosis = useUpdateDiagnosis();
+  const deleteDDiagnosis = useDeleteDiagnosis();
+  const createVisit = useCreateVisit();
+  const diagnosisRef = useRef(JSON.stringify(form.watch('diagnoses') ?? []));
+
+  const diagnosisBlur = async () => {
+    const current = JSON.stringify(form.watch('diagnoses') ?? []);
+    if (current === diagnosisRef.current) return;
+    const rows = ((form.watch('diagnoses') ?? []) as { icdCode?: string; diagnosisName?: string; diagnosisType?: 'primary' | 'secondary' | 'differential' }[])
+      .filter((d) => d.diagnosisName && d.diagnosisName.trim());
+    try {
+      // No visit yet (fresh consult) — create it inline, then save diagnoses to it.
+      let vId = visitId;
+      if (!vId) {
+        if (rows.length === 0) return; // nothing to save, don't create an empty visit
+        const v = await createVisit.mutateAsync({
+          patientId,
+          doctorId: doctorProfileId,
+          appointmentId,
+          visitType: 'op',
+          visitDate: new Date().toISOString(),
+        } as any);
+        vId = v.id;
+        onVisitCreated?.(v.id);
+      }
+      const existing = await apiGet<Array<{ id: string }>>('/clinical/diagnoses', {
+        params: { visitId: vId, limit: 100 },
+      });
+      for (const d of existing.data ?? []) {
+        await deleteDDiagnosis.mutateAsync({ id: d.id, patientId });
+      }
+      for (const row of rows) {
+        await addDiagnosis.mutateAsync({
+          patientId,
+          visitId: vId,
+          code: row.icdCode || undefined,
+          description: row.diagnosisName!.trim(),
+          type: row.diagnosisType,
+        });
+      }
+      diagnosisRef.current = current;
+    } catch (error) {
+      toast.error('Error in saving diagnosis');
+    }
+  };
 
   return (
     // `overflow-hidden` is safe here: the ICD-10 suggestions under each
@@ -1084,6 +1314,15 @@ function DiagnosisSection({ form, pinSlot }: { form: any; pinSlot?: React.ReactN
       <div className="flex items-center gap-2 px-4 py-3">
         <ClipboardList className="h-4 w-4 text-error shrink-0" />
         <h3 className="text-sm font-bold flex-1">Diagnosis</h3>
+        {addDiagnosis.isPending ? (
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+            Saving…
+          </span>
+        ) : addDiagnosis.isSuccess ? (
+          <span className="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-700">
+            Saved
+          </span>
+        ) : null}
         <Badge variant="secondary" className="text-[10px] font-medium">ICD-10</Badge>
         {pinSlot}
         <Button
@@ -1096,7 +1335,7 @@ function DiagnosisSection({ form, pinSlot }: { form: any; pinSlot?: React.ReactN
           <Plus className="h-3 w-3" /> Add
         </Button>
       </div>
-      <div className="px-4 pb-4 space-y-2">
+      <div className="px-4 pb-4 space-y-2" onBlur={diagnosisBlur}>
         {errors.diagnoses?.message && (
           <p className="text-xs text-error">{errors.diagnoses.message}</p>
         )}
@@ -1226,10 +1465,70 @@ function CdssSafetyPanel({ warnings, blockers }: { warnings: CdssWarning[]; bloc
 // ═══════════════════════════════════════════════════════════
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function MedicationsSection({ form, patientId }: { form: any; patientId: string }) {
+function MedicationsSection({ form, patientId, visitId, doctorProfileId, appointmentId, prescriptionId, onPrescriptionCreated, onVisitCreated }: { form: any; patientId: string; visitId?: string; doctorProfileId?: string; appointmentId?: string; prescriptionId?: string; onPrescriptionCreated?: (id: string) => void; onVisitCreated?: (id: string) => void }) {
   const { control, watch, setValue } = form;
   const medicines = watch('medicines');
   const { fields, append, remove } = useFieldArray({ control, name: 'medicines' });
+
+  const createPrescription = useCreatePrescription();
+  const updatePrescription = useUpdatePrescription();
+  const createVisit = useCreateVisit();
+  const [ensuredPrescriptionId, setEnsuredPrescriptionId] = useState<string>();
+  const medicationsRef = useRef(JSON.stringify(watch('medicines') ?? []));
+
+  const medicationsBlur = async () => {
+    const current = JSON.stringify(watch('medicines') ?? []);
+    if (current === medicationsRef.current) return;
+
+    // Build items from the current medicine rows (drop blank rows; fall back
+    // to safe values for the backend's required dosage/frequency).
+    const items = ((watch('medicines') ?? []) as MedicineFormData[])
+      .filter((m) => m.drugName && m.drugName.trim())
+      .map((m) => ({
+        drugId: m.drugId || undefined,
+        drugName: m.drugName.trim(),
+        dosage: m.dose || m.strength || m.dosage || '1',
+        frequency: m.frequency || 'As directed',
+        duration: m.durationValue ? `${m.durationValue} ${m.durationUnit || ''}`.trim() : undefined,
+        route: m.route || 'oral',
+        instructions: m.instructions || undefined,
+        quantity: typeof m.quantity === 'number' && m.quantity > 0 ? Math.round(m.quantity) : undefined,
+      })) as any[];
+    if (items.length === 0) return;
+
+    try {
+      // No visit yet (fresh consult) — create it inline, then save the Rx to it.
+      let vId = visitId;
+      if (!vId) {
+        const v = await createVisit.mutateAsync({
+          patientId,
+          doctorId: doctorProfileId,
+          appointmentId,
+          visitType: 'op',
+          visitDate: new Date().toISOString(),
+        } as any);
+        vId = v.id;
+        onVisitCreated?.(v.id);
+      }
+
+      const rxId = prescriptionId ?? ensuredPrescriptionId;
+      if (rxId) {
+        await updatePrescription.mutateAsync({ id: rxId, items });
+      } else {
+        const rx = await createPrescription.mutateAsync({
+          patientId,
+          doctorId: doctorProfileId ?? '',
+          visitId: vId,
+          items,
+        });
+        setEnsuredPrescriptionId(rx.id);
+        onPrescriptionCreated?.(rx.id);
+      }
+      medicationsRef.current = current;
+    } catch (error) {
+      toast.error('Error in saving medications');
+    }
+  };
 
   const [drugSearch, setDrugSearch] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
@@ -1314,13 +1613,22 @@ function MedicationsSection({ form, patientId }: { form: any; patientId: string 
       <div className="flex items-center gap-2 px-4 py-3">
         <Pill className="h-4 w-4 text-error shrink-0" />
         <h3 className="text-sm font-bold flex-1">Medications</h3>
+        {(createPrescription.isPending || updatePrescription.isPending) ? (
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+            Saving…
+          </span>
+        ) : (createPrescription.isSuccess || updatePrescription.isSuccess) ? (
+          <span className="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-700">
+            Saved
+          </span>
+        ) : null}
         <span className="text-xs text-muted-foreground">{fields.length} medicine{fields.length !== 1 ? 's' : ''}</span>
       </div>
 
       <div className="px-4 pb-4 space-y-3">
         {/* Medication table */}
         {fields.length > 0 && (
-          <div className="rounded-lg border overflow-hidden">
+          <div className="rounded-lg border overflow-hidden" onBlur={medicationsBlur}>
             <div className="grid grid-cols-[minmax(160px,2fr)_90px_95px_105px_95px_64px_1fr_32px] gap-0 border-b bg-muted/50 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
               <div className="px-3 py-2">Medicine</div>
               <div className="px-2 py-2" title="Units taken per intake (default 1)">Dose</div>
@@ -1371,7 +1679,7 @@ function MedicationsSection({ form, patientId }: { form: any; patientId: string 
             value={drugSearch}
             onChange={(e) => { setDrugSearch(e.target.value); setShowDropdown(true); }}
             onFocus={() => drugSearch.length >= 2 && setShowDropdown(true)}
-            onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+            onBlur={() => { setTimeout(() => setShowDropdown(false), 200); medicationsBlur(); }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
@@ -1554,7 +1862,7 @@ function MedRow({ index, med, patientId, onUpdate, onRemove }: {
 // ═══════════════════════════════════════════════════════════
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function FollowUpSection({ form, pinSlot }: { form: any; pinSlot?: React.ReactNode }) {
+function FollowUpSection({ form, pinSlot, onFieldBlur, saving, saved }: { form: any; pinSlot?: React.ReactNode; onFieldBlur?: () => void; saving?: boolean; saved?: boolean }) {
   const { watch, setValue, register } = form;
   const followUpDate = watch('followUpDate');
   const followUpDuration = watch('followUpDuration');
@@ -1638,6 +1946,15 @@ function FollowUpSection({ form, pinSlot }: { form: any; pinSlot?: React.ReactNo
       color="text-secondary"
       actions={
         <div onClick={(e) => e.stopPropagation()} className="contents">
+          {saving ? (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+              Saving…
+            </span>
+          ) : saved ? (
+            <span className="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-700">
+              Saved
+            </span>
+          ) : null}
           {pinSlot}
           {hasFollowUp ? (
             <button
@@ -1689,6 +2006,7 @@ function FollowUpSection({ form, pinSlot }: { form: any; pinSlot?: React.ReactNo
                 className="h-9 text-sm w-20"
                 value={followUpDuration || ''}
                 onChange={(e) => handleDurationChange(e.target.value, followUpDurationUnit)}
+                onBlur={() => onFieldBlur?.()}
               />
               <select
                 className="flex h-9 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30"
@@ -1716,6 +2034,7 @@ function FollowUpSection({ form, pinSlot }: { form: any; pinSlot?: React.ReactNo
               value={followUpDate || ''}
               min={new Date().toISOString().split('T')[0]}
               onChange={(e) => handleDateChange(e.target.value)}
+              onBlur={() => onFieldBlur?.()}
             />
           </div>
 
@@ -1726,6 +2045,7 @@ function FollowUpSection({ form, pinSlot }: { form: any; pinSlot?: React.ReactNo
               placeholder="e.g. Review with blood reports"
               className="h-9 text-sm"
               {...register('followUpNotes')}
+              onBlur={(e) => { register('followUpNotes').onBlur(e); onFieldBlur?.(); }}
             />
           </div>
         </div>

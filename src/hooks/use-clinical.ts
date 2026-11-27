@@ -240,6 +240,24 @@ export function useSetNurseChiefComplaint() {
   });
 }
 
+// Doctor's chief complaint — saved incrementally (on blur) to the visit,
+// separate from the nurse's intake version above.
+export function useSetChiefComplaint() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ visitId, text }: { visitId: string; text: string }) => {
+      const res = await apiPut<Visit>(`/clinical/visits/${visitId}`, {
+        chiefComplaint: text,
+      });
+      return res.data;
+    },
+    onSuccess: (_d, v) => {
+      queryClient.invalidateQueries({ queryKey: clinicalKeys.visits.detail(v.visitId) });
+      queryClient.invalidateQueries({ queryKey: clinicalKeys.visits.all });
+    },
+  });
+}
+
 export function useAdmission(id: string) {
   return useQuery({
     queryKey: clinicalKeys.admissions.detail(id),
@@ -368,7 +386,9 @@ export function useCreateVisit() {
     mutationFn: async (data: {
       patientId: string;
       doctorId?: string;
+      appointmentId?: string;
       visitType?: string;
+      visitDate?: string;
       chiefComplaint?: string;
       notes?: string;
     }) => {

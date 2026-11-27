@@ -865,6 +865,44 @@ export function useAddDiagnosis() {
   });
 }
 
+export function useUpdateDiagnosis() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      id: string;
+      patientId: string;
+      code?: string;
+      description?: string;
+      type?: 'primary' | 'secondary' | 'differential';
+      notes?: string;
+    }) => {
+      const response = await apiPut<Diagnosis>(`/clinical/diagnoses/${data.id}`, {
+        icdCode: data.code,
+        diagnosisName: data.description,
+        diagnosisType: data.type,
+        notes: data.notes,
+      });
+      return response.data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: doctorKeys.diagnoses.patient(variables.patientId) });
+    },
+  });
+}
+
+export function useDeleteDiagnosis() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { id: string; patientId: string }) => {
+      await apiDelete(`/clinical/diagnoses/${data.id}`);
+      return data.id;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: doctorKeys.diagnoses.patient(variables.patientId) });
+    },
+  });
+}
+
 // ============================================================
 // Lab Order Hooks
 // ============================================================
@@ -1232,7 +1270,7 @@ export function usePrescriptionDetail(id: string) {
 export function useUpdatePrescription() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...data }: { id: string; status?: string; notes?: string }) => {
+    mutationFn: async ({ id, ...data }: { id: string; status?: string; notes?: string; followUpDate?: string | null; items?: unknown[] }) => {
       const response = await apiPut<Prescription>(`/prescriptions/${id}`, data);
       return response.data;
     },
