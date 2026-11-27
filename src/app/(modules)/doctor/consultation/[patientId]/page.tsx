@@ -103,7 +103,6 @@ function calculateAge(dob: string): string {
   }
 }
 
-// ── Top bar ────────────────────────────────────────────────────────────
 
 function TopBar({
   patient,
