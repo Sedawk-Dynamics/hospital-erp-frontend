@@ -341,7 +341,6 @@ export default function SelectHospitalPage() {
         </div>
       )}
 
-      {/* Plan limit warning */}
       {!canCreate && clinics.length > 0 && (
         <p className="font-label text-xs text-on-surface-variant text-center mt-6 animate-fade-in-up">
           Hospital limit reached. Contact your administrator to upgrade your plan.
