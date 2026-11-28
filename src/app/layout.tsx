@@ -1,25 +1,42 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
-import { Manrope, Inter } from 'next/font/google';
+import localFont from 'next/font/local';
 import './globals.css';
 import { Providers } from '@/components/layout/providers';
 
-const manrope = Manrope({
+const manrope = localFont({
   variable: '--font-sans',
-  subsets: ['latin'],
-  weight: ['300', '400', '500', '600', '700', '800'],
+  display: 'swap',
+  src: [
+    { path: './fonts/Manrope-300.woff2', weight: '300', style: 'normal' },
+    { path: './fonts/Manrope-400.woff2', weight: '400', style: 'normal' },
+    { path: './fonts/Manrope-500.woff2', weight: '500', style: 'normal' },
+    { path: './fonts/Manrope-600.woff2', weight: '600', style: 'normal' },
+    { path: './fonts/Manrope-700.woff2', weight: '700', style: 'normal' },
+    { path: './fonts/Manrope-800.woff2', weight: '800', style: 'normal' },
+  ],
 });
 
-const manropeHeadline = Manrope({
+const manropeHeadline = localFont({
   variable: '--font-headline',
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700', '800'],
+  display: 'swap',
+  src: [
+    { path: './fonts/Manrope-400.woff2', weight: '400', style: 'normal' },
+    { path: './fonts/Manrope-500.woff2', weight: '500', style: 'normal' },
+    { path: './fonts/Manrope-600.woff2', weight: '600', style: 'normal' },
+    { path: './fonts/Manrope-700.woff2', weight: '700', style: 'normal' },
+    { path: './fonts/Manrope-800.woff2', weight: '800', style: 'normal' },
+  ],
 });
 
-const inter = Inter({
+const inter = localFont({
   variable: '--font-label',
-  subsets: ['latin'],
-  weight: ['400', '500', '600'],
+  display: 'swap',
+  src: [
+    { path: './fonts/Inter-400.woff2', weight: '400', style: 'normal' },
+    { path: './fonts/Inter-500.woff2', weight: '500', style: 'normal' },
+    { path: './fonts/Inter-600.woff2', weight: '600', style: 'normal' },
+  ],
 });
 
 export const metadata: Metadata = {
